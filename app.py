@@ -9918,15 +9918,10 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
             ghost_k_ia = f"btn_{btn_sfx}_{aba_ativa}_ia"
             st.markdown(f"""
             <style>
-            .st-key-{ghost_k_ia} {{
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:1px !important; height:1px !important;
-                opacity:0 !important; pointer-events:none !important;
-            }}
+            .st-key-{ghost_k_ia} {{ display: none !important; }}
             .stElementContainer:has(.st-key-{ghost_k_ia}) {{
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:1px !important; height:1px !important;
-                overflow:hidden !important; margin:0 !important; padding:0 !important;
+                display: none !important; height: 0 !important;
+                margin: 0 !important; padding: 0 !important;
             }}
             </style>
             """, unsafe_allow_html=True)

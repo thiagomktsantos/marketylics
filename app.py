@@ -9158,14 +9158,12 @@ html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-
 body{{padding-bottom:8px;}}
 
 .perfil-card {{
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:14px 14px 0 0;
     overflow:hidden;
 }}
 .perfil-header {{
     display:flex; align-items:center; gap:16px;
-    padding:18px 22px 16px; border-bottom:1px solid #f3f4f6;
+    padding:18px 22px 16px; border:1px solid #e5e7eb;
+    border-radius: 14px 14px 0 0; background:#fff;
 }}
 .avatar {{
     width:52px; height:52px; border-radius:50%;
@@ -9199,7 +9197,7 @@ body{{padding-bottom:8px;}}
 
 .bio-section {{
     display:grid; grid-template-columns:15% 50% 35%;
-    border-bottom:1px solid #f3f4f6; min-height:80px;
+     border:1px solid #e5e7eb; min-height:80px;
 }}
 .bio-label-col {{
     padding:18px 16px; border-right:1px solid #f3f4f6;

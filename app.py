@@ -9920,7 +9920,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
             }}
             </style>
             """, unsafe_allow_html=True)
-            resultados_ia_btns[btn_sfx] = st.button(f"__{btn_sfx}_{aba_ativa}__", key=ghost_k_ia)
+            resultados_ia_btns[btn_sfx] = st.button(f"{btn_sfx}_{aba_ativa}", key=ghost_k_ia)
 
         chave_criativo = f"ia_criativo_{r['handle']}"
         chave_copy     = f"ia_copy_{r['handle']}"

@@ -7696,15 +7696,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     flex-wrap:nowrap; white-space:nowrap;
 }}
 .link-btn {{
-    font-size:13px; color:#6b7280;
+    font-size:11px; color:#6b7280;
     cursor:pointer; text-underline-offset:3px;
     background:none; border:none; padding:0;
     font-family:'DM Sans',sans-serif;
 }}
 .link-btn:hover {{ text-decoration:underline; color:#374151; }}
-.sep {{ color:#d1d5db; font-size:13px; }}
+.sep {{ color:#d1d5db; font-size:12px; }}
 .clear-btn {{
-    font-size:13px; color:#6b7280;
+    font-size:11px; color:#6b7280;
     cursor:pointer; background:none; border:none; padding:0;
     font-family:'DM Sans',sans-serif; text-underline-offset:3px;
 }}

@@ -9242,36 +9242,76 @@ body{{padding-bottom:8px;}}
 .analises-bar {{
     border-top:1px solid #e5e7eb;
     background:#f9fafb;
-    padding:16px 20px 18px;
+    padding:24px 20px 26px;
+}}
+.analises-bar-inner {{
+    display:grid;
+    grid-template-columns: 220px 1fr;
+    gap:24px;
+    align-items:center;
+}}
+.analises-bar-left {{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
 }}
 .analises-bar-titulo {{
-    font-size:10px; font-weight:800; color:#9ca3af;
-    text-transform:uppercase; letter-spacing:0.8px;
-    margin-bottom:12px;
+    font-size:18px;
+    font-weight:800;
+    color:#0f1f35;
+    letter-spacing:-0.3px;
+    line-height:1.2;
+}}
+.analises-bar-sub {{
+    font-size:13px;
+    color:#9ca3af;
+    line-height:1.5;
 }}
 .analises-grid {{
-    display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
 }}
-.atalho-idle, .atalho-done {{
-    display:flex; flex-direction:column; align-items:center;
-    justify-content:center; gap:6px; padding:16px 12px;
-    border-radius:12px; border:1px solid #e5e7eb;
-    background:#fff; cursor:pointer;
-    font-family:'DM Sans',sans-serif; transition:all 0.15s;
-    text-align:center;
+.atalho-card {{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:20px 16px;
+    cursor:pointer;
+    font-family:'DM Sans',sans-serif;
+    display:flex;
+    flex-direction:row;
+    align-items:flex-start;
+    gap:14px;
+    transition:all 0.15s;
+    text-align:left;
+    box-shadow:0 1px 4px rgba(0,0,0,0.04);
 }}
-.atalho-idle:hover {{
-    border-color:#3a9fd6; background:#eff6ff;
-    box-shadow:0 2px 10px rgba(58,159,214,0.1);
+.atalho-card:hover {{
+    border-color:#c7d2fe;
+    box-shadow:0 4px 16px rgba(99,102,241,0.1);
+    transform:translateY(-1px);
 }}
-.atalho-done {{
-    border-color:#bbf7d0; background:#f0fdf4;
+.atalho-card.done {{
+    border-color:#bbf7d0;
+    background:#f0fdf4;
 }}
-.atalho-done:hover {{ border-color:#22c55e; background:#dcfce7; }}
-.atalho-emoji {{ font-size:22px; }}
-.atalho-nome {{ font-size:13px; font-weight:700; color:#1a2e4a; }}
-.atalho-desc {{ font-size:11px; color:#9ca3af; }}
-.atalho-done .atalho-desc {{ color:#15803d; font-weight:600; }}
+.atalho-card.done:hover {{
+    border-color:#22c55e;
+    box-shadow:0 4px 16px rgba(34,197,94,0.1);
+}}
+.atalho-icon-wrap {{
+    width:46px;height:46px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;font-size:22px;
+}}
+.atalho-icon-wrap.blue  {{ background:#e0f0ff; }}
+.atalho-icon-wrap.green {{ background:#e4f9ee; }}
+.atalho-icon-wrap.purple{{ background:#ede9fe; }}
+.atalho-text {{ display:flex;flex-direction:column;gap:3px; }}
+.atalho-nome {{ font-size:14px;font-weight:700;color:#111827; }}
+.atalho-desc {{ font-size:12px;color:#9ca3af;line-height:1.4; }}
+.atalho-card.done .atalho-desc {{ color:#15803d;font-weight:600; }}
 
 .filters-bar {{
     display:flex; align-items:center; gap:10px;
@@ -9446,22 +9486,32 @@ body{{padding-bottom:8px;}}
     </div>
 
     <div class="analises-bar">
-        <div class="analises-bar-titulo">Gerar análises para este perfil</div>
+    <div class="analises-bar-inner">
+        <div class="analises-bar-left">
+            <div class="analises-bar-titulo">Gerar análises</div>
+            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar no seu perfil.</div>
+        </div>
         <div class="analises-grid">
-            <button class="{'atalho-done' if tem_criativo else 'atalho-idle'}" onclick="trigger('__criativo_{aba_ativa}__')">
-                <span class="atalho-emoji">🎨</span>
-                <span class="atalho-nome">Criativos</span>
-                <span class="atalho-desc">{'✅ Gerado' if tem_criativo else 'Analisar estilo visual'}</span>
+            <button class="atalho-card {'done' if tem_criativo else ''}" onclick="trigger('__criativo_{aba_ativa}__')">
+                <div class="atalho-icon-wrap blue">🎨</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar criativos</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_criativo else 'Avalie seus conteúdos visuais, identidade e estilo de comunicação.'}</span>
+                </div>
             </button>
-            <button class="{'atalho-done' if tem_copy else 'atalho-idle'}" onclick="trigger('__copy_{aba_ativa}__')">
-                <span class="atalho-emoji">✍️</span>
-                <span class="atalho-nome">Copy</span>
-                <span class="atalho-desc">{'✅ Gerado' if tem_copy else 'Analisar legendas'}</span>
+            <button class="atalho-card {'done' if tem_copy else ''}" onclick="trigger('__copy_{aba_ativa}__')">
+                <div class="atalho-icon-wrap green">✏️</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar copy</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_copy else 'Analise textos, legendas, tom de voz e gatilhos de conversão.'}</span>
+                </div>
             </button>
-            <button class="{'atalho-done' if tem_geral else 'atalho-idle'}" onclick="trigger('__geral_{aba_ativa}__')">
-                <span class="atalho-emoji">📊</span>
-                <span class="atalho-nome">Análise Geral</span>
-                <span class="atalho-desc">{'✅ Gerado' if tem_geral else 'Visão estratégica'}</span>
+            <button class="atalho-card {'done' if tem_geral else ''}" onclick="trigger('__geral_{aba_ativa}__')">
+                <div class="atalho-icon-wrap purple">📊</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar estratégia</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_geral else 'Avalie posicionamento, oferta, público e oportunidades de crescimento.'}</span>
+                </div>
             </button>
         </div>
     </div>

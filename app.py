@@ -6713,43 +6713,6 @@ window.__PLATS_{uid}__ = {plat_js};
                 n_cols = st.session_state.get(col_key, 4)
 
                 _js_modal_hq = """
-function buildCell(src, pos, grid, doc, colors, labelMap) {
-    var color = colors[pos] || '#9ca3af';
-    var cell = doc.createElement('div');
-    cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;border:2px solid ' + color + ';display:flex;flex-direction:column;';
-
-    var lbl = doc.createElement('div');
-    lbl.style.cssText = 'padding:6px 12px;font-size:12px;font-weight:800;color:' + color + ';font-family:DM Sans,sans-serif;background:rgba(0,0,0,0.4);border-bottom:1px solid ' + color + ';flex-shrink:0;';
-        // Se ambas forem landscape/quadradas (ratio < 1.1), são ambas Feed
-        var _r0 = imgs._ratios ? imgs._ratios[0] : 0;
-        var _r1 = imgs._ratios ? (imgs._ratios[1] !== undefined ? imgs._ratios[1] : _r0) : 0;
-        // Considera "iguais" se diferença < 15% do maior ratio
-        var _diff = Math.abs(_r0 - _r1);
-        var _maxR = Math.max(_r0, _r1) || 1;
-        var _similar = (_diff / _maxR) < 0.15;
-        var dynamicLabels;
-        if (imgs.length <= 1) {
-            dynamicLabels = [_r0 >= 1.2 ? 'Stories' : 'Feed'];
-        } else if (_similar) {
-            // Proporções parecidas — usa threshold absoluto
-            dynamicLabels = _r0 >= 1.2 ? ['Stories 1', 'Stories 2'] : ['Feed 1', 'Feed 2'];
-        } else {
-            // Proporções diferentes — menor = Feed, maior = Stories (já ordenado pelo sort)
-            dynamicLabels = ['Feed', 'Stories'];
-        }
-        lbl.textContent = dynamicLabels[pos] || ('Imagem ' + (pos+1));
-
-    var imgEl = doc.createElement('img');
-    imgEl.style.cssText = 'display:block;width:100%;height:auto;object-fit:contain;max-height:65vh;';
-    imgEl.onerror = function() {
-        cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:32px;">Imagem não disponível</div>';
-    };
-    imgEl.src = src || '';
-
-    cell.appendChild(lbl);
-    cell.appendChild(imgEl);
-    grid.appendChild(cell);
-}
 function openModalHQ(hqImgs, allImgs, snapUrl) {
     var doc = window.parent.document;
     var old = doc.getElementById('ads_modal_overlay');
@@ -6762,40 +6725,21 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
     box.style.cssText = 'background:transparent;border-radius:16px;overflow:hidden;position:relative;padding:40px 24px 24px;min-width:320px;max-width:min(92vw,900px);';
     var closeBtn = doc.createElement('button');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = closeModal;
-    var colors = ['#3a9fd6', '#2ecc71'];
-
-    // Detecta Feed vs Stories pela proporção (Stories = portrait > 1.2 ratio h/w)
-    function detectLabel(src, idx, cb) {
-        if (!src) { cb(idx === 0 ? 'Feed' : 'Stories'); return; }
-        var img = new window.parent.Image();
-        img.onload = function() {
-            var ratio = this.naturalHeight / this.naturalWidth;
-            cb(ratio > 1.2 ? 'Stories' : 'Feed');
-        };
-        img.onerror = function() { cb(idx === 0 ? 'Feed' : 'Stories'); };
-        img.src = src;
-    }
-    var grid = doc.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:' + (hqImgs.length > 1 ? '1fr 1fr' : '1fr') + ';gap:14px;align-items:start;';
-
-    var colors   = ['#3a9fd6', '#2ecc71'];
-    var labelMap = ['Feed', 'Stories'];
 
     if (hqImgs.length <= 1) {
         renderGrid(hqImgs);
     } else {
-        // Carrega as imagens, mede proporção e ordena: menor ratio h/w = Feed primeiro
         var results = [];
-        var done    = 0;
+        var done = 0;
         hqImgs.slice(0, 2).forEach(function(src, i) {
             var tmp = new window.parent.Image();
             tmp.onload = function() {
                 results.push({ src: src, ratio: this.naturalHeight / (this.naturalWidth || 1) });
                 done++;
                 if (done === hqImgs.slice(0,2).length) {
-                    results.sort(function(a, b) { return a.ratio - b.ratio; }); // menor ratio = Feed
+                    results.sort(function(a, b) { return a.ratio - b.ratio; });
                     renderGrid(results.map(function(r) { return r.src; }));
                 }
             };
@@ -6804,9 +6748,7 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
                 done++;
                 if (done === hqImgs.slice(0,2).length) {
                     results.sort(function(a, b) { return a.ratio - b.ratio; });
-                    var srcs = results.map(function(r) { return r.src; });
-                    srcs._ratios = results.map(function(r) { return r.ratio; });
-                    renderGrid(srcs);
+                    renderGrid(results.map(function(r) { return r.src; }));
                 }
             };
             tmp.src = src || '';
@@ -6816,106 +6758,24 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
     function renderGrid(imgs) {
         var grid = doc.createElement('div');
         grid.style.cssText = 'display:grid;grid-template-columns:' + (imgs.length > 1 ? '1.4fr 1fr' : '1fr') + ';gap:14px;align-items:start;';
-        imgs.forEach(function(src, pos) {
-            var color = colors[pos] || '#9ca3af';
-            var cell  = doc.createElement('div');
-            cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;border:2px solid ' + color + ';display:flex;flex-direction:column;';
-            var lbl   = doc.createElement('div');
-            lbl.style.cssText = 'padding:6px 12px;font-size:12px;font-weight:800;color:' + color + ';font-family:DM Sans,sans-serif;background:rgba(0,0,0,0.4);border-bottom:1px solid ' + color + ';flex-shrink:0;';
-            lbl.textContent = labelMap[pos] || ('Imagem ' + (pos+1));
+        imgs.forEach(function(src) {
+            var cell = doc.createElement('div');
+            cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;';
             var imgEl = doc.createElement('img');
             imgEl.style.cssText = 'display:block;width:100%;height:auto;object-fit:contain;max-height:65vh;';
             imgEl.onerror = function() {
                 cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:32px;">Imagem não disponível</div>';
             };
             imgEl.src = src || '';
-            cell.appendChild(lbl);
             cell.appendChild(imgEl);
             grid.appendChild(cell);
         });
-        var debugBtn = doc.createElement('button');
-        debugBtn.textContent = '🔍 Ver todas as 4 imagens (debug)';
-        debugBtn.style.cssText = 'margin-top:14px;width:100%;padding:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-        debugBtn.onclick = function() {
-            closeModal();
-            setTimeout(function() { openModalImages(allImgs, snapUrl); }, 100);
-        };
-        // Atualiza título conforme o tipo detectado
-        if (imgs._ratios) {
-            var r0 = imgs._ratios[0];
-            var r1 = imgs._ratios[1] !== undefined ? imgs._ratios[1] : r0;
-            var allFeed2    = r0 < 1.1 && r1 < 1.1;
-            var allStories2 = r0 >= 1.1 && r1 >= 1.1;
-            if (allFeed2)    title.textContent = 'Feed (variações)';
-            else if (allStories2) title.textContent = 'Stories (variações)';
-            else             title.textContent = 'Feed · Stories (alta qualidade)';
-        }
         box.appendChild(closeBtn);
         box.appendChild(grid);
-        box.appendChild(debugBtn);
         overlay.appendChild(box);
         doc.body.appendChild(overlay);
     }
-    var debugBtn = doc.createElement('button');
-    debugBtn.textContent = '🔍 Ver todas as 4 imagens (debug)';
-    debugBtn.style.cssText = 'margin-top:14px;width:100%;padding:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:rgba(255,255,255,0.5);font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    debugBtn.onclick = function() {
-        closeModal();
-        setTimeout(function() { openModalImages(allImgs, snapUrl); }, 100);
-    };
-    box.appendChild(closeBtn);
-    box.appendChild(grid);
-    box.appendChild(debugBtn);
-    overlay.appendChild(box);
-    doc.body.appendChild(overlay);
-    window.parent.__adsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
-    doc.addEventListener('keydown', window.parent.__adsModalEscFn);
-}
 
-function openModalImages(imgs, snapUrl) {
-    var doc = window.parent.document;
-    var old = doc.getElementById('ads_modal_overlay');
-    if (old) old.remove();
-    var overlay = doc.createElement('div');
-    overlay.id = 'ads_modal_overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
-    overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#1a1a2e;border-radius:16px;overflow:hidden;position:relative;width:min(92vw,900px);padding:40px 28px 28px;';
-    var closeBtn = doc.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
-    closeBtn.onclick = closeModal;
-    var title = doc.createElement('div');
-    title.style.cssText = 'color:#fff;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;font-family:DM Sans,sans-serif;opacity:0.6;';
-    var labels = ['Idx 0 — Feed Alta', 'Idx 1 — Feed Baixa (thumb)', 'Idx 2 — Stories Alta', 'Idx 3 — Stories Baixa'];
-    var colors = ['#3a9fd6', '#e67e22', '#2ecc71', '#e74c3c'];
-    var grid = doc.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:' + (hqImgs.length > 1 ? '1fr 1fr' : '1fr') + ';gap:14px;align-items:start;';
-    imgs.forEach(function(src, i) {
-        var cell = doc.createElement('div');
-        cell.style.cssText = 'background:#111;border-radius:10px;overflow:hidden;border:2px solid ' + colors[i] + ';';
-        var lbl = doc.createElement('div');
-        lbl.style.cssText = 'padding:6px 12px;font-size:12px;font-weight:800;color:' + colors[i] + ';font-family:DM Sans,sans-serif;background:rgba(0,0,0,0.4);border-bottom:1px solid ' + colors[i] + ';';
-        lbl.textContent = labels[i] || ('Idx ' + i);
-        var imgEl = doc.createElement('img');
-        imgEl.src = src || '';
-        imgEl.style.cssText = 'width:100%;height:auto;display:block;object-fit:contain;max-height:220px;';
-        imgEl.onerror = function() {
-            cell.innerHTML = '<div style="color:#555;font-size:11px;font-family:DM Sans,sans-serif;text-align:center;padding:20px;">Sem imagem</div>';
-        };
-        var srcLbl = doc.createElement('div');
-        srcLbl.style.cssText = 'padding:4px 8px;font-size:9px;color:#555;font-family:monospace;background:#0a0a0a;word-break:break-all;';
-        srcLbl.textContent = src ? src.substring(0,70) + '…' : 'vazio';
-        cell.appendChild(lbl);
-        cell.appendChild(imgEl);
-        cell.appendChild(srcLbl);
-        grid.appendChild(cell);
-    });
-    box.appendChild(closeBtn);
-    box.appendChild(grid);
-    overlay.appendChild(box);
-    doc.body.appendChild(overlay);
     window.parent.__adsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
     doc.addEventListener('keydown', window.parent.__adsModalEscFn);
 }

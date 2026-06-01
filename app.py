@@ -5799,6 +5799,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border:1px solid #bbf7d0;
     padding:3px 10px; border-radius:20px;
     font-size:11px; font-weight:700;
+    flex-shrink:0; align-self:center;
 }}
 .badge-conc {{
     display:inline-flex; align-items:center; gap:5px;
@@ -5806,17 +5807,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border:1px solid #bfdbfe;
     padding:3px 10px; border-radius:20px;
     font-size:11px; font-weight:700;
+    flex-shrink:0; align-self:center;
 }}
-.lapiz-btn {{
-    width:28px; height:28px;
-    border:1px solid #e5e7eb; border-radius:7px;
-    background:#fff; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    color:#9ca3af; flex-shrink:0;
-    transition:all 0.12s;
-    position:absolute; top:12px; right:12px;
-}}
-.lapiz-btn:hover {{ background:#f3f4f6; color:#374151; border-color:#9ca3af; }}
 
 /* ── Barra de abas embaixo dos cards ── */
 .tabs-row {{
@@ -5889,14 +5881,9 @@ function buildUI() {{
             + '</div>'
             + '<div class="emp-info">'
             + '<div class="emp-nome">' + e.nome + '</div>'
-            + badgeHtml
+            + (e.ads_id ? '<div style="font-size:13px;color:#9ca3af;">' + e.ads_id + '</div>' : '')
             + '</div>'
-            + '<button class="lapiz-btn" onclick="goConfig(' + e.i + ',event)" title="Configurar">'
-            + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-            + '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
-            + '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
-            + '</svg>'
-            + '</button>';
+            + badgeHtml
         card.addEventListener('click', function(ev) {{
             if (ev.target.closest('.lapiz-btn')) return;
             selectAba(e.i);

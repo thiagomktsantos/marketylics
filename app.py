@@ -9897,15 +9897,19 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
         # ══════════════════════════════════════════════════════════════
         # SUB-ABA: ANÁLISE DE IA
         # ══════════════════════════════════════════════════════════════
-        # ── Ghost buttons análises do perfil (criativos, copy, geral) ──
+        
         for btn_sfx in ["criativo", "copy", "geral"]:
             ghost_k_ia = f"btn_{btn_sfx}_{aba_ativa}_ia"
             st.markdown(f"""
             <style>
             .st-key-{ghost_k_ia} {{
                 position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:1px !important; height:1px !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; visibility:hidden !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{ghost_k_ia}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
             }}
             </style>
             """, unsafe_allow_html=True)
@@ -9932,13 +9936,68 @@ Seguidores: {r.get('seguidores',0)} | Posts: {r.get('total_posts',0)} | Eng. mé
 {resumo_posts}
 """
 
+        def _render_modal_redes_ia(fase: str, nome_analise: str, pct: int, _ph):
+            is_done  = fase == "concluido"
+            sub1     = "Análise concluída!" if is_done else "Gerando análise…"
+            sub2     = "Redirecionando…"    if is_done else "Processando com IA…"
+            cor_pct  = "#22c55e" if is_done else "#3a9fd6"
+            rodape   = '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">Fechando automaticamente…</div>' if is_done else ""
+            nome_safe = (nome_analise or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'","&#39;").replace('"',"&quot;")
+            html_modal = f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
+.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+</style>
+<div class="overlay"><div class="card">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
+        </div>
+        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
+    </div>
+    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
+    </div>
+    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
+        <div>
+            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{nome_safe}</div>
+            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Analisando com IA…</div>
+        </div>
+        <div style="font-size:18px;">{'✅' if is_done else '⏳'}</div>
+    </div>
+    {rodape}
+</div></div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
+            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
+            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>"""
+            with _ph:
+                components.html(html_modal, height=600, scrolling=False)
+
         if st.button(f"__criativo_{aba_ativa}__", key=f"btn_criativo_{aba_ativa}_ia"):
             if gemini_model is None:
                 st.session_state[chave_criativo] = "Configure GEMINI_API_KEY nos secrets."
             else:
-                with st.spinner("Analisando criativos…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
+                _ph = st.empty()
+                _render_modal_redes_ia("gerando", f"Criativos — {r['nome']}", 40, _ph)
+                try:
+                    resp = gemini_model.generate_content(f"""
 {perfil_ctx}
 Analise os CRIATIVOS (imagens/vídeos) deste perfil com base nas legendas e métricas.
 Responda em português com:
@@ -9950,31 +10009,37 @@ Responda em português com:
 **O que melhorar:** (2 pontos)
 Seja direto e objetivo.
 """)
-                        st.session_state[chave_criativo] = resp.text
-                        import datetime as _dt_redes
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if not (a.get("tipo") == "criativos" and a.get("perfil") == r.get("handle"))
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Criativos — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "criativos",
-                            "perfil": r.get("handle", ""),
-                            "nome": r["nome"],
-                        })
-                        st.rerun()
-                    except Exception as e:
-                        st.session_state[chave_criativo] = f"Erro: {e}"
+                    st.session_state[chave_criativo] = resp.text
+                    import datetime as _dt_redes
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if not (a.get("tipo") == "criativos" and a.get("perfil") == r.get("handle"))
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Criativos — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "criativos",
+                        "perfil": r.get("handle", ""),
+                        "nome": r["nome"],
+                    })
+                    _render_modal_redes_ia("concluido", f"Criativos — {r['nome']}", 100, _ph)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.rerun()
+                except Exception as e:
+                    _ph.empty()
+                    st.session_state[chave_criativo] = f"Erro: {e}"
+                    st.rerun()
 
         if st.button(f"__copy_{aba_ativa}__", key=f"btn_copy_{aba_ativa}_ia"):
             if gemini_model is None:
                 st.session_state[chave_copy] = "Configure GEMINI_API_KEY nos secrets."
             else:
-                with st.spinner("Analisando copies…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
+                _ph = st.empty()
+                _render_modal_redes_ia("gerando", f"Copy — {r['nome']}", 40, _ph)
+                try:
+                    resp = gemini_model.generate_content(f"""
 {perfil_ctx}
 Analise as LEGENDAS (copy) deste perfil Instagram.
 Responda em português com:
@@ -9986,31 +10051,37 @@ Responda em português com:
 **O que melhorar:** (2 pontos)
 Seja direto e objetivo.
 """)
-                        st.session_state[chave_copy] = resp.text
-                        import datetime as _dt_redes
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if not (a.get("tipo") == "copy" and a.get("perfil") == r.get("handle"))
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Copy — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "copy",
-                            "perfil": r.get("handle", ""),
-                            "nome": r["nome"],
-                        })
-                        st.rerun()
-                    except Exception as e:
-                        st.session_state[chave_copy] = f"Erro: {e}"
+                    st.session_state[chave_copy] = resp.text
+                    import datetime as _dt_redes
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if not (a.get("tipo") == "copy" and a.get("perfil") == r.get("handle"))
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Copy — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "copy",
+                        "perfil": r.get("handle", ""),
+                        "nome": r["nome"],
+                    })
+                    _render_modal_redes_ia("concluido", f"Copy — {r['nome']}", 100, _ph)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.rerun()
+                except Exception as e:
+                    _ph.empty()
+                    st.session_state[chave_copy] = f"Erro: {e}"
+                    st.rerun()
 
         if st.button(f"__geral_{aba_ativa}__", key=f"btn_geral_{aba_ativa}_ia"):
             if gemini_model is None:
                 st.session_state[chave_geral] = "Configure GEMINI_API_KEY nos secrets."
             else:
-                with st.spinner("Gerando análise geral…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
+                _ph = st.empty()
+                _render_modal_redes_ia("gerando", f"Estratégia — {r['nome']}", 40, _ph)
+                try:
+                    resp = gemini_model.generate_content(f"""
 {perfil_ctx}
 Faça uma análise geral estratégica deste perfil Instagram.
 Responda em português com:
@@ -10022,23 +10093,28 @@ Responda em português com:
 ### Recomendações Estratégicas (3 ações concretas)
 Seja direto e objetivo.
 """)
-                        st.session_state[chave_geral] = resp.text
-                        import datetime as _dt_redes
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if not (a.get("tipo") == "geral_perfil" and a.get("perfil") == r.get("handle"))
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Análise Geral — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "geral_perfil",
-                            "perfil": r.get("handle", ""),
-                            "nome": r["nome"],
-                        })
-                        st.rerun()
-                    except Exception as e:
-                        st.session_state[chave_geral] = f"Erro: {e}"
+                    st.session_state[chave_geral] = resp.text
+                    import datetime as _dt_redes
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if not (a.get("tipo") == "geral_perfil" and a.get("perfil") == r.get("handle"))
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Análise Geral — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "geral_perfil",
+                        "perfil": r.get("handle", ""),
+                        "nome": r["nome"],
+                    })
+                    _render_modal_redes_ia("concluido", f"Estratégia — {r['nome']}", 100, _ph)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.rerun()
+                except Exception as e:
+                    _ph.empty()
+                    st.session_state[chave_geral] = f"Erro: {e}"
+                    st.rerun()
 
     # ══════════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA — Comparativo geral

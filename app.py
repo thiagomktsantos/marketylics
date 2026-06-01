@@ -6217,7 +6217,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:24px 20px 26px;
 }}
 .analises-bar-inner {{
-    display:grid; grid-template-columns:220px 1fr; gap:24px; align-items:center;
+    display:grid; grid-template-columns:200px 1fr; gap:24px; align-items:center;
 }}
 .analises-bar-left {{ display:flex; flex-direction:column; gap:6px; }}
 .analises-bar-titulo {{ font-size:18px; font-weight:800; color:#0f1f35; letter-spacing:-0.3px; line-height:1.2; }}

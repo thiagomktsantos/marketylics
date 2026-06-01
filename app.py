@@ -8915,8 +8915,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         <style>
         .st-key-btn_bio_ia_{aba_ativa} {{
             position: fixed !important; top: -9999px !important; left: -9999px !important;
-            width: 1px !important; height: 1px !important; overflow: hidden !important;
-            opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
+            width: 1px !important; height: 1px !important;
+            opacity: 0 !important; pointer-events: none !important;
+        }}
+        .stElementContainer:has(.st-key-btn_bio_ia_{aba_ativa}) {{
+            position: fixed !important; top: -9999px !important; left: -9999px !important;
+            width: 1px !important; height: 1px !important;
+            overflow: hidden !important; margin: 0 !important; padding: 0 !important;
         }}
         </style>
         """, unsafe_allow_html=True)
@@ -9904,12 +9909,13 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
             <style>
             .st-key-{ghost_k_ia} {{
                 position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:0 !important; height:0 !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; display:none !important;
+                width:1px !important; height:1px !important;
+                opacity:0 !important; pointer-events:none !important;
             }}
             .stElementContainer:has(.st-key-{ghost_k_ia}) {{
-                display:none !important; height:0 !important; min-height:0 !important;
-                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:1px !important; height:1px !important;
+                overflow:hidden !important; margin:0 !important; padding:0 !important;
             }}
             </style>
             """, unsafe_allow_html=True)

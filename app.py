@@ -6299,7 +6299,7 @@ function triggerBtn(label) {{
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '130px';
-            iframes[i].style.marginTop = '-45px';
+            iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}

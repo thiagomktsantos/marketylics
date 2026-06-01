@@ -9880,7 +9880,7 @@ function trigger(label) {{
             var ibtns = f.contentDocument.querySelectorAll('button');
             for (var b of ibtns) {{
                 var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-                if (txt === label) { b.click(); return; }
+                if (txt === label) {{ b.click(); return; }}
             }}
         }} catch(e) {{}}
     }});

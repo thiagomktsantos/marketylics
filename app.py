@@ -6732,7 +6732,7 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
         renderGrid(hqImgs);
     } else {
         var results = [];
-        var done = 0;
+        var done    = 0;
         hqImgs.slice(0, 2).forEach(function(src, i) {
             var tmp = new window.parent.Image();
             tmp.onload = function() {
@@ -6740,7 +6740,11 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
                 done++;
                 if (done === hqImgs.slice(0,2).length) {
                     results.sort(function(a, b) { return a.ratio - b.ratio; });
-                    renderGrid(results.map(function(r) { return r.src; }));
+                    var srcs = results.map(function(r) { return r.src; });
+                    var diff = Math.abs(results[0].ratio - results[1].ratio);
+                    var maxR = Math.max(results[0].ratio, results[1].ratio) || 1;
+                    if ((diff / maxR) < 0.15) { srcs = [srcs[0]]; }
+                    renderGrid(srcs);
                 }
             };
             tmp.onerror = function() {
@@ -6757,9 +6761,9 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
 
     function renderGrid(imgs) {
         var grid = doc.createElement('div');
-        grid.style.cssText = 'display:grid;grid-template-columns:' + (imgs.length > 1 ? '1.4fr 1fr' : '1fr') + ';gap:14px;align-items:start;';
+        grid.style.cssText = 'display:grid;grid-template-columns:' + (imgs.length > 1 ? '1.4fr 1fr' : 'auto') + ';gap:14px;align-items:start;justify-content:center;';
         imgs.forEach(function(src) {
-            var cell = doc.createElement('div');
+            var cell  = doc.createElement('div');
             cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;';
             var imgEl = doc.createElement('img');
             imgEl.style.cssText = 'display:block;width:100%;height:auto;object-fit:contain;max-height:65vh;';

@@ -6161,7 +6161,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -35px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -16px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -6298,14 +6298,14 @@ function triggerBtn(label) {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '130px';
+            iframes[i].style.height = '144px';
             iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=130, scrolling=False)
+""", height=144, scrolling=False)
 
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])

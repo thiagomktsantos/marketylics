@@ -9731,7 +9731,7 @@ function buildGrid(posts) {{
             + '</div>'
             + (p.resultado_ia ? '<div class="post-ia-panel"><div class="post-ia-hdr">✨ Análise de IA</div>' + p.resultado_ia + '</div>' : '')
             + '<div class="card-footer-btns">'
-            + (igUrl && igUrl !== '#' ? '<a class="footer-btn ig" href="' + igUrl + '" target="_blank">Ver no Instagram ↗</a>' : '<span class="footer-btn ig" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>')
+            + (igUrl && igUrl !== '#' ? '<a class="footer-btn ig" href="' + igUrl + '" target="_blank">Ver no Instagram</a>' : '<span class="footer-btn ig" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>')
             + '<button class="footer-btn ia" id="ia_btn_' + idx + '" onclick="analisarPost(' + idx + ')">' + (p.tem_ia ? 'Reanalisar' : 'Analisar postagem') + '</button>'
             + '</div>';
         if (thumbUrl) {{

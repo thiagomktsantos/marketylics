@@ -9197,7 +9197,8 @@ body{{padding-bottom:8px;}}
 
 .bio-section {{
     display:grid; grid-template-columns:15% 50% 35%;
-     border:1px solid #e5e7eb; min-height:80px;
+     border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;
+     border-left:1px solid #e5e7eb; min-height:80px;
 }}
 .bio-label-col {{
     padding:18px 16px; border-right:1px solid #f3f4f6;
@@ -9238,8 +9239,8 @@ body{{padding-bottom:8px;}}
 
 /* ── BARRA DE ANÁLISES (substitui tabs-bar) ── */
 .analises-bar {{
-    border-top:1px solid #e5e7eb;
-    background:#f9fafb;
+    border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;
+    border-left:1px solid #e5e7eb; background:#ffffff;
     padding:24px 20px 26px;
 }}
 .analises-bar-inner {{

@@ -5881,7 +5881,7 @@ function buildUI() {{
             + '</div>'
             + '<div class="emp-info">'
             + '<div class="emp-nome">' + e.nome + '</div>'
-            + (e.ads_id ? '<div style="font-size:13px;color:#9ca3af;">ID: ' + e.ads_id + '</div>' : '')
+            + (e.ads_id ? '<div style="font-size:12px;color:#9ca3af;">ID: ' + e.ads_id + '</div>' : '')
             + '</div>'
             + badgeHtml
         card.addEventListener('click', function(ev) {{

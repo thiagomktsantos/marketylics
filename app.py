@@ -9416,7 +9416,7 @@ body{{padding-bottom:8px;}}
     <div class="analises-bar-inner">
         <div class="analises-bar-left">
             <div class="analises-bar-titulo">Gerar análises</div>
-            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar no seu perfil.</div>
+            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nas postagens.</div>
         </div>
         <div class="analises-grid">
             <button class="atalho-card {'done' if tem_criativo else ''}" onclick="trigger('criativo_{aba_ativa}')">

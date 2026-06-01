@@ -6148,46 +6148,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
             aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
-            components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.tabs-bar {{ display:flex; background:#dfe1e2; border:1px solid #e5e7eb; border-top:none; border-bottom:none; }}
-.tab-btn {{ flex:1; padding:14px 0; font-size:14px; font-weight:700; color:#374151; background:#f3f4f6; border:none; cursor:pointer; font-family:'DM Sans',sans-serif; border-bottom:3px solid transparent; transition:all 0.15s; display:flex; align-items:center; justify-content:center; gap:8px; }}
-.tab-btn:hover {{ color:#1d4ed8; background:#f3f4f6; }}
-.tab-btn.active {{ color:#1a2e4a; border-bottom:4px solid #3a9fd6; background:#fff; font-weight:800; border-top:1px solid #d8d9da; }}
-.tab-sep {{ width:1px; background:#e5e7eb; align-self:stretch; margin:8px 0; }}
-</style>
-<div class="tabs-bar">
-    <button class="tab-btn {'active' if aba_conteudo_atual == 'anuncios' else ''}" onclick="triggerTab('{sk}','anuncios')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        Anúncios
-    </button>
-    <div class="tab-sep"></div>
-    <button class="tab-btn {'active' if aba_conteudo_atual == 'analise' else ''}" onclick="triggerTab('{sk}','analise')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-        Análise de IA
-    </button>
-</div>
-<script>
-function triggerTab(sk, tab) {{
-    var label = 'tab_' + sk + '_' + tab;
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = '52px'; break; }} }} catch(e) {{}}
-    }}
-}})();
-</script>
-""", height=52, scrolling=False)
-
             # ── ABA: ANÚNCIOS ─────────────────────────────────────────
             if aba_conteudo_atual == "anuncios":
 

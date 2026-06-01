@@ -6700,14 +6700,7 @@ function imgFallback_{uid}(img){{
         <a href="{snap_url or '#'}" target="_blank" class="cta-btn" {'style="pointer-events:none;opacity:0.4"' if not snap_url else ''}>{cta_display or "Ver detalhes"}</a>
     </div>
     <div class="card-btns">
-        {'<a href="' + snap_url + '" target="_blank" class="lib-btn">Ver no Ad Library</a>' if snap_url else '<span class="lib-btn-disabled">Sem link</span>'}
-        <button class="debug-btn" onclick="toggleDebug('{uid}')">🔍 Debug</button>
-    </div>
-    <div class="debug-block" id="debug_{uid}" style="display:none">
-        <div class="debug-header" onclick="toggleDebug('{uid}')">
-            <span>Dados recebidos da API</span><span>fechar ✕</span>
-        </div>
-        <pre class="debug-pre">{debug_json_html}</pre>
+        {'<a href="' + snap_url + '" target="_blank" class="lib-btn lib-btn-full">Ver no Ad Library</a>' if snap_url else '<span class="lib-btn-disabled">Sem link</span>'}
     </div>
 </div>
 <script>
@@ -6769,11 +6762,8 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
     box.style.cssText = 'background:transparent;border-radius:16px;overflow:hidden;position:relative;padding:40px 24px 24px;min-width:320px;max-width:min(92vw,900px);';
     var closeBtn = doc.createElement('button');
     closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:rgba(255,255,255,0.18);border:none;border-radius:50%;width:34px;height:34px;font-size:17px;color:#fff;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = closeModal;
-    var title = doc.createElement('div');
-    title.style.cssText = 'color:#fff;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;font-family:DM Sans,sans-serif;opacity:0.6;';
-    title.textContent = hqImgs.length > 1 ? 'Feed · Stories (alta qualidade)' : 'Feed (alta qualidade)';
     var colors = ['#3a9fd6', '#2ecc71'];
 
     // Detecta Feed vs Stories pela proporção (Stories = portrait > 1.2 ratio h/w)
@@ -6861,7 +6851,6 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
             else             title.textContent = 'Feed · Stories (alta qualidade)';
         }
         box.appendChild(closeBtn);
-        box.appendChild(title);
         box.appendChild(grid);
         box.appendChild(debugBtn);
         overlay.appendChild(box);
@@ -6875,7 +6864,6 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
         setTimeout(function() { openModalImages(allImgs, snapUrl); }, 100);
     };
     box.appendChild(closeBtn);
-    box.appendChild(title);
     box.appendChild(grid);
     box.appendChild(debugBtn);
     overlay.appendChild(box);
@@ -6900,7 +6888,6 @@ function openModalImages(imgs, snapUrl) {
     closeBtn.onclick = closeModal;
     var title = doc.createElement('div');
     title.style.cssText = 'color:#fff;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;font-family:DM Sans,sans-serif;opacity:0.6;';
-    title.textContent = '4 imagens da API — índices e qualidades:';
     var labels = ['Idx 0 — Feed Alta', 'Idx 1 — Feed Baixa (thumb)', 'Idx 2 — Stories Alta', 'Idx 3 — Stories Baixa'];
     var colors = ['#3a9fd6', '#e67e22', '#2ecc71', '#e74c3c'];
     var grid = doc.createElement('div');
@@ -6926,7 +6913,6 @@ function openModalImages(imgs, snapUrl) {
         grid.appendChild(cell);
     });
     box.appendChild(closeBtn);
-    box.appendChild(title);
     box.appendChild(grid);
     overlay.appendChild(box);
     doc.body.appendChild(overlay);
@@ -6974,8 +6960,8 @@ body{{padding-bottom:4px;min-height:0;}}
 .cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}
 .cta-domain{{font-size:10px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
 .cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
-.card-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #e4e6ea;}}
-.lib-btn{{display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 6px;background:#1877F2;color:#fff;border:none;border-radius:0 0 0 10px;font-size:11px;font-weight:700;text-decoration:none;}}
+.card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
+.lib-btn{{display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 6px;background:#1877F2;color:#fff;border:none;border-radius:0 0 10px 10px;font-size:11px;font-weight:700;text-decoration:none;}}
 .lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;}}
 .debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:11px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
 .debug-btn:hover{{background:#fef3c7;}}

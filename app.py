@@ -8971,6 +8971,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                             "perfil": r.get("handle", ""),
                             "nome": r["nome"],
                         })
+                        salvar_dados_usuario(st.session_state.user.id)
                         st.rerun()
                     except Exception as e:
                         st.session_state[chave_bio_ia] = f"Erro: {e}"
@@ -9067,6 +9068,7 @@ Como interpretar as métricas desta postagem?
                                     "nome": r["nome"],
                                     "post_idx": jp,
                                 })
+                                salvar_dados_usuario(st.session_state.user.id)
                                 st.rerun()
                             except Exception as e_post:
                                 st.session_state[chave_post_ia] = f"Erro: {e_post}"
@@ -10045,6 +10047,7 @@ Seja direto e objetivo.
                         "nome": r["nome"],
                     })
                     _render_modal_redes_ia("concluido", f"Criativos — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.rerun()
@@ -10087,6 +10090,7 @@ Seja direto e objetivo.
                         "nome": r["nome"],
                     })
                     _render_modal_redes_ia("concluido", f"Copy — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.rerun()
@@ -10129,6 +10133,7 @@ Seja direto e objetivo.
                         "nome": r["nome"],
                     })
                     _render_modal_redes_ia("concluido", f"Estratégia — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.rerun()
@@ -10237,6 +10242,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                             "tipo": "comparativo",
                             "perfis": [rr.get("handle","") for rr in ok],
                         })
+                        salvar_dados_usuario(st.session_state.user.id)
                         st.rerun()
                     except Exception as e:
                         st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")

@@ -9903,6 +9903,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
         # SUB-ABA: ANÁLISE DE IA
         # ══════════════════════════════════════════════════════════════
         
+        resultados_ia_btns = {}
         for btn_sfx in ["criativo", "copy", "geral"]:
             ghost_k_ia = f"btn_{btn_sfx}_{aba_ativa}_ia"
             st.markdown(f"""
@@ -9919,6 +9920,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
             }}
             </style>
             """, unsafe_allow_html=True)
+            resultados_ia_btns[btn_sfx] = st.button(f"__{btn_sfx}_{aba_ativa}__", key=ghost_k_ia)
 
         chave_criativo = f"ia_criativo_{r['handle']}"
         chave_copy     = f"ia_copy_{r['handle']}"
@@ -9996,7 +9998,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             with _ph:
                 components.html(html_modal, height=600, scrolling=False)
 
-        if st.button(f"__criativo_{aba_ativa}__", key=f"btn_criativo_{aba_ativa}_ia"):
+        if resultados_ia_btns["criativo"]:
             if gemini_model is None:
                 st.session_state[chave_criativo] = "Configure GEMINI_API_KEY nos secrets."
             else:
@@ -10038,7 +10040,7 @@ Seja direto e objetivo.
                     st.session_state[chave_criativo] = f"Erro: {e}"
                     st.rerun()
 
-        if st.button(f"__copy_{aba_ativa}__", key=f"btn_copy_{aba_ativa}_ia"):
+        if resultados_ia_btns["copy"]:
             if gemini_model is None:
                 st.session_state[chave_copy] = "Configure GEMINI_API_KEY nos secrets."
             else:
@@ -10080,7 +10082,7 @@ Seja direto e objetivo.
                     st.session_state[chave_copy] = f"Erro: {e}"
                     st.rerun()
 
-        if st.button(f"__geral_{aba_ativa}__", key=f"btn_geral_{aba_ativa}_ia"):
+        if resultados_ia_btns["geral"]:
             if gemini_model is None:
                 st.session_state[chave_geral] = "Configure GEMINI_API_KEY nos secrets."
             else:

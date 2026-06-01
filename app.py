@@ -9872,10 +9872,16 @@ function trigger(label) {{
     var frames = window.parent.document.querySelectorAll('iframe');
     for (var fi = 0; fi < frames.length; fi++) {{
         try {{
-            var btns = frames[fi].contentDocument.querySelectorAll('button');
+            var doc = frames[fi].contentDocument;
+            if (!doc) continue;
+            var btns = doc.querySelectorAll('button');
             for (var bi = 0; bi < btns.length; bi++) {{
                 var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\s+/).join(' ').trim();
-                if (txt === label) {{ btns[bi].click(); return; }}
+                if (txt === label) {{
+                    var btn = btns[bi];
+                    setTimeout(function() {{ btn.click(); }}, 0);
+                    return;
+                }}
             }}
         }} catch(e) {{}}
     }}

@@ -9869,21 +9869,16 @@ function triggerBio() {{
 }}
 
 function trigger(label) {{
-    var doc = window.parent.document;
-    var btns = doc.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-    doc.querySelectorAll('iframe').forEach(function(f) {{
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var fi = 0; fi < frames.length; fi++) {{
         try {{
-            var ibtns = f.contentDocument.querySelectorAll('button');
-            for (var b of ibtns) {{
-                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-                if (txt === label) {{ b.click(); return; }}
+            var btns = frames[fi].contentDocument.querySelectorAll('button');
+            for (var bi = 0; bi < btns.length; bi++) {{
+                var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\s+/).join(' ').trim();
+                if (txt === label) {{ btns[bi].click(); return; }}
             }}
         }} catch(e) {{}}
-    }});
+    }}
 }}
 
 function syncHeight() {{

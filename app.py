@@ -9496,21 +9496,21 @@ body{{padding-bottom:8px;}}
             <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar no seu perfil.</div>
         </div>
         <div class="analises-grid">
-            <button class="atalho-card {'done' if tem_criativo else ''}" onclick="trigger('__criativo_{aba_ativa}__')">
+            <button class="atalho-card {'done' if tem_criativo else ''}" onclick="trigger('criativo_{aba_ativa}')">
                 <div class="atalho-icon-wrap blue">🎨</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar criativos</span>
                     <span class="atalho-desc">{'✅ Gerado' if tem_criativo else 'Avalie seus conteúdos visuais, identidade e estilo de comunicação.'}</span>
                 </div>
             </button>
-            <button class="atalho-card {'done' if tem_copy else ''}" onclick="trigger('__copy_{aba_ativa}__')">
+            <button class="atalho-card {'done' if tem_copy else ''}" onclick="trigger('copy_{aba_ativa}')">
                 <div class="atalho-icon-wrap green">✏️</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar copy</span>
                     <span class="atalho-desc">{'✅ Gerado' if tem_copy else 'Analise textos, legendas, tom de voz e gatilhos de conversão.'}</span>
                 </div>
             </button>
-            <button class="atalho-card {'done' if tem_geral else ''}" onclick="trigger('__geral_{aba_ativa}__')">
+            <button class="atalho-card {'done' if tem_geral else ''}" onclick="trigger('geral_{aba_ativa}')">
                 <div class="atalho-icon-wrap purple">📊</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar estratégia</span>

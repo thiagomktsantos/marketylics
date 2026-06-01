@@ -5122,6 +5122,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:12px;color:#9ca3af;
 }}
 .nav-item.active .nav-sub {{ color:rgba(255,255,255,0.55); }}
+.nav-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0; }}
+.count-badge {{
+    min-width:26px; height:26px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; padding:0 5px;
+    background:#e5e7eb; color:#6b7280;
+}}
+.count-badge.has {{ background:#3a9fd6; color:#fff; }}
+.nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
+.nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
 </style>
 <div class="nav-bar">
     <div class="nav-item {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')">
@@ -5146,6 +5156,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div class="nav-content">
             <span class="nav-title">Empresas configuradas</span>
             <span class="nav-sub">Gerencie empresas cadastradas</span>
+        </div>
+        <div class="nav-right">
+            <div class="count-badge {'has' if n_configuradas > 0 else ''}">{n_configuradas}</div>
         </div>
     </div>
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
@@ -5721,7 +5734,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 /* ── Container principal ── */
 .main-wrap {{
-    background:#d2dde9;
+    background:#ffffff;
     border-radius:16px;
     overflow:hidden;
     margin-bottom:0;
@@ -6238,6 +6251,102 @@ function triggerTab(sk, tab) {{
                     return ''.join(c for c in s if _ud.category(c) not in ('So','Sm','Sk','Mn')).strip()
                 formatos_disponiveis = sorted(set(_limpar_formato(a["formato"]) for a in ads_list))
 
+                chave_criativo_ads = f"ia_ads_criativos_{sk}"
+                chave_copy_ads     = f"ia_ads_copys_{sk}"
+                chave_geral_ads    = f"ia_ads_geral_{sk}"
+                tem_criativo_ads   = bool(st.session_state.get(chave_criativo_ads, ""))
+                tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
+                tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
+
+                components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.analises-bar {{
+    background:#ffffff;
+    border:1px solid #e5e7eb;
+    border-top:none;
+    padding:24px 20px 26px;
+}}
+.analises-bar-inner {{
+    display:grid; grid-template-columns:220px 1fr; gap:24px; align-items:center;
+}}
+.analises-bar-left {{ display:flex; flex-direction:column; gap:6px; }}
+.analises-bar-titulo {{ font-size:18px; font-weight:800; color:#0f1f35; letter-spacing:-0.3px; line-height:1.2; }}
+.analises-bar-sub {{ font-size:13px; color:#9ca3af; line-height:1.5; }}
+.analises-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }}
+.atalho-card {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:20px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; flex-direction:row; align-items:flex-start; gap:14px;
+    transition:all 0.15s; text-align:left;
+    box-shadow:0 1px 4px rgba(0,0,0,0.04);
+}}
+.atalho-card:hover {{ border-color:#c7d2fe; box-shadow:0 4px 16px rgba(99,102,241,0.1); transform:translateY(-1px); }}
+.atalho-card.done {{ border-color:#bbf7d0; background:#f0fdf4; }}
+.atalho-card.done:hover {{ border-color:#22c55e; box-shadow:0 4px 16px rgba(34,197,94,0.1); }}
+.atalho-icon-wrap {{ width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:22px; }}
+.atalho-icon-wrap.blue   {{ background:#e0f0ff; }}
+.atalho-icon-wrap.green  {{ background:#e4f9ee; }}
+.atalho-icon-wrap.purple {{ background:#ede9fe; }}
+.atalho-text {{ display:flex; flex-direction:column; gap:3px; }}
+.atalho-nome {{ font-size:14px; font-weight:700; color:#111827; }}
+.atalho-desc {{ font-size:12px; color:#9ca3af; line-height:1.4; }}
+.atalho-card.done .atalho-desc {{ color:#15803d; font-weight:600; }}
+</style>
+<div class="analises-bar">
+    <div class="analises-bar-inner">
+        <div class="analises-bar-left">
+            <div class="analises-bar-titulo">Gerar análises</div>
+            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nos anúncios.</div>
+        </div>
+        <div class="analises-grid">
+            <button class="atalho-card {'done' if tem_criativo_ads else ''}" onclick="triggerBtn('ia_criativos_{sk}')">
+                <div class="atalho-icon-wrap blue">🎨</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar criativos</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_criativo_ads else 'Avalie formatos visuais e mix de criativos.'}</span>
+                </div>
+            </button>
+            <button class="atalho-card {'done' if tem_copy_ads else ''}" onclick="triggerBtn('ia_copys_{sk}')">
+                <div class="atalho-icon-wrap green">✏️</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar copy</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Analise textos, CTAs e tom de voz dos anúncios.'}</span>
+                </div>
+            </button>
+            <button class="atalho-card {'done' if tem_geral_ads else ''}" onclick="triggerBtn('ia_geral_{sk}')">
+                <div class="atalho-icon-wrap purple">📊</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar estratégia</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_geral_ads else 'Avalie estratégia geral de mídia paga.'}</span>
+                </div>
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+function triggerBtn(label) {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
+}}
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '130px';
+            iframes[i].style.marginTop = '-45px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=130, scrolling=False)
+
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])
                     with fcol1:
@@ -6699,8 +6808,9 @@ function imgFallback_{uid}(img){{
         <span class="cta-domain">{ad.get("caption") or (snap_url.replace("https://","").split("/")[0] if snap_url else "")}</span>
         <a href="{snap_url or '#'}" target="_blank" class="cta-btn" {'style="pointer-events:none;opacity:0.4"' if not snap_url else ''}>{cta_display or "Ver detalhes"}</a>
     </div>
-    <div class="card-btns">
-        {'<a href="' + snap_url + '" target="_blank" class="lib-btn lib-btn-full">Ver no Ad Library</a>' if snap_url else '<span class="lib-btn-disabled">Sem link</span>'}
+    <div class="card-footer-btns">
+        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library ↗</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
+        <button class="footer-btn ia-btn" id="ia_ads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
 </div>
 <script>
@@ -6825,7 +6935,11 @@ body{{padding-bottom:4px;min-height:0;}}
 .cta-domain{{font-size:10px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
 .cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
-.lib-btn{{display:flex;align-items:center;justify-content:center;gap:5px;padding:9px 6px;background:#1877F2;color:#fff;border:none;border-radius:0 0 10px 10px;font-size:11px;font-weight:700;text-decoration:none;}}
+.card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
+.footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
+.footer-btn.ia-btn{{border-radius:0 0 10px 0;}}
 .lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;}}
 .debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:11px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
 .debug-btn:hover{{background:#fef3c7;}}
@@ -6953,6 +7067,16 @@ function toggleDebug(uid) {{
     if (!el) return;
     el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
     setTimeout(syncHeight, 50);
+}}
+function analisarAd(uid, j) {{
+    var btn = document.getElementById('ia_ads_btn_' + uid);
+    if (btn) {{ btn.textContent = 'Analisando…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }}
+    var label = 'ia_ind_{sk}_' + j;
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
 }}
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);

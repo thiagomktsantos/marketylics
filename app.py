@@ -4786,7 +4786,7 @@ html, body { background: transparent; overflow: hidden; }
         st.markdown("""
         <style>
         .st-key-ads_buscar_header_btn {
-            margin-bottom: -30px !important;
+            margin-bottom: -16px !important;
         }
         .stElementContainer:has(.st-key-ads_buscar_header_btn) {
             margin-bottom: -12px !important;
@@ -6161,7 +6161,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -16px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -30px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;

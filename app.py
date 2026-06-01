@@ -8818,7 +8818,7 @@ function buildUI() {{
             + '</div>'
             + '<div class="emp-info">'
             + '<div class="emp-nome">' + e.nome + '</div>'
-            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;">' + e.handle + '</div>' : '')
+            + (e.handle ? '<div style="font-size:13px;color:#9ca3af;">' + e.handle + '</div>' : '')
             + '</div>'
             + badgeHtml; 
         card.addEventListener('click', function() {{ selectAba(e.i); }});

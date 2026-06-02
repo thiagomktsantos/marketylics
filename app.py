@@ -8003,12 +8003,12 @@ function triggerBtn(label) {
             pass
         return {}
 
-def _render_modal_redes_ia(fase: str, nome_analise: str, pct: int, _ph):
-        is_done  = fase == "concluido"
-        sub1     = "Análise concluída!" if is_done else "Gerando análise…"
-        sub2     = "Redirecionando…"    if is_done else "Processando com IA…"
-        cor_pct  = "#22c55e" if is_done else "#3a9fd6"
-        rodape   = '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">Fechando automaticamente…</div>' if is_done else ""
+    def _render_modal_redes_ia(fase: str, nome_analise: str, pct: int, _ph):
+        is_done   = fase == "concluido"
+        sub1      = "Análise concluída!" if is_done else "Gerando análise…"
+        sub2      = "Redirecionando…"    if is_done else "Processando com IA…"
+        cor_pct   = "#22c55e" if is_done else "#3a9fd6"
+        rodape    = '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">Fechando automaticamente…</div>' if is_done else ""
         nome_safe = (nome_analise or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'","&#39;").replace('"',"&quot;")
         html_modal = f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">

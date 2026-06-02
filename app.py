@@ -9021,7 +9021,23 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                 if n_cols_posts == 4
                 else "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/4-Columns.png"
             )
-            if st.button(f"![col]({icon_cols_url})", key=cols_toggle_key, help=""):
+            # ADICIONAR — ghost button oculto para toggle de colunas
+            cols_toggle_ghost_key = f"ghost_cols_toggle_{handle_clean_toggle}"
+            st.markdown(f"""
+            <style>
+            .st-key-{cols_toggle_ghost_key} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{cols_toggle_ghost_key}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+
+            if st.button(f"toggle_cols_{handle_clean_toggle}", key=cols_toggle_ghost_key):
                 st.session_state[posts_col_key] = 3 if n_cols_posts == 4 else 4
                 st.rerun()
 
@@ -9652,11 +9668,9 @@ body{{padding-bottom:8px;}}
         <option value="likes">Mais curtidas</option>
         <option value="eng">Maior engajamento</option>
     </select>
-    <button class="col-toggle" onclick="toggleCols()" title="Alternar colunas">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="5" height="18" rx="1"/>
-            <rect x="10" y="3" width="5" height="18" rx="1"/>
-            <rect x="17" y="3" width="5" height="18" rx="1"/>
+    <button class="col-toggle" onclick="toggleCols()" title="Alternar colunas" id="cols-toggle-btn">
+        <svg id="cols-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <!-- ícone renderizado via JS abaixo -->
         </svg>
     </button>
 </div>
@@ -9677,6 +9691,16 @@ body{{padding-bottom:8px;}}
 var ALL_POSTS = {posts_json_str if posts_list else "[]"};
 var N_COLS    = {n_cols_posts};
 var R_SEG     = {r_seg_val};
+
+(function() {{
+    var btn = document.getElementById('cols-toggle-btn');
+    if (!btn) return;
+    var svg3 = '<rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="18" rx="1"/><rect x="17" y="3" width="5" height="18" rx="1"/>';
+    var svg4 = '<rect x="2" y="3" width="4" height="18" rx="1"/><rect x="7.5" y="3" width="4" height="18" rx="1"/><rect x="13" y="3" width="4" height="18" rx="1"/><rect x="18.5" y="3" width="4" height="18" rx="1"/>';
+    var icon = document.getElementById('cols-icon');
+    if (icon) icon.innerHTML = N_COLS === 4 ? svg3 : svg4;
+    btn.title = N_COLS === 4 ? 'Alternar para 3 colunas' : 'Alternar para 4 colunas';
+}})();
 
 var POST_STORE = {{}};
 ALL_POSTS.forEach(function(p) {{ POST_STORE[p.jp] = p; }});
@@ -9991,11 +10015,11 @@ function applyFilters() {{
 }}
 
 function toggleCols() {{
-    var key = 'ads_toggle_cols_{handle_clean_toggle}';
+    var label = 'toggle_cols_{handle_clean_toggle}';
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var wrap = b.closest('[data-testid="stElementContainer"]');
-        if (wrap && wrap.classList.contains('st-key-' + key)) {{ b.click(); return; }}
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
     }}
 }}
 

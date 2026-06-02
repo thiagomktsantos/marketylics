@@ -10180,7 +10180,7 @@ window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight, 1500);
 </script>
 </body></html>
-""", height=500, scrolling=False)
+""", height=3000, scrolling=False)
  
         # ══════════════════════════════════════════════════════════════
         # SUB-ABA: ANÁLISE DE IA

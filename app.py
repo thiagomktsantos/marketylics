@@ -9613,7 +9613,7 @@ body{{padding-bottom:8px;}}
 
             <!-- Botão clean -->
             <div style="flex-shrink:0;">
-                <button onclick="triggerBio()"
+                <button onclick="trigger('__bio_{aba_ativa}__')"
                         style="display:inline-flex;align-items:center;gap:6px;
                                padding:9px 18px;border-radius:8px;
                                border:none;background:#3b82f6;

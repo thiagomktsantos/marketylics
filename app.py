@@ -10175,12 +10175,15 @@ function syncHeight() {{
 
 applyFilters();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
-setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight, 1500);
+document.addEventListener('DOMContentLoaded', function() { applyFilters(); syncHeight(); });
+window.addEventListener('load', function() { applyFilters(); syncHeight(); });
+setTimeout(function() { applyFilters(); syncHeight(); }, 300);
+setTimeout(function() { applyFilters(); syncHeight(); }, 800);
+setTimeout(function() { applyFilters(); syncHeight(); }, 1500);
+setTimeout(syncHeight, 3000);
 </script>
 </body></html>
-""", height=3000, scrolling=False)
+""", height=8000, scrolling=False)
  
         # ══════════════════════════════════════════════════════════════
         # SUB-ABA: ANÁLISE DE IA

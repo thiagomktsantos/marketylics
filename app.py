@@ -8246,114 +8246,6 @@ function triggerBtn(label) {
         except Exception as e:
             return {"erro": str(e)}
 
-            # ── Calcular score da bio ─────────────────────────────────────
-    def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
-        """Calcula score da bio de 0-100 com critérios."""
-        score = 0
-        criterios = []
-        
-        # Tem bio? (20 pts)
-        if bio and len(bio.strip()) > 10:
-            score += 20
-            criterios.append({"label": "Tem bio", "ok": True})
-        else:
-            criterios.append({"label": "Tem bio", "ok": False})
-        
-        # Proposta de valor clara — palavras-chave de benefício (20 pts)
-        palavras_valor = [
-            "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
-            "melhora", "ajuda", "economiza", "conquista", "vendas", "lucro",
-            "aprenda", "domine", "sucesso", "estratégia", "especialista"
-        ]
-        tem_valor = any(p in bio.lower() for p in palavras_valor)
-        if tem_valor:
-            score += 20
-            criterios.append({"label": "Proposta de valor clara", "ok": True})
-        else:
-            criterios.append({"label": "Proposta de valor clara", "ok": False})
-        
-        # Tem link externo (15 pts)
-        if ext_url:
-            score += 15
-            criterios.append({"label": "Link na bio", "ok": True})
-        else:
-            criterios.append({"label": "Link na bio", "ok": False})
-        
-        # Posicionamento de marca — nicho/público (20 pts)
-        palavras_nicho = [
-            "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
-            "agência", "consultoria", "clínica", "médico", "advogado", "arquiteto",
-            "professor", "mentor", "especialista", "privad", "digital", "online"
-        ]
-        tem_nicho = any(p in bio.lower() for p in palavras_nicho)
-        if tem_nicho:
-            score += 20
-            criterios.append({"label": "Posicionamento da marca", "ok": True})
-        else:
-            criterios.append({"label": "Posicionamento da marca", "ok": False})
-        
-        # CTA ou diferencial (15 pts)
-        palavras_cta = [
-            "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
-            "conheça", "veja", "assista", "siga", "participe", "reserve", "agende",
-            "↓", "👇", "⬇️", "link", "whatsapp"
-        ]
-        tem_cta = any(p in bio.lower() for p in palavras_cta)
-        if tem_cta:
-            score += 15
-            criterios.append({"label": "CTA na bio", "ok": True})
-        else:
-            criterios.append({"label": "CTA na bio", "ok": False})
-        
-        # Engajamento bonus (10 pts)
-        if eng_pct >= 3.0:
-            score += 10
-            criterios.append({"label": "Diferenciação no mercado", "ok": True})
-        elif eng_pct >= 1.5:
-            score += 5
-            criterios.append({"label": "Diferenciação no mercado", "ok": False})
-        else:
-            criterios.append({"label": "Diferenciação no mercado", "ok": False})
-        
-        # Classificação
-        if score >= 80:
-            classificacao = "Excelente"
-            classificacao_icon = "🏆"
-            cor_classe = "#22c55e"
-            bg_classe = "#f0fdf4"
-            brd_classe = "#bbf7d0"
-        elif score >= 60:
-            classificacao = "Bom"
-            classificacao_icon = "👍"
-            cor_classe = "#3b82f6"
-            bg_classe = "#eff6ff"
-            brd_classe = "#bfdbfe"
-        elif score >= 40:
-            classificacao = "Regular"
-            classificacao_icon = "⚠️"
-            cor_classe = "#f59e0b"
-            bg_classe = "#fffbeb"
-            brd_classe = "#fde68a"
-        else:
-            classificacao = "Precisa melhorar"
-            classificacao_icon = "📝"
-            cor_classe = "#ef4444"
-            bg_classe = "#fef2f2"
-            brd_classe = "#fecaca"
-        
-        oportunidades = sum(1 for c in criterios if not c["ok"])
-        
-        return {
-            "score": score,
-            "classificacao": classificacao,
-            "classificacao_icon": classificacao_icon,
-            "cor_classe": cor_classe,
-            "bg_classe": bg_classe,
-            "brd_classe": brd_classe,
-            "criterios": criterios,
-            "oportunidades": oportunidades,
-        }
-    
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []
     if emp.get("nome") and emp.get("instagram") and emp["instagram"] not in ("@", ""):
@@ -8901,28 +8793,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         ext_url_display = ext_url.replace("https://", "").replace("http://", "").rstrip("/")
         posts_list = r.get("posts", [])
 
-        score_data = calcular_score_bio(
-            bio_txt,
-            ext_url,
-            r.get("seguidores", 0),
-            r.get("eng_pct", 0.0),
-        )
-        score_val     = score_data["score"]
-        score_cls     = score_data["classificacao"]
-        score_icon    = score_data["classificacao_icon"]
-        score_cor     = score_data["cor_classe"]
-        score_bg      = score_data["bg_classe"]
-        score_brd     = score_data["brd_classe"]
-        score_crit    = score_data["criterios"]
-        score_oport   = score_data["oportunidades"]
-
-        # Montar HTML dos critérios
-        crit_ok   = [c for c in score_crit if c["ok"]]
-        crit_nok  = [c for c in score_crit if not c["ok"]]
-    
-        import json as _json_score
-        score_crit_json = _json_score.dumps(score_crit, ensure_ascii=False)
-
         seg_fmt   = fmt_num(r.get("seguidores", 0))
         posts_fmt = fmt_num(r.get("total_posts", 0))
         handle_clean = (r.get("handle") or "").lstrip("@")
@@ -9253,185 +9123,47 @@ body{{padding-bottom:8px;}}
 }}
 .btn-ig:hover {{ background:#1a3a5c; }}
 
-/* ── BIO NOVO MODELO ── */
-.bio-section-new {{
-    display:grid;
-    grid-template-columns: 1fr auto 1fr;
-    border-right:1px solid #e5e7eb;
-    border-bottom:1px solid #e5e7eb;
-    border-left:1px solid #e5e7eb;
-    min-height:170px;
+.bio-section {{
+    display:grid; grid-template-columns:15% 50% 35%;
+     border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;
+     border-left:1px solid #e5e7eb; min-height:80px;
 }}
-
-.bio-left-col {{
-    padding:20px 24px;
-    display:flex; flex-direction:column; gap:10px;
+.bio-label-col {{
+    padding:18px 16px; border-right:1px solid #f3f4f6;
+    display:flex; align-items:center; justify-content:center; background:#fafbfc;
 }}
-
-.bio-label-top {{
+.bio-label-txt {{
     font-size:10px; font-weight:700; color:#9ca3af;
-    text-transform:uppercase; letter-spacing:1px;
+    text-transform:uppercase; letter-spacing:1px; text-align:center;
 }}
-
-.bio-content-block {{
-    display:flex; flex-direction:column; gap:8px; flex:1;
-    justify-content:center;
+.bio-left {{
+    padding:18px 20px; border-right:1px solid #f3f4f6;
+    display:flex; flex-direction:column; justify-content:center; gap:8px;
 }}
-
-.bio-text-new {{
-    font-size:15px; color:#374151; line-height:1.75;
-}}
-
+.bio-text {{ font-size:15px; color:#374151; line-height:1.75; }}
 .bio-empty {{ font-size:14px; color:#d1d5db; font-style:italic; }}
-
-.bio-link-row {{
-    display:flex; align-items:center; gap:6px;
+.bio-right {{
+    padding:16px 20px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:8px; background:#fafbfc;
 }}
-
-.bio-link-anchor {{
-    font-size:13px; font-weight:600; color:#3a9fd6;
-    text-decoration:none; word-break:break-all;
+.btn-ia {{
+    width:100%; padding:10px 0; border:1px solid #3a9fd6; border-radius:8px;
+    background:#eff6ff; font-size:13px; font-weight:700; color:#1d4ed8;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s;
+    text-align:center; line-height:1;
 }}
-
-.bio-link-anchor:hover {{ text-decoration:underline; }}
-
-.bio-divider-v {{
-    width:1px; background:#e5e7eb; flex-shrink:0;
-}}
-
-.bio-right-col {{
-    padding:20px 24px;
-    display:flex; flex-direction:column; gap:10px;
-    min-width:320px;
-}}
-
-.score-header-row {{
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-}}
-
-.score-label-title {{
-    font-size:10px; font-weight:700; color:#9ca3af;
-    text-transform:uppercase; letter-spacing:1px;
-    display:flex; align-items:center; gap:5px;
-}}
-
-.score-info-icon {{
-    width:15px; height:15px; border-radius:50%;
-    background:#e5e7eb; color:#6b7280;
-    font-size:10px; font-weight:700;
-    display:inline-flex; align-items:center; justify-content:center;
-    cursor:pointer; font-style:normal;
-}}
-
-.score-info-icon:hover {{ background:#d1d5db; }}
-
-.score-badge-class {{
-    display:inline-flex; align-items:center; gap:5px;
-    padding:4px 12px; border-radius:20px;
-    font-size:12px; font-weight:700;
-}}
-
-.score-num-row {{
-    display:flex; align-items:baseline; gap:4px;
-    line-height:1;
-}}
-
-.score-num {{
-    font-size:42px; font-weight:900; letter-spacing:-2px; line-height:1;
-}}
-
-.score-denom {{
-    font-size:16px; font-weight:600; color:#9ca3af;
-}}
-
-.score-bar-bg {{
-    height:8px; background:#e5e7eb; border-radius:4px;
-    overflow:hidden; margin-bottom:2px;
-}}
-
-.score-bar-fill {{
-    height:100%; border-radius:4px;
-    transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
-}}
-
-.insights-ia-section {{
-    border-top:1px solid #f3f4f6; padding-top:12px;
-    display:flex; flex-direction:column; gap:8px;
-}}
-
-.insights-ia-header {{ display:flex; flex-direction:column; gap:4px; }}
-
-.insights-ia-title-row {{
-    display:flex; align-items:center; gap:6px;
-}}
-
-.insights-ia-title {{
-    font-size:11px; font-weight:800; color:#4f46e5;
-    letter-spacing:0.5px;
-}}
-
-.insights-beta-badge {{
-    background:#e0e7ff; color:#4f46e5;
-    font-size:9px; font-weight:800;
-    padding:1px 6px; border-radius:4px;
-    letter-spacing:0.5px;
-}}
-
-.insights-ia-sub {{
-    font-size:11px; color:#9ca3af; line-height:1.5;
-}}
-
-.insights-crit-row {{
-    display:flex; flex-wrap:wrap; gap:6px;
-}}
-
-.crit-item {{
-    display:inline-flex; align-items:center; gap:4px;
-    font-size:11px; font-weight:600; color:#374151;
-    background:#f9fafb; border:1px solid #e5e7eb;
-    padding:3px 9px; border-radius:20px;
-}}
-
-.crit-item.ok {{ color:#15803d; background:#f0fdf4; border-color:#bbf7d0; }}
-
-.crit-check {{ font-size:11px; }}
-
-.insights-oport-tag {{
-    display:inline-flex; align-items:center;
-    font-size:11px; font-weight:700; color:#3b82f6;
-    background:#eff6ff; border:1px solid #bfdbfe;
-    padding:3px 9px; border-radius:20px; width:fit-content;
-}}
-
-.btn-ver-analise {{
-    display:inline-flex; align-items:center; justify-content:center; gap:6px;
-    padding:9px 16px; border-radius:8px;
-    border:1px solid #3b82f6; background:#eff6ff;
-    font-size:13px; font-weight:700; color:#1d4ed8;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    transition:background 0.15s; width:100%;
-}}
-
-.btn-ver-analise:hover {{ background:#dbeafe; }}
-
-.bio-resultado-new {{
+.btn-ia:hover {{ background:#dbeafe; }}
+.ia-hint {{ font-size:14px; color:#9ca3af; text-align:center; line-height:1.4; }}
+.bio-resultado {{
     background:#f0fdf4; border-top:1px solid #bbf7d0;
-    border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;
-    border-left:1px solid #e5e7eb;
     padding:14px 20px; font-size:13px; color:#374151; line-height:1.75;
-    display:none;
+    border-bottom:1px solid #f3f4f6; display:none;
 }}
-
-.bio-resultado-new.show {{ display:block; }}
-
+.bio-resultado.show {{ display:block; }}
 .bio-resultado-hdr {{
     font-size:10px; font-weight:800; color:#15803d;
     text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;
 }}
-
-/* ── Remover estilos antigos que podem conflitar ── */
-.bio-section {{ display:none !important; }}
-.bio-resultado {{ display:none !important; }}
 
 /* ── BARRA DE ANÁLISES (substitui tabs-bar) ── */
 .analises-bar {{
@@ -9663,76 +9395,20 @@ body{{padding-bottom:8px;}}
         </div>
     </div>
 
-    <!-- BIO SECTION NOVO MODELO -->
-    <div class="bio-section-new">
-        <!-- Coluna esquerda: label + bio -->
-        <div class="bio-left-col">
-            <div class="bio-label-top">BIO DO PERFIL</div>
-            <div class="bio-content-block">
-                {('<div class="bio-text-new">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div class="bio-empty">Sem bio cadastrada neste perfil.</div>'}
-                {('<div class="bio-link-row"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><a href="' + ext_url + '" target="_blank" class="bio-link-anchor">' + ext_url_display + '</a></div>') if ext_url else ''}
-            </div>
+    <div class="bio-section">
+        <div class="bio-label-col"><span class="bio-label-txt">Bio do Perfil</span></div>
+        <div class="bio-left">
+            {('<div class="bio-text">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div class="bio-empty">Sem bio cadastrada neste perfil.</div>'}
+            {('<div><a href="' + ext_url + '" target="_blank" style="font-size:13px;font-weight:600;color:#3a9fd6;text-decoration:none;word-break:break-all;">🔗 ' + ext_url_display + '</a></div>') if ext_url else ''}
         </div>
-
-        <!-- Divisor vertical -->
-        <div class="bio-divider-v"></div>
-
-        <!-- Coluna direita: Score + Insights -->
-        <div class="bio-right-col">
-            <!-- Score header -->
-            <div class="score-header-row">
-                <div class="score-label-title">
-                    SCORE DE PERFIL
-                    <span class="score-info-icon" onclick="toggleScoreInfo()" title="Como é calculado">ℹ</span>
-                </div>
-                <div class="score-badge-class" style="background:{score_bg};color:{score_cor};border:1px solid {score_brd};">
-                    {score_icon} {score_cls}
-                </div>
-            </div>
-
-            <!-- Número do score + barra -->
-            <div class="score-num-row">
-                <span class="score-num" style="color:{score_cor};">{score_val}</span>
-                <span class="score-denom">/100</span>
-            </div>
-            <div class="score-bar-bg">
-                <div class="score-bar-fill" id="score-bar-fill" style="width:0%;background:linear-gradient(90deg,#3b82f6,{score_cor});"></div>
-            </div>
-
-            <!-- Insights de IA -->
-            <div class="insights-ia-section">
-                <div class="insights-ia-header">
-                    <div class="insights-ia-title-row">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 2L9.09 8.26L2 9.27L7 14.14L5.82 21L12 17.77L18.18 21L17 14.14L22 9.27L14.91 8.26L12 2Z" fill="#6366f1" stroke="#6366f1" stroke-width="0.5"/>
-                        </svg>
-                        <span class="insights-ia-title">INSIGHTS DE IA</span>
-                        <span class="insights-beta-badge">BETA</span>
-                    </div>
-                    <div class="insights-ia-sub">
-                        Nossa IA analisou seu posicionamento e identificou os principais pontos de atenção e oportunidades para crescimento.
-                    </div>
-                </div>
-
-                <div class="insights-crit-row" id="insights-crit-row">
-                    <!-- preenchido pelo JS -->
-                </div>
-
-                {(f'<div class="insights-oport-tag">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
-
-                <button class="btn-ver-analise" onclick="triggerBio()">
-                    {'✨ Ver análise completa' if bio_resultado_html else '🤖 Gerar análise completa'}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                </button>
-            </div>
+        <div class="bio-right">
+            <button class="btn-ia" onclick="triggerBio()">🤖 Analisar Bio</button>
+            <div class="ia-hint">Análise de posicionamento e sugestões de melhoria</div>
         </div>
     </div>
 
-    <!-- Resultado da análise de IA (expandível) -->
-    <div class="bio-resultado-new {'show' if bio_resultado_html else ''}" id="bio-res">
-        <div class="bio-resultado-hdr">✨ Análise Completa de IA</div>
+    <div class="bio-resultado {'show' if bio_resultado_html else ''}" id="bio-res">
+        <div class="bio-resultado-hdr">✨ Análise de IA</div>
         {bio_resultado_html}
     </div>
 
@@ -10095,29 +9771,6 @@ function analisarPost(idx) {{
     }}
 }}
 
-// ── Score: animar barra ──────────────────────────────────────
-(function() {{
-    var fill = document.getElementById('score-bar-fill');
-    if (fill) {{
-        setTimeout(function() {{
-            fill.style.width = '{score_val}%';
-        }}, 200);
-    }}
-}})();
-
-// ── Critérios de insights ────────────────────────────────────
-(function() {{
-    var row = document.getElementById('insights-crit-row');
-    if (!row) return;
-    var crits = {{score_crit_json}};
-    var okItems = crits.filter(function(c) {{ return c.ok; }});
-    var html = '';
-    okItems.forEach(function(c) {{
-        html += '<div class="crit-item ok"><span class="crit-check">✓</span>' + c.label + '</div>';
-    }});
-    row.innerHTML = html;
-}})();
-
 function applyFilters() {{
     var posts = getFiltered();
     updateStats(posts);
@@ -10175,12 +9828,9 @@ function syncHeight() {{
 
 applyFilters();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', function() {{ applyFilters(); syncHeight(); }});
-window.addEventListener('load', function() {{ applyFilters(); syncHeight(); }});
-setTimeout(function() {{ applyFilters(); syncHeight(); }}, 300);
-setTimeout(function() {{ applyFilters(); syncHeight(); }}, 800);
-setTimeout(function() {{ applyFilters(); syncHeight(); }}, 1500);
-setTimeout(syncHeight, 3000);
+document.addEventListener('DOMContentLoaded', syncHeight);
+window.addEventListener('load', syncHeight);
+setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight, 1500);
 </script>
 </body></html>
 """, height=500, scrolling=False)

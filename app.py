@@ -9021,6 +9021,30 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                 if n_cols_posts == 4
                 else "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/4-Columns.png"
             )
+
+            st.markdown(f"""
+            <style>
+            .st-key-{cols_toggle_key} button {{
+                height: 40px !important;
+                width: 40px !important;
+                min-width: 40px !important;
+                max-width: 40px !important;
+                padding: 4px !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                background: #ffffff !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+
+            if st.button(
+                f"![col]({icon_cols_url})",
+                key=cols_toggle_key,
+                use_container_width=False,
+                help="Alternar 3/4 colunas",
+            ):
+                st.session_state[posts_col_key] = 3 if n_cols_posts == 4 else 4
+                st.rerun()
             # ADICIONAR — ghost button oculto para toggle de colunas
             cols_toggle_ghost_key = f"ghost_cols_toggle_{handle_clean_toggle}"
             st.markdown(f"""
@@ -9668,11 +9692,6 @@ body{{padding-bottom:8px;}}
         <option value="likes">Mais curtidas</option>
         <option value="eng">Maior engajamento</option>
     </select>
-    <button class="col-toggle" onclick="toggleCols()" title="Alternar colunas" id="cols-toggle-btn">
-        <svg id="cols-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <!-- ícone renderizado via JS abaixo -->
-        </svg>
-    </button>
 </div>
 
 <div class="stats-row">
@@ -10015,11 +10034,11 @@ function applyFilters() {{
 }}
 
 function toggleCols() {{
-    var label = 'toggle_cols_{handle_clean_toggle}';
+    var key = 'ads_toggle_cols_{handle_clean_toggle}';
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
+        var wrap = b.closest('[data-testid="stElementContainer"]');
+        if (wrap && wrap.classList.contains('st-key-' + key)) {{ b.click(); return; }}
     }}
 }}
 

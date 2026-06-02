@@ -9537,8 +9537,8 @@ body{{padding-bottom:8px;}}
                     <span style="font-size:16px;font-weight:600;color:#9ca3af;">/100</span>
                 </div>
                 <div style="display:inline-flex;align-items:center;gap:7px;
-                            padding:10px 20px;border-radius:24px;font-size:17px;font-weight:800;
-                            background:{score_bg};color:{score_cor};border:1.5px solid {score_brd};
+                            padding:10px 20px;border-radius:14px;font-size:17px;font-weight:800;
+                            background:{score_bg};color:{score_cor};border:none;
                            letter-spacing:0.1px;white-space:nowrap;">
                     {score_icon} {score_cls}
                 </div>

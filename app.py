@@ -10177,9 +10177,9 @@ applyFilters();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 document.addEventListener('DOMContentLoaded', function() {{ applyFilters(); syncHeight(); }});
 window.addEventListener('load', function() {{ applyFilters(); syncHeight(); }});
-setTimeout(function() { applyFilters(); syncHeight(); }, 300);
-setTimeout(function() { applyFilters(); syncHeight(); }, 800);
-setTimeout(function() { applyFilters(); syncHeight(); }, 1500);
+setTimeout(function() {{ applyFilters(); syncHeight(); }}, 300);
+setTimeout(function() {{ applyFilters(); syncHeight(); }}, 800);
+setTimeout(function() {{ applyFilters(); syncHeight(); }}, 1500);
 setTimeout(syncHeight, 3000);
 </script>
 </body></html>

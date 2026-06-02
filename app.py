@@ -9407,12 +9407,12 @@ body{{padding-bottom:8px;}}
 .filter-select:focus {{ border-color:#3a9fd6; }}
 .col-toggle {{
     margin-left:auto; width:40px; height:40px;
-    border:none; border-radius:10px;
-    background:#1e293b; cursor:pointer;
+    border:1px solid #e5e7eb; border-radius:8px;
+    background:#f9fafb; cursor:pointer;
     display:flex; align-items:center; justify-content:center;
-    color:#ffffff; flex-shrink:0; transition:all 0.12s;
+    flex-shrink:0; transition:all 0.12s;
 }}
-.col-toggle:hover {{ background:#0e2a47; }}
+.col-toggle:hover {{ border-color:#d1d5db; background:#f3f4f6; }}
 
 .stats-row {{ display:flex; gap:12px; padding:16px 0 4px; flex-wrap:wrap; }}
 .stat-card {{
@@ -9692,6 +9692,9 @@ body{{padding-bottom:8px;}}
         <option value="likes">Mais curtidas</option>
         <option value="eng">Maior engajamento</option>
     </select>
+    <button class="col-toggle" onclick="toggleCols()" title="Alternar colunas">
+        <img id="cols-img" src="{icon_cols_url}" width="20" height="20" style="display:block;" />
+    </button>
 </div>
 
 <div class="stats-row">
@@ -10034,7 +10037,7 @@ function applyFilters() {{
 }}
 
 function toggleCols() {{
-    var key = 'ads_toggle_cols_{handle_clean_toggle}';
+    var key = '{cols_toggle_key}';
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
         var wrap = b.closest('[data-testid="stElementContainer"]');

@@ -9176,6 +9176,9 @@ Como interpretar as métricas desta postagem?
             tem_copy     = bool(st.session_state.get(chave_copy, ""))
             tem_geral    = bool(st.session_state.get(chave_geral, ""))
 
+            var oportHtml = {oportHtml_js};
+            if (row2) row2.innerHTML = html + oportHtml;
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -9982,10 +9985,13 @@ function analisarPost(idx) {{
     if (row1) row1.innerHTML = html;
     var row2 = document.getElementById('insights-chips-row');
     if (row2) {
-        var oportHtml = {score_oport} > 0
-            ? '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>'
-            : '';
-        row2.innerHTML = html + oportHtml;
+        oportHtml_js = (
+            f'\'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;'
+            f'color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;'
+            f'border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade'
+            f'{"s" if score_oport != 1 else ""}</div>\''
+            if score_oport > 0 else "''"
+        )
     }
 }})();
 

@@ -8246,21 +8246,6 @@ function triggerBtn(label) {
         except Exception as e:
             return {"erro": str(e)}
 
-    # ── Lista de perfis ─────────────────────────────────────────────
-    todas = []
-    if emp.get("nome") and emp.get("instagram") and emp["instagram"] not in ("@", ""):
-        todas.append({"key": "__minha__", "nome": emp["nome"], "instagram": emp["instagram"], "tipo": "minha"})
-    for i, c in enumerate(concorrentes):
-        if c.get("instagram") and c["instagram"] not in ("@", ""):
-            todas.append({"key": f"conc_{i}", "nome": c["nome"], "instagram": c["instagram"], "tipo": "concorrente"})
-
-    if not todas:
-        st.info("Cadastre pelo menos um Instagram (sua empresa ou concorrente) para usar esta página.")
-        st.stop()
-
-    if not st.secrets.get("RAPIDAPI_KEY", ""):
-        st.warning("Configure `RAPIDAPI_KEY` no secrets.toml para coletar dados.")
-
 def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
     score = 0
     criterios = []
@@ -8347,6 +8332,21 @@ def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) 
         "criterios": criterios,
         "oportunidades": oportunidades,
     }
+    
+    # ── Lista de perfis ─────────────────────────────────────────────
+    todas = []
+    if emp.get("nome") and emp.get("instagram") and emp["instagram"] not in ("@", ""):
+        todas.append({"key": "__minha__", "nome": emp["nome"], "instagram": emp["instagram"], "tipo": "minha"})
+    for i, c in enumerate(concorrentes):
+        if c.get("instagram") and c["instagram"] not in ("@", ""):
+            todas.append({"key": f"conc_{i}", "nome": c["nome"], "instagram": c["instagram"], "tipo": "concorrente"})
+
+    if not todas:
+        st.info("Cadastre pelo menos um Instagram (sua empresa ou concorrente) para usar esta página.")
+        st.stop()
+
+    if not st.secrets.get("RAPIDAPI_KEY", ""):
+        st.warning("Configure `RAPIDAPI_KEY` no secrets.toml para coletar dados.")
 
     cache = carregar_cache_redes()
 

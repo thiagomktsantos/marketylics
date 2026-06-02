@@ -9581,6 +9581,49 @@ body{{padding-bottom:8px;}}
         </div>
     </div>
 
+<!-- INSIGHTS DE IA -->
+    <div style="border-right:1px solid #e5e7eb;border-left:1px solid #e5e7eb;
+                background:#f8fbff;padding:20px 24px;border-bottom:1px solid #e5e7eb;">
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+
+            <!-- Ícone + título + descrição -->
+            <div style="display:flex;align-items:flex-start;gap:10px;min-width:200px;max-width:300px;flex-shrink:0;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                          fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+                        <span style="font-size:13px;font-weight:800;color:#1a2e4a;
+                                     text-transform:uppercase;letter-spacing:0.5px;">Insights de IA</span>
+                        <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;
+                                     padding:2px 8px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
+                    </div>
+                    <div style="font-size:12px;color:#6b7280;line-height:1.55;">
+                        Nossa IA analisou seu posicionamento e identificou os principais pontos de atenção e oportunidades para crescimento.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chips dos critérios OK -->
+            <div id="insights-chips-row"
+                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;"></div>
+
+            <!-- Oportunidades + botão -->
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
+                {(f'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:4px 12px;border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
+                <button onclick="triggerBio()"
+                        style="display:inline-flex;align-items:center;justify-content:center;gap:6px;
+                               padding:9px 18px;border-radius:8px;border:1px solid #3b82f6;
+                               background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
+                               cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;">
+                    {'✨ Ver análise de perfil →' if bio_resultado_html else '🤖 Gerar análise de perfil →'}
+                </button>
+            </div>
+
+        </div>
+    </div>
+
     <!-- Resultado da análise de bio -->
     <div id="bio-res"
          style="background:#f0fdf4;border-top:1px solid #bbf7d0;

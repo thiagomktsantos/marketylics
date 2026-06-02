@@ -9510,9 +9510,9 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna esquerda: bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
-            <div style="font-size:12px;font-weight:700;color:#9ca3af;
+            <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
-            <div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:center;">
+            <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">
                 {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
                 {('<div style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><a href="' + ext_url + '" target="_blank" style="font-size:14px;font-weight:600;color:#3a9fd6;text-decoration:none;word-break:break-all;">' + ext_url_display + '</a></div>') if ext_url else ''}
             </div>

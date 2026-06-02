@@ -9010,13 +9010,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             key=f"btn_bio_ia_{aba_ativa}",
         )
         if analisar_bio:
-                if gemini_model is None:
-                        st.session_state[chave_bio_ia] = "Configure GEMINI_API_KEY nos secrets."
-                else:
-                        _ph = st.empty()
-                        _render_modal_redes_ia("gerando", f"Análise de Perfil — {r['nome']}", 40, _ph)
-                        try:
-                                prompt_bio = f"""
+            if gemini_model is None:
+                st.session_state[chave_bio_ia] = "Configure GEMINI_API_KEY nos secrets."
+            else:
+                _ph = st.empty()
+                _render_modal_redes_ia("gerando", f"Análise de Perfil — {r['nome']}", 40, _ph)
+                try:
+                    prompt_bio = f"""
 Analise o perfil do Instagram abaixo e responda em português de forma direta e objetiva:
 
 Bio: "{bio_txt}"
@@ -9036,32 +9036,32 @@ Qual é o posicionamento transmitido pela bio?
 ### Bio sugerida
 Escreva uma versão melhorada da bio (máx. 150 caracteres).
 """
-                                resp = gemini_model.generate_content(prompt_bio)
-                                st.session_state[chave_bio_ia] = resp.text
+                    resp = gemini_model.generate_content(prompt_bio)
+                    st.session_state[chave_bio_ia] = resp.text
 
-                                import datetime as _dt_redes
-                                st.session_state.redes_analises_salvas = [
-                                        a for a in st.session_state.redes_analises_salvas
-                                        if not (a.get("tipo") == "bio" and a.get("perfil") == r.get("handle"))
-                                ]
-                                st.session_state.redes_analises_salvas.append({
-                                        "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                        "relatorio": resp.text,
-                                        "tipo": "bio",
-                                        "perfil": r.get("handle", ""),
-                                        "nome": r["nome"],
-                                })
+                    import datetime as _dt_redes
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if not (a.get("tipo") == "bio" and a.get("perfil") == r.get("handle"))
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "bio",
+                        "perfil": r.get("handle", ""),
+                        "nome": r["nome"],
+                    })
 
-                                _render_modal_redes_ia("concluido", f"Análise de Perfil — {r['nome']}", 100, _ph)
-                                salvar_dados_usuario(st.session_state.user.id)
-                                import time as _t; _t.sleep(1.2)
-                                _ph.empty()
-                                st.rerun()
-                        except Exception as e:
-                                _ph.empty()
-                                st.session_state[chave_bio_ia] = f"Erro: {e}"
-                                st.rerun()
+                    _render_modal_redes_ia("concluido", f"Análise de Perfil — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.rerun()
+                except Exception as e:
+                    _ph.empty()
+                    st.session_state[chave_bio_ia] = f"Erro: {e}"
+                    st.rerun()
  
         bio_resultado = st.session_state.get(chave_bio_ia, "")
         bio_resultado_html = bio_resultado.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>") if bio_resultado else ""

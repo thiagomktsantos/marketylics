@@ -8952,7 +8952,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         """, unsafe_allow_html=True)
 
         analisar_bio = st.button(
-            f"__bio_{aba_ativa}__",
+            f"bio_ia_{aba_ativa}",
             key=f"btn_bio_ia_{aba_ativa}",
         )
         if analisar_bio:
@@ -9622,7 +9622,7 @@ body{{padding-bottom:8px;}}
 
             <!-- Botão clean -->
             <div style="flex-shrink:0;">
-                <button onclick="trigger('__bio_{aba_ativa}__')"
+                <button onclick="trigger('bio_ia_{aba_ativa}')"
                         style="display:inline-flex;align-items:center;gap:6px;
                                padding:9px 18px;border-radius:8px;
                                border:none;background:#3b82f6;

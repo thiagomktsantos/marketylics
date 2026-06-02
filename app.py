@@ -8261,6 +8261,93 @@ function triggerBtn(label) {
     if not st.secrets.get("RAPIDAPI_KEY", ""):
         st.warning("Configure `RAPIDAPI_KEY` no secrets.toml para coletar dados.")
 
+def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
+    score = 0
+    criterios = []
+
+    if bio and len(bio.strip()) > 10:
+        score += 20
+        criterios.append({"label": "Tem bio", "ok": True})
+    else:
+        criterios.append({"label": "Tem bio", "ok": False})
+
+    palavras_valor = [
+        "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
+        "melhora", "ajuda", "economiza", "conquista", "vendas", "lucro",
+        "aprenda", "domine", "sucesso", "estratégia", "especialista"
+    ]
+    tem_valor = any(p in bio.lower() for p in palavras_valor)
+    if tem_valor:
+        score += 20
+        criterios.append({"label": "Proposta de valor clara", "ok": True})
+    else:
+        criterios.append({"label": "Proposta de valor clara", "ok": False})
+
+    if ext_url:
+        score += 15
+        criterios.append({"label": "Link na bio", "ok": True})
+    else:
+        criterios.append({"label": "Link na bio", "ok": False})
+
+    palavras_nicho = [
+        "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
+        "agência", "consultoria", "clínica", "médico", "advogado", "arquiteto",
+        "professor", "mentor", "especialista", "privad", "digital", "online"
+    ]
+    tem_nicho = any(p in bio.lower() for p in palavras_nicho)
+    if tem_nicho:
+        score += 20
+        criterios.append({"label": "Posicionamento da marca", "ok": True})
+    else:
+        criterios.append({"label": "Posicionamento da marca", "ok": False})
+
+    palavras_cta = [
+        "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
+        "conheça", "veja", "assista", "siga", "participe", "reserve", "agende",
+        "↓", "👇", "⬇️", "link", "whatsapp"
+    ]
+    tem_cta = any(p in bio.lower() for p in palavras_cta)
+    if tem_cta:
+        score += 15
+        criterios.append({"label": "CTA na bio", "ok": True})
+    else:
+        criterios.append({"label": "CTA na bio", "ok": False})
+
+    if eng_pct >= 3.0:
+        score += 10
+        criterios.append({"label": "Diferenciação no mercado", "ok": True})
+    elif eng_pct >= 1.5:
+        score += 5
+        criterios.append({"label": "Diferenciação no mercado", "ok": False})
+    else:
+        criterios.append({"label": "Diferenciação no mercado", "ok": False})
+
+    if score >= 80:
+        classificacao, classificacao_icon = "Excelente", "🏆"
+        cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
+    elif score >= 60:
+        classificacao, classificacao_icon = "Bom", "👍"
+        cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
+    elif score >= 40:
+        classificacao, classificacao_icon = "Regular", "⚠️"
+        cor_classe, bg_classe, brd_classe = "#f59e0b", "#fffbeb", "#fde68a"
+    else:
+        classificacao, classificacao_icon = "Precisa melhorar", "📝"
+        cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
+
+    oportunidades = sum(1 for c in criterios if not c["ok"])
+
+    return {
+        "score": score,
+        "classificacao": classificacao,
+        "classificacao_icon": classificacao_icon,
+        "cor_classe": cor_classe,
+        "bg_classe": bg_classe,
+        "brd_classe": brd_classe,
+        "criterios": criterios,
+        "oportunidades": oportunidades,
+    }
+
     cache = carregar_cache_redes()
 
     if coletar:
@@ -8792,6 +8879,19 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         ext_url   = (r.get("external_url") or "").strip()
         ext_url_display = ext_url.replace("https://", "").replace("http://", "").rstrip("/")
         posts_list = r.get("posts", [])
+
+        score_data    = calcular_score_bio(bio_txt, ext_url, r.get("seguidores", 0), r.get("eng_pct", 0.0))
+        score_val     = score_data["score"]
+        score_cls     = score_data["classificacao"]
+        score_icon    = score_data["classificacao_icon"]
+        score_cor     = score_data["cor_classe"]
+        score_bg      = score_data["bg_classe"]
+        score_brd     = score_data["brd_classe"]
+        score_crit    = score_data["criterios"]
+        score_oport   = score_data["oportunidades"]
+
+        import json as _json_score
+        score_crit_json = _json_score.dumps(score_crit, ensure_ascii=False)
 
         seg_fmt   = fmt_num(r.get("seguidores", 0))
         posts_fmt = fmt_num(r.get("total_posts", 0))
@@ -9395,20 +9495,74 @@ body{{padding-bottom:8px;}}
         </div>
     </div>
 
-    <div class="bio-section">
-        <div class="bio-label-col"><span class="bio-label-txt">Bio do Perfil</span></div>
-        <div class="bio-left">
-            {('<div class="bio-text">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div class="bio-empty">Sem bio cadastrada neste perfil.</div>'}
-            {('<div><a href="' + ext_url + '" target="_blank" style="font-size:13px;font-weight:600;color:#3a9fd6;text-decoration:none;word-break:break-all;">🔗 ' + ext_url_display + '</a></div>') if ext_url else ''}
+    <!-- BIO + SCORE -->
+    <div style="display:grid;grid-template-columns:1fr auto 1fr;
+                border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;
+                border-left:1px solid #e5e7eb;min-height:170px;">
+
+        <!-- Coluna esquerda: bio -->
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
+            <div style="font-size:10px;font-weight:700;color:#9ca3af;
+                        text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
+            <div style="display:flex;flex-direction:column;gap:8px;flex:1;justify-content:center;">
+                {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
+                {('<div style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><a href="' + ext_url + '" target="_blank" style="font-size:13px;font-weight:600;color:#3a9fd6;text-decoration:none;word-break:break-all;">' + ext_url_display + '</a></div>') if ext_url else ''}
+            </div>
         </div>
-        <div class="bio-right">
-            <button class="btn-ia" onclick="triggerBio()">🤖 Analisar Bio</button>
-            <div class="ia-hint">Análise de posicionamento e sugestões de melhoria</div>
+
+        <!-- Divisor vertical -->
+        <div style="width:1px;background:#e5e7eb;flex-shrink:0;"></div>
+
+        <!-- Coluna direita: Score -->
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
+            <!-- Header score -->
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div style="font-size:10px;font-weight:700;color:#9ca3af;
+                            text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
+                <div style="display:inline-flex;align-items:center;gap:5px;
+                            padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;
+                            background:{score_bg};color:{score_cor};border:1px solid {score_brd};">
+                    {score_icon} {score_cls}
+                </div>
+            </div>
+            <!-- Número + barra -->
+            <div style="display:flex;align-items:baseline;gap:4px;line-height:1;">
+                <span style="font-size:42px;font-weight:900;letter-spacing:-2px;
+                             line-height:1;color:{score_cor};">{score_val}</span>
+                <span style="font-size:16px;font-weight:600;color:#9ca3af;">/100</span>
+            </div>
+            <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:2px;">
+                <div id="score-bar-fill"
+                     style="height:100%;width:0%;border-radius:4px;
+                            background:linear-gradient(90deg,#3b82f6,{score_cor});
+                            transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>
+            </div>
+            <!-- Critérios OK -->
+            <div id="insights-crit-row" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+            <!-- Oportunidades -->
+            {(f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#3b82f6;background:#eff6ff;border:1px solid #bfdbfe;padding:3px 9px;border-radius:20px;width:fit-content;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
+            <!-- Botão analisar bio -->
+            <button onclick="triggerBio()"
+                    style="display:inline-flex;align-items:center;justify-content:center;gap:6px;
+                           padding:9px 16px;border-radius:8px;border:1px solid #3b82f6;
+                           background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
+                           cursor:pointer;font-family:\'DM Sans\',sans-serif;width:100%;">
+                {'✨ Ver análise completa' if bio_resultado_html else '🤖 Gerar análise completa'}
+            </button>
         </div>
     </div>
 
-    <div class="bio-resultado {'show' if bio_resultado_html else ''}" id="bio-res">
-        <div class="bio-resultado-hdr">✨ Análise de IA</div>
+    <!-- Resultado da análise de bio -->
+    <div id="bio-res"
+         style="background:#f0fdf4;border-top:1px solid #bbf7d0;
+                border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;
+                border-left:1px solid #e5e7eb;padding:14px 20px;
+                font-size:13px;color:#374151;line-height:1.75;
+                {'display:block' if bio_resultado_html else 'display:none'}">
+        <div style="font-size:10px;font-weight:800;color:#15803d;
+                    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+            ✨ Análise Completa de IA
+        </div>
         {bio_resultado_html}
     </div>
 
@@ -9770,6 +9924,26 @@ function analisarPost(idx) {{
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
+
+// Animar barra de score
+(function() {{
+    var fill = document.getElementById('score-bar-fill');
+    if (fill) {{ setTimeout(function() {{ fill.style.width = '{score_val}%'; }}, 200); }}
+}})();
+
+// Renderizar critérios OK
+(function() {{
+    var row = document.getElementById('insights-crit-row');
+    if (!row) return;
+    var crits = {score_crit_json};
+    var html = '';
+    crits.filter(function(c) {{ return c.ok; }}).forEach(function(c) {{
+        html += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;'
+              + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+              + 'padding:3px 9px;border-radius:20px;">✓ ' + c.label + '</div>';
+    }});
+    row.innerHTML = html;
+}})();
 
 function applyFilters() {{
     var posts = getFiltered();

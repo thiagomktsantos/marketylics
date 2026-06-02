@@ -9000,6 +9000,9 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                                 st.session_state[chave_bio_ia] = f"Erro: {e}"
                                 st.rerun()
  
+        bio_resultado = st.session_state.get(chave_bio_ia, "")
+        bio_resultado_html = bio_resultado.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>") if bio_resultado else ""
+
         # ══════════════════════════════════════════════════════════════
         # IFRAME UNIFICADO: header + bio + tabs + conteúdo
         # ══════════════════════════════════════════════════════════════

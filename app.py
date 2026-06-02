@@ -9010,22 +9010,15 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                 st.session_state[posts_col_key] = 4
             n_cols_posts = st.session_state.get(posts_col_key, 4)
 
-            ghost_toggle_key = f"btn_posts_toggle_{aba_ativa}"
-            st.markdown(f"""
-            <style>
-            .st-key-{ghost_toggle_key} {{
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:0 !important; height:0 !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; display:none !important;
-            }}
-            .stElementContainer:has(.st-key-{ghost_toggle_key}) {{
-                display:none !important; height:0 !important; min-height:0 !important;
-                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
-
-            if st.button(f"posts_toggle_{aba_ativa}", key=ghost_toggle_key):
+            handle_clean_toggle = r.get('handle', '').replace('@', '')
+            cols_toggle_key = f"ads_toggle_cols_{handle_clean_toggle}"
+            n_cols_posts = st.session_state.get(posts_col_key, 4)
+            icon_cols_url = (
+                "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/3-Columns.png"
+                if n_cols_posts == 4
+                else "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/4-Columns.png"
+            )
+            if st.button(f"![col]({icon_cols_url})", key=cols_toggle_key, help=""):
                 st.session_state[posts_col_key] = 3 if n_cols_posts == 4 else 4
                 st.rerun()
 
@@ -9995,9 +9988,12 @@ function applyFilters() {{
 }}
 
 function toggleCols() {{
+    var key = 'ads_toggle_cols_{handle_clean_toggle}';
     var btns = window.parent.document.querySelectorAll('button');
-    var label = 'posts_toggle_{aba_ativa}';
-    for (var b of btns) {{ if ((b.textContent||b.innerText||'').split(/\s+/).join(' ').trim() === label) {{ b.click(); return; }} }}
+    for (var b of btns) {{
+        var wrap = b.closest('[data-testid="stElementContainer"]');
+        if (wrap && wrap.classList.contains('st-key-' + key)) {{ b.click(); return; }}
+    }}
 }}
 
 function triggerBio() {{

@@ -10116,7 +10116,7 @@ function analisarPost(idx) {{
         html += '<div class="crit-item ok"><span class="crit-check">✓</span>' + c.label + '</div>';
     }});
     row.innerHTML = html;
-}}();
+}})();
 
 function applyFilters() {{
     var posts = getFiltered();

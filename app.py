@@ -4963,7 +4963,7 @@ function abrirModal() {{
 </script>
 """, height=28, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)

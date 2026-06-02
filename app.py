@@ -9574,7 +9574,7 @@ body{{padding-bottom:8px;}}
 
             <!-- Chips dos critérios OK + oportunidades juntos -->
             <div id="insights-chips-row"
-                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;">
+                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;border-left:2px solid #f0f2f4;border-right:2px solid #f0f2f4;padding:0 20px;">
             </div>
 
             <!-- Botão clean -->

@@ -6242,7 +6242,44 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .atalho-desc {{ font-size:12px; color:#9ca3af; line-height:1.4; }}
 .atalho-card.done .atalho-desc {{ color:#15803d; font-weight:600; }}
 </style>
-<div class="analises-bar">
+<!-- INSIGHTS DE IA -->
+    <div style="border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;
+                border-left:1px solid #e5e7eb;background:#f8fbff;padding:20px 24px;">
+        <div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+            <!-- Lado esquerdo: título + descrição -->
+            <div style="display:flex;align-items:flex-start;gap:10px;min-width:220px;max-width:340px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
+                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                          fill="#3b82f6" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:13px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;">Insights de IA</span>
+                        <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;
+                                     padding:2px 8px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
+                    </div>
+                    <div style="font-size:13px;color:#6b7280;line-height:1.55;max-width:260px;">
+                        Nossa IA analisou seu posicionamento e identificou os principais pontos de atenção e oportunidades para crescimento.
+                    </div>
+                </div>
+            </div>
+            <!-- Chips dos critérios OK -->
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;padding-top:2px;" id="insights-chips-row"></div>
+            <!-- Oportunidades + botão -->
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;justify-content:center;">
+                {(f'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:4px 12px;border-radius:20px;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
+                <button onclick="triggerBio()"
+                        style="display:inline-flex;align-items:center;justify-content:center;gap:6px;
+                               padding:9px 18px;border-radius:8px;border:1px solid #3b82f6;
+                               background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
+                               cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;">
+                    {'✨ Ver análise de perfil →' if bio_resultado_html else '🤖 Gerar análise de perfil →'}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="analises-bar">
     <div class="analises-bar-inner">
         <div class="analises-bar-left">
             <div class="analises-bar-titulo">Gerar análises</div>
@@ -8955,10 +8992,10 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             if gemini_model is None:
                 st.session_state[chave_bio_ia] = "Configure GEMINI_API_KEY nos secrets."
             else:
-                with st.spinner("Analisando bio…"):
+                with st.spinner("Analisando perfil…"):
                     try:
                         prompt_bio = f"""
-Analise a bio do Instagram abaixo e responda em português de forma direta e objetiva:
+Analise o perfil do Instagram abaixo e responda em português de forma direta e objetiva:
 
 Bio: "{bio_txt}"
 Perfil: {r.get('handle','')} — {r.get('nome_exibido','')}
@@ -8985,7 +9022,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                             if not (a.get("tipo") == "bio" and a.get("perfil") == r.get("handle"))
                         ]
                         st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Bio — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "bio",
@@ -9541,14 +9578,6 @@ body{{padding-bottom:8px;}}
             <div id="insights-crit-row" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
             <!-- Oportunidades -->
             {(f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#3b82f6;background:#eff6ff;border:1px solid #bfdbfe;padding:3px 9px;border-radius:20px;width:fit-content;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
-            <!-- Botão analisar bio -->
-            <button onclick="triggerBio()"
-                    style="display:inline-flex;align-items:center;justify-content:center;gap:6px;
-                           padding:9px 16px;border-radius:8px;border:1px solid #3b82f6;
-                           background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
-                           cursor:pointer;font-family:\'DM Sans\',sans-serif;width:100%;">
-                {'✨ Ver análise completa' if bio_resultado_html else '🤖 Gerar análise completa'}
-            </button>
         </div>
     </div>
 
@@ -9561,7 +9590,7 @@ body{{padding-bottom:8px;}}
                 {'display:block' if bio_resultado_html else 'display:none'}">
         <div style="font-size:10px;font-weight:800;color:#15803d;
                     text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
-            ✨ Análise Completa de IA
+            ✨ Análise de Perfil
         </div>
         {bio_resultado_html}
     </div>
@@ -9933,16 +9962,19 @@ function analisarPost(idx) {{
 
 // Renderizar critérios OK
 (function() {{
-    var row = document.getElementById('insights-crit-row');
-    if (!row) return;
     var crits = {score_crit_json};
     var html = '';
     crits.filter(function(c) {{ return c.ok; }}).forEach(function(c) {{
-        html += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;'
+        html += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;'
               + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
-              + 'padding:3px 9px;border-radius:20px;">✓ ' + c.label + '</div>';
+              + 'padding:5px 12px;border-radius:20px;">'
+              + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+              + ' ' + c.label + '</div>';
     }});
-    row.innerHTML = html;
+    var row1 = document.getElementById('insights-crit-row');
+    if (row1) row1.innerHTML = html;
+    var row2 = document.getElementById('insights-chips-row');
+    if (row2) row2.innerHTML = html;
 }})();
 
 function applyFilters() {{
@@ -10512,7 +10544,7 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
 .btn-gerar-vazio:hover {{ background:#dbeafe; }}
 </style>
 
-{_secao_redes("Análise de Bio", "👤", por_tipo["bio"], "bio")}
+{_secao_redes("Análise de Perfil", "👤", por_tipo["bio"], "bio")}
 {_secao_redes("Análise de Postagens", "📸", por_tipo["postagem"], "postagem")}
 {_secao_redes("Análise de Criativos", "🎨", por_tipo["criativos"], "criativos")}
 {_secao_redes("Análise de Copy", "✍️", por_tipo["copy"], "copy")}

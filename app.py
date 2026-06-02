@@ -8354,13 +8354,6 @@ function triggerBtn(label) {
             "oportunidades": oportunidades,
         }
     
-    # Montar HTML dos critérios
-    crit_ok   = [c for c in score_crit if c["ok"]]
-    crit_nok  = [c for c in score_crit if not c["ok"]]
-    
-    import json as _json_score
-    score_crit_json = _json_score.dumps(score_crit, ensure_ascii=False)
-
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []
     if emp.get("nome") and emp.get("instagram") and emp["instagram"] not in ("@", ""):
@@ -8922,6 +8915,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         score_brd     = score_data["brd_classe"]
         score_crit    = score_data["criterios"]
         score_oport   = score_data["oportunidades"]
+
+        # Montar HTML dos critérios
+        crit_ok   = [c for c in score_crit if c["ok"]]
+        crit_nok  = [c for c in score_crit if not c["ok"]]
+    
+        import json as _json_score
+        score_crit_json = _json_score.dumps(score_crit, ensure_ascii=False)
 
         seg_fmt   = fmt_num(r.get("seguidores", 0))
         posts_fmt = fmt_num(r.get("total_posts", 0))

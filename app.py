@@ -199,6 +199,7 @@ def carregar_dados_usuario(user_id: str) -> dict:
                 "metricas_redes": row.get("metricas_redes", {}),
                 "ads_cache": row.get("ads_cache", {}),
                 "analises_salvas": row.get("analises_salvas", []),
+                "redes_analises_salvas": row.get("redes_analises_salvas", []),
             }
     except Exception:
         pass
@@ -213,6 +214,7 @@ def carregar_dados_usuario(user_id: str) -> dict:
         "metricas_redes": {},
         "ads_cache": {},
         "analises_salvas": [],
+        "redes_analises_salvas": [],
     }
 
 def salvar_dados_usuario(user_id: str):
@@ -919,7 +921,8 @@ if not st.session_state.logado:
                         }
                         st.session_state.metricas_redes = dados_db.get("metricas_redes", {})
                         st.session_state.ads_cache = dados_db.get("ads_cache", {})
-                        st.session_state.analises_salvas = dados_db.get("analises_salvas", [])  
+                        st.session_state.analises_salvas = dados_db.get("analises_salvas", [])
+                        st.session_state.redes_analises_salvas = dados_db.get("redes_analises_salvas", [])
                         st.rerun()
                     else:
                         st.error(f"Erro ao entrar: {err}")

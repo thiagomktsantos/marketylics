@@ -8930,14 +8930,23 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         st.markdown(f"""
         <style>
         .st-key-btn_bio_ia_{aba_ativa} {{
-            position: fixed !important; top: -9999px !important; left: -9999px !important;
-            width: 1px !important; height: 1px !important;
-            opacity: 0 !important; pointer-events: none !important;
+            position: fixed !important;
+            top: -9999px !important;
+            left: -9999px !important;
+            width: 1px !important;
+            height: 1px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }}
         .stElementContainer:has(.st-key-btn_bio_ia_{aba_ativa}) {{
-            position: fixed !important; top: -9999px !important; left: -9999px !important;
-            width: 1px !important; height: 1px !important;
-            overflow: hidden !important; margin: 0 !important; padding: 0 !important;
+            position: fixed !important;
+            top: -9999px !important;
+            left: -9999px !important;
+            width: 1px !important;
+            height: 1px !important;
+            overflow: hidden !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }}
         </style>
         """, unsafe_allow_html=True)
@@ -10042,27 +10051,6 @@ function toggleCols() {{
     for (var b of btns) {{
         var wrap = b.closest('[data-testid="stElementContainer"]');
         if (wrap && wrap.classList.contains('st-key-' + key)) {{ b.click(); return; }}
-    }}
-}}
-
-function triggerBio() {{
-    var searches = [window.parent.document, document];
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var fi = 0; fi < frames.length; fi++) {{
-        try {{ if (frames[fi].contentDocument) searches.push(frames[fi].contentDocument); }} catch(e) {{}}
-    }}
-    for (var si = 0; si < searches.length; si++) {{
-        try {{
-            var btns = searches[si].querySelectorAll('button');
-            for (var bi = 0; bi < btns.length; bi++) {{
-                var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\s+/).join(' ').trim();
-                if (txt === '__bio_{aba_ativa}__') {{
-                    var btn = btns[bi];
-                    setTimeout(function() {{ btn.click(); }}, 50);
-                    return;
-                }}
-            }}
-        }} catch(e) {{}}
     }}
 }}
 

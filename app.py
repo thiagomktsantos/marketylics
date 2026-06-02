@@ -8246,92 +8246,92 @@ function triggerBtn(label) {
         except Exception as e:
             return {"erro": str(e)}
 
-def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
-    score = 0
-    criterios = []
+    def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
+        score = 0
+        criterios = []
 
-    if bio and len(bio.strip()) > 10:
-        score += 20
-        criterios.append({"label": "Tem bio", "ok": True})
-    else:
-        criterios.append({"label": "Tem bio", "ok": False})
+        if bio and len(bio.strip()) > 10:
+            score += 20
+            criterios.append({"label": "Tem bio", "ok": True})
+        else:
+            criterios.append({"label": "Tem bio", "ok": False})
 
-    palavras_valor = [
-        "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
-        "melhora", "ajuda", "economiza", "conquista", "vendas", "lucro",
-        "aprenda", "domine", "sucesso", "estratégia", "especialista"
-    ]
-    tem_valor = any(p in bio.lower() for p in palavras_valor)
-    if tem_valor:
-        score += 20
-        criterios.append({"label": "Proposta de valor clara", "ok": True})
-    else:
-        criterios.append({"label": "Proposta de valor clara", "ok": False})
+        palavras_valor = [
+            "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
+            "melhora", "ajuda", "economiza", "conquista", "vendas", "lucro",
+            "aprenda", "domine", "sucesso", "estratégia", "especialista"
+        ]
+        tem_valor = any(p in bio.lower() for p in palavras_valor)
+        if tem_valor:
+            score += 20
+            criterios.append({"label": "Proposta de valor clara", "ok": True})
+        else:
+            criterios.append({"label": "Proposta de valor clara", "ok": False})
 
-    if ext_url:
-        score += 15
-        criterios.append({"label": "Link na bio", "ok": True})
-    else:
-        criterios.append({"label": "Link na bio", "ok": False})
+        if ext_url:
+            score += 15
+            criterios.append({"label": "Link na bio", "ok": True})
+        else:
+            criterios.append({"label": "Link na bio", "ok": False})
 
-    palavras_nicho = [
-        "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
-        "agência", "consultoria", "clínica", "médico", "advogado", "arquiteto",
-        "professor", "mentor", "especialista", "privad", "digital", "online"
-    ]
-    tem_nicho = any(p in bio.lower() for p in palavras_nicho)
-    if tem_nicho:
-        score += 20
-        criterios.append({"label": "Posicionamento da marca", "ok": True})
-    else:
-        criterios.append({"label": "Posicionamento da marca", "ok": False})
+        palavras_nicho = [
+            "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
+            "agência", "consultoria", "clínica", "médico", "advogado", "arquiteto",
+            "professor", "mentor", "especialista", "privad", "digital", "online"
+        ]
+        tem_nicho = any(p in bio.lower() for p in palavras_nicho)
+        if tem_nicho:
+            score += 20
+            criterios.append({"label": "Posicionamento da marca", "ok": True})
+        else:
+            criterios.append({"label": "Posicionamento da marca", "ok": False})
 
-    palavras_cta = [
-        "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
-        "conheça", "veja", "assista", "siga", "participe", "reserve", "agende",
-        "↓", "👇", "⬇️", "link", "whatsapp"
-    ]
-    tem_cta = any(p in bio.lower() for p in palavras_cta)
-    if tem_cta:
-        score += 15
-        criterios.append({"label": "CTA na bio", "ok": True})
-    else:
-        criterios.append({"label": "CTA na bio", "ok": False})
+        palavras_cta = [
+            "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
+            "conheça", "veja", "assista", "siga", "participe", "reserve", "agende",
+            "↓", "👇", "⬇️", "link", "whatsapp"
+        ]
+        tem_cta = any(p in bio.lower() for p in palavras_cta)
+        if tem_cta:
+            score += 15
+            criterios.append({"label": "CTA na bio", "ok": True})
+        else:
+            criterios.append({"label": "CTA na bio", "ok": False})
 
-    if eng_pct >= 3.0:
-        score += 10
-        criterios.append({"label": "Diferenciação no mercado", "ok": True})
-    elif eng_pct >= 1.5:
-        score += 5
-        criterios.append({"label": "Diferenciação no mercado", "ok": False})
-    else:
-        criterios.append({"label": "Diferenciação no mercado", "ok": False})
+        if eng_pct >= 3.0:
+            score += 10
+            criterios.append({"label": "Diferenciação no mercado", "ok": True})
+        elif eng_pct >= 1.5:
+            score += 5
+            criterios.append({"label": "Diferenciação no mercado", "ok": False})
+        else:
+            criterios.append({"label": "Diferenciação no mercado", "ok": False})
 
-    if score >= 80:
-        classificacao, classificacao_icon = "Excelente", "🏆"
-        cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
-    elif score >= 60:
-        classificacao, classificacao_icon = "Bom", "👍"
-        cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
-    elif score >= 40:
-        classificacao, classificacao_icon = "Regular", "⚠️"
-        cor_classe, bg_classe, brd_classe = "#f59e0b", "#fffbeb", "#fde68a"
-    else:
-        classificacao, classificacao_icon = "Precisa melhorar", "📝"
-        cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
+        if score >= 80:
+            classificacao, classificacao_icon = "Excelente", "🏆"
+            cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
+        elif score >= 60:
+            classificacao, classificacao_icon = "Bom", "👍"
+            cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
+        elif score >= 40:
+            classificacao, classificacao_icon = "Regular", "⚠️"
+            cor_classe, bg_classe, brd_classe = "#f59e0b", "#fffbeb", "#fde68a"
+        else:
+            classificacao, classificacao_icon = "Precisa melhorar", "📝"
+            cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
 
-    oportunidades = sum(1 for c in criterios if not c["ok"])
+        oportunidades = sum(1 for c in criterios if not c["ok"])
 
-    return {
-        "score": score,
-        "classificacao": classificacao,
-        "classificacao_icon": classificacao_icon,
-        "cor_classe": cor_classe,
-        "bg_classe": bg_classe,
-        "brd_classe": brd_classe,
-        "criterios": criterios,
-        "oportunidades": oportunidades,
-    }
+        return {
+            "score": score,
+            "classificacao": classificacao,
+            "classificacao_icon": classificacao_icon,
+            "cor_classe": cor_classe,
+            "bg_classe": bg_classe,
+            "brd_classe": brd_classe,
+            "criterios": criterios,
+            "oportunidades": oportunidades,
+        }
     
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []

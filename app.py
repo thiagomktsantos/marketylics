@@ -9580,13 +9580,13 @@ body{{padding-bottom:8px;}}
                 <button onclick="triggerBio()"
                         style="display:inline-flex;align-items:center;gap:6px;
                                padding:9px 18px;border-radius:8px;
-                               border:1px solid #e5e7eb;background:#fff;
-                               font-size:13px;font-weight:600;color:#374151;
+                               border:none;background:#3b82f6;
+                               font-size:14px;font-weight:600;color:#374151;
                                cursor:pointer;font-family:\'DM Sans\',sans-serif;
                                white-space:nowrap;transition:all 0.15s;"
                         onmouseover="this.style.borderColor=\'#3a9fd6\';this.style.color=\'#1d4ed8\';this.style.background=\'#eff6ff\';"
                         onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\';this.style.background=\'#fff\';">
-                    Analisar perfil
+                    Análise completa do perfil
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </button>
             </div>

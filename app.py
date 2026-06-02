@@ -9526,7 +9526,7 @@ body{{padding-bottom:8px;}}
             <div style="font-size:10px;font-weight:700;color:#9ca3af;
                         text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
             <!-- Número + badge na mesma linha -->
-            <div style="display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;align-items:center;gap:14px;justify-content:space-between;">
                 <div style="display:flex;align-items:baseline;gap:4px;line-height:1;">
                     <span style="font-size:52px;font-weight:900;letter-spacing:-2px;
                                  line-height:1;color:{score_cor};">{score_val}</span>
@@ -9535,7 +9535,7 @@ body{{padding-bottom:8px;}}
                 <div style="display:inline-flex;align-items:center;gap:7px;
                             padding:10px 20px;border-radius:24px;font-size:17px;font-weight:800;
                             background:{score_bg};color:{score_cor};border:1.5px solid {score_brd};
-                            letter-spacing:0.1px;white-space:nowrap;">
+                           letter-spacing:0.1px;white-space:nowrap;">
                     {score_icon} {score_cls}
                 </div>
             </div>

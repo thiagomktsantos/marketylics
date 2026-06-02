@@ -9308,7 +9308,7 @@ body{{padding-bottom:8px;}}
 }}
 .atalho-card {{
     background:#fff;
-    border:1px solid #e5e7eb;
+    border:2px solid #e5e7eb;
     border-radius:14px;
     padding:20px 16px;
     cursor:pointer;
@@ -9319,7 +9319,6 @@ body{{padding-bottom:8px;}}
     gap:14px;
     transition:all 0.15s;
     text-align:left;
-    box-shadow:0 1px 4px rgba(0,0,0,0.04);
 }}
 .atalho-card:hover {{
     border-color:#c7d2fe;

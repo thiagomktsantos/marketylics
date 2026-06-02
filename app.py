@@ -6120,8 +6120,8 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     <div style='display:flex;align-items:center;gap:0;flex-shrink:0'>
                         <div style='width:1px;height:40px;background:#e5e7eb;margin-right:20px'></div>
                         <div style='text-align:center;min-width:56px'>
-                            <div style='font-size:28px;font-weight:800;color:#111827;line-height:1'>{len(ads_list)}</div>
-                            <div style='font-size:11px;color:#394252;font-weight:900;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
+                            <div style='font-size:22px;font-weight:800;color:#111827;line-height:1'>{len(ads_list)}</div>
+                            <div style='font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
                         </div>
                         <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
                         {lib_btn_top}

@@ -9979,12 +9979,10 @@ function analisarPost(idx) {{
     var row1 = document.getElementById('insights-crit-row');
     if (row1) row1.innerHTML = html;
     var row2 = document.getElementById('insights-chips-row');
-    if (row2) {
-        var oportHtml = {score_oport} > 0
-            ? '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>'
-            : '';
+    if (row2) {{
+        var oportHtml = '{"<div style=\'display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;white-space:nowrap;\'>+" + str(score_oport) + " oportunidade" + ("s" if score_oport != 1 else "") + "</div>" if score_oport > 0 else ""}';
         row2.innerHTML = html + oportHtml;
-    }
+    }}
 }})();
 
 function applyFilters() {{

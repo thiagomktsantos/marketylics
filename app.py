@@ -10504,43 +10504,201 @@ Seja direto, objetivo e baseado nos dados fornecidos.
     {'<div class="secao-cards">' + items_html + '</div>' if lista else empty_html}
 </div>"""
 
-        html_analise_redes = f"""
+        # ── Estado da sub-aba ativa ─────────────────────────────────
+        if "redes_analise_subtab" not in st.session_state:
+            st.session_state.redes_analise_subtab = "bio"
+
+        subtabs_def = [
+            ("bio",          "👤", "Perfil"),
+            ("postagem",     "📸", "Postagens"),
+            ("criativos",    "🎨", "Criativos"),
+            ("copy",         "✍️", "Copy"),
+            ("geral_perfil", "📊", "Geral"),
+            ("comparativo",  "🏆", "Comparativo"),
+        ]
+
+        # Ghost buttons para cada sub-aba
+        for stk, _, _ in subtabs_def:
+            ghost_k = f"btn_analise_subtab_{stk}"
+            st.markdown(f"""
+            <style>
+            .st-key-{ghost_k} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{ghost_k}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            if st.button(f"analise_subtab_{stk}", key=ghost_k):
+                st.session_state.redes_analise_subtab = stk
+                st.rerun()
+
+        subtab_analise = st.session_state.redes_analise_subtab
+
+        # Contagens por tipo
+        contagens = {stk: len(por_tipo.get(stk, [])) for stk, _, _ in subtabs_def}
+
+        # ── Barra de abas ───────────────────────────────────────────
+        tabs_items_js = "[" + ",".join([
+            f'{{key:"{stk}",icon:"{icon}",label:"{lbl}",count:{contagens.get(stk,0)}}}'
+            for stk, icon, lbl in subtabs_def
+        ]) + "]"
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.tabs-wrap {{
+    display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 2px;
+}}
+.tab-pill {{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:8px 14px; border-radius:10px; cursor:pointer;
+    border:1.5px solid #e5e7eb; background:#fff;
+    font-size:13px; font-weight:600; color:#6b7280;
+    transition:all 0.15s; white-space:nowrap;
+    font-family:'DM Sans',sans-serif;
+}}
+.tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill.active {{
+    background:#0e2a47; border-color:#0e2a47; color:#fff;
+}}
+.tab-badge {{
+    font-size:11px; font-weight:800;
+    padding:1px 7px; border-radius:20px;
+    background:#e5e7eb; color:#6b7280;
+}}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.2); color:#fff; }}
+.tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+</style>
+<div class="tabs-wrap" id="tabs-wrap"></div>
+<script>
+var TABS   = {tabs_items_js};
+var ACTIVE = "{subtab_analise}";
+var wrap   = document.getElementById('tabs-wrap');
+TABS.forEach(function(t) {{
+    var pill = document.createElement('button');
+    pill.className = 'tab-pill' + (t.key === ACTIVE ? ' active' : '');
+    pill.innerHTML =
+        '<span>' + t.icon + '</span>'
+        + '<span>' + t.label + '</span>'
+        + '<span class="tab-badge' + (t.count > 0 ? ' has' : '') + '">' + t.count + '</span>';
+    pill.onclick = function() {{
+        var btns = window.parent.document.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
+            if (txt === 'analise_subtab_' + t.key) {{ b.click(); return; }}
+        }}
+    }};
+    wrap.appendChild(pill);
+}});
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '54px';
+            iframes[i].style.marginBottom = '-8px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=54, scrolling=False)
+
+        # ── Conteúdo da sub-aba ativa ───────────────────────────────
+        lista_ativa  = por_tipo.get(subtab_analise, [])
+        icons_map    = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
+        labels_map   = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
+        icon_ativo   = icons_map.get(subtab_analise, "📋")
+        label_ativo  = labels_map.get(subtab_analise, "")
+
+        btn_comp_html = ""
+        if subtab_analise == "comparativo":
+            btn_comp_html = """
+<div style="margin-bottom:12px;">
+    <button onclick="triggerBtn('redes_comparativo')"
+        style="display:inline-flex;align-items:center;gap:8px;
+               padding:10px 20px;border-radius:8px;border:none;
+               background:#0e2a47;color:#fff;font-size:14px;font-weight:700;
+               cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;"
+        onmouseover="this.style.background='#1a3a5c'"
+        onmouseout="this.style.background='#0e2a47'">
+        ⚡ Gerar Comparativo
+    </button>
+</div>"""
+
+        relatorios_js = {str(i): a.get("relatorio", "") for i, a in enumerate(analises_redes)}
+        import json as _json_redes2
+        relatorios_json = _json_redes2.dumps(relatorios_js, ensure_ascii=False)
+
+        def _card_redes(idx_real, analise):
+            titulo = analise.get("titulo", "—")
+            tipo   = analise.get("tipo", "")
+            icons  = {"bio": "👤", "postagem": "📸", "criativos": "🎨", "copy": "✍️", "geral_perfil": "📊", "comparativo": "🏆"}
+            icon   = icons.get(tipo, "📋")
+            nome_arquivo = titulo.replace(" ", "_").replace("/","_").replace("(","").replace(")","").replace(".","")
+            return f"""
+<div class="analise-card" id="card_{idx_real}">
+    <div class="card-top" onclick="toggleCard({idx_real})">
+        <div class="card-icon-wrap">{icon}</div>
+        <div class="card-info">
+            <div class="card-titulo">{titulo}</div>
+        </div>
+        <div class="card-chevron" id="chev_{idx_real}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+    </div>
+    <div class="card-body" id="body_{idx_real}" style="display:none">
+        <div class="card-relatorio" id="rel_{idx_real}"></div>
+        <div class="card-acoes">
+            <button class="btn-dl" onclick="baixar({idx_real}, '{nome_arquivo}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar .txt
+            </button>
+            <button class="btn-rm" onclick="remover({idx_real})">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                Remover
+            </button>
+        </div>
+    </div>
+</div>"""
+
+        cards_html = "".join(_card_redes(i, a) for i, a in reversed(lista_ativa)) if lista_ativa else ""
+
+        empty_html = ""
+        if not lista_ativa:
+            btn_vazio = ""
+            if subtab_analise == "comparativo":
+                btn_vazio = '<button class="btn-gerar-vazio" onclick="triggerBtn(\'redes_comparativo\')">⚡ Gerar Comparativo</button>'
+            else:
+                btn_vazio = f'<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
+            empty_html = f"""
+<div class="empty-state">
+    <div class="empty-icon">{icon_ativo}</div>
+    <div class="empty-txt">Nenhuma análise de {label_ativo.lower()} ainda.</div>
+    {btn_vazio}
+</div>"""
+
+        html_conteudo = f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html {{ background:transparent; font-family:'DM Sans',sans-serif; -webkit-font-smoothing:antialiased; }}
 body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
-.secao {{ margin-bottom:20px; }}
-.secao-header {{
-    display:flex; align-items:center; gap:8px;
-    padding:0 4px 10px; border-bottom:2px solid #e5e7eb; margin-bottom:10px;
+.analise-card {{
+    border-bottom:1px solid #f3f4f6;
+    background:#fff;
 }}
-.secao-icon-lbl {{ font-size:16px; flex-shrink:0; }}
-.secao-titulo {{
-    font-size:13px; font-weight:800; color:#6b7280;
-    text-transform:uppercase; letter-spacing:0.8px; flex:1;
-}}
-.btn-regerar {{
-    padding:4px 12px; border-radius:20px;
-    border:1px solid #3a9fd6; background:#eff6ff;
-    font-size:11px; font-weight:700; color:#1d4ed8;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    transition:background 0.15s; white-space:nowrap;
-}}
-.btn-regerar:hover {{ background:#dbeafe; }}
-.secao-count {{
-    background:#f3f4f6; color:#9ca3af;
-    font-size:12px; font-weight:700;
-    padding:2px 10px; border-radius:20px; flex-shrink:0;
-}}
-.secao-count.has {{ background:#3a9fd6; color:#fff; }}
-.secao-cards {{
-    display:flex; flex-direction:column;
-    border:1px solid #e5e7eb; border-radius:12px;
-    overflow:hidden; background:#fff;
-}}
-.analise-card {{ border-bottom:1px solid #f3f4f6; }}
 .analise-card:last-child {{ border-bottom:none; }}
+.cards-wrap {{
+    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;
+}}
 .card-top {{
     display:flex; align-items:center; gap:12px;
     padding:14px 16px; cursor:pointer;
@@ -10586,29 +10744,24 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
 .btn-rm:hover {{ background:#fef2f2; border-color:#fca5a5; color:#dc2626; }}
 .empty-state {{
     border:1px dashed #e5e7eb; border-radius:12px;
-    padding:28px 24px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding:48px 24px; text-align:center;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
     background:#fff;
 }}
-.empty-icon {{ font-size:24px; opacity:0.5; }}
-.empty-txt {{ font-size:13px; color:#9ca3af; line-height:1.6; }}
+.empty-icon {{ font-size:32px; opacity:0.4; }}
+.empty-txt {{ font-size:14px; color:#9ca3af; line-height:1.6; }}
 .btn-gerar-vazio {{
-    margin-top:4px; padding:9px 20px; border-radius:8px;
-    border:1px solid #3a9fd6; background:#eff6ff;
-    font-size:13px; font-weight:700; color:#1d4ed8;
+    margin-top:4px; padding:10px 22px; border-radius:8px;
+    border:none; background:#0e2a47;
+    font-size:14px; font-weight:700; color:#fff;
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s;
 }}
-.btn-gerar-vazio:hover {{ background:#dbeafe; }}
+.btn-gerar-vazio:hover {{ background:#1a3a5c; }}
 </style>
 
-{_secao_redes("Análise de Perfil", "👤", por_tipo["bio"], "bio")}
-{_secao_redes("Análise de Postagens", "📸", por_tipo["postagem"], "postagem")}
-{_secao_redes("Análise de Criativos", "🎨", por_tipo["criativos"], "criativos")}
-{_secao_redes("Análise de Copy", "✍️", por_tipo["copy"], "copy")}
-{_secao_redes("Análise Geral por Perfil", "📊", por_tipo["geral_perfil"], "geral_perfil")}
-{_secao_redes("Comparativo Geral", "🏆", por_tipo["comparativo"], "comparativo",
-    btn_label="⚡ Gerar Comparativo" if por_tipo["comparativo"] else "⚡ Gerar Comparativo",
-    btn_trigger="redes_comparativo")}
+{btn_comp_html}
+
+{'<div class="cards-wrap">' + cards_html + '</div>' if lista_ativa else empty_html}
 
 <script>
 var RELATORIOS = {relatorios_json};
@@ -10672,36 +10825,4 @@ setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
 </script>"""
 
-        if not analises_redes:
-            components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
-.empty {
-    background:#fff; border:1px dashed #d1d5db; border-radius:14px;
-    padding:64px 48px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; gap:14px;
-}
-</style>
-<div class="empty">
-    <div style="font-size:40px">📋</div>
-    <div style="font-size:18px;font-weight:700;color:#374151">Nenhuma análise ainda</div>
-    <div style="font-size:14px;color:#9ca3af;line-height:1.7;max-width:400px">
-        Vá em <b>Perfis configurados</b>, abra um perfil e gere análises de bio,
-        postagens, criativos ou copy. O comparativo geral fica disponível aqui.
-    </div>
-</div>
-<script>
-(function() {
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try { if (iframes[i].contentWindow === window) {
-            iframes[i].style.height = '300px'; break;
-        } } catch(e) {}
-    }
-})();
-</script>
-""", height=300, scrolling=False)
-        else:
-            components.html(html_analise_redes, height=300, scrolling=False)
+        components.html(html_conteudo, height=300, scrolling=False)

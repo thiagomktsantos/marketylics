@@ -6224,11 +6224,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .analises-bar-sub {{ font-size:13px; color:#9ca3af; line-height:1.5; }}
 .analises-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }}
 .atalho-card {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    background:#fff; border:2px solid #e5e7eb; border-radius:14px;
     padding:20px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; flex-direction:row; align-items:flex-start; gap:14px;
     transition:all 0.15s; text-align:left;
-    box-shadow:0 1px 4px rgba(0,0,0,0.04);
 }}
 .atalho-card:hover {{ border-color:#c7d2fe; box-shadow:0 4px 16px rgba(99,102,241,0.1); transform:translateY(-1px); }}
 .atalho-card.done {{ border-color:#bbf7d0; background:#f0fdf4; }}

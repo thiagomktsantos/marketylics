@@ -9381,14 +9381,14 @@ body{{padding-bottom:8px;}}
     -webkit-appearance:none; appearance:none; cursor:pointer; outline:none;
 }}
 .filter-select:focus {{ border-color:#3a9fd6; }}
-.col-toggle {
+.col-toggle {{
     margin-left:auto; width:40px; height:40px;
     border:none; border-radius:10px;
     background:#1e293b; cursor:pointer;
     display:flex; align-items:center; justify-content:center;
     color:#ffffff; flex-shrink:0; transition:all 0.12s;
-}
-.col-toggle:hover { background:#0e2a47; }
+}}
+.col-toggle:hover {{ background:#0e2a47; }}
 
 .stats-row {{ display:flex; gap:12px; padding:16px 0 4px; flex-wrap:wrap; }}
 .stat-card {{

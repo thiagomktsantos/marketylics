@@ -10046,10 +10046,23 @@ function toggleCols() {{
 }}
 
 function triggerBio() {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === '__bio_{aba_ativa}__') {{ b.click(); return; }}
+    var searches = [window.parent.document, document];
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var fi = 0; fi < frames.length; fi++) {{
+        try {{ if (frames[fi].contentDocument) searches.push(frames[fi].contentDocument); }} catch(e) {{}}
+    }}
+    for (var si = 0; si < searches.length; si++) {{
+        try {{
+            var btns = searches[si].querySelectorAll('button');
+            for (var bi = 0; bi < btns.length; bi++) {{
+                var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\s+/).join(' ').trim();
+                if (txt === '__bio_{aba_ativa}__') {{
+                    var btn = btns[bi];
+                    setTimeout(function() {{ btn.click(); }}, 50);
+                    return;
+                }}
+            }}
+        }} catch(e) {{}}
     }}
 }}
 

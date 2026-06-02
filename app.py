@@ -9176,8 +9176,13 @@ Como interpretar as métricas desta postagem?
             tem_copy     = bool(st.session_state.get(chave_copy, ""))
             tem_geral    = bool(st.session_state.get(chave_geral, ""))
 
-            var oportHtml = {oportHtml_js};
-            if (row2) row2.innerHTML = html + oportHtml;
+            oportHtml_js = (
+                f'\'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;'
+                f'color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;'
+                f'border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade'
+                f'{"s" if score_oport != 1 else ""}</div>\''
+                if score_oport > 0 else "''"
+            )
 
             components.html(f"""
 <!DOCTYPE html><html>
@@ -9981,18 +9986,8 @@ function analisarPost(idx) {{
               + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
               + ' ' + c.label + '</div>';
     }});
-    var row1 = document.getElementById('insights-crit-row');
-    if (row1) row1.innerHTML = html;
     var row2 = document.getElementById('insights-chips-row');
-    if (row2) {
-        oportHtml_js = (
-            f'\'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;'
-            f'color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;'
-            f'border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade'
-            f'{"s" if score_oport != 1 else ""}</div>\''
-            if score_oport > 0 else "''"
-        )
-    }
+    if (row2) row2.innerHTML = html + {oportHtml_js};
 }})();
 
 function applyFilters() {{

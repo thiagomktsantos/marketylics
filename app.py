@@ -10554,16 +10554,19 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .tabs-wrap {{
-    display:flex; gap:8px; flex-wrap:wrap; padding:2px 0;
+    display:grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap:8px;
+    width:100%;
 }}
 .tab-pill {{
-    display:inline-flex; align-items:center; gap:6px;
-    padding:9px 16px; border-radius:10px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 8px; border-radius:10px; cursor:pointer;
     border:1.5px solid #e5e7eb; background:#fff;
     font-size:13px; font-weight:600; color:#6b7280;
     transition:all 0.15s; white-space:nowrap;
-    font-family:'DM Sans',sans-serif;
-    line-height:1;
+    font-family:'DM Sans',sans-serif; line-height:1;
+    width:100%;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
 .tab-pill.active {{
@@ -10573,7 +10576,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800;
     padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280;
-    line-height:1.4;
+    line-height:1.4; flex-shrink:0;
 }}
 .tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}

@@ -10166,7 +10166,7 @@ function syncHeight() {{
         try {{
             if (frames[i].contentWindow === window) {{
                 frames[i].style.height = (h + 12) + 'px';
-                frames[i].style.marginTop = '0px';
+                frames[i].style.marginTop = '-277px';
                 break;
             }}
         }} catch(e) {{}}
@@ -10183,7 +10183,7 @@ setTimeout(function() {{ applyFilters(); syncHeight(); }}, 1500);
 setTimeout(syncHeight, 3000);
 </script>
 </body></html>
-""", height=8000, scrolling=False)
+""", height=500, scrolling=False)
  
         # ══════════════════════════════════════════════════════════════
         # SUB-ABA: ANÁLISE DE IA

@@ -9565,7 +9565,7 @@ body{{padding-bottom:8px;}}
                                      padding:2px 7px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
                     </div>
                     <div style="font-size:12px;color:#9ca3af;line-height:1.5;">
-                        Pontos fortes e oportunidades identificados.
+                        Principais pontos de atenção e oportunidades para crescimento.
                     </div>
                 </div>
             </div>

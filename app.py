@@ -9519,9 +9519,10 @@ body{{padding-bottom:8px;}}
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                 <div style="font-size:10px;font-weight:700;color:#9ca3af;
                             text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
-                <div style="display:inline-flex;align-items:center;gap:5px;
-                            padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;
-                            background:{score_bg};color:{score_cor};border:1px solid {score_brd};">
+                <div style="display:inline-flex;align-items:center;gap:7px;
+                            padding:8px 18px;border-radius:24px;font-size:15px;font-weight:800;
+                            background:{score_bg};color:{score_cor};border:1.5px solid {score_brd};
+                            letter-spacing:0.1px;">
                     {score_icon} {score_cls}
                 </div>
             </div>
@@ -9537,10 +9538,6 @@ body{{padding-bottom:8px;}}
                             background:linear-gradient(90deg,#3b82f6,{score_cor});
                             transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>
             </div>
-            <!-- Critérios OK -->
-            <div id="insights-crit-row" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-            <!-- Oportunidades -->
-            {(f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#3b82f6;background:#eff6ff;border:1px solid #bfdbfe;padding:3px 9px;border-radius:20px;width:fit-content;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
         </div>
     </div>
 
@@ -9568,19 +9565,21 @@ body{{padding-bottom:8px;}}
                 </div>
             </div>
 
-            <!-- Chips dos critérios OK -->
+            <!-- Chips dos critérios OK + oportunidades juntos -->
             <div id="insights-chips-row"
-                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;"></div>
+                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;">
+                 <!-- oportunidade será injetada pelo JS junto dos chips -->
+            </div>
 
-            <!-- Oportunidades + botão -->
+            <!-- Botão -->
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
-                {(f'<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:4px 12px;border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>') if score_oport > 0 else ''}
                 <button onclick="triggerBio()"
-                        style="display:inline-flex;align-items:center;justify-content:center;gap:6px;
-                               padding:9px 18px;border-radius:8px;border:1px solid #3b82f6;
-                               background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
-                               cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;">
-                    {'✨ Ver análise de perfil →' if bio_resultado_html else '🤖 Gerar análise de perfil →'}
+                        style="display:inline-flex;align-items:center;justify-content:center;gap:8px;
+                               padding:0;border:none;background:transparent;
+                               font-size:14px;font-weight:700;color:#1d4ed8;
+                               cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;
+                               text-decoration:none;letter-spacing:0.1px;">
+                    {'Ver análise completa →' if bio_resultado_html else 'Ver análise completa →'}
                 </button>
             </div>
 
@@ -9980,7 +9979,12 @@ function analisarPost(idx) {{
     var row1 = document.getElementById('insights-crit-row');
     if (row1) row1.innerHTML = html;
     var row2 = document.getElementById('insights-chips-row');
-    if (row2) row2.innerHTML = html;
+    if (row2) {
+        var oportHtml = {score_oport} > 0
+            ? '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;border-radius:20px;white-space:nowrap;">+{score_oport} oportunidade{"s" if score_oport != 1 else ""}</div>'
+            : '';
+        row2.innerHTML = html + oportHtml;
+    }
 }})();
 
 function applyFilters() {{

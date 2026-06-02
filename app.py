@@ -9523,7 +9523,7 @@ body{{padding-bottom:8px;}}
         </div>
 
         <!-- Divisor vertical -->
-        <div style="width:1px;background:#e5e7eb;flex-shrink:0;"></div>
+        <div style="width:1px;background:#e5e7eb;flex-shrink:0;height:80%;margin:auto;"></div>
 
         <!-- Coluna direita: Score -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;min-width:300px;">

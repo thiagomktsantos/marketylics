@@ -9514,25 +9514,24 @@ body{{padding-bottom:8px;}}
         <div style="width:1px;background:#e5e7eb;flex-shrink:0;"></div>
 
         <!-- Coluna direita: Score -->
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
-            <!-- Header score -->
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <div style="font-size:10px;font-weight:700;color:#9ca3af;
-                            text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;min-width:300px;">
+            <div style="font-size:10px;font-weight:700;color:#9ca3af;
+                        text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
+            <!-- Número + badge na mesma linha -->
+            <div style="display:flex;align-items:center;gap:14px;">
+                <div style="display:flex;align-items:baseline;gap:4px;line-height:1;">
+                    <span style="font-size:52px;font-weight:900;letter-spacing:-2px;
+                                 line-height:1;color:{score_cor};">{score_val}</span>
+                    <span style="font-size:16px;font-weight:600;color:#9ca3af;">/100</span>
+                </div>
                 <div style="display:inline-flex;align-items:center;gap:7px;
-                            padding:8px 18px;border-radius:24px;font-size:15px;font-weight:800;
+                            padding:10px 20px;border-radius:24px;font-size:17px;font-weight:800;
                             background:{score_bg};color:{score_cor};border:1.5px solid {score_brd};
-                            letter-spacing:0.1px;">
+                            letter-spacing:0.1px;white-space:nowrap;">
                     {score_icon} {score_cls}
                 </div>
             </div>
-            <!-- Número + barra -->
-            <div style="display:flex;align-items:baseline;gap:4px;line-height:1;">
-                <span style="font-size:42px;font-weight:900;letter-spacing:-2px;
-                             line-height:1;color:{score_cor};">{score_val}</span>
-                <span style="font-size:16px;font-weight:600;color:#9ca3af;">/100</span>
-            </div>
-            <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:2px;">
+            <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
                 <div id="score-bar-fill"
                      style="height:100%;width:0%;border-radius:4px;
                             background:linear-gradient(90deg,#3b82f6,{score_cor});
@@ -9543,24 +9542,24 @@ body{{padding-bottom:8px;}}
 
 <!-- INSIGHTS DE IA -->
     <div style="border-right:1px solid #e5e7eb;border-left:1px solid #e5e7eb;
-                background:#f8fbff;padding:20px 24px;border-bottom:1px solid #e5e7eb;">
+                background:#f8fbff;padding:18px 24px;border-bottom:1px solid #e5e7eb;">
         <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
 
             <!-- Ícone + título + descrição -->
-            <div style="display:flex;align-items:flex-start;gap:10px;min-width:200px;max-width:300px;flex-shrink:0;">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
+            <div style="display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
                     <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
                           fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
-                        <span style="font-size:13px;font-weight:800;color:#1a2e4a;
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                        <span style="font-size:12px;font-weight:800;color:#1a2e4a;
                                      text-transform:uppercase;letter-spacing:0.5px;">Insights de IA</span>
                         <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;
-                                     padding:2px 8px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
+                                     padding:2px 7px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
                     </div>
-                    <div style="font-size:12px;color:#6b7280;line-height:1.55;">
-                        Nossa IA analisou seu posicionamento e identificou os principais pontos de atenção e oportunidades para crescimento.
+                    <div style="font-size:12px;color:#9ca3af;line-height:1.5;">
+                        Pontos fortes e oportunidades identificados.
                     </div>
                 </div>
             </div>
@@ -9568,18 +9567,21 @@ body{{padding-bottom:8px;}}
             <!-- Chips dos critérios OK + oportunidades juntos -->
             <div id="insights-chips-row"
                  style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;">
-                 <!-- oportunidade será injetada pelo JS junto dos chips -->
             </div>
 
-            <!-- Botão -->
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
+            <!-- Botão clean -->
+            <div style="flex-shrink:0;">
                 <button onclick="triggerBio()"
-                        style="display:inline-flex;align-items:center;justify-content:center;gap:8px;
-                               padding:0;border:none;background:transparent;
-                               font-size:14px;font-weight:700;color:#1d4ed8;
-                               cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap;
-                               text-decoration:none;letter-spacing:0.1px;">
-                    {'Ver análise completa →' if bio_resultado_html else 'Ver análise completa →'}
+                        style="display:inline-flex;align-items:center;gap:6px;
+                               padding:9px 18px;border-radius:8px;
+                               border:1px solid #e5e7eb;background:#fff;
+                               font-size:13px;font-weight:600;color:#374151;
+                               cursor:pointer;font-family:\'DM Sans\',sans-serif;
+                               white-space:nowrap;transition:all 0.15s;"
+                        onmouseover="this.style.borderColor=\'#3a9fd6\';this.style.color=\'#1d4ed8\';this.style.background=\'#eff6ff\';"
+                        onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\';this.style.background=\'#fff\';">
+                    Analisar perfil
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </button>
             </div>
 

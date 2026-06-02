@@ -223,6 +223,7 @@ def salvar_dados_usuario(user_id: str):
             "concorrentes": st.session_state.dados["concorrentes"],
             "metricas_redes": st.session_state.metricas_redes,
             "analises_salvas": st.session_state.get("analises_salvas", []),
+            "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
         }
         supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
     except Exception as e:
@@ -264,6 +265,8 @@ if "relatorio_gemini" not in st.session_state:
     st.session_state.relatorio_gemini = ""
 if "analises_salvas" not in st.session_state:
     st.session_state.analises_salvas = []
+if "redes_analises_salvas" not in st.session_state:
+    st.session_state.redes_analises_salvas = []
 
 empresa = st.session_state.dados["minha_empresa"]
 campos_padrao = {
@@ -9581,11 +9584,11 @@ body{{padding-bottom:8px;}}
                         style="display:inline-flex;align-items:center;gap:6px;
                                padding:9px 18px;border-radius:8px;
                                border:none;background:#3b82f6;
-                               font-size:14px;font-weight:600;color:#374151;
+                               font-size:14px;font-weight:600;color:#ffffff;
                                cursor:pointer;font-family:\'DM Sans\',sans-serif;
                                white-space:nowrap;transition:all 0.15s;"
-                        onmouseover="this.style.borderColor=\'#3a9fd6\';this.style.color=\'#1d4ed8\';this.style.background=\'#eff6ff\';"
-                        onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.color=\'#374151\';this.style.background=\'#fff\';">
+                        onmouseover="this.style.background=\'#005b94\';"
+                        onmouseout="this.style.background=\'#3b82f6\';">
                     Análise completa do perfil
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                 </button>

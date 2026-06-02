@@ -10566,7 +10566,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:13px; font-weight:600; color:#6b7280;
     transition:all 0.15s; white-space:nowrap;
     font-family:'DM Sans',sans-serif; line-height:1;
-    width:100%;
+    width:100%; text-decoration:none;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
 .tab-pill.active {{
@@ -10584,9 +10584,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </style>
 <div class="tabs-wrap">
 {''.join([
-    f'''<button class="tab-pill {'active' if subtab_analise == stk else ''}"
+    f'''<a class="tab-pill {'active' if subtab_analise == stk else ''}"
+        href="javascript:void(0)"
         onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='analise_subtab_{stk}'){{b.click();return;}}}}}})()"
-    >{icon} {lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></button>'''
+    >{icon} {lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></a>'''
     for stk, icon, lbl in subtabs_def
 ])}
 </div>

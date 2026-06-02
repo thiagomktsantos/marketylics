@@ -10554,15 +10554,16 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .tabs-wrap {{
-    display:flex; gap:8px; flex-wrap:wrap; padding:4px 0 2px;
+    display:flex; gap:8px; flex-wrap:wrap; padding:2px 0;
 }}
 .tab-pill {{
     display:inline-flex; align-items:center; gap:6px;
-    padding:8px 14px; border-radius:10px; cursor:pointer;
+    padding:9px 16px; border-radius:10px; cursor:pointer;
     border:1.5px solid #e5e7eb; background:#fff;
     font-size:13px; font-weight:600; color:#6b7280;
     transition:all 0.15s; white-space:nowrap;
     font-family:'DM Sans',sans-serif;
+    line-height:1;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
 .tab-pill.active {{
@@ -10570,46 +10571,35 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .tab-badge {{
     font-size:11px; font-weight:800;
-    padding:1px 7px; border-radius:20px;
+    padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280;
+    line-height:1.4;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.2); color:#fff; }}
-.tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
-<div class="tabs-wrap" id="tabs-wrap"></div>
+<div class="tabs-wrap">
+{''.join([
+    f'''<button class="tab-pill {'active' if subtab_analise == stk else ''}"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='analise_subtab_{stk}'){{b.click();return;}}}}}})()"
+    >{icon} {lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></button>'''
+    for stk, icon, lbl in subtabs_def
+])}
+</div>
 <script>
-var TABS   = {tabs_items_js};
-var ACTIVE = "{subtab_analise}";
-var wrap   = document.getElementById('tabs-wrap');
-TABS.forEach(function(t) {{
-    var pill = document.createElement('button');
-    pill.className = 'tab-pill' + (t.key === ACTIVE ? ' active' : '');
-    pill.innerHTML =
-        '<span>' + t.icon + '</span>'
-        + '<span>' + t.label + '</span>'
-        + '<span class="tab-badge' + (t.count > 0 ? ' has' : '') + '">' + t.count + '</span>';
-    pill.onclick = function() {{
-        var btns = window.parent.document.querySelectorAll('button');
-        for (var b of btns) {{
-            var txt = (b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
-            if (txt === 'analise_subtab_' + t.key) {{ b.click(); return; }}
-        }}
-    }};
-    wrap.appendChild(pill);
-}});
 (function() {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '54px';
-            iframes[i].style.marginBottom = '-8px';
+            iframes[i].style.height = '52px';
+            iframes[i].style.marginBottom = '4px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=54, scrolling=False)
+""", height=52, scrolling=False)
 
         # ── Conteúdo da sub-aba ativa ───────────────────────────────
         lista_ativa  = por_tipo.get(subtab_analise, [])

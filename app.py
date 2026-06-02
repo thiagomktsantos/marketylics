@@ -6076,17 +6076,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             else:
                 ads_list = ads_list_raw
 
-            if emp_item["tipo"] == "minha":
-                page_pic_empresa = st.session_state.dados["minha_empresa"].get("ads_page_pic", "") or ""
-            else:
-                page_pic_empresa = st.session_state.dados["concorrentes"][emp_item["idx"]].get("ads_page_pic", "") or ""
-
-            if not page_pic_empresa:
-                for ad in ads_list:
-                    p = ad.get("page_profile_picture", "") or ""
-                    if p and p.startswith("http"):
-                        page_pic_empresa = p
-                        break
+            page_pic_empresa = ads_list[0].get("page_profile_picture", "") or "" if ads_list else ""
 
             if page_pic_empresa:
                 avatar_empresa_html = (

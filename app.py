@@ -9406,9 +9406,9 @@ body{{padding-bottom:8px;}}
 }}
 .filter-select:focus {{ border-color:#3a9fd6; }}
 .col-toggle {{
-    margin-left:auto; width:40px; height:40px;
-    border:1px solid #e5e7eb; border-radius:8px;
-    background:#f9fafb; cursor:pointer;
+    margin-left:auto; width:40px; max-height: 1em;
+    border:2px solid #e5e7eb; border-radius:8px;
+    background:#ffffff; cursor:pointer;
     display:flex; align-items:center; justify-content:center;
     flex-shrink:0; transition:all 0.12s;
 }}

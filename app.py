@@ -9509,7 +9509,7 @@ body{{padding-bottom:8px;}}
                 border-left:1px solid #e5e7eb;min-height:170px;background:#ffffff;">
 
         <!-- Coluna esquerda: bio -->
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:0px;">
             <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
             <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">

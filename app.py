@@ -8354,21 +8354,6 @@ function triggerBtn(label) {
             "oportunidades": oportunidades,
         }
     
-    score_data = calcular_score_bio(
-        bio_txt,
-        ext_url,
-        r.get("seguidores", 0),
-        r.get("eng_pct", 0.0),
-    )
-    score_val     = score_data["score"]
-    score_cls     = score_data["classificacao"]
-    score_icon    = score_data["classificacao_icon"]
-    score_cor     = score_data["cor_classe"]
-    score_bg      = score_data["bg_classe"]
-    score_brd     = score_data["brd_classe"]
-    score_crit    = score_data["criterios"]
-    score_oport   = score_data["oportunidades"]
-    
     # Montar HTML dos critérios
     crit_ok   = [c for c in score_crit if c["ok"]]
     crit_nok  = [c for c in score_crit if not c["ok"]]
@@ -8922,6 +8907,21 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         ext_url   = (r.get("external_url") or "").strip()
         ext_url_display = ext_url.replace("https://", "").replace("http://", "").rstrip("/")
         posts_list = r.get("posts", [])
+
+        score_data = calcular_score_bio(
+            bio_txt,
+            ext_url,
+            r.get("seguidores", 0),
+            r.get("eng_pct", 0.0),
+        )
+        score_val     = score_data["score"]
+        score_cls     = score_data["classificacao"]
+        score_icon    = score_data["classificacao_icon"]
+        score_cor     = score_data["cor_classe"]
+        score_bg      = score_data["bg_classe"]
+        score_brd     = score_data["brd_classe"]
+        score_crit    = score_data["criterios"]
+        score_oport   = score_data["oportunidades"]
 
         seg_fmt   = fmt_num(r.get("seguidores", 0))
         posts_fmt = fmt_num(r.get("total_posts", 0))

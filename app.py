@@ -6265,16 +6265,18 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 </div>
                 <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>
                     <div style='display:grid;grid-template-columns:180px 1fr auto;gap:20px;align-items:center;'>
-                        <div style='display:flex;flex-direction:column;gap:6px;'>
-                            <div style='display:flex;align-items:center;gap:8px;'>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
-                                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                                          fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights de IA</span>
-                                <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;'>BETA</span>
+                        <div style='display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;'>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                                      fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <div>
+                                <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>
+                                    <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights de IA</span>
+                                    <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;'>BETA</span>
+                                </div>
+                                <div style='font-size:12px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
                             </div>
-                            <div style='font-size:13px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
                         </div>
                         <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
                             {_chips_html}

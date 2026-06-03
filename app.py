@@ -7594,7 +7594,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .tab-pill {{
     display:flex; align-items:center; justify-content:center; gap:6px;
     padding:10px 8px; border-radius:10px; cursor:pointer;
-    border:1.5px solid #e5e7eb; background:#fff;
+    border:1.5px solid #e5e7eb; background:#fff; text-decoration: none;
     font-size:13px; font-weight:600; color:#6b7280;
     transition:all 0.15s; white-space:nowrap;
     font-family:'DM Sans',sans-serif; line-height:1; width:100%;

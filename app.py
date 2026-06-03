@@ -10577,7 +10577,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '52px';
-            iframes[i].style.marginBottom = '4px';
             iframes[i].style.marginTop = '-120px';
             break;
         }} }} catch(e) {{}}

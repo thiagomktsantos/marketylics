@@ -5241,6 +5241,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <span class="nav-title">Análise de IA</span>
             <span class="nav-sub">Visualize análises inteligentes</span>
         </div>
+        <div class="nav-right">
+            <div class="count-badge {'has' if len(st.session_state.get('ads_analises_salvas', [])) > 0 else ''}">{len(st.session_state.get('ads_analises_salvas', []))}</div>
+        </div>
     </div>
 </div>
 <script>

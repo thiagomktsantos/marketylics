@@ -6374,6 +6374,76 @@ Amostra dos anúncios:
                         st.session_state[chave_ia_geral] = f"Erro: {ex}"
                         st.rerun()
 
+            # Ghost buttons análise individual por anúncio
+            ia_ind_ghost_css = []
+            for j in range(len(ads_list) if 'ads_list' in dir() else 0):
+                _gk_ind = f"btn_ia_ind_{sk}_{j}"
+                ia_ind_ghost_css.append(f"""
+                .st-key-{_gk_ind} {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    opacity:0 !important; pointer-events:none !important;
+                }}
+                .stElementContainer:has(.st-key-{_gk_ind}) {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    overflow:hidden !important; margin:0 !important; padding:0 !important;
+                }}
+                """)
+            if ia_ind_ghost_css:
+                st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
+
+            for j, ad_ind in enumerate(ads_list):
+                if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):
+                    chave_ind = f"ia_ad_result_{sk}_{j}"
+                    if gemini_model is None:
+                        st.session_state[chave_ind] = "Configure GEMINI_API_KEY nos secrets."
+                    else:
+                        _ph_ind = st.empty()
+                        _render_modal_redes_ia("gerando", f"Anúncio {j+1} — {nome}", 40, _ph_ind)
+                        try:
+                            import datetime as _dt_ads
+                            resp_ind = gemini_model.generate_content(f"""Você é especialista em mídia paga e copywriting.
+Analise este anúncio de "{nome}" e dê feedback estratégico em português.
+
+Formato: {ad_ind.get('formato','')}
+Plataformas: {', '.join(ad_ind.get('plataformas') or [])}
+Data início: {ad_ind.get('data_inicio','')}
+Impressões: {ad_ind.get('impressoes','')}
+Body: {ad_ind.get('body','') or '—'}
+Título: {ad_ind.get('title','') or '—'}
+CTA: {ad_ind.get('cta','') or '—'}
+
+### 🎯 Objetivo do Anúncio
+### ✍️ Análise do Copy
+### 🎨 Análise do Criativo
+### 📊 Desempenho Estimado
+### 💡 Sugestões de Melhoria (2 ações concretas)""")
+                            st.session_state[chave_ind] = resp_ind.text
+                            st.session_state.ads_analises_salvas = [
+                                a for a in st.session_state.ads_analises_salvas
+                                if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
+                            ]
+                            st.session_state.ads_analises_salvas.append({
+                                "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "relatorio": resp_ind.text,
+                                "tipo": "anuncio_ind",
+                                "empresa": nome,
+                                "ad_idx": j,
+                            })
+                            _render_modal_redes_ia("concluido", f"Anúncio {j+1} — {nome}", 100, _ph_ind)
+                            salvar_dados_usuario(st.session_state.user.id)
+                            st.session_state.ads_main_tab = "analise"
+                            st.session_state.ads_analise_subtab = "anuncio_ind"
+                            import time as _t_ads; _t_ads.sleep(1.2)
+                            _ph_ind.empty()
+                            st.rerun()
+                        except Exception as ex_ind:
+                            _ph_ind.empty()
+                            st.session_state[chave_ind] = f"Erro: {ex_ind}"
+                            st.rerun()
+
             aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
             # ── ABA: ANÚNCIOS ─────────────────────────────────────────
@@ -7303,6 +7373,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                     "criativos_ads": "criativos",
                     "copys_ads":     "copys",
                     "estrategia":    "individuais",
+                    "anuncio_ind":   "individuais",
                 }
                 ultimo_tipo = next(
                     (a["tipo"] for a in reversed(st.session_state.ads_analises_salvas)
@@ -7552,6 +7623,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
             st.session_state.ads_analise_subtab = "criativos_ads"
 
         subtabs_ads_def = [
+            ("anuncio_ind",     "📢", "Anúncios"),
             ("criativos_ads",   "🎨", "Criativos"),
             ("copys_ads",       "✍️", "Copys"),
             ("estrategia",      "📊", "Estratégia"),
@@ -7590,7 +7662,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.tabs-wrap {{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:100%; }}
+.tabs-wrap {{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; width:100%; }}
 .tab-pill {{
     display:flex; align-items:center; justify-content:center; gap:6px;
     padding:10px 8px; border-radius:10px; cursor:pointer;
@@ -7636,7 +7708,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         relatorios_ads_ind = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
         relatorios_ads_json = _json_analises.dumps(relatorios_ads_ind, ensure_ascii=False)
 
-        icons_ads = {"criativos_ads":"🎨","copys_ads":"✍️","estrategia":"📊","comparativo_ads":"🏆"}
+        icons_ads = {"anuncio_ind":"📢","criativos_ads":"🎨","copys_ads":"✍️","estrategia":"📊","comparativo_ads":"🏆"}
 
         if lista_ads_ativa:
             cards_ads_html = ""
@@ -7748,6 +7820,7 @@ setTimeout(syncH,200);setTimeout(syncH,600);
                     Vá em <b>Empresas configuradas</b> para gerar.</div>
                 </div>
                 """, unsafe_allow_html=True)
+                
 # ---------------------------------------------------
 # PAGINA - INSIGHTS
 # ---------------------------------------------------

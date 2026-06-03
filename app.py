@@ -10702,7 +10702,7 @@ body {{ background:transparent; overflow:visible;padding-top:0 !important;margin
 .card-relatorio {{
     font-size:13px; color:#374151; line-height:1.8;
     overflow-y:auto;padding:14px 16px;background:#fff;
-    margin-bottom:12px; white-space:pre-wrap; word-break:break-word;
+    margin-bottom:12px; word-break:break-word;
 }}
 .card-acoes {{ display:flex; gap:8px;background-color:#b2c5d7;padding:10px; }}
 .btn-dl {{

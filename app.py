@@ -7703,153 +7703,44 @@ setTimeout(syncH,200);setTimeout(syncH,600);
 """, height=100, scrolling=False)
         else:
             icon_empty = icons_ads.get(subtab_ads_ativa, "📋")
-            st.markdown(f"""
-            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
-                        text-align:center;background:#fff;margin-top:8px;">
-                <div style="font-size:32px;opacity:0.4;margin-bottom:10px">{icon_empty}</div>
-                <div style="font-size:14px;color:#9ca3af;">Nenhuma análise aqui ainda.<br>
-                Vá em <b>Empresas configuradas</b> para gerar.</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        chave_comp = "ia_ads_comparativo"
-        if chave_comp not in st.session_state:
-            st.session_state[chave_comp] = ""
-
-        ghost_comp_css = """
-        .st-key-btn_ia_comp_geral {
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }
-        .stElementContainer:has(.st-key-btn_ia_comp_geral) {
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }
-        """
-        st.markdown(f"<style>{ghost_comp_css}</style>", unsafe_allow_html=True)
-
-        if st.button("ia_comparativo", key="btn_ia_comp_geral"):
-            if gemini_model is None:
-                st.session_state[chave_comp] = "Configure GEMINI_API_KEY nos secrets."
-            else:
-                resumos = []
-                for ck, entry in st.session_state.ads_cache.items():
-                    ads_data = entry.get("data", [])
-                    ativos = [a for a in ads_data if a.get("ativo", True)]
-                    n_vid = sum(1 for a in ativos if "Vídeo" in a.get("formato",""))
-                    n_img = sum(1 for a in ativos if "Imagem" in a.get("formato",""))
-                    n_car = sum(1 for a in ativos if "Carrossel" in a.get("formato",""))
-                    sample = "\n".join([
-                        f"  - [{a.get('formato','')}] {_truncar(a.get('title','') or a.get('body',''),80)}"
-                        for a in ativos[:5]
-                    ])
-                    resumos.append(f"""
-Empresa: {ck} | {len(ativos)} anúncios ativos | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
-Amostra:
-{sample}
-""")
-                _ph_ads = st.empty()
-                _render_modal_redes_ia("gerando", "Comparativo Geral de Anúncios", 40, _ph_ads)
-                try:
-                    resp = gemini_model.generate_content(f"""Você é especialista em inteligência competitiva e mídia paga.
-Compare os anúncios das empresas abaixo e gere uma análise competitiva completa em português.
-
-{'---'.join(resumos)}
-
----
-### 🏆 Ranking de Presença Digital
-### 🎯 Estratégias Comparadas
-### ✍️ Tom de Voz e Mensagens
-### 🎨 Mix de Formatos
-### ⚔️ Análise Competitiva
-### 💡 Recomendações Estratégicas (3 ações concretas)""")
-                    st.session_state[chave_comp] = resp.text
-                    import datetime as _dt_ads
-                    st.session_state.ads_analises_salvas = [
-                        a for a in st.session_state.ads_analises_salvas
-                        if a.get("tipo") != "comparativo_ads"
-                    ]
-                    st.session_state.ads_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp.text,
-                        "tipo": "comparativo_ads",
-                        "empresa": "Todas",
-                    })
-                    _render_modal_redes_ia("concluido", "Comparativo Geral de Anúncios", 100, _ph_ads)
-                    salvar_dados_usuario(st.session_state.user.id)
-                    import time as _t_ads; _t_ads.sleep(1.2)
-                    _ph_ads.empty()
-                    st.rerun()
-                except Exception as ex:
-                    _ph_ads.empty()
-                    st.session_state[chave_comp] = f"Erro: {ex}"
-                    st.rerun()
-
-        comp_html = st.session_state.get(chave_comp, "").replace("\n","<br>")
-
-        components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
-body {{ padding-bottom:8px; }}
-.wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; }}
-.hdr {{ padding:18px 22px; border-bottom:1px solid #e5e7eb; display:flex; align-items:center; justify-content:space-between; }}
-.hdr-title {{ font-size:16px; font-weight:800; color:#1a2e4a; }}
-.hdr-sub {{ font-size:13px; color:#9ca3af; }}
-.body {{ padding:22px; font-size:14px; color:#374151; line-height:1.8; min-height:80px; }}
-.empty {{ text-align:center; color:#9ca3af; font-size:14px; padding:60px 24px; }}
-.footer {{ padding:16px 22px; border-top:1px solid #f3f4f6; background:#f9fafb; }}
-.btn-gerar {{
-    display:inline-flex; align-items:center; gap:8px;
-    padding:12px 28px; border:none; border-radius:10px;
-    background:#0e2a47; font-size:15px; font-weight:700; color:#fff;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s;
-}}
-.btn-gerar:hover {{ background:#1a3a5c; }}
-</style>
-<div class="wrap">
-    <div class="hdr">
-        <div>
-            <div class="hdr-title">✨ Análise Competitiva de Anúncios</div>
-            <div class="hdr-sub">Comparativo inteligente de todas as empresas configuradas</div>
-        </div>
+            if subtab_ads_ativa == "comparativo_ads":
+                chave_comp = "ia_ads_comparativo"
+                if chave_comp not in st.session_state:
+                    st.session_state[chave_comp] = ""
+                comp_html = st.session_state.get(chave_comp, "").replace("\n","<br>")
+                components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>*{{margin:0;padding:0;box-sizing:border-box;}}html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}</style>
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;margin-top:8px;">
+    <div style="padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+        <div style="font-size:16px;font-weight:800;color:#1a2e4a;">✨ Análise Competitiva de Anúncios</div>
+        <div style="font-size:13px;color:#9ca3af;margin-top:2px;">Comparativo inteligente de todas as empresas configuradas</div>
     </div>
-    <div class="body">
-        {'<div>' + comp_html + '</div>' if comp_html else '<div class="empty">Clique em <b>Gerar Análise Comparativa</b> abaixo para comparar os anúncios de todas as empresas com IA.</div>'}
+    <div style="padding:22px;font-size:14px;color:#374151;line-height:1.8;min-height:80px;">
+        {'<div>' + comp_html + '</div>' if comp_html else '<div style="text-align:center;color:#9ca3af;padding:40px 0;">Clique em <b>Gerar Análise Comparativa</b> abaixo para comparar os anúncios de todas as empresas com IA.</div>'}
     </div>
-    <div class="footer">
-        <button class="btn-gerar" onclick="triggerBtn('ia_comparativo')">
+    <div style="padding:16px 22px;border-top:1px solid #f3f4f6;background:#f9fafb;">
+        <button onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='ia_comparativo'){{b.click();return;}}}}}})()"
+            style="display:inline-flex;align-items:center;gap:8px;padding:12px 28px;border:none;border-radius:10px;background:#0e2a47;font-size:15px;font-weight:700;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;">
             {'🔄 Regerar Análise' if comp_html else '⚡ Gerar Análise Comparativa'}
         </button>
     </div>
 </div>
 <script>
-function triggerBtn(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {{
-        try {{ if (frames[i].contentWindow === window) {{
-            frames[i].style.height = (h + 12) + 'px'; break;
-        }} }} catch(e) {{}}
-    }}
-}}
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
-setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
+function syncH(){{var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);var frames=window.parent.document.querySelectorAll('iframe');for(var i=0;i<frames.length;i++){{try{{if(frames[i].contentWindow===window){{frames[i].style.height=(h+8)+'px';break;}}}}catch(e){{}}}}}}
+if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH,200);setTimeout(syncH,600);
 </script>
-""", height=200, scrolling=False)
-
+""", height=100, scrolling=False)
+            else:
+                st.markdown(f"""
+                <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                            text-align:center;background:#fff;margin-top:8px;">
+                    <div style="font-size:32px;opacity:0.4;margin-bottom:10px">{icon_empty}</div>
+                    <div style="font-size:14px;color:#9ca3af;">Nenhuma análise aqui ainda.<br>
+                    Vá em <b>Empresas configuradas</b> para gerar.</div>
+                </div>
+                """, unsafe_allow_html=True)
 # ---------------------------------------------------
 # PAGINA - INSIGHTS
 # ---------------------------------------------------

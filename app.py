@@ -6646,7 +6646,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .atalho-desc {{ font-size:12px; color:#9ca3af; line-height:1.4; }}
 .atalho-card.done .atalho-desc {{ color:#15803d; font-weight:600; }}
 </style>
-    <div class="analises-bar">
+    <div class="analises-bar" style="border-top:none;">
     <div class="analises-bar-inner">
         <div class="analises-bar-left">
             <div class="analises-bar-titulo">Gerar análises</div>

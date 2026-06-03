@@ -6133,7 +6133,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 </div>
             </div>""", unsafe_allow_html=True)
 
-                # Ghost buttons para análise IA — padrão Redes
+# Ghost buttons para análise IA — padrão Redes
                 ia_analise_ghost_css = []
                 for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
                     ia_analise_ghost_css.append(f"""
@@ -6156,11 +6156,11 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     else:
                         resumo_criativos = "\n".join([
                             f"- [{a['formato']}] Plataformas: {', '.join(a.get('plataformas',[]))} | Título: {_truncar(a.get('title',''),60) or '—'}"
-                            for a in ads_f_ia[:15]
+                            for a in ads_list[:15]
                         ])
-                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
-                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
-                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
+                        n_vid = sum(1 for a in ads_list if "Vídeo" in a["formato"])
+                        n_img = sum(1 for a in ads_list if "Imagem" in a["formato"])
+                        n_car = sum(1 for a in ads_list if "Carrossel" in a["formato"])
                         _ph_ads = st.empty()
                         _render_modal_redes_ia("gerando", f"Criativos — {nome}", 40, _ph_ads)
                         try:
@@ -6208,7 +6208,7 @@ Dados dos criativos:
                     else:
                         todas_copies = "\n".join([
                             f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
-                            for a in ads_f_ia[:20]
+                            for a in ads_list[:20]
                         ])
                         _ph_ads = st.empty()
                         _render_modal_redes_ia("gerando", f"Copys — {nome}", 40, _ph_ads)
@@ -6216,7 +6216,7 @@ Dados dos criativos:
                             resp = gemini_model.generate_content(f"""Você é especialista em copywriting e marketing de resposta direta.
 Analise as COPIES (textos) dos anúncios de "{nome}" em português.
 
-Empresa: {nome} | {len(ads_f_ia)} anúncios analisados
+Empresa: {nome} | {len(ads_list)} anúncios analisados
 
 Copies coletadas:
 {todas_copies}
@@ -6258,19 +6258,19 @@ Copies coletadas:
                     else:
                         resumo = "\n".join([
                             f"- [{a['formato']}] Título: {_truncar(a.get('title',''),60) or '—'} | Copy: {_truncar(a.get('body',''),100) or '—'}"
-                            for a in ads_f_ia[:15]
+                            for a in ads_list[:15]
                         ])
-                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
-                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
-                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
-                        n_dyn = sum(1 for a in ads_f_ia if a.get("is_dynamic"))
+                        n_vid = sum(1 for a in ads_list if "Vídeo" in a["formato"])
+                        n_img = sum(1 for a in ads_list if "Imagem" in a["formato"])
+                        n_car = sum(1 for a in ads_list if "Carrossel" in a["formato"])
+                        n_dyn = sum(1 for a in ads_list if a.get("is_dynamic"))
                         _ph_ads = st.empty()
                         _render_modal_redes_ia("gerando", f"Estratégia — {nome}", 40, _ph_ads)
                         try:
                             resp = gemini_model.generate_content(f"""Você é especialista em mídia paga e marketing digital.
 Analise os anúncios de "{nome}" e gere um relatório estratégico completo em português.
 
-Empresa: {nome} | Total: {len(ads_f_ia)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis | {n_dyn} dinâmicos
+Empresa: {nome} | Total: {len(ads_list)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis | {n_dyn} dinâmicos
 
 Amostra dos anúncios:
 {resumo}
@@ -6305,7 +6305,7 @@ Amostra dos anúncios:
                             st.session_state[chave_ia_geral] = f"Erro: {ex}"
                             st.rerun()
 
-            aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
+                aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
             # ── ABA: ANÚNCIOS ─────────────────────────────────────────
             if aba_conteudo_atual == "anuncios":

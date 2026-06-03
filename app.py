@@ -3929,6 +3929,23 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
 <script>
 var RELATORIOS = {relatorios_json};
 
+function mdToHtml(txt) {{
+    if (!txt) return '';
+    return txt
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.+)$/gm, '<h3 style="font-size:14px;font-weight:800;color:#0f1f35;margin:16px 0 6px;">$1</h3>')
+        .replace(/^## (.+)$/gm,  '<h2 style="font-size:15px;font-weight:800;color:#0f1f35;margin:18px 0 8px;">$1</h2>')
+        .replace(/^# (.+)$/gm,   '<h1 style="font-size:16px;font-weight:800;color:#0f1f35;margin:20px 0 10px;">$1</h1>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+        .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0;">')
+        .replace(/^\s*[\*\-] (.+)$/gm, '<li style="margin-left:18px;margin-bottom:4px;">$1</li>')
+        .replace(/(<li.*<\/li>\n?)+/g, '<ul style="margin:8px 0;padding:0;list-style:disc;">$&</ul>')
+        .replace(/\n\n/g, '</p><p style="margin:8px 0;">')
+        .replace(/^(?!<[hul\-])/gm, '')
+        .replace(/\n/g, '<br>');
+}}
+
 function toggleCard(idx) {{
     var body = document.getElementById('body_' + idx);
     var chev = document.getElementById('chev_' + idx);
@@ -3937,10 +3954,10 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.textContent = RELATORIOS[String(idx)] || '';
+        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
         rel.dataset.loaded = '1';
     }}
-    setTimeout(ajustarAltura, 60);
+    setTimeout(syncH, 60);
 }}
 
 function remover(idx) {{

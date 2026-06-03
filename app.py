@@ -200,6 +200,7 @@ def carregar_dados_usuario(user_id: str) -> dict:
                 "ads_cache": row.get("ads_cache", {}),
                 "analises_salvas": row.get("analises_salvas", []),
                 "redes_analises_salvas": row.get("redes_analises_salvas", []),
+                "ads_analises_salvas": row.get("ads_analises_salvas", []),
             }
     except Exception:
         pass
@@ -226,6 +227,7 @@ def salvar_dados_usuario(user_id: str):
             "metricas_redes": st.session_state.metricas_redes,
             "analises_salvas": st.session_state.get("analises_salvas", []),
             "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
+            "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
         }
         supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
     except Exception as e:
@@ -4699,6 +4701,8 @@ elif st.session_state.pagina == "ads":
         st.session_state.ads_main_tab = "empresas"
     if "ads_config_empresa_selecionada" not in st.session_state:
         st.session_state.ads_config_empresa_selecionada = None
+    if "ads_analises_salvas" not in st.session_state:
+        st.session_state.ads_analises_salvas = []
 
     def safe_key(s):
         return re.sub(r"[^a-zA-Z0-9_]", "_", s)
@@ -7121,6 +7125,19 @@ Amostra dos anúncios:
 ### ⚠️ Pontos de Atenção
 ### 💡 Oportunidades Competitivas (3 ações concretas)""")
                                 st.session_state[chave_ia_geral] = resp.text
+                                import datetime as _dt_ads
+                                st.session_state.ads_analises_salvas = [
+                                    a for a in st.session_state.ads_analises_salvas
+                                    if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
+                                ]
+                                st.session_state.ads_analises_salvas.append({
+                                    "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                    "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "relatorio": resp.text,
+                                    "tipo": "estrategia",
+                                    "empresa": nome,
+                                })
+                                salvar_dados_usuario(st.session_state.user.id)
                                 st.rerun()
                             except Exception as ex:
                                 st.session_state[chave_ia_geral] = f"Erro: {ex}"
@@ -7155,6 +7172,19 @@ Dados dos criativos:
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Recomendações de Criativo (2 ações concretas)""")
                                 st.session_state[chave_ia_criativos] = resp.text
+                                import datetime as _dt_ads
+                                st.session_state.ads_analises_salvas = [
+                                    a for a in st.session_state.ads_analises_salvas
+                                    if not (a.get("tipo") == "criativos_ads" and a.get("empresa") == nome)
+                                ]
+                                st.session_state.ads_analises_salvas.append({
+                                    "titulo": f"Criativos — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                    "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "relatorio": resp.text,
+                                    "tipo": "criativos_ads",
+                                    "empresa": nome,
+                                })
+                                salvar_dados_usuario(st.session_state.user.id)
                                 st.rerun()
                             except Exception as ex:
                                 st.session_state[chave_ia_criativos] = f"Erro: {ex}"
@@ -7187,6 +7217,19 @@ Copies coletadas:
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Sugestões de Copy (2 exemplos concretos)""")
                                 st.session_state[chave_ia_copys] = resp.text
+                                import datetime as _dt_ads
+                                st.session_state.ads_analises_salvas = [
+                                    a for a in st.session_state.ads_analises_salvas
+                                    if not (a.get("tipo") == "copys_ads" and a.get("empresa") == nome)
+                                ]
+                                st.session_state.ads_analises_salvas.append({
+                                    "titulo": f"Copys — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                    "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "relatorio": resp.text,
+                                    "tipo": "copys_ads",
+                                    "empresa": nome,
+                                })
+                                salvar_dados_usuario(st.session_state.user.id)
                                 st.rerun()
                             except Exception as ex:
                                 st.session_state[chave_ia_copys] = f"Erro: {ex}"
@@ -7217,6 +7260,20 @@ CTA: {ad.get("cta","")}
 ### 🎨 Análise de Formato e Criativo
 ### 💡 Sugestões de Melhoria (2 ações concretas)""")
                                     st.session_state[chave_ind] = resp.text
+                                    import datetime as _dt_ads
+                                    st.session_state.ads_analises_salvas = [
+                                        a for a in st.session_state.ads_analises_salvas
+                                        if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
+                                    ]
+                                    st.session_state.ads_analises_salvas.append({
+                                        "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                        "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                        "relatorio": resp.text,
+                                        "tipo": "anuncio_ind",
+                                        "empresa": nome,
+                                        "ad_idx": j,
+                                    })
+                                    salvar_dados_usuario(st.session_state.user.id)
                                     st.rerun()
                                 except Exception as ex:
                                     st.session_state[chave_ind] = f"Erro: {ex}"
@@ -7502,6 +7559,19 @@ Compare os anúncios das empresas abaixo e gere uma análise competitiva complet
 ### ⚔️ Análise Competitiva
 ### 💡 Recomendações Estratégicas (3 ações concretas)""")
                         st.session_state[chave_comp] = resp.text
+                        import datetime as _dt_ads
+                        st.session_state.ads_analises_salvas = [
+                            a for a in st.session_state.ads_analises_salvas
+                            if a.get("tipo") != "comparativo_ads"
+                        ]
+                        st.session_state.ads_analises_salvas.append({
+                            "titulo": f"Comparativo Geral — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "relatorio": resp.text,
+                            "tipo": "comparativo_ads",
+                            "empresa": "Todas",
+                        })
+                        salvar_dados_usuario(st.session_state.user.id)
                         st.rerun()
                     except Exception as ex:
                         st.session_state[chave_comp] = f"Erro: {ex}"

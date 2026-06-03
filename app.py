@@ -7682,7 +7682,11 @@ function syncH(){{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var frames=window.parent.document.querySelectorAll('iframe');
     for(var i=0;i<frames.length;i++){{
-        try{{if(frames[i].contentWindow===window){{frames[i].style.height=(h+8)+'px';break;}}}}catch(e){{}}
+        try{{if(frames[i].contentWindow===window){{
+            frames[i].style.height=(h+8)+'px';
+            frames[i].style.marginTop='-57px';
+            break;
+        }}}}catch(e){{}}
     }}
 }}
 if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
@@ -7696,7 +7700,6 @@ setTimeout(syncH,200);setTimeout(syncH,600);
             var c=document.getElementById('ac_'+m[1]);
             var r=document.getElementById('ar_'+m[1]);
             if(b)b.style.display='block';
-            iframes[i].style.marginTop = '-57px';
             if(c)c.style.transform='rotate(180deg)';
             if(r&&!r.dataset.loaded){{r.textContent=RELS[m[1]]||'';r.dataset.loaded='1';}}
             syncH();

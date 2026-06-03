@@ -6234,9 +6234,10 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 _insight_chips.append(("🖼️", f"{_n_carrossel_ins} carrossel", "#9333ea", "#faf5ff", "#e9d5ff"))
 
             _chips_html = "".join([
-                f'<div style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;'
+                f'<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
                 f'color:{cor};background:{bg};border:1px solid {brd};padding:5px 12px;border-radius:20px;white-space:nowrap;">'
-                f'{icon} {label}</div>'
+                f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{cor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                f' {label}</div>'
                 for icon, label, cor, bg, brd in _insight_chips
             ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
 
@@ -6279,10 +6280,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                             {_chips_html}
                         </div>
                         <div style='flex-shrink:0;'>
-                            <button onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()" style='display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;background:#3b82f6;font-size:14px;font-weight:600;color:#ffffff;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap;'>
-                                Análise completa
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                            </button>
+                            <a href='javascript:void(0)'
+                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
+                               style='display:inline-flex;align-items:center;gap:8px;background:#3b82f6;color:#fff;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap;transition:background 0.15s;font-family:DM Sans,sans-serif;'
+                               onmouseover="this.style.background='#2563eb'"
+                               onmouseout="this.style.background='#3b82f6'">
+                                Análise completa dos anúncios →
+                            </a>
                         </div>
                     </div>
                 </div>

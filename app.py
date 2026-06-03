@@ -7015,8 +7015,6 @@ function toggleDebug(uid) {{
     setTimeout(syncHeight, 50);
 }}
 function analisarAd(uid, j) {{
-    var btn = document.getElementById('ia_ads_btn_' + uid);
-    if (btn) {{ btn.textContent = 'Analisando…'; btn.style.opacity = '0.6'; btn.style.pointerEvents = 'none'; }}
     var label = 'ia_ind_{sk}_' + j;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{

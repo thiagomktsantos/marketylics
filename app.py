@@ -10784,8 +10784,9 @@ function ajustarAltura() {{
     for (var i = 0; i < iframes.length; i++) {{
         try {{
             if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 8) + 'px'; break;
+                iframes[i].style.height = (h + 8) + 'px';
                 iframes[i].style.marginTop = '-50px';
+                break;
             }}
         }} catch(e) {{}}
     }}

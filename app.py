@@ -10578,7 +10578,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         try {{
             if (iframes[i].contentWindow === window) {{
                 iframes[i].style.height = '52px';
-                iframes[i].style.marginBottom = '-8px';
                 
                 var prev = iframes[i - 1];
                 var prevRect = prev ? prev.getBoundingClientRect() : null;

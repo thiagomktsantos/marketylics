@@ -6488,14 +6488,6 @@ Amostra dos anúncios:
                 </div>
             </div>""", unsafe_allow_html=True)
 
-            st.markdown("""
-            <style>
-            .stElementContainer:has(+ .stElementContainer iframe) {
-                margin-bottom: -24px !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-
             for j, ad_ind in enumerate(ads_list):
                 if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):
                     chave_ind = f"ia_ad_result_{sk}_{j}"

@@ -10692,7 +10692,7 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
 }}
 .card-chevron.open {{ transform:rotate(180deg); color:#3a9fd6; }}
 .card-top:hover .card-chevron {{ color:#9ca3af; }}
-.card-body {{ padding:16px; background:#fafbfc; border-top:1px solid #f3f4f6; }}
+.card-body {{ border-top:1px solid #f3f4f6; }}
 .card-relatorio {{
     font-size:13px; color:#374151; line-height:1.8;
     overflow-y:auto;padding:14px 16px;background:#fff;

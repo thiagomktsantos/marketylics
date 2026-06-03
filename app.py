@@ -7542,34 +7542,120 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
             st.info("Busque anúncios primeiro na aba **Empresas configuradas** para ver análises aqui.")
             st.stop()
 
-        # Exibir análises individuais salvas
+        # Exibir análises individuais salvas com abas por tipo
         analises_ads = st.session_state.get("ads_analises_salvas", [])
-        if analises_ads:
-            import json as _json_analises
-            relatorios_ind = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
-            relatorios_ind_json = _json_analises.dumps(relatorios_ind, ensure_ascii=False)
-            icons_map_ads = {
-                "criativos_ads": "🎨", "copys_ads": "✍️",
-                "estrategia": "📊", "comparativo_ads": "🏆"
-            }
-            cards_ind_html = ""
-            for i, a in reversed(list(enumerate(analises_ads))):
-                icon_a = icons_map_ads.get(a.get("tipo",""), "📋")
+
+        if "ads_analise_subtab" not in st.session_state:
+            st.session_state.ads_analise_subtab = "criativos_ads"
+
+        subtabs_ads_def = [
+            ("criativos_ads",   "🎨", "Criativos"),
+            ("copys_ads",       "✍️", "Copys"),
+            ("estrategia",      "📊", "Estratégia"),
+            ("comparativo_ads", "🏆", "Comparativo"),
+        ]
+
+        # Ghost buttons para subtabs
+        ghost_subtabs_css = ", ".join([
+            f".st-key-btn_ads_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_ads_analise_sub_{stk})"
+            for stk, _, _ in subtabs_ads_def
+        ])
+        st.markdown(f"""
+        <style>
+        {ghost_subtabs_css} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        for stk, _, _ in subtabs_ads_def:
+            if st.button(f"ads_analise_sub_{stk}", key=f"btn_ads_analise_sub_{stk}"):
+                st.session_state.ads_analise_subtab = stk
+                st.rerun()
+
+        subtab_ads_ativa = st.session_state.ads_analise_subtab
+        contagens_ads = {
+            stk: len([a for a in analises_ads if a.get("tipo") == stk])
+            for stk, _, _ in subtabs_ads_def
+        }
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.tabs-wrap {{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:100%; }}
+.tab-pill {{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 8px; border-radius:10px; cursor:pointer;
+    border:1.5px solid #e5e7eb; background:#fff;
+    font-size:13px; font-weight:600; color:#6b7280;
+    transition:all 0.15s; white-space:nowrap;
+    font-family:'DM Sans',sans-serif; line-height:1; width:100%;
+}}
+.tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.tab-badge {{
+    font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
+    background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
+}}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+</style>
+<div class="tabs-wrap">
+{''.join([
+    f'''<a class="tab-pill {'active' if subtab_ads_ativa == stk else ''}"
+        href="javascript:void(0)"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='ads_analise_sub_{stk}'){{b.click();return;}}}}}})()"
+    >{icon} {lbl} <span class="tab-badge {'has' if contagens_ads.get(stk,0) > 0 else ''}">{contagens_ads.get(stk,0)}</span></a>'''
+    for stk, icon, lbl in subtabs_ads_def
+])}
+</div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '52px';
+            iframes[i].style.marginTop = '8px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=52, scrolling=False)
+
+        lista_ads_ativa = [a for a in analises_ads if a.get("tipo") == subtab_ads_ativa]
+        import json as _json_analises
+        relatorios_ads_ind = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
+        relatorios_ads_json = _json_analises.dumps(relatorios_ads_ind, ensure_ascii=False)
+
+        icons_ads = {"criativos_ads":"🎨","copys_ads":"✍️","estrategia":"📊","comparativo_ads":"🏆"}
+
+        if lista_ads_ativa:
+            cards_ads_html = ""
+            for a in reversed(lista_ads_ativa):
+                idx_real = analises_ads.index(a)
+                icon_a   = icons_ads.get(a.get("tipo",""), "📋")
                 titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                cards_ind_html += f"""
+                nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+                cards_ads_html += f"""
 <div style="border-bottom:1px solid #f3f4f6;background:#fff;">
     <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background 0.12s;"
-         onclick="(function(){{var b=document.getElementById('abody_{i}');var c=document.getElementById('achev_{i}');var r=document.getElementById('arel_{i}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.textContent=RELATORIOS_IND['{i}']||'';r.dataset.loaded='1';}}setTimeout(syncH,60);}})()">
+         onclick="(function(){{var b=document.getElementById('ab_{idx_real}');var c=document.getElementById('ac_{idx_real}');var r=document.getElementById('ar_{idx_real}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.textContent=RELS['{idx_real}']||'';r.dataset.loaded='1';}}setTimeout(syncH,60);}})()">
         <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
         <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
-        <span id="achev_{i}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
+        <span id="ac_{idx_real}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </span>
     </div>
-    <div id="abody_{i}" style="display:none;border-top:1px solid #f3f4f6;">
-        <div id="arel_{i}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;white-space:pre-wrap;word-break:break-word;"></div>
+    <div id="ab_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div id="ar_{idx_real}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;white-space:pre-wrap;word-break:break-word;"></div>
         <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
-            <button onclick="(function(){{var c=RELATORIOS_IND['{i}']||'';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:'text/plain'}}));a.download='analise_{i}.txt';a.click();}})()"
+            <button onclick="(function(){{var c=RELS['{idx_real}']||'';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:'text/plain'}}));a.download='{nome_arq}.txt';a.click();}})()"
                 style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;color:#374151;cursor:pointer;font-family:'DM Sans',sans-serif;">
                 ⬇️ Baixar .txt
             </button>
@@ -7584,11 +7670,11 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
 body{{padding-bottom:8px;}}
 </style>
-<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:16px;">
-    {cards_ind_html}
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_ads_html}
 </div>
 <script>
-var RELATORIOS_IND = {relatorios_ind_json};
+var RELS = {relatorios_ads_json};
 function syncH(){{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var frames=window.parent.document.querySelectorAll('iframe');
@@ -7598,8 +7684,33 @@ function syncH(){{
 }}
 if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH,200);setTimeout(syncH,600);
+(function(){{
+    var cards=document.querySelectorAll('[id^="ab_"]');
+    if(cards.length===1){{
+        var m=cards[0].id.match(/ab_(\d+)/);
+        if(m){{setTimeout(function(){{
+            var b=document.getElementById('ab_'+m[1]);
+            var c=document.getElementById('ac_'+m[1]);
+            var r=document.getElementById('ar_'+m[1]);
+            if(b)b.style.display='block';
+            if(c)c.style.transform='rotate(180deg)';
+            if(r&&!r.dataset.loaded){{r.textContent=RELS[m[1]]||'';r.dataset.loaded='1';}}
+            syncH();
+        }},150);}}
+    }}
+}})();
 </script>
 """, height=100, scrolling=False)
+        else:
+            icon_empty = icons_ads.get(subtab_ads_ativa, "📋")
+            st.markdown(f"""
+            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                        text-align:center;background:#fff;margin-top:8px;">
+                <div style="font-size:32px;opacity:0.4;margin-bottom:10px">{icon_empty}</div>
+                <div style="font-size:14px;color:#9ca3af;">Nenhuma análise aqui ainda.<br>
+                Vá em <b>Empresas configuradas</b> para gerar.</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         chave_comp = "ia_ads_comparativo"
         if chave_comp not in st.session_state:

@@ -6264,7 +6264,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     </div>
                 </div>
                 <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>
-                    <div style='display:grid;grid-template-columns:180px 1fr auto;gap:20px;align-items:center;'>
+                    <div style='display:flex;gap:20px;align-items:center;'>
                         <div style='display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;'>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
                                 <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"

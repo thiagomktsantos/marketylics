@@ -6690,14 +6690,14 @@ function triggerBtn(label) {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '144px';
+            iframes[i].style.height = '145px';
             iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=144, scrolling=False)
+""", height=145, scrolling=False)
 
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])

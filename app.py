@@ -10810,34 +10810,27 @@ function ajustarAltura() {{
     }}
 }}
 
+function tryAutoExpand() {{
+    var cards = document.querySelectorAll('.analise-card');
+    if (cards.length === 1) {{
+        var idMatch = cards[0].id.match(/card_(\d+)/);
+        if (idMatch) {{
+            toggleCard(parseInt(idMatch[1]));
+            setTimeout(ajustarAltura, 100);
+            setTimeout(ajustarAltura, 400);
+        }}
+    }}
+}}
+
 var ro = new ResizeObserver(ajustarAltura);
 ro.observe(document.body);
-window.addEventListener('load', ajustarAltura);
+window.addEventListener('load', function() {{
+    ajustarAltura();
+    setTimeout(tryAutoExpand, 200);
+}});
 setTimeout(ajustarAltura, 200);
 setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
-
-// Auto-expand quando só há 1 análise
-(function() {{
-    function tryAutoExpand() {{
-        var cards = document.querySelectorAll('.analise-card');
-        if (cards.length === 1) {{
-            var singleCard = cards[0];
-            var idMatch = singleCard.id.match(/card_(\d+)/);
-            if (idMatch) {{
-                toggleCard(parseInt(idMatch[1]));
-            }}
-        }}
-    }}
-    
-    if (document.readyState === 'complete') {{
-        setTimeout(tryAutoExpand, 100);
-    }} else {{
-        window.addEventListener('load', function() {{
-            setTimeout(tryAutoExpand, 100);
-        }});
-    }}
-}})();
 </script>"""
 
         components.html(html_conteudo, height=100, scrolling=False)

@@ -6102,6 +6102,9 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             cor_av   = get_minha_empresa_color() if is_minha else get_concorrente_color(emp_item["idx"])
             avatar   = gerar_avatar(nome)
             sk       = safe_key(nome)
+            chave_ia_criativos = f"ia_ads_criativos_{sk}"
+            chave_ia_copys     = f"ia_ads_copys_{sk}"
+            chave_ia_geral     = f"ia_ads_geral_{sk}"
 
             if emp_item["tipo"] == "minha":
                 configured_page = emp.get("ads_id","").strip()

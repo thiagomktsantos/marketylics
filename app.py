@@ -6262,18 +6262,28 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         {lib_btn_top}
                     </div>
                 </div>
-                <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
-                    <div style='display:flex;align-items:center;gap:8px;flex-shrink:0;'>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
-                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                                  fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights</span>
-                        <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;'>BETA</span>
-                    </div>
-                    <div style='width:1px;height:22px;background:#e5e7eb;flex-shrink:0;'></div>
-                    <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;'>
-                        {_chips_html}
+                <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>
+                    <div style='display:grid;grid-template-columns:180px 1fr auto;gap:20px;align-items:center;'>
+                        <div style='display:flex;flex-direction:column;gap:6px;'>
+                            <div style='display:flex;align-items:center;gap:8px;'>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+                                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                                          fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights de IA</span>
+                                <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;'>BETA</span>
+                            </div>
+                            <div style='font-size:13px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
+                        </div>
+                        <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                            {_chips_html}
+                        </div>
+                        <div style='flex-shrink:0;'>
+                            <button onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()" style='display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;background:#3b82f6;font-size:14px;font-weight:600;color:#ffffff;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap;'>
+                                Análise completa
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)

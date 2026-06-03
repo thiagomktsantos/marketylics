@@ -7814,10 +7814,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
                 cards_ads_html += f"""
 <div style="border-bottom:1px solid #f3f4f6;background:#fff;">
-    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background 0.12s;"
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background 0.12s;background-color:#24658e;"
          onclick="(function(){{var b=document.getElementById('ab_{idx_real}');var c=document.getElementById('ac_{idx_real}');var r=document.getElementById('ar_{idx_real}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.textContent=RELS['{idx_real}']||'';r.dataset.loaded='1';}}setTimeout(syncH,60);}})()">
         <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
-        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
         <span id="ac_{idx_real}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </span>

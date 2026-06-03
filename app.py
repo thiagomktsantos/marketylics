@@ -10665,14 +10665,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html {{ background:transparent; font-family:'DM Sans',sans-serif; -webkit-font-smoothing:antialiased; }}
-body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
+body {{ background:transparent; overflow:visible;padding-top:0 !important;margin-top:0 !important; }}
 .analise-card {{
     border-bottom:1px solid #f3f4f6;
     background:#fff;
 }}
 .analise-card:last-child {{ border-bottom:none; }}
 .cards-wrap {{
-    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;
+    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;margin-top:0;
 }}
 .card-top {{
     display:flex; align-items:center; gap:12px;

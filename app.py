@@ -6175,6 +6175,67 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             page_display = configured_page if configured_page else "—"
             lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Meta Ad Library</a>' if lib_url else ""
 
+                        # ── Calcular insights rápidos dos anúncios ──────────────
+            _palavras_beneficio = [
+                "resultado", "transforma", "melhora", "aumenta", "economiza",
+                "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
+                "benefício", "vantagem", "desconto", "grátis", "gratuito", "oferta",
+                "promoção", "exclusivo", "garanta", "aproveite",
+            ]
+            _palavras_prova = [
+                "cliente", "avaliação", "depoimento", "aprovado", "testado",
+                "recomend", "anos de", "cases", "resultado real", "história",
+                "prova", "satisf", "mais de", "mil cliente", "atendemos",
+                "confiança", "parceiro",
+            ]
+            _palavras_urgencia = [
+                "últimas", "último", "vagas", "hoje", "agora", "limitado",
+                "por tempo", "não perca", "corra", "só até", "encerra",
+                "prazo", "urgente", "restam",
+            ]
+            _palavras_cta = [
+                "clique", "acesse", "saiba mais", "fale conosco", "solicite",
+                "cadastre", "entre em contato", "whatsapp", "ligue", "agende",
+                "compre", "adquira", "inscreva",
+            ]
+
+            def _conta_tipo(lista, palavras):
+                count = 0
+                for _a in lista:
+                    _txt = ((_a.get("body") or "") + " " + (_a.get("title") or "")).lower()
+                    if any(p in _txt for p in palavras):
+                        count += 1
+                return count
+
+            _n_beneficio = _conta_tipo(ads_list, _palavras_beneficio)
+            _n_prova     = _conta_tipo(ads_list, _palavras_prova)
+            _n_urgencia  = _conta_tipo(ads_list, _palavras_urgencia)
+            _n_cta       = _conta_tipo(ads_list, _palavras_cta)
+            _n_video_ins = sum(1 for _a in ads_list if "Vídeo" in _a.get("formato", ""))
+            _n_carrossel_ins = sum(1 for _a in ads_list if "Carrossel" in _a.get("formato", ""))
+
+            # Monta chips de insights
+            _insight_chips = []
+            if _n_beneficio > 0:
+                _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
+            if _n_prova > 0:
+                _insight_chips.append(("⭐", f"{_n_prova} com prova social", "#1d4ed8", "#eff6ff", "#bfdbfe"))
+            if _n_urgencia > 0:
+                _insight_chips.append(("⚡", f"{_n_urgencia} com urgência", "#92400e", "#fffbeb", "#fde68a"))
+            if _n_cta > 0:
+                _insight_chips.append(("📣", f"{_n_cta} com CTA direto", "#6d28d9", "#f5f3ff", "#ddd6fe"))
+            if _n_video_ins > 0:
+                _insight_chips.append(("🎬", f"{_n_video_ins} em vídeo", "#0e7490", "#ecfeff", "#a5f3fc"))
+            if _n_carrossel_ins > 0:
+                _insight_chips.append(("🖼️", f"{_n_carrossel_ins} carrossel", "#9333ea", "#faf5ff", "#e9d5ff"))
+
+            _chips_html = "".join([
+                f'<div style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;'
+                f'color:{cor};background:{bg};border:1px solid {brd};padding:5px 12px;border-radius:20px;white-space:nowrap;">'
+                f'{icon} {label}</div>'
+                for icon, label, cor, bg, brd in _insight_chips
+            ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
+
             st.markdown(f"""
             <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-45px;'>
                 <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
@@ -6197,8 +6258,21 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         {lib_btn_top}
                     </div>
                 </div>
+                <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:14px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
+                    <div style='display:flex;align-items:center;gap:8px;flex-shrink:0;'>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0">
+                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                                  fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights</span>
+                        <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;'>BETA</span>
+                    </div>
+                    <div style='width:1px;height:22px;background:#e5e7eb;flex-shrink:0;'></div>
+                    <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;'>
+                        {_chips_html}
+                    </div>
+                </div>
             </div>""", unsafe_allow_html=True)
-
             # Ghost buttons para análise IA — padrão Redes
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:

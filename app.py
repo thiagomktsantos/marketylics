@@ -10702,7 +10702,7 @@ body {{ background:transparent; overflow:visible;padding-top:0 !important;margin
 .card-relatorio {{
     font-size:13px; color:#374151; line-height:1.8;
     overflow-y:auto;padding:14px 16px;background:#fff;
-    margin-bottom:12px; word-break:break-word;
+    margin-bottom:12px; white-space:pre-wrap; word-break:break-word;
 }}
 .card-acoes {{ display:flex; gap:8px;background-color:#b2c5d7;padding:10px; }}
 .btn-dl {{
@@ -10745,17 +10745,6 @@ body {{ background:transparent; overflow:visible;padding-top:0 !important;margin
 <script>
 var RELATORIOS = {relatorios_json};
 
-function mdToHtml(md) {{
-    if (!md) return '';
-    return md
-        .replace(/### (.+)/g, '<h3 style="font-size:13px;font-weight:800;color:#111827;margin:14px 0 6px;">$1</h3>')
-        .replace(/## (.+)/g, '<h2 style="font-size:14px;font-weight:800;color:#111827;margin:14px 0 6px;">$1</h2>')
-        .replace(/# (.+)/g, '<h2 style="font-size:14px;font-weight:800;color:#111827;margin:14px 0 6px;">$1</h2>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n\n/g, '<br><br>')
-        .replace(/\n/g, '<br>');
-}}
-
 function toggleCard(idx) {{
     var body = document.getElementById('body_' + idx);
     var chev = document.getElementById('chev_' + idx);
@@ -10764,7 +10753,7 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
+        rel.textContent = RELATORIOS[String(idx)] || '';
         rel.dataset.loaded = '1';
     }}
     setTimeout(ajustarAltura, 60);
@@ -10809,31 +10798,24 @@ function ajustarAltura() {{
     }}
 }}
 
-function tryAutoExpand() {{
-    var cards = document.querySelectorAll('.analise-card');
-    if (cards.length === 1) {{
-        var idMatch = cards[0].id.match(/card_(\d+)/);
-        if (idMatch) {{
-            var idx = parseInt(idMatch[1]);
-            var rel = document.getElementById('rel_' + idx);
-            if (rel && RELATORIOS[String(idx)]) {{
-                toggleCard(idx);
-                setTimeout(ajustarAltura, 100);
-                setTimeout(ajustarAltura, 500);
-            }} else {{
-                setTimeout(tryAutoExpand, 100);
-            }}
-        }}
-    }}
-}}
-
 var ro = new ResizeObserver(ajustarAltura);
 ro.observe(document.body);
-ajustarAltura();
+window.addEventListener('load', ajustarAltura);
 setTimeout(ajustarAltura, 200);
 setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
-setTimeout(tryAutoExpand, 50);
+
+// Auto-expand quando só há 1 análise
+(function() {{
+    var cards = document.querySelectorAll('.analise-card');
+    if (cards.length === 1) {{
+        var singleCard = cards[0];
+        var idMatch = singleCard.id.match(/card_(\d+)/);
+        if (idMatch) {{
+            setTimeout(function() {{ toggleCard(parseInt(idMatch[1])); }}, 150);
+        }}
+    }}
+}})();
 </script>"""
 
         components.html(html_conteudo, height=100, scrolling=False)

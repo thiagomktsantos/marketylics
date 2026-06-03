@@ -6600,8 +6600,8 @@ setTimeout(ajustarAltura,100);
             </svg>
         </div>
     </div>
-    <div style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.6);
-                color:#fff;font-size:10px;font-weight:700;padding:2px 7px;
+    <div style="position:absolute;bottom:7px;right:7px;background:#ffffff;
+                color:#000000;font-size:10px;font-weight:700;padding:2px 7px;
                 border-radius:4px;pointer-events:none">▶ VER VÍDEO</div>
 </div>
 <script>
@@ -6657,7 +6657,7 @@ setTimeout(ajustarAltura,100);
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
         <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
-    <div style="position:absolute;top:8px;right:8px;background:#000;border-radius:6px;padding:3px 7px;font-size:11px;color:#fff;font-weight:600;pointer-events:none;">🔍 Ver criativos</div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;">🔍 VER CRIATIVOS</div>
 </div>
 <script>
 (function(){{

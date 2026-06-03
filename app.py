@@ -10517,27 +10517,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             ("comparativo",  "🏆", "Comparativo"),
         ]
 
-        # Ghost buttons — CSS único para todos de uma vez
-        ghost_selectors = ", ".join([
-            f".st-key-btn_analise_subtab_{stk}, .stElementContainer:has(.st-key-btn_analise_subtab_{stk})"
-            for stk, _, _ in subtabs_def
-        ])
-        st.markdown(f"""
-        <style>
-        {ghost_selectors} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-
-        for stk, _, _ in subtabs_def:
-            if st.button(f"analise_subtab_{stk}", key=f"btn_analise_subtab_{stk}"):
-                st.session_state.redes_analise_subtab = stk
-                st.rerun()
-
         subtab_analise = st.session_state.redes_analise_subtab
 
         # Contagens por tipo
@@ -10606,6 +10585,27 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=52, scrolling=False)
+
+        # Ghost buttons — CSS único para todos de uma vez
+        ghost_selectors = ", ".join([
+            f".st-key-btn_analise_subtab_{stk}, .stElementContainer:has(.st-key-btn_analise_subtab_{stk})"
+            for stk, _, _ in subtabs_def
+        ])
+        st.markdown(f"""
+        <style>
+        {ghost_selectors} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        for stk, _, _ in subtabs_def:
+            if st.button(f"analise_subtab_{stk}", key=f"btn_analise_subtab_{stk}"):
+                st.session_state.redes_analise_subtab = stk
+                st.rerun()
 
         # ── Conteúdo da sub-aba ativa ───────────────────────────────
         lista_ativa  = por_tipo.get(subtab_analise, [])

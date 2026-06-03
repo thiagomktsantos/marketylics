@@ -10815,22 +10815,26 @@ function tryAutoExpand() {{
     if (cards.length === 1) {{
         var idMatch = cards[0].id.match(/card_(\d+)/);
         if (idMatch) {{
-            toggleCard(parseInt(idMatch[1]));
-            setTimeout(ajustarAltura, 100);
-            setTimeout(ajustarAltura, 400);
+            var idx = parseInt(idMatch[1]);
+            var rel = document.getElementById('rel_' + idx);
+            if (rel && RELATORIOS[String(idx)]) {{
+                toggleCard(idx);
+                setTimeout(ajustarAltura, 100);
+                setTimeout(ajustarAltura, 500);
+            }} else {{
+                setTimeout(tryAutoExpand, 100);
+            }}
         }}
     }}
 }}
 
 var ro = new ResizeObserver(ajustarAltura);
 ro.observe(document.body);
-window.addEventListener('load', function() {{
-    ajustarAltura();
-    setTimeout(tryAutoExpand, 200);
-}});
+ajustarAltura();
 setTimeout(ajustarAltura, 200);
 setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
+setTimeout(tryAutoExpand, 50);
 </script>"""
 
         components.html(html_conteudo, height=100, scrolling=False)

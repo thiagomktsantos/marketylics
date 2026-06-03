@@ -10330,15 +10330,17 @@ Seja direto e objetivo.
     # ABA: ANÁLISE DE IA — Comparativo geral
     # ══════════════════════════════════════════════════════════════════
  
-elif main_tab == "analise":
+    elif main_tab == "analise":
 
         import json as _json_redes
         import datetime as _dt_redes
 
         analises_redes = st.session_state.get("redes_analises_salvas", [])
 
+        # Marcar como vistas
         st.session_state.redes_analise_vistas = len(analises_redes)
 
+        # Ghost buttons para gerar análises ausentes
         tipos_pendentes = {
             "comparativo": not any(a.get("tipo") == "comparativo" for a in analises_redes),
         }
@@ -10350,6 +10352,7 @@ elif main_tab == "analise":
                     a.get("tipo") == tipo and a.get("perfil") == h for a in analises_redes
                 )
 
+       # Ghost button comparativo
         ghost_comp_key = "btn_redes_comp_geral"
         st.markdown(f"""
         <style>
@@ -10428,6 +10431,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     except Exception as e:
                         st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
 
+        # Separar por tipo para exibição
         por_tipo = {
             "bio":         [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "bio"],
             "postagem":    [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "postagem"],
@@ -10438,7 +10442,69 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         }
 
         relatorios_js = {str(i): a.get("relatorio", "") for i, a in enumerate(analises_redes)}
+        relatorios_json = _json_redes.dumps(relatorios_js, ensure_ascii=False)
 
+        def _card_redes(idx_real, analise):
+            titulo = analise.get("titulo", "—")
+            tipo   = analise.get("tipo", "")
+            icons  = {"bio": "👤", "postagem": "📸", "criativos": "🎨", "copy": "✍️", "geral_perfil": "📊", "comparativo": "🏆"}
+            icon   = icons.get(tipo, "📋")
+            nome_arquivo = titulo.replace(" ", "_").replace("/","_").replace("(","").replace(")","").replace(".","")
+            return f"""
+<div class="analise-card" id="card_{idx_real}">
+    <div class="card-top" onclick="toggleCard({idx_real})">
+        <div class="card-icon-wrap">{icon}</div>
+        <div class="card-info">
+            <div class="card-titulo">{titulo}</div>
+        </div>
+        <div class="card-chevron" id="chev_{idx_real}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+    </div>
+    <div class="card-body" id="body_{idx_real}" style="display:none">
+        <div class="card-relatorio" id="rel_{idx_real}"></div>
+        <div class="card-acoes">
+            <button class="btn-dl" onclick="baixar({idx_real}, '{nome_arquivo}')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar .txt
+            </button>
+            <button class="btn-rm" onclick="remover({idx_real})">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                Remover
+            </button>
+        </div>
+    </div>
+</div>"""
+
+        def _secao_redes(titulo_sec, icon_sec, lista, tipo_sec, btn_label=None, btn_trigger=None):
+            items_html = "".join(_card_redes(i, a) for i, a in reversed(lista)) if lista else ""
+            empty_html = ""
+            if not lista:
+                if btn_label and btn_trigger:
+                    empty_html = f"""
+<div class="empty-state">
+    <div class="empty-icon">{icon_sec}</div>
+    <div class="empty-txt">Nenhuma análise de {titulo_sec.lower()} ainda.</div>
+    <button class="btn-gerar-vazio" onclick="triggerBtn('{btn_trigger}')">{btn_label}</button>
+</div>"""
+                else:
+                    empty_html = f"""
+<div class="empty-state">
+    <div class="empty-icon">{icon_sec}</div>
+    <div class="empty-txt">Nenhuma análise de {titulo_sec.lower()} ainda.<br>Vá em <b>Perfis configurados</b> para gerar.</div>
+</div>"""
+            return f"""
+<div class="secao">
+    <div class="secao-header">
+        <div class="secao-icon-lbl">{icon_sec}</div>
+        <div class="secao-titulo">{titulo_sec}</div>
+        {'<button class="btn-regerar" onclick="triggerBtn(\'' + btn_trigger + '\')">' + btn_label + '</button>' if btn_label and btn_trigger and lista else ''}
+        <div class="secao-count {'has' if lista else ''}">{len(lista)}</div>
+    </div>
+    {'<div class="secao-cards">' + items_html + '</div>' if lista else empty_html}
+</div>"""
+
+        # ── Estado da sub-aba ativa ─────────────────────────────────
         if "redes_analise_subtab" not in st.session_state:
             st.session_state.redes_analise_subtab = "bio"
 
@@ -10452,7 +10518,15 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         ]
 
         subtab_analise = st.session_state.redes_analise_subtab
+
+        # Contagens por tipo
         contagens = {stk: len(por_tipo.get(stk, [])) for stk, _, _ in subtabs_def}
+
+        # ── Barra de abas ───────────────────────────────────────────
+        tabs_items_js = "[" + ",".join([
+            f'{{key:"{stk}",icon:"{icon}",label:"{lbl}",count:{contagens.get(stk,0)}}}'
+            for stk, icon, lbl in subtabs_def
+        ]) + "]"
 
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -10504,6 +10578,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         try {{
             if (iframes[i].contentWindow === window) {{
                 iframes[i].style.height = '52px';
+                
                 var prev = iframes[i - 1];
                 var prevRect = prev ? prev.getBoundingClientRect() : null;
                 var thisRect = iframes[i].getBoundingClientRect();
@@ -10517,6 +10592,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </script>
 """, height=52, scrolling=False)
 
+        # ── Conteúdo da sub-aba ativa ───────────────────────────────
         lista_ativa  = por_tipo.get(subtab_analise, [])
         icons_map    = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
         labels_map   = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
@@ -10538,6 +10614,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     </button>
 </div>"""
 
+        relatorios_js = {str(i): a.get("relatorio", "") for i, a in enumerate(analises_redes)}
         import json as _json_redes2
         relatorios_json = _json_redes2.dumps(relatorios_js, ensure_ascii=False)
 
@@ -10594,15 +10671,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html {{ background:transparent; font-family:'DM Sans',sans-serif; -webkit-font-smoothing:antialiased; }}
-body {{ background:transparent; overflow:visible; padding-top:0 !important; margin-top:0 !important; }}
-
+body {{ background:transparent; overflow:visible;padding-top:0 !important;margin-top:0 !important; }}
 .analise-card {{
     border-bottom:1px solid #f3f4f6;
     background:#fff;
 }}
 .analise-card:last-child {{ border-bottom:none; }}
 .cards-wrap {{
-    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; margin-top:0;
+    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;margin-top:0;
 }}
 .card-top {{
     display:flex; align-items:center; gap:12px;
@@ -10623,47 +10699,12 @@ body {{ background:transparent; overflow:visible; padding-top:0 !important; marg
 .card-chevron.open {{ transform:rotate(180deg); color:#3a9fd6; }}
 .card-top:hover .card-chevron {{ color:#9ca3af; }}
 .card-body {{ border-top:1px solid #f3f4f6; }}
-
-/* ── Markdown renderizado ── */
 .card-relatorio {{
-    font-size:14px; color:#374151; line-height:1.85;
-    overflow-y:auto; padding:20px 24px; background:#fff;
-    margin-bottom:0; word-break:break-word;
+    font-size:13px; color:#374151; line-height:1.8;
+    overflow-y:auto;padding:14px 16px;background:#fff;
+    margin-bottom:12px; white-space:pre-wrap; word-break:break-word;
 }}
-.card-relatorio h3 {{
-    font-size:15px; font-weight:800; color:#0f1f35;
-    margin: 20px 0 8px; padding-bottom:6px;
-    border-bottom:2px solid #e5e7eb;
-    letter-spacing:-0.2px;
-}}
-.card-relatorio h3:first-child {{ margin-top:0; }}
-.card-relatorio h4 {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
-    margin: 14px 0 6px;
-}}
-.card-relatorio p {{
-    margin: 0 0 10px; color:#374151;
-}}
-.card-relatorio ul, .card-relatorio ol {{
-    padding-left:20px; margin: 6px 0 12px;
-}}
-.card-relatorio li {{
-    margin-bottom:5px; color:#374151; line-height:1.7;
-}}
-.card-relatorio strong {{
-    font-weight:700; color:#111827;
-}}
-.card-relatorio em {{
-    font-style:italic; color:#6b7280;
-}}
-.card-relatorio hr {{
-    border:none; border-top:1px solid #e5e7eb; margin:16px 0;
-}}
-
-.card-acoes {{
-    display:flex; gap:8px; background-color:#f1f5f9;
-    padding:10px 16px; border-top:1px solid #e5e7eb;
-}}
+.card-acoes {{ display:flex; gap:8px;background-color:#b2c5d7;padding:10px; }}
 .btn-dl {{
     flex:1; padding:9px 14px; border-radius:8px;
     border:1px solid #e5e7eb; background:#fff;
@@ -10704,94 +10745,6 @@ body {{ background:transparent; overflow:visible; padding-top:0 !important; marg
 <script>
 var RELATORIOS = {relatorios_json};
 
-// ── Conversor de Markdown → HTML ──────────────────────────────────
-function markdownToHtml(md) {{
-    if (!md) return '';
-    var lines = md.split('\\n');
-    var html = '';
-    var inList = false;
-    var listType = '';
-
-    for (var i = 0; i < lines.length; i++) {{
-        var line = lines[i];
-
-        // Títulos ### e ####
-        if (/^####\\s/.test(line)) {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            html += '<h4>' + inlineFormat(line.replace(/^####\\s*/, '')) + '</h4>';
-            continue;
-        }}
-        if (/^###\\s/.test(line)) {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            html += '<h3>' + inlineFormat(line.replace(/^###\\s*/, '')) + '</h3>';
-            continue;
-        }}
-        if (/^##\\s/.test(line)) {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            html += '<h3>' + inlineFormat(line.replace(/^##\\s*/, '')) + '</h3>';
-            continue;
-        }}
-        if (/^#\\s/.test(line)) {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            html += '<h3>' + inlineFormat(line.replace(/^#\\s*/, '')) + '</h3>';
-            continue;
-        }}
-
-        // Linha horizontal ---
-        if (/^---+$/.test(line.trim())) {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            html += '<hr>';
-            continue;
-        }}
-
-        // Lista não-ordenada
-        if (/^[\\-\\*]\\s/.test(line)) {{
-            if (!inList || listType !== 'ul') {{
-                if (inList) html += '</' + listType + '>';
-                html += '<ul>'; inList = true; listType = 'ul';
-            }}
-            html += '<li>' + inlineFormat(line.replace(/^[\\-\\*]\\s*/, '')) + '</li>';
-            continue;
-        }}
-
-        // Lista ordenada
-        if (/^\\d+\\.\\s/.test(line)) {{
-            if (!inList || listType !== 'ol') {{
-                if (inList) html += '</' + listType + '>';
-                html += '<ol>'; inList = true; listType = 'ol';
-            }}
-            html += '<li>' + inlineFormat(line.replace(/^\\d+\\.\\s*/, '')) + '</li>';
-            continue;
-        }}
-
-        // Linha vazia
-        if (line.trim() === '') {{
-            if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-            continue;
-        }}
-
-        // Parágrafo normal
-        if (inList) {{ html += '</' + listType + '>'; inList = false; }}
-        html += '<p>' + inlineFormat(line) + '</p>';
-    }}
-
-    if (inList) html += '</' + listType + '>';
-    return html;
-}}
-
-function inlineFormat(text) {{
-    // Bold+italic ***text***
-    text = text.replace(/\\*\\*\\*(.*?)\\*\\*\\*/g, '<strong><em>$1</em></strong>');
-    // Bold **text**
-    text = text.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
-    // Italic *text* ou _text_
-    text = text.replace(/\\*(.*?)\\*/g, '<em>$1</em>');
-    text = text.replace(/_(.*?)_/g, '<em>$1</em>');
-    // Inline code `code`
-    text = text.replace(/`([^`]+)`/g, '<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px;font-family:monospace;">$1</code>');
-    return text;
-}}
-
 function toggleCard(idx) {{
     var body = document.getElementById('body_' + idx);
     var chev = document.getElementById('chev_' + idx);
@@ -10800,7 +10753,7 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = markdownToHtml(RELATORIOS[String(idx)] || '');
+        rel.textContent = RELATORIOS[String(idx)] || '';
         rel.dataset.loaded = '1';
     }}
     setTimeout(ajustarAltura, 60);
@@ -10852,11 +10805,12 @@ setTimeout(ajustarAltura, 200);
 setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
 
+// Auto-expand quando só há 1 análise
 (function() {{
     var cards = document.querySelectorAll('.analise-card');
     if (cards.length === 1) {{
         var singleCard = cards[0];
-        var idMatch = singleCard.id.match(/card_(\\d+)/);
+        var idMatch = singleCard.id.match(/card_(\d+)/);
         if (idMatch) {{
             setTimeout(function() {{ toggleCard(parseInt(idMatch[1])); }}, 150);
         }}
@@ -10866,6 +10820,7 @@ setTimeout(ajustarAltura, 1200);
 
         components.html(html_conteudo, height=100, scrolling=False)
 
+        # Ghost buttons — CSS único para todos de uma vez
         ghost_selectors = ", ".join([
             f".st-key-btn_analise_subtab_{stk}, .stElementContainer:has(.st-key-btn_analise_subtab_{stk})"
             for stk, _, _ in subtabs_def

@@ -10800,7 +10800,7 @@ setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
 </script>"""
 
-        components.html(html_conteudo, height=300, scrolling=False)
+        components.html(html_conteudo, height=500, scrolling=False)
 
         # Ghost buttons — CSS único para todos de uma vez
         ghost_selectors = ", ".join([

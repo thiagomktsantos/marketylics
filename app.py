@@ -7227,27 +7227,28 @@ Copies coletadas:
 ### ✅ Pontos Fortes nas Copies (3 pontos)
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Sugestões de Copy (2 exemplos concretos)""")
-                            st.session_state[chave_ia_copys] = resp.text
+                            st.session_state[chave_ind] = resp.text
                             import datetime as _dt_ads
                             st.session_state.ads_analises_salvas = [
                                 a for a in st.session_state.ads_analises_salvas
-                                if not (a.get("tipo") == "copys_ads" and a.get("empresa") == nome)
+                                if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
                             ]
                             st.session_state.ads_analises_salvas.append({
-                                "titulo": f"Copys — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                                 "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
                                 "relatorio": resp.text,
-                                "tipo": "copys_ads",
+                                "tipo": "anuncio_ind",
                                 "empresa": nome,
+                                "ad_idx": j,
                             })
-                            _render_modal_redes_ia("concluido", f"Copys — {nome}", 100, _ph_ads)
+                            _render_modal_redes_ia("concluido", f"Anúncio {j+1} — {nome}", 100, _ph_ads)
                             salvar_dados_usuario(st.session_state.user.id)
                             import time as _t_ads; _t_ads.sleep(1.2)
                             _ph_ads.empty()
                             st.rerun()
                         except Exception as ex:
                             _ph_ads.empty()
-                            st.session_state[chave_ia_copys] = f"Erro: {ex}"
+                            st.session_state[chave_ind] = f"Erro: {ex}"
                             st.rerun()
 
                 for j, ad in enumerate(ads_f_ia):

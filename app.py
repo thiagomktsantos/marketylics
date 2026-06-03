@@ -7540,6 +7540,65 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
             st.info("Busque anúncios primeiro na aba **Empresas configuradas** para ver análises aqui.")
             st.stop()
 
+        # Exibir análises individuais salvas
+        analises_ads = st.session_state.get("ads_analises_salvas", [])
+        if analises_ads:
+            import json as _json_analises
+            relatorios_ind = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
+            relatorios_ind_json = _json_analises.dumps(relatorios_ind, ensure_ascii=False)
+            icons_map_ads = {
+                "criativos_ads": "🎨", "copys_ads": "✍️",
+                "estrategia": "📊", "comparativo_ads": "🏆"
+            }
+            cards_ind_html = ""
+            for i, a in reversed(list(enumerate(analises_ads))):
+                icon_a = icons_map_ads.get(a.get("tipo",""), "📋")
+                titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                cards_ind_html += f"""
+<div style="border-bottom:1px solid #f3f4f6;background:#fff;">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background 0.12s;"
+         onclick="(function(){{var b=document.getElementById('abody_{i}');var c=document.getElementById('achev_{i}');var r=document.getElementById('arel_{i}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.textContent=RELATORIOS_IND['{i}']||'';r.dataset.loaded='1';}}setTimeout(syncH,60);}})()">
+        <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#111827;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
+        <span id="achev_{i}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+    </div>
+    <div id="abody_{i}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div id="arel_{i}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;white-space:pre-wrap;word-break:break-word;"></div>
+        <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
+            <button onclick="(function(){{var c=RELATORIOS_IND['{i}']||'';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:'text/plain'}}));a.download='analise_{i}.txt';a.click();}})()"
+                style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;color:#374151;cursor:pointer;font-family:'DM Sans',sans-serif;">
+                ⬇️ Baixar .txt
+            </button>
+        </div>
+    </div>
+</div>"""
+
+            components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
+body{{padding-bottom:8px;}}
+</style>
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+    {cards_ind_html}
+</div>
+<script>
+var RELATORIOS_IND = {relatorios_ind_json};
+function syncH(){{
+    var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+    var frames=window.parent.document.querySelectorAll('iframe');
+    for(var i=0;i<frames.length;i++){{
+        try{{if(frames[i].contentWindow===window){{frames[i].style.height=(h+8)+'px';break;}}}}catch(e){{}}
+    }}
+}}
+if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH,200);setTimeout(syncH,600);
+</script>
+""", height=100, scrolling=False)
+
         chave_comp = "ia_ads_comparativo"
         if chave_comp not in st.session_state:
             st.session_state[chave_comp] = ""

@@ -9495,7 +9495,7 @@ body{{padding-bottom:8px;}}
     box-shadow:0 1px 4px rgba(0,0,0,0.06);
     transition:box-shadow 0.15s, border-color 0.15s;
 }}
-.post-card:hover {{ border-color:#6fd1f3; box-shadow:0 4px 16px rgba(58,159,214,0.12); }}
+.post-card:hover {{ border:2px solid #6fd1f3; box-shadow:0 4px 16px rgba(58,159,214,0.12); }}
 .thumb-wrap {{
     position:relative; width:100%; aspect-ratio:1/1;
     background:#f0f2f5; overflow:hidden; flex-shrink:0; cursor:pointer;

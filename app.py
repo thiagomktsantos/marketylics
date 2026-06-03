@@ -6305,7 +6305,7 @@ Amostra dos anúncios:
                         st.session_state[chave_ia_geral] = f"Erro: {ex}"
                         st.rerun()
 
-                aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
+            aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
             # ── ABA: ANÚNCIOS ─────────────────────────────────────────
             if aba_conteudo_atual == "anuncios":

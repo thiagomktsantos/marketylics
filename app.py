@@ -10695,12 +10695,10 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
 .card-body {{ padding:16px; background:#fafbfc; border-top:1px solid #f3f4f6; }}
 .card-relatorio {{
     font-size:13px; color:#374151; line-height:1.8;
-    max-height:400px; overflow-y:auto;
-    padding:14px 16px; border-radius:8px;
-    background:#fff; border:1px solid #e5e7eb;
+    overflow-y:auto;padding:14px 16px;background:#fff;
     margin-bottom:12px; white-space:pre-wrap; word-break:break-word;
 }}
-.card-acoes {{ display:flex; gap:8px; }}
+.card-acoes {{ display:flex; gap:8px;background-color:#b2c5d7;padding:10px; }}
 .btn-dl {{
     flex:1; padding:9px 14px; border-radius:8px;
     border:1px solid #e5e7eb; background:#fff;

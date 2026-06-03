@@ -6293,6 +6293,14 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
+
+            st.markdown("""
+            <style>
+            .stElementContainer:has(+ .stElementContainer iframe) {
+                margin-bottom: -24px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             # Ghost buttons para análise IA — padrão Redes
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:

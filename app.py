@@ -6133,6 +6133,178 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 </div>
             </div>""", unsafe_allow_html=True)
 
+                # Ghost buttons para análise IA — padrão Redes
+                ia_analise_ghost_css = []
+                for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
+                    ia_analise_ghost_css.append(f"""
+                    .st-key-{_gk} {{
+                        position:fixed !important; top:-9999px !important; left:-9999px !important;
+                        width:1px !important; height:1px !important;
+                        opacity:0 !important; pointer-events:none !important;
+                    }}
+                    .stElementContainer:has(.st-key-{_gk}) {{
+                        position:fixed !important; top:-9999px !important; left:-9999px !important;
+                        width:1px !important; height:1px !important;
+                        overflow:hidden !important; margin:0 !important; padding:0 !important;
+                    }}
+                    """)
+                st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
+
+                if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
+                    if gemini_model is None:
+                        st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
+                    else:
+                        resumo_criativos = "\n".join([
+                            f"- [{a['formato']}] Plataformas: {', '.join(a.get('plataformas',[]))} | Título: {_truncar(a.get('title',''),60) or '—'}"
+                            for a in ads_f_ia[:15]
+                        ])
+                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
+                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
+                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
+                        _ph_ads = st.empty()
+                        _render_modal_redes_ia("gerando", f"Criativos — {nome}", 40, _ph_ads)
+                        try:
+                            resp = gemini_model.generate_content(f"""Você é especialista em design e criação de anúncios digitais.
+Analise os CRIATIVOS (formatos visuais) dos anúncios de "{nome}" em português.
+
+Empresa: {nome} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
+
+Dados dos criativos:
+{resumo_criativos}
+
+---
+### 🎨 Estilo Visual Predominante
+### 📱 Mix de Formatos e Plataformas
+### 🏆 Formatos com Melhor Potencial
+### ✅ Pontos Fortes Visuais (3 pontos)
+### ⚠️ O que Melhorar (2 pontos)
+### 💡 Recomendações de Criativo (2 ações concretas)""")
+                            st.session_state[chave_ia_criativos] = resp.text
+                            import datetime as _dt_ads
+                            st.session_state.ads_analises_salvas = [
+                                a for a in st.session_state.ads_analises_salvas
+                                if not (a.get("tipo") == "criativos_ads" and a.get("empresa") == nome)
+                            ]
+                            st.session_state.ads_analises_salvas.append({
+                                "titulo": f"Criativos — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "relatorio": resp.text,
+                                "tipo": "criativos_ads",
+                                "empresa": nome,
+                            })
+                            _render_modal_redes_ia("concluido", f"Criativos — {nome}", 100, _ph_ads)
+                            salvar_dados_usuario(st.session_state.user.id)
+                            import time as _t_ads; _t_ads.sleep(1.2)
+                            _ph_ads.empty()
+                            st.rerun()
+                        except Exception as ex:
+                            _ph_ads.empty()
+                            st.session_state[chave_ia_criativos] = f"Erro: {ex}"
+                            st.rerun()
+
+                if st.button(f"ia_copys_{sk}", key=f"btn_ia_copys_{sk}"):
+                    if gemini_model is None:
+                        st.session_state[chave_ia_copys] = "Configure GEMINI_API_KEY nos secrets."
+                    else:
+                        todas_copies = "\n".join([
+                            f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
+                            for a in ads_f_ia[:20]
+                        ])
+                        _ph_ads = st.empty()
+                        _render_modal_redes_ia("gerando", f"Copys — {nome}", 40, _ph_ads)
+                        try:
+                            resp = gemini_model.generate_content(f"""Você é especialista em copywriting e marketing de resposta direta.
+Analise as COPIES (textos) dos anúncios de "{nome}" em português.
+
+Empresa: {nome} | {len(ads_f_ia)} anúncios analisados
+
+Copies coletadas:
+{todas_copies}
+
+---
+### ✍️ Tom de Voz e Personalidade
+### 🎯 Principais Promessas e Argumentos
+### 📣 Uso de CTAs (Call-to-Action)
+### 🔑 Palavras e Frases Recorrentes
+### ✅ Pontos Fortes nas Copies (3 pontos)
+### ⚠️ O que Melhorar (2 pontos)
+### 💡 Sugestões de Copy (2 exemplos concretos)""")
+                            st.session_state[chave_ia_copys] = resp.text
+                            import datetime as _dt_ads
+                            st.session_state.ads_analises_salvas = [
+                                a for a in st.session_state.ads_analises_salvas
+                                if not (a.get("tipo") == "copys_ads" and a.get("empresa") == nome)
+                            ]
+                            st.session_state.ads_analises_salvas.append({
+                                "titulo": f"Copys — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "relatorio": resp.text,
+                                "tipo": "copys_ads",
+                                "empresa": nome,
+                            })
+                            _render_modal_redes_ia("concluido", f"Copys — {nome}", 100, _ph_ads)
+                            salvar_dados_usuario(st.session_state.user.id)
+                            import time as _t_ads; _t_ads.sleep(1.2)
+                            _ph_ads.empty()
+                            st.rerun()
+                        except Exception as ex:
+                            _ph_ads.empty()
+                            st.session_state[chave_ia_copys] = f"Erro: {ex}"
+                            st.rerun()
+
+                if st.button(f"ia_geral_{sk}", key=f"btn_ia_geral_{sk}"):
+                    if gemini_model is None:
+                        st.session_state[chave_ia_geral] = "Configure GEMINI_API_KEY nos secrets."
+                    else:
+                        resumo = "\n".join([
+                            f"- [{a['formato']}] Título: {_truncar(a.get('title',''),60) or '—'} | Copy: {_truncar(a.get('body',''),100) or '—'}"
+                            for a in ads_f_ia[:15]
+                        ])
+                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
+                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
+                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
+                        n_dyn = sum(1 for a in ads_f_ia if a.get("is_dynamic"))
+                        _ph_ads = st.empty()
+                        _render_modal_redes_ia("gerando", f"Estratégia — {nome}", 40, _ph_ads)
+                        try:
+                            resp = gemini_model.generate_content(f"""Você é especialista em mídia paga e marketing digital.
+Analise os anúncios de "{nome}" e gere um relatório estratégico completo em português.
+
+Empresa: {nome} | Total: {len(ads_f_ia)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis | {n_dyn} dinâmicos
+
+Amostra dos anúncios:
+{resumo}
+
+---
+### 🎯 Estratégia de Mídia
+### ✍️ Padrões de Copy e Mensagem
+### 🎨 Análise de Formatos
+### 📊 Estimativa de Investimento e Alcance
+### ⚠️ Pontos de Atenção
+### 💡 Oportunidades Competitivas (3 ações concretas)""")
+                            st.session_state[chave_ia_geral] = resp.text
+                            import datetime as _dt_ads
+                            st.session_state.ads_analises_salvas = [
+                                a for a in st.session_state.ads_analises_salvas
+                                if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
+                            ]
+                            st.session_state.ads_analises_salvas.append({
+                                "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "relatorio": resp.text,
+                                "tipo": "estrategia",
+                                "empresa": nome,
+                            })
+                            _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
+                            salvar_dados_usuario(st.session_state.user.id)
+                            import time as _t_ads; _t_ads.sleep(1.2)
+                            _ph_ads.empty()
+                            st.rerun()
+                        except Exception as ex:
+                            _ph_ads.empty()
+                            st.session_state[chave_ia_geral] = f"Erro: {ex}"
+                            st.rerun()
+
             aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
             # ── ABA: ANÚNCIOS ─────────────────────────────────────────
@@ -7062,178 +7234,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                     chave_ind = f"ia_ad_result_{sk}_{j}"
                     if chave_ind not in st.session_state:
                         st.session_state[chave_ind] = ""
-
-                # Ghost buttons para análise IA — padrão Redes
-                ia_analise_ghost_css = []
-                for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
-                    ia_analise_ghost_css.append(f"""
-                    .st-key-{_gk} {{
-                        position:fixed !important; top:-9999px !important; left:-9999px !important;
-                        width:1px !important; height:1px !important;
-                        opacity:0 !important; pointer-events:none !important;
-                    }}
-                    .stElementContainer:has(.st-key-{_gk}) {{
-                        position:fixed !important; top:-9999px !important; left:-9999px !important;
-                        width:1px !important; height:1px !important;
-                        overflow:hidden !important; margin:0 !important; padding:0 !important;
-                    }}
-                    """)
-                st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
-
-                if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
-                    if gemini_model is None:
-                        st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
-                    else:
-                        resumo_criativos = "\n".join([
-                            f"- [{a['formato']}] Plataformas: {', '.join(a.get('plataformas',[]))} | Título: {_truncar(a.get('title',''),60) or '—'}"
-                            for a in ads_f_ia[:15]
-                        ])
-                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
-                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
-                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
-                        _ph_ads = st.empty()
-                        _render_modal_redes_ia("gerando", f"Criativos — {nome}", 40, _ph_ads)
-                        try:
-                            resp = gemini_model.generate_content(f"""Você é especialista em design e criação de anúncios digitais.
-Analise os CRIATIVOS (formatos visuais) dos anúncios de "{nome}" em português.
-
-Empresa: {nome} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
-
-Dados dos criativos:
-{resumo_criativos}
-
----
-### 🎨 Estilo Visual Predominante
-### 📱 Mix de Formatos e Plataformas
-### 🏆 Formatos com Melhor Potencial
-### ✅ Pontos Fortes Visuais (3 pontos)
-### ⚠️ O que Melhorar (2 pontos)
-### 💡 Recomendações de Criativo (2 ações concretas)""")
-                            st.session_state[chave_ia_criativos] = resp.text
-                            import datetime as _dt_ads
-                            st.session_state.ads_analises_salvas = [
-                                a for a in st.session_state.ads_analises_salvas
-                                if not (a.get("tipo") == "criativos_ads" and a.get("empresa") == nome)
-                            ]
-                            st.session_state.ads_analises_salvas.append({
-                                "titulo": f"Criativos — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "relatorio": resp.text,
-                                "tipo": "criativos_ads",
-                                "empresa": nome,
-                            })
-                            _render_modal_redes_ia("concluido", f"Criativos — {nome}", 100, _ph_ads)
-                            salvar_dados_usuario(st.session_state.user.id)
-                            import time as _t_ads; _t_ads.sleep(1.2)
-                            _ph_ads.empty()
-                            st.rerun()
-                        except Exception as ex:
-                            _ph_ads.empty()
-                            st.session_state[chave_ia_criativos] = f"Erro: {ex}"
-                            st.rerun()
-
-                if st.button(f"ia_copys_{sk}", key=f"btn_ia_copys_{sk}"):
-                    if gemini_model is None:
-                        st.session_state[chave_ia_copys] = "Configure GEMINI_API_KEY nos secrets."
-                    else:
-                        todas_copies = "\n".join([
-                            f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
-                            for a in ads_f_ia[:20]
-                        ])
-                        _ph_ads = st.empty()
-                        _render_modal_redes_ia("gerando", f"Copys — {nome}", 40, _ph_ads)
-                        try:
-                            resp = gemini_model.generate_content(f"""Você é especialista em copywriting e marketing de resposta direta.
-Analise as COPIES (textos) dos anúncios de "{nome}" em português.
-
-Empresa: {nome} | {len(ads_f_ia)} anúncios analisados
-
-Copies coletadas:
-{todas_copies}
-
----
-### ✍️ Tom de Voz e Personalidade
-### 🎯 Principais Promessas e Argumentos
-### 📣 Uso de CTAs (Call-to-Action)
-### 🔑 Palavras e Frases Recorrentes
-### ✅ Pontos Fortes nas Copies (3 pontos)
-### ⚠️ O que Melhorar (2 pontos)
-### 💡 Sugestões de Copy (2 exemplos concretos)""")
-                            st.session_state[chave_ia_copys] = resp.text
-                            import datetime as _dt_ads
-                            st.session_state.ads_analises_salvas = [
-                                a for a in st.session_state.ads_analises_salvas
-                                if not (a.get("tipo") == "copys_ads" and a.get("empresa") == nome)
-                            ]
-                            st.session_state.ads_analises_salvas.append({
-                                "titulo": f"Copys — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "relatorio": resp.text,
-                                "tipo": "copys_ads",
-                                "empresa": nome,
-                            })
-                            _render_modal_redes_ia("concluido", f"Copys — {nome}", 100, _ph_ads)
-                            salvar_dados_usuario(st.session_state.user.id)
-                            import time as _t_ads; _t_ads.sleep(1.2)
-                            _ph_ads.empty()
-                            st.rerun()
-                        except Exception as ex:
-                            _ph_ads.empty()
-                            st.session_state[chave_ia_copys] = f"Erro: {ex}"
-                            st.rerun()
-
-                if st.button(f"ia_geral_{sk}", key=f"btn_ia_geral_{sk}"):
-                    if gemini_model is None:
-                        st.session_state[chave_ia_geral] = "Configure GEMINI_API_KEY nos secrets."
-                    else:
-                        resumo = "\n".join([
-                            f"- [{a['formato']}] Título: {_truncar(a.get('title',''),60) or '—'} | Copy: {_truncar(a.get('body',''),100) or '—'}"
-                            for a in ads_f_ia[:15]
-                        ])
-                        n_vid = sum(1 for a in ads_f_ia if "Vídeo" in a["formato"])
-                        n_img = sum(1 for a in ads_f_ia if "Imagem" in a["formato"])
-                        n_car = sum(1 for a in ads_f_ia if "Carrossel" in a["formato"])
-                        n_dyn = sum(1 for a in ads_f_ia if a.get("is_dynamic"))
-                        _ph_ads = st.empty()
-                        _render_modal_redes_ia("gerando", f"Estratégia — {nome}", 40, _ph_ads)
-                        try:
-                            resp = gemini_model.generate_content(f"""Você é especialista em mídia paga e marketing digital.
-Analise os anúncios de "{nome}" e gere um relatório estratégico completo em português.
-
-Empresa: {nome} | Total: {len(ads_f_ia)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis | {n_dyn} dinâmicos
-
-Amostra dos anúncios:
-{resumo}
-
----
-### 🎯 Estratégia de Mídia
-### ✍️ Padrões de Copy e Mensagem
-### 🎨 Análise de Formatos
-### 📊 Estimativa de Investimento e Alcance
-### ⚠️ Pontos de Atenção
-### 💡 Oportunidades Competitivas (3 ações concretas)""")
-                            st.session_state[chave_ia_geral] = resp.text
-                            import datetime as _dt_ads
-                            st.session_state.ads_analises_salvas = [
-                                a for a in st.session_state.ads_analises_salvas
-                                if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
-                            ]
-                            st.session_state.ads_analises_salvas.append({
-                                "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "relatorio": resp.text,
-                                "tipo": "estrategia",
-                                "empresa": nome,
-                            })
-                            _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
-                            salvar_dados_usuario(st.session_state.user.id)
-                            import time as _t_ads; _t_ads.sleep(1.2)
-                            _ph_ads.empty()
-                            st.rerun()
-                        except Exception as ex:
-                            _ph_ads.empty()
-                            st.session_state[chave_ia_geral] = f"Erro: {ex}"
-                            st.rerun()
 
                 subtab_atual = st.session_state.get(f"ads_subtab_{sk}", "individuais")
 

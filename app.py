@@ -7817,7 +7817,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
         lista_ads_ativa = [a for a in analises_ads if a.get("tipo") == subtab_ads_ativa]
         import json as _json_analises
-        relatorios_ads_ind = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
+        import re as _re_md
+        def _md_to_html(txt):
+            if not txt: return ""
+            txt = txt.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            txt = _re_md.sub(r'^### (.+)$', r'<h3 style="font-size:14px;font-weight:800;color:#0f1f35;margin:16px 0 6px;">\1</h3>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^## (.+)$',  r'<h2 style="font-size:15px;font-weight:800;color:#0f1f35;margin:18px 0 8px;">\1</h2>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^# (.+)$',   r'<h1 style="font-size:16px;font-weight:800;color:#0f1f35;margin:20px 0 10px;">\1</h1>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+            txt = _re_md.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
+            txt = _re_md.sub(r'^---+$', '<hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0;">', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^\s*[\*\-] (.+)$', r'<li style="margin-left:18px;margin-bottom:4px;">\1</li>', txt, flags=_re_md.MULTILINE)
+            txt = txt.replace("\n\n", "</p><p style='margin:8px 0;'>")
+            txt = txt.replace("\n", "<br>")
+            return txt
+
+        relatorios_ads_ind = {str(i): _md_to_html(a.get("relatorio","")) for i, a in enumerate(analises_ads)}
         relatorios_ads_json = _json_analises.dumps(relatorios_ads_ind, ensure_ascii=False)
 
         icons_ads = {"anuncio_ind":"📢","criativos_ads":"🎨","copys_ads":"✍️","estrategia":"📊","comparativo_ads":"🏆"}

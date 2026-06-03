@@ -10745,6 +10745,18 @@ body {{ background:transparent; overflow:visible;padding-top:0 !important;margin
 <script>
 var RELATORIOS = {relatorios_json};
 
+function mdToHtml(md) {{
+    return md
+        .replace(/### (.+)/g, '<h3 style="font-size:13px;font-weight:800;color:#111827;margin:14px 0 6px;">$1</h3>')
+        .replace(/## (.+)/g, '<h2 style="font-size:14px;font-weight:800;color:#111827;margin:14px 0 6px;">$1</h2>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/^\d+\.\s+(.+)/gm, '<li style="margin:4px 0 4px 16px;list-style:decimal;">$1</li>')
+        .replace(/^\*\s+(.+)/gm, '<li style="margin:4px 0 4px 16px;list-style:disc;">$1</li>')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+}}
+
 function toggleCard(idx) {{
     var body = document.getElementById('body_' + idx);
     var chev = document.getElementById('chev_' + idx);
@@ -10753,7 +10765,7 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.textContent = RELATORIOS[String(idx)] || '';
+        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
         rel.dataset.loaded = '1';
     }}
     setTimeout(ajustarAltura, 60);

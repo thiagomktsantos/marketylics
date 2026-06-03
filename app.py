@@ -3954,7 +3954,7 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
+        rel.innerHTML = RELATORIOS[String(idx)] || '';
         rel.dataset.loaded = '1';
     }}
     setTimeout(syncH, 60);

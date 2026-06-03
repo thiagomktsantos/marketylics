@@ -7847,7 +7847,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 cards_ads_html += f"""
 <div style="border-bottom:1px solid #f3f4f6;background:#fff;">
     <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background 0.12s;background-color:#24658e;"
-         onclick="(function(){{var b=document.getElementById('ab_{idx_real}');var c=document.getElementById('ac_{idx_real}');var r=document.getElementById('ar_{idx_real}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.textContent=RELS['{idx_real}']||'';r.dataset.loaded='1';}}setTimeout(syncH,60);}})()">
+         onclick="(function(){{var b=document.getElementById('ab_{idx_real}');var c=document.getElementById('ac_{idx_real}');var r=document.getElementById('ar_{idx_real}');var open=b.style.display!=='none';b.style.display=open?'none':'block';c.style.transform=open?'':'rotate(180deg)';if(!open&&r&&!r.dataset.loaded){{r.innerHTML=RELS['{idx_real}']||'';r.dataset.loaded='1';}}
         <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
         <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
         <span id="ac_{idx_real}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
@@ -7855,7 +7855,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </span>
     </div>
     <div id="ab_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
-        <div id="ar_{idx_real}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;white-space:pre-wrap;word-break:break-word;"></div>
+        <div id="ar_{idx_real}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
         <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
             <button onclick="(function(){{var c=RELS['{idx_real}']||'';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:'text/plain'}}));a.download='{nome_arq}.txt';a.click();}})()"
                 style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;color:#374151;cursor:pointer;font-family:'DM Sans',sans-serif;">
@@ -7900,7 +7900,7 @@ setTimeout(syncH,200);setTimeout(syncH,600);
             var r=document.getElementById('ar_'+m[1]);
             if(b)b.style.display='block';
             if(c)c.style.transform='rotate(180deg)';
-            if(r&&!r.dataset.loaded){{r.textContent=RELS[m[1]]||'';r.dataset.loaded='1';}}
+            if(r&&!r.dataset.loaded){{r.innerHTML=RELS[m[1]]||'';r.dataset.loaded='1';}}
             syncH();
         }},150);}}
     }}

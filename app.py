@@ -6255,6 +6255,7 @@ Dados dos criativos:
                         })
                         _render_modal_redes_ia("concluido", f"Criativos — {nome}", 100, _ph_ads)
                         salvar_dados_usuario(st.session_state.user.id)
+                        st.session_state.ads_aba_conteudo[ck] = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
                         st.rerun()
@@ -6305,6 +6306,7 @@ Copies coletadas:
                         })
                         _render_modal_redes_ia("concluido", f"Copys — {nome}", 100, _ph_ads)
                         salvar_dados_usuario(st.session_state.user.id)
+                        st.session_state.ads_aba_conteudo[ck] = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
                         st.rerun()
@@ -6358,6 +6360,7 @@ Amostra dos anúncios:
                         })
                         _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
                         salvar_dados_usuario(st.session_state.user.id)
+                        st.session_state.ads_aba_conteudo[ck] = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
                         st.rerun()

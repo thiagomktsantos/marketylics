@@ -6278,7 +6278,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                                 <div style='font-size:12px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
                             </div>
                         </div>
-                        <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;'>
+                        <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-left:2px solid #f0f2f4;border-right:2px solid #f0f2f4;padding: 0 20px;'>
                             {_chips_html}
                         </div>
                         <div style='flex-shrink:0;'>

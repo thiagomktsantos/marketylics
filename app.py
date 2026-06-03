@@ -7820,7 +7820,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         import re as _re_md
         def _md_to_html(txt):
             if not txt: return ""
-            txt = txt.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
             txt = _re_md.sub(r'^### (.+)$', r'<h3 style="font-size:14px;font-weight:800;color:#0f1f35;margin:16px 0 6px;">\1</h3>', txt, flags=_re_md.MULTILINE)
             txt = _re_md.sub(r'^## (.+)$',  r'<h2 style="font-size:15px;font-weight:800;color:#0f1f35;margin:18px 0 8px;">\1</h2>', txt, flags=_re_md.MULTILINE)
             txt = _re_md.sub(r'^# (.+)$',   r'<h1 style="font-size:16px;font-weight:800;color:#0f1f35;margin:20px 0 10px;">\1</h1>', txt, flags=_re_md.MULTILINE)

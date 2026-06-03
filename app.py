@@ -6150,157 +6150,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             else:
                 ads_list = ads_list_raw
 
-            page_pic_empresa = ads_list[0].get("page_profile_picture", "") or "" if ads_list else ""
-
-            if page_pic_empresa:
-                avatar_empresa_html = (
-                    f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid #e5e7eb;">'
-                    f'<img src="{page_pic_empresa}" style="width:100%;height:100%;object-fit:cover;display:block" '
-                    f'onerror="this.parentElement.style.background=\'{cor_av}\';this.parentElement.innerHTML=\'<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:16px;font-weight:700;color:#fff&quot;>{avatar}</div>\'" /></div>'
-                )
-            else:
-                avatar_empresa_html = (
-                    f'<div style="width:44px;height:44px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0">{avatar}</div>'
-                )
-
-            badge_bg  = "#eff6ff" if is_minha else "#f3f4f6"
-            badge_txt = "#1d4ed8" if is_minha else "#6b7280"
-            badge_brd = "#bfdbfe" if is_minha else "#e5e7eb"
-            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
-
-            import urllib.parse as _urlparse
-            if configured_page and configured_page.isdigit():
-                lib_url = (f"https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id={configured_page}")
-            elif query:
-                lib_url = (f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BR&q={_urlparse.quote(query)}")
-            else:
-                lib_url = ""
-
-            page_display = configured_page if configured_page else "—"
-            lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Meta Ad Library</a>' if lib_url else ""
-
-                        # ── Calcular insights rápidos dos anúncios ──────────────
-            _palavras_beneficio = [
-                "resultado", "transforma", "melhora", "aumenta", "economiza",
-                "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
-                "benefício", "vantagem", "desconto", "grátis", "gratuito", "oferta",
-                "promoção", "exclusivo", "garanta", "aproveite",
-            ]
-            _palavras_prova = [
-                "cliente", "avaliação", "depoimento", "aprovado", "testado",
-                "recomend", "anos de", "cases", "resultado real", "história",
-                "prova", "satisf", "mais de", "mil cliente", "atendemos",
-                "confiança", "parceiro",
-            ]
-            _palavras_urgencia = [
-                "últimas", "último", "vagas", "hoje", "agora", "limitado",
-                "por tempo", "não perca", "corra", "só até", "encerra",
-                "prazo", "urgente", "restam",
-            ]
-            _palavras_cta = [
-                "clique", "acesse", "saiba mais", "fale conosco", "solicite",
-                "cadastre", "entre em contato", "whatsapp", "ligue", "agende",
-                "compre", "adquira", "inscreva",
-            ]
-
-            def _conta_tipo(lista, palavras):
-                count = 0
-                for _a in lista:
-                    _txt = ((_a.get("body") or "") + " " + (_a.get("title") or "")).lower()
-                    if any(p in _txt for p in palavras):
-                        count += 1
-                return count
-
-            _n_beneficio = _conta_tipo(ads_list, _palavras_beneficio)
-            _n_prova     = _conta_tipo(ads_list, _palavras_prova)
-            _n_urgencia  = _conta_tipo(ads_list, _palavras_urgencia)
-            _n_cta       = _conta_tipo(ads_list, _palavras_cta)
-            _n_video_ins = sum(1 for _a in ads_list if "Vídeo" in _a.get("formato", ""))
-            _n_carrossel_ins = sum(1 for _a in ads_list if "Carrossel" in _a.get("formato", ""))
-
-            # Monta chips de insights
-            _insight_chips = []
-            if _n_beneficio > 0:
-                _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
-            if _n_prova > 0:
-                _insight_chips.append(("⭐", f"{_n_prova} com prova social", "#1d4ed8", "#eff6ff", "#bfdbfe"))
-            if _n_urgencia > 0:
-                _insight_chips.append(("⚡", f"{_n_urgencia} com urgência", "#92400e", "#fffbeb", "#fde68a"))
-            if _n_cta > 0:
-                _insight_chips.append(("📣", f"{_n_cta} com CTA direto", "#6d28d9", "#f5f3ff", "#ddd6fe"))
-            if _n_video_ins > 0:
-                _insight_chips.append(("🎬", f"{_n_video_ins} em vídeo", "#0e7490", "#ecfeff", "#a5f3fc"))
-            if _n_carrossel_ins > 0:
-                _insight_chips.append(("🖼️", f"{_n_carrossel_ins} carrossel", "#9333ea", "#faf5ff", "#e9d5ff"))
-
-            _chips_html = "".join([
-                f'<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
-                f'color:{cor};background:{bg};border:1px solid {brd};padding:5px 12px;border-radius:20px;white-space:nowrap;">'
-                f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{cor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                f' {label}</div>'
-                for icon, label, cor, bg, brd in _insight_chips
-            ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
-
-            st.markdown(f"""
-            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-45px;'>
-                <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
-                    {avatar_empresa_html}
-                    <div style='flex:1;min-width:0'>
-                        <div style='font-size:17px;font-weight:700;color:#111827'>{nome}</div>
-                        <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                            <span style='font-size:13px;color:#6b7280;font-weight:500'>{badge_lbl}</span>
-                            <span style='color:#d1d5db;font-size:12px'>·</span>
-                            <span style='font-size:13px;color:#6b7280'>Página: {page_display}</span>
-                        </div>
-                    </div>
-                    <div style='display:flex;align-items:center;gap:0;flex-shrink:0'>
-                        <div style='width:1px;height:40px;background:#e5e7eb;margin-right:20px'></div>
-                        <div style='text-align:center;min-width:56px'>
-                            <div style='font-size:22px;font-weight:800;color:#111827;line-height:1'>{len(ads_list)}</div>
-                            <div style='font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
-                        </div>
-                        <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
-                        {lib_btn_top}
-                    </div>
-                </div>
-                <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>
-                    <div style='display:flex;gap:20px;align-items:center;'>
-                        <div style='display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;'>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
-                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                                      fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                            <div>
-                                <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>
-                                    <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights de IA</span>
-                                    <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;'>BETA</span>
-                                </div>
-                                <div style='font-size:12px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
-                            </div>
-                        </div>
-                        <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-left:2px solid #f0f2f4;border-right:2px solid #f0f2f4;padding: 0 20px;'>
-                            {_chips_html}
-                        </div>
-                        <div style='flex-shrink:0;'>
-                            <a href='javascript:void(0)'
-                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
-                               style='display:inline-flex;align-items:center;gap:8px;background:#3b82f6;color:#fff;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap;transition:background 0.15s;font-family:DM Sans,sans-serif;'
-                               onmouseover="this.style.background='#2563eb'"
-                               onmouseout="this.style.background='#3b82f6'">
-                                Análise completa dos anúncios →
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-
-            st.markdown("""
-            <style>
-            .stElementContainer:has(+ .stElementContainer iframe) {
-                margin-bottom: -24px !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
             # Ghost buttons para análise IA — padrão Redes
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
@@ -6494,6 +6343,158 @@ Amostra dos anúncios:
                 """)
             if ia_ind_ghost_css:
                 st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
+
+            page_pic_empresa = ads_list[0].get("page_profile_picture", "") or "" if ads_list else ""
+
+            if page_pic_empresa:
+                avatar_empresa_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid #e5e7eb;">'
+                    f'<img src="{page_pic_empresa}" style="width:100%;height:100%;object-fit:cover;display:block" '
+                    f'onerror="this.parentElement.style.background=\'{cor_av}\';this.parentElement.innerHTML=\'<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:16px;font-weight:700;color:#fff&quot;>{avatar}</div>\'" /></div>'
+                )
+            else:
+                avatar_empresa_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0">{avatar}</div>'
+                )
+
+            badge_bg  = "#eff6ff" if is_minha else "#f3f4f6"
+            badge_txt = "#1d4ed8" if is_minha else "#6b7280"
+            badge_brd = "#bfdbfe" if is_minha else "#e5e7eb"
+            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+
+            import urllib.parse as _urlparse
+            if configured_page and configured_page.isdigit():
+                lib_url = (f"https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id={configured_page}")
+            elif query:
+                lib_url = (f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BR&q={_urlparse.quote(query)}")
+            else:
+                lib_url = ""
+
+            page_display = configured_page if configured_page else "—"
+            lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Meta Ad Library</a>' if lib_url else ""
+
+                        # ── Calcular insights rápidos dos anúncios ──────────────
+            _palavras_beneficio = [
+                "resultado", "transforma", "melhora", "aumenta", "economiza",
+                "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
+                "benefício", "vantagem", "desconto", "grátis", "gratuito", "oferta",
+                "promoção", "exclusivo", "garanta", "aproveite",
+            ]
+            _palavras_prova = [
+                "cliente", "avaliação", "depoimento", "aprovado", "testado",
+                "recomend", "anos de", "cases", "resultado real", "história",
+                "prova", "satisf", "mais de", "mil cliente", "atendemos",
+                "confiança", "parceiro",
+            ]
+            _palavras_urgencia = [
+                "últimas", "último", "vagas", "hoje", "agora", "limitado",
+                "por tempo", "não perca", "corra", "só até", "encerra",
+                "prazo", "urgente", "restam",
+            ]
+            _palavras_cta = [
+                "clique", "acesse", "saiba mais", "fale conosco", "solicite",
+                "cadastre", "entre em contato", "whatsapp", "ligue", "agende",
+                "compre", "adquira", "inscreva",
+            ]
+
+            def _conta_tipo(lista, palavras):
+                count = 0
+                for _a in lista:
+                    _txt = ((_a.get("body") or "") + " " + (_a.get("title") or "")).lower()
+                    if any(p in _txt for p in palavras):
+                        count += 1
+                return count
+
+            _n_beneficio = _conta_tipo(ads_list, _palavras_beneficio)
+            _n_prova     = _conta_tipo(ads_list, _palavras_prova)
+            _n_urgencia  = _conta_tipo(ads_list, _palavras_urgencia)
+            _n_cta       = _conta_tipo(ads_list, _palavras_cta)
+            _n_video_ins = sum(1 for _a in ads_list if "Vídeo" in _a.get("formato", ""))
+            _n_carrossel_ins = sum(1 for _a in ads_list if "Carrossel" in _a.get("formato", ""))
+
+            # Monta chips de insights
+            _insight_chips = []
+            if _n_beneficio > 0:
+                _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
+            if _n_prova > 0:
+                _insight_chips.append(("⭐", f"{_n_prova} com prova social", "#1d4ed8", "#eff6ff", "#bfdbfe"))
+            if _n_urgencia > 0:
+                _insight_chips.append(("⚡", f"{_n_urgencia} com urgência", "#92400e", "#fffbeb", "#fde68a"))
+            if _n_cta > 0:
+                _insight_chips.append(("📣", f"{_n_cta} com CTA direto", "#6d28d9", "#f5f3ff", "#ddd6fe"))
+            if _n_video_ins > 0:
+                _insight_chips.append(("🎬", f"{_n_video_ins} em vídeo", "#0e7490", "#ecfeff", "#a5f3fc"))
+            if _n_carrossel_ins > 0:
+                _insight_chips.append(("🖼️", f"{_n_carrossel_ins} carrossel", "#9333ea", "#faf5ff", "#e9d5ff"))
+
+            _chips_html = "".join([
+                f'<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+                f'color:{cor};background:{bg};border:1px solid {brd};padding:5px 12px;border-radius:20px;white-space:nowrap;">'
+                f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{cor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                f' {label}</div>'
+                for icon, label, cor, bg, brd in _insight_chips
+            ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
+
+            st.markdown(f"""
+            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-45px;'>
+                <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
+                    {avatar_empresa_html}
+                    <div style='flex:1;min-width:0'>
+                        <div style='font-size:17px;font-weight:700;color:#111827'>{nome}</div>
+                        <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
+                            <span style='font-size:13px;color:#6b7280;font-weight:500'>{badge_lbl}</span>
+                            <span style='color:#d1d5db;font-size:12px'>·</span>
+                            <span style='font-size:13px;color:#6b7280'>Página: {page_display}</span>
+                        </div>
+                    </div>
+                    <div style='display:flex;align-items:center;gap:0;flex-shrink:0'>
+                        <div style='width:1px;height:40px;background:#e5e7eb;margin-right:20px'></div>
+                        <div style='text-align:center;min-width:56px'>
+                            <div style='font-size:22px;font-weight:800;color:#111827;line-height:1'>{len(ads_list)}</div>
+                            <div style='font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
+                        </div>
+                        <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
+                        {lib_btn_top}
+                    </div>
+                </div>
+                <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>
+                    <div style='display:flex;gap:20px;align-items:center;'>
+                        <div style='display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;'>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                                      fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <div>
+                                <div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>
+                                    <span style='font-size:12px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;'>Insights de IA</span>
+                                    <span style='background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;'>BETA</span>
+                                </div>
+                                <div style='font-size:12px;color:#9ca3af;line-height:1.5;'>Padrões identificados nos anúncios ativos.</div>
+                            </div>
+                        </div>
+                        <div style='display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-left:2px solid #f0f2f4;border-right:2px solid #f0f2f4;padding: 0 20px;'>
+                            {_chips_html}
+                        </div>
+                        <div style='flex-shrink:0;'>
+                            <a href='javascript:void(0)'
+                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
+                               style='display:inline-flex;align-items:center;gap:8px;background:#3b82f6;color:#fff;padding:9px 20px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap;transition:background 0.15s;font-family:DM Sans,sans-serif;'
+                               onmouseover="this.style.background='#2563eb'"
+                               onmouseout="this.style.background='#3b82f6'">
+                                Análise completa dos anúncios →
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown("""
+            <style>
+            .stElementContainer:has(+ .stElementContainer iframe) {
+                margin-bottom: -24px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
             for j, ad_ind in enumerate(ads_list):
                 if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):

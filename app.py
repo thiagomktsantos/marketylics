@@ -7294,6 +7294,19 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                     if ch not in st.session_state:
                         st.session_state[ch] = ""
 
+                subtab_map = {
+                    "criativos_ads": "criativos",
+                    "copys_ads":     "copys",
+                    "estrategia":    "individuais",
+                }
+                ultimo_tipo = next(
+                    (a["tipo"] for a in reversed(st.session_state.ads_analises_salvas)
+                     if a.get("empresa") == nome),
+                    None,
+                )
+                if ultimo_tipo:
+                    st.session_state[f"ads_subtab_{sk}"] = subtab_map.get(ultimo_tipo, "individuais")
+
                 for j in range(len(ads_f_ia)):
                     chave_ind = f"ia_ad_result_{sk}_{j}"
                     if chave_ind not in st.session_state:

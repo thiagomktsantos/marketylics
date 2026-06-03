@@ -4389,11 +4389,15 @@ elif st.session_state.pagina == "ads":
             item.get("mediaType")
             or item.get("media_type")
             or snapshot.get("display_format")
+            or item.get("display_format")
             or ""
         ).upper()
 
+        _dco_formats = ("DCO", "DYNAMIC_CREATIVE", "DYNAMIC")
+        _is_dco = raw_media_type in _dco_formats or item.get("display_format", "").upper() in _dco_formats
+
         has_video   = bool(videos) or raw_media_type in ("VIDEO", "REELS")
-        has_cards   = len(cards) > 1 and not has_video
+        has_cards   = len(cards) > 1 and not has_video and not _is_dco
         has_image   = bool(images) and not has_video
 
         if has_video:   fmt = "Vídeo"

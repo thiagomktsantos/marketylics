@@ -10801,16 +10801,16 @@ setTimeout(ajustarAltura, 600);
 setTimeout(ajustarAltura, 1200);
 
 // Auto-expand quando só há 1 análise
-(function() {
+(function() {{
     var cards = document.querySelectorAll('.analise-card');
-    if (cards.length === 1) {
+    if (cards.length === 1) {{
         var singleCard = cards[0];
         var idMatch = singleCard.id.match(/card_(\d+)/);
-        if (idMatch) {
-            setTimeout(function() { toggleCard(parseInt(idMatch[1])); }, 150);
-        }
-    }
-})();
+        if (idMatch) {{
+            setTimeout(function() {{ toggleCard(parseInt(idMatch[1])); }}, 150);
+        }}
+    }}
+}})();
 </script>"""
 
         components.html(html_conteudo, height=500, scrolling=False)

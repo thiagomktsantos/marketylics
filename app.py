@@ -7887,7 +7887,7 @@ body{{padding-bottom:8px;}}
 [id^="ar_"] ul{{margin:5px 0 15px 28px;padding:0;}}
 [id^="ar_"] li{{margin:0 0 3px;padding:0;line-height:1.6;}}
 [id^="ar_"] li::marker {{color:#00c162;}}
-[id^="ar_"] hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}}
+[id^="ar_"] hr{{display:none;}}
 </style>
 <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
     {cards_ads_html}

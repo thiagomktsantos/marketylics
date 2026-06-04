@@ -3842,6 +3842,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
+
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
@@ -3849,26 +3850,85 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
-            # Listas não-ordenadas (*, -)
-            txt = _re.sub(r'^\s*[\*\-] (.+)$', r'<li class="ul-item">\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
-                          lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
-                          txt, flags=_re.DOTALL)
-            # Listas ordenadas (1. 2. 3.)
-            txt = _re.sub(r'^\s*\d+\. (.+)$', r'<li class="ol-item">\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li class="ol-item">.*?</li>\n?)+',
-                          lambda m: '<ol>' + m.group(0).replace(' class="ol-item"', '') + '</ol>',
-                          txt, flags=_re.DOTALL)
-            blocos = _re.split(r'\n{2,}', txt)
-            partes = []
-            for bloco in blocos:
-                bloco = bloco.strip()
-                if not bloco: continue
-                if _re.match(r'^<(h[123]|ul|ol|hr|li)', bloco):
-                    partes.append(bloco)
-                else:
-                    bloco = bloco.replace('\n', ' ')
-                    partes.append(f'<p>{bloco}</p>')
+
+            linhas  = txt.split('\n')
+            partes  = []
+            i       = 0
+
+            while i < len(linhas):
+                linha = linhas[i]
+
+                # Lista ordenada de nível 1  (ex: "1.  Título")
+                m_ol = _re.match(r'^(\d+)\.\s+(.+)$', linha)
+                if m_ol:
+                    partes.append('<ol>')
+                    while i < len(linhas):
+                        linha = linhas[i]
+                        m_item = _re.match(r'^(\d+)\.\s+(.+)$', linha)
+                        if not m_item:
+                            break
+                        conteudo = m_item.group(2)
+                        i += 1
+                        # Coleta sub-itens indentados (*   ou -   com 4+ espaços)
+                        sub_linhas = []
+                        while i < len(linhas) and _re.match(r'^\s{2,}[\*\-]\s+', linhas[i]):
+                            sub_linhas.append(linhas[i])
+                            i += 1
+                        if sub_linhas:
+                            sub_html = '<ul>'
+                            for sl in sub_linhas:
+                                sm = _re.match(r'^\s+[\*\-]\s+(.+)$', sl)
+                                if sm:
+                                    sub_html += f'<li>{sm.group(1)}</li>'
+                            sub_html += '</ul>'
+                            partes.append(f'<li><strong>{conteudo}</strong>{sub_html}</li>')
+                        else:
+                            partes.append(f'<li>{conteudo}</li>')
+                    partes.append('</ol>')
+                    continue
+
+                # Lista não-ordenada de nível 1  (ex: "* item" ou "- item")
+                m_ul = _re.match(r'^[\*\-]\s+(.+)$', linha)
+                if m_ul:
+                    partes.append('<ul>')
+                    while i < len(linhas):
+                        linha = linhas[i]
+                        m_item = _re.match(r'^[\*\-]\s+(.+)$', linha)
+                        if not m_item:
+                            break
+                        partes.append(f'<li>{m_item.group(1)}</li>')
+                        i += 1
+                    partes.append('</ul>')
+                    continue
+
+                # Linha em branco — ignora
+                if not linha.strip():
+                    i += 1
+                    continue
+
+                # Já é tag HTML (h1-h3, hr etc.)
+                if _re.match(r'^<(h[123]|hr|ul|ol|li)', linha):
+                    partes.append(linha)
+                    i += 1
+                    continue
+
+                # Parágrafo: acumula linhas contíguas não-especiais
+                bloco = []
+                while i < len(linhas):
+                    l = linhas[i]
+                    if not l.strip():
+                        break
+                    if _re.match(r'^(\d+\.|[\*\-])\s', l):
+                        break
+                    if _re.match(r'^\s{2,}[\*\-]\s', l):
+                        break
+                    if _re.match(r'^<(h[123]|hr)', l):
+                        break
+                    bloco.append(l.strip())
+                    i += 1
+                if bloco:
+                    partes.append(f'<p>{" ".join(bloco)}</p>')
+
             return '\n'.join(partes)
         
         relatorios_sites_html    = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}

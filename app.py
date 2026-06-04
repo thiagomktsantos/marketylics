@@ -3851,9 +3851,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            linhas  = txt.split('\n')
-            partes  = []
-            i       = 0
+            linhas = txt.split('\n')
+            partes = []
+            i      = 0
 
             while i < len(linhas):
                 linha = linhas[i]
@@ -3863,13 +3863,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if m_ol:
                     partes.append('<ol>')
                     while i < len(linhas):
-                        linha = linhas[i]
-                        m_item = _re.match(r'^(\d+)\.\s+(.+)$', linha)
+                        linha   = linhas[i]
+                        m_item  = _re.match(r'^(\d+)\.\s+(.+)$', linha)
                         if not m_item:
                             break
                         conteudo = m_item.group(2)
                         i += 1
-                        # Coleta sub-itens indentados (*   ou -   com 4+ espaços)
+                        # Coleta sub-itens indentados (2+ espaços + * ou -)
                         sub_linhas = []
                         while i < len(linhas) and _re.match(r'^\s{2,}[\*\-]\s+', linhas[i]):
                             sub_linhas.append(linhas[i])
@@ -3892,7 +3892,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if m_ul:
                     partes.append('<ul>')
                     while i < len(linhas):
-                        linha = linhas[i]
+                        linha  = linhas[i]
                         m_item = _re.match(r'^[\*\-]\s+(.+)$', linha)
                         if not m_item:
                             break
@@ -3928,6 +3928,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     i += 1
                 if bloco:
                     partes.append(f'<p>{" ".join(bloco)}</p>')
+                else:
+                    i += 1  # ← esta linha era o bug: garante que i sempre avança
 
             return '\n'.join(partes)
         

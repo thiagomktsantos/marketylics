@@ -3737,313 +3737,264 @@ setTimeout(syncHeight, 3000);
     elif main_tab == "analise":
 
         analises = st.session_state.get("analises_salvas", [])
-        analises_individuais = [(i, a) for i, a in enumerate(analises) if a.get("tipo") == "individual"]
-        analises_gerais      = [(i, a) for i, a in enumerate(analises) if a.get("tipo") == "geral"]
 
-        # Limpa estado temporário — relatório já foi salvo em analises_salvas
+        # Marcar como vistas
+        st.session_state.sites_analise_vistas = len(analises)
+
+        subtabs_sites_def = [
+            ("individual", "🏢", "Individuais"),
+            ("geral",      "📋", "Relatórios Gerais"),
+        ]
+
+        # Ghost button para nenhuma ação extra necessária aqui
+        ghost_subtabs_sites_css = ", ".join([
+            f".st-key-btn_sites_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_sites_analise_sub_{stk})"
+            for stk, _, _ in subtabs_sites_def
+        ])
+        st.markdown(f"""
+        <style>
+        {ghost_subtabs_sites_css} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        if "sites_analise_subtab" not in st.session_state:
+            st.session_state.sites_analise_subtab = "individual"
+
+        for stk, _, _ in subtabs_sites_def:
+            if st.button(f"sites_analise_sub_{stk}", key=f"btn_sites_analise_sub_{stk}"):
+                st.session_state.sites_analise_subtab = stk
+                st.rerun()
+
+        subtab_sites = st.session_state.sites_analise_subtab
+        contagens_sites = {
+            stk: len([a for a in analises if a.get("tipo") == stk])
+            for stk, _, _ in subtabs_sites_def
+        }
+
+        # Limpa estado temporário
         st.session_state.relatorio_gemini = ""
 
-        # ── Renderiza seções em cards visuais ──
-        def _build_analises_html(lista_individuais, lista_gerais):
-
-            relatorios_js = {}
-            for i, a in lista_individuais + lista_gerais:
-                relatorios_js[str(i)] = (a.get("relatorio") or "")
-            relatorios_json = _json_sites.dumps(relatorios_js, ensure_ascii=False)
-
-            def card_item(idx_real, analise):
-                titulo          = analise.get("titulo", "—")
-                tipo            = analise.get("tipo", "geral")
-                icon            = "🏢" if tipo == "individual" else "📋"
-                nome_arquivo_js = titulo.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "").replace(".", "")
-
-                return f"""
-<div class="analise-card" id="card_{idx_real}">
-    <div class="card-top" onclick="toggleCard({idx_real})">
-        <div class="card-icon-wrap">{icon}</div>
-        <div class="card-info">
-            <div class="card-titulo">{titulo}</div>
-        </div>
-        <div class="card-chevron" id="chev_{idx_real}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-    </div>
-    <div class="card-body" id="body_{idx_real}" style="display:none">
-        <div class="card-relatorio" id="rel_{idx_real}"></div>
-        <div class="card-acoes">
-            <button class="btn-dl" onclick="baixar({idx_real}, '{nome_arquivo_js}')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Baixar .txt
-            </button>
-            <button class="btn-rm" onclick="remover({idx_real})">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                Remover
-            </button>
-        </div>
-    </div>
-</div>"""
-
-            if lista_individuais:
-                items_ind = "".join(card_item(i, a) for i, a in reversed(lista_individuais))
-                html_ind = f"""
-<div class="secao">
-    <div class="secao-header">
-        <div class="secao-icon ind">🏢</div>
-        <div><div class="secao-titulo">Análises Individuais</div></div>
-        <div class="secao-count">{len(lista_individuais)}</div>
-    </div>
-    <div class="secao-cards">{items_ind}</div>
-</div>"""
-            else:
-                html_ind = """
-<div class="secao">
-    <div class="secao-header">
-        <div class="secao-icon ind">🏢</div>
-        <div><div class="secao-titulo">Análises Individuais</div></div>
-        <div class="secao-count">0</div>
-    </div>
-    <div class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <div class="empty-txt">Nenhuma análise individual ainda.<br>Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.</div>
-    </div>
-</div>"""
-
-            if lista_gerais:
-                items_ger = "".join(card_item(i, a) for i, a in reversed(lista_gerais))
-                html_ger = f"""
-<div class="secao">
-    <div class="secao-header">
-        <div class="secao-icon ger">📋</div>
-        <div><div class="secao-titulo">Relatórios Gerais</div></div>
-        <div class="secao-count">{len(lista_gerais)}</div>
-    </div>
-    <div class="secao-cards">{items_ger}</div>
-</div>"""
-            else:
-                html_ger = """
-<div class="secao">
-    <div class="secao-header">
-        <div class="secao-icon ger">📋</div>
-        <div><div class="secao-titulo">Relatórios Gerais</div></div>
-        <div class="secao-count">0</div>
-    </div>
-    <div class="empty-state">
-        <div class="empty-icon">📊</div>
-        <div class="empty-txt">Nenhum relatório geral ainda.<br>Clique em <b>Gerar Relatório Geral</b> no topo da página.</div>
-    </div>
-</div>"""
-
-            return f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html {{ background:transparent; font-family:'DM Sans',sans-serif; -webkit-font-smoothing:antialiased; }}
-body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
-.secao {{ margin-bottom:24px; }}
-.secao-header {{
-    display:flex; align-items:center; gap:10px;
-    padding:0 4px 10px;
-    border-bottom:2px solid #e5e7eb;
-    margin-bottom:10px;
-}}
-.secao-titulo {{
-    font-size:13px; font-weight:800; color:#6b7280;
-    text-transform:uppercase; letter-spacing:0.8px;
-}}
-.secao-count {{
-    margin-left:auto;
-    background:#f3f4f6; color:#6b7280;
-    font-size:12px; font-weight:700;
-    padding:2px 10px; border-radius:20px;
-}}
-.secao-cards {{
-    display:flex; flex-direction:column;
-    border:1px solid #e5e7eb; border-radius:12px;
-    overflow:hidden; background:#fff;
-}}
-.analise-card {{ border-bottom:1px solid #f3f4f6; }}
-.analise-card:last-child {{ border-bottom:none; }}
-.card-top {{
-    display:flex; align-items:center; gap:12px;
-    padding:14px 16px; cursor:pointer;
-    transition:background 0.12s; user-select:none;
-}}
-.card-top:hover {{ background:#f9fafb; }}
-.card-icon-wrap {{ font-size:18px; flex-shrink:0; }}
-.card-info {{ flex:1; min-width:0; }}
-.card-titulo {{
-    font-size:14px; font-weight:600; color:#111827;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}}
-.card-chevron {{
-    color:#d1d5db; flex-shrink:0;
-    transition:transform 0.2s, color 0.15s;
-    display:flex; align-items:center;
-}}
-.card-chevron.open {{ transform:rotate(180deg); color:#3a9fd6; }}
-.card-top:hover .card-chevron {{ color:#9ca3af; }}
-.card-body {{
-    padding:16px; background:#fafbfc;
-    border-top:1px solid #f3f4f6;
-}}
-.card-relatorio {{
-    font-size:13px; color:#374151; line-height:1.8;
-    max-height:400px; overflow-y:auto;
-    padding:14px 16px; border-radius:8px;
-    background:#fff; border:1px solid #e5e7eb;
-    margin-bottom:12px;
-    word-break:break-word;
-}}
-.card-relatorio h1,.card-relatorio h2,.card-relatorio h3{{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}}
-.card-relatorio p{{margin:0 0 8px;padding:0;line-height:1.7;}}
-.card-relatorio ul{{margin:4px 0 8px 18px;padding:0;}}
-.card-relatorio li{{margin:0 0 3px;padding:0;line-height:1.6;}}
-.card-relatorio hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}}
-.card-relatorio strong{{font-weight:700;}}
-.card-relatorio em{{font-style:italic;}}
-.card-acoes {{ display:flex; gap:8px; }}
-.btn-dl {{
-    flex:1; padding:9px 14px; border-radius:8px;
-    border:1px solid #e5e7eb; background:#fff;
-    font-size:13px; font-weight:600; color:#374151;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    transition:all 0.15s;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-}}
-.btn-dl:hover {{ background:#eff6ff; border-color:#3a9fd6; color:#1d4ed8; }}
-.btn-rm {{
-    padding:9px 14px; border-radius:8px;
-    border:1px solid #e5e7eb; background:#fff;
-    font-size:13px; font-weight:600; color:#9ca3af;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    transition:all 0.15s; white-space:nowrap;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-}}
-.btn-rm:hover {{ background:#fef2f2; border-color:#fca5a5; color:#dc2626; }}
-.empty-state {{
-    border:1px dashed #e5e7eb; border-radius:12px;
-    padding:32px 24px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; gap:8px;
-    background:#fff;
-}}
-.empty-icon {{ font-size:28px; opacity:0.5; }}
-.empty-txt {{ font-size:13px; color:#9ca3af; line-height:1.6; }}
-</style>
-
-{html_ind}
-{html_ger}
-
-<script>
-var RELATORIOS = {relatorios_json};
-
-function mdToHtml(txt) {{
-    if (!txt) return '';
-    return txt
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/^### (.+)$/gm, '<h3 style="font-size:14px;font-weight:800;color:#0f1f35;margin:16px 0 6px;">$1</h3>')
-        .replace(/^## (.+)$/gm,  '<h2 style="font-size:15px;font-weight:800;color:#0f1f35;margin:18px 0 8px;">$1</h2>')
-        .replace(/^# (.+)$/gm,   '<h1 style="font-size:16px;font-weight:800;color:#0f1f35;margin:20px 0 10px;">$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-        .replace(/^---+$/gm, '<hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0;">')
-        .replace(/^\s*[\*\-] (.+)$/gm, '<li style="margin-left:18px;margin-bottom:4px;">$1</li>')
-        .replace(/(<li.*<\/li>\n?)+/g, '<ul style="margin:8px 0;padding:0;list-style:disc;">$&</ul>')
-        .replace(/\n\n/g, '</p><p style="margin:8px 0;">')
-        .replace(/^(?!<[hul\-])/gm, '')
-        .replace(/\n/g, '<br>');
-}}
-
-function syncH() {{ ajustarAltura(); }}
-
-function toggleCard(idx) {{
-    var body = document.getElementById('body_' + idx);
-    var chev = document.getElementById('chev_' + idx);
-    var rel  = document.getElementById('rel_' + idx);
-    var aberto = body.style.display !== 'none';
-    body.style.display = aberto ? 'none' : 'block';
-    chev.classList.toggle('open', !aberto);
-    if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
-        rel.dataset.loaded = '1';
-    }}
-    setTimeout(syncH, 60);
-}}
-
-function remover(idx) {{
-    var targetText = '_rm_analise_' + idx + '_';
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
-        if ((btns[i].innerText || '').trim() === targetText) {{ btns[i].click(); return; }}
-    }}
-}}
-
-function baixar(idx, nome) {{
-    var conteudo = RELATORIOS[String(idx)] || '';
-    var blob = new Blob([conteudo], {{type: 'text/plain;charset=utf-8'}});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = nome + '.txt';
-    a.click();
-}}
-
-function ajustarAltura() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 8) + 'px'; break;
-            }}
-        }} catch(e) {{}}
-    }}
-}}
-
-var ro = new ResizeObserver(ajustarAltura);
-ro.observe(document.body);
-window.addEventListener('load', ajustarAltura);
-setTimeout(ajustarAltura, 200);
-setTimeout(ajustarAltura, 600);
-setTimeout(ajustarAltura, 1200);
-</script>"""
-
-        # ── Renderiza ──
-        if not analises:
-            components.html("""
+        # ── Barra de subtabs
+        components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
-.empty {
-    background:#fff; border:1px dashed #d1d5db; border-radius:14px;
-    padding:64px 48px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; gap:14px;
-}
-.empty-icon { font-size:40px; }
-.empty-title { font-size:18px; font-weight:700; color:#374151; }
-.empty-sub { font-size:14px; color:#9ca3af; line-height:1.7; max-width:400px; }
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.tabs-wrap {{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:8px;
+    width:100%;
+}}
+.tab-pill {{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 8px; border-radius:10px; cursor:pointer;
+    border:1.5px solid #e5e7eb; background:#fff; text-decoration:none;
+    font-size:13px; font-weight:600; color:#6b7280;
+    transition:all 0.15s; white-space:nowrap;
+    font-family:'DM Sans',sans-serif; line-height:1; width:100%;
+}}
+.tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.tab-badge {{
+    font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
+    background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
+}}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
-<div class="empty">
-    <div class="empty-icon">📋</div>
-    <div class="empty-title">Nenhuma análise ainda</div>
-    <div class="empty-sub">
-        Clique em <b>Gerar Relatório Geral</b> ou analise um site individualmente
-        na aba <b>Sites configurados</b>.
-    </div>
+<div class="tabs-wrap">
+{''.join([
+    f'''<a class="tab-pill {'active' if subtab_sites == stk else ''}"
+        href="javascript:void(0)"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='sites_analise_sub_{stk}'){{b.click();return;}}}}}})()"
+    >{icon} {lbl} <span class="tab-badge {'has' if contagens_sites.get(stk,0) > 0 else ''}">{contagens_sites.get(stk,0)}</span></a>'''
+    for stk, icon, lbl in subtabs_sites_def
+])}
 </div>
 <script>
-(function() {
+(function() {{
     var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try { if (iframes[i].contentWindow === window) {
-            iframes[i].style.height = '300px'; break;
-        } } catch(e) {}
-    }
-})();
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '52px';
+            iframes[i].style.marginTop = '-47px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
 </script>
-""", height=300, scrolling=False)
+""", height=52, scrolling=False)
+
+        # ── Conteúdo da subtab ativa
+        lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
+        icons_sites_map   = {"individual": "🏢", "geral": "📋"}
+        labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
+        icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
+        label_sites_ativo = labels_sites_map.get(subtab_sites, "")
+
+        def _md_to_html_sites(txt):
+            if not txt: return ""
+            import re as _re
+            txt = txt.replace("&", "&amp;")
+            txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+            txt = _re.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
+            txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^\s*[\*\-] (.+)$', r'<li>\1</li>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'(<li>.*?</li>\n?)+', lambda m: '<ul>' + m.group(0) + '</ul>', txt, flags=_re.DOTALL)
+            blocos = _re.split(r'\n{2,}', txt)
+            partes = []
+            for bloco in blocos:
+                bloco = bloco.strip()
+                if not bloco:
+                    continue
+                if _re.match(r'^<(h[123]|ul|hr|li)', bloco):
+                    partes.append(bloco)
+                else:
+                    bloco = bloco.replace('\n', ' ')
+                    partes.append(f'<p>{bloco}</p>')
+            return '\n'.join(partes)
+
+        relatorios_sites_html = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
+        relatorios_sites_json = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
+        relatorios_sites_raw  = {str(i): a.get("relatorio","") for i, a in enumerate(analises)}
+        relatorios_sites_raw_json = _json_sites.dumps(relatorios_sites_raw, ensure_ascii=False)
+
+        if lista_sites_ativa:
+            cards_sites_html = ""
+            for a in reversed(lista_sites_ativa):
+                idx_real = analises.index(a)
+                icon_a   = icons_sites_map.get(a.get("tipo",""), "📋")
+                titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+                cards_sites_html += f"""
+<div style="border-bottom:1px solid #f3f4f6;background:#fff;">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;
+                transition:background 0.12s;background-color:#24658e;"
+         onclick="(function(){{
+             var b=document.getElementById('sb_{idx_real}');
+             var c=document.getElementById('sc_{idx_real}');
+             var r=document.getElementById('sr_{idx_real}');
+             var open=b.style.display!=='none';
+             b.style.display=open?'none':'block';
+             c.style.transform=open?'':'rotate(180deg)';
+             if(!open&&r&&!r.dataset.loaded){{r.innerHTML=RELS['{idx_real}']||'';r.dataset.loaded='1';}}
+             setTimeout(syncH,100);
+         }})()">
+        <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
+        <span id="sc_{idx_real}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+    <div id="sb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div id="sr_{idx_real}"
+             style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
+        <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
+            <button onclick="(function(){{
+                        var txt=RELS_RAW['{idx_real}']||'';
+                        var a=document.createElement('a');
+                        a.href=URL.createObjectURL(new Blob([txt],{{type:'text/plain'}}));
+                        a.download='{nome_arq}.txt';
+                        a.click();
+                    }})()"
+                style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
+                       background:#fff;font-size:13px;font-weight:600;color:#374151;
+                       cursor:pointer;font-family:'DM Sans',sans-serif;">
+                ⬇️ Baixar .txt
+            </button>
+        </div>
+    </div>
+</div>"""
+
+            components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+body {{ padding-bottom:8px; }}
+[id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{
+    font-size:15px; font-weight:800; color:#0f1f35;
+    margin:14px 0 8px; padding-bottom:5px;
+    border-bottom:2px solid #e5e7eb;
+    text-transform:uppercase;
+}}
+[id^="sr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
+[id^="sr_"] ul {{ margin:5px 0 15px 28px; }}
+[id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
+[id^="sr_"] li::marker {{ color:#00c162; }}
+[id^="sr_"] hr {{ display:none; }}
+</style>
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_sites_html}
+</div>
+<script>
+var RELS     = {relatorios_sites_json};
+var RELS_RAW = {relatorios_sites_raw_json};
+
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.marginTop = '-57px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 200);
+setTimeout(syncH, 600);
+
+(function() {{
+    var cards = document.querySelectorAll('[id^="sb_"]');
+    if (cards.length === 1) {{
+        var m = cards[0].id.match(/sb_(\d+)/);
+        if (m) {{
+            setTimeout(function() {{
+                var b = document.getElementById('sb_' + m[1]);
+                var c = document.getElementById('sc_' + m[1]);
+                var r = document.getElementById('sr_' + m[1]);
+                if (b) b.style.display = 'block';
+                if (c) c.style.transform = 'rotate(180deg)';
+                if (r && !r.dataset.loaded) {{ r.innerHTML = RELS[m[1]] || ''; r.dataset.loaded = '1'; }}
+                syncH();
+            }}, 150);
+        }}
+    }}
+}})();
+</script>
+""", height=100, scrolling=False)
+
         else:
-            html_final = _build_analises_html(analises_individuais, analises_gerais)
-            components.html(html_final, height=200, scrolling=False)
+            empty_msg = {
+                "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
+                "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
+            }.get(subtab_sites, "Nenhuma análise ainda.")
+
+            st.markdown(f"""
+            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                        text-align:center;background:#fff;margin-top:8px;
+                        display:flex;flex-direction:column;align-items:center;gap:10px;">
+                <div style="font-size:32px;opacity:0.4;">{icon_sites_ativo}</div>
+                <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_sites_ativo.lower()} ainda.</div>
+                <div style="font-size:13px;color:#9ca3af;">{empty_msg}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
 # PAGINA - ADS (Biblioteca de Anúncios com Meta Ad Library API)

@@ -7821,16 +7821,27 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         import html as _html_mod
         def _md_to_html(txt):
             if not txt: return ""
+            txt = txt.replace("&", "&amp;")
             txt = _re_md.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re_md.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
-            txt = _re_md.sub(r'^### (.+)$', r'<h3 style="font-size:14px;font-weight:800;color:#0f1f35;margin:16px 0 6px">\1</h3>', txt, flags=_re_md.MULTILINE)
-            txt = _re_md.sub(r'^## (.+)$',  r'<h2 style="font-size:15px;font-weight:800;color:#0f1f35;margin:18px 0 8px">\1</h2>', txt, flags=_re_md.MULTILINE)
-            txt = _re_md.sub(r'^# (.+)$',   r'<h1 style="font-size:16px;font-weight:800;color:#0f1f35;margin:20px 0 10px">\1</h1>', txt, flags=_re_md.MULTILINE)
-            txt = _re_md.sub(r'^---+$', '<hr style="border:none;border-top:1px solid #e5e7eb;margin:14px 0">', txt, flags=_re_md.MULTILINE)
-            txt = _re_md.sub(r'^\s*[\*\-] (.+)$', r'<li style="margin-left:18px;margin-bottom:4px">\1</li>', txt, flags=_re_md.MULTILINE)
-            txt = txt.replace("\n\n", "<br><br>")
-            txt = txt.replace("\n", "<br>")
-            return txt
+            txt = _re_md.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^---+$', '<hr>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'^\s*[\*\-] (.+)$', r'<li>\1</li>', txt, flags=_re_md.MULTILINE)
+            txt = _re_md.sub(r'(<li>.*?</li>\n?)+', lambda m: '<ul>' + m.group(0) + '</ul>', txt, flags=_re_md.DOTALL)
+            blocos = _re_md.split(r'\n{2,}', txt)
+            partes = []
+            for bloco in blocos:
+                bloco = bloco.strip()
+                if not bloco:
+                    continue
+                if _re_md.match(r'^<(h[123]|ul|hr|li)', bloco):
+                    partes.append(bloco)
+                else:
+                    bloco = bloco.replace('\n', ' ')
+                    partes.append(f'<p>{bloco}</p>')
+            return '\n'.join(partes)
 
         relatorios_ads_ind = {str(i): _md_to_html(a.get("relatorio","")) for i, a in enumerate(analises_ads)}
         relatorios_ads_json = _json_analises.dumps(relatorios_ads_ind, ensure_ascii=False)
@@ -7871,6 +7882,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
 body{{padding-bottom:8px;}}
+[id^="ar_"] h1,[id^="ar_"] h2,[id^="ar_"] h3{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}
+[id^="ar_"] p{margin:0 0 8px;padding:0;line-height:1.7;}
+[id^="ar_"] ul{margin:4px 0 8px 18px;padding:0;}
+[id^="ar_"] li{margin:0 0 3px;padding:0;line-height:1.6;}
+[id^="ar_"] hr{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}
 </style>
 <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
     {cards_ads_html}

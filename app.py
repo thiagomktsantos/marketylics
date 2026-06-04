@@ -3953,13 +3953,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
         [id^="sr_"] li::marker {{ color:#00c162; }}
         [id^="sr_"] hr {{ display:none; }}
-        [id^="sr_"] ol { margin:5px 0 15px 28px; }
-        [id^="sr_"] ol li { margin:0 0 3px; line-height:1.6; }
-        [id^="sr_"] ol li::marker { color:#24658e; font-weight:600; }
+        [id^="sr_"] ol {{ margin:5px 0 15px 28px; }}
+        [id^="sr_"] ol li {{ margin:0 0 3px; line-height:1.6; }}
+        [id^="sr_"] ol li::marker {{ color:#24658e; font-weight:600; }}
 
-        #smb ol { margin:6px 0 14px 24px; }
-        #smb ol li { margin:0 0 4px; line-height:1.65; }
-        #smb ol li::marker { color:#24658e; font-weight:600; }
+        #smb ol {{ margin:6px 0 14px 24px; }}
+        #smb ol li {{ margin:0 0 4px; line-height:1.65; }}
+        #smb ol li::marker {{ color:#24658e; font-weight:600; }}
         /* Modal markdown styles */
         #smb h1,#smb h2,#smb h3 {{
             font-size:16px; font-weight:800; color:#0f1f35;

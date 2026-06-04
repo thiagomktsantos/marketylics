@@ -10680,66 +10680,63 @@ Seja direto e objetivo.
     # ABA: ANÁLISE DE IA — Comparativo geral
     # ══════════════════════════════════════════════════════════════════
  
-    elif main_tab == "analise":
+elif main_tab == "analise":
 
-        import json as _json_redes
-        import datetime as _dt_redes
+    import json as _json_redes
+    import datetime as _dt_redes
+    import re as _re_md
 
-        analises_redes = st.session_state.get("redes_analises_salvas", [])
+    analises_redes = st.session_state.get("redes_analises_salvas", [])
 
-        # Marcar como vistas
-        st.session_state.redes_analise_vistas = len(analises_redes)
+    # Marcar como vistas
+    st.session_state.redes_analise_vistas = len(analises_redes)
 
-        # Ghost buttons para gerar análises ausentes
-        tipos_pendentes = {
-            "comparativo": not any(a.get("tipo") == "comparativo" for a in analises_redes),
-        }
-        for rr in ok:
-            h = rr.get("handle", "")
-            for tipo in ["criativos", "copy", "geral_perfil"]:
-                chave_flag = f"pendente_{tipo}_{h}"
-                tipos_pendentes[chave_flag] = not any(
-                    a.get("tipo") == tipo and a.get("perfil") == h for a in analises_redes
-                )
+    subtabs_def = [
+        ("bio",          "👤", "Perfil"),
+        ("postagem",     "📸", "Postagens"),
+        ("criativos",    "🎨", "Criativos"),
+        ("copy",         "✍️", "Copy"),
+        ("geral_perfil", "📊", "Geral"),
+        ("comparativo",  "🏆", "Comparativo"),
+    ]
 
-       # Ghost button comparativo
-        ghost_comp_key = "btn_redes_comp_geral"
-        st.markdown(f"""
-        <style>
-        .st-key-{ghost_comp_key} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }}
-        .stElementContainer:has(.st-key-{ghost_comp_key}) {{
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
+    # Ghost button comparativo
+    ghost_comp_key = "btn_redes_comp_geral"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_comp_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_comp_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
 
-        if st.button("redes_comparativo", key=ghost_comp_key):
-            if gemini_model is None:
-                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
-            elif not ok:
-                st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
-            else:
-                chave_comp_redes = "ia_comp_redes_geral"
-                resumo_perfis = "\n\n".join([
-                    f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
-                    f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
-                    f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
-                    f"Bio: {rr.get('bio','')}\n"
-                    f"Últimos posts:\n" + "\n".join([
-                        f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
-                        f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
-                        for p in rr.get("posts", [])[:6]
-                    ])
-                    for rr in ok
+    if st.button("redes_comparativo", key=ghost_comp_key):
+        if gemini_model is None:
+            st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+        elif not ok:
+            st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
+        else:
+            resumo_perfis = "\n\n".join([
+                f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
+                f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
+                f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
+                f"Bio: {rr.get('bio','')}\n"
+                f"Últimos posts:\n" + "\n".join([
+                    f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
+                    f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
+                    for p in rr.get("posts", [])[:6]
                 ])
-                with st.spinner("Gerando comparativo…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
+                for rr in ok
+            ])
+            with st.spinner("Gerando comparativo…"):
+                try:
+                    resp = gemini_model.generate_content(f"""
 Você é especialista em marketing digital e redes sociais.
 Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
 
@@ -10763,150 +10760,74 @@ Para cada perfil, 1-2 pontos fortes.
 
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
-                        st.session_state[chave_comp_redes] = resp.text
-                        import datetime as _dt_redes
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if a.get("tipo") != "comparativo"
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "comparativo",
-                            "perfis": [rr.get("handle","") for rr in ok],
-                        })
-                        salvar_dados_usuario(st.session_state.user.id)
-                        st.rerun()
-                    except Exception as e:
-                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if a.get("tipo") != "comparativo"
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "comparativo",
+                        "perfis": [rr.get("handle","") for rr in ok],
+                    })
+                    salvar_dados_usuario(st.session_state.user.id)
+                    st.rerun()
+                except Exception as e:
+                    st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
 
-        # Separar por tipo para exibição
-        por_tipo = {
-            "bio":         [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "bio"],
-            "postagem":    [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "postagem"],
-            "criativos":   [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "criativos"],
-            "copy":        [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "copy"],
-            "geral_perfil":[(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "geral_perfil"],
-            "comparativo": [(i, a) for i, a in enumerate(analises_redes) if a.get("tipo") == "comparativo"],
-        }
+    # Ghost buttons subtabs
+    ghost_subtabs_css = ", ".join([
+        f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
+        for stk, _, _ in subtabs_def
+    ])
+    st.markdown(f"""
+    <style>
+    {ghost_subtabs_css} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+        min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
 
-        relatorios_js = {str(i): a.get("relatorio", "") for i, a in enumerate(analises_redes)}
-        relatorios_json = _json_redes.dumps(relatorios_js, ensure_ascii=False)
+    if "redes_analise_subtab" not in st.session_state:
+        st.session_state.redes_analise_subtab = "bio"
 
-        def _card_redes(idx_real, analise):
-            titulo = analise.get("titulo", "—")
-            tipo   = analise.get("tipo", "")
-            icons  = {"bio": "👤", "postagem": "📸", "criativos": "🎨", "copy": "✍️", "geral_perfil": "📊", "comparativo": "🏆"}
-            icon   = icons.get(tipo, "📋")
-            nome_arquivo = titulo.replace(" ", "_").replace("/","_").replace("(","").replace(")","").replace(".","")
-            return f"""
-<div class="analise-card" id="card_{idx_real}">
-    <div class="card-top" onclick="toggleCard({idx_real})">
-        <div class="card-icon-wrap">{icon}</div>
-        <div class="card-info">
-            <div class="card-titulo">{titulo}</div>
-        </div>
-        <div class="card-chevron" id="chev_{idx_real}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-    </div>
-    <div class="card-body" id="body_{idx_real}" style="display:none">
-        <div class="card-relatorio" id="rel_{idx_real}"></div>
-        <div class="card-acoes">
-            <button class="btn-dl" onclick="baixar({idx_real}, '{nome_arquivo}')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Baixar .txt
-            </button>
-            <button class="btn-rm" onclick="remover({idx_real})">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                Remover
-            </button>
-        </div>
-    </div>
-</div>"""
+    for stk, _, _ in subtabs_def:
+        if st.button(f"redes_analise_sub_{stk}", key=f"btn_redes_analise_sub_{stk}"):
+            st.session_state.redes_analise_subtab = stk
+            st.rerun()
 
-        def _secao_redes(titulo_sec, icon_sec, lista, tipo_sec, btn_label=None, btn_trigger=None):
-            items_html = "".join(_card_redes(i, a) for i, a in reversed(lista)) if lista else ""
-            empty_html = ""
-            if not lista:
-                if btn_label and btn_trigger:
-                    empty_html = f"""
-<div class="empty-state">
-    <div class="empty-icon">{icon_sec}</div>
-    <div class="empty-txt">Nenhuma análise de {titulo_sec.lower()} ainda.</div>
-    <button class="btn-gerar-vazio" onclick="triggerBtn('{btn_trigger}')">{btn_label}</button>
-</div>"""
-                else:
-                    empty_html = f"""
-<div class="empty-state">
-    <div class="empty-icon">{icon_sec}</div>
-    <div class="empty-txt">Nenhuma análise de {titulo_sec.lower()} ainda.<br>Vá em <b>Perfis configurados</b> para gerar.</div>
-</div>"""
-            return f"""
-<div class="secao">
-    <div class="secao-header">
-        <div class="secao-icon-lbl">{icon_sec}</div>
-        <div class="secao-titulo">{titulo_sec}</div>
-        {'<button class="btn-regerar" onclick="triggerBtn(\'' + btn_trigger + '\')">' + btn_label + '</button>' if btn_label and btn_trigger and lista else ''}
-        <div class="secao-count {'has' if lista else ''}">{len(lista)}</div>
-    </div>
-    {'<div class="secao-cards">' + items_html + '</div>' if lista else empty_html}
-</div>"""
+    subtab_analise = st.session_state.redes_analise_subtab
+    contagens = {stk: len([a for a in analises_redes if a.get("tipo") == stk]) for stk, _, _ in subtabs_def}
 
-        # ── Estado da sub-aba ativa ─────────────────────────────────
-        if "redes_analise_subtab" not in st.session_state:
-            st.session_state.redes_analise_subtab = "bio"
-
-        subtabs_def = [
-            ("bio",          "👤", "Perfil"),
-            ("postagem",     "📸", "Postagens"),
-            ("criativos",    "🎨", "Criativos"),
-            ("copy",         "✍️", "Copy"),
-            ("geral_perfil", "📊", "Geral"),
-            ("comparativo",  "🏆", "Comparativo"),
-        ]
-
-        subtab_analise = st.session_state.redes_analise_subtab
-
-        # Contagens por tipo
-        contagens = {stk: len(por_tipo.get(stk, [])) for stk, _, _ in subtabs_def}
-
-        # ── Barra de abas ───────────────────────────────────────────
-        tabs_items_js = "[" + ",".join([
-            f'{{key:"{stk}",icon:"{icon}",label:"{lbl}",count:{contagens.get(stk,0)}}}'
-            for stk, icon, lbl in subtabs_def
-        ]) + "]"
-
-        components.html(f"""
+    # ── Barra de subtabs (igual ao Ads)
+    components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .tabs-wrap {{
     display:grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns:repeat(6,1fr);
     gap:8px;
     width:100%;
 }}
 .tab-pill {{
     display:flex; align-items:center; justify-content:center; gap:6px;
     padding:10px 8px; border-radius:10px; cursor:pointer;
-    border:1.5px solid #e5e7eb; background:#fff;
+    border:1.5px solid #e5e7eb; background:#fff; text-decoration:none;
     font-size:13px; font-weight:600; color:#6b7280;
     transition:all 0.15s; white-space:nowrap;
-    font-family:'DM Sans',sans-serif; line-height:1;
-    width:100%; text-decoration:none;
+    font-family:'DM Sans',sans-serif; line-height:1; width:100%;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
-.tab-pill.active {{
-    background:#0e2a47; border-color:#0e2a47; color:#fff;
-}}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .tab-badge {{
-    font-size:11px; font-weight:800;
-    padding:2px 8px; border-radius:20px;
-    background:#e5e7eb; color:#6b7280;
-    line-height:1.4; flex-shrink:0;
+    font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
+    background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
 .tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
@@ -10916,7 +10837,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 {''.join([
     f'''<a class="tab-pill {'active' if subtab_analise == stk else ''}"
         href="javascript:void(0)"
-        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='analise_subtab_{stk}'){{b.click();return;}}}}}})()"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='redes_analise_sub_{stk}'){{b.click();return;}}}}}})()"
     >{icon} {lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></a>'''
     for stk, icon, lbl in subtabs_def
 ])}
@@ -10925,291 +10846,187 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 (function() {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = '52px';
-                
-                var prev = iframes[i - 1];
-                var prevRect = prev ? prev.getBoundingClientRect() : null;
-                var thisRect = iframes[i].getBoundingClientRect();
-                var gap = thisRect.top - (prevRect ? prevRect.bottom : 0);
-                iframes[i].style.marginTop = '-' + (gap - 4) + 'px';
-                break;
-            }}
-        }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '52px';
+            iframes[i].style.marginTop = '-47px';
+            break;
+        }} }} catch(e) {{}}
     }}
 }})();
 </script>
 """, height=52, scrolling=False)
 
-        # ── Conteúdo da sub-aba ativa ───────────────────────────────
-        lista_ativa  = por_tipo.get(subtab_analise, [])
-        icons_map    = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
-        labels_map   = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
-        icon_ativo   = icons_map.get(subtab_analise, "📋")
-        label_ativo  = labels_map.get(subtab_analise, "")
+    # ── Conteúdo da subtab ativa
+    lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
+    icons_map   = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
+    labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
+    icon_ativo  = icons_map.get(subtab_analise, "📋")
+    label_ativo = labels_map.get(subtab_analise, "")
 
-        btn_comp_html = ""
-        if subtab_analise == "comparativo":
-            btn_comp_html = """
-<div style="margin-bottom:12px;">
-    <button onclick="triggerBtn('redes_comparativo')"
-        style="display:inline-flex;align-items:center;gap:8px;
-               padding:10px 20px;border-radius:8px;border:none;
-               background:#0e2a47;color:#fff;font-size:14px;font-weight:700;
-               cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;"
-        onmouseover="this.style.background='#1a3a5c'"
-        onmouseout="this.style.background='#0e2a47'">
-        ⚡ Gerar Comparativo
-    </button>
-</div>"""
-
-        relatorios_js = {str(i): a.get("relatorio", "") for i, a in enumerate(analises_redes)}
-        import json as _json_redes2
-        relatorios_json = _json_redes2.dumps(relatorios_js, ensure_ascii=False)
-
-        def _card_redes(idx_real, analise):
-            titulo = analise.get("titulo", "—")
-            tipo   = analise.get("tipo", "")
-            icons  = {"bio": "👤", "postagem": "📸", "criativos": "🎨", "copy": "✍️", "geral_perfil": "📊", "comparativo": "🏆"}
-            icon   = icons.get(tipo, "📋")
-            nome_arquivo = titulo.replace(" ", "_").replace("/","_").replace("(","").replace(")","").replace(".","")
-            return f"""
-<div class="analise-card" id="card_{idx_real}">
-    <div class="card-top" onclick="toggleCard({idx_real})">
-        <div class="card-icon-wrap">{icon}</div>
-        <div class="card-info">
-            <div class="card-titulo">{titulo}</div>
-        </div>
-        <div class="card-chevron" id="chev_{idx_real}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-    </div>
-    <div class="card-body" id="body_{idx_real}" style="display:none">
-        <div class="card-relatorio" id="rel_{idx_real}"></div>
-        <div class="card-acoes">
-            <button class="btn-dl" onclick="baixar({idx_real}, '{nome_arquivo}')">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Baixar .txt
-            </button>
-            <button class="btn-rm" onclick="remover({idx_real})">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                Remover
-            </button>
-        </div>
-    </div>
-</div>"""
-
-        cards_html = "".join(_card_redes(i, a) for i, a in reversed(lista_ativa)) if lista_ativa else ""
-
-        empty_html = ""
-        if not lista_ativa:
-            btn_vazio = ""
-            if subtab_analise == "comparativo":
-                btn_vazio = '<button class="btn-gerar-vazio" onclick="triggerBtn(\'redes_comparativo\')">⚡ Gerar Comparativo</button>'
+    def _md_to_html_redes(txt):
+        if not txt: return ""
+        import re as _re
+        txt = txt.replace("&", "&amp;")
+        txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+        txt = _re.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
+        txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
+        txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
+        txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
+        txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
+        txt = _re.sub(r'^\s*[\*\-] (.+)$', r'<li>\1</li>', txt, flags=_re.MULTILINE)
+        txt = _re.sub(r'(<li>.*?</li>\n?)+', lambda m: '<ul>' + m.group(0) + '</ul>', txt, flags=_re.DOTALL)
+        blocos = _re.split(r'\n{2,}', txt)
+        partes = []
+        for bloco in blocos:
+            bloco = bloco.strip()
+            if not bloco:
+                continue
+            if _re.match(r'^<(h[123]|ul|hr|li)', bloco):
+                partes.append(bloco)
             else:
-                btn_vazio = f'<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
-            empty_html = f"""
-<div class="empty-state">
-    <div class="empty-icon">{icon_ativo}</div>
-    <div class="empty-txt">Nenhuma análise de {label_ativo.lower()} ainda.</div>
-    {btn_vazio}
+                bloco = bloco.replace('\n', ' ')
+                partes.append(f'<p>{bloco}</p>')
+        return '\n'.join(partes)
+
+    relatorios_redes = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
+    relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)
+
+    if lista_ativa:
+        cards_redes_html = ""
+        for a in reversed(lista_ativa):
+            idx_real = analises_redes.index(a)
+            icon_a   = icons_map.get(a.get("tipo",""), "📋")
+            titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+            cards_redes_html += f"""
+<div style="border-bottom:1px solid #f3f4f6;background:#fff;">
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;
+                transition:background 0.12s;background-color:#24658e;"
+         onclick="(function(){{
+             var b=document.getElementById('rb_{idx_real}');
+             var c=document.getElementById('rc_{idx_real}');
+             var r=document.getElementById('rr_{idx_real}');
+             var open=b.style.display!=='none';
+             b.style.display=open?'none':'block';
+             c.style.transform=open?'':'rotate(180deg)';
+             if(!open&&r&&!r.dataset.loaded){{r.innerHTML=RELS['{idx_real}']||'';r.dataset.loaded='1';}}
+             setTimeout(syncH,100);
+         }})()">
+        <span style="font-size:18px;flex-shrink:0">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{titulo_a}</div>
+        <span id="rc_{idx_real}" style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+    <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div id="rr_{idx_real}"
+             style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
+        <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
+            <button onclick="(function(){{
+                        var txt=RELS_RAW['{idx_real}']||'';
+                        var a=document.createElement('a');
+                        a.href=URL.createObjectURL(new Blob([txt],{{type:'text/plain'}}));
+                        a.download='{nome_arq}.txt';
+                        a.click();
+                    }})()"
+                style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
+                       background:#fff;font-size:13px;font-weight:600;color:#374151;
+                       cursor:pointer;font-family:'DM Sans',sans-serif;">
+                ⬇️ Baixar .txt
+            </button>
+        </div>
+    </div>
 </div>"""
 
-        html_conteudo = f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        # Raw text separado para download (sem HTML)
+        relatorios_raw = {str(i): a.get("relatorio","") for i, a in enumerate(analises_redes)}
+        relatorios_raw_json = _json_redes.dumps(relatorios_raw, ensure_ascii=False)
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html {{ background:transparent; font-family:'DM Sans',sans-serif; -webkit-font-smoothing:antialiased; }}
-body {{ background:transparent; overflow:visible;padding-top:0 !important;margin-top:0 !important; }}
-.analise-card {{
-    border-bottom:1px solid #f3f4f6;
-    background:#fff;
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+body {{ padding-bottom:8px; }}
+[id^="rr_"] h1,[id^="rr_"] h2,[id^="rr_"] h3 {{
+    font-size:15px; font-weight:800; color:#0f1f35;
+    margin:14px 0 8px; padding-bottom:5px;
+    border-bottom:2px solid #e5e7eb;
+    text-transform:uppercase;
 }}
-.analise-card:last-child {{ border-bottom:none; }}
-.cards-wrap {{
-    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;margin-top:0;
-}}
-.card-top {{
-    display:flex; align-items:center; gap:12px;
-    padding:14px 16px; cursor:pointer;
-    transition:background 0.12s; user-select:none;
-}}
-.card-top:hover {{ background:#f9fafb; }}
-.card-icon-wrap {{ font-size:18px; flex-shrink:0; }}
-.card-info {{ flex:1; min-width:0; }}
-.card-titulo {{
-    font-size:14px; font-weight:600; color:#111827;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}}
-.card-chevron {{
-    color:#d1d5db; flex-shrink:0; transition:transform 0.2s, color 0.15s;
-    display:flex; align-items:center;
-}}
-.card-chevron.open {{ transform:rotate(180deg); color:#3a9fd6; }}
-.card-top:hover .card-chevron {{ color:#9ca3af; }}
-.card-body {{ border-top:1px solid #f3f4f6; }}
-.card-relatorio {{
-    font-size:13px; color:#374151; line-height:1.8;
-    overflow-y:auto;padding:14px 16px;background:#fff;
-    margin-bottom:12px; word-break:break-word;
-}}
-.card-relatorio h1,.card-relatorio h2,.card-relatorio h3{{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}}
-.card-relatorio p{{margin:0 0 8px;padding:0;line-height:1.7;}}
-.card-relatorio ul{{margin:4px 0 8px 18px;padding:0;}}
-.card-relatorio li{{margin:0 0 3px;padding:0;line-height:1.6;}}
-.card-relatorio hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}}
-.card-relatorio strong{{font-weight:700;}}
-.card-relatorio em{{font-style:italic;}}
-.card-acoes {{ display:flex; gap:8px;background-color:#b2c5d7;padding:10px; }}
-.btn-dl {{
-    flex:1; padding:9px 14px; border-radius:8px;
-    border:1px solid #e5e7eb; background:#fff;
-    font-size:13px; font-weight:600; color:#374151;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-}}
-.btn-dl:hover {{ background:#eff6ff; border-color:#3a9fd6; color:#1d4ed8; }}
-.btn-rm {{
-    padding:9px 14px; border-radius:8px;
-    border:1px solid #e5e7eb; background:#fff;
-    font-size:13px; font-weight:600; color:#9ca3af;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; white-space:nowrap;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-}}
-.btn-rm:hover {{ background:#fef2f2; border-color:#fca5a5; color:#dc2626; }}
-.empty-state {{
-    border:1px dashed #e5e7eb; border-radius:12px;
-    padding:48px 24px; text-align:center;
-    display:flex; flex-direction:column; align-items:center; gap:10px;
-    background:#fff;
-}}
-.empty-icon {{ font-size:32px; opacity:0.4; }}
-.empty-txt {{ font-size:14px; color:#9ca3af; line-height:1.6; }}
-.btn-gerar-vazio {{
-    margin-top:4px; padding:10px 22px; border-radius:8px;
-    border:none; background:#0e2a47;
-    font-size:14px; font-weight:700; color:#fff;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s;
-}}
-.btn-gerar-vazio:hover {{ background:#1a3a5c; }}
+[id^="rr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
+[id^="rr_"] ul {{ margin:5px 0 15px 28px; }}
+[id^="rr_"] li {{ margin:0 0 3px; line-height:1.6; }}
+[id^="rr_"] li::marker {{ color:#00c162; }}
+[id^="rr_"] hr {{ display:none; }}
 </style>
-
-{btn_comp_html}
-
-{'<div class="cards-wrap">' + cards_html + '</div>' if lista_ativa else empty_html}
-
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_redes_html}
+</div>
 <script>
-var RELATORIOS = {relatorios_json};
+var RELS     = {relatorios_redes_json};
+var RELS_RAW = {relatorios_raw_json};
 
-function mdToHtml(txt) {{
-    if (!txt) return '';
-    return txt
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm,  '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm,   '<h1>$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-        .replace(/^---+$/gm, '<hr>')
-        .replace(/^\s*[\*\-] (.+)$/gm, '<li>$1</li>')
-        .replace(/(<li>[\s\S]*?<\/li>\n?)+/g, function(m) {{ return '<ul>' + m + '</ul>'; }})
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n/g, '<br>');
-}}
-
-function toggleCard(idx) {{
-    var body = document.getElementById('body_' + idx);
-    var chev = document.getElementById('chev_' + idx);
-    var rel  = document.getElementById('rel_' + idx);
-    var aberto = body.style.display !== 'none';
-    body.style.display = aberto ? 'none' : 'block';
-    chev.classList.toggle('open', !aberto);
-    if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
-        rel.dataset.loaded = '1';
-    }}
-    setTimeout(ajustarAltura, 60);
-}}
-
-function remover(idx) {{
-    var targetText = '_rm_redes_analise_' + idx + '_';
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
-        if ((btns[i].innerText || '').trim() === targetText) {{ btns[i].click(); return; }}
-    }}
-}}
-
-function baixar(idx, nome) {{
-    var conteudo = RELATORIOS[String(idx)] || '';
-    var blob = new Blob([conteudo], {{type: 'text/plain;charset=utf-8'}});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = nome + '.txt';
-    a.click();
-}}
-
-function triggerBtn(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-
-function ajustarAltura() {{
+function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 8) + 'px';
-                iframes[i].style.marginTop = '-50px';
-                break;
-            }}
-        }} catch(e) {{}}
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.marginTop = '-57px';
+            break;
+        }} }} catch(e) {{}}
     }}
 }}
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 200);
+setTimeout(syncH, 600);
 
-var ro = new ResizeObserver(ajustarAltura);
-ro.observe(document.body);
-window.addEventListener('load', ajustarAltura);
-setTimeout(ajustarAltura, 200);
-setTimeout(ajustarAltura, 600);
-setTimeout(ajustarAltura, 1200);
-
-// Auto-expand quando só há 1 análise
+// Auto-expand quando só há 1 card
 (function() {{
-    var cards = document.querySelectorAll('.analise-card');
+    var cards = document.querySelectorAll('[id^="rb_"]');
     if (cards.length === 1) {{
-        var singleCard = cards[0];
-        var idMatch = singleCard.id.match(/card_(\d+)/);
-        if (idMatch) {{
-            setTimeout(function() {{ toggleCard(parseInt(idMatch[1])); }}, 150);
+        var m = cards[0].id.match(/rb_(\d+)/);
+        if (m) {{
+            setTimeout(function() {{
+                var b = document.getElementById('rb_' + m[1]);
+                var c = document.getElementById('rc_' + m[1]);
+                var r = document.getElementById('rr_' + m[1]);
+                if (b) b.style.display = 'block';
+                if (c) c.style.transform = 'rotate(180deg)';
+                if (r && !r.dataset.loaded) {{ r.innerHTML = RELS[m[1]] || ''; r.dataset.loaded = '1'; }}
+                syncH();
+            }}, 150);
         }}
     }}
 }})();
-</script>"""
+</script>
+""", height=100, scrolling=False)
 
-        components.html(html_conteudo, height=100, scrolling=False)
+    else:
+        # Empty state — comparativo tem botão especial
+        btn_vazio_html = ""
+        if subtab_analise == "comparativo":
+            btn_vazio_html = f"""
+<button onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='redes_comparativo'){{b.click();return;}}}}}})()"
+    style="margin-top:4px;padding:10px 22px;border-radius:8px;border:none;
+           background:#0e2a47;font-size:14px;font-weight:700;color:#fff;
+           cursor:pointer;font-family:'DM Sans',sans-serif;">
+    ⚡ Gerar Comparativo
+</button>"""
+        else:
+            btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
 
-        # Ghost buttons — CSS único para todos de uma vez
-        ghost_selectors = ", ".join([
-            f".st-key-btn_analise_subtab_{stk}, .stElementContainer:has(.st-key-btn_analise_subtab_{stk})"
-            for stk, _, _ in subtabs_def
-        ])
         st.markdown(f"""
-        <style>
-        {ghost_selectors} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
-        }}
-        </style>
+        <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                    text-align:center;background:#fff;margin-top:8px;
+                    display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div style="font-size:32px;opacity:0.4;">{icon_ativo}</div>
+            <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_ativo.lower()} ainda.</div>
+            {btn_vazio_html}
+        </div>
         """, unsafe_allow_html=True)
-
-        for stk, _, _ in subtabs_def:
-            if st.button(f"analise_subtab_{stk}", key=f"btn_analise_subtab_{stk}"):
-                st.session_state.redes_analise_subtab = stk
-                st.rerun()

@@ -3892,8 +3892,15 @@ body {{ background:transparent; overflow:visible; padding-bottom:16px; }}
     padding:14px 16px; border-radius:8px;
     background:#fff; border:1px solid #e5e7eb;
     margin-bottom:12px;
-    white-space:pre-wrap; word-break:break-word;
+    word-break:break-word;
 }}
+.card-relatorio h1,.card-relatorio h2,.card-relatorio h3{{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}}
+.card-relatorio p{{margin:0 0 8px;padding:0;line-height:1.7;}}
+.card-relatorio ul{{margin:4px 0 8px 18px;padding:0;}}
+.card-relatorio li{{margin:0 0 3px;padding:0;line-height:1.6;}}
+.card-relatorio hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}}
+.card-relatorio strong{{font-weight:700;}}
+.card-relatorio em{{font-style:italic;}}
 .card-acoes {{ display:flex; gap:8px; }}
 .btn-dl {{
     flex:1; padding:9px 14px; border-radius:8px;
@@ -3946,6 +3953,8 @@ function mdToHtml(txt) {{
         .replace(/\n/g, '<br>');
 }}
 
+function syncH() {{ ajustarAltura(); }}
+
 function toggleCard(idx) {{
     var body = document.getElementById('body_' + idx);
     var chev = document.getElementById('chev_' + idx);
@@ -3954,7 +3963,7 @@ function toggleCard(idx) {{
     body.style.display = aberto ? 'none' : 'block';
     chev.classList.toggle('open', !aberto);
     if (!aberto && rel && !rel.dataset.loaded) {{
-        rel.innerHTML = RELATORIOS[String(idx)] || '';
+        rel.innerHTML = mdToHtml(RELATORIOS[String(idx)] || '');
         rel.dataset.loaded = '1';
     }}
     setTimeout(syncH, 60);

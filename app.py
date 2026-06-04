@@ -11293,9 +11293,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             close_all()
             return '\n'.join(output)
 
-        relatorios_redes     = {{str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}}
+        relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)
-        relatorios_raw        = {{str(i): a.get("relatorio","")              for i, a in enumerate(analises_redes)}}
+        relatorios_raw        = {str(i): a.get("relatorio","")              for i, a in enumerate(analises_redes)}
         relatorios_raw_json   = _json_redes.dumps(relatorios_raw, ensure_ascii=False)
 
         if lista_ativa:

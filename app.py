@@ -11344,8 +11344,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 </span>
             </div>
 
-            <div id="rb_{{idx_real}}" style="display:none;border-top:1px solid #f3f4f6;">
-                <div id="rr_{{idx_real}}"
+            <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+                    <div id="rr_{idx_real}"
                      style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
                 <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
                     <button class="btn-download" data-idx="{idx_real}" data-filename="{nome_arq}"

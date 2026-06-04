@@ -3845,45 +3845,43 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
-            txt = _re.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
+            # ── itálico DEPOIS das listas (movido para baixo)
+
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
             def _process_block(block):
-                """Processa sub-itens ul dentro de um bloco de texto."""
-                # Sub-itens com indentação (2+ espaços)
-                block = _re.sub(r'^\s{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', block, flags=_re.MULTILINE)
+                # Sub-itens indentados (4 espaços + *)
+                block = _re.sub(r'^[ \t]{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', block, flags=_re.MULTILINE)
                 block = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
                                 lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
                                 block, flags=_re.DOTALL)
-                # Itens * - sem indentação
+                # Itens * - raiz
                 block = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', block, flags=_re.MULTILINE)
                 block = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
                                 lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
                                 block, flags=_re.DOTALL)
+                # Itálico aplicado AQUI, dentro do bloco já estruturado
+                block = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', block)
                 # Parágrafos internos
                 lines = []
                 for line in block.split('\n'):
                     line = line.strip()
-                    if not line:
-                        continue
+                    if not line: continue
                     if _re.match(r'^<(ul|ol|li|h[123]|hr)', line):
                         lines.append(line)
                     else:
                         lines.append(f'<p>{line}</p>')
                 return '\n'.join(lines)
 
-            # Divide o texto em segmentos: itens numerados vs resto
-            # Cada item numerado começa em ^N. e vai até o próximo ^N. ou fim
             pattern = _re.compile(r'^(\d+)\.\s+(.+?)(?=^\d+\.\s|\Z)', _re.MULTILINE | _re.DOTALL)
-            
-            segments = []
+
+            segments  = []
             prev_end  = 0
 
             for m in pattern.finditer(txt):
-                # Texto antes deste item (headers, parágrafos soltos)
                 before = txt[prev_end:m.start()]
                 if before.strip():
                     segments.append(('text', before))
@@ -3894,10 +3892,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             if after.strip():
                 segments.append(('text', after))
 
-            # Reconstrói o HTML
-            parts       = []
-            ol_buffer   = []
-            
+            parts     = []
+            ol_buffer = []
+
             def _flush_ol():
                 if ol_buffer:
                     items_html = ''.join(
@@ -3912,9 +3909,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     ol_buffer.append((seg[1], seg[2]))
                 else:
                     _flush_ol()
-                    # Processa texto normal (sem lista ordenada)
                     block = _process_block(seg[1])
-                    # Divide em blocos por linha em branco
                     for bloco in _re.split(r'\n{2,}', block):
                         bloco = bloco.strip()
                         if not bloco: continue

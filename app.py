@@ -3832,13 +3832,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </script>
 """, height=52, scrolling=False)
 
-        # ── Conteúdo da subtab ativa
+        # ── Conteúdo da subtab ativa  (substitui o bloco existente)
         lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
         icons_sites_map   = {"individual": "🏢", "geral": "📋"}
         labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
-
+        
         def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
@@ -3855,21 +3855,21 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             partes = []
             for bloco in blocos:
                 bloco = bloco.strip()
-                if not bloco:
-                    continue
+                if not bloco: continue
                 if _re.match(r'^<(h[123]|ul|hr|li)', bloco):
                     partes.append(bloco)
                 else:
                     bloco = bloco.replace('\n', ' ')
                     partes.append(f'<p>{bloco}</p>')
             return '\n'.join(partes)
-
-        relatorios_sites_html = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
-        relatorios_sites_json = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
-        relatorios_sites_raw  = {str(i): a.get("relatorio","") for i, a in enumerate(analises)}
+        
+        relatorios_sites_html    = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
+        relatorios_sites_json    = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
+        relatorios_sites_raw     = {str(i): a.get("relatorio","")              for i, a in enumerate(analises)}
         relatorios_sites_raw_json = _json_sites.dumps(relatorios_sites_raw, ensure_ascii=False)
-
+        
         if lista_sites_ativa:
+            # Monta apenas o HTML estático dos cards (sem onclick inline nos botões)
             cards_sites_html = ""
             for a in reversed(lista_sites_ativa):
                 idx_real = analises.index(a)
@@ -3877,297 +3877,339 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
                 cards_sites_html += f"""
-<div style="border-bottom:1px solid #f3f4f6;background:#fff;">
-    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;
-                transition:background 0.12s;background-color:#24658e;">
-        <span style="font-size:18px;flex-shrink:0" onclick="toggleSite({idx_real})">{icon_a}</span>
-        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-             onclick="toggleSite({idx_real})">{titulo_a}</div>
-
-        <!-- Botão tela cheia -->
-        <button title="Abrir em tela cheia"
-            onclick="abrirModal({idx_real})"
-            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                   justify-content:center;cursor:pointer;transition:background 0.15s;"
-            onmouseover="this.style.background='rgba(255,255,255,0.22)'"
-            onmouseout="this.style.background='rgba(255,255,255,0.12)'">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-            </svg>
-        </button>
-
-        <!-- Botão ver texto original -->
-        <button title="Ver texto original"
-            onclick="abrirRaw({idx_real})"
-            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                   justify-content:center;cursor:pointer;transition:background 0.15s;"
-            onmouseover="this.style.background='rgba(255,255,255,0.22)'"
-            onmouseout="this.style.background='rgba(255,255,255,0.12)'">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="16 18 22 12 16 6"/>
-                <polyline points="8 6 2 12 8 18"/>
-            </svg>
-        </button>
-
-        <!-- Chevron -->
-        <span id="sc_{idx_real}" onclick="toggleSite({idx_real})"
-              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"/>
-            </svg>
-        </span>
-    </div>
-    <div id="sb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
-        <div id="sr_{idx_real}"
-             style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
-        <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
-            <button onclick="(function(){{
-                        var txt=RELS_RAW['{idx_real}']||'';
-                        var a=document.createElement('a');
-                        a.href=URL.createObjectURL(new Blob([txt],{{type:'text/plain'}}));
-                        a.download='{nome_arq}.txt';
-                        a.click();
-                    }})()"
-                style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
-                       background:#fff;font-size:13px;font-weight:600;color:#374151;
-                       cursor:pointer;font-family:'DM Sans',sans-serif;">
-                ⬇️ Baixar .txt
-            </button>
-        </div>
-    </div>
-</div>"""
-
+        <div class="card-row" style="border-bottom:1px solid #f3f4f6;background:#fff;">
+            <div class="card-hdr" data-idx="{idx_real}"
+                 style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+                        cursor:pointer;background-color:#24658e;">
+                <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
+                <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+        
+                <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
+                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                           justify-content:center;cursor:pointer;transition:background 0.15s;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    </svg>
+                </button>
+        
+                <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
+                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                           justify-content:center;cursor:pointer;transition:background 0.15s;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                </button>
+        
+                <span class="btn-chevron" data-idx="{idx_real}"
+                      style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </span>
+            </div>
+        
+            <div id="sb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+                <div id="sr_{idx_real}"
+                     style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
+                <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
+                    <button class="btn-download" data-idx="{idx_real}" data-filename="{nome_arq}"
+                        style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
+                               background:#fff;font-size:13px;font-weight:600;color:#374151;
+                               cursor:pointer;font-family:'DM Sans',sans-serif;">
+                        ⬇️ Baixar .txt
+                    </button>
+                </div>
+            </div>
+        </div>"""
+        
             components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
-body {{ padding-bottom:8px; }}
-[id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{
-    font-size:15px; font-weight:800; color:#0f1f35;
-    margin:14px 0 8px; padding-bottom:5px;
-    border-bottom:2px solid #e5e7eb;
-    text-transform:uppercase;
-}}
-[id^="sr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
-[id^="sr_"] ul {{ margin:5px 0 15px 28px; }}
-[id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
-[id^="sr_"] li::marker {{ color:#00c162; }}
-[id^="sr_"] hr {{ display:none; }}
-</style>
-<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
-    {cards_sites_html}
-</div>
-<script>
-var RELS     = {relatorios_sites_json};
-var RELS_RAW = {relatorios_sites_raw_json};
-
-function toggleSite(idx) {{
-    var b = document.getElementById('sb_' + idx);
-    var c = document.getElementById('sc_' + idx);
-    var r = document.getElementById('sr_' + idx);
-    var open = b.style.display !== 'none';
-    b.style.display = open ? 'none' : 'block';
-    c.style.transform = open ? '' : 'rotate(180deg)';
-    if (!open && r && !r.dataset.loaded) {{
-        r.innerHTML = RELS[String(idx)] || '';
-        r.dataset.loaded = '1';
-    }}
-    setTimeout(syncH, 100);
-}}
-
-function abrirModal(idx) {{
-    var doc  = window.parent.document;
-    var html = RELS[String(idx)] || '';
-    var raw  = RELS_RAW[String(idx)] || '';
-    var old  = doc.getElementById('sites_modal_overlay');
-    if (old) old.remove();
-
-    var ov = doc.createElement('div');
-    ov.id = 'sites_modal_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
-    ov.onclick = function(e) {{ if (e.target === ov) fecharModal(); }};
-
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
-
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:#24658e;flex-shrink:0;gap:12px;';
-    hdr.innerHTML =
-        '<div style="font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Análise completa</div>'
-        + '<button id="sites_modal_raw_btn" style="padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap;" onclick="toggleModalView(' + idx + ')">Ver texto original</button>'
-        + '<button onclick="fecharModal()" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✕</button>';
-
-    var body = doc.createElement('div');
-    body.id = 'sites_modal_body';
-    body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;overflow-y:auto;max-height:75vh;word-break:break-word;';
-    body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
-
-    box.appendChild(hdr);
-    box.appendChild(body);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    // Estilos de markdown no modal
-    var st = doc.getElementById('sites_modal_style');
-    if (!st) {{
-        st = doc.createElement('style');
-        st.id = 'sites_modal_style';
-        st.textContent = '#sites_modal_body h1,#sites_modal_body h2,#sites_modal_body h3{{font-size:16px;font-weight:800;color:#0f1f35;margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid #e5e7eb;text-transform:uppercase;}}'
-            + '#sites_modal_body p{{margin:0 0 10px;line-height:1.75;}}'
-            + '#sites_modal_body ul{{margin:6px 0 14px 24px;}}'
-            + '#sites_modal_body li{{margin:0 0 4px;line-height:1.65;}}'
-            + '#sites_modal_body li::marker{{color:#00c162;}}'
-            + '#sites_modal_body hr{{display:none;}}';
-        doc.head.appendChild(st);
-    }}
-
-    window.parent.__sitesModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
-    doc.addEventListener('keydown', window.parent.__sitesModalEsc);
-
-    // Guarda estado da view
-    window.__sitesModalShowingRaw = false;
-    window.__sitesModalHtml = html;
-    window.__sitesModalRaw  = raw;
-}}
-
-function toggleModalView(idx) {{
-    var body = window.parent.document.getElementById('sites_modal_body');
-    var btn  = window.parent.document.getElementById('sites_modal_raw_btn');
-    if (!body || !btn) return;
-    window.__sitesModalShowingRaw = !window.__sitesModalShowingRaw;
-    if (window.__sitesModalShowingRaw) {{
-        body.style.fontFamily = 'monospace';
-        body.style.whiteSpace = 'pre-wrap';
-        body.style.fontSize   = '12.5px';
-        body.style.background = '#0d1117';
-        body.style.color      = '#e6edf3';
-        body.innerHTML = (window.__sitesModalRaw || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-        btn.textContent = 'Ver formatado';
-    }} else {{
-        body.style.fontFamily = '';
-        body.style.whiteSpace = '';
-        body.style.fontSize   = '14px';
-        body.style.background = '#fff';
-        body.style.color      = '#374151';
-        body.innerHTML = window.__sitesModalHtml || '';
-        btn.textContent = 'Ver texto original';
-    }}
-}}
-
-function fecharModal() {{
-    var doc = window.parent.document;
-    var ov  = doc.getElementById('sites_modal_overlay');
-    if (ov) ov.remove();
-    if (window.parent.__sitesModalEsc) {{
-        doc.removeEventListener('keydown', window.parent.__sitesModalEsc);
-        window.parent.__sitesModalEsc = null;
-    }}
-}}
-
-function abrirRaw(idx) {{
-    var doc = window.parent.document;
-    var raw = RELS_RAW[String(idx)] || '';
-    var old = doc.getElementById('sites_raw_overlay');
-    if (old) old.remove();
-
-    var ov = doc.createElement('div');
-    ov.id = 'sites_raw_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
-
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
-    hdr.innerHTML =
-        '<div>'
-        + '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original do banco</div>'
-        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto armazenado</div>'
-        + '</div>'
-        + '<div style="display:flex;gap:8px;">'
-        + '<button id="raw_copy_sites" style="padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;">📋 Copiar</button>'
-        + '<button onclick="this.closest(\'[id=sites_raw_overlay]\').remove()" style="width:32px;height:32px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>'
-        + '</div>';
-
-    var pre = doc.createElement('pre');
-    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre-wrap;word-break:break-word;';
-    pre.textContent = raw;
-
-    box.appendChild(hdr);
-    box.appendChild(pre);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    doc.getElementById('raw_copy_sites').addEventListener('click', function() {{
-        var b = doc.getElementById('raw_copy_sites');
-        try {{
-            var ta = doc.createElement('textarea');
-            ta.value = raw;
-            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-            doc.body.appendChild(ta); ta.focus(); ta.select();
-            doc.execCommand('copy');
-            doc.body.removeChild(ta);
-            b.textContent = '✅ Copiado!';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
-        }} catch(e) {{
-            b.textContent = '❌ Erro';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+        <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+        body {{ padding-bottom:8px; }}
+        [id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{
+            font-size:15px; font-weight:800; color:#0f1f35;
+            margin:14px 0 8px; padding-bottom:5px;
+            border-bottom:2px solid #e5e7eb; text-transform:uppercase;
         }}
-    }});
-
-    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
-    doc.addEventListener('keydown', escFn);
-}}
-
-function syncH() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {{
-        try {{ if (frames[i].contentWindow === window) {{
-            frames[i].style.height = (h + 8) + 'px';
-            frames[i].style.marginTop = '-57px';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}}
-if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
-setTimeout(syncH, 200);
-setTimeout(syncH, 600);
-
-(function() {{
-    var cards = document.querySelectorAll('[id^="sb_"]');
-    if (cards.length === 1) {{
-        var m = cards[0].id.match(/sb_(\d+)/);
-        if (m) {{
-            setTimeout(function() {{
-                var b = document.getElementById('sb_' + m[1]);
-                var c = document.getElementById('sc_' + m[1]);
-                var r = document.getElementById('sr_' + m[1]);
-                if (b) b.style.display = 'block';
-                if (c) c.style.transform = 'rotate(180deg)';
-                if (r && !r.dataset.loaded) {{ r.innerHTML = RELS[m[1]] || ''; r.dataset.loaded = '1'; }}
-                syncH();
-            }}, 150);
+        [id^="sr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
+        [id^="sr_"] ul {{ margin:5px 0 15px 28px; }}
+        [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
+        [id^="sr_"] li::marker {{ color:#00c162; }}
+        [id^="sr_"] hr {{ display:none; }}
+        /* Modal markdown styles */
+        #smb h1,#smb h2,#smb h3 {{
+            font-size:16px; font-weight:800; color:#0f1f35;
+            margin:18px 0 8px; padding-bottom:6px;
+            border-bottom:2px solid #e5e7eb; text-transform:uppercase;
         }}
-    }}
-}})();
-</script>
-""", height=100, scrolling=False)
-
+        #smb p  {{ margin:0 0 10px; line-height:1.75; }}
+        #smb ul {{ margin:6px 0 14px 24px; }}
+        #smb li {{ margin:0 0 4px; line-height:1.65; }}
+        #smb li::marker {{ color:#00c162; }}
+        #smb hr {{ display:none; }}
+        </style>
+        
+        <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+            {cards_sites_html}
+        </div>
+        
+        <script>
+        var RELS     = {relatorios_sites_json};
+        var RELS_RAW = {relatorios_sites_raw_json};
+        
+        /* ── helpers ── */
+        function syncH() {{
+            var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+            var frames = window.parent.document.querySelectorAll('iframe');
+            for (var i = 0; i < frames.length; i++) {{
+                try {{ if (frames[i].contentWindow === window) {{
+                    frames[i].style.height = (h + 8) + 'px';
+                    frames[i].style.marginTop = '-57px';
+                    break;
+                }} }} catch(e) {{}}
+            }}
+        }}
+        
+        function toggleSite(idx) {{
+            var b = document.getElementById('sb_' + idx);
+            var r = document.getElementById('sr_' + idx);
+            var chevrons = document.querySelectorAll('.btn-chevron[data-idx="' + idx + '"]');
+            if (!b) return;
+            var open = b.style.display !== 'none';
+            b.style.display = open ? 'none' : 'block';
+            chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+            if (!open && r && !r.dataset.loaded) {{
+                r.innerHTML = RELS[String(idx)] || '';
+                r.dataset.loaded = '1';
+            }}
+            setTimeout(syncH, 100);
+        }}
+        
+        function abrirModal(idx) {{
+            var doc  = window.parent.document;
+            var html = RELS[String(idx)] || '';
+            var raw  = RELS_RAW[String(idx)] || '';
+            var old  = doc.getElementById('sites_modal_overlay');
+            if (old) old.remove();
+        
+            var ov = doc.createElement('div');
+            ov.id = 'sites_modal_overlay';
+            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+                + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
+            ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
+        
+            var box = doc.createElement('div');
+            box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
+                + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
+        
+            var hdr = doc.createElement('div');
+            hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
+                + 'background:#24658e;flex-shrink:0;gap:12px;';
+        
+            var titleEl = doc.createElement('div');
+            titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
+                + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            titleEl.textContent = 'Análise completa';
+        
+            var rawBtn = doc.createElement('button');
+            rawBtn.id = 'sites_modal_raw_btn';
+            rawBtn.textContent = 'Ver texto original';
+            rawBtn.style.cssText = 'padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;'
+                + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
+                + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
+            rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
+        
+            var closeBtn = doc.createElement('button');
+            closeBtn.textContent = '✕';
+            closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
+                + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
+                + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+            closeBtn.addEventListener('click', fecharModal);
+        
+            hdr.appendChild(titleEl);
+            hdr.appendChild(rawBtn);
+            hdr.appendChild(closeBtn);
+        
+            var body = doc.createElement('div');
+            body.id = 'smb';
+            body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
+                + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
+            body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
+        
+            box.appendChild(hdr);
+            box.appendChild(body);
+            ov.appendChild(box);
+            doc.body.appendChild(ov);
+        
+            window.__sitesModalShowingRaw = false;
+            window.__sitesModalHtml = html;
+            window.__sitesModalRaw  = raw;
+        
+            window.parent.__sitesModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
+            doc.addEventListener('keydown', window.parent.__sitesModalEsc);
+        }}
+        
+        function toggleModalView(html, raw) {{
+            var doc  = window.parent.document;
+            var body = doc.getElementById('smb');
+            var btn  = doc.getElementById('sites_modal_raw_btn');
+            if (!body || !btn) return;
+            window.__sitesModalShowingRaw = !window.__sitesModalShowingRaw;
+            if (window.__sitesModalShowingRaw) {{
+                body.style.cssText += ';font-family:monospace;white-space:pre-wrap;font-size:12.5px;background:#0d1117;color:#e6edf3;';
+                body.textContent = raw;
+                btn.textContent  = 'Ver formatado';
+            }} else {{
+                body.style.fontFamily = ''; body.style.whiteSpace = '';
+                body.style.fontSize   = '14px'; body.style.background = '#fff'; body.style.color = '#374151';
+                body.innerHTML  = html;
+                btn.textContent = 'Ver texto original';
+            }}
+        }}
+        
+        function fecharModal() {{
+            var doc = window.parent.document;
+            var ov  = doc.getElementById('sites_modal_overlay');
+            if (ov) ov.remove();
+            if (window.parent.__sitesModalEsc) {{
+                doc.removeEventListener('keydown', window.parent.__sitesModalEsc);
+                window.parent.__sitesModalEsc = null;
+            }}
+        }}
+        
+        function abrirRaw(idx) {{
+            var doc = window.parent.document;
+            var raw = RELS_RAW[String(idx)] || '';
+            var old = doc.getElementById('sites_raw_overlay');
+            if (old) old.remove();
+        
+            var ov = doc.createElement('div');
+            ov.id = 'sites_raw_overlay';
+            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+                + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+            ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+        
+            var box = doc.createElement('div');
+            box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
+                + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+        
+            var hdr = doc.createElement('div');
+            hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
+                + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+        
+            var info = doc.createElement('div');
+            info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
+                + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
+        
+            var btnsWrap = doc.createElement('div');
+            btnsWrap.style.cssText = 'display:flex;gap:8px;';
+        
+            var copyBtn = doc.createElement('button');
+            copyBtn.textContent = '📋 Copiar';
+            copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+                + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;';
+            copyBtn.addEventListener('click', function() {{
+                var ta = doc.createElement('textarea');
+                ta.value = raw;
+                ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+                doc.body.appendChild(ta); ta.focus(); ta.select();
+                try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
+                catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
+                doc.body.removeChild(ta);
+                setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
+            }});
+        
+            var closeRaw = doc.createElement('button');
+            closeRaw.textContent = '✕';
+            closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
+                + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
+                + 'display:flex;align-items:center;justify-content:center;';
+            closeRaw.addEventListener('click', function() {{ ov.remove(); }});
+        
+            btnsWrap.appendChild(copyBtn);
+            btnsWrap.appendChild(closeRaw);
+            hdr.appendChild(info);
+            hdr.appendChild(btnsWrap);
+        
+            var pre = doc.createElement('pre');
+            pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
+                + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
+                + 'white-space:pre-wrap;word-break:break-word;';
+            pre.textContent = raw;
+        
+            box.appendChild(hdr);
+            box.appendChild(pre);
+            ov.appendChild(box);
+            doc.body.appendChild(ov);
+        
+            var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+            doc.addEventListener('keydown', escFn);
+        }}
+        
+        /* ── Event delegation — um único listener para toda a lista ── */
+        document.addEventListener('click', function(e) {{
+            // Tela cheia
+            var fs = e.target.closest('.btn-fullscreen');
+            if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
+        
+            // Código / raw
+            var rv = e.target.closest('.btn-raw');
+            if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
+        
+            // Download
+            var dl = e.target.closest('.btn-download');
+            if (dl) {{
+                e.stopPropagation();
+                var raw = RELS_RAW[String(dl.dataset.idx)] || '';
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
+                a.download = dl.dataset.filename + '.txt';
+                a.click();
+                return;
+            }}
+        
+            // Toggle (header inteiro, exceto botões acima)
+            var hdr = e.target.closest('.card-hdr');
+            if (hdr && !e.target.closest('button')) {{
+                toggleSite(parseInt(hdr.dataset.idx));
+                return;
+            }}
+        
+            // Chevron explícito
+            var ch = e.target.closest('.btn-chevron');
+            if (ch) {{ toggleSite(parseInt(ch.dataset.idx)); return; }}
+        }});
+        
+        /* ── Auto-abrir se só houver 1 card ── */
+        (function() {{
+            var cards = document.querySelectorAll('[id^="sb_"]');
+            if (cards.length === 1) {{
+                var m = cards[0].id.match(/sb_(\d+)/);
+                if (m) setTimeout(function() {{ toggleSite(parseInt(m[1])); }}, 150);
+            }}
+        }})();
+        
+        if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+        setTimeout(syncH, 200);
+        setTimeout(syncH, 600);
+        </script>
+        """, height=100, scrolling=False)
+        
         else:
             empty_msg = {
                 "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
                 "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
             }.get(subtab_sites, "Nenhuma análise ainda.")
-
+        
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;

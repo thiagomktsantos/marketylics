@@ -3851,67 +3851,81 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            def _process_inline(block):
-                # Sub-itens indentados (2+ espaços + * ou -)
+            def _process_block(block):
+                """Processa sub-itens ul dentro de um bloco de texto."""
+                # Sub-itens com indentação (2+ espaços)
                 block = _re.sub(r'^\s{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', block, flags=_re.MULTILINE)
                 block = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
                                 lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
                                 block, flags=_re.DOTALL)
-                # Itens não-ordenados raiz
+                # Itens * - sem indentação
                 block = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', block, flags=_re.MULTILINE)
                 block = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
                                 lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
                                 block, flags=_re.DOTALL)
-                return block
+                # Parágrafos internos
+                lines = []
+                for line in block.split('\n'):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if _re.match(r'^<(ul|ol|li|h[123]|hr)', line):
+                        lines.append(line)
+                    else:
+                        lines.append(f'<p>{line}</p>')
+                return '\n'.join(lines)
 
-            # Listas ordenadas: captura ANTES de processar sub-itens
-            def _build_ol(t):
-                pattern = _re.compile(
-                    r'^(\d+)\.\s+([\s\S]+?)(?=^\d+\.\s|\Z)',
-                    _re.MULTILINE
-                )
-                items_found = list(pattern.finditer(t))
-                if not items_found:
-                    return _process_inline(t)
+            # Divide o texto em segmentos: itens numerados vs resto
+            # Cada item numerado começa em ^N. e vai até o próximo ^N. ou fim
+            pattern = _re.compile(r'^(\d+)\.\s+(.+?)(?=^\d+\.\s|\Z)', _re.MULTILINE | _re.DOTALL)
+            
+            segments = []
+            prev_end  = 0
 
-                result   = ""
-                prev_end = 0
-                ol_items = ""
+            for m in pattern.finditer(txt):
+                # Texto antes deste item (headers, parágrafos soltos)
+                before = txt[prev_end:m.start()]
+                if before.strip():
+                    segments.append(('text', before))
+                segments.append(('ol', m.group(1), m.group(2).strip()))
+                prev_end = m.end()
 
-                for m in items_found:
-                    # Texto antes do primeiro item (fora do ol)
-                    before = t[prev_end:m.start()]
-                    if before.strip():
-                        result  += _process_inline(before)
-                    prev_end = m.end()
+            after = txt[prev_end:]
+            if after.strip():
+                segments.append(('text', after))
 
-                    n       = m.group(1)
-                    content = _process_inline(m.group(2).strip())
-                    ol_items += f'<li data-n="{n}">{content}</li>\n'
+            # Reconstrói o HTML
+            parts       = []
+            ol_buffer   = []
+            
+            def _flush_ol():
+                if ol_buffer:
+                    items_html = ''.join(
+                        f'<li data-n="{n}">{_process_block(content)}</li>\n'
+                        for n, content in ol_buffer
+                    )
+                    parts.append(f'<ol>{items_html}</ol>')
+                    ol_buffer.clear()
 
-                result += f'<ol>{ol_items}</ol>\n'
-
-                # Texto após o último item
-                after = t[prev_end:]
-                if after.strip():
-                    result += _process_inline(after)
-
-                return result
-
-            txt = _build_ol(txt)
-
-            # Parágrafos
-            blocos = _re.split(r'\n{2,}', txt)
-            partes = []
-            for bloco in blocos:
-                bloco = bloco.strip()
-                if not bloco: continue
-                if _re.match(r'^<(h[123]|ul|ol|hr|li)', bloco):
-                    partes.append(bloco)
+            for seg in segments:
+                if seg[0] == 'ol':
+                    ol_buffer.append((seg[1], seg[2]))
                 else:
-                    bloco = bloco.replace('\n', ' ')
-                    partes.append(f'<p>{bloco}</p>')
-            return '\n'.join(partes)
+                    _flush_ol()
+                    # Processa texto normal (sem lista ordenada)
+                    block = _process_block(seg[1])
+                    # Divide em blocos por linha em branco
+                    for bloco in _re.split(r'\n{2,}', block):
+                        bloco = bloco.strip()
+                        if not bloco: continue
+                        if _re.match(r'^<(h[123]|ul|ol|hr|li)', bloco):
+                            parts.append(bloco)
+                        else:
+                            bloco = bloco.replace('\n', ' ')
+                            parts.append(f'<p>{bloco}</p>')
+
+            _flush_ol()
+            return '\n'.join(parts)
         
         relatorios_sites_html    = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
         relatorios_sites_json    = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)

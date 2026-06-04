@@ -4021,13 +4021,96 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
         [id^="sr_"] li::marker {{ color:#00c162; }}
         [id^="sr_"] hr {{ display:none; }}
-        [id^="sr_"] ol {{ margin:5px 0 15px 5px;list-style:none;counter-reset:meu-contador; }}
-        [id^="sr_"] ol li {{ margin:0 0 3px; line-height:1.6;position:relative;padding-left:35px;margin-bottom:15px; }}
-        [id^="sr_"] ol li::before {{ counter-increment:meu-contador;content:counter(meu-contador);position:absolute;left:0;top:0;background-color:#00aae6;color:#ffffff;border-radius:50%;width:25px;height:25px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold; }}
+        [id^="sr_"] ol {{
+            margin: 5px 0 15px 5px;
+            list-style: none;
+            counter-reset: meu-contador;
+        }}
+        [id^="sr_"] ol > li {{
+            margin: 0 0 3px;
+            line-height: 1.6;
+            position: relative;
+            padding-left: 35px;
+            margin-bottom: 15px;
+        }}
+        [id^="sr_"] ol > li::before {{
+            counter-increment: meu-contador;
+            content: counter(meu-contador);
+            position: absolute;
+            left: 0; top: 0;
+            background-color: #00aae6;
+            color: #ffffff;
+            border-radius: 50%;
+            width: 25px; height: 25px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: bold;
+        }}
+        [id^="sr_"] ol > li > ul {{
+            margin: 6px 0 0 0;
+            list-style: none;
+            padding-left: 0;
+        }}
+        [id^="sr_"] ol > li > ul > li {{
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }}
+        [id^="sr_"] ol > li > ul > li::before {{
+            content: '◦';
+            position: absolute;
+            left: 0; top: 0;
+            color: #00aae6;
+            font-size: 18px;
+            line-height: 1.3;
+            font-weight: normal;
+            background: none;
+            border-radius: 0;
+            width: auto; height: auto;
+        }}
 
-        #smb ol {{ margin:5px 0 15px 5px;list-style:none;counter-reset:meu-contador; }}
-        #smb ol li {{ margin:0 0 3px; line-height:1.6;position:relative;padding-left:35px;margin-bottom:15px; }}
-        #smb ol li::before {{ counter-increment:meu-contador;content:counter(meu-contador);position:absolute;left:0;top:0;background-color:#00aae6;color:#ffffff;border-radius:50%;width:25px;height:25px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold; }}
+        #smb ol {{ margin: 5px 0 15px 5px;list-style: none;counter-reset: meu-contador; }}
+        #smb ol > li {{
+            line-height: 1.6;
+            position: relative;
+            padding-left: 35px;
+            margin-bottom: 15px;
+        }}
+        #smb ol > li::before {{
+            counter-increment: meu-contador;
+            content: counter(meu-contador);
+            position: absolute;
+            left: 0; top: 0;
+            background-color: #00aae6;
+            color: #ffffff;
+            border-radius: 50%;
+            width: 25px; height: 25px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: bold;
+        }}
+        #smb ol > li > ul {{
+            margin: 6px 0 0 0;
+            list-style: none;
+            padding-left: 0;
+        }}
+        #smb ol > li > ul > li {{
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }}
+        #smb ol > li > ul > li::before {{
+            content: '◦';
+            position: absolute;
+            left: 0; top: 0;
+            color: #00aae6;
+            font-size: 18px;
+            line-height: 1.3;
+            font-weight: normal;
+            background: none;
+            border-radius: 0;
+            width: auto; height: auto;
+        }}
         /* Modal markdown styles */
         #smb h1,#smb h2,#smb h3 {{
             font-size:16px; font-weight:800; color:#0f1f35;

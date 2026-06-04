@@ -3845,110 +3845,98 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
-
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            lines = txt.split('\n')
-            output   = []
-            ol_open  = False
-            ul_open  = False
-
-            def _close_ul():
-                nonlocal ul_open
-                if ul_open:
-                    output.append('</ul>')
-                    ul_open = False
-
-            def _close_ol():
-                nonlocal ol_open
-                if ol_open:
-                    output.append('</ol>')
-                    ol_open = False
-
             def _apply_inline(s):
-                # itálico só em texto, não em tags
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
+
+            def _get_indent(line):
+                return len(line) - len(line.lstrip(' \t'))
+
+            def _get_ol_match(line):
+                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+
+            def _get_ul_match(line):
+                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+
+            lines = txt.split('\n')
+            output = []
+            list_stack = []  # list of (tag, indent_level)
+
+            def close_until(target_indent):
+                while list_stack and list_stack[-1][1] >= target_indent:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
+
+            def close_all():
+                while list_stack:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
 
             i = 0
             while i < len(lines):
                 line = lines[i]
 
-                # Linha em branco
                 if not line.strip():
                     i += 1
                     continue
 
-                # Já é tag HTML (h1-h3, hr)
+                stripped = line.strip()
+
+                # Já é tag HTML
                 if _re.match(r'^\s*<(h[123]|hr)', line):
-                    _close_ul()
-                    _close_ol()
-                    output.append(line.strip())
+                    close_all()
+                    output.append(stripped)
                     i += 1
                     continue
 
-                # Item de lista ordenada: ^N.  texto
-                m_ol = _re.match(r'^(\d+)\.\s+(.*)', line)
+                # Item de lista ordenada
+                m_ol = _get_ol_match(line)
                 if m_ol:
-                    _close_ul()
-                    if not ol_open:
+                    item_indent = len(m_ol.group(1))
+                    content     = _apply_inline(m_ol.group(3))
+
+                    close_until(item_indent + 1)
+
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ol':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ol':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
                         output.append('<ol>')
-                        ol_open = True
-                    n       = m_ol.group(1)
-                    content = _apply_inline(m_ol.group(2))
-                    # Coleta sub-itens nas linhas seguintes (indentadas)
-                    sub_items = []
+                        list_stack.append(('ol', item_indent))
+
+                    output.append(f'<li>{content}</li>')
                     i += 1
-                    while i < len(lines):
-                        sub = lines[i]
-                        m_sub = _re.match(r'^[ \t]{2,}[\*\-]\s+(.*)', sub)
-                        if m_sub:
-                            sub_items.append(_apply_inline(m_sub.group(1)))
-                            i += 1
-                        elif sub.strip() == '':
-                            i += 1
-                            break
-                        else:
-                            break
-                    if sub_items:
-                        sub_html = ''.join(f'<li>{s}</li>' for s in sub_items)
-                        output.append(f'<li data-n="{n}"><p>{content}</p><ul>{sub_html}</ul></li>')
-                    else:
-                        output.append(f'<li data-n="{n}">{content}</li>')
                     continue
 
-                # Item de lista não-ordenada raiz: ^* ou ^-
-                m_ul = _re.match(r'^[\*\-]\s+(.*)', line)
+                # Item de lista não-ordenada
+                m_ul = _get_ul_match(line)
                 if m_ul:
-                    _close_ol()
-                    if not ul_open:
-                        output.append('<ul>')
-                        ul_open = True
-                    output.append(f'<li>{_apply_inline(m_ul.group(1))}</li>')
-                    i += 1
-                    continue
+                    item_indent = len(m_ul.group(1))
+                    content     = _apply_inline(m_ul.group(2))
 
-                # Item indentado solto (sub-item sem pai ol)
-                m_ind = _re.match(r'^[ \t]{2,}[\*\-]\s+(.*)', line)
-                if m_ind:
-                    _close_ol()
-                    if not ul_open:
+                    close_until(item_indent + 1)
+
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ul':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ul':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
                         output.append('<ul>')
-                        ul_open = True
-                    output.append(f'<li>{_apply_inline(m_ind.group(1))}</li>')
+                        list_stack.append(('ul', item_indent))
+
+                    output.append(f'<li>{content}</li>')
                     i += 1
                     continue
 
                 # Parágrafo normal
-                _close_ul()
-                _close_ol()
-                output.append(f'<p>{_apply_inline(line.strip())}</p>')
+                close_all()
+                output.append(f'<p>{_apply_inline(stripped)}</p>')
                 i += 1
 
-            _close_ul()
-            _close_ol()
+            close_all()
             return '\n'.join(output)
         
         relatorios_sites_html    = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}

@@ -3845,82 +3845,111 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
-            # ── itálico DEPOIS das listas (movido para baixo)
 
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            def _process_block(block):
-                # Sub-itens indentados (4 espaços + *)
-                block = _re.sub(r'^[ \t]{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', block, flags=_re.MULTILINE)
-                block = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
-                                lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
-                                block, flags=_re.DOTALL)
-                # Itens * - raiz
-                block = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', block, flags=_re.MULTILINE)
-                block = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
-                                lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
-                                block, flags=_re.DOTALL)
-                # Itálico aplicado AQUI, dentro do bloco já estruturado
-                block = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', block)
-                # Parágrafos internos
-                lines = []
-                for line in block.split('\n'):
-                    line = line.strip()
-                    if not line: continue
-                    if _re.match(r'^<(ul|ol|li|h[123]|hr)', line):
-                        lines.append(line)
-                    else:
-                        lines.append(f'<p>{line}</p>')
-                return '\n'.join(lines)
+            lines = txt.split('\n')
+            output   = []
+            ol_open  = False
+            ul_open  = False
 
-            pattern = _re.compile(r'^(\d+)\.\s+(.+?)(?=^\d+\.\s|\Z)', _re.MULTILINE | _re.DOTALL)
+            def _close_ul():
+                nonlocal ul_open
+                if ul_open:
+                    output.append('</ul>')
+                    ul_open = False
 
-            segments  = []
-            prev_end  = 0
+            def _close_ol():
+                nonlocal ol_open
+                if ol_open:
+                    output.append('</ol>')
+                    ol_open = False
 
-            for m in pattern.finditer(txt):
-                before = txt[prev_end:m.start()]
-                if before.strip():
-                    segments.append(('text', before))
-                segments.append(('ol', m.group(1), m.group(2).strip()))
-                prev_end = m.end()
+            def _apply_inline(s):
+                # itálico só em texto, não em tags
+                return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
-            after = txt[prev_end:]
-            if after.strip():
-                segments.append(('text', after))
+            i = 0
+            while i < len(lines):
+                line = lines[i]
 
-            parts     = []
-            ol_buffer = []
+                # Linha em branco
+                if not line.strip():
+                    i += 1
+                    continue
 
-            def _flush_ol():
-                if ol_buffer:
-                    items_html = ''.join(
-                        f'<li data-n="{n}">{_process_block(content)}</li>\n'
-                        for n, content in ol_buffer
-                    )
-                    parts.append(f'<ol>{items_html}</ol>')
-                    ol_buffer.clear()
+                # Já é tag HTML (h1-h3, hr)
+                if _re.match(r'^\s*<(h[123]|hr)', line):
+                    _close_ul()
+                    _close_ol()
+                    output.append(line.strip())
+                    i += 1
+                    continue
 
-            for seg in segments:
-                if seg[0] == 'ol':
-                    ol_buffer.append((seg[1], seg[2]))
-                else:
-                    _flush_ol()
-                    block = _process_block(seg[1])
-                    for bloco in _re.split(r'\n{2,}', block):
-                        bloco = bloco.strip()
-                        if not bloco: continue
-                        if _re.match(r'^<(h[123]|ul|ol|hr|li)', bloco):
-                            parts.append(bloco)
+                # Item de lista ordenada: ^N.  texto
+                m_ol = _re.match(r'^(\d+)\.\s+(.*)', line)
+                if m_ol:
+                    _close_ul()
+                    if not ol_open:
+                        output.append('<ol>')
+                        ol_open = True
+                    n       = m_ol.group(1)
+                    content = _apply_inline(m_ol.group(2))
+                    # Coleta sub-itens nas linhas seguintes (indentadas)
+                    sub_items = []
+                    i += 1
+                    while i < len(lines):
+                        sub = lines[i]
+                        m_sub = _re.match(r'^[ \t]{2,}[\*\-]\s+(.*)', sub)
+                        if m_sub:
+                            sub_items.append(_apply_inline(m_sub.group(1)))
+                            i += 1
+                        elif sub.strip() == '':
+                            i += 1
+                            break
                         else:
-                            bloco = bloco.replace('\n', ' ')
-                            parts.append(f'<p>{bloco}</p>')
+                            break
+                    if sub_items:
+                        sub_html = ''.join(f'<li>{s}</li>' for s in sub_items)
+                        output.append(f'<li data-n="{n}"><p>{content}</p><ul>{sub_html}</ul></li>')
+                    else:
+                        output.append(f'<li data-n="{n}">{content}</li>')
+                    continue
 
-            _flush_ol()
-            return '\n'.join(parts)
+                # Item de lista não-ordenada raiz: ^* ou ^-
+                m_ul = _re.match(r'^[\*\-]\s+(.*)', line)
+                if m_ul:
+                    _close_ol()
+                    if not ul_open:
+                        output.append('<ul>')
+                        ul_open = True
+                    output.append(f'<li>{_apply_inline(m_ul.group(1))}</li>')
+                    i += 1
+                    continue
+
+                # Item indentado solto (sub-item sem pai ol)
+                m_ind = _re.match(r'^[ \t]{2,}[\*\-]\s+(.*)', line)
+                if m_ind:
+                    _close_ol()
+                    if not ul_open:
+                        output.append('<ul>')
+                        ul_open = True
+                    output.append(f'<li>{_apply_inline(m_ind.group(1))}</li>')
+                    i += 1
+                    continue
+
+                # Parágrafo normal
+                _close_ul()
+                _close_ol()
+                output.append(f'<p>{_apply_inline(line.strip())}</p>')
+                i += 1
+
+            _close_ul()
+            _close_ol()
+            return '\n'.join(output)
         
         relatorios_sites_html    = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
         relatorios_sites_json    = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)

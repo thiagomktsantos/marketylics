@@ -7882,11 +7882,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
 body{{padding-bottom:8px;}}
-[id^="ar_"] h1,[id^="ar_"] h2,[id^="ar_"] h3{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}
-[id^="ar_"] p{margin:0 0 8px;padding:0;line-height:1.7;}
-[id^="ar_"] ul{margin:4px 0 8px 18px;padding:0;}
-[id^="ar_"] li{margin:0 0 3px;padding:0;line-height:1.6;}
-[id^="ar_"] hr{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}
+[id^="ar_"] h1,[id^="ar_"] h2,[id^="ar_"] h3{{font-size:14px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;}}
+[id^="ar_"] p{{margin:0 0 8px;padding:0;line-height:1.7;}}
+[id^="ar_"] ul{{margin:4px 0 8px 18px;padding:0;}}
+[id^="ar_"] li{{margin:0 0 3px;padding:0;line-height:1.6;}}
+[id^="ar_"] hr{{border:none;border-top:1px solid #e5e7eb;margin:10px 0;}}
 </style>
 <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
     {cards_ads_html}

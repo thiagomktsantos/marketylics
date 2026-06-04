@@ -3839,7 +3839,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
         
-def _md_to_html_sites(txt):
+        def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
             txt = txt.replace("&", "&amp;")

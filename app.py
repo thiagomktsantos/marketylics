@@ -4011,11 +4011,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
         body {{ padding-bottom:8px; }}
-        [id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{
-            font-size:15px; font-weight:800; color:#0f1f35;
-            margin:14px 0 8px; padding-bottom:5px;
-            border-bottom:2px solid #e5e7eb; text-transform:uppercase;
-        }}
+        [id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{ font-size:18px; font-weight:800; color:#2454a3; margin:14px 0 11px; padding-bottom:4px; border-bottom:2px solid #e5e7eb; text-transform:uppercase; }}
         [id^="sr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
         [id^="sr_"] ul {{ margin:5px 0 15px 28px; }}
         [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}

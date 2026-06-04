@@ -3839,7 +3839,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
         
-        def _md_to_html_sites(txt):
+def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
             txt = txt.replace("&", "&amp;")
@@ -3849,14 +3849,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'^\s*[\*\-] (.+)$', r'<li>\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li>.*?</li>\n?)+', lambda m: '<ul>' + m.group(0) + '</ul>', txt, flags=_re.DOTALL)
+            # Listas não-ordenadas (*, -)
+            txt = _re.sub(r'^\s*[\*\-] (.+)$', r'<li class="ul-item">\1</li>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
+                          lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
+                          txt, flags=_re.DOTALL)
+            # Listas ordenadas (1. 2. 3.)
+            txt = _re.sub(r'^\s*\d+\. (.+)$', r'<li class="ol-item">\1</li>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'(<li class="ol-item">.*?</li>\n?)+',
+                          lambda m: '<ol>' + m.group(0).replace(' class="ol-item"', '') + '</ol>',
+                          txt, flags=_re.DOTALL)
             blocos = _re.split(r'\n{2,}', txt)
             partes = []
             for bloco in blocos:
                 bloco = bloco.strip()
                 if not bloco: continue
-                if _re.match(r'^<(h[123]|ul|hr|li)', bloco):
+                if _re.match(r'^<(h[123]|ul|ol|hr|li)', bloco):
                     partes.append(bloco)
                 else:
                     bloco = bloco.replace('\n', ' ')
@@ -3945,6 +3953,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
         [id^="sr_"] li::marker {{ color:#00c162; }}
         [id^="sr_"] hr {{ display:none; }}
+        [id^="sr_"] ol { margin:5px 0 15px 28px; }
+        [id^="sr_"] ol li { margin:0 0 3px; line-height:1.6; }
+        [id^="sr_"] ol li::marker { color:#24658e; font-weight:600; }
+
+        #smb ol { margin:6px 0 14px 24px; }
+        #smb ol li { margin:0 0 4px; line-height:1.65; }
+        #smb ol li::marker { color:#24658e; font-weight:600; }
         /* Modal markdown styles */
         #smb h1,#smb h2,#smb h3 {{
             font-size:16px; font-weight:800; color:#0f1f35;

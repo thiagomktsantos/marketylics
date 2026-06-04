@@ -7866,7 +7866,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </span>
     </div>
     <div id="ab_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
-        <div id="ar_{idx_real}" style="font-size:13px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
+        <div id="ar_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
         <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
             <button onclick="(function(){{var c=RELS['{idx_real}']||'';var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{{type:'text/plain'}}));a.download='{nome_arq}.txt';a.click();}})()"
                 style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;font-size:13px;font-weight:600;color:#374151;cursor:pointer;font-family:'DM Sans',sans-serif;">
@@ -7882,7 +7882,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
 body{{padding-bottom:8px;}}
-[id^="ar_"] h1,[id^="ar_"] h2,[id^="ar_"] h3{{font-size:15px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;border-bottom:1px solid #0087c4;text-transform:uppercase;}}
+[id^="ar_"] h1,[id^="ar_"] h2,[id^="ar_"] h3{{font-size:15px;font-weight:800;color:#0f1f35;margin:14px 0 4px;padding:0;border-bottom:2px solid #e5e7eb;text-transform:uppercase;padding-bottom:5px;}}
 [id^="ar_"] p{{margin:0 0 8px;padding:0;line-height:1.7;}}
 [id^="ar_"] ul{{margin:4px 0 8px 18px;padding:0;}}
 [id^="ar_"] li{{margin:0 0 3px;padding:0;line-height:1.6;}}

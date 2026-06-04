@@ -3842,6 +3842,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
+
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re.sub(r'\*(.+?)\*',     r'<em>\1</em>', txt)
@@ -3849,22 +3850,44 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
-            # Sub-itens indentados (4+ espaços + * ou -) → vira <li> de <ul> aninhado
+
+            # Sub-itens indentados (2+ espaços + * ou -)
             txt = _re.sub(r'^\s{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', txt, flags=_re.MULTILINE)
-            # Agrupa sequências de <li class="sub"> em <ul class="nested">
             txt = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
                           lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
                           txt, flags=_re.DOTALL)
-            # Itens ordenados (1. 2. 3.)
-            txt = _re.sub(r'^\s*\d+\.\s+(.+)$', r'<li class="ol-item">\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li class="ol-item">.*?</li>\n?)+',
-                          lambda m: '<ol>' + m.group(0).replace(' class="ol-item"', '') + '</ol>',
-                          txt, flags=_re.DOTALL)
+
             # Itens não-ordenados raiz (* -)
             txt = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
                           lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
                           txt, flags=_re.DOTALL)
+
+            # Listas ordenadas: captura o bloco inteiro de cada item numerado
+            def _build_ol(t):
+                pattern = _re.compile(
+                    r'^(\d+)\.\s+([\s\S]+?)(?=^\d+\.\s|\Z)',
+                    _re.MULTILINE
+                )
+                items_found = list(pattern.finditer(t))
+                if not items_found:
+                    return t
+                result = t
+                for m in reversed(items_found):
+                    n       = m.group(1)
+                    content = m.group(2).strip()
+                    li_html = f'<li data-n="{n}">{content}</li>\n'
+                    result  = result[:m.start()] + li_html + result[m.end():]
+                result = _re.sub(
+                    r'(<li data-n="\d+".*?</li>\n)+',
+                    lambda m: '<ol>' + m.group(0) + '</ol>\n',
+                    result, flags=_re.DOTALL
+                )
+                return result
+
+            txt = _build_ol(txt)
+
+            # Parágrafos
             blocos = _re.split(r'\n{2,}', txt)
             partes = []
             for bloco in blocos:

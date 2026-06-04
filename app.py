@@ -3851,19 +3851,20 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            # Sub-itens indentados (2+ espaços + * ou -)
-            txt = _re.sub(r'^\s{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
-                          lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
-                          txt, flags=_re.DOTALL)
+            def _process_inline(block):
+                # Sub-itens indentados (2+ espaços + * ou -)
+                block = _re.sub(r'^\s{2,}[\*\-]\s+(.+)$', r'<li class="sub">\1</li>', block, flags=_re.MULTILINE)
+                block = _re.sub(r'(<li class="sub">.*?</li>\n?)+',
+                                lambda m: '<ul class="nested">' + m.group(0).replace(' class="sub"', '') + '</ul>',
+                                block, flags=_re.DOTALL)
+                # Itens não-ordenados raiz
+                block = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', block, flags=_re.MULTILINE)
+                block = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
+                                lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
+                                block, flags=_re.DOTALL)
+                return block
 
-            # Itens não-ordenados raiz (* -)
-            txt = _re.sub(r'^[\*\-]\s+(.+)$', r'<li class="ul-item">\1</li>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'(<li class="ul-item">.*?</li>\n?)+',
-                          lambda m: '<ul>' + m.group(0).replace(' class="ul-item"', '') + '</ul>',
-                          txt, flags=_re.DOTALL)
-
-            # Listas ordenadas: captura o bloco inteiro de cada item numerado
+            # Listas ordenadas: captura ANTES de processar sub-itens
             def _build_ol(t):
                 pattern = _re.compile(
                     r'^(\d+)\.\s+([\s\S]+?)(?=^\d+\.\s|\Z)',
@@ -3871,18 +3872,30 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 )
                 items_found = list(pattern.finditer(t))
                 if not items_found:
-                    return t
-                result = t
-                for m in reversed(items_found):
+                    return _process_inline(t)
+
+                result   = ""
+                prev_end = 0
+                ol_items = ""
+
+                for m in items_found:
+                    # Texto antes do primeiro item (fora do ol)
+                    before = t[prev_end:m.start()]
+                    if before.strip():
+                        result  += _process_inline(before)
+                    prev_end = m.end()
+
                     n       = m.group(1)
-                    content = m.group(2).strip()
-                    li_html = f'<li data-n="{n}">{content}</li>\n'
-                    result  = result[:m.start()] + li_html + result[m.end():]
-                result = _re.sub(
-                    r'(<li data-n="\d+".*?</li>\n)+',
-                    lambda m: '<ol>' + m.group(0) + '</ol>\n',
-                    result, flags=_re.DOTALL
-                )
+                    content = _process_inline(m.group(2).strip())
+                    ol_items += f'<li data-n="{n}">{content}</li>\n'
+
+                result += f'<ol>{ol_items}</ol>\n'
+
+                # Texto após o último item
+                after = t[prev_end:]
+                if after.strip():
+                    result += _process_inline(after)
+
                 return result
 
             txt = _build_ol(txt)

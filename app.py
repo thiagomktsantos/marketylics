@@ -8957,11 +8957,12 @@ function triggerBtn(label) {
                     pass
 
             _bio_links = user_data.get("bio_links") or []
-            _external_url = (
-                user_data.get("external_url")
-                or (_bio_links[0].get("url", "") if _bio_links else "")
-                or ""
-            )
+            _all_urls = [
+                link.get("url", "") for link in _bio_links if link.get("url", "")
+            ]
+            if not _all_urls and user_data.get("external_url"):
+                _all_urls = [user_data["external_url"]]
+            _external_url = " | ".join(_all_urls)
 
             return {
                 "handle":       "@" + handle_limpo,
@@ -8969,7 +8970,7 @@ function triggerBtn(label) {
                 "seguidores":   seg,
                 "seguindo":     int(user_data.get("following_count") or 0),
                 "total_posts":  total_posts,
-                "bio":          (user_data.get("biography") or "")[:120],
+                "bio":          (user_data.get("biography") or ""),
                 "external_url": _external_url,
                 "is_verified":  user_data.get("is_verified", False),
                 "eng_medio":    round(eng_medio, 1),

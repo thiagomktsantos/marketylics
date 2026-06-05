@@ -2373,9 +2373,9 @@ body {{ padding-bottom:8px; }}
     padding:18px 20px 14px;
 }}
 .card-title {{
-    font-size:12px; font-weight:800; color:#1a2e4a;
+    font-size:20px; font-weight:800; color:#1a2e4a;
     text-transform:uppercase; letter-spacing:0.6px;
-    padding-bottom:10px; border-bottom:1px solid #f3f4f6;
+    padding-bottom:10px; border-bottom:2px solid #6b7280;
     margin-bottom:16px;
 }}
 .metric-tabs {{
@@ -2567,11 +2567,6 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
     # ══════════════════════════════════════════════════════════════
 
     if ok_redes:
-        st.markdown(
-            "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
-            "letter-spacing:0.2px;margin:8px 0 14px'>☁️ Nuvem de Palavras — Legendas</div>",
-            unsafe_allow_html=True,
-        )
 
         # Montar dados de palavras por empresa
         import re as _re
@@ -2606,6 +2601,18 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
         nomes_nuvem_json = _json.dumps([r["nome"] for r in ok_redes], ensure_ascii=False)
         cores_nuvem_json = _json.dumps([get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
 
+        # Adicionar opção Geral (todas as empresas juntas)
+        todas_palavras_geral = {}
+        for r in ok_redes:
+            for palavra, freq in empresas_palavras.get(r["nome"], []):
+                todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
+        top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
+        empresas_palavras["__geral__"] = top_geral
+
+        empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
+        nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
+        cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
+        
         components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -2667,16 +2674,24 @@ var NOMES  = {nomes_nuvem_json};
 var CORES  = {cores_nuvem_json};
 var ativo  = NOMES[0] || '';
 
+var LABELS = {{}};
+NOMES.forEach(function(n) {{
+    LABELS[n] = n === '__geral__' ? 'Geral' : n;
+}});
+var ativo = NOMES[0] || '';
+
 function buildTabs() {{
     var el = document.getElementById('filter-tabs');
     el.innerHTML = '';
     NOMES.forEach(function(nome, i) {{
         var btn = document.createElement('button');
         btn.className = 'ftab' + (nome === ativo ? ' active' : '');
-        btn.textContent = nome;
+        btn.textContent = LABELS[nome];
         btn.onclick = function() {{
             ativo = nome;
-            document.querySelectorAll('.ftab').forEach(function(b) {{ b.classList.remove('active'); }});
+            document.querySelectorAll('.ftab').forEach(function(b) {{ 
+                b.classList.remove('active'); 
+            }});
             btn.classList.add('active');
             renderCloud();
         }};
@@ -2695,7 +2710,7 @@ function renderCloud() {{
     var maxFreq = palavras[0][1] || 1;
     var minFreq = palavras[palavras.length - 1][1] || 1;
     var corIdx  = NOMES.indexOf(ativo);
-    var corBase = CORES[corIdx] || '#3a9fd6';
+    var corBase = ativo === '__geral__' ? '#0e2a47' : (CORES[corIdx] || '#3a9fd6');
 
     palavras.forEach(function(item) {{
         var word = item[0];

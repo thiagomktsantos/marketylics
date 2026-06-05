@@ -9223,6 +9223,20 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         for r in erros:
             st.warning(f"⚠️ {r['nome']}: {r['erro']}")
 
+    # Detectar perfis configurados que ainda não foram coletados
+    handles_coletados = {r.get("instagram", "").lstrip("@").strip().lower() for r in cache.get("dados", [])}
+    novas_empresas = [
+        e for e in todas
+        if e["instagram"].lstrip("@").strip().lower() not in handles_coletados
+    ]
+    if novas_empresas:
+        nomes = ", ".join(e["nome"] for e in novas_empresas)
+        st.info(
+            f"📡 **{nomes}** {'foi adicionada' if len(novas_empresas) == 1 else 'foram adicionadas'} "
+            f"mas ainda não {'tem' if len(novas_empresas) == 1 else 'têm'} dados coletados. "
+            f"Clique em **Coletar dados** para incluí-las."
+        )
+
     # ── Estado de navegação ─────────────────────────────────────────
     if "redes_main_tab" not in st.session_state:
         st.session_state.redes_main_tab = "perfis"

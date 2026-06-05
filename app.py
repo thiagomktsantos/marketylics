@@ -2271,18 +2271,29 @@ html, body { background: transparent; overflow: hidden; }
 
     with h2:
         st.markdown("<div style='padding-top:6px'/>", unsafe_allow_html=True)
-        ultima_coleta = st.session_state.metricas_redes.get("ultima_coleta", "")
-        if ultima_coleta:
+        ultima_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
+        ultima_ads   = st.session_state.get("ads_cache_data", {}).get("ultima_coleta", "")
+
+        # fallback: buscar ultima_coleta dentro do ads_cache por empresa
+        if not ultima_ads:
+            for v in st.session_state.get("ads_cache", {}).values():
+                if v.get("ultima_coleta"):
+                    ultima_ads = v["ultima_coleta"]
+                    break
+
+        linhas = []
+        if ultima_redes:
+            linhas.append(f"📱 Instagram: <b>{ultima_redes}</b>")
+        if ultima_ads:
+            linhas.append(f"📢 Meta Ads: <b>{ultima_ads}</b>")
+
+        if linhas:
             st.markdown(
-                f"<div style='font-size:13px;color:#6b7280;text-align:center;padding-top:8px'>"
-                f"🕒 Dados de: <b>{ultima_coleta}</b></div>",
+                f"<div style='font-size:12px;color:#6b7280;text-align:right;line-height:1.9;padding-top:4px'>"
+                + "<br>".join(linhas) +
+                "</div>",
                 unsafe_allow_html=True,
             )
-
-    st.markdown(
-        "<hr style='border:none;border-top:1px solid #e5e7eb;margin:4px 0 24px 0'/>",
-        unsafe_allow_html=True,
-    )
 
     # ── Montar lista de todas as empresas ──────────────────────────
     todas_empresas_geral = []

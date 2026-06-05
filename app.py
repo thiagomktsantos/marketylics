@@ -2751,7 +2751,7 @@ setTimeout(syncHeight, 400);
     # BLOCO 3: COMPARATIVO DE ADS (sem alterações)
     # ══════════════════════════════════════════════════════════════
  
-    empresas_com_ads = {{k: v for k, v in ads_cache.items() if v.get("data")}}
+    empresas_com_ads = {k: v for k, v in ads_cache.items() if v.get("data")}
     if empresas_com_ads:
         st.markdown(
             "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
@@ -2873,7 +2873,6 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
             </div>
         </div>
         """, unsafe_allow_html=True)
-
 
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES

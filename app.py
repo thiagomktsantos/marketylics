@@ -2327,125 +2327,7 @@ html, body { background: transparent; overflow: hidden; }
         return str(n)
 
     # ══════════════════════════════════════════════════════════════
-    # BLOCO 1: TABELA RESUMO GERAL
-    # ══════════════════════════════════════════════════════════════
-
-    st.markdown(
-        "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
-        "letter-spacing:0.2px;margin:8px 0 14px'>📋 Resumo Comparativo</div>",
-        unsafe_allow_html=True,
-    )
-
-    rows_html = ""
-    for i, e in enumerate(todas_empresas_geral):
-        is_minha = e["tipo"] == "minha"
-        cor      = get_minha_empresa_color() if is_minha else get_concorrente_color(i - 1 if not is_minha else 0)
-        av       = gerar_avatar(e["nome"])
-        badge    = "Minha Empresa" if is_minha else "Concorrente"
-        bg_badge = "#eff6ff" if is_minha else "#f3f4f6"
-        col_badge= "#1d4ed8" if is_minha else "#6b7280"
-
-        redes = dados_redes_map.get(e["nome"], {})
-        seg   = redes.get("seguidores", 0)
-        eng   = redes.get("eng_pct", 0.0)
-        posts = redes.get("total_posts", 0)
-
-        n_ads_total  = len(ads_cache.get(e["nome"], {}).get("data", []))
-        n_ads_ativos = sum(1 for a in ads_cache.get(e["nome"], {}).get("data", []) if a.get("ativo", True))
-
-        has_ig   = bool(e.get("instagram") and e["instagram"] not in ("@",""))
-        has_site = bool(e.get("site"))
-
-        rows_html += f"""
-        <tr>
-            <td>
-                <div style="display:flex;align-items:center;gap:10px">
-                    <div style="width:32px;height:32px;border-radius:50%;background:{cor};
-                                display:flex;align-items:center;justify-content:center;
-                                font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>
-                    <div>
-                        <div style="font-weight:700;color:#111827;font-size:13px">{e['nome']}</div>
-                        <span style="font-size:11px;background:{bg_badge};color:{col_badge};
-                                     border:1px solid {'#bfdbfe' if is_minha else '#e5e7eb'};
-                                     padding:1px 7px;border-radius:20px;font-weight:600">{badge}</span>
-                    </div>
-                </div>
-            </td>
-            <td style="text-align:center">
-                <span style="color:{'#22c55e' if has_ig else '#d1d5db'};font-size:14px">{'✓' if has_ig else '—'}</span>
-            </td>
-            <td style="text-align:center">
-                <span style="color:{'#22c55e' if has_site else '#d1d5db'};font-size:14px">{'✓' if has_site else '—'}</span>
-            </td>
-            <td style="text-align:center;font-weight:700;color:#111827">{fmt_num(seg) if seg else '—'}</td>
-            <td style="text-align:center;font-weight:700;color:#111827">{f'{eng:.1f}%' if seg else '—'}</td>
-            <td style="text-align:center;font-weight:700;color:#111827">{fmt_num(posts) if posts else '—'}</td>
-            <td style="text-align:center;font-weight:700;color:#111827">{n_ads_ativos if n_ads_ativos else '—'}</td>
-            <td style="text-align:center;font-weight:600;color:#6b7280">{n_ads_total if n_ads_total else '—'}</td>
-        </tr>
-        """
-
-    components.html(f"""
-<!DOCTYPE html><html>
-<head>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-body {{ padding-bottom:8px; }}
-.wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; }}
-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-th {{
-    background:#f9fafb; color:#9ca3af; font-size:11px; font-weight:700;
-    text-transform:uppercase; letter-spacing:0.6px;
-    padding:11px 14px; text-align:left; border-bottom:1px solid #e5e7eb;
-    white-space:nowrap;
-}}
-td {{ padding:12px 14px; border-bottom:1px solid #f3f4f6; vertical-align:middle; color:#374151; }}
-tr:last-child td {{ border-bottom:none; }}
-tr:hover td {{ background:#f9fafb; }}
-</style>
-</head>
-<body>
-<div class="wrap">
-    <table>
-        <thead>
-            <tr>
-                <th>Empresa</th>
-                <th style="text-align:center">Instagram</th>
-                <th style="text-align:center">Site</th>
-                <th style="text-align:center">Seguidores</th>
-                <th style="text-align:center">Engaj. %</th>
-                <th style="text-align:center">Posts</th>
-                <th style="text-align:center">Ads Ativos</th>
-                <th style="text-align:center">Ads Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {rows_html}
-        </tbody>
-    </table>
-</div>
-<script>
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = (h + 8) + 'px'; break;
-        }} }} catch(e) {{}}
-    }}
-}}
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
-setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
-</script>
-</body></html>
-""", height=200, scrolling=False) 
-    
-    # ══════════════════════════════════════════════════════════════
-    # BLOCO 2: GRÁFICOS COMPARATIVOS DE REDES SOCIAIS
+    # BLOCO 1: GRÁFICO COMPARATIVO DE REDES SOCIAIS (unificado)
     # ══════════════════════════════════════════════════════════════
 
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
@@ -2464,12 +2346,12 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
         cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
 
-        nomes_json    = _json.dumps(nomes_g, ensure_ascii=False)
-        segs_json     = _json.dumps(segs_g)
-        eng_pct_json  = _json.dumps([round(v, 2) for v in eng_pct_g])
-        posts_json    = _json.dumps(posts_g)
-        eng_med_json  = _json.dumps([round(v, 1) for v in eng_med_g])
-        cores_json    = _json.dumps(cores_g)
+        nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
+        segs_json    = _json.dumps(segs_g)
+        eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
+        posts_json   = _json.dumps(posts_g)
+        eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
+        cores_json   = _json.dumps(cores_g)
 
         components.html(f"""
 <!DOCTYPE html><html>
@@ -2480,7 +2362,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 body {{ padding-bottom:8px; }}
-.grid {{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }}
 .card {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:18px 20px 14px;
@@ -2489,49 +2370,38 @@ body {{ padding-bottom:8px; }}
     font-size:12px; font-weight:800; color:#1a2e4a;
     text-transform:uppercase; letter-spacing:0.6px;
     padding-bottom:10px; border-bottom:1px solid #f3f4f6;
-    margin-bottom:12px;
+    margin-bottom:16px;
 }}
-.chart-wrap {{ position:relative; width:100%; height:180px; }}
+.metric-tabs {{
+    display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;
+}}
+.mtab {{
+    padding:6px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
+    background:#fff; font-size:12px; font-weight:700; color:#6b7280;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+}}
+.mtab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.mtab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
+.chart-wrap {{ position:relative; width:100%; height:220px; }}
 .legend {{
     display:flex; flex-wrap:wrap; gap:10px;
-    margin-top:10px; font-size:11px; color:#6b7280;
+    margin-top:12px; font-size:11px; color:#6b7280;
 }}
 .leg-item {{ display:flex; align-items:center; gap:5px; }}
-.leg-dot {{
-    width:10px; height:10px; border-radius:2px; flex-shrink:0;
-}}
+.leg-dot {{ width:10px; height:10px; border-radius:2px; flex-shrink:0; }}
 </style>
 </head>
 <body>
-
-<div class="grid">
-    <!-- Seguidores -->
-    <div class="card">
-        <div class="card-title">Seguidores</div>
-        <div class="chart-wrap"><canvas id="ch_seg" role="img" aria-label="Comparativo de seguidores"></canvas></div>
-        <div class="legend" id="leg_seg"></div>
+<div class="card">
+    <div class="card-title">Comparativo de Métricas</div>
+    <div class="metric-tabs">
+        <button class="mtab active" onclick="switchMetric('seg', this)">Seguidores</button>
+        <button class="mtab" onclick="switchMetric('eng', this)">Engajamento %</button>
+        <button class="mtab" onclick="switchMetric('posts', this)">Publicações</button>
+        <button class="mtab" onclick="switchMetric('engmed', this)">Eng. Médio/Post</button>
     </div>
-    <!-- Taxa de Engajamento -->
-    <div class="card">
-        <div class="card-title">Taxa de Engajamento (%)</div>
-        <div class="chart-wrap"><canvas id="ch_eng" role="img" aria-label="Comparativo de engajamento"></canvas></div>
-        <div class="legend" id="leg_eng"></div>
-    </div>
-</div>
-
-<div class="grid">
-    <!-- Total de Posts -->
-    <div class="card">
-        <div class="card-title">Total de Publicações</div>
-        <div class="chart-wrap"><canvas id="ch_posts" role="img" aria-label="Comparativo de publicações"></canvas></div>
-        <div class="legend" id="leg_posts"></div>
-    </div>
-    <!-- Engajamento Médio por Post -->
-    <div class="card">
-        <div class="card-title">Engajamento Médio por Post</div>
-        <div class="chart-wrap"><canvas id="ch_engmed" role="img" aria-label="Engajamento médio por post"></canvas></div>
-        <div class="legend" id="leg_engmed"></div>
-    </div>
+    <div class="chart-wrap"><canvas id="ch_main"></canvas></div>
+    <div class="legend" id="leg_main"></div>
 </div>
 
 <script>
@@ -2542,21 +2412,12 @@ var POSTS   = {posts_json};
 var ENG_MED = {eng_med_json};
 var CORES   = {cores_json};
 
-function makeLegend(containerId, labels, values, suffix) {{
-    var el = document.getElementById(containerId);
-    if (!el) return;
-    labels.forEach(function(name, i) {{
-        var item = document.createElement('span');
-        item.className = 'leg-item';
-        var dot = document.createElement('span');
-        dot.className = 'leg-dot';
-        dot.style.background = CORES[i];
-        item.appendChild(dot);
-        var txt = document.createTextNode(name + ' ' + (suffix === '%' ? values[i].toFixed(1) + '%' : fmtNum(values[i])));
-        item.appendChild(txt);
-        el.appendChild(item);
-    }});
-}}
+var METRICS = {{
+    seg:    {{ data: SEGS,    label: 'Seguidores',       pct: false }},
+    eng:    {{ data: ENG_PCT, label: 'Engajamento %',    pct: true  }},
+    posts:  {{ data: POSTS,   label: 'Publicações',      pct: false }},
+    engmed: {{ data: ENG_MED, label: 'Eng. Médio/Post',  pct: false }},
+}};
 
 function fmtNum(n) {{
     n = Math.round(n);
@@ -2565,51 +2426,7 @@ function fmtNum(n) {{
     return String(n);
 }}
 
-var DEFAULTS = {{
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {{
-        legend: {{ display: false }},
-        tooltip: {{
-            callbacks: {{
-                label: function(ctx) {{
-                    return ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y);
-                }}
-            }}
-        }}
-    }},
-    scales: {{
-        x: {{
-            grid: {{ display: false }},
-            ticks: {{
-                font: {{ family: "'DM Sans', sans-serif", size: 11, weight: '600' }},
-                color: '#6b7280',
-                maxRotation: 0,
-            }},
-            border: {{ display: false }}
-        }},
-        y: {{
-            grid: {{ color: '#f3f4f6', lineWidth: 1 }},
-            ticks: {{
-                font: {{ family: "'DM Sans', sans-serif", size: 11 }},
-                color: '#9ca3af',
-                callback: function(v) {{ return fmtNum(v); }}
-            }},
-            border: {{ display: false }}
-        }}
-    }}
-}};
-
-function DEFAULTS_PCT() {{
-    var d = JSON.parse(JSON.stringify(DEFAULTS));
-    d.scales.y.ticks.callback = function(v) {{ return v + '%'; }};
-    d.plugins.tooltip.callbacks.label = function(ctx) {{
-        return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%';
-    }};
-    return d;
-}}
-
-new Chart(document.getElementById('ch_seg'), {{
+var chart = new Chart(document.getElementById('ch_main'), {{
     type: 'bar',
     data: {{
         labels: NOMES,
@@ -2617,61 +2434,75 @@ new Chart(document.getElementById('ch_seg'), {{
             label: 'Seguidores',
             data: SEGS,
             backgroundColor: CORES,
-            borderRadius: 6,
+            borderRadius: 8,
             borderSkipped: false,
         }}]
     }},
-    options: DEFAULTS
+    options: {{
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {{
+            legend: {{ display: false }},
+            tooltip: {{
+                callbacks: {{
+                    label: function(ctx) {{
+                        return ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y);
+                    }}
+                }}
+            }}
+        }},
+        scales: {{
+            x: {{
+                grid: {{ display: false }},
+                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:12, weight:'600' }}, color:'#6b7280', maxRotation:0 }},
+                border: {{ display: false }}
+            }},
+            y: {{
+                grid: {{ color: '#f3f4f6' }},
+                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11 }}, color:'#9ca3af',
+                          callback: function(v) {{ return fmtNum(v); }} }},
+                border: {{ display: false }}
+            }}
+        }}
+    }}
 }});
-makeLegend('leg_seg', NOMES, SEGS, '');
 
-new Chart(document.getElementById('ch_eng'), {{
-    type: 'bar',
-    data: {{
-        labels: NOMES,
-        datasets: [{{
-            label: 'Engajamento %',
-            data: ENG_PCT,
-            backgroundColor: CORES,
-            borderRadius: 6,
-            borderSkipped: false,
-        }}]
-    }},
-    options: DEFAULTS_PCT()
-}});
-makeLegend('leg_eng', NOMES, ENG_PCT, '%');
+function buildLegend(metricKey) {{
+    var m = METRICS[metricKey];
+    var el = document.getElementById('leg_main');
+    el.innerHTML = '';
+    NOMES.forEach(function(name, i) {{
+        var item = document.createElement('span');
+        item.className = 'leg-item';
+        var dot = document.createElement('span');
+        dot.className = 'leg-dot';
+        dot.style.background = CORES[i];
+        item.appendChild(dot);
+        var val = m.pct ? m.data[i].toFixed(1) + '%' : fmtNum(m.data[i]);
+        item.appendChild(document.createTextNode(name + ' — ' + val));
+        el.appendChild(item);
+    }});
+}}
 
-new Chart(document.getElementById('ch_posts'), {{
-    type: 'bar',
-    data: {{
-        labels: NOMES,
-        datasets: [{{
-            label: 'Publicações',
-            data: POSTS,
-            backgroundColor: CORES,
-            borderRadius: 6,
-            borderSkipped: false,
-        }}]
-    }},
-    options: DEFAULTS
-}});
-makeLegend('leg_posts', NOMES, POSTS, '');
+function switchMetric(key, btn) {{
+    var m = METRICS[key];
+    chart.data.datasets[0].data  = m.data;
+    chart.data.datasets[0].label = m.label;
+    var isPct = m.pct;
+    chart.options.scales.y.ticks.callback = function(v) {{
+        return isPct ? v + '%' : fmtNum(v);
+    }};
+    chart.options.plugins.tooltip.callbacks.label = function(ctx) {{
+        return ' ' + ctx.dataset.label + ': ' + (isPct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
+    }};
+    chart.update();
+    buildLegend(key);
+    document.querySelectorAll('.mtab').forEach(function(b) {{ b.classList.remove('active'); }});
+    btn.classList.add('active');
+    syncHeight();
+}}
 
-new Chart(document.getElementById('ch_engmed'), {{
-    type: 'bar',
-    data: {{
-        labels: NOMES,
-        datasets: [{{
-            label: 'Eng. médio',
-            data: ENG_MED,
-            backgroundColor: CORES,
-            borderRadius: 6,
-            borderSkipped: false,
-        }}]
-    }},
-    options: DEFAULTS
-}});
-makeLegend('leg_engmed', NOMES, ENG_MED, '');
+buildLegend('seg');
 
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
@@ -2683,12 +2514,10 @@ function syncHeight() {{
     }}
 }}
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
 </script>
 </body></html>
-""", height=560, scrolling=False)
+""", height=360, scrolling=False)
 
     else:
         st.markdown("""
@@ -2699,6 +2528,184 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
             <div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b> para ver os gráficos aqui.</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # BLOCO 2: NUVEM DE PALAVRAS DAS LEGENDAS
+    # ══════════════════════════════════════════════════════════════
+
+    if ok_redes:
+        st.markdown(
+            "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
+            "letter-spacing:0.2px;margin:8px 0 14px'>☁️ Nuvem de Palavras — Legendas</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Montar dados de palavras por empresa
+        import re as _re
+        stopwords_pt = {
+            "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
+            "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
+            "esse","essa","seu","sua","seus","suas","mais","mas","ou","não","é","são",
+            "foi","ser","ter","tem","como","pelo","pela","pelos","pelas","já","também",
+            "muito","bem","aqui","nosso","nossa","nos","nós","você","vocês","isso","isto",
+            "todo","toda","todos","todas","quando","onde","quem","qual","quais","foi",
+            "ser","seus","suas","ele","ela","eles","elas","me","te","lhe","lhes","meu",
+            "minha","teu","tua","nossos","nossas","seu","sua","via","até","após","sobre",
+        }
+
+        empresas_palavras = {}
+        for r in ok_redes:
+            texto_total = " ".join([
+                p.get("caption", "") or ""
+                for p in r.get("posts", [])
+            ])
+            palavras = _re.findall(r'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}', texto_total)
+            freq = {}
+            for w in palavras:
+                w_low = w.lower()
+                if w_low not in stopwords_pt and not w_low.startswith("http"):
+                    freq[w_low] = freq.get(w_low, 0) + 1
+            # Top 60 palavras
+            top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
+            empresas_palavras[r["nome"]] = top
+
+        empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
+        nomes_nuvem_json = _json.dumps([r["nome"] for r in ok_redes], ensure_ascii=False)
+        cores_nuvem_json = _json.dumps([get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
+
+        components.html(f"""
+<!DOCTYPE html><html>
+<head>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+body {{ padding-bottom:8px; }}
+.card {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:18px 20px 20px;
+}}
+.card-header {{
+    display:flex; align-items:center; justify-content:space-between;
+    padding-bottom:12px; border-bottom:1px solid #f3f4f6; margin-bottom:16px;
+    flex-wrap:wrap; gap:10px;
+}}
+.card-title {{
+    font-size:12px; font-weight:800; color:#1a2e4a;
+    text-transform:uppercase; letter-spacing:0.6px;
+}}
+.filter-tabs {{ display:flex; gap:8px; flex-wrap:wrap; }}
+.ftab {{
+    padding:5px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
+    background:#fff; font-size:12px; font-weight:700; color:#6b7280;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+}}
+.ftab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.ftab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
+.cloud-wrap {{
+    min-height:200px; display:flex; flex-wrap:wrap;
+    gap:10px 14px; align-items:center; justify-content:center;
+    padding:8px 4px;
+}}
+.word-tag {{
+    display:inline-block; border-radius:6px;
+    font-weight:700; cursor:default; transition:transform 0.1s;
+    line-height:1.3;
+}}
+.word-tag:hover {{ transform:scale(1.08); }}
+.empty-msg {{
+    font-size:14px; color:#9ca3af; text-align:center;
+    padding:40px 0; width:100%;
+}}
+</style>
+</head>
+<body>
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">Palavras mais usadas nas legendas</div>
+        <div class="filter-tabs" id="filter-tabs"></div>
+    </div>
+    <div class="cloud-wrap" id="cloud-wrap"></div>
+</div>
+
+<script>
+var DADOS  = {empresas_palavras_json};
+var NOMES  = {nomes_nuvem_json};
+var CORES  = {cores_nuvem_json};
+var ativo  = NOMES[0] || '';
+
+function buildTabs() {{
+    var el = document.getElementById('filter-tabs');
+    el.innerHTML = '';
+    NOMES.forEach(function(nome, i) {{
+        var btn = document.createElement('button');
+        btn.className = 'ftab' + (nome === ativo ? ' active' : '');
+        btn.textContent = nome;
+        btn.onclick = function() {{
+            ativo = nome;
+            document.querySelectorAll('.ftab').forEach(function(b) {{ b.classList.remove('active'); }});
+            btn.classList.add('active');
+            renderCloud();
+        }};
+        el.appendChild(btn);
+    }});
+}}
+
+function renderCloud() {{
+    var wrap = document.getElementById('cloud-wrap');
+    wrap.innerHTML = '';
+    var palavras = DADOS[ativo] || [];
+    if (!palavras.length) {{
+        wrap.innerHTML = '<div class="empty-msg">Nenhuma legenda encontrada para esta empresa.</div>';
+        syncHeight(); return;
+    }}
+    var maxFreq = palavras[0][1] || 1;
+    var minFreq = palavras[palavras.length - 1][1] || 1;
+    var corIdx  = NOMES.indexOf(ativo);
+    var corBase = CORES[corIdx] || '#3a9fd6';
+
+    palavras.forEach(function(item) {{
+        var word = item[0];
+        var freq = item[1];
+        // tamanho entre 13px e 36px
+        var ratio  = maxFreq === minFreq ? 0.5 : (freq - minFreq) / (maxFreq - minFreq);
+        var size   = Math.round(13 + ratio * 23);
+        // opacidade entre 0.45 e 1
+        var opacity = (0.45 + ratio * 0.55).toFixed(2);
+
+        var tag = document.createElement('span');
+        tag.className = 'word-tag';
+        tag.textContent = word;
+        tag.title = freq + 'x';
+        tag.style.fontSize  = size + 'px';
+        tag.style.color     = corBase;
+        tag.style.opacity   = opacity;
+        tag.style.padding   = Math.round(3 + ratio * 4) + 'px ' + Math.round(7 + ratio * 6) + 'px';
+        tag.style.background = corBase + Math.round(opacity * 18).toString(16).padStart(2,'0');
+        wrap.appendChild(tag);
+    }});
+    syncHeight();
+}}
+
+function syncHeight() {{
+    setTimeout(function() {{
+        var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {{
+            try {{ if (iframes[i].contentWindow === window) {{
+                iframes[i].style.height = (h + 8) + 'px'; break;
+            }} }} catch(e) {{}}
+        }}
+    }}, 100);
+}}
+
+buildTabs();
+renderCloud();
+if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+setTimeout(syncHeight, 400);
+</script>
+</body></html>
+""", height=400, scrolling=False)
 
     # ══════════════════════════════════════════════════════════════
     # BLOCO 3: COMPARATIVO DE ADS
@@ -2749,14 +2756,14 @@ body {{ padding-bottom:8px; }}
 <body>
 <div class="wrap">
     <div class="card-title">Total de Anúncios por Empresa</div>
-    <div class="chart-wrap"><canvas id="ch_ads" role="img" aria-label="Comparativo de anúncios"></canvas></div>
+    <div class="chart-wrap"><canvas id="ch_ads"></canvas></div>
     <div class="legend" id="leg_ads"></div>
 </div>
 <script>
-var NOMES   = {ads_nomes_json};
-var TOTAIS  = {ads_totais_json};
-var ATIVOS  = {ads_ativos_json};
-var CORES   = {ads_cores_json};
+var NOMES  = {ads_nomes_json};
+var TOTAIS = {ads_totais_json};
+var ATIVOS = {ads_ativos_json};
+var CORES  = {ads_cores_json};
 
 function fmtNum(n) {{
     n = Math.round(n);
@@ -2769,53 +2776,31 @@ new Chart(document.getElementById('ch_ads'), {{
     data: {{
         labels: NOMES,
         datasets: [
-            {{
-                label: 'Ativos',
-                data: ATIVOS,
-                backgroundColor: CORES,
-                borderRadius: 6,
-                borderSkipped: false,
-            }},
-            {{
-                label: 'Histórico',
-                data: TOTAIS.map(function(t,i) {{ return t - ATIVOS[i]; }}),
-                backgroundColor: CORES.map(function(c) {{ return c + '55'; }}),
-                borderRadius: 6,
-                borderSkipped: false,
-            }}
+            {{ label:'Ativos', data:ATIVOS, backgroundColor:CORES, borderRadius:6, borderSkipped:false }},
+            {{ label:'Histórico', data:TOTAIS.map(function(t,i){{ return t-ATIVOS[i]; }}),
+               backgroundColor:CORES.map(function(c){{ return c+'55'; }}), borderRadius:6, borderSkipped:false }}
         ]
     }},
     options: {{
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {{ legend: {{ display: false }} }},
-        scales: {{
-            x: {{
-                stacked: true,
-                grid: {{ display: false }},
-                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11, weight:'600' }}, color:'#6b7280', maxRotation:0 }},
-                border: {{ display: false }}
-            }},
-            y: {{
-                stacked: true,
-                grid: {{ color: '#f3f4f6' }},
-                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11 }}, color:'#9ca3af' }},
-                border: {{ display: false }}
-            }}
+        responsive:true, maintainAspectRatio:false,
+        plugins:{{ legend:{{ display:false }} }},
+        scales:{{
+            x:{{ stacked:true, grid:{{ display:false }},
+                 ticks:{{ font:{{ family:"'DM Sans',sans-serif",size:11,weight:'600' }},color:'#6b7280',maxRotation:0 }},
+                 border:{{ display:false }} }},
+            y:{{ stacked:true, grid:{{ color:'#f3f4f6' }},
+                 ticks:{{ font:{{ family:"'DM Sans',sans-serif",size:11 }},color:'#9ca3af' }},
+                 border:{{ display:false }} }}
         }}
     }}
 }});
 
 var legEl = document.getElementById('leg_ads');
-NOMES.forEach(function(name, i) {{
-    var item = document.createElement('span');
-    item.className = 'leg-item';
-    var dot = document.createElement('span');
-    dot.className = 'leg-dot';
-    dot.style.background = CORES[i];
-    item.appendChild(dot);
-    var txt = document.createTextNode(name + ' ' + ATIVOS[i] + ' ativos / ' + TOTAIS[i] + ' total');
-    item.appendChild(txt);
+NOMES.forEach(function(name,i) {{
+    var item = document.createElement('span'); item.className = 'leg-item';
+    var dot  = document.createElement('span'); dot.className  = 'leg-dot';
+    dot.style.background = CORES[i]; item.appendChild(dot);
+    item.appendChild(document.createTextNode(name+' '+ATIVOS[i]+' ativos / '+TOTAIS[i]+' total'));
     legEl.appendChild(item);
 }});
 
@@ -2834,7 +2819,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
 </body></html>
 """, height=280, scrolling=False)
 
-    # ── Aviso se sem dados ──────────────────────────────────────────
+    # ── Aviso se sem dados ─────────────────────────────────────────
     if not ok_redes and not empresas_com_ads:
         st.markdown("""
         <div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;

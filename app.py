@@ -2631,7 +2631,7 @@ body {{ padding-bottom:8px; }}
     flex-wrap:wrap; gap:10px;
 }}
 .card-title {{
-    font-size:12px; font-weight:800; color:#1a2e4a;
+    font-size:18px; font-weight:800; color:#1a2e4a;
     text-transform:uppercase; letter-spacing:0.6px;
 }}
 .filter-tabs {{ display:flex; gap:8px; flex-wrap:wrap; }}
@@ -2662,7 +2662,7 @@ body {{ padding-bottom:8px; }}
 <body>
 <div class="card">
     <div class="card-header">
-        <div class="card-title">Palavras mais usadas nas legendas</div>
+        <div class="card-title">☁️ Nuvem de Palavras — Legendas</div>
         <div class="filter-tabs" id="filter-tabs"></div>
     </div>
     <div class="cloud-wrap" id="cloud-wrap"></div>

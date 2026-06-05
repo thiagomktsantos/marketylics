@@ -2802,116 +2802,8 @@ setTimeout(syncHeight, 400);
 </body></html>
 """, height=400, scrolling=False)
  
-    # ══════════════════════════════════════════════════════════════
-    # BLOCO 3: COMPARATIVO DE ADS (sem alterações)
-    # ══════════════════════════════════════════════════════════════
- 
-    empresas_com_ads = {k: v for k, v in ads_cache.items() if v.get("data")}
-    if empresas_com_ads:
- 
- 
-        ads_nomes  = list(empresas_com_ads.keys())
-        ads_totais = [len(v.get("data", [])) for v in empresas_com_ads.values()]
-        ads_ativos = [sum(1 for a in v.get("data",[]) if a.get("ativo",True)) for v in empresas_com_ads.values()]
-        ads_cores  = []
-        for nome in ads_nomes:
-            idx_e = next((i for i,e in enumerate(todas_empresas_geral) if e["nome"]==nome), 0)
-            ads_cores.append(get_avatar_color(idx_e))
- 
-        ads_nomes_json  = _json.dumps(ads_nomes, ensure_ascii=False)
-        ads_totais_json = _json.dumps(ads_totais)
-        ads_ativos_json = _json.dumps(ads_ativos)
-        ads_cores_json  = _json.dumps(ads_cores)
- 
-        components.html(f"""
-<!DOCTYPE html><html>
-<head>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-body {{ padding-bottom:8px; }}
-.wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 14px; }}
-.card-title {{
-    font-size:12px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.6px;
-    padding-bottom:10px; border-bottom:1px solid #f3f4f6; margin-bottom:12px;
-}}
-.chart-wrap {{ position:relative; width:100%; height:180px; }}
-.legend {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; font-size:11px; color:#6b7280; }}
-.leg-item {{ display:flex; align-items:center; gap:5px; }}
-.leg-dot {{ width:10px; height:10px; border-radius:2px; flex-shrink:0; }}
-</style>
-</head>
-<body>
-<div class="wrap">
-    <div class="card-title">Total de Anúncios por Empresa</div>
-    <div class="chart-wrap"><canvas id="ch_ads"></canvas></div>
-    <div class="legend" id="leg_ads"></div>
-</div>
-<script>
-var NOMES  = {ads_nomes_json};
-var TOTAIS = {ads_totais_json};
-var ATIVOS = {ads_ativos_json};
-var CORES  = {ads_cores_json};
- 
-function fmtNum(n) {{
-    n = Math.round(n);
-    if (n >= 1000) return (n/1000).toFixed(1) + 'K';
-    return String(n);
-}}
- 
-new Chart(document.getElementById('ch_ads'), {{
-    type: 'bar',
-    data: {{
-        labels: NOMES,
-        datasets: [
-            {{ label:'Ativos', data:ATIVOS, backgroundColor:CORES, borderRadius:6, borderSkipped:false }},
-            {{ label:'Histórico', data:TOTAIS.map(function(t,i){{ return t-ATIVOS[i]; }}),
-               backgroundColor:CORES.map(function(c){{ return c+'55'; }}), borderRadius:6, borderSkipped:false }}
-        ]
-    }},
-    options: {{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{{ legend:{{ display:false }} }},
-        scales:{{
-            x:{{ stacked:true, grid:{{ display:false }},
-                 ticks:{{ font:{{ family:"'DM Sans',sans-serif",size:11,weight:'600' }},color:'#6b7280',maxRotation:0 }},
-                 border:{{ display:false }} }},
-            y:{{ stacked:true, grid:{{ color:'#f3f4f6' }},
-                 ticks:{{ font:{{ family:"'DM Sans',sans-serif",size:11 }},color:'#9ca3af' }},
-                 border:{{ display:false }} }}
-        }}
-    }}
-}});
- 
-var legEl = document.getElementById('leg_ads');
-NOMES.forEach(function(name,i) {{
-    var item = document.createElement('span'); item.className = 'leg-item';
-    var dot  = document.createElement('span'); dot.className  = 'leg-dot';
-    dot.style.background = CORES[i]; item.appendChild(dot);
-    item.appendChild(document.createTextNode(name+' '+ATIVOS[i]+' ativos / '+TOTAIS[i]+' total'));
-    legEl.appendChild(item);
-}});
- 
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = (h + 8) + 'px'; break;
-        }} }} catch(e) {{}}
-    }}
-}}
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
-</script>
-</body></html>
-""", height=280, scrolling=False)
- 
     # ── Aviso se sem dados ─────────────────────────────────────────
-    if not ok_redes and not empresas_com_ads:
+    if not ok_redes:
         st.markdown("""
         <div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;
                     padding:14px 18px;font-size:14px;color:#92400e;
@@ -2919,8 +2811,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
             <span style='font-size:20px;flex-shrink:0'>💡</span>
             <div>
                 <b>Para enriquecer este painel:</b><br>
-                • Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b> para ver os gráficos de Instagram<br>
-                • Acesse <b>Biblioteca de Ads</b> → configure e busque anúncios para ver o comparativo de Meta Ads
+                • Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b> para ver os gráficos de Instagram
             </div>
         </div>
         """, unsafe_allow_html=True)

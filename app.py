@@ -2344,11 +2344,6 @@ html, body { background: transparent; overflow: hidden; }
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
 
     if ok_redes:
-        st.markdown(
-            "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
-            "letter-spacing:0.2px;margin-bottom:14px'>📊 Comparativo — Redes Sociais</div>",
-            unsafe_allow_html=True,
-        )
 
         nomes_g   = [r["nome"] for r in ok_redes]
         segs_g    = [r.get("seguidores", 0) for r in ok_redes]
@@ -2384,12 +2379,15 @@ body {{ padding-bottom:8px; }}
     margin-bottom:16px;
 }}
 .metric-tabs {{
-    display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;
+    display:grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap:8px; margin-bottom:16px;
 }}
 .mtab {{
-    padding:6px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
+    padding:8px 0; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:12px; font-weight:700; color:#6b7280;
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+    text-align:center; width:100%;
 }}
 .mtab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .mtab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
@@ -2404,7 +2402,7 @@ body {{ padding-bottom:8px; }}
 </head>
 <body>
 <div class="card">
-    <div class="card-title">Comparativo de Métricas</div>
+    <div class="card-title">📊 Comparativo — Redes Sociais</div>
     <div class="metric-tabs">
         <button class="mtab active" onclick="switchMetric('seg', this)">Seguidores</button>
         <button class="mtab" onclick="switchMetric('eng', this)">Engajamento %</button>
@@ -2424,10 +2422,10 @@ var ENG_MED = {eng_med_json};
 var CORES   = {cores_json};
 
 var METRICS = {{
-    seg:    {{ data: SEGS,    label: 'Seguidores',       pct: false }},
-    eng:    {{ data: ENG_PCT, label: 'Engajamento %',    pct: true  }},
-    posts:  {{ data: POSTS,   label: 'Publicações',      pct: false }},
-    engmed: {{ data: ENG_MED, label: 'Eng. Médio/Post',  pct: false }},
+    seg:    {{ data: SEGS,    label: 'Seguidores',      pct: false }},
+    eng:    {{ data: ENG_PCT, label: 'Engajamento %',   pct: true  }},
+    posts:  {{ data: POSTS,   label: 'Publicações',     pct: false }},
+    engmed: {{ data: ENG_MED, label: 'Eng. Médio/Post', pct: false }},
 }};
 
 function fmtNum(n) {{
@@ -2460,7 +2458,8 @@ var chart = new Chart(document.getElementById('ch_main'), {{
                         return ' ' + ctx.dataset.label + ': ' + fmtNum(ctx.parsed.y);
                     }}
                 }}
-            }}
+            }},
+            datalabels: {{ display: false }}
         }},
         scales: {{
             x: {{
@@ -2474,9 +2473,32 @@ var chart = new Chart(document.getElementById('ch_main'), {{
                           callback: function(v) {{ return fmtNum(v); }} }},
                 border: {{ display: false }}
             }}
+        }},
+        animation: {{
+            onComplete: function() {{
+                var ctx2 = chart.ctx;
+                ctx2.save();
+                ctx2.font = 'bold 12px DM Sans, sans-serif';
+                ctx2.fillStyle = '#ffffff';
+                ctx2.textAlign = 'center';
+                ctx2.textBaseline = 'top';
+                chart.data.datasets.forEach(function(dataset, di) {{
+                    chart.getDatasetMeta(di).data.forEach(function(bar, idx) {{
+                        var val = dataset.data[idx];
+                        if (!val) return;
+                        var isPct = (chart._currentPct === true);
+                        var lbl   = isPct ? val.toFixed(1) + '%' : fmtNum(val);
+                        var x = bar.x;
+                        var y = bar.y + 8;
+                        ctx2.fillText(lbl, x, y);
+                    }});
+                }});
+                ctx2.restore();
+            }}
         }}
     }}
 }});
+chart._currentPct = false;
 
 function buildLegend(metricKey) {{
     var m = METRICS[metricKey];
@@ -2497,14 +2519,14 @@ function buildLegend(metricKey) {{
 
 function switchMetric(key, btn) {{
     var m = METRICS[key];
+    chart._currentPct = m.pct;
     chart.data.datasets[0].data  = m.data;
     chart.data.datasets[0].label = m.label;
-    var isPct = m.pct;
     chart.options.scales.y.ticks.callback = function(v) {{
-        return isPct ? v + '%' : fmtNum(v);
+        return m.pct ? v + '%' : fmtNum(v);
     }};
     chart.options.plugins.tooltip.callbacks.label = function(ctx) {{
-        return ' ' + ctx.dataset.label + ': ' + (isPct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
+        return ' ' + ctx.dataset.label + ': ' + (m.pct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
     }};
     chart.update();
     buildLegend(key);

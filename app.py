@@ -2639,11 +2639,15 @@ body {{ padding-bottom:8px; }}
     padding:8px 4px;
 }}
 .word-tag {{
-    display:inline-block; border-radius:6px;
-    font-weight:700; cursor:default; transition:transform 0.1s;
-    line-height:1.3;
+    display:inline-flex; flex-direction:column; align-items:center;
+    border-radius:6px; font-weight:700; cursor:default;
+    transition:transform 0.1s; line-height:1.3;
 }}
 .word-tag:hover {{ transform:scale(1.08); }}
+.word-count {{
+    font-size:10px; font-weight:600; opacity:0.7;
+    margin-top:2px; letter-spacing:0.02em;
+}}
 .cloud-hint {{
     font-size:11px; color:#9ca3af; margin-top:12px; text-align:center;
 }}
@@ -2715,13 +2719,23 @@ function renderCloud() {{
  
         var tag = document.createElement('span');
         tag.className = 'word-tag';
-        tag.textContent = word;
         tag.title = freq + 'x';
         tag.style.fontSize   = size + 'px';
         tag.style.color      = corBase;
         tag.style.opacity    = opacity;
         tag.style.padding    = Math.round(3 + ratio * 4) + 'px ' + Math.round(7 + ratio * 6) + 'px';
         tag.style.background = corBase + Math.round(opacity * 18).toString(16).padStart(2,'0');
+ 
+        var wordSpan = document.createElement('span');
+        wordSpan.textContent = word;
+ 
+        var countSpan = document.createElement('span');
+        countSpan.className = 'word-count';
+        countSpan.textContent = freq + 'x';
+        countSpan.style.fontSize = Math.max(9, Math.round(size * 0.42)) + 'px';
+ 
+        tag.appendChild(wordSpan);
+        tag.appendChild(countSpan);
         wrap.appendChild(tag);
     }});
     syncHeight();

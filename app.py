@@ -4618,8 +4618,19 @@ elif st.session_state.pagina == "ads":
             or body.strip() in desc.strip()
             or desc.strip()[:80] in body.strip()
             or body.strip()[:80] in desc.strip()
+            or body.strip()[:120] in desc.strip()
+            or desc.strip()[:120] in body.strip()
         ):
             desc = ""
+
+        # Limpa desc se tiver alta sobreposição de palavras com o body
+        if desc and body:
+            _desc_words = set(desc.strip().lower().split())
+            _body_words = set(body.strip().lower().split())
+            if _desc_words and _body_words:
+                _overlap = len(_desc_words & _body_words) / max(len(_desc_words), 1)
+                if _overlap > 0.6:
+                    desc = ""
 
         # Limpa desc se for igual ao title
         if desc and title and desc.strip() == title.strip():

@@ -10333,6 +10333,7 @@ body{{padding-bottom:8px;}}
             <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">
                 {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
                 {(_build_links_html(ext_url)) if ext_url else ''}
+            </div>
         </div>
 
         <!-- Divisor vertical -->

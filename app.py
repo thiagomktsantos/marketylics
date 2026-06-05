@@ -9069,6 +9069,22 @@ function triggerBtn(label) {
             "criterios": criterios,
             "oportunidades": oportunidades,
         }
+
+    def _build_links_html(urls_str: str) -> str:
+        urls = [u.strip() for u in urls_str.split("|") if u.strip()]
+        icon_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+        rows = []
+        for url in urls:
+            display = url.replace("https://", "").replace("http://", "").rstrip("/")
+            rows.append(
+                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                f'{icon_svg}'
+                f'<a href="{url}" target="_blank" style="font-size:13px;font-weight:600;'
+                f'color:#3a9fd6;text-decoration:none;white-space:nowrap;overflow:hidden;'
+                f'text-overflow:ellipsis;max-width:340px;">{display}</a>'
+                f'</div>'
+            )
+        return "".join(rows)
     
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []
@@ -10316,8 +10332,7 @@ body{{padding-bottom:8px;}}
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
             <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">
                 {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
-                {('<div style="display:flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><a href="' + ext_url + '" target="_blank" style="font-size:14px;font-weight:600;color:#3a9fd6;text-decoration:none;word-break:break-all;">' + ext_url_display + '</a></div>') if ext_url else ''}
-            </div>
+                {(_build_links_html(ext_url)) if ext_url else ''}
         </div>
 
         <!-- Divisor vertical -->

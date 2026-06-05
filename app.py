@@ -2647,7 +2647,7 @@ body {{ padding-bottom:8px; }}
 }}
 .word-tag:hover {{ opacity:0.6 !important; }}
 .ranking-col {{
-    width:170px; flex-shrink:0;
+    width:200px; flex-shrink:0;
     background:#f8f9fa; border-radius:10px; padding:12px 14px;
 }}
 .ranking-title {{
@@ -2773,7 +2773,7 @@ function renderCloud() {{
             '<div style="flex:1;min-width:0">' +
                 '<div style="display:flex;align-items:center;justify-content:space-between;gap:4px">' +
                     '<span class="rank-word" style="color:' + corBase + '">' + word + '</span>' +
-                    '<span class="rank-count" style="background:' + corBase + '">' + freq + 'x</span>' +
+                    '<span class="rank-count" style="background:' + corBase + '">' + freq + '</span>' +
                 '</div>' +
                 '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barW + '%;background:' + corBase + '"></div></div>' +
             '</div>';

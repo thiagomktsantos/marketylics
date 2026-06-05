@@ -2633,24 +2633,50 @@ body {{ padding-bottom:8px; }}
 }}
 .ftab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .ftab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
+.body-wrap {{
+    display:flex; gap:16px; align-items:flex-start;
+}}
 .cloud-wrap {{
-    min-height:180px; display:flex; flex-wrap:wrap;
+    flex:1; min-height:180px; display:flex; flex-wrap:wrap;
     gap:10px 14px; align-items:center;
     padding:8px 4px;
 }}
 .word-tag {{
-    display:inline-flex; flex-direction:column; align-items:center;
-    border-radius:6px; font-weight:700; cursor:default;
-    transition:transform 0.1s; line-height:1.3;
+    display:inline-block; cursor:default;
+    transition:opacity 0.15s; line-height:1.2; font-weight:700;
 }}
-.word-tag:hover {{ transform:scale(1.08); }}
-.word-count {{
-    font-size:10px; font-weight:600; opacity:0.7;
-    margin-top:2px; letter-spacing:0.02em;
+.word-tag:hover {{ opacity:0.6 !important; }}
+.ranking-col {{
+    width:170px; flex-shrink:0;
+    background:#f8f9fa; border-radius:10px; padding:12px 14px;
 }}
-.cloud-hint {{
-    font-size:11px; color:#9ca3af; margin-top:12px; text-align:center;
+.ranking-title {{
+    font-size:11px; font-weight:700; color:#9ca3af;
+    text-transform:uppercase; letter-spacing:0.05em;
+    margin-bottom:10px;
 }}
+.rank-item {{
+    display:flex; align-items:center; gap:8px;
+    padding:5px 0; border-bottom:0.5px solid #e5e7eb;
+}}
+.rank-item:last-child {{ border-bottom:none; }}
+.rank-pos {{
+    font-size:10px; font-weight:700; color:#d1d5db;
+    width:14px; flex-shrink:0; text-align:right;
+}}
+.rank-word {{
+    font-size:13px; font-weight:600; flex:1;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}}
+.rank-count {{
+    font-size:11px; font-weight:700; color:#fff;
+    padding:2px 7px; border-radius:20px; flex-shrink:0;
+}}
+.rank-bar-wrap {{
+    height:3px; background:#e5e7eb; border-radius:2px;
+    margin-top:3px; width:100%;
+}}
+.rank-bar {{ height:3px; border-radius:2px; }}
 .empty-msg {{
     font-size:14px; color:#9ca3af; text-align:center;
     padding:40px 0; width:100%;
@@ -2663,8 +2689,13 @@ body {{ padding-bottom:8px; }}
         <div class="card-title">☁️ Nuvem de Palavras — Legendas</div>
         <div class="filter-tabs" id="filter-tabs"></div>
     </div>
-    <div class="cloud-wrap" id="cloud-wrap"></div>
-    <div class="cloud-hint">Tamanho da palavra indica frequência de aparição nas legendas</div>
+    <div class="body-wrap">
+        <div class="cloud-wrap" id="cloud-wrap"></div>
+        <div class="ranking-col">
+            <div class="ranking-title">🏆 Mais citadas</div>
+            <div id="ranking-list"></div>
+        </div>
+    </div>
 </div>
  
 <script>
@@ -2699,7 +2730,9 @@ function buildTabs() {{
  
 function renderCloud() {{
     var wrap = document.getElementById('cloud-wrap');
+    var rankList = document.getElementById('ranking-list');
     wrap.innerHTML = '';
+    rankList.innerHTML = '';
     var palavras = DADOS[ativo] || [];
     if (!palavras.length) {{
         wrap.innerHTML = '<div class="empty-msg">Nenhuma legenda encontrada para esta empresa.</div>';
@@ -2719,24 +2752,32 @@ function renderCloud() {{
  
         var tag = document.createElement('span');
         tag.className = 'word-tag';
+        tag.textContent = word;
         tag.title = freq + 'x';
-        tag.style.fontSize   = size + 'px';
-        tag.style.color      = corBase;
-        tag.style.opacity    = opacity;
-        tag.style.padding    = Math.round(3 + ratio * 4) + 'px ' + Math.round(7 + ratio * 6) + 'px';
-        tag.style.background = corBase + Math.round(opacity * 18).toString(16).padStart(2,'0');
- 
-        var wordSpan = document.createElement('span');
-        wordSpan.textContent = word;
- 
-        var countSpan = document.createElement('span');
-        countSpan.className = 'word-count';
-        countSpan.textContent = freq + 'x';
-        countSpan.style.fontSize = Math.max(9, Math.round(size * 0.42)) + 'px';
- 
-        tag.appendChild(wordSpan);
-        tag.appendChild(countSpan);
+        tag.style.fontSize = size + 'px';
+        tag.style.color    = corBase;
+        tag.style.opacity  = opacity;
         wrap.appendChild(tag);
+    }});
+ 
+    var top10 = palavras.slice(0, 10);
+    top10.forEach(function(item, idx) {{
+        var word = item[0];
+        var freq = item[1];
+        var barW = Math.round((freq / maxFreq) * 100);
+ 
+        var row = document.createElement('div');
+        row.className = 'rank-item';
+        row.innerHTML =
+            '<span class="rank-pos">' + (idx+1) + '</span>' +
+            '<div style="flex:1;min-width:0">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:4px">' +
+                    '<span class="rank-word" style="color:' + corBase + '">' + word + '</span>' +
+                    '<span class="rank-count" style="background:' + corBase + '">' + freq + 'x</span>' +
+                '</div>' +
+                '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barW + '%;background:' + corBase + '"></div></div>' +
+            '</div>';
+        rankList.appendChild(row);
     }});
     syncHeight();
 }}

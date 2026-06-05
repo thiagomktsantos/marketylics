@@ -9447,14 +9447,17 @@ function triggerTab(label) {{
     if main_tab == "perfis":
 
         if not ok:
-            st.markdown("""
-            <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;
-                        padding:48px 32px;text-align:center;margin-top:8px'>
-                <div style='font-size:32px;margin-bottom:12px'>📱</div>
-                <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
-                <div style='font-size:14px;color:#9ca3af'>Clique em <b>Coletar dados</b> para buscar os dados do Instagram.</div>
-            </div>
-            """, unsafe_allow_html=True)
+            if todas:
+                pass
+            else:
+                st.markdown("""
+                <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;
+                            padding:48px 32px;text-align:center;margin-top:8px'>
+                    <div style='font-size:32px;margin-bottom:12px'>📱</div>
+                    <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
+                    <div style='font-size:14px;color:#9ca3af'>Clique em <b>Coletar dados</b> para buscar os dados do Instagram.</div>
+                </div>
+                """, unsafe_allow_html=True)
             st.stop()
 
         aba_ativa = min(st.session_state.get("redes_aba_ativa", 0), len(ok) - 1)

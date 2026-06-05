@@ -2647,7 +2647,7 @@ body {{ padding-bottom:8px; }}
 }}
 .word-tag:hover {{ opacity:0.6 !important; }}
 .ranking-col {{
-    width:200px; flex-shrink:0;
+    width:40%; flex-shrink:0;
     background:#f8f9fa; border-radius:10px; padding:12px 14px;
 }}
 .ranking-title {{
@@ -2760,7 +2760,7 @@ function renderCloud() {{
         wrap.appendChild(tag);
     }});
  
-    var top10 = palavras.slice(0, 10);
+    var top10 = palavras.slice(0, 7);
     top10.forEach(function(item, idx) {{
         var word = item[0];
         var freq = item[1];
@@ -2808,11 +2808,7 @@ setTimeout(syncHeight, 400);
  
     empresas_com_ads = {k: v for k, v in ads_cache.items() if v.get("data")}
     if empresas_com_ads:
-        st.markdown(
-            "<div style='font-size:16px;font-weight:700;color:#1a2e4a;"
-            "letter-spacing:0.2px;margin:8px 0 14px'>📢 Comparativo — Anúncios Meta</div>",
-            unsafe_allow_html=True,
-        )
+ 
  
         ads_nomes  = list(empresas_com_ads.keys())
         ads_totais = [len(v.get("data", [])) for v in empresas_com_ads.values()]

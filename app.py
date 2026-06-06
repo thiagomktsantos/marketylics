@@ -2257,20 +2257,20 @@ body {{ padding-bottom: 8px; }}
 # ---------------------------------------------------
 
 elif st.session_state.pagina == "geral":
- 
+
     import datetime as _dt
     import json as _json
- 
+
     def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
         score = 0
         criterios = []
- 
+
         if bio and len(bio.strip()) > 10:
             score += 20
             criterios.append({"label": "Tem bio", "ok": True})
         else:
             criterios.append({"label": "Tem bio", "ok": False})
- 
+
         palavras_valor = [
             "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
             "melhora", "ajuda", "economiza", "conquista", "vendas", "lucro",
@@ -2282,13 +2282,13 @@ elif st.session_state.pagina == "geral":
             criterios.append({"label": "Proposta de valor clara", "ok": True})
         else:
             criterios.append({"label": "Proposta de valor clara", "ok": False})
- 
+
         if ext_url:
             score += 15
             criterios.append({"label": "Link na bio", "ok": True})
         else:
             criterios.append({"label": "Link na bio", "ok": False})
- 
+
         palavras_nicho = [
             "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
             "agência", "consultoria", "clínica", "médico", "advogado", "arquiteto",
@@ -2300,7 +2300,7 @@ elif st.session_state.pagina == "geral":
             criterios.append({"label": "Posicionamento da marca", "ok": True})
         else:
             criterios.append({"label": "Posicionamento da marca", "ok": False})
- 
+
         palavras_cta = [
             "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
             "conheça", "veja", "assista", "siga", "participe", "reserve", "agende",
@@ -2312,7 +2312,7 @@ elif st.session_state.pagina == "geral":
             criterios.append({"label": "CTA na bio", "ok": True})
         else:
             criterios.append({"label": "CTA na bio", "ok": False})
- 
+
         if eng_pct >= 3.0:
             score += 10
             criterios.append({"label": "Diferenciação no mercado", "ok": True})
@@ -2321,7 +2321,7 @@ elif st.session_state.pagina == "geral":
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
         else:
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
- 
+
         if score >= 80:
             classificacao, classificacao_icon = "Excelente", "🏆"
             cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
@@ -2334,7 +2334,7 @@ elif st.session_state.pagina == "geral":
         else:
             classificacao, classificacao_icon = "Precisa melhorar", "📝"
             cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
- 
+
         return {
             "score": score,
             "classificacao": classificacao,
@@ -2345,13 +2345,13 @@ elif st.session_state.pagina == "geral":
             "criterios": criterios,
             "oportunidades": sum(1 for c in criterios if not c["ok"]),
         }
- 
+
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
- 
+
     # ── Cabeçalho com HR ──────────────────────────────────────────────
     h1, h2 = st.columns([6, 4])
- 
+
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2372,7 +2372,7 @@ html, body { background: transparent; overflow: hidden; }
 <div class="titulo">Dashboard Geral</div>
 <div class="sub">Panorama competitivo da sua empresa e concorrentes.</div>
 """, height=70)
- 
+
     with h2:
         st.markdown("<div style='padding-top:6px'/>", unsafe_allow_html=True)
         ultima_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
@@ -2384,9 +2384,9 @@ html, body { background: transparent; overflow: hidden; }
             if v.get("ts"):
                 ultima_ads = v["ts"]
                 break
- 
+
         col1, col2, col3 = st.columns(3)
- 
+
         update_items = []
         if ultima_redes:
             update_items.append({
@@ -2412,7 +2412,7 @@ html, body { background: transparent; overflow: hidden; }
                     "</svg>"
                 ),
             })
- 
+
         if update_items:
             cards_html = ""
             for item in update_items:
@@ -2424,7 +2424,7 @@ html, body { background: transparent; overflow: hidden; }
                     f"<span style='font-size:11px;font-weight:700;color:#374151'>{item['label']}: {item['valor']}</span>"
                     f"</div>"
                 )
- 
+
             st.markdown(
                 f"<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px'>"
                 f"<span style='font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>Fonte:</span>"
@@ -2439,9 +2439,9 @@ html, body { background: transparent; overflow: hidden; }
                 "<div style='font-size:12px;color:#9ca3af'>Sem dados coletados ainda</div></div>",
                 unsafe_allow_html=True
             )
- 
+
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
- 
+
     # ── Montar lista de todas as empresas ─────────────────────────────
     todas_empresas_geral = []
     if emp.get("nome"):
@@ -2467,31 +2467,31 @@ html, body { background: transparent; overflow: hidden; }
                 "cidade": "",
                 "estado": "",
             })
- 
+
     # ── Dados de redes sociais do cache ────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
     for r in cache_redes:
         if not r.get("erro") and r.get("nome"):
             dados_redes_map[r["nome"]] = r
- 
+
     ads_cache = st.session_state.get("ads_cache", {})
- 
+
     def fmt_num(n):
         n = int(n or 0)
         if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
- 
+
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
- 
+
     # ══════════════════════════════════════════════════════════════════
     # BARRA DE NAVEGAÇÃO POR ABAS
     # ══════════════════════════════════════════════════════════════════
- 
+
     if "dash_aba" not in st.session_state:
         st.session_state.dash_aba = "presenca"
- 
+
     for _aba in ["presenca", "discurso", "diferenciais"]:
         k = f"btn_dash_aba_{_aba}"
         st.markdown(f"""
@@ -2510,19 +2510,19 @@ html, body { background: transparent; overflow: hidden; }
         if st.button(f"dash_{_aba}", key=k):
             st.session_state.dash_aba = _aba
             st.rerun()
- 
+
     dash_aba = st.session_state.dash_aba
- 
+
     _n_redes  = len(ok_redes)
     _n_ads    = sum(1 for e in todas_empresas_geral if e["nome"] in ads_cache)
     _n_sites  = sum(1 for e in todas_empresas_geral if e.get("site"))
- 
+
     abas_def = [
         ("presenca",    "📊", "Presença Digital",  _n_redes,  "Redes sociais e engajamento"),
         ("discurso",    "☁️", "Discurso",          _n_redes,  "Palavras e legendas"),
         ("diferenciais","🏆", "Diferenciais",      len(todas_empresas_geral), "Visão comparativa"),
     ]
- 
+
     botoes_html = ""
     for stk, icon, lbl, cnt, desc in abas_def:
         active_class = "active" if dash_aba == stk else ""
@@ -2540,7 +2540,7 @@ html, body { background: transparent; overflow: hidden; }
             f'<span class="tab-badge {has_class}">{cnt}</span>'
             f'</button>'
         )
- 
+
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -2602,13 +2602,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=86, scrolling=False)
- 
+
     # ══════════════════════════════════════════════════════════════════
     # ABA 1: PRESENÇA DIGITAL
     # ══════════════════════════════════════════════════════════════════
- 
+
     if dash_aba == "presenca":
- 
+
         if ok_redes:
             nomes_g   = [r["nome"] for r in ok_redes]
             segs_g    = [r.get("seguidores", 0) for r in ok_redes]
@@ -2616,14 +2616,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             posts_g   = [r.get("total_posts", 0) for r in ok_redes]
             eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
             cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
- 
+
             nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
             segs_json    = _json.dumps(segs_g)
             eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
             posts_json   = _json.dumps(posts_g)
             eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
             cores_json   = _json.dumps(cores_g)
- 
+
             # ── Helper: mini donut SVG ────────────────────────────────
             def make_donut_svg(pct, color, label, count):
                 import math
@@ -2647,7 +2647,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'<span style="font-size:10px;color:#9ca3af;font-weight:600;">{label}</span>'
                     f'</div>'
                 )
- 
+
             metricas_cards = []
             for i, r in enumerate(ok_redes):
                 cor = get_avatar_color(i)
@@ -2665,7 +2665,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         f'display:flex;align-items:center;justify-content:center;'
                         f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
                     )
- 
+
                 bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
                 ext_url_geral = (r.get("external_url") or "").strip()
                 score_geral   = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
@@ -2673,17 +2673,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 sc_cor        = score_geral["cor_classe"]
                 sc_icon       = score_geral["classificacao_icon"]
                 sc_lbl        = score_geral["classificacao"]
- 
+
                 posts_lista = r.get("posts", [])
                 n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
                 n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
                 n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
                 n_total_tp  = len(posts_lista) or 1
- 
+
                 pct_foto = round(n_fotos    / n_total_tp * 100)
                 pct_vid  = round(n_videos   / n_total_tp * 100)
                 pct_carr = round(n_carrossel / n_total_tp * 100)
- 
+
                 metricas_cards.append({
                     "nome":        r["nome"],
                     "av_html":     av_html,
@@ -2704,7 +2704,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "pct_carr":    pct_carr,
                     "n_total_tp":  len(posts_lista),
                 })
- 
+
             # CSS global para tooltips (CSS puro, sem JS — funciona no st.markdown)
             tooltip_css = """
 <style>
@@ -2762,11 +2762,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }
 </style>
 """
- 
+
             cards_row = tooltip_css
             for m in metricas_cards:
                 bar_pct = m["score_val"]
- 
+
                 # ── Mini donuts para tipos de conteúdo ──────────────────
                 tipo_donuts = (
                     f'<div style="display:flex;gap:4px;justify-content:space-around;padding:4px 0 6px 0;">'
@@ -2775,7 +2775,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     + make_donut_svg(m["pct_carr"],  "#7c3aed", "Carrossel", m["n_carrossel"])
                     + f'</div>'
                 )
- 
+
                 # ── Score label com tooltip CSS puro ────────────────────
                 score_label_html = (
                     '<div style="display:flex;align-items:center;gap:0px;margin-bottom:6px;">'
@@ -2794,18 +2794,18 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
                     '</div>'
                 )
- 
+
                 cards_row += (
                     '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
                     f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
- 
+
                     # Cabeçalho
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
                     '</div>'
- 
+
                     # Métricas 4 colunas
                     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
@@ -2821,14 +2821,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
- 
+
                     # Tipos de conteúdo — donuts
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:12px;">'
                     '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
                     'letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
                     + tipo_donuts +
                     '</div>'
- 
+
                     # Score de perfil com tooltip
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
                     + score_label_html +
@@ -2844,15 +2844,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
                     '</div>'
                     '</div>'
- 
+
                     '</div>'
                 )
- 
+
             st.markdown(
                 f"<div style='margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>",
                 unsafe_allow_html=True
             )
- 
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -2960,7 +2960,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
 </script>
 </body></html>
 """, height=380, scrolling=False)
- 
+
         else:
             st.markdown(
                 "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
@@ -2971,16 +2971,16 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                 "</div>",
                 unsafe_allow_html=True
             )
- 
+
     # ══════════════════════════════════════════════════════════════════
     # ABA 2: DISCURSO — Nuvem de Palavras
     # ══════════════════════════════════════════════════════════════════
- 
+
     elif dash_aba == "discurso":
- 
+
         if ok_redes:
             import re as _re
- 
+
             stopwords_pt = {
                 "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
                 "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
@@ -2990,7 +2990,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                 "todo","toda","todos","todas","quando","onde","quem","qual","quais",
                 "via","até","após","sobre","me","te","lhe","lhes","meu","minha","teu","tua",
             }
- 
+
             empresas_palavras = {}
             for r in ok_redes:
                 texto_total = " ".join([p.get("caption", "") or "" for p in r.get("posts", [])])
@@ -3002,18 +3002,18 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                         freq[w_low] = freq.get(w_low, 0) + 1
                 top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
                 empresas_palavras[r["nome"]] = top
- 
+
             todas_palavras_geral = {}
             for r in ok_redes:
                 for palavra, freq in empresas_palavras.get(r["nome"], []):
                     todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
             top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
             empresas_palavras["__geral__"] = top_geral
- 
+
             empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
             nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
             cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
- 
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -3123,7 +3123,7 @@ setTimeout(syncHeight, 400);
 </script>
 </body></html>
 """, height=420, scrolling=False)
- 
+
         else:
             st.markdown(
                 "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
@@ -3134,17 +3134,17 @@ setTimeout(syncHeight, 400);
                 "</div>",
                 unsafe_allow_html=True
             )
- 
+
     # ══════════════════════════════════════════════════════════════════
     # ABA 3: DIFERENCIAIS — Visão Comparativa Completa
     # ══════════════════════════════════════════════════════════════════
- 
+
     elif dash_aba == "diferenciais":
- 
+
         if not todas_empresas_geral:
             st.info("Cadastre sua empresa e concorrentes para ver os diferenciais.")
             st.stop()
- 
+
         linhas_empresas = []
         for i, e in enumerate(todas_empresas_geral):
             is_minha  = e["tipo"] == "minha"
@@ -3154,21 +3154,21 @@ setTimeout(syncHeight, 400);
             badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
             badge_col = "#15803d" if is_minha else "#1d4ed8"
             badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
- 
+
             redes_data = dados_redes_map.get(e["nome"], {})
             seg       = fmt_num(redes_data.get("seguidores", 0)) if redes_data else "—"
             eng       = f'{redes_data.get("eng_pct", 0):.1f}%' if redes_data else "—"
             posts_tot = fmt_num(redes_data.get("total_posts", 0)) if redes_data else "—"
             bio_raw   = redes_data.get("bio", "") or "" if redes_data else ""
             bio       = bio_raw[:80] + ("..." if len(bio_raw) > 80 else "") if redes_data else "—"
- 
+
             ads_entry = ads_cache.get(e["nome"], {})
             n_ads     = len(ads_entry.get("data", [])) if ads_entry else 0
             ads_txt   = str(n_ads) if n_ads else "—"
- 
+
             site_txt  = e.get("site") or "—"
             ig_txt    = e.get("instagram") or "—"
- 
+
             linhas_empresas.append({
                 "nome": e["nome"],
                 "cor": cor,
@@ -3186,9 +3186,9 @@ setTimeout(syncHeight, 400);
                 "ig": ig_txt,
                 "setor": e.get("setor", "—") or "—",
             })
- 
+
         linhas_json = _json.dumps(linhas_empresas, ensure_ascii=False)
- 
+
         components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -3263,7 +3263,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
 </body></html>
 """, height=400, scrolling=False)
- 
+
         if not ok_redes and not ads_cache:
             st.markdown(
                 "<div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;"

@@ -6007,7 +6007,7 @@ html, body {{
 </div>
 <script>
 function syncInput(ci, val) {{
-    try {{ window.parent.sessionStorage.setItem('cfg_buscar_termo_' + ci, val); }} catch(e) {}
+    try {{ window.parent.sessionStorage.setItem('cfg_buscar_termo_' + ci, val); }} catch(e) {{}}
     var inputs = window.parent.document.querySelectorAll('input');
     inputs.forEach(function(inp) {{
         var label = inp.getAttribute('aria-label') || '';

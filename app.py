@@ -5664,7 +5664,8 @@ function triggerTab(label) {{
         .st-key-cfg_ghost_save_{ci},
         .st-key-cfg_ghost_cancel_{ci},
         .st-key-cfg_ghost_buscar_{ci},
-        .st-key-cfg_input_val_{ci} {{
+        .st-key-cfg_input_val_{ci},
+        .st-key-cfg_busca_termo_{ci} {{
             position:fixed!important;top:-9999px!important;left:-9999px!important;
             width:0!important;height:0!important;overflow:hidden!important;
             opacity:0!important;pointer-events:none!important;display:none!important;
@@ -5673,7 +5674,8 @@ function triggerTab(label) {{
         .stElementContainer:has(.st-key-cfg_ghost_save_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_cancel_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_buscar_{ci}),
-        .stElementContainer:has(.st-key-cfg_input_val_{ci}) {{
+        .stElementContainer:has(.st-key-cfg_input_val_{ci}),
+        .stElementContainer:has(.st-key-cfg_busca_termo_{ci}) {{
             display:none!important;height:0!important;min-height:0!important;
             max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
         }}
@@ -5687,6 +5689,7 @@ function triggerTab(label) {{
         ghost_cancel  = {}
         ghost_buscar  = {}
         input_vals    = {}
+        busca_termo_vals = {}
 
         for ci, e in enumerate(todas_empresas):
             ghost_edit[ci]   = st.button(str(ci),          key=f"cfg_ghost_edit_{ci}")
@@ -5698,6 +5701,13 @@ function triggerTab(label) {{
             input_vals[ci] = st.text_input(
                 f"val_{ci}", value=ads_id_e,
                 key=f"cfg_input_val_{ci}", label_visibility="hidden",
+            )
+            # Input dedicado para capturar o termo de busca
+            busca_termo_vals[ci] = st.text_input(
+                f"busca_termo_{ci}",
+                value=st.session_state.get(f"cfg_busca_termo_val_{ci}", ""),
+                key=f"cfg_busca_termo_{ci}",
+                label_visibility="hidden",
             )
 
         # ── Processar ações
@@ -5722,28 +5732,21 @@ function triggerTab(label) {{
                     st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                     st.rerun()
 
-        for ci in range(len(todas_empresas)):
-            _termo_ss = st.session_state.get(f"cfg_buscar_termo_{ci}", "")
-            if not _termo_ss:
-                # tenta ler do input_vals como fallback
-                pass
             if ghost_buscar[ci]:
-                e = todas_empresas[ci]
-                # Tenta todas as fontes em ordem de prioridade
+                # Pega valor do input dedicado de busca, depois do input_vals, depois do ads_id salvo
                 val = (
-                    input_vals.get(ci, "").strip()
-                    or st.session_state.get(f"cfg_input_val_{ci}", "").strip()
-                    or st.session_state.get(f"cfg_buscar_termo_{ci}", "").strip()
+                    busca_termo_vals.get(ci, "").strip()
+                    or input_vals.get(ci, "").strip()
+                    or st.session_state.get(f"cfg_busca_termo_val_{ci}", "").strip()
                 )
                 if not val:
-                    # fallback: ads_id já salvo
                     is_minha_e = e["tipo"] == "minha"
                     val = (emp.get("ads_id", "") if is_minha_e else concs[e["idx"]].get("ads_id", "")).strip()
 
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
-                    st.session_state[f"cfg_buscar_termo_{ci}"] = val
+                    st.session_state[f"cfg_busca_termo_val_{ci}"] = val
                     with st.spinner("Buscando…"):
                         paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
@@ -5788,10 +5791,8 @@ function triggerTab(label) {{
             badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
             badge_col = "#15803d" if is_minha else "#1d4ed8"
             badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-            dot_col   = "#22c55e" if is_minha else "#3b82f6"
             id_bg     = "#f0fdf4" if has_id else "#f3f4f6"
             id_brd    = "#bbf7d0" if has_id else "#e5e7eb"
-            id_dot    = "#22c55e" if has_id else "#d1d5db"
             id_fw     = "600"     if has_id else "400"
             id_color  = "#15803d" if has_id else "#9ca3af"
             id_ff     = "monospace" if has_id else "inherit"
@@ -5819,7 +5820,6 @@ function triggerTab(label) {{
                 if is_editing else "border:1px solid #e5e7eb;"
             )
 
-            # Seção de edição inline (aparece quando is_editing)
             edit_section = f"""
             <div class="edit-section">
                 <div style="font-size:11px;font-weight:700;color:#9ca3af;
@@ -5840,7 +5840,11 @@ function triggerTab(label) {{
                     onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
                 />
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <button class="btn-buscar" onclick="var v=document.getElementById('cfg_input_{ci}').value;syncInput({ci},v);setTimeout(function(){{triggerGhost('buscar_{ci}');}},150)">
+                    <button class="btn-buscar" onclick="
+                        var v=document.getElementById('cfg_input_{ci}').value;
+                        syncInput({ci}, v);
+                        setTimeout(function(){{triggerGhost('buscar_{ci}');}}, 400)
+                    ">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                              stroke="currentColor" stroke-width="2"
                              stroke-linecap="round" stroke-linejoin="round">
@@ -5930,7 +5934,6 @@ html, body {{
     background:transparent;
     font-family:'DM Sans',sans-serif;
     overflow:hidden;
-    /* remove qualquer margem do iframe em relação à nav bar */
     margin-top:0 !important;
     padding-top:0 !important;
 }}
@@ -6012,17 +6015,20 @@ html, body {{
 </div>
 <script>
 function syncInput(ci, val) {{
-    try {{ window.parent.sessionStorage.setItem('cfg_buscar_termo_' + ci, val); }} catch(e) {{}}
-    var inputs = window.parent.document.querySelectorAll('input');
-    inputs.forEach(function(inp) {{
-        var label = inp.getAttribute('aria-label') || '';
-        if (label === 'val_' + ci) {{
-            var setter = Object.getOwnPropertyDescriptor(
-                window.parent.HTMLInputElement.prototype, 'value').set;
-            setter.call(inp, val);
-            inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-        }}
+    // Sincroniza para AMBOS os inputs: cfg_input_val_N e cfg_busca_termo_N
+    var labels = ['val_' + ci, 'busca_termo_' + ci];
+    labels.forEach(function(label) {{
+        var inputs = window.parent.document.querySelectorAll('input');
+        inputs.forEach(function(inp) {{
+            var ariaLabel = inp.getAttribute('aria-label') || '';
+            if (ariaLabel === label) {{
+                var setter = Object.getOwnPropertyDescriptor(
+                    window.parent.HTMLInputElement.prototype, 'value').set;
+                setter.call(inp, val);
+                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }}
+        }});
     }});
 }}
 function triggerGhost(label) {{

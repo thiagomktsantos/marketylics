@@ -2758,6 +2758,31 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             for m in metricas_cards:
                 bar_pct = m["score_val"]
 
+                # ── Mini donuts para tipos de conteúdo — cor da empresa ─
+                def make_donut_svg(pct, color, label, count):
+                    import math
+                    r = 20
+                    cx = cy = 27
+                    circum = round(2 * math.pi * r, 2)
+                    dash = round(pct / 100 * circum, 2)
+                    gap  = round(circum - dash, 2)
+                    offset = round(circum * 0.25, 2)
+                    return (
+                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">'
+                        f'<svg width="54" height="54" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">'
+                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="6"/>'
+                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="6"'
+                        f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
+                        f' stroke-linecap="round"/>'
+                        f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
+                        f' font-size="12" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+                        f'</svg>'
+                        f'<span style="font-size:10px;font-weight:700;color:{color};">{pct}%</span>'
+                        f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">{label}</span>'
+                        f'</div>'
+                    )
+
+                # Todos os 3 donuts usam a cor da empresa
                 tipo_donuts = (
                     f'<div style="display:flex;gap:4px;justify-content:space-around;padding:4px 0 6px 0;">'
                     + make_donut_svg(m["pct_foto"],  m["cor"], "Fotos",     m["n_fotos"])
@@ -2766,9 +2791,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     + f'</div>'
                 )
 
+                # ── Score label com tooltip CSS puro ────────────────────
                 score_label_html = (
-                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:6px;">'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
+                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:-16px;">'
+                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
                     '<div class="score-tooltip-wrap">'
                     '<div class="q-badge">?</div>'
                     '<div class="tip">'
@@ -2784,6 +2810,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
                 )
 
+                # ── Badge Minha Empresa / Concorrente ───────────────────
                 is_minha_empresa = any(
                     e["nome"] == m["nome"] and e["tipo"] == "minha"
                     for e in todas_empresas_geral
@@ -2805,7 +2832,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
                     f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
 
-                    # Cabeçalho com badge à direita
+                    # ── Cabeçalho com badge ──────────────────────────────
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
@@ -2814,33 +2841,33 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'{badge_html}'
                     '</div>'
 
-                    # HR antes das métricas
+                    # ── HR antes das métricas ────────────────────────────
                     '<hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0"/>'
 
-                    # Métricas 4 colunas
-                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    # ── Métricas 4 colunas ───────────────────────────────
+                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center;">'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Engaj. %</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
 
-                    # Score de perfil
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:12px;">'
+                    # ── Score de perfil com tooltip ──────────────────────
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:20px;margin-bottom:22px;">'
                     + score_label_html +
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
                     '<div></div>'
                     '<div style="display:flex;align-items:center;gap:5px;">'
                     f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                    '<span style="font-size:10px;color:#9ca3af">/100</span>'
+                    '<span style="font-size:10px;color:#9ca3af;font-weight:700;">/100</span>'
                     f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;'
                     f'font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
                     '</div></div>'
@@ -2849,9 +2876,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
                     '</div>'
 
-                    # Tipos de conteúdo — por último
+                    # ── Tipos de conteúdo — por último ──────────────────
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                     'letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
                     + tipo_donuts +
                     '</div>'

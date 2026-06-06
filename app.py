@@ -2687,28 +2687,34 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                 # Barra de tipos de conteúdo
                 tipo_bar = (
-                    f'<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px;">'
-                    f'<div style="width:{m["pct_foto"]}%;background:#3b82f6;" title="Fotos"></div>'
-                    f'<div style="width:{m["pct_vid"]}%;background:#e1306c;" title="Vídeos/Reels"></div>'
-                    f'<div style="width:{m["pct_carr"]}%;background:#7c3aed;" title="Carrossel"></div>'
+                    f'<div style="display:flex;gap:8px;align-items:flex-end;height:50px;margin-bottom:6px;">'
+    
+                    # Foto — barra azul
+                    f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;">'
+                    f'<div style="font-size:11px;font-weight:800;color:#3b82f6">{m["n_fotos"]}</div>'
+                    f'<div style="width:100%;background:#3b82f6;border-radius:4px 4px 2px 2px;min-height:4px;height:{max(4, int(m["pct_foto"] * 0.32))}px;transition:height 0.3s"></div>'
+                    f'</div>'
+    
+                    # Reels — barra rosa
+                    f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;">'
+                    f'<div style="font-size:11px;font-weight:800;color:#e1306c">{m["n_videos"]}</div>'
+                    f'<div style="width:100%;background:#e1306c;border-radius:4px 4px 2px 2px;min-height:4px;height:{max(4, int(m["pct_vid"] * 0.32))}px;transition:height 0.3s"></div>'
+                    f'</div>'
+    
+                    # Carrossel — barra roxa
+                    f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;">'
+                    f'<div style="font-size:11px;font-weight:800;color:#7c3aed">{m["n_carrossel"]}</div>'
+                    f'<div style="width:100%;background:#7c3aed;border-radius:4px 4px 2px 2px;min-height:4px;height:{max(4, int(m["pct_carr"] * 0.32))}px;transition:height 0.3s"></div>'
+                    f'</div>'
+    
                     f'</div>'
                 )
 
-                # Legenda dos tipos
                 tipo_legenda = (
                     '<div style="display:flex;gap:10px;flex-wrap:wrap;">'
-                    f'<div style="display:flex;align-items:center;gap:4px;">'
-                    f'<div style="width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></div>'
-                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Foto <b style="color:#111827">{m["n_fotos"]}</b> ({m["pct_foto"]}%)</span>'
-                    f'</div>'
-                    f'<div style="display:flex;align-items:center;gap:4px;">'
-                    f'<div style="width:8px;height:8px;border-radius:50%;background:#e1306c;flex-shrink:0;"></div>'
-                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Reels <b style="color:#111827">{m["n_videos"]}</b> ({m["pct_vid"]}%)</span>'
-                    f'</div>'
-                    f'<div style="display:flex;align-items:center;gap:4px;">'
-                    f'<div style="width:8px;height:8px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></div>'
-                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Carrossel <b style="color:#111827">{m["n_carrossel"]}</b> ({m["pct_carr"]}%)</span>'
-                    f'</div>'
+                    f'<span style="font-size:10px;color:#3b82f6;font-weight:700">📷 Foto {m["pct_foto"]}%</span>'
+                    f'<span style="font-size:10px;color:#e1306c;font-weight:700">🎬 Reels {m["pct_vid"]}%</span>'
+                    f'<span style="font-size:10px;color:#7c3aed;font-weight:700">📑 Carrossel {m["pct_carr"]}%</span>'
                     f'</div>'
                 )
 
@@ -2750,7 +2756,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     # Score de perfil
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                    '<div style="display:flex;align-items:center;gap:5px;">'
                     '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Score de perfil</div>'
+                    '<div style="position:relative;display:inline-flex;" onmouseenter="this.querySelector(\'.tooltip-score\').style.display=\'block\'" onmouseleave="this.querySelector(\'.tooltip-score\').style.display=\'none\'">'
+                    '<div style="width:15px;height:15px;border-radius:50%;background:#e5e7eb;display:flex;align-items:center;justify-content:center;cursor:default;font-size:9px;font-weight:800;color:#9ca3af;flex-shrink:0">?</div>'
+                    '<div class="tooltip-score" style="display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a2e4a;color:#fff;border-radius:8px;padding:10px 12px;font-size:11px;line-height:1.6;width:200px;z-index:999;white-space:normal;box-shadow:0 4px 12px rgba(0,0,0,0.15)">'
+                    '<b style="font-size:11px;color:#fff">Como é calculado:</b><br>'
+                    '✅ Tem bio (+20)<br>✅ Proposta de valor (+20)<br>✅ Posicionamento de marca (+20)<br>✅ Link na bio (+15)<br>✅ CTA na bio (+15)<br>✅ Engajamento ≥3% (+10)'
+                    '<div style="position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:5px solid #1a2e4a"></div>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
                     '<div style="display:flex;align-items:center;gap:5px;">'
                     f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
                     '<span style="font-size:10px;color:#9ca3af">/100</span>'

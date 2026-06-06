@@ -2855,17 +2855,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                     # ── Métricas 4 colunas ───────────────────────────────
                     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center;">'
-                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:700;'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Engaj. %</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:700;'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
+                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
 

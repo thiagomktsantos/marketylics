@@ -2805,7 +2805,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                     p.get("caption", "") or ""
                     for p in r.get("posts", [])
                 ])
-                palavras = _re.findall(r\'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}\', texto_total)
+                palavras = _re.findall(r'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}', texto_total)
                 freq = {}
                 for w in palavras:
                     w_low = w.lower()

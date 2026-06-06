@@ -2617,14 +2617,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
             cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
 
-            nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
-            segs_json    = _json.dumps(segs_g)
-            eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
-            posts_json   = _json.dumps(posts_g)
-            eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
-            cores_json   = _json.dumps(cores_g)
-
-            # ── Helper: mini donut SVG ────────────────────────────────
             def make_donut_svg(pct, color, label, count):
                 import math
                 r = 20
@@ -2705,7 +2697,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "n_total_tp":  len(posts_lista),
                 })
 
-            # CSS global para tooltips (CSS puro, sem JS — funciona no st.markdown)
             tooltip_css = """
 <style>
 .score-tooltip-wrap {
@@ -2767,31 +2758,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             for m in metricas_cards:
                 bar_pct = m["score_val"]
 
-                # ── Mini donuts para tipos de conteúdo — cor da empresa ─
-                def make_donut_svg(pct, color, label, count):
-                    import math
-                    r = 20
-                    cx = cy = 27
-                    circum = round(2 * math.pi * r, 2)
-                    dash = round(pct / 100 * circum, 2)
-                    gap  = round(circum - dash, 2)
-                    offset = round(circum * 0.25, 2)
-                    return (
-                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">'
-                        f'<svg width="54" height="54" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">'
-                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="6"/>'
-                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="6"'
-                        f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
-                        f' stroke-linecap="round"/>'
-                        f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
-                        f' font-size="12" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
-                        f'</svg>'
-                        f'<span style="font-size:10px;font-weight:700;color:{color};">{pct}%</span>'
-                        f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">{label}</span>'
-                        f'</div>'
-                    )
-
-                # Todos os 3 donuts usam a cor da empresa
                 tipo_donuts = (
                     f'<div style="display:flex;gap:4px;justify-content:space-around;padding:4px 0 6px 0;">'
                     + make_donut_svg(m["pct_foto"],  m["cor"], "Fotos",     m["n_fotos"])
@@ -2800,10 +2766,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     + f'</div>'
                 )
 
-                # ── Score label com tooltip CSS puro ────────────────────
                 score_label_html = (
-                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:-16px;">'
-                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
+                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:6px;">'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
                     '<div class="score-tooltip-wrap">'
                     '<div class="q-badge">?</div>'
                     '<div class="tip">'
@@ -2819,7 +2784,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
                 )
 
-                # ── Badge Minha Empresa / Concorrente ───────────────────
                 is_minha_empresa = any(
                     e["nome"] == m["nome"] and e["tipo"] == "minha"
                     for e in todas_empresas_geral
@@ -2841,7 +2805,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
                     f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
 
-                    # ── Cabeçalho com badge ──────────────────────────────
+                    # Cabeçalho com badge à direita
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
@@ -2850,33 +2814,33 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'{badge_html}'
                     '</div>'
 
-                    # ── HR antes das métricas ────────────────────────────
+                    # HR antes das métricas
                     '<hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0"/>'
 
-                    # ── Métricas 4 colunas ───────────────────────────────
-                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center;">'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    # Métricas 4 colunas
+                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj. %</div>'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
 
-                    # ── Score de perfil com tooltip ──────────────────────
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:20px;margin-bottom:22px;">'
+                    # Score de perfil
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:12px;">'
                     + score_label_html +
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
                     '<div></div>'
                     '<div style="display:flex;align-items:center;gap:5px;">'
                     f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                    '<span style="font-size:10px;color:#9ca3af;font-weight:700;">/100</span>'
+                    '<span style="font-size:10px;color:#9ca3af">/100</span>'
                     f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;'
                     f'font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
                     '</div></div>'
@@ -2885,9 +2849,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
                     '</div>'
 
-                    # ── Tipos de conteúdo — por último ──────────────────
+                    # Tipos de conteúdo — por último
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
-                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
                     'letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
                     + tipo_donuts +
                     '</div>'
@@ -2900,113 +2864,174 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 unsafe_allow_html=True
             )
 
+            # ── Seção: Sites das Empresas ──────────────────────────────
+            sites_cards_data = []
+            for i, e in enumerate(todas_empresas_geral):
+                is_minha = e["tipo"] == "minha"
+                cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+                av  = gerar_avatar(e["nome"])
+                badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+                badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
+                badge_col = "#15803d" if is_minha else "#1d4ed8"
+                badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+                site_url  = e.get("site", "") or ""
+                ig_url    = e.get("instagram", "") or ""
+                sites_cards_data.append({
+                    "nome": e["nome"], "cor": cor, "av": av,
+                    "badge_lbl": badge_lbl, "badge_bg": badge_bg,
+                    "badge_col": badge_col, "badge_brd": badge_brd,
+                    "site": site_url, "ig": ig_url,
+                })
+
+            sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
-.card {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 14px; margin-top:12px; }}
-.card-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.6px;
-    padding-bottom:10px; border-bottom:2px solid #e5e7eb; margin-bottom:16px; display:flex; align-items:center; gap:10px; }}
-.metric-tabs {{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }}
-.mtab {{ padding:7px 14px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
-    font-size:12px; font-weight:700; color:#6b7280; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
-.mtab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
-.mtab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
-.chart-wrap {{ position:relative; width:100%; height:240px; }}
+.wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 20px; margin-top:16px; }}
+.sec-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase;
+    letter-spacing:0.6px; padding-bottom:10px; border-bottom:2px solid #e5e7eb;
+    margin-bottom:16px; display:flex; align-items:center; gap:10px; }}
+.cards {{ display:flex; gap:12px; flex-wrap:wrap; }}
+.scard {{
+    flex:1; min-width:200px;
+    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;
+    display:flex; flex-direction:column;
+}}
+.scard:hover {{ border-color:#6fd1f3; }}
+.scard-hdr {{
+    display:flex; align-items:center; gap:10px; padding:12px 14px 10px;
+    border-bottom:1px solid #f3f4f6;
+}}
+.avatar {{
+    width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700; color:#fff; flex-shrink:0;
+}}
+.scard-name {{ font-size:13px; font-weight:700; color:#111827; flex:1; min-width:0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.badge {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
+.preview {{
+    margin:12px; border-radius:8px; overflow:hidden;
+    border:1px solid #e5e7eb; background:#f9fafb;
+    aspect-ratio:16/9; position:relative; flex-shrink:0;
+}}
+.preview img {{ width:100%; height:100%; object-fit:cover; object-position:top; display:block; }}
+.preview-fallback {{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:6px; background:#f3f4f6; border-radius:8px;
+}}
+.scard-footer {{ padding:0 12px 12px; display:flex; flex-direction:column; gap:6px; }}
+.link-row {{
+    display:flex; align-items:center; gap:6px; padding:7px 10px;
+    border-radius:7px; background:#f9fafb; border:1px solid #f3f4f6;
+    font-size:12px; color:#374151; font-weight:500;
+    text-decoration:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+}}
+.link-row:hover {{ background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }}
+.no-link {{ color:#d1d5db; font-style:italic; font-size:12px; padding:4px 2px; }}
 </style>
 </head>
 <body>
-<div class="card">
-    <div class="card-title"><span>📊</span> Comparativo — Redes Sociais</div>
-    <div class="metric-tabs">
-        <button class="mtab active" onclick="switchMetric('seg', this)">Seguidores</button>
-        <button class="mtab" onclick="switchMetric('eng', this)">Engajamento %</button>
-        <button class="mtab" onclick="switchMetric('posts', this)">Publicações</button>
-        <button class="mtab" onclick="switchMetric('engmed', this)">Eng. Médio/Post</button>
-    </div>
-    <div class="chart-wrap"><canvas id="ch_main"></canvas></div>
+<div class="wrap">
+    <div class="sec-title">🌐 Sites das Empresas</div>
+    <div class="cards" id="cards"></div>
 </div>
 <script>
-var NOMES   = {nomes_json};
-var SEGS    = {segs_json};
-var ENG_PCT = {eng_pct_json};
-var POSTS   = {posts_json};
-var ENG_MED = {eng_med_json};
-var CORES   = {cores_json};
-var METRICS = {{
-    seg:    {{ data: SEGS,    label: 'seguidores',      pct: false }},
-    eng:    {{ data: ENG_PCT, label: 'engajamento %',   pct: true  }},
-    posts:  {{ data: POSTS,   label: 'publicações',     pct: false }},
-    engmed: {{ data: ENG_MED, label: 'eng. médio/post', pct: false }},
-}};
-var currentKey = 'seg';
-function fmtNum(n) {{
-    n = Math.round(n * 10) / 10;
-    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-    if (n >= 1000)    return (n/1000).toFixed(1) + 'K';
-    return String(Math.round(n));
+var DATA = {sites_cards_json};
+
+function buildCards() {{
+    var el = document.getElementById('cards');
+    DATA.forEach(function(d) {{
+        var card = document.createElement('div');
+        card.className = 'scard';
+        card.style.borderTop = '3px solid ' + d.cor;
+
+        var hdr = document.createElement('div');
+        hdr.className = 'scard-hdr';
+        hdr.innerHTML =
+            '<div class="avatar" style="background:' + d.cor + '">' + d.av + '</div>'
+            + '<span class="scard-name">' + d.nome + '</span>'
+            + '<span class="badge" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span>';
+        card.appendChild(hdr);
+
+        var prev = document.createElement('div');
+        prev.className = 'preview';
+        if (d.site) {{
+            var img = document.createElement('img');
+            img.loading = 'lazy';
+            img.alt = d.nome;
+            img.src = 'https://api.microlink.io/?url=' + encodeURIComponent(d.site) + '&screenshot=true&meta=false&embed=screenshot.url';
+            img.onerror = function() {{
+                prev.innerHTML = '<div class="preview-fallback">'
+                    + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+                    + '<span style="font-size:11px;color:#9ca3af">Prévia indisponível</span></div>';
+            }};
+            img.addEventListener('load', function() {{ setTimeout(syncH, 100); }});
+            prev.appendChild(img);
+        }} else {{
+            prev.innerHTML = '<div class="preview-fallback">'
+                + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+                + '<span style="font-size:11px;color:#9ca3af">Sem site cadastrado</span></div>';
+        }}
+        card.appendChild(prev);
+
+        var footer = document.createElement('div');
+        footer.className = 'scard-footer';
+
+        if (d.site) {{
+            var a = document.createElement('a');
+            a.className = 'link-row';
+            a.href = d.site.startsWith('http') ? d.site : 'https://' + d.site;
+            a.target = '_blank'; a.rel = 'noopener';
+            a.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+                + '<span>' + d.site + '</span>';
+            footer.appendChild(a);
+        }} else {{
+            var ns = document.createElement('div');
+            ns.className = 'no-link';
+            ns.textContent = 'Sem site cadastrado';
+            footer.appendChild(ns);
+        }}
+
+        if (d.ig) {{
+            var ig = document.createElement('a');
+            ig.className = 'link-row';
+            var igHandle = d.ig.replace('@','');
+            ig.href = 'https://instagram.com/' + igHandle;
+            ig.target = '_blank'; ig.rel = 'noopener';
+            ig.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>'
+                + '<span>@' + igHandle + '</span>';
+            footer.appendChild(ig);
+        }}
+
+        card.appendChild(footer);
+        el.appendChild(card);
+    }});
+    syncH();
 }}
-var chart = new Chart(document.getElementById('ch_main'), {{
-    type: 'bar',
-    data: {{
-        labels: NOMES,
-        datasets: [{{ label: 'Seguidores', data: SEGS, backgroundColor: CORES, borderRadius: 10, borderSkipped: false }}]
-    }},
-    options: {{
-        responsive: true, maintainAspectRatio: false,
-        plugins: {{
-            legend: {{ display: false }},
-            tooltip: {{ callbacks: {{ label: function(ctx) {{
-                var m = METRICS[currentKey];
-                return ' ' + ctx.dataset.label + ': ' + (m.pct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
-            }} }} }}
-        }},
-        scales: {{
-            x: {{ grid: {{ display: false }}, ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:12, weight:'600' }}, color:'#6b7280', maxRotation:0 }}, border: {{ display: false }} }},
-            y: {{ grid: {{ color: '#f3f4f6' }}, ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11 }}, color:'#9ca3af', callback: function(v) {{ return fmtNum(v); }} }}, border: {{ display: false }} }}
-        }},
-        animation: {{ onComplete: function() {{
-            var ctx2 = chart.ctx; ctx2.save();
-            ctx2.font = 'bold 12px DM Sans, sans-serif'; ctx2.fillStyle = '#ffffff';
-            ctx2.textAlign = 'center'; ctx2.textBaseline = 'top';
-            chart.data.datasets.forEach(function(dataset, di) {{
-                chart.getDatasetMeta(di).data.forEach(function(bar, idx) {{
-                    var val = dataset.data[idx]; if (!val) return;
-                    var m = METRICS[currentKey];
-                    var lbl = m.pct ? val.toFixed(1) + '%' : fmtNum(val);
-                    ctx2.fillText(lbl, bar.x, bar.y + 8);
-                }});
-            }});
-            ctx2.restore();
-        }} }}
-    }}
-}});
-function switchMetric(key, btn) {{
-    currentKey = key; var m = METRICS[key];
-    chart.data.datasets[0].data  = m.data;
-    chart.data.datasets[0].label = m.label;
-    chart.options.scales.y.ticks.callback = function(v) {{ return m.pct ? v + '%' : fmtNum(v); }};
-    chart.update();
-    document.querySelectorAll('.mtab').forEach(function(b) {{ b.classList.remove('active'); }});
-    btn.classList.add('active'); syncHeight();
-}}
-function syncHeight() {{
+
+function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = (h + 8) + 'px'; break;
+        }} }} catch(e) {{}}
     }}
 }}
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
+
+buildCards();
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
 </script>
 </body></html>
-""", height=380, scrolling=False)
+""", height=500, scrolling=False)
 
         else:
             st.markdown(

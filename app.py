@@ -6095,6 +6095,143 @@ setTimeout(syncHeight, 300);
 </script>
 """, height=250, scrolling=False)
 
+# ── Painel de edição NATIVO do Streamlit (fora do iframe)
+        for ci, e in enumerate(todas_empresas):
+            if editando_empresa == e["nome"]:
+                is_minha_e   = e["tipo"] == "minha"
+                ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
+                cor_e        = get_minha_empresa_color() if is_minha_e else get_concorrente_color(e["idx"])
+                av_txt_e     = gerar_avatar(e["nome"])
+                badge_lbl_e  = "Minha empresa" if is_minha_e else "Concorrente"
+                badge_bg_e   = "#f0fdf4" if is_minha_e else "#eff6ff"
+                badge_col_e  = "#15803d" if is_minha_e else "#1d4ed8"
+                badge_brd_e  = "#bbf7d0" if is_minha_e else "#bfdbfe"
+
+                st.markdown(f"""
+                <style>
+                /* Faz o painel parecer parte da caixa cinza */
+                .st-key-painel_edicao_{ci} > div {{
+                    background: #d2dde9 !important;
+                    border: none !important;
+                    border-radius: 0 0 16px 16px !important;
+                    box-shadow: none !important;
+                    padding: 0 16px 16px 16px !important;
+                    margin-top: -20px !important;
+                }}
+
+                /* Card interno branco */
+                .st-key-painel_edicao_{ci} .stMarkdown,
+                .st-key-painel_edicao_{ci} [data-testid="stTextInput"],
+                .st-key-painel_edicao_{ci} [data-testid="stHorizontalBlock"] {{
+                    background: transparent !important;
+                }}
+
+                /* Input */
+                .st-key-cfg_input_nativo_{ci} label {{ display: none !important; }}
+                .st-key-cfg_input_nativo_{ci} {{
+                    margin-top: 0 !important;
+                    margin-bottom: 4px !important;
+                }}
+                .st-key-cfg_input_nativo_{ci} input {{
+                    border-radius: 8px !important;
+                    font-size: 14px !important;
+                    height: 44px !important;
+                    border: 1.5px solid #e5e7eb !important;
+                    background: #ffffff !important;
+                }}
+
+                /* Botão Buscar */
+                .st-key-btn_buscar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
+                    border: 1.5px solid #3a9fd6 !important;
+                    background: #eff6ff !important;
+                    color: #1d4ed8 !important;
+                }}
+                .st-key-btn_buscar_nativo_{ci} button:hover {{
+                    background: #dbeafe !important;
+                }}
+
+                /* Botão Salvar */
+                .st-key-btn_salvar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
+                }}
+
+                /* Botão Cancelar */
+                .st-key-btn_cancelar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
+                    background: #f3f4f6 !important;
+                    color: #6b7280 !important;
+                    border: 1px solid #e5e7eb !important;
+                }}
+                .st-key-btn_cancelar_nativo_{ci} button:hover {{
+                    background: #fef2f2 !important;
+                    color: #dc2626 !important;
+                    border-color: #fca5a5 !important;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+
+                with st.container(key=f"painel_edicao_{ci}"):
+                    st.markdown(f"""
+                    <div style="background:#ffffff;border:1px solid #e5e7eb;
+                                border-radius:12px;padding:16px;margin-bottom:12px;">
+                        <div style="font-size:11px;font-weight:700;color:#9ca3af;
+                                    text-transform:uppercase;letter-spacing:0.8px;
+                                    margin-bottom:6px;">
+                            ✏️ Configurando: <span style="color:#3a9fd6;text-transform:none;
+                            font-size:13px;">{e["nome"]}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    val_nativo = st.text_input(
+                        "ID ou nome",
+                        value=ads_id_atual,
+                        placeholder="Ex: Educbank  ou  106889667774994",
+                        key=f"cfg_input_nativo_{ci}",
+                        label_visibility="collapsed",
+                    )
+
+                    col_b, col_s, col_c = st.columns([5, 5, 3])
+                    with col_b:
+                        if st.button("🔍 Buscar páginas", key=f"btn_buscar_nativo_{ci}", use_container_width=True):
+                            if val_nativo.strip():
+                                st.session_state.ads_onboarding_empresa = e["nome"]
+                                with st.spinner("Buscando…"):
+                                    paginas = buscar_paginas_facebook(val_nativo.strip())
+                                st.session_state.ads_onboarding_paginas = paginas
+                                st.rerun()
+                            else:
+                                st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
+                    with col_s:
+                        if st.button("💾 Salvar ID", key=f"btn_salvar_nativo_{ci}", use_container_width=True, type="primary"):
+                            if val_nativo.strip():
+                                salvar_ads_id(e, val_nativo.strip())
+                                st.session_state.ads_editando_empresa   = None
+                                st.session_state.ads_onboarding_empresa = None
+                                st.session_state.ads_onboarding_paginas = []
+                                st.toast(f"✅ {e['nome']} salvo!", icon="✅")
+                                st.rerun()
+                            else:
+                                st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
+                    with col_c:
+                        if st.button("✕ Cancelar", key=f"btn_cancelar_nativo_{ci}", use_container_width=True):
+                            st.session_state.ads_editando_empresa   = None
+                            st.session_state.ads_onboarding_empresa = None
+                            st.session_state.ads_onboarding_paginas = []
+                            st.rerun()
+
+                break
+
         # ── Páginas encontradas
         if onboarding_empresa and onboarding_paginas:
             e_ob = next((x for x in todas_empresas if x["nome"] == onboarding_empresa), None)

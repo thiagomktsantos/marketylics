@@ -2510,7 +2510,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '86px';
-            iframes[i].style.marginTop = '-12px';
+            iframes[i].style.marginTop = '-42px';
             break;
         }} }} catch(e) {{}}
     }}

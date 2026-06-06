@@ -2556,27 +2556,41 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         f'display:flex;align-items:center;justify-content:center;'
                         f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
                     )
+
+                bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
+                ext_url_geral = (r.get("external_url") or "").strip()
+                score_geral   = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
+                sv            = score_geral["score"]
+                sc_cor        = score_geral["cor_classe"]
+                sc_icon       = score_geral["classificacao_icon"]
+                sc_lbl        = score_geral["classificacao"]
+
                 metricas_cards.append({
-                    "nome": r["nome"],
-                    "av_html": av_html,
-                    "seg": fmt_num(r.get("seguidores", 0)),
-                    "eng": f'{r.get("eng_pct",0):.1f}%',
-                    "posts": fmt_num(r.get("total_posts", 0)),
-                    "eng_med": fmt_num(int(r.get("eng_medio", 0))),
-                    "cor": cor,
+                    "nome":      r["nome"],
+                    "av_html":   av_html,
+                    "seg":       fmt_num(r.get("seguidores", 0)),
+                    "eng":       f'{r.get("eng_pct",0):.1f}%',
+                    "posts":     fmt_num(r.get("total_posts", 0)),
+                    "eng_med":   fmt_num(int(r.get("eng_medio", 0))),
+                    "cor":       cor,
+                    "score_val": sv,
+                    "score_cor": sc_cor,
+                    "score_icon": sc_icon,
+                    "score_lbl": sc_lbl,
                 })
 
             cards_row = ""
             for m in metricas_cards:
+                bar_pct = m["score_val"]
                 cards_row += (
-                    '<div style="flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;'
+                    '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
                     f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
                     '</div>'
-                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
                     f'<div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
@@ -2589,7 +2603,21 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                    '</div>'
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Score de perfil</div>'
+                    '<div style="display:flex;align-items:center;gap:5px;">'
+                    f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
+                    '<span style="font-size:10px;color:#9ca3af">/100</span>'
+                    f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;'
+                    f'font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
                     '</div></div>'
+                    f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                    f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
                 )
 
             st.markdown(

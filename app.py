@@ -5125,17 +5125,22 @@ elif st.session_state.pagina == "ads":
         if c.get("nome"):
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
 
-    # Alertar empresas configuradas que ainda não têm dados coletados
+    # Alertar empresas sem ads_id configurado OU com ads_id mas sem dados coletados
     _ids_coletados = set(st.session_state.ads_cache.keys())
-    _empresas_novas = [
-        e for e in todas_empresas
-        if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados
-    ]
-    if _empresas_novas:
-        _nomes = ", ".join(e["nome"] for e in _empresas_novas)
+    _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
+    _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados]
+
+    if _empresas_sem_config:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
+        st.warning(
+            f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
+            f"Vá em **Configuração** para adicionar o ID da página."
+        )
+    if _empresas_sem_dados:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
         st.info(
-            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_novas) == 1 else 'foram adicionadas'} "
-            f"mas ainda não {'tem' if len(_empresas_novas) == 1 else 'têm'} dados coletados. "
+            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'} "
+            f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
             f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
         )
 

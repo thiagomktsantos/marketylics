@@ -2321,10 +2321,14 @@ html, body { background: transparent; overflow: hidden; }
             })
 
         colunas_update = [col1, col2, col3]
+        if update_items:
+            st.markdown(
+                "<div style='font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px'>Fonte</div>",
+                unsafe_allow_html=True
+            )
         for idx, item in enumerate(update_items):
             with colunas_update[idx]:
                 st.markdown(
-                    f"<div style='font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px'>Fonte</div>"
                     f"<div style='background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;'>"
                     f"<div style='display:flex;align-items:center;gap:8px;'>"
                     f"<div style='width:28px;height:28px;border-radius:8px;background:{item['icon_bg']};"

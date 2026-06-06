@@ -2624,7 +2624,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
             cores_json   = _json.dumps(cores_g)
 
-            metricas_cards = []
+                        metricas_cards = []
             for i, r in enumerate(ok_redes):
                 cor = get_avatar_color(i)
                 av  = gerar_avatar(r["nome"])
@@ -2650,6 +2650,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 sc_icon       = score_geral["classificacao_icon"]
                 sc_lbl        = score_geral["classificacao"]
 
+                posts_lista = r.get("posts", [])
+                n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
+                n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
+                n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
+                n_total_tp  = len(posts_lista) or 1
+
+                pct_foto = round(n_fotos    / n_total_tp * 100)
+                pct_vid  = round(n_videos   / n_total_tp * 100)
+                pct_carr = round(n_carrossel / n_total_tp * 100)
+
                 metricas_cards.append({
                     "nome":       r["nome"],
                     "av_html":    av_html,
@@ -2662,33 +2672,82 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "score_cor":  sc_cor,
                     "score_icon": sc_icon,
                     "score_lbl":  sc_lbl,
+                    "n_fotos":    n_fotos,
+                    "n_videos":   n_videos,
+                    "n_carrossel": n_carrossel,
+                    "pct_foto":   pct_foto,
+                    "pct_vid":    pct_vid,
+                    "pct_carr":   pct_carr,
+                    "n_total_tp": len(posts_lista),
                 })
 
             cards_row = ""
             for m in metricas_cards:
                 bar_pct = m["score_val"]
+
+                # Barra de tipos de conteúdo
+                tipo_bar = (
+                    f'<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:6px;">'
+                    f'<div style="width:{m["pct_foto"]}%;background:#3b82f6;" title="Fotos"></div>'
+                    f'<div style="width:{m["pct_vid"]}%;background:#e1306c;" title="Vídeos/Reels"></div>'
+                    f'<div style="width:{m["pct_carr"]}%;background:#7c3aed;" title="Carrossel"></div>'
+                    f'</div>'
+                )
+
+                # Legenda dos tipos
+                tipo_legenda = (
+                    '<div style="display:flex;gap:10px;flex-wrap:wrap;">'
+                    f'<div style="display:flex;align-items:center;gap:4px;">'
+                    f'<div style="width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></div>'
+                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Foto <b style="color:#111827">{m["n_fotos"]}</b> ({m["pct_foto"]}%)</span>'
+                    f'</div>'
+                    f'<div style="display:flex;align-items:center;gap:4px;">'
+                    f'<div style="width:8px;height:8px;border-radius:50%;background:#e1306c;flex-shrink:0;"></div>'
+                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Reels <b style="color:#111827">{m["n_videos"]}</b> ({m["pct_vid"]}%)</span>'
+                    f'</div>'
+                    f'<div style="display:flex;align-items:center;gap:4px;">'
+                    f'<div style="width:8px;height:8px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></div>'
+                    f'<span style="font-size:11px;color:#6b7280;font-weight:600">Carrossel <b style="color:#111827">{m["n_carrossel"]}</b> ({m["pct_carr"]}%)</span>'
+                    f'</div>'
+                    f'</div>'
+                )
+
                 cards_row += (
                     '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
                     f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
+
+                    # Cabeçalho
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
                     '</div>'
+
+                    # Métricas 4 colunas
                     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
-                    f'<div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
+                    f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj. (%)</div>'
-                    f'<div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
+                    f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
                     '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
+
+                    # Tipos de conteúdo
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:12px;">'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.5px;margin-bottom:6px;">Tipos de conteúdo</div>'
+                    + tipo_bar +
+                    tipo_legenda +
+                    '</div>'
+
+                    # Score de perfil
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
                     '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Score de perfil</div>'
@@ -2702,9 +2761,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
                     '</div>'
                     '</div>'
+
                     '</div>'
                 )
-
             st.markdown(
                 f"<div style='margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>",
                 unsafe_allow_html=True

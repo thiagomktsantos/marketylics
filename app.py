@@ -2439,7 +2439,7 @@ html, body { background: transparent; overflow: hidden; }
     ]
  
 # Monta os botões ANTES do f-string principal
-botoes_html = ""
+    botoes_html = ""
         for stk, icon, lbl, cnt, desc in abas_def:
             active_class = "active" if dash_aba == stk else ""
             has_class = "has" if cnt > 0 else ""

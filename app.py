@@ -2889,7 +2889,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             st.markdown(
                 f"""
                 <div style='background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                            padding:18px 20px 20px;margin-top:16px;'>
+                            padding:18px 20px 20px;margin-top:-49px;'>
                     <div style='font-size:18px;font-weight:800;color:#1a2e4a;text-transform:uppercase;
                                 letter-spacing:0.6px;padding-bottom:10px;border-bottom:2px solid #e5e7eb;
                                 margin-bottom:16px;display:flex;align-items:center;gap:10px;'>

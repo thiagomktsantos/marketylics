@@ -2568,41 +2568,40 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 })
  
             # Mini cards de métricas
-            cards_row = "".join([
-                f\'\'\'
-                <div style="flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;
-                            border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-                        {m["av_html"]}
-                        <div style="font-size:13px;font-weight:700;color:#1a2e4a;
-                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                        <div>
-                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
-                                        text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>
-                            <div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div>
-                        </div>
-                        <div>
-                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
-                                        text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>
-                            <div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div>
-                        </div>
-                        <div>
-                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
-                                        text-transform:uppercase;letter-spacing:0.5px">Posts</div>
-                            <div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div>
-                        </div>
-                        <div>
-                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
-                                        text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>
-                            <div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div>
-                        </div>
-                    </div>
-                </div>
-                \'\'\'
-                for m in metricas_cards
-            ])
+            cards_row = ""
+            for m in metricas_cards:
+                cards_row += (
+                    '<div style="flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;'
+                    f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+                    f'{m["av_html"]}'
+                    '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
+                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
+                    '</div>'
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                    '<div>'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
+                    f'<div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div>'
+                    '</div>'
+                    '<div>'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
+                    f'<div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div>'
+                    '</div>'
+                    '<div>'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
+                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div>'
+                    '</div>'
+                    '<div>'
+                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
+                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
  
             st.markdown(f"""
             <div style=\'margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;\'>

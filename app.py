@@ -2427,7 +2427,7 @@ html, body { background: transparent; overflow: hidden; }
 
             st.markdown(
                 f"<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px'>"
-                f"<span style='font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>Fonte:</span>"
+                f"<span style='font-size:11px;font-weight:700;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>Fonte:</span>"
                 f"{cards_html}"
                 f"</div>",
                 unsafe_allow_html=True
@@ -2803,7 +2803,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 # ── Score label com tooltip CSS puro ────────────────────
                 score_label_html = (
                     '<div style="display:flex;align-items:center;gap:0px;margin-bottom:6px;">'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
+                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
                     '<div class="score-tooltip-wrap">'
                     '<div class="q-badge">?</div>'
                     '<div class="tip">'
@@ -2855,16 +2855,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                     # ── Métricas 4 colunas ───────────────────────────────
                     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
                     f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#1a2e4a;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
                     f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
                     '</div>'
@@ -2887,7 +2887,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                     # ── Tipos de conteúdo — por último ──────────────────
                     '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                     'letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
                     + tipo_donuts +
                     '</div>'

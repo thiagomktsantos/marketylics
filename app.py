@@ -2802,7 +2802,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                 # ── Score label com tooltip CSS puro ────────────────────
                 score_label_html = (
-                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:6px;">'
+                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:-16px;">'
                     '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
                     '<div class="score-tooltip-wrap">'
                     '<div class="q-badge">?</div>'
@@ -2870,7 +2870,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '</div>'
 
                     # ── Score de perfil com tooltip ──────────────────────
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:12px;">'
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:20px;margin-bottom:22px;">'
                     + score_label_html +
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
                     '<div></div>'

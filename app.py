@@ -5721,6 +5721,12 @@ function triggerTab(label) {{
                     st.session_state.ads_onboarding_paginas = []
                     st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                     st.rerun()
+
+        for ci in range(len(todas_empresas)):
+            _termo_ss = st.session_state.get(f"cfg_buscar_termo_{ci}", "")
+            if not _termo_ss:
+                # tenta ler do input_vals como fallback
+                pass
             if ghost_buscar[ci]:
                 # Tenta input_vals primeiro, depois session_state salvo, depois ads_id salvo
                 val = input_vals.get(ci, "").strip()

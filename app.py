@@ -5132,7 +5132,7 @@ elif st.session_state.pagina == "ads":
 
     if _empresas_sem_config:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
-        st.warning(
+        st.info(
             f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
             f"Vá em **Configuração** para adicionar o ID da página."
         )

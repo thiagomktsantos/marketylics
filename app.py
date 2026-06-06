@@ -5091,6 +5091,21 @@ elif st.session_state.pagina == "ads":
         st.session_state.ads_cache = carregar_cache_ads()
     if "ads_erro" not in st.session_state:
         st.session_state.ads_erro = {}
+
+    def empresa_tem_ads_id(e: dict) -> bool:
+        if e["tipo"] == "minha":
+            return bool(emp.get("ads_id", "").strip())
+        else:
+            cd = concs[e["idx"]]
+            return bool(cd.get("ads_id", "").strip())
+
+    todas_empresas = []
+    if emp.get("nome"):
+        todas_empresas.append({"nome": emp["nome"], "tipo": "minha", "idx": 0})
+    for i, c in enumerate(concs):
+        if c.get("nome"):
+            todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
+    
     if "ads_onboarding_empresa" not in st.session_state:
         st.session_state.ads_onboarding_empresa = None
     if "ads_onboarding_paginas" not in st.session_state:
@@ -5110,39 +5125,6 @@ elif st.session_state.pagina == "ads":
 
     def safe_key(s):
         return re.sub(r"[^a-zA-Z0-9_]", "_", s)
-
-    def empresa_tem_ads_id(e: dict) -> bool:
-        if e["tipo"] == "minha":
-            return bool(emp.get("ads_id", "").strip())
-        else:
-            cd = concs[e["idx"]]
-            return bool(cd.get("ads_id", "").strip())
-
-    todas_empresas = []    
-    if emp.get("nome"):
-        todas_empresas.append({"nome": emp["nome"], "tipo": "minha", "idx": 0})
-    for i, c in enumerate(concs):
-        if c.get("nome"):
-            todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
-
-    # Alertar empresas sem ads_id configurado OU com ads_id mas sem dados coletados
-    _ids_coletados = set(st.session_state.ads_cache.keys())
-    _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
-    _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados]
-
-    if _empresas_sem_config:
-        _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
-        st.info(
-            f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
-            f"Vá em **Configuração** para adicionar o ID da página."
-        )
-    if _empresas_sem_dados:
-        _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
-        st.info(
-            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'} "
-            f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
-            f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
-        )
 
     def salvar_ads_id(e: dict, ads_id: str, page_pic: str = ""):
         if e["tipo"] == "minha":
@@ -5391,6 +5373,24 @@ function abrirModal() {{
 """, height=28, scrolling=False)
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
+
+    _ids_coletados = set(st.session_state.ads_cache.keys())
+    _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
+    _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados]
+
+    if _empresas_sem_config:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
+        st.info(
+            f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
+            f"Vá em **Configuração** para adicionar o ID da página."
+        )
+    if _empresas_sem_dados:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
+        st.info(
+            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'} "
+            f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
+            f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
+        )
 
     # ══════════════════════════════════════════════════════════════════
     # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)

@@ -2860,7 +2860,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 )
 
             st.markdown(
-                f"<div style='margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>",
+                f"""
+                <div style='background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                            padding:18px 20px 20px;margin-top:16px;'>
+                    <div style='font-size:18px;font-weight:800;color:#1a2e4a;text-transform:uppercase;
+                                letter-spacing:0.6px;padding-bottom:10px;border-bottom:2px solid #e5e7eb;
+                                margin-bottom:16px;display:flex;align-items:center;gap:10px;'>
+                        📱 Redes Sociais
+                    </div>
+                    <div style='display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>
+                </div>
+                """,
                 unsafe_allow_html=True
             )
 

@@ -2787,7 +2787,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         f' font-size="12" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
                         f'</svg>'
                         f'<span style="font-size:10px;font-weight:700;color:{color};">{pct}%</span>'
-                        f'<span style="font-size:10px;color:#9ca3af;font-weight:600;">{label}</span>'
+                        f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">{label}</span>'
                         f'</div>'
                     )
 
@@ -2876,7 +2876,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     '<div></div>'
                     '<div style="display:flex;align-items:center;gap:5px;">'
                     f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                    '<span style="font-size:10px;color:#9ca3af">/100</span>'
+                    '<span style="font-size:10px;color:#9ca3af;font-weight:700;">/100</span>'
                     f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;'
                     f'font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
                     '</div></div>'

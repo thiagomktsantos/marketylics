@@ -2440,10 +2440,10 @@ html, body { background: transparent; overflow: hidden; }
  
 # Monta os botões ANTES do f-string principal
     botoes_html = ""
-        for stk, icon, lbl, cnt, desc in abas_def:
-            active_class = "active" if dash_aba == stk else ""
-            has_class = "has" if cnt > 0 else ""
-            botoes_html += f"""
+    for stk, icon, lbl, cnt, desc in abas_def:
+        active_class = "active" if dash_aba == stk else ""
+        has_class = "has" if cnt > 0 else ""
+        botoes_html += f"""
     <button class="tab-pill {active_class}"
         style="position:relative"
         onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='dash_{stk}'){{b.click();return;}}}}}})()"
@@ -2456,7 +2456,7 @@ html, body { background: transparent; overflow: hidden; }
         <span class="tab-badge {has_class}">{cnt}</span>
     </button>"""
 
-        components.html(f"""
+    components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}

@@ -2300,54 +2300,48 @@ html, body { background: transparent; overflow: hidden; }
                 ultima_ads = v["ts"]
                 break
 
-        items_html = ""
+        col1, col2, col3 = st.columns(3)
+
+        update_items = []
         if ultima_redes:
-            items_html += (
-                "<div style='display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f2f5;'>"
-                "<div style='width:28px;height:28px;border-radius:8px;background:#f0f9ff;"
-                "display:flex;align-items:center;justify-content:center;flex-shrink:0'>"
-                "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#0369a1' stroke-width='2'>"
-                "<rect x='2' y='2' width='20' height='20' rx='5'/>"
-                "<circle cx='12' cy='12' r='4.5' fill='none'/>"
-                "<circle cx='17.5' cy='6.5' r='1.2' fill='#0369a1'/>"
-                "</svg></div>"
-                "<div style='flex:1;min-width:0'>"
-                "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>Instagram</div>"
-                f"<div style='font-size:12px;font-weight:600;color:#374151'>{ultima_redes}</div>"
-                "</div></div>"
-            )
-
+            update_items.append({
+                "label": "INSTAGRAM",
+                "valor": ultima_redes,
+                "icon_bg": "#f0f9ff",
+                "icon_color": "#0369a1",
+                "icon": "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#0369a1' stroke-width='2'><rect x='2' y='2' width='20' height='20' rx='5'/><circle cx='12' cy='12' r='4.5' fill='none'/><circle cx='17.5' cy='6.5' r='1.2' fill='#0369a1'/></svg>",
+            })
         if ultima_ads:
-            items_html += (
-                "<div style='display:flex;align-items:center;gap:8px;padding:6px 0;'>"
-                "<div style='width:28px;height:28px;border-radius:8px;background:#fff7ed;"
-                "display:flex;align-items:center;justify-content:center;flex-shrink:0'>"
-                "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#c2410c' stroke-width='2'>"
-                "<rect x='3' y='3' width='18' height='18' rx='2'/>"
-                "<path d='M9 9h6M9 12h6M9 15h4'/>"
-                "</svg></div>"
-                "<div style='flex:1;min-width:0'>"
-                "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>Meta Ads</div>"
-                f"<div style='font-size:12px;font-weight:600;color:#374151'>{ultima_ads}</div>"
-                "</div></div>"
-            )
+            update_items.append({
+                "label": "META ADS",
+                "valor": ultima_ads,
+                "icon_bg": "#fff7ed",
+                "icon_color": "#c2410c",
+                "icon": "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#c2410c' stroke-width='2'><rect x='3' y='3' width='18' height='18' rx='2'/><path d='M9 9h6M9 12h6M9 15h4'/></svg>",
+            })
 
-        if items_html:
-            st.markdown(
-                "<div style='background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;"
-                "padding:8px 12px;margin-top:2px'>"
-                "<div style='font-size:10px;font-weight:700;color:#9ca3af;"
-                "text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px'>Últimas atualizações</div>"
-                f"{items_html}</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                "<div style='background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;"
-                "padding:10px 14px;text-align:center'>"
-                "<div style='font-size:12px;color:#9ca3af'>Sem dados coletados ainda</div></div>",
-                unsafe_allow_html=True
-            )
+        colunas_update = [col1, col2, col3]
+        for idx, item in enumerate(update_items):
+            with colunas_update[idx]:
+                st.markdown(
+                    f"<div style='background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;'>"
+                    f"<div style='display:flex;align-items:center;gap:8px;'>"
+                    f"<div style='width:28px;height:28px;border-radius:8px;background:{item['icon_bg']};"
+                    f"display:flex;align-items:center;justify-content:center;flex-shrink:0'>{item['icon']}</div>"
+                    f"<div><div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>{item['label']}</div>"
+                    f"<div style='font-size:12px;font-weight:600;color:#374151'>{item['valor']}</div></div>"
+                    f"</div></div>",
+                    unsafe_allow_html=True
+                )
+
+        if not update_items:
+            with col1:
+                st.markdown(
+                    "<div style='background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;"
+                    "padding:10px 14px;text-align:center'>"
+                    "<div style='font-size:12px;color:#9ca3af'>Sem dados coletados ainda</div></div>",
+                    unsafe_allow_html=True
+                )
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
 

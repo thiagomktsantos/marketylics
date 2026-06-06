@@ -5982,7 +5982,7 @@ setTimeout(syncHeight, 300);
                     border-radius: 16px !important;
                     box-shadow: 0 0 0 4px rgba(58,159,214,0.10) !important;
                     padding: 20px !important;
-                    margin-top: -4px !important;
+                    margin-top: -54px !important;
                     margin-bottom: 8px !important;
                 }}
                 .stElementContainer:has(.st-key-painel_edicao_{ci}) > div {{

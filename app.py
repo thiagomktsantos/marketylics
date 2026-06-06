@@ -2624,7 +2624,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
             cores_json   = _json.dumps(cores_g)
 
-                        metricas_cards = []
+            metricas_cards = []
             for i, r in enumerate(ok_redes):
                 cor = get_avatar_color(i)
                 av  = gerar_avatar(r["nome"])

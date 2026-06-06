@@ -5658,16 +5658,6 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
-        # ── Fecha modal via components.html (único jeito confiável)
-        components.html("""
-<script>
-(function() {
-    var m = window.parent.document.getElementById('cfg_loader_modal');
-    if (m) { m.style.transition='opacity 0.3s'; m.style.opacity='0'; setTimeout(function(){ if(m && m.parentNode) m.remove(); }, 350); }
-})();
-</script>
-""", height=0, scrolling=False)
-
         # ── Recupera valores via query_params (canal confiável iframe→Python)
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
@@ -6020,32 +6010,6 @@ function handleBuscar(ci) {{
     if (btn) {{ btn.disabled = true; btn.innerHTML = SPINNER + ' Buscando...'; }}
     var btnS = document.getElementById('btn_salvar_' + ci);
     if (btnS) {{ btnS.disabled = true; }}
-
-    // Modal de loading igual ao buscar anúncios
-    var doc = window.parent.document;
-    var old = doc.getElementById('cfg_loader_modal');
-    if (old) old.remove();
-    var modal = doc.createElement('div');
-    modal.id = 'cfg_loader_modal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(5,15,30,0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;font-family:DM Sans,sans-serif;';
-    modal.innerHTML =
-        '<div style="background:#0e1e35;border:1px solid #1e3a5f;border-radius:18px;padding:28px;width:min(92vw,420px);box-shadow:0 24px 64px rgba(0,0,0,0.5);">'
-        + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">'
-        + '<div style="width:22px;height:22px;border:2.5px solid #1e3a5f;border-top-color:#3a9fd6;border-radius:50%;animation:cfgspin 0.8s linear infinite;flex-shrink:0"></div>'
-        + '<div>'
-        + '<div style="font-size:16px;font-weight:800;color:#f1f5f9;letter-spacing:-0.2px">Buscando páginas...</div>'
-        + '<div style="font-size:12px;color:#64748b;margin-top:2px">Consultando Facebook Ads Library</div>'
-        + '</div>'
-        + '</div>'
-        + '<div style="background:#07111f;border-radius:8px;height:5px;overflow:hidden">'
-        + '<div style="height:100%;width:60%;background:linear-gradient(90deg,#1d6fa8,#3a9fd6);border-radius:8px;animation:cfgprogress 1.5s ease-in-out infinite"></div>'
-        + '</div>'
-        + '<div style="margin-top:16px;font-size:12px;color:#475569;font-weight:600;text-align:center">Pode levar até 1 minuto...</div>'
-        + '</div>';
-    var style = doc.createElement('style');
-    style.textContent = '@keyframes cfgspin{{to{{transform:rotate(360deg)}}}} @keyframes cfgprogress{{0%{{width:20%;margin-left:0}}50%{{width:60%;margin-left:20%}}100%{{width:20%;margin-left:80%}}}}';
-    doc.head.appendChild(style);
-    doc.body.appendChild(modal);
 
     // Salva na URL e dispara ghost
     saveValToURL(ci, val);

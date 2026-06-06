@@ -5903,59 +5903,153 @@ setTimeout(syncHeight, 300);
 </script>
 """, height=250, scrolling=False)
 
-        # ── Painel de edição NATIVO do Streamlit (fora do iframe)
-        # Renderiza abaixo dos cards quando uma empresa está em edição
+# ── Painel de edição NATIVO do Streamlit (fora do iframe)
         for ci, e in enumerate(todas_empresas):
             if editando_empresa == e["nome"]:
-                is_minha_e = e["tipo"] == "minha"
+                is_minha_e   = e["tipo"] == "minha"
                 ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
+                cor_e        = get_minha_empresa_color() if is_minha_e else get_concorrente_color(e["idx"])
+                av_txt_e     = gerar_avatar(e["nome"])
+                badge_lbl_e  = "Minha empresa" if is_minha_e else "Concorrente"
+                badge_bg_e   = "#f0fdf4" if is_minha_e else "#eff6ff"
+                badge_col_e  = "#15803d" if is_minha_e else "#1d4ed8"
+                badge_brd_e  = "#bbf7d0" if is_minha_e else "#bfdbfe"
 
                 st.markdown(f"""
-                <div style="background:#fff;border:2px solid #3a9fd6;border-radius:12px;
-                            padding:20px;margin-top:8px;
-                            box-shadow:0 0 0 3px rgba(58,159,214,0.12);">
-                    <div style="font-size:13px;font-weight:700;color:#1a2e4a;margin-bottom:12px;">
-                        ✏️ Configurando: <span style="color:#3a9fd6">{e["nome"]}</span>
+                <style>
+                /* Oculta label do text_input nativo */
+                .st-key-cfg_input_nativo_{ci} label {{ display: none !important; }}
+                .st-key-cfg_input_nativo_{ci} {{ margin-top: 0 !important; margin-bottom: 0 !important; }}
+                .st-key-cfg_input_nativo_{ci} input {{
+                    border-radius: 8px !important;
+                    font-size: 14px !important;
+                    height: 44px !important;
+                }}
+                /* Botões do painel */
+                .st-key-btn_buscar_nativo_{ci} button,
+                .st-key-btn_salvar_nativo_{ci} button,
+                .st-key-btn_cancelar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
+                }}
+                .st-key-btn_cancelar_nativo_{ci} button {{
+                    background: #f3f4f6 !important;
+                    color: #6b7280 !important;
+                    border: 1px solid #e5e7eb !important;
+                }}
+                .st-key-btn_cancelar_nativo_{ci} button:hover {{
+                    background: #fef2f2 !important;
+                    color: #dc2626 !important;
+                    border-color: #fca5a5 !important;
+                }}
+                </style>
+
+                <div style="
+                    background: #ffffff;
+                    border: 2px solid #3a9fd6;
+                    border-radius: 16px;
+                    box-shadow: 0 0 0 4px rgba(58,159,214,0.10);
+                    padding: 20px 20px 6px 20px;
+                    margin-top: -4px;
+                    margin-bottom: 4px;
+                ">
+                    <!-- Cabeçalho do card -->
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;
+                                padding-bottom:14px;border-bottom:1px solid #f3f4f6;">
+                        <div style="width:44px;height:44px;border-radius:50%;background:{cor_e};
+                                    display:flex;align-items:center;justify-content:center;
+                                    font-size:15px;font-weight:700;color:#fff;flex-shrink:0">
+                            {av_txt_e}
+                        </div>
+                        <div>
+                            <div style="font-size:15px;font-weight:700;color:#1a2e4a;">{e["nome"]}</div>
+                            <div style="display:inline-flex;align-items:center;
+                                        background:{badge_bg_e};color:{badge_col_e};
+                                        border:1px solid {badge_brd_e};
+                                        padding:2px 10px;border-radius:20px;
+                                        font-size:11px;font-weight:700;margin-top:3px">
+                                {badge_lbl_e}
+                            </div>
+                        </div>
+                        <div style="margin-left:auto;background:#eff6ff;color:#1d4ed8;
+                                    border:1px solid #bfdbfe;padding:5px 12px;border-radius:8px;
+                                    font-size:12px;font-weight:700;">
+                            ✏️ Editando
+                        </div>
                     </div>
+                    <!-- Label do input -->
+                    <div style="font-size:11px;font-weight:700;color:#9ca3af;
+                                text-transform:uppercase;letter-spacing:0.8px;
+                                margin-bottom:6px;">
+                        ID ou nome da página do Facebook
+                    </div>
+                </div>
                 """, unsafe_allow_html=True)
 
-                val_nativo = st.text_input(
-                    "ID ou nome da página do Facebook",
-                    value=ads_id_atual,
-                    placeholder="Ex: Educbank  ou  102803918240129",
-                    key=f"cfg_input_nativo_{ci}",
-                )
+                # Input nativo do Streamlit — dentro do container estilizado
+                with st.container():
+                    st.markdown("""
+                    <style>
+                    /* Remove margem extra do container do input */
+                    section.main .block-container > div > div:has(> div[data-testid="stTextInput"]) {
+                        margin-top: -12px !important;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
 
-                col_b, col_s, col_c = st.columns([2, 2, 1])
-                with col_b:
-                    if st.button("🔍 Buscar páginas", key=f"btn_buscar_nativo_{ci}", use_container_width=True):
-                        if val_nativo.strip():
-                            st.session_state.ads_onboarding_empresa = e["nome"]
-                            with st.spinner("Buscando…"):
-                                paginas = buscar_paginas_facebook(val_nativo.strip())
-                            st.session_state.ads_onboarding_paginas = paginas
-                            st.rerun()
-                        else:
-                            st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
-                with col_s:
-                    if st.button("💾 Salvar ID", key=f"btn_salvar_nativo_{ci}", use_container_width=True, type="primary"):
-                        if val_nativo.strip():
-                            salvar_ads_id(e, val_nativo.strip())
+                    val_nativo = st.text_input(
+                        "ID ou nome",
+                        value=ads_id_atual,
+                        placeholder="Ex: Educbank  ou  106889667774994",
+                        key=f"cfg_input_nativo_{ci}",
+                        label_visibility="collapsed",
+                    )
+
+                    col_b, col_s, col_c = st.columns([5, 5, 3])
+                    with col_b:
+                        if st.button(
+                            "🔍 Buscar páginas",
+                            key=f"btn_buscar_nativo_{ci}",
+                            use_container_width=True,
+                        ):
+                            if val_nativo.strip():
+                                st.session_state.ads_onboarding_empresa = e["nome"]
+                                with st.spinner("Buscando…"):
+                                    paginas = buscar_paginas_facebook(val_nativo.strip())
+                                st.session_state.ads_onboarding_paginas = paginas
+                                st.rerun()
+                            else:
+                                st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
+                    with col_s:
+                        if st.button(
+                            "💾 Salvar ID",
+                            key=f"btn_salvar_nativo_{ci}",
+                            use_container_width=True,
+                            type="primary",
+                        ):
+                            if val_nativo.strip():
+                                salvar_ads_id(e, val_nativo.strip())
+                                st.session_state.ads_editando_empresa   = None
+                                st.session_state.ads_onboarding_empresa = None
+                                st.session_state.ads_onboarding_paginas = []
+                                st.toast(f"✅ {e['nome']} salvo!", icon="✅")
+                                st.rerun()
+                            else:
+                                st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
+                    with col_c:
+                        if st.button(
+                            "✕ Cancelar",
+                            key=f"btn_cancelar_nativo_{ci}",
+                            use_container_width=True,
+                        ):
                             st.session_state.ads_editando_empresa   = None
                             st.session_state.ads_onboarding_empresa = None
                             st.session_state.ads_onboarding_paginas = []
-                            st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                             st.rerun()
-                        else:
-                            st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
-                with col_c:
-                    if st.button("✕ Cancelar", key=f"btn_cancelar_nativo_{ci}", use_container_width=True):
-                        st.session_state.ads_editando_empresa   = None
-                        st.session_state.ads_onboarding_empresa = None
-                        st.session_state.ads_onboarding_paginas = []
-                        st.rerun()
 
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
                 break
 
         # ── Páginas encontradas

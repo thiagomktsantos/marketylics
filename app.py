@@ -2546,14 +2546,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 av  = gerar_avatar(r["nome"])
                 pp  = r.get("profile_pic", "")
                 if pp and pp.startswith("data:"):
-                    av_html = f\'<div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;"><img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>\'
+                    av_html = (
+                        '<div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
+                        f'<img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />'
+                        '</div>'
+                    )
                 else:
-                    av_html = f\'<div style="width:36px;height:36px;border-radius:50%;background:{cor};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>\'
+                    av_html = (
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{cor};'
+                        f'display:flex;align-items:center;justify-content:center;'
+                        f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
+                    )
                 metricas_cards.append({
                     "nome": r["nome"],
                     "av_html": av_html,
                     "seg": fmt_num(r.get("seguidores", 0)),
-                    "eng": f\'{r.get("eng_pct",0):.1f}%\',
+                    "eng": f'{r.get("eng_pct",0):.1f}%',
                     "posts": fmt_num(r.get("total_posts", 0)),
                     "eng_med": fmt_num(int(r.get("eng_medio", 0))),
                     "cor": cor,

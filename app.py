@@ -2475,7 +2475,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     text-align:left; width:100%;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
-.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; box-shadow:0 4px 16px rgba(14,42,71,0.2); }}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; box-shadow:0 4px 16px rgba(14,42,71,0.2); overflow:hidden; }}
 .tab-pill.active::after {{
     content:''; position:absolute; bottom:0; left:0; right:0;
     height:3px; background:linear-gradient(90deg,#3a9fd6,#2ecc71);

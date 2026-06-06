@@ -5692,7 +5692,7 @@ function triggerTab(label) {{
         busca_termo_vals = {}
 
         for ci, e in enumerate(todas_empresas):
-            ghost_edit[ci]   = st.button(str(ci),          key=f"cfg_ghost_edit_{ci}")
+            ghost_edit[ci] = st.button(f"edit_{ci}", key=f"cfg_ghost_edit_{ci}")
             ghost_save[ci]   = st.button(f"save_{ci}",     key=f"cfg_ghost_save_{ci}")
             ghost_cancel[ci] = st.button(f"cancel_{ci}",   key=f"cfg_ghost_cancel_{ci}")
             ghost_buscar[ci] = st.button(f"buscar_{ci}",   key=f"cfg_ghost_buscar_{ci}")
@@ -5878,7 +5878,7 @@ function triggerTab(label) {{
                 Cancelar
             </button>
             """ if is_editing else f"""
-            <button class="edit-btn" onclick="triggerGhost('{ci}')">
+            <button class="edit-btn" onclick="triggerGhost('edit_{ci}')">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2"
                      stroke-linecap="round" stroke-linejoin="round">

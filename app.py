@@ -5708,7 +5708,6 @@ function triggerTab(label) {{
                 st.session_state.ads_editando_empresa   = None
                 st.session_state.ads_onboarding_empresa = None
                 st.session_state.ads_onboarding_paginas = []
-                # Limpa query params
                 for k in list(st.query_params.keys()):
                     if k.startswith("_cfg_val_"):
                         del st.query_params[k]
@@ -5721,7 +5720,6 @@ function triggerTab(label) {{
                     st.session_state.ads_editando_empresa   = e["nome"]
                     paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
-                    # Limpa query param após usar
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -5808,6 +5806,12 @@ function triggerTab(label) {{
             input_val = ads_id
 
             if is_editing:
+                # Se há páginas encontradas para esta empresa, mostra indicador
+                tem_resultados = (onboarding_empresa == e["nome"] and onboarding_paginas)
+                resultados_badge = ""
+                if tem_resultados:
+                    resultados_badge = f'<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 12px;margin-top:8px;font-size:12px;color:#15803d;font-weight:600;">✅ {len(onboarding_paginas)} página(s) encontrada(s) — veja abaixo</div>'
+
                 cards_html += f"""
                 <div class="card" style="{border_style}" id="card_wrap_{ci}">
                     <div class="card-header">
@@ -5873,6 +5877,7 @@ function triggerTab(label) {{
                                     Salvar ID
                                 </button>
                             </div>
+                            {resultados_badge}
                         </div>
                     </div>
                     <div class="card-footer">
@@ -5932,17 +5937,15 @@ function triggerTab(label) {{
                     </div>
                 </div>"""
 
-        # Prepara dados de páginas encontradas para passar ao iframe
         import json as _json_cfg
-        paginas_json = _json_cfg.dumps(
-            [{"nome": pg.get("nome",""), "page_id": pg.get("page_id",""),
-              "total_ads": pg.get("total_ads",0), "pic": pg.get("profile_picture","")}
-             for pg in onboarding_paginas[:8]] if onboarding_paginas else [],
-            ensure_ascii=False
-        )
         onboarding_ci = next(
             (i for i, x in enumerate(todas_empresas) if x["nome"] == onboarding_empresa), -1
         ) if onboarding_empresa else -1
+
+        # Altura dinâmica do iframe: base + extra se card editando tem resultados
+        tem_resultados_inline = (onboarding_empresa and onboarding_paginas and
+                                 any(e["nome"] == onboarding_empresa for e in todas_empresas
+                                     if editando_empresa == e["nome"]))
 
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -5950,7 +5953,6 @@ function triggerTab(label) {{
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; margin-top:0 !important; }}
 @keyframes spin  {{ to {{ transform: rotate(360deg); }} }}
-@keyframes pulse {{ 0%,100%{{opacity:1}} 50%{{opacity:0.5}} }}
 .outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
 .cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
 .card {{ background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }}
@@ -5981,20 +5983,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
 .btn-salvar:hover:not(:disabled) {{ background:#1a3a5c; }}
 .btn-salvar:disabled {{ opacity:0.65; cursor:not-allowed; }}
-.search-toast {{
-    background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px;
-    padding:10px 14px; font-size:12px; color:#0369a1; font-weight:600;
-    display:flex; align-items:center; gap:8px; margin-top:8px;
-    animation: pulse 1.5s ease-in-out infinite;
-}}
-.spin {{ animation: spin 0.8s linear infinite; flex-shrink:0; }}
 </style>
 <div class="outer">
     <div class="cards-grid">{cards_html}</div>
 </div>
 <script>
-var SPINNER = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
-var SPINNER_BLUE = '<svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+var SPINNER = '<svg class="spin" style="animation:spin 0.8s linear infinite;display:inline-block;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
 function triggerGhost(label) {{
     var btns = window.parent.document.querySelectorAll('button');
@@ -6004,7 +5998,6 @@ function triggerGhost(label) {{
     }}
 }}
 
-// Salva valor na URL (query param) — canal confiável para o Python ler
 function saveValToURL(ci, val) {{
     var url = new URL(window.parent.location.href);
     url.searchParams.set('_cfg_val_' + ci, val);
@@ -6016,13 +6009,16 @@ function handleBuscar(ci) {{
     var val = (inp || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
 
-    // UI feedback nos botões
     var btn = document.getElementById('btn_buscar_' + ci);
-    if (btn) {{ btn.disabled = true; btn.innerHTML = SPINNER + ' Buscando...'; }}
     var btnS = document.getElementById('btn_salvar_' + ci);
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = SPINNER + ' Buscando...';
+        btn.style.background = '#f0f9ff';
+        btn.style.color = '#0369a1';
+    }}
     if (btnS) {{ btnS.disabled = true; }}
 
-    // Salva na URL e dispara ghost
     saveValToURL(ci, val);
     setTimeout(function() {{
         triggerGhost('do_buscar_' + ci);
@@ -6065,7 +6061,7 @@ setTimeout(syncHeight, 700);
 </script>
 """, height=250, scrolling=False)
 
-        # ── Páginas encontradas (onboarding)
+        # ── Páginas encontradas (onboarding) — renderizado FORA do iframe dos cards
         if onboarding_empresa and onboarding_paginas:
             e_ob = next((x for x in todas_empresas if x["nome"] == onboarding_empresa), None)
             if e_ob:
@@ -6073,14 +6069,23 @@ setTimeout(syncHeight, 700);
                 sk_ob = safe_key(e_ob["nome"])
 
                 st.markdown(f"""
-                <div style="background:#d2dde9;border:1px solid #cbd5e1;border-radius:0 0 16px 16px;
-                            margin-top:-8px;padding:0 16px 16px 16px;">
-                    <div style="font-size:11px;font-weight:700;color:#4b5a6e;
-                                text-transform:uppercase;letter-spacing:0.5px;
-                                padding:14px 0 10px;">
-                        📋 {len(onboarding_paginas[:8])} página(s) encontrada(s)
-                    </div>
-                </div>
+                <div style="background:#d2dde9;border:1px solid #cbd5e1;
+                            border-top:none;border-radius:0 0 16px 16px;
+                            margin-top:-24px;padding:0 16px 20px 16px;">
+                    <div style="background:#fff;border-radius:10px;overflow:hidden;
+                                border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+                        <div style="background:#0e2a47;padding:12px 16px;
+                                    display:flex;align-items:center;gap:10px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                 stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            <span style="font-size:13px;font-weight:700;color:#ffffff;">
+                                {len(onboarding_paginas[:8])} página(s) encontrada(s) para
+                                <em style="color:#3a9fd6;">{onboarding_empresa}</em>
+                            </span>
+                        </div>
+                        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px;">
                 """, unsafe_allow_html=True)
 
                 for pi, pg in enumerate(onboarding_paginas[:8]):
@@ -6096,9 +6101,8 @@ setTimeout(syncHeight, 700);
                     with col_pg:
                         st.markdown(f"""
                         <div style="display:flex;align-items:center;gap:12px;
-                                    padding:10px 14px;background:#ffffff;
-                                    border:1px solid #e5e7eb;border-radius:10px;
-                                    margin-bottom:6px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                    padding:10px 14px;background:#f9fafb;
+                                    border:1px solid #e5e7eb;border-radius:10px;">
                             <div style="width:34px;height:34px;border-radius:50%;
                                         background:#e5e7eb;display:flex;align-items:center;
                                         justify-content:center;flex-shrink:0;overflow:hidden">
@@ -6131,9 +6135,10 @@ setTimeout(syncHeight, 700);
                             st.session_state.ads_editando_empresa   = None
                             st.session_state.ads_onboarding_empresa = None
                             st.session_state.ads_onboarding_paginas = []
-                            # Fecha modal se ainda aberto
                             st.toast(f"✅ {pg.get('nome','')} selecionado!", icon="✅")
                             st.rerun()
+
+                st.markdown("</div></div></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # ABA: EMPRESAS CONFIGURADAS — Cards estilo imagem 2

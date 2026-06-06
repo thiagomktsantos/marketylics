@@ -2844,11 +2844,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     # ── Cabeçalho com badge ──────────────────────────────
                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     f'{m["av_html"]}'
-                    '<div style="flex:1;min-width:0;">'
                     '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
-                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
-                    f'<div style="margin-top:3px;">{badge_html}</div>'
-                    '</div>'
+                    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">'
+                    f'{m["nome"]}</div>'
+                    f'{badge_html}'
                     '</div>'
 
                     # ── HR antes das métricas ────────────────────────────

@@ -5658,14 +5658,12 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
-        # ── Ghost buttons ocultos via CSS
+        # ── CSS para ocultar todos os ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
         .st-key-cfg_ghost_save_{ci},
         .st-key-cfg_ghost_cancel_{ci},
-        .st-key-cfg_ghost_buscar_{ci},
-        .st-key-cfg_input_val_{ci},
-        .st-key-cfg_busca_termo_{ci} {{
+        .st-key-cfg_ghost_buscar_{ci} {{
             position:fixed!important;top:-9999px!important;left:-9999px!important;
             width:0!important;height:0!important;overflow:hidden!important;
             opacity:0!important;pointer-events:none!important;display:none!important;
@@ -5673,9 +5671,7 @@ function triggerTab(label) {{
         .stElementContainer:has(.st-key-cfg_ghost_edit_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_save_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_cancel_{ci}),
-        .stElementContainer:has(.st-key-cfg_ghost_buscar_{ci}),
-        .stElementContainer:has(.st-key-cfg_input_val_{ci}),
-        .stElementContainer:has(.st-key-cfg_busca_termo_{ci}) {{
+        .stElementContainer:has(.st-key-cfg_ghost_buscar_{ci}) {{
             display:none!important;height:0!important;min-height:0!important;
             max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
         }}
@@ -5684,33 +5680,18 @@ function triggerTab(label) {{
         st.markdown(f"<style>{all_ghost_css}</style>", unsafe_allow_html=True)
 
         # ── Ghost triggers
-        ghost_edit    = {}
-        ghost_save    = {}
-        ghost_cancel  = {}
-        ghost_buscar  = {}
-        input_vals    = {}
-        busca_termo_vals = {}
+        ghost_edit   = {}
+        ghost_save   = {}
+        ghost_cancel = {}
+        ghost_buscar = {}
 
         for ci, e in enumerate(todas_empresas):
-            ghost_edit[ci] = st.button(f"edit_{ci}", key=f"cfg_ghost_edit_{ci}")
-            ghost_save[ci]   = st.button(f"save_{ci}",     key=f"cfg_ghost_save_{ci}")
-            ghost_cancel[ci] = st.button(f"cancel_{ci}",   key=f"cfg_ghost_cancel_{ci}")
-            ghost_buscar[ci] = st.button(f"buscar_{ci}",   key=f"cfg_ghost_buscar_{ci}")
-            is_minha_e = e["tipo"] == "minha"
-            ads_id_e   = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
-            input_vals[ci] = st.text_input(
-                f"val_{ci}", value=ads_id_e,
-                key=f"cfg_input_val_{ci}", label_visibility="hidden",
-            )
-            # Input dedicado para capturar o termo de busca
-            busca_termo_vals[ci] = st.text_input(
-                f"busca_termo_{ci}",
-                value=st.session_state.get(f"cfg_busca_termo_val_{ci}", ""),
-                key=f"cfg_busca_termo_{ci}",
-                label_visibility="hidden",
-            )
+            ghost_edit[ci]   = st.button(f"edit_{ci}",   key=f"cfg_ghost_edit_{ci}")
+            ghost_save[ci]   = st.button(f"save_{ci}",   key=f"cfg_ghost_save_{ci}")
+            ghost_cancel[ci] = st.button(f"cancel_{ci}", key=f"cfg_ghost_cancel_{ci}")
+            ghost_buscar[ci] = st.button(f"buscar_{ci}", key=f"cfg_ghost_buscar_{ci}")
 
-        # ── Processar ações
+        # ── Processar ações dos ghost buttons
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
                 st.session_state.ads_editando_empresa   = e["nome"]
@@ -5723,7 +5704,7 @@ function triggerTab(label) {{
                 st.session_state.ads_onboarding_paginas = []
                 st.rerun()
             if ghost_save[ci]:
-                val = input_vals.get(ci,"").strip()
+                val = st.session_state.get(f"cfg_input_nativo_{ci}", "").strip()
                 if val:
                     salvar_ads_id(e, val)
                     st.session_state.ads_editando_empresa   = None
@@ -5731,22 +5712,11 @@ function triggerTab(label) {{
                     st.session_state.ads_onboarding_paginas = []
                     st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                     st.rerun()
-
             if ghost_buscar[ci]:
-                # Pega valor do input dedicado de busca, depois do input_vals, depois do ads_id salvo
-                val = (
-                    busca_termo_vals.get(ci, "").strip()
-                    or input_vals.get(ci, "").strip()
-                    or st.session_state.get(f"cfg_busca_termo_val_{ci}", "").strip()
-                )
-                if not val:
-                    is_minha_e = e["tipo"] == "minha"
-                    val = (emp.get("ads_id", "") if is_minha_e else concs[e["idx"]].get("ads_id", "")).strip()
-
+                val = st.session_state.get(f"cfg_input_nativo_{ci}", "").strip()
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
-                    st.session_state[f"cfg_busca_termo_val_{ci}"] = val
                     with st.spinner("Buscando…"):
                         paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
@@ -5777,26 +5747,26 @@ function triggerTab(label) {{
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Monta HTML dos cards
+        # ── Monta HTML dos cards (sem input dentro do iframe)
         cards_html = ""
         for ci, e in enumerate(todas_empresas):
-            is_minha  = e["tipo"] == "minha"
-            ads_id    = emp.get("ads_id","") if is_minha else concs[e["idx"]].get("ads_id","")
-            page_pic  = emp.get("ads_page_pic","") if is_minha else concs[e["idx"]].get("ads_page_pic","")
-            has_id    = bool(ads_id.strip())
+            is_minha   = e["tipo"] == "minha"
+            ads_id     = emp.get("ads_id","") if is_minha else concs[e["idx"]].get("ads_id","")
+            page_pic   = emp.get("ads_page_pic","") if is_minha else concs[e["idx"]].get("ads_page_pic","")
+            has_id     = bool(ads_id.strip())
             is_editing = (editando_empresa == e["nome"])
-            cor       = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
-            av_txt    = gerar_avatar(e["nome"])
-            badge_lbl = "Minha empresa" if is_minha else "Concorrente"
-            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_col = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-            id_bg     = "#f0fdf4" if has_id else "#f3f4f6"
-            id_brd    = "#bbf7d0" if has_id else "#e5e7eb"
-            id_fw     = "600"     if has_id else "400"
-            id_color  = "#15803d" if has_id else "#9ca3af"
-            id_ff     = "monospace" if has_id else "inherit"
-            id_text   = ads_id if has_id else "Não configurado"
+            cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
+            av_txt     = gerar_avatar(e["nome"])
+            badge_lbl  = "Minha empresa" if is_minha else "Concorrente"
+            badge_bg   = "#f0fdf4" if is_minha else "#eff6ff"
+            badge_col  = "#15803d" if is_minha else "#1d4ed8"
+            badge_brd  = "#bbf7d0" if is_minha else "#bfdbfe"
+            id_bg      = "#f0fdf4" if has_id else "#f3f4f6"
+            id_brd     = "#bbf7d0" if has_id else "#e5e7eb"
+            id_fw      = "600"     if has_id else "400"
+            id_color   = "#15803d" if has_id else "#9ca3af"
+            id_ff      = "monospace" if has_id else "inherit"
+            id_text    = ads_id if has_id else "Não configurado"
 
             if page_pic and page_pic.startswith("http"):
                 av_html = (
@@ -5819,53 +5789,6 @@ function triggerTab(label) {{
                 "border:2px solid #3a9fd6;box-shadow:0 0 0 3px rgba(58,159,214,0.12);"
                 if is_editing else "border:1px solid #e5e7eb;"
             )
-
-            edit_section = f"""
-            <div class="edit-section">
-                <div style="font-size:11px;font-weight:700;color:#9ca3af;
-                            text-transform:uppercase;letter-spacing:0.8px;
-                            margin-bottom:8px">ID ou nome da página do Facebook</div>
-                <input
-                    id="cfg_input_{ci}"
-                    type="text"
-                    value="{ads_id}"
-                    placeholder="Ex: Marketylics  ou  102803918240129"
-                    oninput="syncInput({ci}, this.value)"
-                    style="width:100%;height:42px;border:1.5px solid #e5e7eb;
-                           border-radius:8px;padding:0 14px;font-size:14px;
-                           font-family:'DM Sans',sans-serif;color:#111827;
-                           background:#fafafa;outline:none;transition:border-color 0.15s;
-                           margin-bottom:12px;display:block"
-                    onfocus="this.style.borderColor='#3a9fd6';this.style.background='#fff'"
-                    onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
-                />
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <button class="btn-buscar" onclick="
-                        var v=document.getElementById('cfg_input_{ci}').value;
-                        syncInput({ci}, v);
-                        setTimeout(function(){{triggerGhost('buscar_{ci}');}}, 400)
-                    ">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8"/>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                        </svg>
-                        Buscar páginas
-                    </button>
-                    <button class="btn-salvar" onclick="triggerGhost('save_{ci}')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                            <polyline points="17 21 17 13 7 13 7 21"/>
-                            <polyline points="7 3 7 8 15 8"/>
-                        </svg>
-                        Salvar ID
-                    </button>
-                </div>
-            </div>
-            """ if is_editing else ""
 
             cancel_btn = f"""
             <button class="cancel-btn" onclick="triggerGhost('cancel_{ci}')">
@@ -5919,7 +5842,6 @@ function triggerTab(label) {{
                                         white-space:nowrap">{id_text}</div>
                         </div>
                     </div>
-                    {edit_section}
                 </div>
                 <div class="card-footer">
                     {cancel_btn}
@@ -5930,107 +5852,29 @@ function triggerTab(label) {{
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{
-    background:transparent;
-    font-family:'DM Sans',sans-serif;
-    overflow:hidden;
-    margin-top:0 !important;
-    padding-top:0 !important;
-}}
-.outer {{
-    background:#d2dde9;
-    border:1px solid #cbd5e1;
-    border-radius:16px;
-    padding:16px;
-}}
-.cards-grid {{
-    display:grid;
-    grid-template-columns:repeat(3,1fr);
-    gap:14px;
-}}
-.card {{
-    background:#fff;
-    border-radius:12px;
-    overflow:hidden;
-    display:flex;
-    flex-direction:column;
-}}
-.card-header {{
-    display:flex;align-items:center;gap:12px;
-    padding:16px 16px 12px;
-}}
-.card-body {{
-    padding:0 16px 14px;
-    display:flex;flex-direction:column;gap:12px;
-}}
-.edit-section {{
-    padding-top:12px;
-    border-top:1px solid #f3f4f6;
-}}
-.nome {{
-    font-size:14px;font-weight:700;color:#1a2e4a;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}}
-.card-footer {{
-    border-top:1px solid #f3f4f6;
-    padding:0;
-}}
-.edit-btn {{
-    width:100%;padding:10px 0;
-    background:#fff;border:none;
-    outline:none;-webkit-appearance:none;
-    font-size:13px;font-weight:600;color:#6b7280;
-    cursor:pointer;font-family:'DM Sans',sans-serif;
-    display:flex;align-items:center;justify-content:center;gap:7px;
-    transition:background 0.12s;
-}}
-.edit-btn:hover {{ background:#f9fafb;color:#111827; }}
-.cancel-btn {{
-    width:100%;padding:10px 0;
-    background:#fff;border:none;
-    outline:none;-webkit-appearance:none;
-    font-size:13px;font-weight:600;color:#9ca3af;
-    cursor:pointer;font-family:'DM Sans',sans-serif;
-    display:flex;align-items:center;justify-content:center;gap:6px;
-    transition:all 0.12s;
-}}
-.cancel-btn:hover {{ background:#fef2f2;color:#dc2626; }}
-.btn-buscar {{
-    display:flex;align-items:center;justify-content:center;gap:7px;
-    padding:10px 0;border:1.5px solid #3a9fd6;border-radius:8px;
-    background:#eff6ff;font-size:13px;font-weight:700;color:#1d4ed8;
-    cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;
-}}
-.btn-buscar:hover {{ background:#dbeafe; }}
-.btn-salvar {{
-    display:flex;align-items:center;justify-content:center;gap:7px;
-    padding:10px 0;border:none;border-radius:8px;
-    background:#0e2a47;font-size:13px;font-weight:700;color:#fff;
-    cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.15s;
-}}
-.btn-salvar:hover {{ background:#1a3a5c; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; margin-top:0 !important; }}
+.outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
+.cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
+.card {{ background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }}
+.card-header {{ display:flex; align-items:center; gap:12px; padding:16px 16px 12px; }}
+.card-body {{ padding:0 16px 14px; display:flex; flex-direction:column; gap:12px; }}
+.nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.card-footer {{ border-top:1px solid #f3f4f6; padding:0; }}
+.edit-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
+    font-size:13px; font-weight:600; color:#6b7280; cursor:pointer;
+    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
+    justify-content:center; gap:7px; transition:background 0.12s; }}
+.edit-btn:hover {{ background:#f9fafb; color:#111827; }}
+.cancel-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
+    font-size:13px; font-weight:600; color:#9ca3af; cursor:pointer;
+    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
+    justify-content:center; gap:6px; transition:all 0.12s; }}
+.cancel-btn:hover {{ background:#fef2f2; color:#dc2626; }}
 </style>
 <div class="outer">
     <div class="cards-grid">{cards_html}</div>
 </div>
 <script>
-function syncInput(ci, val) {{
-    // Sincroniza para AMBOS os inputs: cfg_input_val_N e cfg_busca_termo_N
-    var labels = ['val_' + ci, 'busca_termo_' + ci];
-    labels.forEach(function(label) {{
-        var inputs = window.parent.document.querySelectorAll('input');
-        inputs.forEach(function(inp) {{
-            var ariaLabel = inp.getAttribute('aria-label') || '';
-            if (ariaLabel === label) {{
-                var setter = Object.getOwnPropertyDescriptor(
-                    window.parent.HTMLInputElement.prototype, 'value').set;
-                setter.call(inp, val);
-                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }}
-        }});
-    }});
-}}
 function triggerGhost(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
@@ -6058,6 +5902,61 @@ setTimeout(syncHeight, 80);
 setTimeout(syncHeight, 300);
 </script>
 """, height=250, scrolling=False)
+
+        # ── Painel de edição NATIVO do Streamlit (fora do iframe)
+        # Renderiza abaixo dos cards quando uma empresa está em edição
+        for ci, e in enumerate(todas_empresas):
+            if editando_empresa == e["nome"]:
+                is_minha_e = e["tipo"] == "minha"
+                ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
+
+                st.markdown(f"""
+                <div style="background:#fff;border:2px solid #3a9fd6;border-radius:12px;
+                            padding:20px;margin-top:8px;
+                            box-shadow:0 0 0 3px rgba(58,159,214,0.12);">
+                    <div style="font-size:13px;font-weight:700;color:#1a2e4a;margin-bottom:12px;">
+                        ✏️ Configurando: <span style="color:#3a9fd6">{e["nome"]}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                val_nativo = st.text_input(
+                    "ID ou nome da página do Facebook",
+                    value=ads_id_atual,
+                    placeholder="Ex: Educbank  ou  102803918240129",
+                    key=f"cfg_input_nativo_{ci}",
+                )
+
+                col_b, col_s, col_c = st.columns([2, 2, 1])
+                with col_b:
+                    if st.button("🔍 Buscar páginas", key=f"btn_buscar_nativo_{ci}", use_container_width=True):
+                        if val_nativo.strip():
+                            st.session_state.ads_onboarding_empresa = e["nome"]
+                            with st.spinner("Buscando…"):
+                                paginas = buscar_paginas_facebook(val_nativo.strip())
+                            st.session_state.ads_onboarding_paginas = paginas
+                            st.rerun()
+                        else:
+                            st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
+                with col_s:
+                    if st.button("💾 Salvar ID", key=f"btn_salvar_nativo_{ci}", use_container_width=True, type="primary"):
+                        if val_nativo.strip():
+                            salvar_ads_id(e, val_nativo.strip())
+                            st.session_state.ads_editando_empresa   = None
+                            st.session_state.ads_onboarding_empresa = None
+                            st.session_state.ads_onboarding_paginas = []
+                            st.toast(f"✅ {e['nome']} salvo!", icon="✅")
+                            st.rerun()
+                        else:
+                            st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
+                with col_c:
+                    if st.button("✕ Cancelar", key=f"btn_cancelar_nativo_{ci}", use_container_width=True):
+                        st.session_state.ads_editando_empresa   = None
+                        st.session_state.ads_onboarding_empresa = None
+                        st.session_state.ads_onboarding_paginas = []
+                        st.rerun()
+
+                st.markdown("</div>", unsafe_allow_html=True)
+                break
 
         # ── Páginas encontradas
         if onboarding_empresa and onboarding_paginas:

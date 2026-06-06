@@ -5728,13 +5728,18 @@ function triggerTab(label) {{
                 # tenta ler do input_vals como fallback
                 pass
             if ghost_buscar[ci]:
-                # Tenta input_vals primeiro, depois session_state salvo, depois ads_id salvo
-                val = input_vals.get(ci, "").strip()
+                e = todas_empresas[ci]
+                # Tenta todas as fontes em ordem de prioridade
+                val = (
+                    input_vals.get(ci, "").strip()
+                    or st.session_state.get(f"cfg_input_val_{ci}", "").strip()
+                    or st.session_state.get(f"cfg_buscar_termo_{ci}", "").strip()
+                )
                 if not val:
-                    val = st.session_state.get(f"cfg_buscar_termo_{ci}", "").strip()
-                if not val:
+                    # fallback: ads_id já salvo
                     is_minha_e = e["tipo"] == "minha"
                     val = (emp.get("ads_id", "") if is_minha_e else concs[e["idx"]].get("ads_id", "")).strip()
+
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]

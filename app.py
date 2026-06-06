@@ -2328,9 +2328,11 @@ html, body { background: transparent; overflow: hidden; }
                     f"<div style='display:flex;align-items:center;gap:8px;'>"
                     f"<div style='width:28px;height:28px;border-radius:8px;background:{item['icon_bg']};"
                     f"display:flex;align-items:center;justify-content:center;flex-shrink:0'>{item['icon']}</div>"
-                    f"<div><div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>{item['label']}</div>"
-                    f"<div style='font-size:12px;font-weight:600;color:#374151'>{item['valor']}</div></div>"
-                    f"</div></div>",
+                    f"<div>"
+                    f"<div style='font-size:9px;font-weight:600;color:#d1d5db;text-transform:uppercase;letter-spacing:0.5px'>Fonte</div>"
+                    f"<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>{item['label']}</div>"
+                    f"<div style='font-size:12px;font-weight:600;color:#374151;white-space:nowrap'>{item['valor']}</div>"
+                    f"</div></div></div>",
                     unsafe_allow_html=True
                 )
 

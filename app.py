@@ -5722,13 +5722,17 @@ function triggerTab(label) {{
                     st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                     st.rerun()
             if ghost_buscar[ci]:
-                val = input_vals.get(ci,"").strip()
+                # Tenta input_vals primeiro, depois session_state salvo, depois ads_id salvo
+                val = input_vals.get(ci, "").strip()
+                if not val:
+                    val = st.session_state.get(f"cfg_buscar_termo_{ci}", "").strip()
                 if not val:
                     is_minha_e = e["tipo"] == "minha"
-                    val = (emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")).strip()
+                    val = (emp.get("ads_id", "") if is_minha_e else concs[e["idx"]].get("ads_id", "")).strip()
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
+                    st.session_state[f"cfg_buscar_termo_{ci}"] = val
                     with st.spinner("Buscando…"):
                         paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
@@ -5825,7 +5829,7 @@ function triggerTab(label) {{
                     onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
                 />
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                    <button class="btn-buscar" onclick="triggerGhost('buscar_{ci}')">
+                    <button class="btn-buscar" onclick="var v=document.getElementById('cfg_input_{ci}').value;syncInput({ci},v);setTimeout(function(){{triggerGhost('buscar_{ci}');}},150)">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                              stroke="currentColor" stroke-width="2"
                              stroke-linecap="round" stroke-linejoin="round">
@@ -5997,6 +6001,7 @@ html, body {{
 </div>
 <script>
 function syncInput(ci, val) {{
+    try {{ window.parent.sessionStorage.setItem('cfg_buscar_termo_' + ci, val); }} catch(e) {}
     var inputs = window.parent.document.querySelectorAll('input');
     inputs.forEach(function(inp) {{
         var label = inp.getAttribute('aria-label') || '';
@@ -6005,6 +6010,7 @@ function syncInput(ci, val) {{
                 window.parent.HTMLInputElement.prototype, 'value').set;
             setter.call(inp, val);
             inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
         }}
     }});
 }}

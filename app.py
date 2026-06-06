@@ -6049,6 +6049,8 @@ function triggerTab(label) {{
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; margin-top:0 !important; }}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+@keyframes pulse {{ 0%,100%{{opacity:1}} 50%{{opacity:0.5}} }}
 .outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
 .cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
 .card {{ background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }}
@@ -6070,13 +6072,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .btn-buscar {{ display:flex; align-items:center; justify-content:center; gap:7px;
     padding:10px 0; border:1.5px solid #3a9fd6; border-radius:8px;
     background:#eff6ff; font-size:13px; font-weight:700; color:#1d4ed8;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
 .btn-buscar:hover {{ background:#dbeafe; }}
+.btn-buscar:disabled {{ opacity:0.7; cursor:not-allowed; background:#e0f0ff; }}
 .btn-salvar {{ display:flex; align-items:center; justify-content:center; gap:7px;
     padding:10px 0; border:none; border-radius:8px;
     background:#0e2a47; font-size:13px; font-weight:700; color:#fff;
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
 .btn-salvar:hover {{ background:#1a3a5c; }}
+.btn-salvar:disabled {{ opacity:0.7; cursor:not-allowed; }}
+.search-toast {{
+    background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px;
+    padding:10px 14px; font-size:12px; color:#0369a1; font-weight:600;
+    display:flex; align-items:center; gap:8px; margin-top:4px;
+    animation: pulse 1.5s ease-in-out infinite;
+}}
+.spinner-svg {{ animation: spin 0.8s linear infinite; flex-shrink:0; }}
 </style>
 <div class="outer">
     <div class="cards-grid">{cards_html}</div>
@@ -6090,13 +6101,10 @@ function triggerGhost(label) {{
     }}
 }}
 
-// Sincroniza o valor com o st.text_input nativo oculto
 function setHiddenVal(ci, val, callback) {{
     var inputs = window.parent.document.querySelectorAll('input');
-    var found  = false;
     inputs.forEach(function(inp) {{
         if ((inp.getAttribute('aria-label') || '') === 'h' + ci) {{
-            found = true;
             var setter = Object.getOwnPropertyDescriptor(
                 window.parent.HTMLInputElement.prototype, 'value').set;
             setter.call(inp, val);
@@ -6104,7 +6112,6 @@ function setHiddenVal(ci, val, callback) {{
             inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
         }}
     }});
-    // Também sincroniza o input nativo do painel oculto se existir
     inputs.forEach(function(inp) {{
         var label = inp.closest('[data-testid="stTextInput"]');
         if (label) {{
@@ -6124,8 +6131,35 @@ function setHiddenVal(ci, val, callback) {{
 function handleBuscar(ci) {{
     var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
+
+    // Desabilita botão com spinner
     var btn = document.querySelector('#card_wrap_' + ci + ' .btn-buscar');
-    if (btn) {{ btn.textContent = 'Buscando…'; btn.disabled = true; }}
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="spinner-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Buscando...';
+    }}
+
+    // Desabilita botão salvar também
+    var btnS = document.querySelector('#card_wrap_' + ci + ' .btn-salvar');
+    if (btnS) {{ btnS.disabled = true; }}
+
+    // Mostra toast de progresso no card
+    var cardBody = document.getElementById('card_wrap_' + ci);
+    if (cardBody) {{
+        var existing = document.getElementById('search_toast_' + ci);
+        if (!existing) {{
+            var toast = document.createElement('div');
+            toast.id = 'search_toast_' + ci;
+            toast.className = 'search-toast';
+            toast.innerHTML = '<svg class="spinner-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
+                + ' Buscando no Facebook Ads Library... pode levar até 1 minuto.';
+            var editSection = cardBody.querySelector('.edit-section');
+            if (editSection) editSection.appendChild(toast);
+        }}
+    }}
+
+    syncHeight();
+
     setHiddenVal(ci, val, function() {{
         triggerGhost('do_buscar_' + ci);
     }});
@@ -6135,7 +6169,10 @@ function handleSalvar(ci) {{
     var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um ID ou nome antes de salvar.'); return; }}
     var btn = document.querySelector('#card_wrap_' + ci + ' .btn-salvar');
-    if (btn) {{ btn.textContent = 'Salvando…'; btn.disabled = true; }}
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = '<svg class="spinner-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Salvando...';
+    }}
     setHiddenVal(ci, val, function() {{
         triggerGhost('do_salvar_' + ci);
     }});

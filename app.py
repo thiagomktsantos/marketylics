@@ -5658,12 +5658,16 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
+        # ── Recupera valores via query_params (canal confiável iframe→Python)
+        for ci in range(len(todas_empresas)):
+            qk = f"_cfg_val_{ci}"
+            if qk in st.query_params:
+                st.session_state[f"cfg_val_temp_{ci}"] = st.query_params[qk]
+
         # ── CSS para ocultar todos os ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
-        .st-key-cfg_ghost_save_{ci},
         .st-key-cfg_ghost_cancel_{ci},
-        .st-key-cfg_ghost_buscar_{ci},
         .st-key-cfg_do_buscar_{ci},
         .st-key-cfg_do_salvar_{ci} {{
             position:fixed!important;top:-9999px!important;left:-9999px!important;
@@ -5671,31 +5675,24 @@ function triggerTab(label) {{
             opacity:0!important;pointer-events:none!important;display:none!important;
         }}
         .stElementContainer:has(.st-key-cfg_ghost_edit_{ci}),
-        .stElementContainer:has(.st-key-cfg_ghost_save_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_cancel_{ci}),
-        .stElementContainer:has(.st-key-cfg_ghost_buscar_{ci}),
         .stElementContainer:has(.st-key-cfg_do_buscar_{ci}),
         .stElementContainer:has(.st-key-cfg_do_salvar_{ci}) {{
             display:none!important;height:0!important;min-height:0!important;
             max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
         }}
         """ for ci in range(len(todas_empresas))])
-
         st.markdown(f"<style>{all_ghost_css}</style>", unsafe_allow_html=True)
 
         # ── Ghost triggers
         ghost_edit      = {}
-        ghost_save      = {}
         ghost_cancel    = {}
-        ghost_buscar    = {}
         ghost_do_buscar = {}
         ghost_do_salvar = {}
 
         for ci, e in enumerate(todas_empresas):
             ghost_edit[ci]      = st.button(f"edit_{ci}",      key=f"cfg_ghost_edit_{ci}")
-            ghost_save[ci]      = st.button(f"save_{ci}",      key=f"cfg_ghost_save_{ci}")
             ghost_cancel[ci]    = st.button(f"cancel_{ci}",    key=f"cfg_ghost_cancel_{ci}")
-            ghost_buscar[ci]    = st.button(f"buscar_{ci}",    key=f"cfg_ghost_buscar_{ci}")
             ghost_do_buscar[ci] = st.button(f"do_buscar_{ci}", key=f"cfg_do_buscar_{ci}")
             ghost_do_salvar[ci] = st.button(f"do_salvar_{ci}", key=f"cfg_do_salvar_{ci}")
 
@@ -5706,31 +5703,42 @@ function triggerTab(label) {{
                 st.session_state.ads_onboarding_empresa = None
                 st.session_state.ads_onboarding_paginas = []
                 st.rerun()
+
             if ghost_cancel[ci]:
                 st.session_state.ads_editando_empresa   = None
                 st.session_state.ads_onboarding_empresa = None
                 st.session_state.ads_onboarding_paginas = []
+                # Limpa query params
+                for k in list(st.query_params.keys()):
+                    if k.startswith("_cfg_val_"):
+                        del st.query_params[k]
                 st.rerun()
-            if ghost_save[ci]:
-                val = st.session_state.get(f"cfg_input_nativo_{ci}", "").strip()
-                if val:
-                    salvar_ads_id(e, val)
-                    st.session_state.ads_editando_empresa   = None
-                    st.session_state.ads_onboarding_empresa = None
-                    st.session_state.ads_onboarding_paginas = []
-                    st.toast(f"✅ {e['nome']} salvo!", icon="✅")
-                    st.rerun()
-            if ghost_buscar[ci]:
-                val = st.session_state.get(f"cfg_input_nativo_{ci}", "").strip()
+
+            if ghost_do_buscar[ci]:
+                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
                     with st.spinner("Buscando…"):
                         paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
+                    # Limpa query param após usar
+                    qk = f"_cfg_val_{ci}"
+                    if qk in st.query_params:
+                        del st.query_params[qk]
                     st.rerun()
-                else:
-                    st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
+
+            if ghost_do_salvar[ci]:
+                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                if val:
+                    salvar_ads_id(e, val)
+                    st.session_state.ads_editando_empresa   = None
+                    st.session_state.ads_onboarding_empresa = None
+                    st.session_state.ads_onboarding_paginas = []
+                    qk = f"_cfg_val_{ci}"
+                    if qk in st.query_params:
+                        del st.query_params[qk]
+                    st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                     st.rerun()
 
         # ── INFO BOX
@@ -5754,130 +5762,6 @@ function triggerTab(label) {{
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-        # ── Inputs ocultos nativos para capturar valor
-        st.markdown("".join([f"""
-        <style>
-        .st-key-cfg_hidden_val_{ci} {{
-            position: fixed !important;
-            top: -9999px !important;
-            left: -9999px !important;
-            width: 1px !important;
-            height: 1px !important;
-            overflow: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }}
-        .stElementContainer:has(.st-key-cfg_hidden_val_{ci}) {{
-            position: fixed !important;
-            top: -9999px !important;
-            left: -9999px !important;
-            width: 1px !important;
-            height: 1px !important;
-            overflow: hidden !important;
-        }}
-        </style>
-        """ for ci in range(len(todas_empresas))]), unsafe_allow_html=True)
-
-        hidden_vals = {}
-        for ci in range(len(todas_empresas)):
-            hidden_vals[ci] = st.text_input(
-                f"h{ci}",
-                value=st.session_state.get(f"cfg_hidden_val_{ci}", ""),
-                key=f"cfg_hidden_val_{ci}",
-                label_visibility="hidden",
-            )
-
-        # ── Input nativo OCULTO para cada empresa (processa busca/salvar)
-        # CSS para ocultar o painel nativo — o iframe é a UI visível
-        painel_css = "".join([f"""
-        <style>
-        .st-key-painel_edicao_{ci} {{
-            position: fixed !important;
-            top: -99999px !important;
-            left: -99999px !important;
-            width: 1px !important;
-            height: 1px !important;
-            overflow: hidden !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
-            visibility: hidden !important;
-        }}
-        .st-key-cfg_input_nativo_{ci} label,
-        .stElementContainer:has(.st-key-cfg_input_nativo_{ci}) label {{
-            display: none !important;
-        }}
-        </style>
-        """ for ci in range(len(todas_empresas))])
-        st.markdown(painel_css, unsafe_allow_html=True)
-
-        # ── Processar busca e salvar vindos do iframe
-        for ci, e in enumerate(todas_empresas):
-            val_hidden = hidden_vals.get(ci, "").strip()
-            buscar_key = f"cfg_do_buscar_{ci}"
-            salvar_key = f"cfg_do_salvar_{ci}"
-
-            if st.session_state.get(buscar_key) and val_hidden:
-                st.session_state[buscar_key] = False
-                st.session_state.ads_onboarding_empresa = e["nome"]
-                st.session_state.ads_editando_empresa   = e["nome"]
-                with st.spinner("Buscando…"):
-                    paginas = buscar_paginas_facebook(val_hidden)
-                st.session_state.ads_onboarding_paginas = paginas
-                st.rerun()
-
-            if st.session_state.get(salvar_key) and val_hidden:
-                st.session_state[salvar_key] = False
-                salvar_ads_id(e, val_hidden)
-                st.session_state.ads_editando_empresa   = None
-                st.session_state.ads_onboarding_empresa = None
-                st.session_state.ads_onboarding_paginas = []
-                st.toast(f"✅ {e['nome']} salvo!", icon="✅")
-                st.rerun()
-
-        # ── Painel nativo OCULTO — existe para o Python processar, invisível para o usuário
-        for ci, e in enumerate(todas_empresas):
-            if editando_empresa == e["nome"]:
-                is_minha_e   = e["tipo"] == "minha"
-                ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
-
-                with st.container(key=f"painel_edicao_{ci}"):
-                    val_nativo = st.text_input(
-                        "ID ou nome",
-                        value=ads_id_atual,
-                        placeholder="Ex: Educbank  ou  106889667774994",
-                        key=f"cfg_input_nativo_{ci}",
-                        label_visibility="collapsed",
-                    )
-                    col_b, col_s, col_c = st.columns([5, 5, 3])
-                    with col_b:
-                        if st.button("🔍 Buscar páginas", key=f"btn_buscar_nativo_{ci}", use_container_width=True):
-                            if val_nativo.strip():
-                                st.session_state.ads_onboarding_empresa = e["nome"]
-                                with st.spinner("Buscando…"):
-                                    paginas = buscar_paginas_facebook(val_nativo.strip())
-                                st.session_state.ads_onboarding_paginas = paginas
-                                st.rerun()
-                            else:
-                                st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
-                    with col_s:
-                        if st.button("💾 Salvar ID", key=f"btn_salvar_nativo_{ci}", use_container_width=True, type="primary"):
-                            if val_nativo.strip():
-                                salvar_ads_id(e, val_nativo.strip())
-                                st.session_state.ads_editando_empresa   = None
-                                st.session_state.ads_onboarding_empresa = None
-                                st.session_state.ads_onboarding_paginas = []
-                                st.toast(f"✅ {e['nome']} salvo!", icon="✅")
-                                st.rerun()
-                            else:
-                                st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
-                    with col_c:
-                        if st.button("✕ Cancelar", key=f"btn_cancelar_nativo_{ci}", use_container_width=True):
-                            st.session_state.ads_editando_empresa   = None
-                            st.session_state.ads_onboarding_empresa = None
-                            st.session_state.ads_onboarding_paginas = []
-                            st.rerun()
-                break
 
         # ── Monta HTML dos cards
         cards_html = ""
@@ -5922,8 +5806,7 @@ function triggerTab(label) {{
                 if is_editing else "border:1px solid #e5e7eb;"
             )
 
-            # Valor atual do input nativo (se estiver editando)
-            input_val = st.session_state.get(f"cfg_input_nativo_{ci}", ads_id) if is_editing else ads_id
+            input_val = ads_id
 
             if is_editing:
                 cards_html += f"""
@@ -5977,7 +5860,7 @@ function triggerTab(label) {{
                                 onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
                             />
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                                <button class="btn-buscar" onclick="handleBuscar({ci})">
+                                <button class="btn-buscar" id="btn_buscar_{ci}" onclick="handleBuscar({ci})">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                                          stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round">
@@ -5986,7 +5869,7 @@ function triggerTab(label) {{
                                     </svg>
                                     Buscar páginas
                                 </button>
-                                <button class="btn-salvar" onclick="handleSalvar({ci})">
+                                <button class="btn-salvar" id="btn_salvar_{ci}" onclick="handleSalvar({ci})">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                                          stroke="currentColor" stroke-width="2"
                                          stroke-linecap="round" stroke-linejoin="round">
@@ -6061,7 +5944,7 @@ function triggerTab(label) {{
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; margin-top:0 !important; }}
-@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+@keyframes spin  {{ to {{ transform: rotate(360deg); }} }}
 @keyframes pulse {{ 0%,100%{{opacity:1}} 50%{{opacity:0.5}} }}
 .outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
 .cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
@@ -6085,26 +5968,29 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:10px 0; border:1.5px solid #3a9fd6; border-radius:8px;
     background:#eff6ff; font-size:13px; font-weight:700; color:#1d4ed8;
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
-.btn-buscar:hover {{ background:#dbeafe; }}
-.btn-buscar:disabled {{ opacity:0.7; cursor:not-allowed; background:#e0f0ff; }}
+.btn-buscar:hover:not(:disabled) {{ background:#dbeafe; }}
+.btn-buscar:disabled {{ opacity:0.65; cursor:not-allowed; }}
 .btn-salvar {{ display:flex; align-items:center; justify-content:center; gap:7px;
     padding:10px 0; border:none; border-radius:8px;
     background:#0e2a47; font-size:13px; font-weight:700; color:#fff;
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
-.btn-salvar:hover {{ background:#1a3a5c; }}
-.btn-salvar:disabled {{ opacity:0.7; cursor:not-allowed; }}
+.btn-salvar:hover:not(:disabled) {{ background:#1a3a5c; }}
+.btn-salvar:disabled {{ opacity:0.65; cursor:not-allowed; }}
 .search-toast {{
     background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px;
     padding:10px 14px; font-size:12px; color:#0369a1; font-weight:600;
-    display:flex; align-items:center; gap:8px; margin-top:4px;
+    display:flex; align-items:center; gap:8px; margin-top:8px;
     animation: pulse 1.5s ease-in-out infinite;
 }}
-.spinner-svg {{ animation: spin 0.8s linear infinite; flex-shrink:0; }}
+.spin {{ animation: spin 0.8s linear infinite; flex-shrink:0; }}
 </style>
 <div class="outer">
     <div class="cards-grid">{cards_html}</div>
 </div>
 <script>
+var SPINNER = '<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+var SPINNER_BLUE = '<svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
 function triggerGhost(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
@@ -6113,96 +5999,55 @@ function triggerGhost(label) {{
     }}
 }}
 
-function setHiddenVal(ci, val, callback) {{
-    var inputs = window.parent.document.querySelectorAll('input');
-
-    inputs.forEach(function(inp) {{
-        if ((inp.getAttribute('aria-label') || '') === 'h' + ci) {{
-            var setter = Object.getOwnPropertyDescriptor(
-                window.parent.HTMLInputElement.prototype,
-                'value'
-            ).set;
-
-            setter.call(inp, val);
-
-            inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            inp.dispatchEvent(new Event('blur', {{ bubbles: true }})); // ← NOVO
-        }}
-    }});
-
-    inputs.forEach(function(inp) {{
-        var label = inp.closest('[data-testid="stTextInput"]');
-
-        if (label) {{
-            var ariaLabel = inp.getAttribute('aria-label') || '';
-
-            if (ariaLabel === 'ID ou nome') {{
-                var setter2 = Object.getOwnPropertyDescriptor(
-                    window.parent.HTMLInputElement.prototype,
-                    'value'
-                ).set;
-
-                setter2.call(inp, val);
-
-                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                inp.dispatchEvent(new Event('blur', {{ bubbles: true }})); // ← NOVO
-            }}
-        }}
-    }});
-
-    setTimeout(callback, 800); 
+// Salva valor na URL (query param) — canal confiável para o Python ler
+function saveValToURL(ci, val) {{
+    var url = new URL(window.parent.location.href);
+    url.searchParams.set('_cfg_val_' + ci, val);
+    window.parent.history.replaceState({{}}, '', url);
 }}
 
 function handleBuscar(ci) {{
-    var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
+    var inp = document.getElementById('cfg_input_' + ci);
+    var val = (inp || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
 
-    // Desabilita botão com spinner
-    var btn = document.querySelector('#card_wrap_' + ci + ' .btn-buscar');
-    if (btn) {{
-        btn.disabled = true;
-        btn.innerHTML = '<svg class="spinner-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Buscando...';
-    }}
-
-    // Desabilita botão salvar também
-    var btnS = document.querySelector('#card_wrap_' + ci + ' .btn-salvar');
+    // UI feedback
+    var btn = document.getElementById('btn_buscar_' + ci);
+    if (btn) {{ btn.disabled = true; btn.innerHTML = SPINNER + ' Buscando...'; }}
+    var btnS = document.getElementById('btn_salvar_' + ci);
     if (btnS) {{ btnS.disabled = true; }}
 
-    // Mostra toast de progresso no card
-    var cardBody = document.getElementById('card_wrap_' + ci);
-    if (cardBody) {{
-        var existing = document.getElementById('search_toast_' + ci);
-        if (!existing) {{
-            var toast = document.createElement('div');
-            toast.id = 'search_toast_' + ci;
-            toast.className = 'search-toast';
-            toast.innerHTML = '<svg class="spinner-svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
-                + ' Buscando no Facebook Ads Library... pode levar até 1 minuto.';
-            var editSection = cardBody.querySelector('.edit-section');
-            if (editSection) editSection.appendChild(toast);
-        }}
+    // Toast
+    var wrap = document.getElementById('card_wrap_' + ci);
+    if (wrap && !document.getElementById('toast_' + ci)) {{
+        var t = document.createElement('div');
+        t.id = 'toast_' + ci;
+        t.className = 'search-toast';
+        t.innerHTML = SPINNER_BLUE + ' Buscando no Facebook Ads Library... pode levar até 1 minuto.';
+        var es = wrap.querySelector('.edit-section');
+        if (es) es.appendChild(t);
     }}
-
     syncHeight();
 
-    setHiddenVal(ci, val, function() {{
+    // Salva na URL e dispara ghost
+    saveValToURL(ci, val);
+    setTimeout(function() {{
         triggerGhost('do_buscar_' + ci);
-    }});
+    }}, 300);
 }}
 
 function handleSalvar(ci) {{
-    var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
+    var inp = document.getElementById('cfg_input_' + ci);
+    var val = (inp || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um ID ou nome antes de salvar.'); return; }}
-    var btn = document.querySelector('#card_wrap_' + ci + ' .btn-salvar');
-    if (btn) {{
-        btn.disabled = true;
-        btn.innerHTML = '<svg class="spinner-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Salvando...';
-    }}
-    setHiddenVal(ci, val, function() {{
+
+    var btn = document.getElementById('btn_salvar_' + ci);
+    if (btn) {{ btn.disabled = true; btn.innerHTML = SPINNER + ' Salvando...'; }}
+
+    saveValToURL(ci, val);
+    setTimeout(function() {{
         triggerGhost('do_salvar_' + ci);
-    }});
+    }}, 300);
 }}
 
 function syncHeight() {{
@@ -6227,7 +6072,7 @@ setTimeout(syncHeight, 700);
 </script>
 """, height=250, scrolling=False)
 
-        # ── Páginas encontradas (onboarding) — fora do iframe, nativo
+        # ── Páginas encontradas (onboarding)
         if onboarding_empresa and onboarding_paginas:
             e_ob = next((x for x in todas_empresas if x["nome"] == onboarding_empresa), None)
             if e_ob:

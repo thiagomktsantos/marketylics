@@ -1819,7 +1819,7 @@ setTimeout(ajustarAltura, 800);
         st.markdown("""
         <div style='background:#e7fbff;border:1px solid #6fd1f3;border-radius:12px;
                     padding:14px 20px;display:flex;align-items:center;gap:16px;
-                    margin-top:-38px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
+                    margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
             <div style='width:42px;height:42px;border-radius:10px;background:#007dbb;
                         display:flex;align-items:center;justify-content:center;flex-shrink:0'>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -2221,7 +2221,7 @@ body {{ padding-bottom: 8px; }}
         st.markdown("""
         <div style='background:#e7fbff;border:1px solid #6fd1f3;border-radius:12px;
                     padding:14px 20px;display:flex;align-items:center;gap:16px;
-                    margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
+                    margin-top:-38px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
             <div style='width:42px;height:42px;border-radius:10px;background:#007dbb;
                         display:flex;align-items:center;justify-content:center;flex-shrink:0'>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">

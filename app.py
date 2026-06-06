@@ -5758,11 +5758,23 @@ function triggerTab(label) {{
         # ── Inputs ocultos nativos para capturar valor
         st.markdown("".join([f"""
         <style>
-        .st-key-cfg_hidden_val_{ci},
+        .st-key-cfg_hidden_val_{ci} {{
+            position: fixed !important;
+            top: -9999px !important;
+            left: -9999px !important;
+            width: 1px !important;
+            height: 1px !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }}
         .stElementContainer:has(.st-key-cfg_hidden_val_{ci}) {{
-            position:fixed!important;top:-9999px!important;left:-9999px!important;
-            width:0!important;height:0!important;overflow:hidden!important;
-            opacity:0!important;pointer-events:none!important;display:none!important;
+            position: fixed !important;
+            top: -9999px !important;
+            left: -9999px !important;
+            width: 1px !important;
+            height: 1px !important;
+            overflow: hidden !important;
         }}
         </style>
         """ for ci in range(len(todas_empresas))]), unsafe_allow_html=True)

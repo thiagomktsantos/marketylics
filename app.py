@@ -1957,7 +1957,6 @@ html, body { background: transparent; overflow: hidden; }
     if concorrentes:
         import json as _json_conc
  
-        # ── Oculta botões Streamlit e containers completamente ───
         hide_btns_css = "\n".join([
             f"""
             .st-key-editar_{i},
@@ -1978,7 +1977,6 @@ html, body { background: transparent; overflow: hidden; }
         ])
         st.markdown(f"<style>{hide_btns_css}</style>", unsafe_allow_html=True)
  
-        # ── Monta JSON dos cards ─────────────────────────────────
         cards_conc = []
         for i, c in enumerate(concorrentes):
             cards_conc.append({
@@ -1992,7 +1990,6 @@ html, body { background: transparent; overflow: hidden; }
             })
         cards_json = _json_conc.dumps(cards_conc, ensure_ascii=True)
  
-        # ── Estima altura: ~300px por linha de 2 cards ──────────
         n_rows     = (len(concorrentes) + 1) // 2
         est_height = 40 + n_rows * 320
  
@@ -2149,7 +2146,6 @@ body {{ padding-bottom: 8px; }}
             var card = document.createElement('div');
             card.className = 'card';
  
-            /* header */
             var hdr = document.createElement('div');
             hdr.className = 'card-header';
             hdr.innerHTML =
@@ -2160,12 +2156,10 @@ body {{ padding-bottom: 8px; }}
                 + '</div>';
             card.appendChild(hdr);
  
-            /* divider */
             var dvd = document.createElement('div');
             dvd.className = 'divider';
             card.appendChild(dvd);
  
-            /* body */
             var body = document.createElement('div');
             body.className = 'card-body';
             body.innerHTML =
@@ -2175,7 +2169,6 @@ body {{ padding-bottom: 8px; }}
                 + makeRow(ICON_FB,    '#e8f0fe',  'Facebook',  c.fb_page);
             card.appendChild(body);
  
-            /* footer */
             var footer = document.createElement('div');
             footer.className = 'card-footer';
             var btnEdit = document.createElement('button');
@@ -2205,7 +2198,7 @@ body {{ padding-bottom: 8px; }}
 </body>
 </html>
 """, height=est_height, scrolling=False)
- 
+
         # ── Botões Streamlit reais (ocultos via CSS) ─────────────
         for i, c in enumerate(concorrentes):
             b1, b2 = st.columns(2)
@@ -2223,7 +2216,32 @@ body {{ padding-bottom: 8px; }}
                         salvar_cache_ads(st.session_state.ads_cache)
                     salvar_dados_usuario(st.session_state.user.id)
                     st.rerun()
- 
+
+        # ── Banner "Mantenha seus concorrentes atualizados" ──────
+        st.markdown("""
+        <div style='background:#e7fbff;border:1px solid #6fd1f3;border-radius:12px;
+                    padding:14px 20px;display:flex;align-items:center;gap:16px;
+                    margin-top:8px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
+            <div style='width:42px;height:42px;border-radius:10px;background:#007dbb;
+                        display:flex;align-items:center;justify-content:center;flex-shrink:0'>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+                          stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="9" cy="7" r="4"
+                          stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"
+                          stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"
+                          stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div style='font-size:16px;font-weight:600;color:#0f172a'>Mantenha seus concorrentes atualizados</div>
+                <div style='font-size:13px;color:#64748b;margin-top:-3px'>Monitorar concorrentes regularmente garante análises mais precisas e decisões mais estratégicas.</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     else:
         st.markdown("""
         <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;

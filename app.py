@@ -2332,19 +2332,19 @@ html, body { background: transparent; overflow: hidden; }
             cards_html = ""
             for item in update_items:
                 cards_html += (
-                    f"<div style='flex:1;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;'>"
-                    f"<div style='display:flex;align-items:center;gap:8px;'>"
-                    f"<div style='width:28px;height:28px;border-radius:8px;background:{item['icon_bg']};"
+                    f"<div style='display:flex;align-items:center;gap:6px;background:#ffffff;"
+                    f"border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px;white-space:nowrap'>"
+                    f"<div style='width:24px;height:24px;border-radius:6px;background:{item['icon_bg']};"
                     f"display:flex;align-items:center;justify-content:center;flex-shrink:0'>{item['icon']}</div>"
-                    f"<div style='min-width:0'>"
-                    f"<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>{item['label']}</div>"
-                    f"<div style='font-size:12px;font-weight:600;color:#374151;white-space:nowrap'>{item['valor']}</div>"
-                    f"</div></div></div>"
+                    f"<span style='font-size:11px;font-weight:700;color:#374151'>{item['label']}: {item['valor']}</span>"
+                    f"</div>"
                 )
 
             st.markdown(
-                "<div style='font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px'>Fonte</div>"
-                f"<div style='display:flex;gap:10px;'>{cards_html}</div>",
+                f"<div style='display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px'>"
+                f"<span style='font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>Fonte:</span>"
+                f"{cards_html}"
+                f"</div>",
                 unsafe_allow_html=True
             )
         else:

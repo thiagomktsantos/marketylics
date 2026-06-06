@@ -2438,11 +2438,29 @@ html, body { background: transparent; overflow: hidden; }
         ("diferenciais","🏆", "Diferenciais",      len(todas_empresas_geral), "Visão comparativa"),
     ]
  
-    components.html(f"""
+# Monta os botões ANTES do f-string principal
+botoes_html = ""
+        for stk, icon, lbl, cnt, desc in abas_def:
+            active_class = "active" if dash_aba == stk else ""
+            has_class = "has" if cnt > 0 else ""
+            botoes_html += f"""
+    <button class="tab-pill {active_class}"
+        style="position:relative"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='dash_{stk}'){{b.click();return;}}}}}})()"
+    >
+        <div class="tab-icon-wrap">{icon}</div>
+        <div class="tab-content">
+            <span class="tab-title">{lbl}</span>
+            <span class="tab-sub">{desc}</span>
+        </div>
+        <span class="tab-badge {has_class}">{cnt}</span>
+    </button>"""
+
+        components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .tabs-wrap {{
     display:grid;
     grid-template-columns:repeat(3,1fr);
@@ -2453,13 +2471,13 @@ html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overfl
     display:flex; align-items:center; justify-content:flex-start; gap:12px;
     padding:14px 18px; border-radius:12px; cursor:pointer;
     border:1.5px solid #e5e7eb; background:#fff;
-    font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
+    font-family:'DM Sans',sans-serif; transition:all 0.15s;
     text-align:left; width:100%;
 }}
 .tab-pill:hover {{ border-color:#3a9fd6; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; box-shadow:0 4px 16px rgba(14,42,71,0.2); }}
 .tab-pill.active::after {{
-    content:\'\'; position:absolute; bottom:0; left:0; right:0;
+    content:''; position:absolute; bottom:0; left:0; right:0;
     height:3px; background:linear-gradient(90deg,#3a9fd6,#2ecc71);
     border-radius:0 0 12px 12px;
 }}
@@ -2484,28 +2502,15 @@ html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overfl
 .tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
 </style>
 <div class="tabs-wrap">
-{"".join([
-    f\'\'\'<button class="tab-pill {\'active\' if dash_aba == stk else \'\'}"
-        style="position:relative"
-        onclick="(function(){{var btns=window.parent.document.querySelectorAll(\'button\');for(var b of btns){{var t=(b.textContent||b.innerText||\'\').split(/\\\\s+/).join(\' \').trim();if(t===\'dash_{stk}\'){{b.click();return;}}}}}})()"
-    >
-        <div class="tab-icon-wrap">{icon}</div>
-        <div class="tab-content">
-            <span class="tab-title">{lbl}</span>
-            <span class="tab-sub">{desc}</span>
-        </div>
-        <span class="tab-badge {\'has\' if cnt > 0 else \'\'}">{cnt}</span>
-    </button>\'\'\'
-    for stk, icon, lbl, cnt, desc in abas_def
-])}
+{botoes_html}
 </div>
 <script>
 (function() {{
-    var iframes = window.parent.document.querySelectorAll(\'iframe\');
+    var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = \'86px\';
-            iframes[i].style.marginTop = \'-12px\';
+            iframes[i].style.height = '86px';
+            iframes[i].style.marginTop = '-12px';
             break;
         }} }} catch(e) {{}}
     }}

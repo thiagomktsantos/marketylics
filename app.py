@@ -2257,39 +2257,39 @@ body {{ padding-bottom: 8px; }}
 # ---------------------------------------------------
 
 elif st.session_state.pagina == "geral":
- 
+
     import datetime as _dt
     import json as _json
- 
+
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
- 
+
     # ── Cabeçalho com HR ──────────────────────────────────────────────
     h1, h2 = st.columns([6, 4])
- 
+
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 @font-face {
-    font-family: \'Animo\';
-    src: url(\'https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf\') format(\'opentype\');
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
 .titulo {
-    font-family: \'Animo\', \'DM Sans\', sans-serif;
+    font-family: 'Animo', 'DM Sans', sans-serif;
     font-size: 32px; font-weight: 700; color: #1a2e4a;
     text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
 }
-.sub { font-family: \'DM Sans\', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
 <div class="titulo">Dashboard Geral</div>
 <div class="sub">Panorama competitivo da sua empresa e concorrentes.</div>
 """, height=70)
- 
+
     with h2:
-        st.markdown("<div style=\'padding-top:6px\'/>", unsafe_allow_html=True)
+        st.markdown("<div style='padding-top:6px'/>", unsafe_allow_html=True)
         ultima_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
         ultima_ads   = ""
         for v in st.session_state.get("ads_cache", {}).values():
@@ -2299,62 +2299,58 @@ html, body { background: transparent; overflow: hidden; }
             if v.get("ts"):
                 ultima_ads = v["ts"]
                 break
- 
-        # Box de últimas atualizações
+
         items_html = ""
         if ultima_redes:
-            items_html += f"""
-            <div style=\'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f2f5;\'>
-                <div style=\'width:28px;height:28px;border-radius:8px;background:#f0f9ff;
-                            display:flex;align-items:center;justify-content:center;flex-shrink:0\'>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2">
-                        <rect x="2" y="2" width="20" height="20" rx="5"/>
-                        <circle cx="12" cy="12" r="4.5" fill="none"/>
-                        <circle cx="17.5" cy="6.5" r="1.2" fill="#0369a1"/>
-                    </svg>
-                </div>
-                <div style=\'flex:1;min-width:0\'>
-                    <div style=\'font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px\'>Instagram</div>
-                    <div style=\'font-size:12px;font-weight:600;color:#374151\'>{ultima_redes}</div>
-                </div>
-            </div>"""
- 
+            items_html += (
+                "<div style='display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f2f5;'>"
+                "<div style='width:28px;height:28px;border-radius:8px;background:#f0f9ff;"
+                "display:flex;align-items:center;justify-content:center;flex-shrink:0'>"
+                "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#0369a1' stroke-width='2'>"
+                "<rect x='2' y='2' width='20' height='20' rx='5'/>"
+                "<circle cx='12' cy='12' r='4.5' fill='none'/>"
+                "<circle cx='17.5' cy='6.5' r='1.2' fill='#0369a1'/>"
+                "</svg></div>"
+                "<div style='flex:1;min-width:0'>"
+                "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>Instagram</div>"
+                f"<div style='font-size:12px;font-weight:600;color:#374151'>{ultima_redes}</div>"
+                "</div></div>"
+            )
+
         if ultima_ads:
-            items_html += f"""
-            <div style=\'display:flex;align-items:center;gap:8px;padding:6px 0;\'>
-                <div style=\'width:28px;height:28px;border-radius:8px;background:#fff7ed;
-                            display:flex;align-items:center;justify-content:center;flex-shrink:0\'>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2">
-                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                        <path d="M9 9h6M9 12h6M9 15h4"/>
-                    </svg>
-                </div>
-                <div style=\'flex:1;min-width:0\'>
-                    <div style=\'font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px\'>Meta Ads</div>
-                    <div style=\'font-size:12px;font-weight:600;color:#374151\'>{ultima_ads}</div>
-                </div>
-            </div>"""
- 
+            items_html += (
+                "<div style='display:flex;align-items:center;gap:8px;padding:6px 0;'>"
+                "<div style='width:28px;height:28px;border-radius:8px;background:#fff7ed;"
+                "display:flex;align-items:center;justify-content:center;flex-shrink:0'>"
+                "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#c2410c' stroke-width='2'>"
+                "<rect x='3' y='3' width='18' height='18' rx='2'/>"
+                "<path d='M9 9h6M9 12h6M9 15h4'/>"
+                "</svg></div>"
+                "<div style='flex:1;min-width:0'>"
+                "<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>Meta Ads</div>"
+                f"<div style='font-size:12px;font-weight:600;color:#374151'>{ultima_ads}</div>"
+                "</div></div>"
+            )
+
         if items_html:
-            st.markdown(f"""
-            <div style=\'background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;
-                        padding:8px 12px;margin-top:2px\'>
-                <div style=\'font-size:10px;font-weight:700;color:#9ca3af;
-                             text-transform:uppercase;letter-spacing:0.8px;
-                             margin-bottom:6px\'>Últimas atualizações</div>
-                {items_html}
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                "<div style='background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;"
+                "padding:8px 12px;margin-top:2px'>"
+                "<div style='font-size:10px;font-weight:700;color:#9ca3af;"
+                "text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px'>Últimas atualizações</div>"
+                f"{items_html}</div>",
+                unsafe_allow_html=True
+            )
         else:
-            st.markdown("""
-            <div style=\'background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;
-                        padding:10px 14px;text-align:center\'>
-                <div style=\'font-size:12px;color:#9ca3af\'>Sem dados coletados ainda</div>
-            </div>
-            """, unsafe_allow_html=True)
- 
-    st.markdown("<hr style=\'border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0\'/>", unsafe_allow_html=True)
- 
+            st.markdown(
+                "<div style='background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;"
+                "padding:10px 14px;text-align:center'>"
+                "<div style='font-size:12px;color:#9ca3af'>Sem dados coletados ainda</div></div>",
+                unsafe_allow_html=True
+            )
+
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
+
     # ── Montar lista de todas as empresas ─────────────────────────────
     todas_empresas_geral = []
     if emp.get("nome"):
@@ -2380,32 +2376,31 @@ html, body { background: transparent; overflow: hidden; }
                 "cidade": "",
                 "estado": "",
             })
- 
+
     # ── Dados de redes sociais do cache ────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
     for r in cache_redes:
         if not r.get("erro") and r.get("nome"):
             dados_redes_map[r["nome"]] = r
- 
+
     ads_cache = st.session_state.get("ads_cache", {})
- 
+
     def fmt_num(n):
         n = int(n or 0)
         if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
- 
+
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
- 
+
     # ══════════════════════════════════════════════════════════════════
     # BARRA DE NAVEGAÇÃO POR ABAS
     # ══════════════════════════════════════════════════════════════════
- 
+
     if "dash_aba" not in st.session_state:
         st.session_state.dash_aba = "presenca"
- 
-    # Ghost buttons para navegação
+
     for _aba in ["presenca", "discurso", "diferenciais"]:
         k = f"btn_dash_aba_{_aba}"
         st.markdown(f"""
@@ -2424,37 +2419,36 @@ html, body { background: transparent; overflow: hidden; }
         if st.button(f"dash_{_aba}", key=k):
             st.session_state.dash_aba = _aba
             st.rerun()
- 
+
     dash_aba = st.session_state.dash_aba
- 
-    # Contagens por aba
+
     _n_redes  = len(ok_redes)
     _n_ads    = sum(1 for e in todas_empresas_geral if e["nome"] in ads_cache)
     _n_sites  = sum(1 for e in todas_empresas_geral if e.get("site"))
- 
+
     abas_def = [
         ("presenca",    "📊", "Presença Digital",  _n_redes,  "Redes sociais e engajamento"),
         ("discurso",    "☁️", "Discurso",          _n_redes,  "Palavras e legendas"),
         ("diferenciais","🏆", "Diferenciais",      len(todas_empresas_geral), "Visão comparativa"),
     ]
- 
-# Monta os botões ANTES do f-string principal
+
     botoes_html = ""
     for stk, icon, lbl, cnt, desc in abas_def:
         active_class = "active" if dash_aba == stk else ""
         has_class = "has" if cnt > 0 else ""
-        botoes_html += f"""
-    <button class="tab-pill {active_class}"
-        style="position:relative"
-        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='dash_{stk}'){{b.click();return;}}}}}})()"
-    >
-        <div class="tab-icon-wrap">{icon}</div>
-        <div class="tab-content">
-            <span class="tab-title">{lbl}</span>
-            <span class="tab-sub">{desc}</span>
-        </div>
-        <span class="tab-badge {has_class}">{cnt}</span>
-    </button>"""
+        botoes_html += (
+            f'<button class="tab-pill {active_class}" style="position:relative"'
+            f' onclick="(function(){{var btns=window.parent.document.querySelectorAll(\'button\');'
+            f'for(var b of btns){{var t=(b.textContent||b.innerText||\'\').split(/\\s+/).join(\' \').trim();'
+            f'if(t===\'dash_{stk}\'){{b.click();return;}}}}}})()">  '
+            f'<div class="tab-icon-wrap">{icon}</div>'
+            f'<div class="tab-content">'
+            f'<span class="tab-title">{lbl}</span>'
+            f'<span class="tab-sub">{desc}</span>'
+            f'</div>'
+            f'<span class="tab-badge {has_class}">{cnt}</span>'
+            f'</button>'
+        )
 
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -2517,13 +2511,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=86, scrolling=False)
- 
+
     # ══════════════════════════════════════════════════════════════════
-    # ABA 1: PRESENÇA DIGITAL — Comparativo de Redes Sociais
+    # ABA 1: PRESENÇA DIGITAL
     # ══════════════════════════════════════════════════════════════════
- 
+
     if dash_aba == "presenca":
- 
+
         if ok_redes:
             nomes_g   = [r["nome"] for r in ok_redes]
             segs_g    = [r.get("seguidores", 0) for r in ok_redes]
@@ -2531,15 +2525,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             posts_g   = [r.get("total_posts", 0) for r in ok_redes]
             eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
             cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
- 
+
             nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
             segs_json    = _json.dumps(segs_g)
             eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
             posts_json   = _json.dumps(posts_g)
             eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
             cores_json   = _json.dumps(cores_g)
- 
-            # Cards de métricas por empresa
+
             metricas_cards = []
             for i, r in enumerate(ok_redes):
                 cor = get_avatar_color(i)
@@ -2566,8 +2559,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "eng_med": fmt_num(int(r.get("eng_medio", 0))),
                     "cor": cor,
                 })
- 
-            # Mini cards de métricas
+
             cards_row = ""
             for m in metricas_cards:
                 cards_row += (
@@ -2579,37 +2571,26 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>'
                     '</div>'
                     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
-                    '<div>'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
-                    f'<div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div>'
-                    '</div>'
-                    '<div>'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    f'<div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>'
-                    f'<div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div>'
-                    '</div>'
-                    '<div>'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    f'<div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
-                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div>'
-                    '</div>'
-                    '<div>'
-                    '<div style="font-size:10px;color:#9ca3af;font-weight:600;'
+                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
+                    '<div><div style="font-size:10px;color:#9ca3af;font-weight:600;'
                     'text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>'
-                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div>'
-                    '</div>'
-                    '</div>'
-                    '</div>'
+                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                    '</div></div>'
                 )
- 
-            st.markdown(f"""
-            <div style=\'margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;\'>
-                {cards_row}
-            </div>
-            """, unsafe_allow_html=True)
- 
-            # Gráfico comparativo
+
+            st.markdown(
+                f"<div style='margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>",
+                unsafe_allow_html=True
+            )
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
@@ -2617,26 +2598,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
-.card {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:18px 20px 14px; margin-top:12px;
-}}
-.card-title {{
-    font-size:18px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.6px;
-    padding-bottom:10px; border-bottom:2px solid #e5e7eb;
-    margin-bottom:16px; display:flex; align-items:center; gap:10px;
-}}
-.metric-tabs {{
-    display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;
-}}
-.mtab {{
-    padding:7px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
-    background:#fff; font-size:12px; font-weight:700; color:#6b7280;
-    cursor:pointer; font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
-}}
+.card {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 14px; margin-top:12px; }}
+.card-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.6px;
+    padding-bottom:10px; border-bottom:2px solid #e5e7eb; margin-bottom:16px; display:flex; align-items:center; gap:10px; }}
+.metric-tabs {{ display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }}
+.mtab {{ padding:7px 14px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
+    font-size:12px; font-weight:700; color:#6b7280; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
 .mtab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .mtab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
 .chart-wrap {{ position:relative; width:100%; height:240px; }}
@@ -2644,18 +2613,15 @@ body {{ padding-bottom:8px; }}
 </head>
 <body>
 <div class="card">
-    <div class="card-title">
-        <span>📊</span> Comparativo — Redes Sociais
-    </div>
+    <div class="card-title"><span>📊</span> Comparativo — Redes Sociais</div>
     <div class="metric-tabs">
-        <button class="mtab active" onclick="switchMetric(\'seg\', this)">Seguidores</button>
-        <button class="mtab" onclick="switchMetric(\'eng\', this)">Engajamento %</button>
-        <button class="mtab" onclick="switchMetric(\'posts\', this)">Publicações</button>
-        <button class="mtab" onclick="switchMetric(\'engmed\', this)">Eng. Médio/Post</button>
+        <button class="mtab active" onclick="switchMetric('seg', this)">Seguidores</button>
+        <button class="mtab" onclick="switchMetric('eng', this)">Engajamento %</button>
+        <button class="mtab" onclick="switchMetric('posts', this)">Publicações</button>
+        <button class="mtab" onclick="switchMetric('engmed', this)">Eng. Médio/Post</button>
     </div>
     <div class="chart-wrap"><canvas id="ch_main"></canvas></div>
 </div>
- 
 <script>
 var NOMES   = {nomes_json};
 var SEGS    = {segs_json};
@@ -2663,105 +2629,68 @@ var ENG_PCT = {eng_pct_json};
 var POSTS   = {posts_json};
 var ENG_MED = {eng_med_json};
 var CORES   = {cores_json};
- 
 var METRICS = {{
-    seg:    {{ data: SEGS,    label: \'seguidores\',      pct: false }},
-    eng:    {{ data: ENG_PCT, label: \'engajamento %\',   pct: true  }},
-    posts:  {{ data: POSTS,   label: \'publicações\',     pct: false }},
-    engmed: {{ data: ENG_MED, label: \'eng. médio/post\', pct: false }},
+    seg:    {{ data: SEGS,    label: 'seguidores',      pct: false }},
+    eng:    {{ data: ENG_PCT, label: 'engajamento %',   pct: true  }},
+    posts:  {{ data: POSTS,   label: 'publicações',     pct: false }},
+    engmed: {{ data: ENG_MED, label: 'eng. médio/post', pct: false }},
 }};
-var currentKey = \'seg\';
- 
+var currentKey = 'seg';
 function fmtNum(n) {{
     n = Math.round(n * 10) / 10;
-    if (n >= 1000000) return (n/1000000).toFixed(1) + \'M\';
-    if (n >= 1000)    return (n/1000).toFixed(1) + \'K\';
+    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return (n/1000).toFixed(1) + 'K';
     return String(Math.round(n));
 }}
- 
-var chart = new Chart(document.getElementById(\'ch_main\'), {{
-    type: \'bar\',
+var chart = new Chart(document.getElementById('ch_main'), {{
+    type: 'bar',
     data: {{
         labels: NOMES,
-        datasets: [{{
-            label: \'Seguidores\',
-            data: SEGS,
-            backgroundColor: CORES,
-            borderRadius: 10,
-            borderSkipped: false,
-        }}]
+        datasets: [{{ label: 'Seguidores', data: SEGS, backgroundColor: CORES, borderRadius: 10, borderSkipped: false }}]
     }},
     options: {{
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: {{
             legend: {{ display: false }},
-            tooltip: {{
-                callbacks: {{
-                    label: function(ctx) {{
-                        var m = METRICS[currentKey];
-                        return \' \' + ctx.dataset.label + \': \' + (m.pct ? ctx.parsed.y.toFixed(1) + \'%\' : fmtNum(ctx.parsed.y));
-                    }}
-                }}
-            }}
+            tooltip: {{ callbacks: {{ label: function(ctx) {{
+                var m = METRICS[currentKey];
+                return ' ' + ctx.dataset.label + ': ' + (m.pct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
+            }} }} }}
         }},
         scales: {{
-            x: {{
-                grid: {{ display: false }},
-                ticks: {{ font: {{ family:"\'DM Sans\',sans-serif", size:12, weight:\'600\' }}, color:\'#6b7280\', maxRotation:0 }},
-                border: {{ display: false }}
-            }},
-            y: {{
-                grid: {{ color: \'#f3f4f6\' }},
-                ticks: {{ font: {{ family:"\'DM Sans\',sans-serif", size:11 }}, color:\'#9ca3af\',
-                          callback: function(v) {{ return fmtNum(v); }} }},
-                border: {{ display: false }}
-            }}
+            x: {{ grid: {{ display: false }}, ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:12, weight:'600' }}, color:'#6b7280', maxRotation:0 }}, border: {{ display: false }} }},
+            y: {{ grid: {{ color: '#f3f4f6' }}, ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11 }}, color:'#9ca3af', callback: function(v) {{ return fmtNum(v); }} }}, border: {{ display: false }} }}
         }},
-        animation: {{
-            onComplete: function() {{
-                var ctx2 = chart.ctx;
-                ctx2.save();
-                ctx2.font = \'bold 12px DM Sans, sans-serif\';
-                ctx2.fillStyle = \'#ffffff\';
-                ctx2.textAlign = \'center\';
-                ctx2.textBaseline = \'top\';
-                chart.data.datasets.forEach(function(dataset, di) {{
-                    chart.getDatasetMeta(di).data.forEach(function(bar, idx) {{
-                        var val = dataset.data[idx];
-                        if (!val) return;
-                        var m = METRICS[currentKey];
-                        var lbl = m.pct ? val.toFixed(1) + \'%\' : fmtNum(val);
-                        ctx2.fillText(lbl, bar.x, bar.y + 8);
-                    }});
+        animation: {{ onComplete: function() {{
+            var ctx2 = chart.ctx; ctx2.save();
+            ctx2.font = 'bold 12px DM Sans, sans-serif'; ctx2.fillStyle = '#ffffff';
+            ctx2.textAlign = 'center'; ctx2.textBaseline = 'top';
+            chart.data.datasets.forEach(function(dataset, di) {{
+                chart.getDatasetMeta(di).data.forEach(function(bar, idx) {{
+                    var val = dataset.data[idx]; if (!val) return;
+                    var m = METRICS[currentKey];
+                    var lbl = m.pct ? val.toFixed(1) + '%' : fmtNum(val);
+                    ctx2.fillText(lbl, bar.x, bar.y + 8);
                 }});
-                ctx2.restore();
-            }}
-        }}
+            }});
+            ctx2.restore();
+        }} }}
     }}
 }});
- 
 function switchMetric(key, btn) {{
-    currentKey = key;
-    var m = METRICS[key];
+    currentKey = key; var m = METRICS[key];
     chart.data.datasets[0].data  = m.data;
     chart.data.datasets[0].label = m.label;
-    chart.options.scales.y.ticks.callback = function(v) {{
-        return m.pct ? v + \'%\' : fmtNum(v);
-    }};
+    chart.options.scales.y.ticks.callback = function(v) {{ return m.pct ? v + '%' : fmtNum(v); }};
     chart.update();
-    document.querySelectorAll(\'.mtab\').forEach(function(b) {{ b.classList.remove(\'active\'); }});
-    btn.classList.add(\'active\');
-    syncHeight();
+    document.querySelectorAll('.mtab').forEach(function(b) {{ b.classList.remove('active'); }});
+    btn.classList.add('active'); syncHeight();
 }}
- 
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll(\'iframe\');
+    var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = (h + 8) + \'px\'; break;
-        }} }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
     }}
 }}
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
@@ -2769,26 +2698,27 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
 </script>
 </body></html>
 """, height=380, scrolling=False)
- 
+
         else:
-            st.markdown("""
-            <div style=\'background:#fff;border:1px dashed #d1d5db;border-radius:14px;
-                        padding:48px 32px;text-align:center;margin-top:16px\'>
-                <div style=\'font-size:32px;margin-bottom:12px\'>📊</div>
-                <div style=\'font-size:15px;font-weight:600;color:#374151;margin-bottom:6px\'>Sem dados de redes sociais</div>
-                <div style=\'font-size:13px;color:#9ca3af\'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b>.</div>
-            </div>
-            """, unsafe_allow_html=True)
- 
+            st.markdown(
+                "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
+                "padding:48px 32px;text-align:center;margin-top:16px'>"
+                "<div style='font-size:32px;margin-bottom:12px'>📊</div>"
+                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem dados de redes sociais</div>"
+                "<div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b>.</div>"
+                "</div>",
+                unsafe_allow_html=True
+            )
+
     # ══════════════════════════════════════════════════════════════════
     # ABA 2: DISCURSO — Nuvem de Palavras
     # ══════════════════════════════════════════════════════════════════
- 
+
     elif dash_aba == "discurso":
- 
+
         if ok_redes:
             import re as _re
- 
+
             stopwords_pt = {
                 "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
                 "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
@@ -2798,13 +2728,10 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                 "todo","toda","todos","todas","quando","onde","quem","qual","quais",
                 "via","até","após","sobre","me","te","lhe","lhes","meu","minha","teu","tua",
             }
- 
+
             empresas_palavras = {}
             for r in ok_redes:
-                texto_total = " ".join([
-                    p.get("caption", "") or ""
-                    for p in r.get("posts", [])
-                ])
+                texto_total = " ".join([p.get("caption", "") or "" for p in r.get("posts", [])])
                 palavras = _re.findall(r'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}', texto_total)
                 freq = {}
                 for w in palavras:
@@ -2813,42 +2740,33 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
                         freq[w_low] = freq.get(w_low, 0) + 1
                 top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
                 empresas_palavras[r["nome"]] = top
- 
+
             todas_palavras_geral = {}
             for r in ok_redes:
                 for palavra, freq in empresas_palavras.get(r["nome"], []):
                     todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
             top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
             empresas_palavras["__geral__"] = top_geral
- 
+
             empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
             nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
             cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
- 
+
             components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
-.card {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:18px 20px 20px; margin-top:16px;
-}}
-.card-header {{
-    display:flex; align-items:center; justify-content:space-between;
-    padding-bottom:12px; border-bottom:2px solid #e5e7eb; margin-bottom:16px;
-    flex-wrap:wrap; gap:10px;
-}}
+.card {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 20px; margin-top:16px; }}
+.card-header {{ display:flex; align-items:center; justify-content:space-between;
+    padding-bottom:12px; border-bottom:2px solid #e5e7eb; margin-bottom:16px; flex-wrap:wrap; gap:10px; }}
 .card-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.6px; }}
 .filter-tabs {{ display:flex; gap:8px; flex-wrap:wrap; }}
-.ftab {{
-    padding:6px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
-    background:#fff; font-size:12px; font-weight:700; color:#6b7280;
-    cursor:pointer; font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
-}}
+.ftab {{ padding:6px 14px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
+    font-size:12px; font-weight:700; color:#6b7280; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
 .ftab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .ftab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
 .body-wrap {{ display:flex; gap:16px; align-items:flex-start; }}
@@ -2880,100 +2798,91 @@ body {{ padding-bottom:8px; }}
         </div>
     </div>
 </div>
- 
 <script>
 var DADOS  = {empresas_palavras_json};
 var NOMES  = {nomes_nuvem_json};
 var CORES  = {cores_nuvem_json};
 var LABELS = {{}};
-NOMES.forEach(function(n) {{ LABELS[n] = n === \'__geral__\' ? \'Geral\' : n; }});
-var ativo = NOMES[0] || \'\';
- 
+NOMES.forEach(function(n) {{ LABELS[n] = n === '__geral__' ? 'Geral' : n; }});
+var ativo = NOMES[0] || '';
 function buildTabs() {{
-    var el = document.getElementById(\'filter-tabs\');
-    el.innerHTML = \'\';
+    var el = document.getElementById('filter-tabs'); el.innerHTML = '';
     NOMES.forEach(function(nome, i) {{
-        var btn = document.createElement(\'button\');
-        btn.className = \'ftab\' + (nome === ativo ? \' active\' : \'\');
+        var btn = document.createElement('button');
+        btn.className = 'ftab' + (nome === ativo ? ' active' : '');
         btn.textContent = LABELS[nome];
         btn.onclick = function() {{
             ativo = nome;
-            document.querySelectorAll(\'.ftab\').forEach(function(b) {{ b.classList.remove(\'active\'); }});
-            btn.classList.add(\'active\');
-            renderCloud();
+            document.querySelectorAll('.ftab').forEach(function(b) {{ b.classList.remove('active'); }});
+            btn.classList.add('active'); renderCloud();
         }};
         el.appendChild(btn);
     }});
 }}
- 
 function renderCloud() {{
-    var wrap = document.getElementById(\'cloud-wrap\');
-    var rankList = document.getElementById(\'ranking-list\');
-    wrap.innerHTML = \'\'; rankList.innerHTML = \'\';
+    var wrap = document.getElementById('cloud-wrap');
+    var rankList = document.getElementById('ranking-list');
+    wrap.innerHTML = ''; rankList.innerHTML = '';
     var palavras = DADOS[ativo] || [];
-    if (!palavras.length) {{ wrap.innerHTML = \'<div style="font-size:14px;color:#9ca3af;text-align:center;padding:40px 0;width:100%">Nenhuma legenda encontrada.</div>\'; syncHeight(); return; }}
+    if (!palavras.length) {{ wrap.innerHTML = '<div style="font-size:14px;color:#9ca3af;text-align:center;padding:40px 0;width:100%">Nenhuma legenda encontrada.</div>'; syncHeight(); return; }}
     var maxFreq = palavras[0][1] || 1;
     var minFreq = palavras[palavras.length - 1][1] || 1;
     var corIdx  = NOMES.indexOf(ativo);
-    var corBase = ativo === \'__geral__\' ? \'#0e2a47\' : (CORES[corIdx] || \'#3a9fd6\');
+    var corBase = ativo === '__geral__' ? '#0e2a47' : (CORES[corIdx] || '#3a9fd6');
     palavras.forEach(function(item) {{
         var ratio   = maxFreq === minFreq ? 0.5 : (item[1] - minFreq) / (maxFreq - minFreq);
         var size    = Math.round(13 + ratio * 23);
         var opacity = (0.45 + ratio * 0.55).toFixed(2);
-        var tag = document.createElement(\'span\');
-        tag.className = \'word-tag\';
-        tag.textContent = item[0]; tag.title = item[1] + \'x\';
-        tag.style.fontSize = size + \'px\'; tag.style.color = corBase; tag.style.opacity = opacity;
+        var tag = document.createElement('span');
+        tag.className = 'word-tag'; tag.textContent = item[0]; tag.title = item[1] + 'x';
+        tag.style.fontSize = size + 'px'; tag.style.color = corBase; tag.style.opacity = opacity;
         wrap.appendChild(tag);
     }});
     palavras.slice(0, 7).forEach(function(item, idx) {{
         var barW = Math.round((item[1] / maxFreq) * 100);
-        var row = document.createElement(\'div\');
-        row.className = \'rank-item\';
-        row.innerHTML = \'<span class="rank-pos">\' + (idx+1) + \'</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px"><span class="rank-word" style="color:\' + corBase + \'">\' + item[0] + \'</span><span class="rank-count" style="background:\' + corBase + \'">\' + item[1] + \'</span></div><div class="rank-bar-wrap"><div class="rank-bar" style="width:\' + barW + \'%;background:\' + corBase + \'"></div></div></div>\';
+        var row = document.createElement('div'); row.className = 'rank-item';
+        row.innerHTML = '<span class="rank-pos">' + (idx+1) + '</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px"><span class="rank-word" style="color:' + corBase + '">' + item[0] + '</span><span class="rank-count" style="background:' + corBase + '">' + item[1] + '</span></div><div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barW + '%;background:' + corBase + '"></div></div></div>';
         rankList.appendChild(row);
     }});
     syncHeight();
 }}
- 
 function syncHeight() {{
     setTimeout(function() {{
         var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var iframes = window.parent.document.querySelectorAll(\'iframe\');
+        var iframes = window.parent.document.querySelectorAll('iframe');
         for (var i = 0; i < iframes.length; i++) {{
-            try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + \'px\'; break; }} }} catch(e) {{}}
+            try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
         }}
     }}, 100);
 }}
- 
 buildTabs(); renderCloud();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 setTimeout(syncHeight, 400);
 </script>
 </body></html>
 """, height=420, scrolling=False)
- 
+
         else:
-            st.markdown("""
-            <div style=\'background:#fff;border:1px dashed #d1d5db;border-radius:14px;
-                        padding:48px 32px;text-align:center;margin-top:16px\'>
-                <div style=\'font-size:32px;margin-bottom:12px\'>☁️</div>
-                <div style=\'font-size:15px;font-weight:600;color:#374151;margin-bottom:6px\'>Sem dados de legendas</div>
-                <div style=\'font-size:13px;color:#9ca3af\'>Acesse <b>Redes Sociais</b> e colete dados para ver as palavras aqui.</div>
-            </div>
-            """, unsafe_allow_html=True)
- 
+            st.markdown(
+                "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
+                "padding:48px 32px;text-align:center;margin-top:16px'>"
+                "<div style='font-size:32px;margin-bottom:12px'>☁️</div>"
+                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem dados de legendas</div>"
+                "<div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e colete dados para ver as palavras aqui.</div>"
+                "</div>",
+                unsafe_allow_html=True
+            )
+
     # ══════════════════════════════════════════════════════════════════
     # ABA 3: DIFERENCIAIS — Visão Comparativa Completa
     # ══════════════════════════════════════════════════════════════════
- 
+
     elif dash_aba == "diferenciais":
- 
+
         if not todas_empresas_geral:
             st.info("Cadastre sua empresa e concorrentes para ver os diferenciais.")
             st.stop()
- 
-        # Monta tabela comparativa visual
+
         linhas_empresas = []
         for i, e in enumerate(todas_empresas_geral):
             is_minha  = e["tipo"] == "minha"
@@ -2983,20 +2892,21 @@ setTimeout(syncHeight, 400);
             badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
             badge_col = "#15803d" if is_minha else "#1d4ed8"
             badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
- 
+
             redes_data = dados_redes_map.get(e["nome"], {})
             seg       = fmt_num(redes_data.get("seguidores", 0)) if redes_data else "—"
-            eng       = f\'{redes_data.get("eng_pct",0):.1f}%\' if redes_data else "—"
+            eng       = f'{redes_data.get("eng_pct", 0):.1f}%' if redes_data else "—"
             posts_tot = fmt_num(redes_data.get("total_posts", 0)) if redes_data else "—"
-            bio       = (redes_data.get("bio", "") or "")[:80] + ("..." if len(redes_data.get("bio","") or "") > 80 else "") if redes_data else "—"
- 
+            bio_raw   = redes_data.get("bio", "") or "" if redes_data else ""
+            bio       = bio_raw[:80] + ("..." if len(bio_raw) > 80 else "") if redes_data else "—"
+
             ads_entry = ads_cache.get(e["nome"], {})
             n_ads     = len(ads_entry.get("data", [])) if ads_entry else 0
             ads_txt   = str(n_ads) if n_ads else "—"
- 
+
             site_txt  = e.get("site") or "—"
             ig_txt    = e.get("instagram") or "—"
- 
+
             linhas_empresas.append({
                 "nome": e["nome"],
                 "cor": cor,
@@ -3014,154 +2924,96 @@ setTimeout(syncHeight, 400);
                 "ig": ig_txt,
                 "setor": e.get("setor", "—") or "—",
             })
- 
+
         linhas_json = _json.dumps(linhas_empresas, ensure_ascii=False)
- 
+
         components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
-.table-wrap {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    overflow:hidden; margin-top:16px;
-}}
-.table-header {{
-    padding:16px 20px 12px;
-    border-bottom:2px solid #e5e7eb;
-    font-size:18px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.6px;
-    display:flex; align-items:center; gap:10px;
-}}
-table {{
-    width:100%; border-collapse:collapse;
-}}
-th {{
-    padding:10px 14px;
-    font-size:11px; font-weight:700; color:#6b7280;
-    text-transform:uppercase; letter-spacing:0.8px;
-    text-align:left; background:#f9fafb;
-    border-bottom:1px solid #e5e7eb;
-}}
-td {{
-    padding:14px 14px;
-    font-size:13px; color:#374151;
-    border-bottom:1px solid #f3f4f6;
-    vertical-align:top;
-}}
+.table-wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; margin-top:16px; }}
+.table-header {{ padding:16px 20px 12px; border-bottom:2px solid #e5e7eb; font-size:18px; font-weight:800; color:#1a2e4a;
+    text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; gap:10px; }}
+table {{ width:100%; border-collapse:collapse; }}
+th {{ padding:10px 14px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase;
+    letter-spacing:0.8px; text-align:left; background:#f9fafb; border-bottom:1px solid #e5e7eb; }}
+td {{ padding:14px 14px; font-size:13px; color:#374151; border-bottom:1px solid #f3f4f6; vertical-align:top; }}
 tr:last-child td {{ border-bottom:none; }}
 tr:hover td {{ background:#fafafa; }}
-.empresa-cell {{
-    display:flex; align-items:center; gap:10px;
-}}
-.avatar-td {{
-    width:36px; height:36px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:13px; font-weight:700; color:#fff; flex-shrink:0;
-}}
-.badge-td {{
-    display:inline-block; padding:2px 8px; border-radius:20px;
-    font-size:10px; font-weight:700; margin-top:3px;
-}}
-.metric-badge {{
-    display:inline-flex; align-items:center;
-    background:#f3f4f6; color:#374151;
-    padding:3px 10px; border-radius:20px;
-    font-size:12px; font-weight:600;
-}}
+.empresa-cell {{ display:flex; align-items:center; gap:10px; }}
+.avatar-td {{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }}
+.badge-td {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; margin-top:3px; }}
+.metric-badge {{ display:inline-flex; align-items:center; background:#f3f4f6; color:#374151;
+    padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }}
 .metric-badge.blue  {{ background:#eff6ff; color:#1d4ed8; }}
 .metric-badge.green {{ background:#f0fdf4; color:#15803d; }}
 .metric-badge.empty {{ background:#f9fafb; color:#d1d5db; font-style:italic; }}
-.bio-text {{
-    font-size:12px; color:#6b7280; line-height:1.5;
-    max-width:200px; white-space:normal;
-}}
 </style>
 </head>
 <body>
 <div class="table-wrap">
     <div class="table-header"><span>🏆</span> Visão Comparativa Completa</div>
     <table>
-        <thead>
-            <tr>
-                <th>Empresa</th>
-                <th>Setor</th>
-                <th>Instagram</th>
-                <th>Seguidores</th>
-                <th>Eng. %</th>
-                <th>Posts</th>
-                <th>Anúncios</th>
-                <th>Site</th>
-            </tr>
-        </thead>
+        <thead><tr>
+            <th>Empresa</th><th>Setor</th><th>Instagram</th>
+            <th>Seguidores</th><th>Eng. %</th><th>Posts</th><th>Anúncios</th><th>Site</th>
+        </tr></thead>
         <tbody id="tbody"></tbody>
     </table>
 </div>
- 
 <script>
 var DADOS = {linhas_json};
- 
 function buildTable() {{
-    var tbody = document.getElementById(\'tbody\');
+    var tbody = document.getElementById('tbody');
     DADOS.forEach(function(d) {{
-        var tr = document.createElement(\'tr\');
+        var tr = document.createElement('tr');
         tr.innerHTML =
-            \'<td><div class="empresa-cell">\' +
-            \'<div class="avatar-td" style="background:\' + d.cor + \'">\' + d.av + \'</div>\' +
-            \'<div><div style="font-size:13px;font-weight:700;color:#111827">\' + d.nome + \'</div>\' +
-            \'<span class="badge-td" style="background:\' + d.badge_bg + \';color:\' + d.badge_col + \';border:1px solid \' + d.badge_brd + \'">\' + d.badge_lbl + \'</span></div></div></td>\' +
- 
-            \'<td><span class="metric-badge">\' + (d.setor || \'—\') + \'</span></td>\' +
- 
-            \'<td style="font-size:12px;color:#6b7280;font-family:monospace">\' + d.ig + \'</td>\' +
- 
-            \'<td><span class="metric-badge blue">\' + d.seg + \'</span></td>\' +
- 
-            \'<td><span class="metric-badge \' + (d.eng !== \'—\' ? \'green\' : \'empty\') + \'">\' + d.eng + \'</span></td>\' +
- 
-            \'<td><span class="metric-badge">\' + d.posts + \'</span></td>\' +
- 
-            \'<td><span class="metric-badge \' + (d.n_ads !== \'—\' ? \'blue\' : \'\') + \'">\' + d.n_ads + \'</span></td>\' +
- 
-            \'<td><span style="font-size:11px;color:#9ca3af;font-family:monospace">\' + (d.site !== \'—\' ? d.site.substring(0, 22) + (d.site.length > 22 ? \'…\' : \'\') : \'—\') + \'</span></td>\';
- 
+            '<td><div class="empresa-cell">' +
+            '<div class="avatar-td" style="background:' + d.cor + '">' + d.av + '</div>' +
+            '<div><div style="font-size:13px;font-weight:700;color:#111827">' + d.nome + '</div>' +
+            '<span class="badge-td" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span></div></div></td>' +
+            '<td><span class="metric-badge">' + (d.setor || '—') + '</span></td>' +
+            '<td style="font-size:12px;color:#6b7280;font-family:monospace">' + d.ig + '</td>' +
+            '<td><span class="metric-badge blue">' + d.seg + '</span></td>' +
+            '<td><span class="metric-badge ' + (d.eng !== '—' ? 'green' : 'empty') + '">' + d.eng + '</span></td>' +
+            '<td><span class="metric-badge">' + d.posts + '</span></td>' +
+            '<td><span class="metric-badge ' + (d.n_ads !== '—' ? 'blue' : '') + '">' + d.n_ads + '</span></td>' +
+            '<td><span style="font-size:11px;color:#9ca3af;font-family:monospace">' + (d.site !== '—' ? d.site.substring(0, 22) + (d.site.length > 22 ? '…' : '') : '—') + '</span></td>';
         tbody.appendChild(tr);
     }});
     syncHeight();
 }}
- 
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll(\'iframe\');
+    var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + \'px\'; break; }} }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
     }}
 }}
- 
 buildTable();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
 </body></html>
 """, height=400, scrolling=False)
- 
-        # Banner de aviso se sem dados
+
         if not ok_redes and not ads_cache:
-            st.markdown("""
-            <div style=\'background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;
-                        padding:14px 18px;font-size:14px;color:#92400e;
-                        display:flex;align-items:flex-start;gap:12px;margin-top:12px\'>
-                <span style=\'font-size:20px;flex-shrink:0\'>💡</span>
-                <div>
-                    <b>Para enriquecer este painel:</b><br>
-                    • Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b><br>
-                    • Acesse <b>Biblioteca de Ads</b> → configure e busque anúncios
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                "<div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;"
+                "padding:14px 18px;font-size:14px;color:#92400e;"
+                "display:flex;align-items:flex-start;gap:12px;margin-top:12px'>"
+                "<span style='font-size:20px;flex-shrink:0'>💡</span>"
+                "<div><b>Para enriquecer este painel:</b><br>"
+                "• Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b><br>"
+                "• Acesse <b>Biblioteca de Ads</b> → configure e busque anúncios</div>"
+                "</div>",
+                unsafe_allow_html=True
+            )
 
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES

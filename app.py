@@ -5723,12 +5723,18 @@ function triggerTab(label) {{
                     st.rerun()
             if ghost_buscar[ci]:
                 val = input_vals.get(ci,"").strip()
+                if not val:
+                    is_minha_e = e["tipo"] == "minha"
+                    val = (emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")).strip()
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
                     with st.spinner("Buscando…"):
                         paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
+                    st.rerun()
+                else:
+                    st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
                     st.rerun()
 
         # ── INFO BOX

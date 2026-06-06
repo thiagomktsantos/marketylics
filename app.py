@@ -5111,7 +5111,14 @@ elif st.session_state.pagina == "ads":
     def safe_key(s):
         return re.sub(r"[^a-zA-Z0-9_]", "_", s)
 
-    todas_empresas = []
+    def empresa_tem_ads_id(e: dict) -> bool:
+        if e["tipo"] == "minha":
+            return bool(emp.get("ads_id", "").strip())
+        else:
+            cd = concs[e["idx"]]
+            return bool(cd.get("ads_id", "").strip())
+
+    todas_empresas = []    
     if emp.get("nome"):
         todas_empresas.append({"nome": emp["nome"], "tipo": "minha", "idx": 0})
     for i, c in enumerate(concs):
@@ -5131,13 +5138,6 @@ elif st.session_state.pagina == "ads":
             f"mas ainda não {'tem' if len(_empresas_novas) == 1 else 'têm'} dados coletados. "
             f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
         )
-
-    def empresa_tem_ads_id(e: dict) -> bool:
-        if e["tipo"] == "minha":
-            return bool(emp.get("ads_id", "").strip())
-        else:
-            cd = concs[e["idx"]]
-            return bool(cd.get("ads_id", "").strip())
 
     def salvar_ads_id(e: dict, ads_id: str, page_pic: str = ""):
         if e["tipo"] == "minha":

@@ -2324,15 +2324,13 @@ html, body { background: transparent; overflow: hidden; }
         for idx, item in enumerate(update_items):
             with colunas_update[idx]:
                 st.markdown(
+                    f"<div style='font-size:9px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px'>Fonte</div>"
                     f"<div style='background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;'>"
-                    f"<div style='display:flex;align-items:center;gap:10px;'>"
-                    f"<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;flex-shrink:0'>Fonte:</div>"
-                    f"<div style='width:1px;height:28px;background:#e5e7eb;flex-shrink:0'></div>"
+                    f"<div style='display:flex;align-items:center;gap:8px;'>"
                     f"<div style='width:28px;height:28px;border-radius:8px;background:{item['icon_bg']};"
                     f"display:flex;align-items:center;justify-content:center;flex-shrink:0'>{item['icon']}</div>"
-                    f"<div style='width:1px;height:28px;background:#e5e7eb;flex-shrink:0'></div>"
-                    f"<div style='flex:1;min-width:0'>"
-                    f"<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px'>{item['label']}</div>"
+                    f"<div style='min-width:0'>"
+                    f"<div style='font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap'>{item['label']}</div>"
                     f"<div style='font-size:12px;font-weight:600;color:#374151;white-space:nowrap'>{item['valor']}</div>"
                     f"</div></div></div>",
                     unsafe_allow_html=True

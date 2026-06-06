@@ -6103,29 +6103,44 @@ function triggerGhost(label) {{
 
 function setHiddenVal(ci, val, callback) {{
     var inputs = window.parent.document.querySelectorAll('input');
+
     inputs.forEach(function(inp) {{
         if ((inp.getAttribute('aria-label') || '') === 'h' + ci) {{
             var setter = Object.getOwnPropertyDescriptor(
-                window.parent.HTMLInputElement.prototype, 'value').set;
+                window.parent.HTMLInputElement.prototype,
+                'value'
+            ).set;
+
             setter.call(inp, val);
-            inp.dispatchEvent(new Event('input',  {{ bubbles: true }}));
+
+            inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
             inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            inp.dispatchEvent(new Event('blur', {{ bubbles: true }})); // ← NOVO
         }}
     }});
+
     inputs.forEach(function(inp) {{
         var label = inp.closest('[data-testid="stTextInput"]');
+
         if (label) {{
             var ariaLabel = inp.getAttribute('aria-label') || '';
+
             if (ariaLabel === 'ID ou nome') {{
                 var setter2 = Object.getOwnPropertyDescriptor(
-                    window.parent.HTMLInputElement.prototype, 'value').set;
+                    window.parent.HTMLInputElement.prototype,
+                    'value'
+                ).set;
+
                 setter2.call(inp, val);
-                inp.dispatchEvent(new Event('input',  {{ bubbles: true }}));
+
+                inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
                 inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                inp.dispatchEvent(new Event('blur', {{ bubbles: true }})); // ← NOVO
             }}
         }}
     }});
-    setTimeout(callback, 350);
+
+    setTimeout(callback, 800); 
 }}
 
 function handleBuscar(ci) {{

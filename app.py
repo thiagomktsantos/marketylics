@@ -2264,55 +2264,98 @@ elif st.session_state.pagina == "geral":
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
  
-    # ── Cabeçalho ──────────────────────────────────────────────────
-    h1, h2 = st.columns([7, 3])
+    # ── Cabeçalho com HR ──────────────────────────────────────────────
+    h1, h2 = st.columns([6, 4])
+ 
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 @font-face {
-    font-family: 'Animo';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+    font-family: \'Animo\';
+    src: url(\'https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf\') format(\'opentype\');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
 .titulo {
-    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-family: \'Animo\', \'DM Sans\', sans-serif;
     font-size: 32px; font-weight: 700; color: #1a2e4a;
     text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { font-family: \'DM Sans\', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
 <div class="titulo">Dashboard Geral</div>
 <div class="sub">Panorama competitivo da sua empresa e concorrentes.</div>
 """, height=70)
  
     with h2:
-        st.markdown("<div style='padding-top:6px'/>", unsafe_allow_html=True)
+        st.markdown("<div style=\'padding-top:6px\'/>", unsafe_allow_html=True)
         ultima_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
-        ultima_ads   = st.session_state.get("ads_cache_data", {}).get("ultima_coleta", "")
+        ultima_ads   = ""
+        for v in st.session_state.get("ads_cache", {}).values():
+            if v.get("ultima_coleta"):
+                ultima_ads = v["ultima_coleta"]
+                break
+            if v.get("ts"):
+                ultima_ads = v["ts"]
+                break
  
-        if not ultima_ads:
-            for v in st.session_state.get("ads_cache", {}).values():
-                if v.get("ultima_coleta"):
-                    ultima_ads = v["ultima_coleta"]
-                    break
- 
-        linhas = []
+        # Box de últimas atualizações
+        items_html = ""
         if ultima_redes:
-            linhas.append(f"📱 Instagram: <b>{ultima_redes}</b>")
+            items_html += f"""
+            <div style=\'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f2f5;\'>
+                <div style=\'width:28px;height:28px;border-radius:8px;background:#f0f9ff;
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0\'>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0369a1" stroke-width="2">
+                        <rect x="2" y="2" width="20" height="20" rx="5"/>
+                        <circle cx="12" cy="12" r="4.5" fill="none"/>
+                        <circle cx="17.5" cy="6.5" r="1.2" fill="#0369a1"/>
+                    </svg>
+                </div>
+                <div style=\'flex:1;min-width:0\'>
+                    <div style=\'font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px\'>Instagram</div>
+                    <div style=\'font-size:12px;font-weight:600;color:#374151\'>{ultima_redes}</div>
+                </div>
+            </div>"""
+ 
         if ultima_ads:
-            linhas.append(f"📢 Meta Ads: <b>{ultima_ads}</b>")
+            items_html += f"""
+            <div style=\'display:flex;align-items:center;gap:8px;padding:6px 0;\'>
+                <div style=\'width:28px;height:28px;border-radius:8px;background:#fff7ed;
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0\'>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M9 9h6M9 12h6M9 15h4"/>
+                    </svg>
+                </div>
+                <div style=\'flex:1;min-width:0\'>
+                    <div style=\'font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px\'>Meta Ads</div>
+                    <div style=\'font-size:12px;font-weight:600;color:#374151\'>{ultima_ads}</div>
+                </div>
+            </div>"""
  
-        if linhas:
-            st.markdown(
-                f"<div style='font-size:12px;color:#6b7280;text-align:right;line-height:1.9;padding-top:4px'>"
-                + "<br>".join(linhas) +
-                "</div>",
-                unsafe_allow_html=True,
-            )
+        if items_html:
+            st.markdown(f"""
+            <div style=\'background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;
+                        padding:8px 12px;margin-top:2px\'>
+                <div style=\'font-size:10px;font-weight:700;color:#9ca3af;
+                             text-transform:uppercase;letter-spacing:0.8px;
+                             margin-bottom:6px\'>Últimas atualizações</div>
+                {items_html}
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style=\'background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;
+                        padding:10px 14px;text-align:center\'>
+                <div style=\'font-size:12px;color:#9ca3af\'>Sem dados coletados ainda</div>
+            </div>
+            """, unsafe_allow_html=True)
  
-    # ── Montar lista de todas as empresas ──────────────────────────
+    st.markdown("<hr style=\'border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0\'/>", unsafe_allow_html=True)
+ 
+    # ── Montar lista de todas as empresas ─────────────────────────────
     todas_empresas_geral = []
     if emp.get("nome"):
         todas_empresas_geral.append({
@@ -2338,14 +2381,13 @@ html, body { background: transparent; overflow: hidden; }
                 "estado": "",
             })
  
-    # ── Dados de redes sociais do cache ────────────────────────────
+    # ── Dados de redes sociais do cache ────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
     for r in cache_redes:
         if not r.get("erro") and r.get("nome"):
             dados_redes_map[r["nome"]] = r
  
-    # ── Dados de ads do cache ──────────────────────────────────────
     ads_cache = st.session_state.get("ads_cache", {})
  
     def fmt_num(n):
@@ -2354,84 +2396,251 @@ html, body { background: transparent; overflow: hidden; }
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
  
-    # ══════════════════════════════════════════════════════════════
-    # BLOCO 1: GRÁFICO COMPARATIVO DE REDES SOCIAIS (novo layout)
-    # ══════════════════════════════════════════════════════════════
- 
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
  
-    if ok_redes:
+    # ══════════════════════════════════════════════════════════════════
+    # BARRA DE NAVEGAÇÃO POR ABAS
+    # ══════════════════════════════════════════════════════════════════
  
-        nomes_g   = [r["nome"] for r in ok_redes]
-        segs_g    = [r.get("seguidores", 0) for r in ok_redes]
-        eng_pct_g = [float(r.get("eng_pct", 0.0)) for r in ok_redes]
-        posts_g   = [r.get("total_posts", 0) for r in ok_redes]
-        eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
-        cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
+    if "dash_aba" not in st.session_state:
+        st.session_state.dash_aba = "presenca"
  
-        nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
-        segs_json    = _json.dumps(segs_g)
-        eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
-        posts_json   = _json.dumps(posts_g)
-        eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
-        cores_json   = _json.dumps(cores_g)
+    # Ghost buttons para navegação
+    for _aba in ["presenca", "discurso", "diferenciais"]:
+        k = f"btn_dash_aba_{_aba}"
+        st.markdown(f"""
+        <style>
+        .st-key-{k} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }}
+        .stElementContainer:has(.st-key-{k}) {{
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button(f"dash_{_aba}", key=k):
+            st.session_state.dash_aba = _aba
+            st.rerun()
  
-        components.html(f"""
+    dash_aba = st.session_state.dash_aba
+ 
+    # Contagens por aba
+    _n_redes  = len(ok_redes)
+    _n_ads    = sum(1 for e in todas_empresas_geral if e["nome"] in ads_cache)
+    _n_sites  = sum(1 for e in todas_empresas_geral if e.get("site"))
+ 
+    abas_def = [
+        ("presenca",    "📊", "Presença Digital",  _n_redes,  "Redes sociais e engajamento"),
+        ("discurso",    "☁️", "Discurso",          _n_redes,  "Palavras e legendas"),
+        ("diferenciais","🏆", "Diferenciais",      len(todas_empresas_geral), "Visão comparativa"),
+    ]
+ 
+    components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+.tabs-wrap {{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
+    width:100%;
+}}
+.tab-pill {{
+    display:flex; align-items:center; justify-content:flex-start; gap:12px;
+    padding:14px 18px; border-radius:12px; cursor:pointer;
+    border:1.5px solid #e5e7eb; background:#fff;
+    font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
+    text-align:left; width:100%;
+}}
+.tab-pill:hover {{ border-color:#3a9fd6; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; box-shadow:0 4px 16px rgba(14,42,71,0.2); }}
+.tab-pill.active::after {{
+    content:\'\'; position:absolute; bottom:0; left:0; right:0;
+    height:3px; background:linear-gradient(90deg,#3a9fd6,#2ecc71);
+    border-radius:0 0 12px 12px;
+}}
+.tab-icon-wrap {{
+    width:38px; height:38px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; font-size:18px;
+    background:#f3f4f6; transition:background 0.15s;
+}}
+.tab-pill.active .tab-icon-wrap {{ background:rgba(255,255,255,0.12); }}
+.tab-content {{ flex:1; min-width:0; }}
+.tab-title {{ font-size:14px; font-weight:700; color:#1a2e4a; display:block; }}
+.tab-pill.active .tab-title {{ color:#fff; }}
+.tab-sub {{ font-size:11px; color:#9ca3af; display:block; margin-top:2px; }}
+.tab-pill.active .tab-sub {{ color:rgba(255,255,255,0.55); }}
+.tab-badge {{
+    font-size:11px; font-weight:800; padding:2px 8px;
+    border-radius:20px; background:#e5e7eb; color:#6b7280;
+    flex-shrink:0;
+}}
+.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
+</style>
+<div class="tabs-wrap">
+{"".join([
+    f\'\'\'<button class="tab-pill {\'active\' if dash_aba == stk else \'\'}"
+        style="position:relative"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll(\'button\');for(var b of btns){{var t=(b.textContent||b.innerText||\'\').split(/\\\\s+/).join(\' \').trim();if(t===\'dash_{stk}\'){{b.click();return;}}}}}})()"
+    >
+        <div class="tab-icon-wrap">{icon}</div>
+        <div class="tab-content">
+            <span class="tab-title">{lbl}</span>
+            <span class="tab-sub">{desc}</span>
+        </div>
+        <span class="tab-badge {\'has\' if cnt > 0 else \'\'}">{cnt}</span>
+    </button>\'\'\'
+    for stk, icon, lbl, cnt, desc in abas_def
+])}
+</div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll(\'iframe\');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = \'86px\';
+            iframes[i].style.marginTop = \'-12px\';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=86, scrolling=False)
+ 
+    # ══════════════════════════════════════════════════════════════════
+    # ABA 1: PRESENÇA DIGITAL — Comparativo de Redes Sociais
+    # ══════════════════════════════════════════════════════════════════
+ 
+    if dash_aba == "presenca":
+ 
+        if ok_redes:
+            nomes_g   = [r["nome"] for r in ok_redes]
+            segs_g    = [r.get("seguidores", 0) for r in ok_redes]
+            eng_pct_g = [float(r.get("eng_pct", 0.0)) for r in ok_redes]
+            posts_g   = [r.get("total_posts", 0) for r in ok_redes]
+            eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
+            cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
+ 
+            nomes_json   = _json.dumps(nomes_g, ensure_ascii=False)
+            segs_json    = _json.dumps(segs_g)
+            eng_pct_json = _json.dumps([round(v, 2) for v in eng_pct_g])
+            posts_json   = _json.dumps(posts_g)
+            eng_med_json = _json.dumps([round(v, 1) for v in eng_med_g])
+            cores_json   = _json.dumps(cores_g)
+ 
+            # Cards de métricas por empresa
+            metricas_cards = []
+            for i, r in enumerate(ok_redes):
+                cor = get_avatar_color(i)
+                av  = gerar_avatar(r["nome"])
+                pp  = r.get("profile_pic", "")
+                if pp and pp.startswith("data:"):
+                    av_html = f\'<div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;"><img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>\'
+                else:
+                    av_html = f\'<div style="width:36px;height:36px;border-radius:50%;background:{cor};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>\'
+                metricas_cards.append({
+                    "nome": r["nome"],
+                    "av_html": av_html,
+                    "seg": fmt_num(r.get("seguidores", 0)),
+                    "eng": f\'{r.get("eng_pct",0):.1f}%\',
+                    "posts": fmt_num(r.get("total_posts", 0)),
+                    "eng_med": fmt_num(int(r.get("eng_medio", 0))),
+                    "cor": cor,
+                })
+ 
+            # Mini cards de métricas
+            cards_row = "".join([
+                f\'\'\'
+                <div style="flex:1;min-width:140px;background:#fff;border:1px solid #e5e7eb;
+                            border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        {m["av_html"]}
+                        <div style="font-size:13px;font-weight:700;color:#1a2e4a;
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{m["nome"]}</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                        <div>
+                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
+                                        text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>
+                            <div style="font-size:18px;font-weight:800;color:#111827">{m["seg"]}</div>
+                        </div>
+                        <div>
+                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
+                                        text-transform:uppercase;letter-spacing:0.5px">Eng. %</div>
+                            <div style="font-size:18px;font-weight:800;color:#3a9fd6">{m["eng"]}</div>
+                        </div>
+                        <div>
+                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
+                                        text-transform:uppercase;letter-spacing:0.5px">Posts</div>
+                            <div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div>
+                        </div>
+                        <div>
+                            <div style="font-size:10px;color:#9ca3af;font-weight:600;
+                                        text-transform:uppercase;letter-spacing:0.5px">Eng/Post</div>
+                            <div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div>
+                        </div>
+                    </div>
+                </div>
+                \'\'\'
+                for m in metricas_cards
+            ])
+ 
+            st.markdown(f"""
+            <div style=\'margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;\'>
+                {cards_row}
+            </div>
+            """, unsafe_allow_html=True)
+ 
+            # Gráfico comparativo
+            components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
 .card {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:18px 20px 14px;
+    padding:18px 20px 14px; margin-top:12px;
 }}
 .card-title {{
-    font-size:20px; font-weight:800; color:#1a2e4a;
+    font-size:18px; font-weight:800; color:#1a2e4a;
     text-transform:uppercase; letter-spacing:0.6px;
-    padding-bottom:10px; border-bottom:2px solid #6b7280;
-    margin-bottom:16px;
+    padding-bottom:10px; border-bottom:2px solid #e5e7eb;
+    margin-bottom:16px; display:flex; align-items:center; gap:10px;
 }}
 .metric-tabs {{
-    display:grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap:8px; margin-bottom:16px;
+    display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;
 }}
 .mtab {{
-    padding:8px 0; border-radius:8px; border:1.5px solid #e5e7eb;
+    padding:7px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:12px; font-weight:700; color:#6b7280;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
-    text-align:center; width:100%;
+    cursor:pointer; font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
 }}
 .mtab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .mtab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
-.stats-row {{
-    display:grid;
-    grid-template-columns: repeat({len(ok_redes)}, 1fr);
-    gap:10px; margin-bottom:16px;
-}}
-.stat-card {{
-    background:#f8f9fa; border-radius:10px; padding:10px 14px;
-}}
-.stat-label {{ font-size:11px; color:#9ca3af; margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; }}
-.stat-value {{ font-size:20px; font-weight:800; }}
-.stat-sub {{ font-size:11px; color:#9ca3af; margin-top:2px; }}
-.chart-wrap {{ position:relative; width:100%; height:220px; }}
+.chart-wrap {{ position:relative; width:100%; height:240px; }}
 </style>
 </head>
 <body>
 <div class="card">
-    <div class="card-title">📊 Comparativo — Redes Sociais</div>
-    <div class="metric-tabs">
-        <button class="mtab active" onclick="switchMetric('seg', this)">Seguidores</button>
-        <button class="mtab" onclick="switchMetric('eng', this)">Engajamento %</button>
-        <button class="mtab" onclick="switchMetric('posts', this)">Publicações</button>
-        <button class="mtab" onclick="switchMetric('engmed', this)">Eng. Médio/Post</button>
+    <div class="card-title">
+        <span>📊</span> Comparativo — Redes Sociais
     </div>
-    <div class="stats-row" id="stats-row"></div>
+    <div class="metric-tabs">
+        <button class="mtab active" onclick="switchMetric(\'seg\', this)">Seguidores</button>
+        <button class="mtab" onclick="switchMetric(\'eng\', this)">Engajamento %</button>
+        <button class="mtab" onclick="switchMetric(\'posts\', this)">Publicações</button>
+        <button class="mtab" onclick="switchMetric(\'engmed\', this)">Eng. Médio/Post</button>
+    </div>
     <div class="chart-wrap"><canvas id="ch_main"></canvas></div>
 </div>
  
@@ -2444,45 +2653,29 @@ var ENG_MED = {eng_med_json};
 var CORES   = {cores_json};
  
 var METRICS = {{
-    seg:    {{ data: SEGS,    label: 'seguidores',      pct: false }},
-    eng:    {{ data: ENG_PCT, label: 'engajamento %',   pct: true  }},
-    posts:  {{ data: POSTS,   label: 'publicações',     pct: false }},
-    engmed: {{ data: ENG_MED, label: 'eng. médio/post', pct: false }},
+    seg:    {{ data: SEGS,    label: \'seguidores\',      pct: false }},
+    eng:    {{ data: ENG_PCT, label: \'engajamento %\',   pct: true  }},
+    posts:  {{ data: POSTS,   label: \'publicações\',     pct: false }},
+    engmed: {{ data: ENG_MED, label: \'eng. médio/post\', pct: false }},
 }};
-var currentKey = 'seg';
+var currentKey = \'seg\';
  
 function fmtNum(n) {{
     n = Math.round(n * 10) / 10;
-    if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-    if (n >= 1000)    return (n/1000).toFixed(1) + 'K';
+    if (n >= 1000000) return (n/1000000).toFixed(1) + \'M\';
+    if (n >= 1000)    return (n/1000).toFixed(1) + \'K\';
     return String(Math.round(n));
 }}
  
-function buildStats(key) {{
-    var m = METRICS[key];
-    var el = document.getElementById('stats-row');
-    el.innerHTML = '';
-    NOMES.forEach(function(nome, i) {{
-        var val = m.pct ? m.data[i].toFixed(1) + '%' : fmtNum(m.data[i]);
-        var card = document.createElement('div');
-        card.className = 'stat-card';
-        card.innerHTML =
-            '<div class="stat-label">' + nome + '</div>' +
-            '<div class="stat-value" style="color:' + CORES[i] + '">' + val + '</div>' +
-            '<div class="stat-sub">' + m.label + '</div>';
-        el.appendChild(card);
-    }});
-}}
- 
-var chart = new Chart(document.getElementById('ch_main'), {{
-    type: 'bar',
+var chart = new Chart(document.getElementById(\'ch_main\'), {{
+    type: \'bar\',
     data: {{
         labels: NOMES,
         datasets: [{{
-            label: 'Seguidores',
+            label: \'Seguidores\',
             data: SEGS,
             backgroundColor: CORES,
-            borderRadius: 8,
+            borderRadius: 10,
             borderSkipped: false,
         }}]
     }},
@@ -2495,7 +2688,7 @@ var chart = new Chart(document.getElementById('ch_main'), {{
                 callbacks: {{
                     label: function(ctx) {{
                         var m = METRICS[currentKey];
-                        return ' ' + ctx.dataset.label + ': ' + (m.pct ? ctx.parsed.y.toFixed(1) + '%' : fmtNum(ctx.parsed.y));
+                        return \' \' + ctx.dataset.label + \': \' + (m.pct ? ctx.parsed.y.toFixed(1) + \'%\' : fmtNum(ctx.parsed.y));
                     }}
                 }}
             }}
@@ -2503,12 +2696,12 @@ var chart = new Chart(document.getElementById('ch_main'), {{
         scales: {{
             x: {{
                 grid: {{ display: false }},
-                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:12, weight:'600' }}, color:'#6b7280', maxRotation:0 }},
+                ticks: {{ font: {{ family:"\'DM Sans\',sans-serif", size:12, weight:\'600\' }}, color:\'#6b7280\', maxRotation:0 }},
                 border: {{ display: false }}
             }},
             y: {{
-                grid: {{ color: '#f3f4f6' }},
-                ticks: {{ font: {{ family:"'DM Sans',sans-serif", size:11 }}, color:'#9ca3af',
+                grid: {{ color: \'#f3f4f6\' }},
+                ticks: {{ font: {{ family:"\'DM Sans\',sans-serif", size:11 }}, color:\'#9ca3af\',
                           callback: function(v) {{ return fmtNum(v); }} }},
                 border: {{ display: false }}
             }}
@@ -2517,16 +2710,16 @@ var chart = new Chart(document.getElementById('ch_main'), {{
             onComplete: function() {{
                 var ctx2 = chart.ctx;
                 ctx2.save();
-                ctx2.font = 'bold 12px DM Sans, sans-serif';
-                ctx2.fillStyle = '#ffffff';
-                ctx2.textAlign = 'center';
-                ctx2.textBaseline = 'top';
+                ctx2.font = \'bold 12px DM Sans, sans-serif\';
+                ctx2.fillStyle = \'#ffffff\';
+                ctx2.textAlign = \'center\';
+                ctx2.textBaseline = \'top\';
                 chart.data.datasets.forEach(function(dataset, di) {{
                     chart.getDatasetMeta(di).data.forEach(function(bar, idx) {{
                         var val = dataset.data[idx];
                         if (!val) return;
                         var m = METRICS[currentKey];
-                        var lbl = m.pct ? val.toFixed(1) + '%' : fmtNum(val);
+                        var lbl = m.pct ? val.toFixed(1) + \'%\' : fmtNum(val);
                         ctx2.fillText(lbl, bar.x, bar.y + 8);
                     }});
                 }});
@@ -2542,23 +2735,20 @@ function switchMetric(key, btn) {{
     chart.data.datasets[0].data  = m.data;
     chart.data.datasets[0].label = m.label;
     chart.options.scales.y.ticks.callback = function(v) {{
-        return m.pct ? v + '%' : fmtNum(v);
+        return m.pct ? v + \'%\' : fmtNum(v);
     }};
     chart.update();
-    buildStats(key);
-    document.querySelectorAll('.mtab').forEach(function(b) {{ b.classList.remove('active'); }});
-    btn.classList.add('active');
+    document.querySelectorAll(\'.mtab\').forEach(function(b) {{ b.classList.remove(\'active\'); }});
+    btn.classList.add(\'active\');
     syncHeight();
 }}
  
-buildStats('seg');
- 
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
+    var iframes = window.parent.document.querySelectorAll(\'iframe\');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = (h + 8) + 'px'; break;
+            iframes[i].style.height = (h + 8) + \'px\'; break;
         }} }} catch(e) {{}}
     }}
 }}
@@ -2566,139 +2756,102 @@ if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body)
 setTimeout(syncHeight, 300); setTimeout(syncHeight, 800);
 </script>
 </body></html>
-""", height=420, scrolling=False)
+""", height=380, scrolling=False)
  
-    else:
-        st.markdown("""
-        <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;
-                    padding:36px 32px;text-align:center;margin-bottom:24px'>
-            <div style='font-size:28px;margin-bottom:10px'>📊</div>
-            <div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem dados de redes sociais</div>
-            <div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b> para ver os gráficos aqui.</div>
-        </div>
-        """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style=\'background:#fff;border:1px dashed #d1d5db;border-radius:14px;
+                        padding:48px 32px;text-align:center;margin-top:16px\'>
+                <div style=\'font-size:32px;margin-bottom:12px\'>📊</div>
+                <div style=\'font-size:15px;font-weight:600;color:#374151;margin-bottom:6px\'>Sem dados de redes sociais</div>
+                <div style=\'font-size:13px;color:#9ca3af\'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b>.</div>
+            </div>
+            """, unsafe_allow_html=True)
  
-    # ══════════════════════════════════════════════════════════════
-    # BLOCO 2: NUVEM DE PALAVRAS DAS LEGENDAS (novo layout)
-    # ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════
+    # ABA 2: DISCURSO — Nuvem de Palavras
+    # ══════════════════════════════════════════════════════════════════
  
-    if ok_redes:
+    elif dash_aba == "discurso":
  
-        import re as _re
-        stopwords_pt = {
-            "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
-            "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
-            "esse","essa","seu","sua","seus","suas","mais","mas","ou","não","é","são",
-            "foi","ser","ter","tem","como","pelo","pela","pelos","pelas","já","também",
-            "muito","bem","aqui","nosso","nossa","nos","nós","você","vocês","isso","isto",
-            "todo","toda","todos","todas","quando","onde","quem","qual","quais","foi",
-            "ser","seus","suas","ele","ela","eles","elas","me","te","lhe","lhes","meu",
-            "minha","teu","tua","nossos","nossas","seu","sua","via","até","após","sobre",
-        }
+        if ok_redes:
+            import re as _re
  
-        empresas_palavras = {}
-        for r in ok_redes:
-            texto_total = " ".join([
-                p.get("caption", "") or ""
-                for p in r.get("posts", [])
-            ])
-            palavras = _re.findall(r'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}', texto_total)
-            freq = {}
-            for w in palavras:
-                w_low = w.lower()
-                if w_low not in stopwords_pt and not w_low.startswith("http"):
-                    freq[w_low] = freq.get(w_low, 0) + 1
-            top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
-            empresas_palavras[r["nome"]] = top
+            stopwords_pt = {
+                "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
+                "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
+                "esse","essa","seu","sua","seus","suas","mais","mas","ou","não","é","são",
+                "foi","ser","ter","tem","como","pelo","pela","pelos","pelas","já","também",
+                "muito","bem","aqui","nosso","nossa","nos","nós","você","vocês","isso","isto",
+                "todo","toda","todos","todas","quando","onde","quem","qual","quais",
+                "via","até","após","sobre","me","te","lhe","lhes","meu","minha","teu","tua",
+            }
  
-        todas_palavras_geral = {}
-        for r in ok_redes:
-            for palavra, freq in empresas_palavras.get(r["nome"], []):
-                todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
-        top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
-        empresas_palavras["__geral__"] = top_geral
+            empresas_palavras = {}
+            for r in ok_redes:
+                texto_total = " ".join([
+                    p.get("caption", "") or ""
+                    for p in r.get("posts", [])
+                ])
+                palavras = _re.findall(r\'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}\', texto_total)
+                freq = {}
+                for w in palavras:
+                    w_low = w.lower()
+                    if w_low not in stopwords_pt and not w_low.startswith("http"):
+                        freq[w_low] = freq.get(w_low, 0) + 1
+                top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
+                empresas_palavras[r["nome"]] = top
  
-        empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
-        nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
-        cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
+            todas_palavras_geral = {}
+            for r in ok_redes:
+                for palavra, freq in empresas_palavras.get(r["nome"], []):
+                    todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
+            top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
+            empresas_palavras["__geral__"] = top_geral
  
-        components.html(f"""
+            empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
+            nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
+            cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
+ 
+            components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
 .card {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:18px 20px 20px;
+    padding:18px 20px 20px; margin-top:16px;
 }}
 .card-header {{
     display:flex; align-items:center; justify-content:space-between;
-    padding-bottom:12px; border-bottom:2px solid #6b7280; margin-bottom:16px;
+    padding-bottom:12px; border-bottom:2px solid #e5e7eb; margin-bottom:16px;
     flex-wrap:wrap; gap:10px;
 }}
-.card-title {{
-    font-size:20px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.6px;
-}}
+.card-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.6px; }}
 .filter-tabs {{ display:flex; gap:8px; flex-wrap:wrap; }}
 .ftab {{
     padding:6px 14px; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:12px; font-weight:700; color:#6b7280;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+    cursor:pointer; font-family:\'DM Sans\',sans-serif; transition:all 0.15s;
 }}
 .ftab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
 .ftab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
-.body-wrap {{
-    display:flex; gap:16px; align-items:flex-start;
-}}
-.cloud-wrap {{
-    flex:1; min-height:180px; display:flex; flex-wrap:wrap;
-    gap:10px 14px; align-items:center;
-    padding:8px 4px;
-}}
-.word-tag {{
-    display:inline-block; cursor:default;
-    transition:opacity 0.15s; line-height:1.2; font-weight:700;
-}}
+.body-wrap {{ display:flex; gap:16px; align-items:flex-start; }}
+.cloud-wrap {{ flex:1; min-height:180px; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; padding:8px 4px; }}
+.word-tag {{ display:inline-block; cursor:default; transition:opacity 0.15s; line-height:1.2; font-weight:700; }}
 .word-tag:hover {{ opacity:0.6 !important; }}
-.ranking-col {{
-    width:40%; flex-shrink:0;
-    background:#f8f9fa; border-radius:10px; padding:12px 14px;
-}}
-.ranking-title {{
-    font-size:11px; font-weight:700; color:#9ca3af;
-    text-transform:uppercase; letter-spacing:0.05em;
-    margin-bottom:10px;
-}}
-.rank-item {{
-    display:flex; align-items:center; gap:8px;
-    padding:5px 0; border-bottom:0.5px solid #e5e7eb;
-}}
+.ranking-col {{ width:38%; flex-shrink:0; background:#f8f9fa; border-radius:10px; padding:12px 14px; }}
+.ranking-title {{ font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px; }}
+.rank-item {{ display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:0.5px solid #e5e7eb; }}
 .rank-item:last-child {{ border-bottom:none; }}
-.rank-pos {{
-    font-size:10px; font-weight:700; color:#d1d5db;
-    width:14px; flex-shrink:0; text-align:right;
-}}
-.rank-word {{
-    font-size:13px; font-weight:600; flex:1;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}}
-.rank-count {{
-    font-size:11px; font-weight:700; color:#fff;
-    padding:2px 7px; border-radius:20px; flex-shrink:0;
-}}
-.rank-bar-wrap {{
-    height:3px; background:#e5e7eb; border-radius:2px;
-    margin-top:3px; width:100%;
-}}
+.rank-pos {{ font-size:10px; font-weight:700; color:#d1d5db; width:14px; flex-shrink:0; text-align:right; }}
+.rank-word {{ font-size:13px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.rank-count {{ font-size:11px; font-weight:700; color:#fff; padding:2px 7px; border-radius:20px; flex-shrink:0; }}
+.rank-bar-wrap {{ height:3px; background:#e5e7eb; border-radius:2px; margin-top:3px; width:100%; }}
 .rank-bar {{ height:3px; border-radius:2px; }}
-.empty-msg {{
-    font-size:14px; color:#9ca3af; text-align:center;
-    padding:40px 0; width:100%;
-}}
 </style>
 </head>
 <body>
@@ -2720,26 +2873,21 @@ body {{ padding-bottom:8px; }}
 var DADOS  = {empresas_palavras_json};
 var NOMES  = {nomes_nuvem_json};
 var CORES  = {cores_nuvem_json};
- 
 var LABELS = {{}};
-NOMES.forEach(function(n) {{
-    LABELS[n] = n === '__geral__' ? 'Geral' : n;
-}});
-var ativo = NOMES[0] || '';
+NOMES.forEach(function(n) {{ LABELS[n] = n === \'__geral__\' ? \'Geral\' : n; }});
+var ativo = NOMES[0] || \'\';
  
 function buildTabs() {{
-    var el = document.getElementById('filter-tabs');
-    el.innerHTML = '';
+    var el = document.getElementById(\'filter-tabs\');
+    el.innerHTML = \'\';
     NOMES.forEach(function(nome, i) {{
-        var btn = document.createElement('button');
-        btn.className = 'ftab' + (nome === ativo ? ' active' : '');
+        var btn = document.createElement(\'button\');
+        btn.className = \'ftab\' + (nome === ativo ? \' active\' : \'\');
         btn.textContent = LABELS[nome];
         btn.onclick = function() {{
             ativo = nome;
-            document.querySelectorAll('.ftab').forEach(function(b) {{
-                b.classList.remove('active');
-            }});
-            btn.classList.add('active');
+            document.querySelectorAll(\'.ftab\').forEach(function(b) {{ b.classList.remove(\'active\'); }});
+            btn.classList.add(\'active\');
             renderCloud();
         }};
         el.appendChild(btn);
@@ -2747,54 +2895,30 @@ function buildTabs() {{
 }}
  
 function renderCloud() {{
-    var wrap = document.getElementById('cloud-wrap');
-    var rankList = document.getElementById('ranking-list');
-    wrap.innerHTML = '';
-    rankList.innerHTML = '';
+    var wrap = document.getElementById(\'cloud-wrap\');
+    var rankList = document.getElementById(\'ranking-list\');
+    wrap.innerHTML = \'\'; rankList.innerHTML = \'\';
     var palavras = DADOS[ativo] || [];
-    if (!palavras.length) {{
-        wrap.innerHTML = '<div class="empty-msg">Nenhuma legenda encontrada para esta empresa.</div>';
-        syncHeight(); return;
-    }}
+    if (!palavras.length) {{ wrap.innerHTML = \'<div style="font-size:14px;color:#9ca3af;text-align:center;padding:40px 0;width:100%">Nenhuma legenda encontrada.</div>\'; syncHeight(); return; }}
     var maxFreq = palavras[0][1] || 1;
     var minFreq = palavras[palavras.length - 1][1] || 1;
     var corIdx  = NOMES.indexOf(ativo);
-    var corBase = ativo === '__geral__' ? '#0e2a47' : (CORES[corIdx] || '#3a9fd6');
- 
+    var corBase = ativo === \'__geral__\' ? \'#0e2a47\' : (CORES[corIdx] || \'#3a9fd6\');
     palavras.forEach(function(item) {{
-        var word = item[0];
-        var freq = item[1];
-        var ratio   = maxFreq === minFreq ? 0.5 : (freq - minFreq) / (maxFreq - minFreq);
+        var ratio   = maxFreq === minFreq ? 0.5 : (item[1] - minFreq) / (maxFreq - minFreq);
         var size    = Math.round(13 + ratio * 23);
         var opacity = (0.45 + ratio * 0.55).toFixed(2);
- 
-        var tag = document.createElement('span');
-        tag.className = 'word-tag';
-        tag.textContent = word;
-        tag.title = freq + 'x';
-        tag.style.fontSize = size + 'px';
-        tag.style.color    = corBase;
-        tag.style.opacity  = opacity;
+        var tag = document.createElement(\'span\');
+        tag.className = \'word-tag\';
+        tag.textContent = item[0]; tag.title = item[1] + \'x\';
+        tag.style.fontSize = size + \'px\'; tag.style.color = corBase; tag.style.opacity = opacity;
         wrap.appendChild(tag);
     }});
- 
-    var top10 = palavras.slice(0, 7);
-    top10.forEach(function(item, idx) {{
-        var word = item[0];
-        var freq = item[1];
-        var barW = Math.round((freq / maxFreq) * 100);
- 
-        var row = document.createElement('div');
-        row.className = 'rank-item';
-        row.innerHTML =
-            '<span class="rank-pos">' + (idx+1) + '</span>' +
-            '<div style="flex:1;min-width:0">' +
-                '<div style="display:flex;align-items:center;justify-content:space-between;gap:4px">' +
-                    '<span class="rank-word" style="color:' + corBase + '">' + word + '</span>' +
-                    '<span class="rank-count" style="background:' + corBase + '">' + freq + '</span>' +
-                '</div>' +
-                '<div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barW + '%;background:' + corBase + '"></div></div>' +
-            '</div>';
+    palavras.slice(0, 7).forEach(function(item, idx) {{
+        var barW = Math.round((item[1] / maxFreq) * 100);
+        var row = document.createElement(\'div\');
+        row.className = \'rank-item\';
+        row.innerHTML = \'<span class="rank-pos">\' + (idx+1) + \'</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px"><span class="rank-word" style="color:\' + corBase + \'">\' + item[0] + \'</span><span class="rank-count" style="background:\' + corBase + \'">\' + item[1] + \'</span></div><div class="rank-bar-wrap"><div class="rank-bar" style="width:\' + barW + \'%;background:\' + corBase + \'"></div></div></div>\';
         rankList.appendChild(row);
     }});
     syncHeight();
@@ -2803,36 +2927,229 @@ function renderCloud() {{
 function syncHeight() {{
     setTimeout(function() {{
         var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var iframes = window.parent.document.querySelectorAll('iframe');
+        var iframes = window.parent.document.querySelectorAll(\'iframe\');
         for (var i = 0; i < iframes.length; i++) {{
-            try {{ if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 8) + 'px'; break;
-            }} }} catch(e) {{}}
+            try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + \'px\'; break; }} }} catch(e) {{}}
         }}
     }}, 100);
 }}
  
-buildTabs();
-renderCloud();
+buildTabs(); renderCloud();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 setTimeout(syncHeight, 400);
 </script>
 </body></html>
+""", height=420, scrolling=False)
+ 
+        else:
+            st.markdown("""
+            <div style=\'background:#fff;border:1px dashed #d1d5db;border-radius:14px;
+                        padding:48px 32px;text-align:center;margin-top:16px\'>
+                <div style=\'font-size:32px;margin-bottom:12px\'>☁️</div>
+                <div style=\'font-size:15px;font-weight:600;color:#374151;margin-bottom:6px\'>Sem dados de legendas</div>
+                <div style=\'font-size:13px;color:#9ca3af\'>Acesse <b>Redes Sociais</b> e colete dados para ver as palavras aqui.</div>
+            </div>
+            """, unsafe_allow_html=True)
+ 
+    # ══════════════════════════════════════════════════════════════════
+    # ABA 3: DIFERENCIAIS — Visão Comparativa Completa
+    # ══════════════════════════════════════════════════════════════════
+ 
+    elif dash_aba == "diferenciais":
+ 
+        if not todas_empresas_geral:
+            st.info("Cadastre sua empresa e concorrentes para ver os diferenciais.")
+            st.stop()
+ 
+        # Monta tabela comparativa visual
+        linhas_empresas = []
+        for i, e in enumerate(todas_empresas_geral):
+            is_minha  = e["tipo"] == "minha"
+            cor       = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+            av        = gerar_avatar(e["nome"])
+            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
+            badge_col = "#15803d" if is_minha else "#1d4ed8"
+            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+ 
+            redes_data = dados_redes_map.get(e["nome"], {})
+            seg       = fmt_num(redes_data.get("seguidores", 0)) if redes_data else "—"
+            eng       = f\'{redes_data.get("eng_pct",0):.1f}%\' if redes_data else "—"
+            posts_tot = fmt_num(redes_data.get("total_posts", 0)) if redes_data else "—"
+            bio       = (redes_data.get("bio", "") or "")[:80] + ("..." if len(redes_data.get("bio","") or "") > 80 else "") if redes_data else "—"
+ 
+            ads_entry = ads_cache.get(e["nome"], {})
+            n_ads     = len(ads_entry.get("data", [])) if ads_entry else 0
+            ads_txt   = str(n_ads) if n_ads else "—"
+ 
+            site_txt  = e.get("site") or "—"
+            ig_txt    = e.get("instagram") or "—"
+ 
+            linhas_empresas.append({
+                "nome": e["nome"],
+                "cor": cor,
+                "av": av,
+                "badge_lbl": badge_lbl,
+                "badge_bg": badge_bg,
+                "badge_col": badge_col,
+                "badge_brd": badge_brd,
+                "seg": seg,
+                "eng": eng,
+                "posts": posts_tot,
+                "bio": bio,
+                "n_ads": ads_txt,
+                "site": site_txt,
+                "ig": ig_txt,
+                "setor": e.get("setor", "—") or "—",
+            })
+ 
+        linhas_json = _json.dumps(linhas_empresas, ensure_ascii=False)
+ 
+        components.html(f"""
+<!DOCTYPE html><html>
+<head>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:\'DM Sans\',sans-serif; overflow:hidden; }}
+body {{ padding-bottom:8px; }}
+.table-wrap {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    overflow:hidden; margin-top:16px;
+}}
+.table-header {{
+    padding:16px 20px 12px;
+    border-bottom:2px solid #e5e7eb;
+    font-size:18px; font-weight:800; color:#1a2e4a;
+    text-transform:uppercase; letter-spacing:0.6px;
+    display:flex; align-items:center; gap:10px;
+}}
+table {{
+    width:100%; border-collapse:collapse;
+}}
+th {{
+    padding:10px 14px;
+    font-size:11px; font-weight:700; color:#6b7280;
+    text-transform:uppercase; letter-spacing:0.8px;
+    text-align:left; background:#f9fafb;
+    border-bottom:1px solid #e5e7eb;
+}}
+td {{
+    padding:14px 14px;
+    font-size:13px; color:#374151;
+    border-bottom:1px solid #f3f4f6;
+    vertical-align:top;
+}}
+tr:last-child td {{ border-bottom:none; }}
+tr:hover td {{ background:#fafafa; }}
+.empresa-cell {{
+    display:flex; align-items:center; gap:10px;
+}}
+.avatar-td {{
+    width:36px; height:36px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; color:#fff; flex-shrink:0;
+}}
+.badge-td {{
+    display:inline-block; padding:2px 8px; border-radius:20px;
+    font-size:10px; font-weight:700; margin-top:3px;
+}}
+.metric-badge {{
+    display:inline-flex; align-items:center;
+    background:#f3f4f6; color:#374151;
+    padding:3px 10px; border-radius:20px;
+    font-size:12px; font-weight:600;
+}}
+.metric-badge.blue  {{ background:#eff6ff; color:#1d4ed8; }}
+.metric-badge.green {{ background:#f0fdf4; color:#15803d; }}
+.metric-badge.empty {{ background:#f9fafb; color:#d1d5db; font-style:italic; }}
+.bio-text {{
+    font-size:12px; color:#6b7280; line-height:1.5;
+    max-width:200px; white-space:normal;
+}}
+</style>
+</head>
+<body>
+<div class="table-wrap">
+    <div class="table-header"><span>🏆</span> Visão Comparativa Completa</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>Setor</th>
+                <th>Instagram</th>
+                <th>Seguidores</th>
+                <th>Eng. %</th>
+                <th>Posts</th>
+                <th>Anúncios</th>
+                <th>Site</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+ 
+<script>
+var DADOS = {linhas_json};
+ 
+function buildTable() {{
+    var tbody = document.getElementById(\'tbody\');
+    DADOS.forEach(function(d) {{
+        var tr = document.createElement(\'tr\');
+        tr.innerHTML =
+            \'<td><div class="empresa-cell">\' +
+            \'<div class="avatar-td" style="background:\' + d.cor + \'">\' + d.av + \'</div>\' +
+            \'<div><div style="font-size:13px;font-weight:700;color:#111827">\' + d.nome + \'</div>\' +
+            \'<span class="badge-td" style="background:\' + d.badge_bg + \';color:\' + d.badge_col + \';border:1px solid \' + d.badge_brd + \'">\' + d.badge_lbl + \'</span></div></div></td>\' +
+ 
+            \'<td><span class="metric-badge">\' + (d.setor || \'—\') + \'</span></td>\' +
+ 
+            \'<td style="font-size:12px;color:#6b7280;font-family:monospace">\' + d.ig + \'</td>\' +
+ 
+            \'<td><span class="metric-badge blue">\' + d.seg + \'</span></td>\' +
+ 
+            \'<td><span class="metric-badge \' + (d.eng !== \'—\' ? \'green\' : \'empty\') + \'">\' + d.eng + \'</span></td>\' +
+ 
+            \'<td><span class="metric-badge">\' + d.posts + \'</span></td>\' +
+ 
+            \'<td><span class="metric-badge \' + (d.n_ads !== \'—\' ? \'blue\' : \'\') + \'">\' + d.n_ads + \'</span></td>\' +
+ 
+            \'<td><span style="font-size:11px;color:#9ca3af;font-family:monospace">\' + (d.site !== \'—\' ? d.site.substring(0, 22) + (d.site.length > 22 ? \'…\' : \'\') : \'—\') + \'</span></td>\';
+ 
+        tbody.appendChild(tr);
+    }});
+    syncHeight();
+}}
+ 
+function syncHeight() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var iframes = window.parent.document.querySelectorAll(\'iframe\');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + \'px\'; break; }} }} catch(e) {{}}
+    }}
+}}
+ 
+buildTable();
+if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
+</script>
+</body></html>
 """, height=400, scrolling=False)
  
-    # ── Aviso se sem dados ─────────────────────────────────────────
-    if not ok_redes:
-        st.markdown("""
-        <div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;
-                    padding:14px 18px;font-size:14px;color:#92400e;
-                    display:flex;align-items:flex-start;gap:12px;margin-top:12px'>
-            <span style='font-size:20px;flex-shrink:0'>💡</span>
-            <div>
-                <b>Para enriquecer este painel:</b><br>
-                • Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b> para ver os gráficos de Instagram
+        # Banner de aviso se sem dados
+        if not ok_redes and not ads_cache:
+            st.markdown("""
+            <div style=\'background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;
+                        padding:14px 18px;font-size:14px;color:#92400e;
+                        display:flex;align-items:flex-start;gap:12px;margin-top:12px\'>
+                <span style=\'font-size:20px;flex-shrink:0\'>💡</span>
+                <div>
+                    <b>Para enriquecer este painel:</b><br>
+                    • Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b><br>
+                    • Acesse <b>Biblioteca de Ads</b> → configure e busque anúncios
+                </div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES

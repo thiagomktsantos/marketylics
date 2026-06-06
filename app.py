@@ -5917,24 +5917,55 @@ setTimeout(syncHeight, 300);
 
                 st.markdown(f"""
                 <style>
-                /* Oculta label do text_input nativo */
-                .st-key-cfg_input_nativo_{ci} label {{ display: none !important; }}
-                .st-key-cfg_input_nativo_{ci} {{ margin-top: 0 !important; margin-bottom: 0 !important; }}
+                .painel-edicao-{ci} {{
+                    background: #ffffff;
+                    border: 2px solid #3a9fd6;
+                    border-radius: 16px;
+                    box-shadow: 0 0 0 4px rgba(58,159,214,0.10);
+                    padding: 20px;
+                    margin-top: -4px;
+                    margin-bottom: 8px;
+                }}
+                .st-key-cfg_input_nativo_{ci} {{
+                    margin-top: 0 !important;
+                    margin-bottom: 4px !important;
+                }}
+                .st-key-cfg_input_nativo_{ci} label {{
+                    display: none !important;
+                }}
                 .st-key-cfg_input_nativo_{ci} input {{
                     border-radius: 8px !important;
                     font-size: 14px !important;
                     height: 44px !important;
+                    border: 1.5px solid #e5e7eb !important;
                 }}
-                /* Botões do painel */
-                .st-key-btn_buscar_nativo_{ci} button,
-                .st-key-btn_salvar_nativo_{ci} button,
-                .st-key-btn_cancelar_nativo_{ci} button {{
+                .st-key-cfg_input_nativo_{ci} input:focus {{
+                    border-color: #3a9fd6 !important;
+                    box-shadow: none !important;
+                }}
+                .st-key-btn_buscar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
+                    border: 1.5px solid #3a9fd6 !important;
+                    background: #eff6ff !important;
+                    color: #1d4ed8 !important;
+                }}
+                .st-key-btn_buscar_nativo_{ci} button:hover {{
+                    background: #dbeafe !important;
+                }}
+                .st-key-btn_salvar_nativo_{ci} button {{
                     height: 44px !important;
                     border-radius: 8px !important;
                     font-size: 13px !important;
                     font-weight: 700 !important;
                 }}
                 .st-key-btn_cancelar_nativo_{ci} button {{
+                    height: 44px !important;
+                    border-radius: 8px !important;
+                    font-size: 13px !important;
+                    font-weight: 700 !important;
                     background: #f3f4f6 !important;
                     color: #6b7280 !important;
                     border: 1px solid #e5e7eb !important;
@@ -5944,61 +5975,59 @@ setTimeout(syncHeight, 300);
                     color: #dc2626 !important;
                     border-color: #fca5a5 !important;
                 }}
-                </style>
-
-                <div style="
+                /* Container geral do painel */
+                .st-key-painel_edicao_{ci} {{
                     background: #ffffff;
-                    border: 2px solid #3a9fd6;
-                    border-radius: 16px;
-                    box-shadow: 0 0 0 4px rgba(58,159,214,0.10);
-                    padding: 20px 20px 6px 20px;
-                    margin-top: -4px;
-                    margin-bottom: 4px;
-                ">
-                    <!-- Cabeçalho do card -->
-                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;
-                                padding-bottom:14px;border-bottom:1px solid #f3f4f6;">
-                        <div style="width:44px;height:44px;border-radius:50%;background:{cor_e};
-                                    display:flex;align-items:center;justify-content:center;
-                                    font-size:15px;font-weight:700;color:#fff;flex-shrink:0">
-                            {av_txt_e}
-                        </div>
-                        <div>
+                    border: 2px solid #3a9fd6 !important;
+                    border-radius: 16px !important;
+                    box-shadow: 0 0 0 4px rgba(58,159,214,0.10) !important;
+                    padding: 20px !important;
+                    margin-top: -4px !important;
+                    margin-bottom: 8px !important;
+                }}
+                .stElementContainer:has(.st-key-painel_edicao_{ci}) > div {{
+                    border: 2px solid #3a9fd6 !important;
+                    border-radius: 16px !important;
+                    padding: 20px !important;
+                    background: #fff !important;
+                    box-shadow: 0 0 0 4px rgba(58,159,214,0.10) !important;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+
+                with st.container(key=f"painel_edicao_{ci}"):
+                    # Cabeçalho
+                    st.markdown(f"""
+                    <div style="display:flex;align-items:center;gap:12px;
+                                padding-bottom:14px;border-bottom:1px solid #f3f4f6;
+                                margin-bottom:14px;">
+                        <div style="width:44px;height:44px;border-radius:50%;
+                                    background:{cor_e};display:flex;align-items:center;
+                                    justify-content:center;font-size:15px;font-weight:700;
+                                    color:#fff;flex-shrink:0">{av_txt_e}</div>
+                        <div style="flex:1">
                             <div style="font-size:15px;font-weight:700;color:#1a2e4a;">{e["nome"]}</div>
-                            <div style="display:inline-flex;align-items:center;
-                                        background:{badge_bg_e};color:{badge_col_e};
-                                        border:1px solid {badge_brd_e};
-                                        padding:2px 10px;border-radius:20px;
-                                        font-size:11px;font-weight:700;margin-top:3px">
+                            <span style="display:inline-flex;align-items:center;
+                                         background:{badge_bg_e};color:{badge_col_e};
+                                         border:1px solid {badge_brd_e};
+                                         padding:2px 10px;border-radius:20px;
+                                         font-size:11px;font-weight:700;margin-top:3px">
                                 {badge_lbl_e}
-                            </div>
+                            </span>
                         </div>
-                        <div style="margin-left:auto;background:#eff6ff;color:#1d4ed8;
-                                    border:1px solid #bfdbfe;padding:5px 12px;border-radius:8px;
-                                    font-size:12px;font-weight:700;">
+                        <div style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                                    padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;">
                             ✏️ Editando
                         </div>
                     </div>
-                    <!-- Label do input -->
                     <div style="font-size:11px;font-weight:700;color:#9ca3af;
                                 text-transform:uppercase;letter-spacing:0.8px;
                                 margin-bottom:6px;">
                         ID ou nome da página do Facebook
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                # Input nativo do Streamlit — dentro do container estilizado
-                with st.container():
-                    st.markdown("""
-                    <style>
-                    /* Remove margem extra do container do input */
-                    section.main .block-container > div > div:has(> div[data-testid="stTextInput"]) {
-                        margin-top: -12px !important;
-                    }
-                    </style>
                     """, unsafe_allow_html=True)
 
+                    # Input nativo
                     val_nativo = st.text_input(
                         "ID ou nome",
                         value=ads_id_atual,
@@ -6007,6 +6036,7 @@ setTimeout(syncHeight, 300);
                         label_visibility="collapsed",
                     )
 
+                    # Botões
                     col_b, col_s, col_c = st.columns([5, 5, 3])
                     with col_b:
                         if st.button(
@@ -6049,7 +6079,6 @@ setTimeout(syncHeight, 300);
                             st.session_state.ads_onboarding_paginas = []
                             st.rerun()
 
-                st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
                 break
 
         # ── Páginas encontradas

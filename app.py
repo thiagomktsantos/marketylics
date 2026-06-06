@@ -5652,12 +5652,12 @@ function triggerTab(label) {{
 # ABA: CONFIGURAÇÃO — Cards de empresa
 # ══════════════════════════════════════════════════════════════════
 
-    if main_tab == "configuracao":
- 
+if main_tab == "configuracao":
+
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
- 
+
         # ── CSS para ocultar todos os ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
@@ -5680,9 +5680,9 @@ function triggerTab(label) {{
             max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
         }}
         """ for ci in range(len(todas_empresas))])
- 
+
         st.markdown(f"<style>{all_ghost_css}</style>", unsafe_allow_html=True)
- 
+
         # ── Ghost triggers
         ghost_edit      = {}
         ghost_save      = {}
@@ -5690,7 +5690,7 @@ function triggerTab(label) {{
         ghost_buscar    = {}
         ghost_do_buscar = {}
         ghost_do_salvar = {}
- 
+
         for ci, e in enumerate(todas_empresas):
             ghost_edit[ci]      = st.button(f"edit_{ci}",      key=f"cfg_ghost_edit_{ci}")
             ghost_save[ci]      = st.button(f"save_{ci}",      key=f"cfg_ghost_save_{ci}")
@@ -5698,7 +5698,7 @@ function triggerTab(label) {{
             ghost_buscar[ci]    = st.button(f"buscar_{ci}",    key=f"cfg_ghost_buscar_{ci}")
             ghost_do_buscar[ci] = st.button(f"do_buscar_{ci}", key=f"cfg_do_buscar_{ci}")
             ghost_do_salvar[ci] = st.button(f"do_salvar_{ci}", key=f"cfg_do_salvar_{ci}")
- 
+
         # ── Processar ações dos ghost buttons
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
@@ -5732,7 +5732,7 @@ function triggerTab(label) {{
                 else:
                     st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
                     st.rerun()
- 
+
         # ── INFO BOX
         st.markdown("""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
@@ -5754,7 +5754,7 @@ function triggerTab(label) {{
             </div>
         </div>
         """, unsafe_allow_html=True)
- 
+
         # ── Inputs ocultos nativos para capturar valor
         st.markdown("".join([f"""
         <style>
@@ -5766,7 +5766,7 @@ function triggerTab(label) {{
         }}
         </style>
         """ for ci in range(len(todas_empresas))]), unsafe_allow_html=True)
- 
+
         hidden_vals = {}
         for ci in range(len(todas_empresas)):
             hidden_vals[ci] = st.text_input(
@@ -5775,7 +5775,7 @@ function triggerTab(label) {{
                 key=f"cfg_hidden_val_{ci}",
                 label_visibility="hidden",
             )
- 
+
         # ── Input nativo OCULTO para cada empresa (processa busca/salvar)
         # CSS para ocultar o painel nativo — o iframe é a UI visível
         painel_css = "".join([f"""
@@ -5798,13 +5798,13 @@ function triggerTab(label) {{
         </style>
         """ for ci in range(len(todas_empresas))])
         st.markdown(painel_css, unsafe_allow_html=True)
- 
+
         # ── Processar busca e salvar vindos do iframe
         for ci, e in enumerate(todas_empresas):
             val_hidden = hidden_vals.get(ci, "").strip()
             buscar_key = f"cfg_do_buscar_{ci}"
             salvar_key = f"cfg_do_salvar_{ci}"
- 
+
             if st.session_state.get(buscar_key) and val_hidden:
                 st.session_state[buscar_key] = False
                 st.session_state.ads_onboarding_empresa = e["nome"]
@@ -5813,7 +5813,7 @@ function triggerTab(label) {{
                     paginas = buscar_paginas_facebook(val_hidden)
                 st.session_state.ads_onboarding_paginas = paginas
                 st.rerun()
- 
+
             if st.session_state.get(salvar_key) and val_hidden:
                 st.session_state[salvar_key] = False
                 salvar_ads_id(e, val_hidden)
@@ -5822,13 +5822,13 @@ function triggerTab(label) {{
                 st.session_state.ads_onboarding_paginas = []
                 st.toast(f"✅ {e['nome']} salvo!", icon="✅")
                 st.rerun()
- 
+
         # ── Painel nativo OCULTO — existe para o Python processar, invisível para o usuário
         for ci, e in enumerate(todas_empresas):
             if editando_empresa == e["nome"]:
                 is_minha_e   = e["tipo"] == "minha"
                 ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
- 
+
                 with st.container(key=f"painel_edicao_{ci}"):
                     val_nativo = st.text_input(
                         "ID ou nome",
@@ -5866,7 +5866,7 @@ function triggerTab(label) {{
                             st.session_state.ads_onboarding_paginas = []
                             st.rerun()
                 break
- 
+
         # ── Monta HTML dos cards
         cards_html = ""
         for ci, e in enumerate(todas_empresas):
@@ -5887,7 +5887,7 @@ function triggerTab(label) {{
             id_color   = "#15803d" if has_id else "#9ca3af"
             id_ff      = "monospace" if has_id else "inherit"
             id_text    = ads_id if has_id else "Não configurado"
- 
+
             if page_pic and page_pic.startswith("http"):
                 av_html = (
                     f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;'
@@ -5904,15 +5904,15 @@ function triggerTab(label) {{
                     f'display:flex;align-items:center;justify-content:center;font-size:15px;'
                     f'font-weight:700;color:#fff;flex-shrink:0">{av_txt}</div>'
                 )
- 
+
             border_style = (
                 "border:2px solid #3a9fd6;box-shadow:0 0 0 3px rgba(58,159,214,0.12);"
                 if is_editing else "border:1px solid #e5e7eb;"
             )
- 
+
             # Valor atual do input nativo (se estiver editando)
             input_val = st.session_state.get(f"cfg_input_nativo_{ci}", ads_id) if is_editing else ads_id
- 
+
             if is_editing:
                 cards_html += f"""
                 <div class="card" style="{border_style}" id="card_wrap_{ci}">
@@ -6043,7 +6043,7 @@ function triggerTab(label) {{
                         </button>
                     </div>
                 </div>"""
- 
+
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -6089,7 +6089,7 @@ function triggerGhost(label) {{
         if (txt === String(label)) {{ b.click(); return; }}
     }}
 }}
- 
+
 // Sincroniza o valor com o st.text_input nativo oculto
 function setHiddenVal(ci, val, callback) {{
     var inputs = window.parent.document.querySelectorAll('input');
@@ -6120,7 +6120,7 @@ function setHiddenVal(ci, val, callback) {{
     }});
     setTimeout(callback, 350);
 }}
- 
+
 function handleBuscar(ci) {{
     var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
@@ -6130,7 +6130,7 @@ function handleBuscar(ci) {{
         triggerGhost('do_buscar_' + ci);
     }});
 }}
- 
+
 function handleSalvar(ci) {{
     var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
     if (!val.trim()) {{ alert('Digite um ID ou nome antes de salvar.'); return; }}
@@ -6140,7 +6140,7 @@ function handleSalvar(ci) {{
         triggerGhost('do_salvar_' + ci);
     }});
 }}
- 
+
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
@@ -6162,307 +6162,8 @@ setTimeout(syncHeight, 300);
 setTimeout(syncHeight, 700);
 </script>
 """, height=250, scrolling=False)
- 
+
         # ── Páginas encontradas (onboarding) — fora do iframe, nativo
-        if onboarding_empresa and onboarding_paginas:
-            e_ob = next((x for x in todas_empresas if x["nome"] == onboarding_empresa), None)
-            if e_ob:
-                ci_ob = next(i for i, x in enumerate(todas_empresas) if x["nome"] == onboarding_empresa)
-                sk_ob = safe_key(e_ob["nome"])
-                st.markdown(
-                    f"<div style='font-size:11px;font-weight:700;color:#6b7280;"
-                    f"text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px'>"
-                    f"📋 {len(onboarding_paginas[:8])} página(s) encontrada(s)</div>",
-                    unsafe_allow_html=True,
-                )
-                for pi, pg in enumerate(onboarding_paginas[:8]):
-                    initial = (pg.get("nome","P") or "P")[0].upper()
-                    pic     = pg.get("profile_picture","")
-                    thumb   = (
-                        f'<img src="{pic}" style="width:34px;height:34px;border-radius:50%;'
-                        f'object-fit:cover;display:block" onerror="this.style.display=\'none\'" />'
-                        if pic and pic.startswith("http")
-                        else f'<span style="font-size:14px;font-weight:700;color:#6b7280">{initial}</span>'
-                    )
-                    col_pg, col_usar = st.columns([4, 1])
-                    with col_pg:
-                        st.markdown(f"""
-                        <div style="display:flex;align-items:center;gap:12px;
-                                    padding:10px 14px;background:#f9fafb;
-                                    border:1px solid #e5e7eb;border-radius:10px;
-                                    margin-bottom:6px">
-                            <div style="width:34px;height:34px;border-radius:50%;
-                                        background:#e5e7eb;display:flex;align-items:center;
-                                        justify-content:center;flex-shrink:0;overflow:hidden">
-                                {thumb}
-                            </div>
-                            <div style="flex:1;min-width:0">
-                                <div style="font-size:13px;font-weight:700;color:#111827">
-                                    {pg.get("nome","—")}
-                                </div>
-                                <div style="font-size:11px;color:#9ca3af;font-family:monospace;margin-top:2px">
-                                    ID: {pg.get("page_id","—")}
-                                </div>
-                            </div>
-                            <div style="font-size:12px;font-weight:600;color:#3a9fd6;flex-shrink:0">
-                                {pg.get("total_ads",0)} ads
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    with col_usar:
-                        if st.button(
-                            "Usar",
-                            key=f"btn_pg_usar_{sk_ob}_{ci_ob}_{pi}",
-                            use_container_width=True,
-                        ):
-                            salvar_ads_id(
-                                e_ob,
-                                pg.get("page_id") or pg.get("nome",""),
-                                pg.get("profile_picture",""),
-                            )
-                            st.session_state.ads_editando_empresa   = None
-                            st.session_state.ads_onboarding_empresa = None
-                            st.session_state.ads_onboarding_paginas = []
-                            st.toast(f"✅ {pg.get('nome','')} selecionado!", icon="✅")
-                            st.rerun()
-
-        components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; margin-top:0 !important; }}
-.outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
-.cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
-.card {{ background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }}
-.card-header {{ display:flex; align-items:center; gap:12px; padding:16px 16px 12px; }}
-.card-body {{ padding:0 16px 14px; display:flex; flex-direction:column; gap:12px; }}
-.edit-section {{ padding-top:12px; border-top:1px solid #f3f4f6; }}
-.nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.card-footer {{ border-top:1px solid #f3f4f6; padding:0; }}
-.edit-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
-    font-size:13px; font-weight:600; color:#6b7280; cursor:pointer;
-    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
-    justify-content:center; gap:7px; transition:background 0.12s; }}
-.edit-btn:hover {{ background:#f9fafb; color:#111827; }}
-.cancel-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
-    font-size:13px; font-weight:600; color:#9ca3af; cursor:pointer;
-    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
-    justify-content:center; gap:6px; transition:all 0.12s; }}
-.cancel-btn:hover {{ background:#fef2f2; color:#dc2626; }}
-.btn-buscar {{ display:flex; align-items:center; justify-content:center; gap:7px;
-    padding:10px 0; border:1.5px solid #3a9fd6; border-radius:8px;
-    background:#eff6ff; font-size:13px; font-weight:700; color:#1d4ed8;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
-.btn-buscar:hover {{ background:#dbeafe; }}
-.btn-salvar {{ display:flex; align-items:center; justify-content:center; gap:7px;
-    padding:10px 0; border:none; border-radius:8px;
-    background:#0e2a47; font-size:13px; font-weight:700; color:#fff;
-    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
-.btn-salvar:hover {{ background:#1a3a5c; }}
-</style>
-<div class="outer">
-    <div class="cards-grid">{cards_html}</div>
-</div>
-<script>
-function triggerGhost(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === String(label)) {{ b.click(); return; }}
-    }}
-}}
-
-function setHiddenVal(ci, val, callback) {{
-    var inputs = window.parent.document.querySelectorAll('input');
-    var found  = false;
-    inputs.forEach(function(inp) {{
-        if ((inp.getAttribute('aria-label') || '') === 'h' + ci) {{
-            found = true;
-            var setter = Object.getOwnPropertyDescriptor(
-                window.parent.HTMLInputElement.prototype, 'value').set;
-            setter.call(inp, val);
-            inp.dispatchEvent(new Event('input',  {{ bubbles: true }}));
-            inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-        }}
-    }});
-    setTimeout(callback, 350);
-}}
-
-function handleBuscar(ci) {{
-    var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
-    if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
-    setHiddenVal(ci, val, function() {{
-        triggerGhost('do_buscar_' + ci);
-    }});
-}}
-
-function handleSalvar(ci) {{
-    var val = (document.getElementById('cfg_input_' + ci) || {{}}).value || '';
-    if (!val.trim()) {{ alert('Digite um ID ou nome antes de salvar.'); return; }}
-    setHiddenVal(ci, val, function() {{
-        triggerGhost('do_salvar_' + ci);
-    }});
-}}
-
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 4) + 'px';
-                iframes[i].style.marginTop = '-8px';
-                break;
-            }}
-        }} catch(ex) {{}}
-    }}
-}}
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
-setTimeout(syncHeight, 80);
-setTimeout(syncHeight, 300);
-</script>
-""", height=250, scrolling=False)
-
-# ── Painel de edição NATIVO do Streamlit (fora do iframe)
-        for ci, e in enumerate(todas_empresas):
-            if editando_empresa == e["nome"]:
-                is_minha_e   = e["tipo"] == "minha"
-                ads_id_atual = emp.get("ads_id","") if is_minha_e else concs[e["idx"]].get("ads_id","")
-                cor_e        = get_minha_empresa_color() if is_minha_e else get_concorrente_color(e["idx"])
-                av_txt_e     = gerar_avatar(e["nome"])
-                badge_lbl_e  = "Minha empresa" if is_minha_e else "Concorrente"
-                badge_bg_e   = "#f0fdf4" if is_minha_e else "#eff6ff"
-                badge_col_e  = "#15803d" if is_minha_e else "#1d4ed8"
-                badge_brd_e  = "#bbf7d0" if is_minha_e else "#bfdbfe"
-
-                st.markdown(f"""
-                <style>
-                /* Faz o painel parecer parte da caixa cinza */
-                .st-key-painel_edicao_{ci} > div {{
-                    background: #d2dde9 !important;
-                    border: none !important;
-                    border-radius: 0 0 16px 16px !important;
-                    box-shadow: none !important;
-                    padding: 0 16px 16px 16px !important;
-                    margin-top: -20px !important;
-                }}
-
-                /* Card interno branco */
-                .st-key-painel_edicao_{ci} .stMarkdown,
-                .st-key-painel_edicao_{ci} [data-testid="stTextInput"],
-                .st-key-painel_edicao_{ci} [data-testid="stHorizontalBlock"] {{
-                    background: transparent !important;
-                }}
-
-                /* Input */
-                .st-key-cfg_input_nativo_{ci} label {{ display: none !important; }}
-                .st-key-cfg_input_nativo_{ci} {{
-                    margin-top: 0 !important;
-                    margin-bottom: 4px !important;
-                }}
-                .st-key-cfg_input_nativo_{ci} input {{
-                    border-radius: 8px !important;
-                    font-size: 14px !important;
-                    height: 44px !important;
-                    border: 1.5px solid #e5e7eb !important;
-                    background: #ffffff !important;
-                }}
-
-                /* Botão Buscar */
-                .st-key-btn_buscar_nativo_{ci} button {{
-                    height: 44px !important;
-                    border-radius: 8px !important;
-                    font-size: 13px !important;
-                    font-weight: 700 !important;
-                    border: 1.5px solid #3a9fd6 !important;
-                    background: #eff6ff !important;
-                    color: #1d4ed8 !important;
-                }}
-                .st-key-btn_buscar_nativo_{ci} button:hover {{
-                    background: #dbeafe !important;
-                }}
-
-                /* Botão Salvar */
-                .st-key-btn_salvar_nativo_{ci} button {{
-                    height: 44px !important;
-                    border-radius: 8px !important;
-                    font-size: 13px !important;
-                    font-weight: 700 !important;
-                }}
-
-                /* Botão Cancelar */
-                .st-key-btn_cancelar_nativo_{ci} button {{
-                    height: 44px !important;
-                    border-radius: 8px !important;
-                    font-size: 13px !important;
-                    font-weight: 700 !important;
-                    background: #f3f4f6 !important;
-                    color: #6b7280 !important;
-                    border: 1px solid #e5e7eb !important;
-                }}
-                .st-key-btn_cancelar_nativo_{ci} button:hover {{
-                    background: #fef2f2 !important;
-                    color: #dc2626 !important;
-                    border-color: #fca5a5 !important;
-                }}
-                </style>
-                """, unsafe_allow_html=True)
-
-                with st.container(key=f"painel_edicao_{ci}"):
-                    st.markdown(f"""
-                    <div style="background:#ffffff;border:1px solid #e5e7eb;
-                                border-radius:12px;padding:16px;margin-bottom:12px;">
-                        <div style="font-size:11px;font-weight:700;color:#9ca3af;
-                                    text-transform:uppercase;letter-spacing:0.8px;
-                                    margin-bottom:6px;">
-                            ✏️ Configurando: <span style="color:#3a9fd6;text-transform:none;
-                            font-size:13px;">{e["nome"]}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                    val_nativo = st.text_input(
-                        "ID ou nome",
-                        value=ads_id_atual,
-                        placeholder="Ex: Educbank  ou  106889667774994",
-                        key=f"cfg_input_nativo_{ci}",
-                        label_visibility="collapsed",
-                    )
-
-                    col_b, col_s, col_c = st.columns([5, 5, 3])
-                    with col_b:
-                        if st.button("🔍 Buscar páginas", key=f"btn_buscar_nativo_{ci}", use_container_width=True):
-                            if val_nativo.strip():
-                                st.session_state.ads_onboarding_empresa = e["nome"]
-                                with st.spinner("Buscando…"):
-                                    paginas = buscar_paginas_facebook(val_nativo.strip())
-                                st.session_state.ads_onboarding_paginas = paginas
-                                st.rerun()
-                            else:
-                                st.toast("Digite um nome ou ID antes de buscar.", icon="⚠️")
-                    with col_s:
-                        if st.button("💾 Salvar ID", key=f"btn_salvar_nativo_{ci}", use_container_width=True, type="primary"):
-                            if val_nativo.strip():
-                                salvar_ads_id(e, val_nativo.strip())
-                                st.session_state.ads_editando_empresa   = None
-                                st.session_state.ads_onboarding_empresa = None
-                                st.session_state.ads_onboarding_paginas = []
-                                st.toast(f"✅ {e['nome']} salvo!", icon="✅")
-                                st.rerun()
-                            else:
-                                st.toast("Digite um ID ou nome antes de salvar.", icon="⚠️")
-                    with col_c:
-                        if st.button("✕ Cancelar", key=f"btn_cancelar_nativo_{ci}", use_container_width=True):
-                            st.session_state.ads_editando_empresa   = None
-                            st.session_state.ads_onboarding_empresa = None
-                            st.session_state.ads_onboarding_paginas = []
-                            st.rerun()
-
-                break
-
-        # ── Páginas encontradas
         if onboarding_empresa and onboarding_paginas:
             e_ob = next((x for x in todas_empresas if x["nome"] == onboarding_empresa), None)
             if e_ob:

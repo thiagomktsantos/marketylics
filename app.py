@@ -5652,7 +5652,7 @@ function triggerTab(label) {{
 # ABA: CONFIGURAÇÃO — Cards de empresa
 # ══════════════════════════════════════════════════════════════════
 
-    if main_tab == "configuracao":
+if main_tab == "configuracao":
 
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
@@ -5719,8 +5719,7 @@ function triggerTab(label) {{
                 if val:
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
-                    with st.spinner("Buscando…"):
-                        paginas = buscar_paginas_facebook(val)
+                    paginas = buscar_paginas_facebook(val)
                     st.session_state.ads_onboarding_paginas = paginas
                     # Limpa query param após usar
                     qk = f"_cfg_val_{ci}"
@@ -5932,6 +5931,18 @@ function triggerTab(label) {{
                         </button>
                     </div>
                 </div>"""
+
+        # Prepara dados de páginas encontradas para passar ao iframe
+        import json as _json_cfg
+        paginas_json = _json_cfg.dumps(
+            [{"nome": pg.get("nome",""), "page_id": pg.get("page_id",""),
+              "total_ads": pg.get("total_ads",0), "pic": pg.get("profile_picture","")}
+             for pg in onboarding_paginas[:8]] if onboarding_paginas else [],
+            ensure_ascii=False
+        )
+        onboarding_ci = next(
+            (i for i, x in enumerate(todas_empresas) if x["nome"] == onboarding_empresa), -1
+        ) if onboarding_empresa else -1
 
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">

@@ -5652,21 +5652,21 @@ function triggerTab(label) {{
 # ABA: CONFIGURAÇÃO — Cards de empresa
 # ══════════════════════════════════════════════════════════════════
 
-    if main_tab == "configuracao":
+if main_tab == "configuracao":
 
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
-        # ── Fecha modal de loading se ainda aberto (após rerun)
-        st.markdown("""
-        <script>
-        (function() {
-            var m = window.parent.document.getElementById('cfg_loader_modal');
-            if (m) { m.style.opacity='0'; m.style.transition='opacity 0.3s'; setTimeout(function(){ if(m) m.remove(); }, 300); }
-        })();
-        </script>
-        """, unsafe_allow_html=True)
+        # ── Fecha modal via components.html (único jeito confiável)
+        components.html("""
+<script>
+(function() {
+    var m = window.parent.document.getElementById('cfg_loader_modal');
+    if (m) { m.style.transition='opacity 0.3s'; m.style.opacity='0'; setTimeout(function(){ if(m && m.parentNode) m.remove(); }, 350); }
+})();
+</script>
+""", height=0, scrolling=False)
 
         # ── Recupera valores via query_params (canal confiável iframe→Python)
         for ci in range(len(todas_empresas)):

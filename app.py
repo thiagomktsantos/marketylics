@@ -5658,6 +5658,16 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
+        # ── Fecha modal de loading se ainda aberto (após rerun)
+        st.markdown("""
+        <script>
+        (function() {
+            var m = window.parent.document.getElementById('cfg_loader_modal');
+            if (m) { m.style.opacity='0'; m.style.transition='opacity 0.3s'; setTimeout(function(){ if(m) m.remove(); }, 300); }
+        })();
+        </script>
+        """, unsafe_allow_html=True)
+
         # ── Recupera valores via query_params (canal confiável iframe→Python)
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"

@@ -3214,11 +3214,9 @@ function buildCards() {{
         var hdr = document.createElement('div');
         hdr.className = 'scard-hdr';
         hdr.innerHTML =
-            '<div class="avatar" style="background:' + c.cor + '">' + c.avatar + '</div>'
-            + '<div style="flex:1;min-width:0">'
-            + '<div class="card-name">' + esc(c.nome) + '</div>'
-            + '</div>'
-            + '<span class="badge" style="background:' + c.badge_bg + ';color:' + c.badge_txt + ';border:1px solid ' + c.badge_brd + ';flex-shrink:0">' + c.badge_lbl + '</span>';
+            '<div class="avatar" style="background:' + d.cor + '">' + d.av + '</div>'
+            + '<span class="scard-name">' + esc(d.nome) + '</span>'
+            + '<span class="badge" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span>';
         card.appendChild(hdr);
 
         // ── Preview ──

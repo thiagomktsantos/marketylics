@@ -3729,7 +3729,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------
  
-
 elif st.session_state.pagina == "sites":
  
     import datetime as _dt
@@ -4535,7 +4534,7 @@ body {{ padding-bottom:8px; }}
 .score-dot.nok{{background:#e5e7eb;}}
 .services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
 .service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
-.pages-list{{display:flex;flex-direction:column;gap:4px;margin-top:4px;}}
+.pages-list{{display:flex;flex-direction:column;gap:4px;}}
 .page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
 .page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
 .page-icon{{font-size:13px;flex-shrink:0;}}
@@ -4668,15 +4667,22 @@ function buildCards() {{
         card.className = 'site-card';
         card.style.borderTop = '3px solid ' + c.cor;
  
-        // ── Header ──
+        // ── Header ──────────────────────────────────────────────
+        // ALTERAÇÃO: badge movido para a direita (ml-auto), nome sozinho à esquerda
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
             '<div class="avatar" style="background:' + c.cor + '">' + c.avatar + '</div>'
-            + '<div style="flex:1;min-width:0">'
-            + '<div class="card-name">' + esc(c.nome) + '</div>'
-            + '<span class="badge" style="background:' + c.badge_bg + ';color:' + c.badge_txt + ';border:1px solid ' + c.badge_brd + '">' + c.badge_lbl + '</span>'
-            + '</div>';
+            + '<div style="flex:1;min-width:0;overflow:hidden;">'
+            +   '<div class="card-name">' + esc(c.nome) + '</div>'
+            + '</div>'
+            + '<span class="badge" style="'
+            +   'background:' + c.badge_bg + ';'
+            +   'color:' + c.badge_txt + ';'
+            +   'border:1px solid ' + c.badge_brd + ';'
+            +   'white-space:nowrap;flex-shrink:0;">'
+            + c.badge_lbl
+            + '</span>';
         card.appendChild(hdr);
  
         // ── URL row ──

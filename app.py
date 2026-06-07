@@ -350,6 +350,68 @@ def extrair_conteudo_site(url: str) -> str:
         return f"[Erro ao acessar {url}: {e}]"
 
 # ---------------------------------------------------
+# EXTRAÇÃO DE SEO — título, description, H1, H2s
+# ---------------------------------------------------
+
+def extrair_seo_site(url: str) -> dict:
+    url_fmt = formatar_url(url)
+    resultado = {
+        "title": "", "description": "", "h1": "",
+        "h2s": [], "status": "erro", "extraido_em": ""
+    }
+    if not url_fmt:
+        return resultado
+    try:
+        import re as _re
+        import datetime as _dt
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        }
+        resp = requests.get(url_fmt, headers=headers, timeout=12, allow_redirects=True)
+        resp.encoding = resp.apparent_encoding
+        html = resp.text
+
+        m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
+        if m_title:
+            resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()
+
+        m_desc = _re.search(
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
+            html, _re.IGNORECASE
+        ) or _re.search(
+            r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\']description["\']',
+            html, _re.IGNORECASE
+        )
+        if m_desc:
+            resultado["description"] = _re.sub(r'\s+', ' ', m_desc.group(1)).strip()
+
+        m_h1 = _re.search(r'<h1[^>]*>(.*?)</h1>', html, _re.IGNORECASE | _re.DOTALL)
+        if m_h1:
+            resultado["h1"] = _re.sub(r'<[^>]+>', '', m_h1.group(1)).strip()
+
+        h2s = _re.findall(r'<h2[^>]*>(.*?)</h2>', html, _re.IGNORECASE | _re.DOTALL)
+        resultado["h2s"] = [
+            _re.sub(r'<[^>]+>', '', h).strip()
+            for h in h2s if _re.sub(r'<[^>]+>', '', h).strip()
+        ][:6]
+
+        resultado["status"] = "ok"
+        resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+    except Exception as e:
+        resultado["status"] = f"erro: {e}"
+    return resultado
+
+
+def extrair_e_salvar_seo(url: str, chave: str):
+    """Extrai SEO de uma URL e salva em st.session_state.seo_cache[chave]."""
+    if "seo_cache" not in st.session_state:
+        st.session_state.seo_cache = {}
+    if url:
+        st.session_state.seo_cache[chave] = extrair_seo_site(url)
+
+# ---------------------------------------------------
 # GEMINI — RELATÓRIO DE POSICIONAMENTO
 # ---------------------------------------------------
 
@@ -1584,6 +1646,8 @@ html, body { background: transparent; overflow: hidden; }
                     emp["site"] = limpar_site(st.session_state.get("edit_site", emp.get("site", "")))
                     if emp["nome"].strip():
                         st.session_state.editar_empresa = False
+                        if emp.get("site"):
+                            extrair_e_salvar_seo(emp["site"], emp["nome"])
                         salvar_dados_usuario(st.session_state.user.id)
                         st.success("Empresa salva com sucesso!")
                         st.rerun()
@@ -1949,6 +2013,8 @@ html, body { background: transparent; overflow: hidden; }
                     st.session_state.dados["concorrentes"].append(dados_novos)
                 st.session_state.mostrar_form_concorrente = False
                 st.session_state.editando_concorrente = None
+                if site_clean and n:
+                    extrair_e_salvar_seo(site_clean, n)
                 salvar_dados_usuario(st.session_state.user.id)
                 st.rerun()
  
@@ -2900,7 +2966,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 unsafe_allow_html=True
             )
 
-            # ── Seção: Sites das Empresas ──────────────────────────────
+Troque apenas o bloco de montagem do sites_cards_data e o components.html de sites. De:
+python            # ── Seção: Sites das Empresas ──────────────────────────────
             sites_cards_data = []
             for i, e in enumerate(todas_empresas_geral):
                 is_minha = e["tipo"] == "minha"
@@ -2923,6 +2990,42 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             components.html(f"""
 <!DOCTYPE html><html>
+...
+""", height=500, scrolling=False)
+Por:
+python            # ── Seção: Sites das Empresas ──────────────────────────────
+            seo_cache = st.session_state.get("seo_cache", {})
+
+            sites_cards_data = []
+            for i, e in enumerate(todas_empresas_geral):
+                is_minha  = e["tipo"] == "minha"
+                cor       = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+                av        = gerar_avatar(e["nome"])
+                badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+                badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
+                badge_col = "#15803d" if is_minha else "#1d4ed8"
+                badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+                site_url  = e.get("site", "") or ""
+                ig_url    = e.get("instagram", "") or ""
+
+                seo = seo_cache.get(e["nome"], {})
+                sites_cards_data.append({
+                    "nome":      e["nome"], "cor": cor, "av": av,
+                    "badge_lbl": badge_lbl, "badge_bg": badge_bg,
+                    "badge_col": badge_col, "badge_brd": badge_brd,
+                    "site":      site_url,  "ig": ig_url,
+                    "seo_title": seo.get("title", ""),
+                    "seo_desc":  seo.get("description", ""),
+                    "seo_h1":    seo.get("h1", ""),
+                    "seo_h2s":   seo.get("h2s", []),
+                    "seo_status":       seo.get("status", ""),
+                    "seo_extraido_em":  seo.get("extraido_em", ""),
+                })
+
+            sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
+
+            components.html(f"""
+<!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -2935,9 +3038,10 @@ body {{ padding-bottom:8px; }}
     margin-bottom:16px; display:flex; align-items:center; gap:10px; }}
 .cards {{ display:flex; gap:12px; flex-wrap:wrap; }}
 .scard {{
-    flex:1; min-width:200px;
+    flex:1; min-width:240px;
     border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;
     display:flex; flex-direction:column;
+    transition:border-color 0.15s;
 }}
 .scard:hover {{ border-color:#6fd1f3; }}
 .scard-hdr {{
@@ -2953,7 +3057,7 @@ body {{ padding-bottom:8px; }}
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
 .preview {{
-    margin:12px; border-radius:8px; overflow:hidden;
+    margin:12px 12px 0; border-radius:8px; overflow:hidden;
     border:1px solid #e5e7eb; background:#f9fafb;
     aspect-ratio:16/9; position:relative; flex-shrink:0;
 }}
@@ -2962,7 +3066,43 @@ body {{ padding-bottom:8px; }}
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
     flex-direction:column; gap:6px; background:#f3f4f6; border-radius:8px;
 }}
-.scard-footer {{ padding:0 12px 12px; display:flex; flex-direction:column; gap:6px; }}
+
+/* SEO section */
+.seo-wrap {{
+    margin:10px 12px 0; border-radius:8px;
+    border:1px solid #e5e7eb; overflow:hidden;
+}}
+.seo-header {{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e5e7eb;
+    cursor:pointer; user-select:none;
+}}
+.seo-header-left {{ display:flex; align-items:center; gap:6px; }}
+.seo-label {{ font-size:11px; font-weight:700; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.5px; }}
+.seo-badge-ok {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
+    background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
+.seo-badge-no {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
+    background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }}
+.seo-chevron {{ font-size:12px; color:#9ca3af; transition:transform 0.2s; }}
+.seo-body {{ padding:10px 12px; display:flex; flex-direction:column; gap:8px; background:#fff; }}
+.seo-item-label {{
+    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px;
+    color:#9ca3af; margin-bottom:2px;
+}}
+.seo-item-value {{
+    font-size:12px; color:#374151; line-height:1.5; font-weight:500;
+    word-break:break-word;
+}}
+.seo-item-empty {{ font-size:12px; color:#d1d5db; font-style:italic; }}
+.seo-h2-list {{ display:flex; flex-direction:column; gap:3px; margin-top:2px; }}
+.seo-h2-pill {{
+    font-size:11px; color:#374151; background:#f3f4f6; border-radius:6px;
+    padding:3px 8px; display:inline-block; width:fit-content;
+}}
+.seo-ts {{ font-size:10px; color:#9ca3af; text-align:right; padding-top:4px;
+    border-top:1px solid #f3f4f6; margin-top:4px; }}
+
+.scard-footer {{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px; }}
 .link-row {{
     display:flex; align-items:center; gap:6px; padding:7px 10px;
     border-radius:7px; background:#f9fafb; border:1px solid #f3f4f6;
@@ -2981,27 +3121,32 @@ body {{ padding-bottom:8px; }}
 <script>
 var DATA = {sites_cards_json};
 
+function esc(s) {{
+    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
 function buildCards() {{
     var el = document.getElementById('cards');
-    DATA.forEach(function(d) {{
+    DATA.forEach(function(d, di) {{
         var card = document.createElement('div');
         card.className = 'scard';
         card.style.borderTop = '3px solid ' + d.cor;
 
+        // ── Header ──
         var hdr = document.createElement('div');
         hdr.className = 'scard-hdr';
         hdr.innerHTML =
             '<div class="avatar" style="background:' + d.cor + '">' + d.av + '</div>'
-            + '<span class="scard-name">' + d.nome + '</span>'
+            + '<span class="scard-name">' + esc(d.nome) + '</span>'
             + '<span class="badge" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span>';
         card.appendChild(hdr);
 
+        // ── Preview ──
         var prev = document.createElement('div');
         prev.className = 'preview';
         if (d.site) {{
             var img = document.createElement('img');
-            img.loading = 'lazy';
-            img.alt = d.nome;
+            img.loading = 'lazy'; img.alt = d.nome;
             img.src = 'https://api.microlink.io/?url=' + encodeURIComponent(d.site) + '&screenshot=true&meta=false&embed=screenshot.url';
             img.onerror = function() {{
                 prev.innerHTML = '<div class="preview-fallback">'
@@ -3017,6 +3162,97 @@ function buildCards() {{
         }}
         card.appendChild(prev);
 
+        // ── SEO Accordion ──
+        var hasSeo = d.seo_status === 'ok';
+        var seoWrap = document.createElement('div');
+        seoWrap.className = 'seo-wrap';
+
+        var seoHdr = document.createElement('div');
+        seoHdr.className = 'seo-header';
+        seoHdr.innerHTML =
+            '<div class="seo-header-left">'
+            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a2e4a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+            + '<span class="seo-label">SEO & Conteúdo</span>'
+            + (hasSeo
+                ? '<span class="seo-badge-ok">✓ Extraído</span>'
+                : '<span class="seo-badge-no">Sem dados</span>')
+            + '</div>'
+            + '<span class="seo-chevron" id="chev_' + di + '">▼</span>';
+
+        var seoBody = document.createElement('div');
+        seoBody.className = 'seo-body';
+        seoBody.id = 'seo_body_' + di;
+        seoBody.style.display = 'none';
+
+        if (hasSeo) {{
+            // Title
+            seoBody.innerHTML +=
+                '<div>'
+                + '<div class="seo-item-label">🏷️ Title</div>'
+                + (d.seo_title
+                    ? '<div class="seo-item-value">' + esc(d.seo_title) + '</div>'
+                    : '<div class="seo-item-empty">Não encontrado</div>')
+                + '</div>';
+
+            // H1
+            seoBody.innerHTML +=
+                '<div>'
+                + '<div class="seo-item-label">📌 H1 — Título principal</div>'
+                + (d.seo_h1
+                    ? '<div class="seo-item-value">' + esc(d.seo_h1) + '</div>'
+                    : '<div class="seo-item-empty">Não encontrado</div>')
+                + '</div>';
+
+            // Description
+            seoBody.innerHTML +=
+                '<div>'
+                + '<div class="seo-item-label">📝 Meta Description</div>'
+                + (d.seo_desc
+                    ? '<div class="seo-item-value">' + esc(d.seo_desc) + '</div>'
+                    : '<div class="seo-item-empty">Não encontrada</div>')
+                + '</div>';
+
+            // H2s
+            if (d.seo_h2s && d.seo_h2s.length > 0) {{
+                var h2html = '<div class="seo-h2-list">';
+                d.seo_h2s.forEach(function(h) {{
+                    h2html += '<div class="seo-h2-pill">▸ ' + esc(h) + '</div>';
+                }});
+                h2html += '</div>';
+                seoBody.innerHTML +=
+                    '<div>'
+                    + '<div class="seo-item-label">📂 Seções (H2)</div>'
+                    + h2html
+                    + '</div>';
+            }}
+
+            // Timestamp
+            if (d.seo_extraido_em) {{
+                seoBody.innerHTML +=
+                    '<div class="seo-ts">🕒 Extraído em: ' + esc(d.seo_extraido_em) + '</div>';
+            }}
+        }} else {{
+            seoBody.innerHTML =
+                '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:8px 0;">'
+                + 'Salve a empresa/concorrente para extrair os dados de SEO automaticamente.'
+                + '</div>';
+        }}
+
+        seoHdr.addEventListener('click', (function(body, chevId) {{
+            return function() {{
+                var open = body.style.display !== 'none';
+                body.style.display = open ? 'none' : 'block';
+                var ch = document.getElementById(chevId);
+                if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
+                setTimeout(syncH, 150);
+            }};
+        }})(seoBody, 'chev_' + di));
+
+        seoWrap.appendChild(seoHdr);
+        seoWrap.appendChild(seoBody);
+        card.appendChild(seoWrap);
+
+        // ── Footer links ──
         var footer = document.createElement('div');
         footer.className = 'scard-footer';
 
@@ -3026,7 +3262,7 @@ function buildCards() {{
             a.href = d.site.startsWith('http') ? d.site : 'https://' + d.site;
             a.target = '_blank'; a.rel = 'noopener';
             a.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
-                + '<span>' + d.site + '</span>';
+                + '<span>' + esc(d.site) + '</span>';
             footer.appendChild(a);
         }} else {{
             var ns = document.createElement('div');
@@ -3067,7 +3303,7 @@ if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
 </script>
 </body></html>
-""", height=500, scrolling=False)
+""", height=600, scrolling=False)
 
         else:
             st.markdown(

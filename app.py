@@ -4734,10 +4734,10 @@ function buildCards() {{
             seoScore.items.forEach(function(it) {{
                 if (it.ok) {{
                     chipsHtml +=
-                        '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;'
+                        '<div style="display:inline-flex;align-items:center;gap:3px;font-size:12px;'
                         + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
-                        + 'padding:5px 12px;border-radius:20px;white-space:nowrap;">'
-                        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                        + 'padding:2px 7px;border-radius:20px;white-space:nowrap;">'
+                        + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
                         + ' ' + it.label + '</div>';
                 }}
             }});
@@ -4756,7 +4756,7 @@ function buildCards() {{
                 '<div class="seo-score-block-title">📊 Pontuação SEO</div>'
                 + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
                 +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
-                +     '<span style="font-size:46px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
+                +     '<span style="font-size:35px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
                 +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
                 +   '</div>'
                 +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'

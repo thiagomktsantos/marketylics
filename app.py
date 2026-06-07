@@ -3729,7 +3729,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------
  
-    elif st.session_state.pagina == "sites":
+elif st.session_state.pagina == "sites":
 
     import datetime as _dt
     import json as _json_sites

@@ -4411,7 +4411,6 @@ function triggerTab(label) {{
                     ultima_analise = a.get("data", "")
                     break
 
-            # ── Dados de SEO do cache ──
             seo       = seo_cache_atual.get(s["nome"], {})
             sitemap   = seo.get("sitemap", {})
 
@@ -4428,14 +4427,12 @@ function triggerTab(label) {{
                 "avatar":          avatar_letras,
                 "tem_analise":     tem_analise,
                 "ultima_analise":  ultima_analise,
-                # SEO
                 "seo_status":      seo.get("status", ""),
                 "seo_title":       seo.get("title", ""),
                 "seo_desc":        seo.get("description", ""),
                 "seo_h1":          seo.get("h1", ""),
                 "seo_h2s":         seo.get("h2s", []),
                 "seo_extraido_em": seo.get("extraido_em", ""),
-                # Sitemap
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
@@ -4492,6 +4489,63 @@ body {{ padding-bottom:8px; }}
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
 }}
 
+/* ── Score de perfil (igual ao de Redes) ── */
+.score-section {{
+    margin:0 14px 10px;
+    padding:16px 20px;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}}
+.score-section-title {{
+    font-size:12px;font-weight:700;color:#1a2e4a;
+    text-transform:uppercase;letter-spacing:1px;
+}}
+.score-top-row {{
+    display:flex;align-items:center;gap:14px;justify-content:space-between;
+}}
+.score-number-wrap {{
+    display:flex;align-items:baseline;gap:4px;line-height:1;
+}}
+.score-number {{
+    font-size:52px;font-weight:900;letter-spacing:-2px;line-height:1;
+}}
+.score-denom {{
+    font-size:16px;font-weight:600;color:#9ca3af;
+}}
+.score-badge-pill {{
+    display:inline-flex;align-items:center;gap:7px;
+    padding:10px 20px;border-radius:14px;
+    font-size:17px;font-weight:800;
+    letter-spacing:0.1px;white-space:nowrap;
+}}
+.score-bar-track {{
+    height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;
+}}
+.score-bar-fill {{
+    height:100%;border-radius:4px;
+    background:linear-gradient(90deg,#3b82f6,var(--score-cor));
+    transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
+    width:0%;
+}}
+
+/* ── Score breakdown (checkins) ── */
+.score-breakdown2 {{
+    display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;
+}}
+.score-item2 {{
+    display:flex;align-items:center;gap:4px;
+    font-size:11px;color:#6b7280;
+    background:#f9fafb;border:1px solid #f3f4f6;
+    border-radius:6px;padding:3px 8px;
+}}
+.score-dot2 {{ width:7px;height:7px;border-radius:50%;flex-shrink:0; }}
+.score-dot2.ok  {{ background:#22c55e; }}
+.score-dot2.nok {{ background:#e5e7eb; }}
+
 /* ══════════════════════════════════════════════════════
    SEO Accordion v2
 ══════════════════════════════════════════════════════ */
@@ -4501,32 +4555,20 @@ body {{ padding-bottom:8px; }}
 .seo-hdr2.open{{border-bottom-color:#e5e7eb;}}
 .seo-hdr2-left{{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}}
 .seo-hdr2-label{{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}}
-.seo-score-pill{{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
-.seo-score-pill.s-great{{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}}
-.seo-score-pill.s-ok{{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}}
-.seo-score-pill.s-bad{{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}}
-.seo-score-pill.s-none{{background:#f9fafb;color:#9ca3af;border:1px solid #e5e7eb;}}
 .seo-body2{{display:none;flex-direction:column;gap:0;}}
 .seo-section{{padding:12px 14px;border-bottom:1px solid #f3f4f6;}}
 .seo-section:last-child{{border-bottom:none;}}
 .seo-section-title{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}}
 .seo-field-val{{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}}
 .seo-field-empty{{font-size:12px;color:#d1d5db;font-style:italic;}}
-.score-breakdown{{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}}
-.score-item{{display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;padding:3px 8px;}}
-.score-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
-.score-dot.ok{{background:#22c55e;}}
-.score-dot.nok{{background:#e5e7eb;}}
 .services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
 .service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
-.pages-list{{display:flex;flex-direction:column;gap:4px;margin-top:4px;}}
+.pages-list{{display:flex;flex-direction:column;gap:4px;}}
 .page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
 .page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
 .page-icon{{font-size:13px;flex-shrink:0;}}
 .page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
 .page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
-.sitemap-scroll{{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:4px;border-radius:6px;padding:2px 0;}}
-.sitemap-item2{{font-size:11px;color:#4b5563;padding:3px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f9fafb;border:1px solid #f3f4f6;}}
 .seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
 .seo-ts2{{font-size:10px;color:#9ca3af;}}
 .btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}
@@ -4534,7 +4576,17 @@ body {{ padding-bottom:8px; }}
 .btn-extrair2{{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}}
 .btn-extrair2:hover{{background:#eff6ff;}}
 
-/* ── demais ── */
+/* ── Botão ver sitemap completo ── */
+.btn-sitemap-modal{{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:11px;font-weight:700;color:#1d4ed8;
+    background:#eff6ff;border:1px solid #bfdbfe;
+    border-radius:6px;padding:4px 10px;cursor:pointer;
+    font-family:'DM Sans',sans-serif;transition:background 0.15s;
+    margin-top:6px;
+}}
+.btn-sitemap-modal:hover{{background:#dbeafe;}}
+
 .analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
@@ -4581,7 +4633,6 @@ function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
-// ── SEO v2 helpers (inicializados uma vez) ──────────────────────
 if (!window._seoHelpersReady) {{
     window._seoHelpersReady = true;
 
@@ -4643,6 +4694,73 @@ if (!window._seoHelpersReady) {{
     }};
 }}
 
+// ── Abre modal do sitemap completo ──────────────────────────────
+function abrirSitemapModal(nome, urls, total) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('sitemap_modal_overlay');
+    if (old) old.remove();
+
+    var listaStr = urls.join('\\n');
+    var ov = doc.createElement('div');
+    ov.id = 'sitemap_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,900px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #21262d;background:#0e1e35;flex-shrink:0;';
+    hdr.innerHTML =
+        '<div>'
+        + '<div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">🗂️ Sitemap completo — ' + esc(nome) + '</div>'
+        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">' + total + ' URLs encontradas</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:10px;">'
+        + '<button id="sitemap_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
+        + '<button id="sitemap_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar .txt</button>'
+        + '<button id="sitemap_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
+        + '</div>';
+
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre-wrap;word-break:break-all;max-height:calc(88vh - 80px);';
+    pre.textContent = listaStr;
+
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    doc.getElementById('sitemap_close_btn').addEventListener('click', function() {{ ov.remove(); }});
+
+    doc.getElementById('sitemap_copy_btn').addEventListener('click', function() {{
+        var btn = doc.getElementById('sitemap_copy_btn');
+        try {{
+            var ta = doc.createElement('textarea');
+            ta.value = listaStr;
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+            doc.body.appendChild(ta); ta.focus(); ta.select();
+            doc.execCommand('copy');
+            doc.body.removeChild(ta);
+            btn.textContent = '✅ Copiado!';
+            setTimeout(function() {{ btn.textContent = '📋 Copiar'; }}, 2000);
+        }} catch(e) {{
+            btn.textContent = '❌ Erro';
+            setTimeout(function() {{ btn.textContent = '📋 Copiar'; }}, 2000);
+        }}
+    }});
+
+    doc.getElementById('sitemap_down_btn').addEventListener('click', function() {{
+        var a = doc.createElement('a');
+        a.href = URL.createObjectURL(new Blob([listaStr], {{type:'text/plain'}}));
+        a.download = 'sitemap_' + nome.replace(/[^a-zA-Z0-9]/g,'_') + '.txt';
+        a.click();
+    }});
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+
 function buildCards() {{
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
@@ -4692,30 +4810,92 @@ function buildCards() {{
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
 
+        // ══════════════════════════════════════════════
+        // ── Score de Perfil SEO (visual igual ao de Redes) ──
+        // ══════════════════════════════════════════════
+        var hasSeo   = c.seo_status === 'ok';
+        var seoScore = hasSeo ? window.calcSeoScore(c) : null;
+        var scoreVal = seoScore ? seoScore.score : -1;
+
+        var scoreCor, scoreBg, scoreIcon, scoreCls;
+        if (scoreVal >= 80) {{
+            scoreCor = '#22c55e'; scoreBg = 'rgba(240,253,244,1)'; scoreIcon = '🏆'; scoreCls = 'Excelente';
+        }} else if (scoreVal >= 60) {{
+            scoreCor = '#3b82f6'; scoreBg = 'rgba(239,246,255,1)'; scoreIcon = '👍'; scoreCls = 'Bom';
+        }} else if (scoreVal >= 40) {{
+            scoreCor = '#f59e0b'; scoreBg = 'rgba(255,251,235,1)'; scoreIcon = '⚠️'; scoreCls = 'Regular';
+        }} else if (scoreVal >= 0) {{
+            scoreCor = '#ef4444'; scoreBg = 'rgba(254,242,242,1)'; scoreIcon = '📝'; scoreCls = 'Precisa melhorar';
+        }} else {{
+            scoreCor = '#9ca3af'; scoreBg = '#f9fafb'; scoreIcon = '—'; scoreCls = 'Sem dados';
+        }}
+
+        if (hasSeo) {{
+            var scoreSection = document.createElement('div');
+            scoreSection.className = 'score-section';
+
+            // título
+            var scoreTitle = document.createElement('div');
+            scoreTitle.className = 'score-section-title';
+            scoreTitle.textContent = 'SCORE DE PERFIL SEO';
+            scoreSection.appendChild(scoreTitle);
+
+            // número + badge
+            var scoreTopRow = document.createElement('div');
+            scoreTopRow.className = 'score-top-row';
+
+            var numWrap = document.createElement('div');
+            numWrap.className = 'score-number-wrap';
+            numWrap.innerHTML =
+                '<span class="score-number" style="color:' + scoreCor + ';">' + scoreVal + '</span>'
+                + '<span class="score-denom">/100</span>';
+            scoreTopRow.appendChild(numWrap);
+
+            var badgePill = document.createElement('div');
+            badgePill.className = 'score-badge-pill';
+            badgePill.style.cssText = 'background:' + scoreBg + ';color:' + scoreCor + ';';
+            badgePill.textContent = scoreIcon + ' ' + scoreCls;
+            scoreTopRow.appendChild(badgePill);
+            scoreSection.appendChild(scoreTopRow);
+
+            // barra
+            var barTrack = document.createElement('div');
+            barTrack.className = 'score-bar-track';
+            var barFill = document.createElement('div');
+            barFill.className = 'score-bar-fill';
+            barFill.style.setProperty('--score-cor', scoreCor);
+            barTrack.appendChild(barFill);
+            scoreSection.appendChild(barTrack);
+            setTimeout((function(bf, sv) {{ return function() {{ bf.style.width = sv + '%'; }}; }})(barFill, scoreVal), 200);
+
+            // checkins
+            var bdWrap = document.createElement('div');
+            bdWrap.className = 'score-breakdown2';
+            bdWrap.innerHTML = '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#9ca3af;margin-bottom:4px;width:100%;">Pontuação SEO</div>';
+            seoScore.items.forEach(function(it) {{
+                bdWrap.innerHTML += '<div class="score-item2"><div class="score-dot2 ' + (it.ok?'ok':'nok') + '"></div>' + it.label + '</div>';
+            }});
+            scoreSection.appendChild(bdWrap);
+
+            card.appendChild(scoreSection);
+        }}
+
         // ══════════════════════════════════════════════════
         // ── SEO Accordion v2 ──
         // ══════════════════════════════════════════════════
-        var hasSeo     = c.seo_status === 'ok';
-        var seoScore   = hasSeo ? window.calcSeoScore(c) : null;
-        var scoreVal   = seoScore ? seoScore.score : -1;
-        var scoreCls   = scoreVal >= 80 ? 's-great' : scoreVal >= 40 ? 's-ok' : scoreVal >= 0 ? 's-bad' : 's-none';
-        var scoreTxt   = scoreVal >= 0
-            ? 'SEO ' + scoreVal + '/100' + (scoreVal >= 80 ? ' ✓' : scoreVal < 40 ? ' ⚠' : '')
-            : 'Sem dados';
-        var keyPages   = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
-        var services   = hasSeo ? window.extractServices(c) : [];
+        var keyPages  = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
+        var services  = hasSeo ? window.extractServices(c) : [];
 
-        var seoWrap2   = document.createElement('div');
+        var seoWrap2 = document.createElement('div');
         seoWrap2.className = 'seo-wrap2';
 
-        // header
+        // header — sem pill de score
         var seoHdr2 = document.createElement('div');
         seoHdr2.className = 'seo-hdr2';
         seoHdr2.innerHTML =
             '<div class="seo-hdr2-left">'
             + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a2e4a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
             + '<span class="seo-hdr2-label">SEO & Conteúdo</span>'
-            + '<span class="seo-score-pill ' + scoreCls + '">' + scoreTxt + '</span>'
             + '</div>'
             + '<span id="seo_chev2_' + c.idx + '" style="color:#9ca3af;transition:transform 0.2s;font-size:11px;">▼</span>';
 
@@ -4725,16 +4905,7 @@ function buildCards() {{
         seoBody2.id = 'seo_body2_' + c.idx;
 
         if (hasSeo) {{
-            // §1 score breakdown
-            var sec1 = document.createElement('div'); sec1.className = 'seo-section';
-            var bd = '<div class="seo-section-title">📊 Pontuação SEO</div><div class="score-breakdown">';
-            seoScore.items.forEach(function(it) {{
-                bd += '<div class="score-item"><div class="score-dot ' + (it.ok?'ok':'nok') + '"></div>' + it.label + '</div>';
-            }});
-            sec1.innerHTML = bd + '</div>';
-            seoBody2.appendChild(sec1);
-
-            // §2 serviços
+            // §1 serviços
             if (services.length > 0) {{
                 var sec2 = document.createElement('div'); sec2.className = 'seo-section';
                 var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
@@ -4743,7 +4914,7 @@ function buildCards() {{
                 seoBody2.appendChild(sec2);
             }}
 
-            // §3 metadados
+            // §2 metadados
             var sec3 = document.createElement('div'); sec3.className = 'seo-section';
             sec3.innerHTML =
                 '<div class="seo-section-title">🏷️ Metadados</div>'
@@ -4757,7 +4928,7 @@ function buildCards() {{
                 + '</div>';
             seoBody2.appendChild(sec3);
 
-            // §4 H2s
+            // §3 H2s
             if (c.seo_h2s && c.seo_h2s.length > 0) {{
                 var sec4 = document.createElement('div'); sec4.className = 'seo-section';
                 var hh = '<div class="seo-section-title">📂 Seções da página (H2)</div><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">';
@@ -4766,10 +4937,10 @@ function buildCards() {{
                 seoBody2.appendChild(sec4);
             }}
 
-            // §5 páginas principais
+            // §4 páginas principais
             if (keyPages.length > 0) {{
                 var sec5 = document.createElement('div'); sec5.className = 'seo-section';
-                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list">';
+                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list" style="margin-top:4px;">';
                 keyPages.forEach(function(p) {{
                     var path = p.url.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
                     ph += '<a class="page-row" href="' + esc(p.url) + '" target="_blank" rel="noopener">'
@@ -4782,22 +4953,29 @@ function buildCards() {{
                 seoBody2.appendChild(sec5);
             }}
 
-            // §6 sitemap
+            // §5 sitemap — botão para abrir modal completo
+            var sec6 = document.createElement('div'); sec6.className = 'seo-section';
             if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {{
-                var sec6 = document.createElement('div'); sec6.className = 'seo-section';
-                var sm = '<div class="seo-section-title"><span>🗂️ Sitemap completo</span>'
-                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span></div>'
-                    + '<div class="sitemap-scroll">';
-                c.sitemap_urls.slice(0,30).forEach(function(u) {{ sm += '<div class="sitemap-item2">🔗 ' + esc(u) + '</div>'; }});
-                if (c.sitemap_total > 30) sm += '<div style="font-size:10px;color:#9ca3af;padding:3px 4px;">… e mais '+(c.sitemap_total-30)+' páginas</div>';
-                sec6.innerHTML = sm + '</div>';
-                seoBody2.appendChild(sec6);
+                var smHdr = '<div class="seo-section-title">'
+                    + '<span>🗂️ Sitemap</span>'
+                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span>'
+                    + '</div>';
+                sec6.innerHTML = smHdr;
+                var sitemapBtn = doc.createElement('button');
+                sitemapBtn.className = 'btn-sitemap-modal';
+                sitemapBtn.innerHTML = '🔍 Ver sitemap completo (' + c.sitemap_total + ' URLs)';
+                sitemapBtn.addEventListener('click', (function(nome, urls, total) {{
+                    return function() {{ abrirSitemapModal(nome, urls, total); }};
+                }})(c.nome, c.sitemap_urls, c.sitemap_total));
+                sec6.appendChild(sitemapBtn);
             }} else if (c.sitemap_status === 'sem_sitemap') {{
-                var sec6b = document.createElement('div'); sec6b.className = 'seo-section';
-                sec6b.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
+                sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
                     + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
-                seoBody2.appendChild(sec6b);
+            }} else {{
+                sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
+                    + '<div style="font-size:12px;color:#d1d5db;font-style:italic;">Extraia o SEO para verificar o sitemap.</div>';
             }}
+            seoBody2.appendChild(sec6);
 
             // footer
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
@@ -4815,7 +4993,7 @@ function buildCards() {{
             seoBody2.appendChild(btnEx);
         }}
 
-        // toggle
+        // toggle accordion
         seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {{
             return function() {{
                 var open = body.style.display === 'flex';
@@ -4830,8 +5008,6 @@ function buildCards() {{
         seoWrap2.appendChild(seoHdr2);
         seoWrap2.appendChild(seoBody2);
         card.appendChild(seoWrap2);
-
-        // ── FIM BLOCO SEO v2 ──
 
         // ── Badge de análise ──
         if (c.tem_analise && c.ultima_analise) {{

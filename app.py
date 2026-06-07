@@ -3779,55 +3779,55 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
 
-        _html_cards = f"""<!DOCTYPE html><html>
+        _html_cards = """<!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body {
     background:transparent; font-family:'DM Sans',sans-serif;
     -webkit-font-smoothing:antialiased; overflow:visible;
-}}
-body {{ padding-bottom:8px; }}
-.outer-wrap {{ background:#d2dde9; border-radius:16px; padding:20px; }}
-.cards-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }}
-.site-card {{
+}
+body { padding-bottom:8px; }
+.outer-wrap { background:#d2dde9; border-radius:16px; padding:20px; }
+.cards-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }
+.site-card {
     background:#fff; border:1px solid #fff; border-radius:14px;
     overflow:hidden; display:flex; flex-direction:column;
     transition:box-shadow 0.15s; box-shadow:0 4px 20px rgba(0,0,0,0.10);
-}}
-.site-card:hover {{ border:1px solid #6fd1f3!important; }}
-.card-header {{
+}
+.site-card:hover { border:1px solid #6fd1f3!important; }
+.card-header {
     display:flex; align-items:center; gap:12px;
     padding:16px 18px 14px; border-bottom:1px solid #f3f4f6;
-}}
-.avatar {{
+}
+.avatar {
     width:40px;height:40px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     font-size:14px;font-weight:700;color:#fff;flex-shrink:0;
-}}
-.card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
-.badge {{ display:inline-block; padding:2px 10px;border-radius:20px; font-size:11px;font-weight:700; }}
-.url-row {{
+}
+.card-name { font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.badge { display:inline-block; padding:2px 10px;border-radius:20px; font-size:11px;font-weight:700; }
+.url-row {
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
     overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-}}
-.preview-wrap {{
+}
+.preview-wrap {
     margin:14px; border-radius:10px; overflow:hidden;
     border:1px solid #e5e7eb; background:#f9fafb;
     aspect-ratio:16/9; position:relative; flex-shrink:0;
-}}
-.preview-wrap img {{
+}
+.preview-wrap img {
     width:100%;height:100%; display:block;
     object-fit:cover; object-position:top; border-radius:10px;
-}}
-.preview-fallback {{
+}
+.preview-fallback {
     width:100%;height:100%; display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
-}}
-.score-section {{
+}
+.score-section {
     margin:0 14px 10px;
     padding:16px 20px;
     border:1px solid #e5e7eb;
@@ -3836,86 +3836,86 @@ body {{ padding-bottom:8px; }}
     display:flex;
     flex-direction:column;
     gap:10px;
-}}
-.score-section-title {{
+}
+.score-section-title {
     font-size:12px;font-weight:700;color:#1a2e4a;
     text-transform:uppercase;letter-spacing:1px;
-}}
-.score-top-row {{
+}
+.score-top-row {
     display:flex;align-items:center;gap:14px;justify-content:space-between;
-}}
-.score-number-wrap {{
+}
+.score-number-wrap {
     display:flex;align-items:baseline;gap:4px;line-height:1;
-}}
-.score-number {{
+}
+.score-number {
     font-size:52px;font-weight:900;letter-spacing:-2px;line-height:1;
-}}
-.score-denom {{
+}
+.score-denom {
     font-size:16px;font-weight:600;color:#9ca3af;
-}}
-.score-badge-pill {{
+}
+.score-badge-pill {
     display:inline-flex;align-items:center;gap:7px;
     padding:10px 20px;border-radius:14px;
     font-size:17px;font-weight:800;
     letter-spacing:0.1px;white-space:nowrap;
-}}
-.score-bar-track {{
+}
+.score-bar-track {
     height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;
-}}
-.score-bar-fill {{
+}
+.score-bar-fill {
     height:100%;border-radius:4px;
     background:linear-gradient(90deg,#3b82f6,var(--score-cor));
     transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
     width:0%;
-}}
-.score-breakdown2 {{
+}
+.score-breakdown2 {
     display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;
-}}
-.score-item2 {{
+}
+.score-item2 {
     display:flex;align-items:center;gap:4px;
     font-size:11px;color:#6b7280;
     background:#f9fafb;border:1px solid #f3f4f6;
     border-radius:6px;padding:3px 8px;
-}}
-.score-dot2 {{ width:7px;height:7px;border-radius:50%;flex-shrink:0; }}
-.score-dot2.ok  {{ background:#22c55e; }}
-.score-dot2.nok {{ background:#e5e7eb; }}
-.seo-wrap2{{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}}
-.seo-hdr2{{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}}
-.seo-hdr2:hover{{background:#f1f5f9;}}
-.seo-hdr2.open{{border-bottom-color:#e5e7eb;}}
-.seo-hdr2-left{{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}}
-.seo-hdr2-label{{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}}
-.seo-body2{{display:none;flex-direction:column;gap:0;}}
-.seo-section{{padding:12px 14px;border-bottom:1px solid #f3f4f6;}}
-.seo-section:last-child{{border-bottom:none;}}
-.seo-section-title{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}}
-.seo-field-val{{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}}
-.seo-field-empty{{font-size:12px;color:#d1d5db;font-style:italic;}}
-.services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
-.service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
-.pages-list{{display:flex;flex-direction:column;gap:4px;}}
-.page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
-.page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
-.page-icon{{font-size:13px;flex-shrink:0;}}
-.page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
-.page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
-.seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
-.seo-ts2{{font-size:10px;color:#9ca3af;}}
-.btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}
-.btn-reextract:hover{{background:#dbeafe;}}
-.btn-extrair2{{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}}
-.btn-extrair2:hover{{background:#eff6ff;}}
-.btn-sitemap-modal{{
+}
+.score-dot2 { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+.score-dot2.ok  { background:#22c55e; }
+.score-dot2.nok { background:#e5e7eb; }
+.seo-wrap2{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}
+.seo-hdr2{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}
+.seo-hdr2:hover{background:#f1f5f9;}
+.seo-hdr2.open{border-bottom-color:#e5e7eb;}
+.seo-hdr2-left{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}
+.seo-hdr2-label{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}
+.seo-body2{display:none;flex-direction:column;gap:0;}
+.seo-section{padding:12px 14px;border-bottom:1px solid #f3f4f6;}
+.seo-section:last-child{border-bottom:none;}
+.seo-section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}
+.seo-field-val{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}
+.seo-field-empty{font-size:12px;color:#d1d5db;font-style:italic;}
+.services-wrap{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.service-pill{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}
+.pages-list{display:flex;flex-direction:column;gap:4px;}
+.page-row{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}
+.page-row:hover{border-color:#bfdbfe;background:#eff6ff;}
+.page-icon{font-size:13px;flex-shrink:0;}
+.page-label{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}
+.page-url{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.seo-footer2{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}
+.seo-ts2{font-size:10px;color:#9ca3af;}
+.btn-reextract{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}
+.btn-reextract:hover{background:#dbeafe;}
+.btn-extrair2{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}
+.btn-extrair2:hover{background:#eff6ff;}
+.btn-sitemap-modal{
     display:inline-flex;align-items:center;gap:6px;
     font-size:11px;font-weight:700;color:#1d4ed8;
     background:#eff6ff;border:1px solid #bfdbfe;
     border-radius:6px;padding:4px 10px;cursor:pointer;
     font-family:'DM Sans',sans-serif;transition:background 0.15s;
     margin-top:6px;
-}}
-.btn-sitemap-modal:hover{{background:#dbeafe;}}
-.analise-badge {{
+}
+.btn-sitemap-modal:hover{background:#dbeafe;}
+.analise-badge {
     margin: 0 14px 10px;
     padding: 9px 14px;
     background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
@@ -3930,23 +3930,23 @@ body {{ padding-bottom:8px; }}
     gap: 8px;
     cursor: pointer;
     transition: all 0.15s;
-}}
-.analise-badge:hover {{
+}
+.analise-badge:hover {
     background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
     border-color: #4ade80;
     box-shadow: 0 2px 8px rgba(34,197,94,0.15);
     transform: translateY(-1px);
-}}
-.btn-wrap {{ padding:0 14px 16px; }}
-.btn-analisar {{
+}
+.btn-wrap { padding:0 14px 16px; }
+.btn-analisar {
     width:100%;padding:11px 0;
     border:1px solid #3a9fd6;border-radius:8px;
     background:#eff6ff;font-size:14px;font-weight:700;color:#1d4ed8;
     cursor:pointer;font-family:'DM Sans',sans-serif;
     transition:background 0.15s;
     display:flex;align-items:center;justify-content:center;gap:7px;
-}}
-.btn-analisar:hover {{ background:#dbeafe; }}
+}
+.btn-analisar:hover { background:#dbeafe; }
 </style>
 </head>
 <body>
@@ -3955,83 +3955,83 @@ body {{ padding-bottom:8px; }}
 </div>
 
 <script>
-var CARDS = {cards_json_str};
+var CARDS = __CARDS_JSON__;
 
-function esc(s) {{
+function esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}}
+}
 
-if (!window._seoHelpersReady) {{
+if (!window._seoHelpersReady) {
     window._seoHelpersReady = true;
 
-    window.calcSeoScore = function(c) {{
+    window.calcSeoScore = function(c) {
         var items = [
-            {{ label:'Title',       ok: !!c.seo_title }},
-            {{ label:'H1',          ok: !!c.seo_h1 }},
-            {{ label:'Meta Desc.',  ok: !!c.seo_desc }},
-            {{ label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 }},
-            {{ label:'Sitemap',     ok: c.sitemap_status === 'ok' }},
+            { label:'Title',       ok: !!c.seo_title },
+            { label:'H1',          ok: !!c.seo_h1 },
+            { label:'Meta Desc.',  ok: !!c.seo_desc },
+            { label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 },
+            { label:'Sitemap',     ok: c.sitemap_status === 'ok' },
         ];
-        var pts = items.filter(function(i){{return i.ok;}}).length * 20;
-        return {{ score: pts, items: items }};
-    }};
+        var pts = items.filter(function(i){ return i.ok; }).length * 20;
+        return { score: pts, items: items };
+    };
 
     window.PAGE_PATTERNS = [
-        {{ re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' }},
-        {{ re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' }},
-        {{ re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' }},
-        {{ re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' }},
-        {{ re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' }},
-        {{ re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' }},
-        {{ re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' }},
-        {{ re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' }},
-        {{ re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' }},
-        {{ re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' }},
+        { re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' },
+        { re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' },
+        { re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' },
+        { re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' },
+        { re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' },
+        { re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' },
+        { re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' },
+        { re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' },
+        { re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' },
+        { re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' },
     ];
 
-    window.classifyPages = function(urls) {{
-        var found = {{}}, homeUrl = null, result = [];
-        (urls || []).forEach(function(u) {{
+    window.classifyPages = function(urls) {
+        var found = {}, homeUrl = null, result = [];
+        (urls || []).forEach(function(u) {
             var path = u.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
-            if (path === '' || path === '/') {{ homeUrl = u; return; }}
-            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {{
+            if (path === '' || path === '/') { homeUrl = u; return; }
+            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {
                 var p = window.PAGE_PATTERNS[i];
-                if (p.re.test(u) && !found[p.label]) {{ found[p.label] = {{ icon:p.icon, label:p.label, url:u }}; break; }}
-            }}
-        }});
-        if (homeUrl) result.push({{ icon:'🏠', label:'Home', url:homeUrl }});
-        window.PAGE_PATTERNS.forEach(function(p) {{ if (found[p.label]) result.push(found[p.label]); }});
+                if (p.re.test(u) && !found[p.label]) { found[p.label] = { icon:p.icon, label:p.label, url:u }; break; }
+            }
+        });
+        if (homeUrl) result.push({ icon:'🏠', label:'Home', url:homeUrl });
+        window.PAGE_PATTERNS.forEach(function(p) { if (found[p.label]) result.push(found[p.label]); });
         return result;
-    }};
+    };
 
-    window.extractServices = function(c) {{
+    window.extractServices = function(c) {
         var cands = [];
-        (c.seo_h2s || []).forEach(function(h) {{
+        (c.seo_h2s || []).forEach(function(h) {
             var cl = h.trim();
             if (/^(receba|clique|saiba|entre|acesse|confira|veja|descubra|por que|nosso|nossa|os |as |um |uma )/i.test(cl)) return;
             if (cl.length < 4 || cl.length > 80) return;
             cands.push(cl);
-        }});
-        if (c.seo_title) {{
-            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {{
+        });
+        if (c.seo_title) {
+            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {
                 var s = seg.trim();
                 if (s.length > 4 && s.length < 50 && cands.indexOf(s) < 0) cands.unshift(s);
-            }});
-        }}
+            });
+        }
         return cands.slice(0, 6);
-    }};
-}}
+    };
+}
 
-function abrirSitemapModal(nome, urls, total) {{
+function abrirSitemapModal(nome, urls, total) {
     var doc = window.parent.document;
     var old = doc.getElementById('sitemap_modal_overlay');
     if (old) old.remove();
 
-    var listaStr = urls.join('\\n');
+    var listaStr = urls.join('\n');
     var ov = doc.createElement('div');
     ov.id = 'sitemap_modal_overlay';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
 
     var box = doc.createElement('div');
     box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,900px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
@@ -4058,11 +4058,11 @@ function abrirSitemapModal(nome, urls, total) {{
     ov.appendChild(box);
     doc.body.appendChild(ov);
 
-    doc.getElementById('sitemap_close_btn').addEventListener('click', function() {{ ov.remove(); }});
+    doc.getElementById('sitemap_close_btn').addEventListener('click', function() { ov.remove(); });
 
-    doc.getElementById('sitemap_copy_btn').addEventListener('click', function() {{
+    doc.getElementById('sitemap_copy_btn').addEventListener('click', function() {
         var btn = doc.getElementById('sitemap_copy_btn');
-        try {{
+        try {
             var ta = doc.createElement('textarea');
             ta.value = listaStr;
             ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
@@ -4070,29 +4070,29 @@ function abrirSitemapModal(nome, urls, total) {{
             doc.execCommand('copy');
             doc.body.removeChild(ta);
             btn.textContent = '✅ Copiado!';
-            setTimeout(function() {{ btn.textContent = '📋 Copiar'; }}, 2000);
-        }} catch(e) {{
+            setTimeout(function() { btn.textContent = '📋 Copiar'; }, 2000);
+        } catch(e) {
             btn.textContent = '❌ Erro';
-            setTimeout(function() {{ btn.textContent = '📋 Copiar'; }}, 2000);
-        }}
-    }});
+            setTimeout(function() { btn.textContent = '📋 Copiar'; }, 2000);
+        }
+    });
 
-    doc.getElementById('sitemap_down_btn').addEventListener('click', function() {{
+    doc.getElementById('sitemap_down_btn').addEventListener('click', function() {
         var a = doc.createElement('a');
-        a.href = URL.createObjectURL(new Blob([listaStr], {{type:'text/plain'}}));
+        a.href = URL.createObjectURL(new Blob([listaStr], {type:'text/plain'}));
         a.download = 'sitemap_' + nome.replace(/[^a-zA-Z0-9]/g,'_') + '.txt';
         a.click();
-    }});
+    });
 
-    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    var escFn = function(e) { if (e.key === 'Escape') { ov.remove(); doc.removeEventListener('keydown', escFn); } };
     doc.addEventListener('keydown', escFn);
-}}
+}
 
-function buildCards() {{
+function buildCards() {
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
 
-    CARDS.forEach(function(c) {{
+    CARDS.forEach(function(c) {
         var card = document.createElement('div');
         card.className = 'site-card';
         card.style.borderTop = '3px solid ' + c.cor;
@@ -4123,14 +4123,14 @@ function buildCards() {{
         img.src = 'https://api.microlink.io/?url=https://' + c.url + '&screenshot=true&meta=false&embed=screenshot.url';
         img.loading = 'lazy';
         img.alt = 'Preview ' + c.nome;
-        img.onerror = function() {{
+        img.onerror = function() {
             prevWrap.innerHTML =
                 '<div class="preview-fallback">'
                 + '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
                 + '<span style="font-size:12px;color:#9ca3af">Prévia indisponível</span>'
                 + '</div>';
-        }};
-        img.addEventListener('load', function() {{ setTimeout(syncHeight, 100); }});
+        };
+        img.addEventListener('load', function() { setTimeout(syncHeight, 100); });
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
 
@@ -4139,19 +4139,19 @@ function buildCards() {{
         var scoreVal = seoScore ? seoScore.score : -1;
 
         var scoreCor, scoreBg, scoreIcon, scoreCls;
-        if (scoreVal >= 80) {{
+        if (scoreVal >= 80) {
             scoreCor = '#22c55e'; scoreBg = 'rgba(240,253,244,1)'; scoreIcon = '🏆'; scoreCls = 'Excelente';
-        }} else if (scoreVal >= 60) {{
+        } else if (scoreVal >= 60) {
             scoreCor = '#3b82f6'; scoreBg = 'rgba(239,246,255,1)'; scoreIcon = '👍'; scoreCls = 'Bom';
-        }} else if (scoreVal >= 40) {{
+        } else if (scoreVal >= 40) {
             scoreCor = '#f59e0b'; scoreBg = 'rgba(255,251,235,1)'; scoreIcon = '⚠️'; scoreCls = 'Regular';
-        }} else if (scoreVal >= 0) {{
+        } else if (scoreVal >= 0) {
             scoreCor = '#ef4444'; scoreBg = 'rgba(254,242,242,1)'; scoreIcon = '📝'; scoreCls = 'Precisa melhorar';
-        }} else {{
+        } else {
             scoreCor = '#9ca3af'; scoreBg = '#f9fafb'; scoreIcon = '—'; scoreCls = 'Sem dados';
-        }}
+        }
 
-        if (hasSeo) {{
+        if (hasSeo) {
             var scoreSection = document.createElement('div');
             scoreSection.className = 'score-section';
 
@@ -4184,18 +4184,18 @@ function buildCards() {{
             barFill.style.setProperty('--score-cor', scoreCor);
             barTrack.appendChild(barFill);
             scoreSection.appendChild(barTrack);
-            setTimeout((function(bf, sv) {{ return function() {{ bf.style.width = sv + '%'; }}; }})(barFill, scoreVal), 200);
+            setTimeout((function(bf, sv) { return function() { bf.style.width = sv + '%'; }; })(barFill, scoreVal), 200);
 
             var bdWrap = document.createElement('div');
             bdWrap.className = 'score-breakdown2';
             bdWrap.innerHTML = '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#9ca3af;margin-bottom:4px;width:100%;">Pontuação SEO</div>';
-            seoScore.items.forEach(function(it) {{
+            seoScore.items.forEach(function(it) {
                 bdWrap.innerHTML += '<div class="score-item2"><div class="score-dot2 ' + (it.ok?'ok':'nok') + '"></div>' + it.label + '</div>';
-            }});
+            });
             scoreSection.appendChild(bdWrap);
 
             card.appendChild(scoreSection);
-        }}
+        }
 
         var keyPages  = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
         var services  = hasSeo ? window.extractServices(c) : [];
@@ -4216,14 +4216,14 @@ function buildCards() {{
         seoBody2.className = 'seo-body2';
         seoBody2.id = 'seo_body2_' + c.idx;
 
-        if (hasSeo) {{
-            if (services.length > 0) {{
+        if (hasSeo) {
+            if (services.length > 0) {
                 var sec2 = document.createElement('div'); sec2.className = 'seo-section';
                 var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
-                services.forEach(function(s) {{ sh += '<span class="service-pill">' + esc(s) + '</span>'; }});
+                services.forEach(function(s) { sh += '<span class="service-pill">' + esc(s) + '</span>'; });
                 sec2.innerHTML = sh + '</div>';
                 seoBody2.appendChild(sec2);
-            }}
+            }
 
             var sec3 = document.createElement('div'); sec3.className = 'seo-section';
             sec3.innerHTML =
@@ -4238,31 +4238,31 @@ function buildCards() {{
                 + '</div>';
             seoBody2.appendChild(sec3);
 
-            if (c.seo_h2s && c.seo_h2s.length > 0) {{
+            if (c.seo_h2s && c.seo_h2s.length > 0) {
                 var sec4 = document.createElement('div'); sec4.className = 'seo-section';
                 var hh = '<div class="seo-section-title">📂 Seções da página (H2)</div><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">';
-                c.seo_h2s.forEach(function(h) {{ hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; }});
+                c.seo_h2s.forEach(function(h) { hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; });
                 sec4.innerHTML = hh + '</div>';
                 seoBody2.appendChild(sec4);
-            }}
+            }
 
-            if (keyPages.length > 0) {{
+            if (keyPages.length > 0) {
                 var sec5 = document.createElement('div'); sec5.className = 'seo-section';
                 var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list" style="margin-top:4px;">';
-                keyPages.forEach(function(p) {{
+                keyPages.forEach(function(p) {
                     var path = p.url.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
                     ph += '<a class="page-row" href="' + esc(p.url) + '" target="_blank" rel="noopener">'
                         + '<span class="page-icon">' + p.icon + '</span>'
                         + '<span class="page-label">' + esc(p.label) + '</span>'
                         + '<span class="page-url">' + esc(path) + '</span>'
                         + '</a>';
-                }});
+                });
                 sec5.innerHTML = ph + '</div>';
                 seoBody2.appendChild(sec5);
-            }}
+            }
 
             var sec6 = document.createElement('div'); sec6.className = 'seo-section';
-            if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {{
+            if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {
                 var smHdr = '<div class="seo-section-title">'
                     + '<span>🗂️ Sitemap</span>'
                     + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span>'
@@ -4271,50 +4271,50 @@ function buildCards() {{
                 var sitemapBtn = document.createElement('button');
                 sitemapBtn.className = 'btn-sitemap-modal';
                 sitemapBtn.innerHTML = '🔍 Ver sitemap completo (' + c.sitemap_total + ' URLs)';
-                sitemapBtn.addEventListener('click', (function(nome, urls, total) {{
-                    return function() {{ abrirSitemapModal(nome, urls, total); }};
-                }})(c.nome, c.sitemap_urls, c.sitemap_total));
+                sitemapBtn.addEventListener('click', (function(nome, urls, total) {
+                    return function() { abrirSitemapModal(nome, urls, total); };
+                })(c.nome, c.sitemap_urls, c.sitemap_total));
                 sec6.appendChild(sitemapBtn);
-            }} else if (c.sitemap_status === 'sem_sitemap') {{
+            } else if (c.sitemap_status === 'sem_sitemap') {
                 sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
                     + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
-            }} else {{
+            } else {
                 sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
                     + '<div style="font-size:12px;color:#d1d5db;font-style:italic;">Extraia o SEO para verificar o sitemap.</div>';
-            }}
+            }
             seoBody2.appendChild(sec6);
 
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
             seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';
             var reBtn = document.createElement('button'); reBtn.className = 'btn-reextract';
             reBtn.innerHTML = '🔄 Atualizar SEO';
-            reBtn.onclick = (function(idx) {{ return function() {{ reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx);
+            reBtn.onclick = (function(idx) { return function() { reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }; })(c.idx);
             seoFoot.appendChild(reBtn);
             seoBody2.appendChild(seoFoot);
 
-        }} else {{
+        } else {
             var btnEx = document.createElement('button'); btnEx.className = 'btn-extrair2';
             btnEx.innerHTML = '🔍 Extrair SEO, Páginas e Serviços';
-            btnEx.onclick = (function(idx,btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }}; }})(c.idx, btnEx);
+            btnEx.onclick = (function(idx,btn) { return function() { btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }; })(c.idx, btnEx);
             seoBody2.appendChild(btnEx);
-        }}
+        }
 
-        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {{
-            return function() {{
+        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {
+            return function() {
                 var open = body.style.display === 'flex';
                 body.style.display = open ? 'none' : 'flex';
                 hdrEl.classList.toggle('open', !open);
                 var ch = document.getElementById(chevId);
                 if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
                 setTimeout(syncHeight, 150);
-            }};
-        }})(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
+            };
+        })(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
 
         seoWrap2.appendChild(seoHdr2);
         seoWrap2.appendChild(seoBody2);
         card.appendChild(seoWrap2);
 
-        if (c.tem_analise && c.ultima_analise) {{
+        if (c.tem_analise && c.ultima_analise) {
             var abadge = document.createElement('div');
             abadge.className = 'analise-badge';
             abadge.title = 'Ver análise na aba Análise de IA';
@@ -4324,9 +4324,9 @@ function buildCards() {{
                 + '<span>Última análise: <b>' + c.ultima_analise + '</b></span>'
                 + '</div>'
                 + '<span style="font-size:12px;opacity:0.7;">→ Ver análise</span>';
-            abadge.onclick = function() {{ triggerAnaliseTab(); }};
+            abadge.onclick = function() { triggerAnaliseTab(); };
             card.appendChild(abadge);
-        }}
+        }
 
         var btnWrap = document.createElement('div');
         btnWrap.className = 'btn-wrap';
@@ -4334,67 +4334,67 @@ function buildCards() {{
         btn.className = 'btn-analisar';
         btn.id = 'btn_analisar_' + c.idx;
         btn.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '✨ Analisar este site com IA';
-        btn.onclick = (function(idx, nome, btnEl) {{
-            return function() {{
+        btn.onclick = (function(idx, nome, btnEl) {
+            return function() {
                 btnEl.disabled = true;
                 btnEl.innerHTML = '⏳ Analisando…';
                 triggerSiteIA(idx, nome);
-            }};
-        }})(c.idx, c.nome, btn);
+            };
+        })(c.idx, c.nome, btn);
         btnWrap.appendChild(btn);
         card.appendChild(btnWrap);
 
         grid.appendChild(card);
-    }});
+    });
 
     syncHeight();
-}}
+}
 
-function triggerAnaliseTab() {{
+function triggerAnaliseTab() {
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
+    for (var i = 0; i < btns.length; i++) {
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g,' ').trim();
-        if (txt === 'analise_tab') {{ btns[i].click(); return; }}
-    }}
-}}
+        if (txt === 'analise_tab') { btns[i].click(); return; }
+    }
+}
 
-function triggerSiteIA(idx, nome) {{
+function triggerSiteIA(idx, nome) {
     var targetText = 'SITE_IA_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
+    for (var i = 0; i < btns.length; i++) {
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();
-        if (txt === targetText) {{ btns[i].click(); return; }}
-    }}
-}}
+        if (txt === targetText) { btns[i].click(); return; }
+    }
+}
 
-function triggerSiteSEO(idx) {{
+function triggerSiteSEO(idx) {
     var targetText = 'SITE_SEO_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
+    for (var i = 0; i < btns.length; i++) {
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();
-        if (txt === targetText) {{ btns[i].click(); return; }}
-    }}
-}}
+        if (txt === targetText) { btns[i].click(); return; }
+    }
+}
 
-function syncHeight() {{
+function syncHeight() {
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
+    for (var i = 0; i < iframes.length; i++) {
+        try {
+            if (iframes[i].contentWindow === window) {
                 iframes[i].style.height = (h + 12) + 'px';
                 break;
-            }}
-        }} catch(e) {{}}
-    }}
-}}
+            }
+        } catch(e) {}
+    }
+}
 
-try {{
+try {
     buildCards();
-}} catch(err) {{
+} catch(err) {
     document.getElementById('cards-grid').innerHTML =
         '<div style="padding:20px;color:red;font-size:13px">Erro ao renderizar cards: ' + err.message + '</div>';
-}}
+}
 
 syncHeight();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
@@ -4407,6 +4407,7 @@ setTimeout(syncHeight, 3000);
 </script>
 </body></html>"""
 
+        _html_cards = _html_cards.replace("__CARDS_JSON__", cards_json_str)
         components.html(_html_cards, height=1200, scrolling=False)
 
     # ══════════════════════════════════════════════════════════════

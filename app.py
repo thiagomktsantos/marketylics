@@ -2966,34 +2966,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 unsafe_allow_html=True
             )
 
-Troque apenas o bloco de montagem do sites_cards_data e o components.html de sites. De:
-python            # ── Seção: Sites das Empresas ──────────────────────────────
-            sites_cards_data = []
-            for i, e in enumerate(todas_empresas_geral):
-                is_minha = e["tipo"] == "minha"
-                cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
-                av  = gerar_avatar(e["nome"])
-                badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
-                badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
-                badge_col = "#15803d" if is_minha else "#1d4ed8"
-                badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-                site_url  = e.get("site", "") or ""
-                ig_url    = e.get("instagram", "") or ""
-                sites_cards_data.append({
-                    "nome": e["nome"], "cor": cor, "av": av,
-                    "badge_lbl": badge_lbl, "badge_bg": badge_bg,
-                    "badge_col": badge_col, "badge_brd": badge_brd,
-                    "site": site_url, "ig": ig_url,
-                })
-
-            sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
-
-            components.html(f"""
-<!DOCTYPE html><html>
-...
-""", height=500, scrolling=False)
-Por:
-python            # ── Seção: Sites das Empresas ──────────────────────────────
+            # ── Seção: Sites das Empresas ──────────────────────────────
             seo_cache = st.session_state.get("seo_cache", {})
 
             sites_cards_data = []

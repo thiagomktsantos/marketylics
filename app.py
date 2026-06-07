@@ -3730,18 +3730,18 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 # ---------------------------------------------------
  
 elif st.session_state.pagina == "sites":
- 
+
     import datetime as _dt
     import json as _json_sites
- 
+
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
- 
+
     if "redes_analises_salvas" not in st.session_state:
         st.session_state.redes_analises_salvas = []
     if "redes_analise_vistas" not in st.session_state:
         st.session_state.redes_analise_vistas = 0
- 
+
     # ── Inicializar estados ────────────────────────────────────────
     if "sites_main_tab" not in st.session_state:
         st.session_state.sites_main_tab = "sites"
@@ -3755,7 +3755,7 @@ elif st.session_state.pagina == "sites":
         st.session_state.sites_analise_vistas = 0
     if "seo_cache" not in st.session_state:
         st.session_state.seo_cache = {}
- 
+
     # ── Montar lista de sites ──────────────────────────────────────
     sites_disponiveis = []
     if emp.get("site"):
@@ -3769,17 +3769,17 @@ elif st.session_state.pagina == "sites":
                 "nome": c["nome"], "url": c["url"],
                 "tipo": "concorrente", "instagram": c.get("instagram", "")
             })
- 
+
     if not sites_disponiveis:
         st.info("Cadastre o site da sua empresa e de pelo menos um concorrente para usar esta funcionalidade.")
         st.stop()
- 
+
     # ── Estado das análises individuais ───────────────────────────
     for idx_s, s in enumerate(sites_disponiveis):
         chave = f"sites_analise_{idx_s}"
         if chave not in st.session_state:
             st.session_state[chave] = ""
- 
+
     # ── Cabeçalho ──────────────────────────────────────────────────
     h1, h2 = st.columns([7, 3])
     with h1:
@@ -3802,7 +3802,7 @@ html, body { background: transparent; overflow: hidden; }
 <div class="titulo">Confronto de Sites</div>
 <div class="sub">Análise comparativa de posicionamento via IA.</div>
 """, height=65)
- 
+
     with h2:
         gerar_btn = st.button("Gerar Relatório Geral", type="primary", use_container_width=True)
         ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
@@ -3812,9 +3812,9 @@ html, body { background: transparent; overflow: hidden; }
                 f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
                 unsafe_allow_html=True,
             )
- 
+
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
- 
+
     # ══════════════════════════════════════════════════════════════
     # GHOST BUTTONS — Navegação de abas
     # ══════════════════════════════════════════════════════════════
@@ -3833,14 +3833,14 @@ html, body { background: transparent; overflow: hidden; }
     }
     </style>
     """, unsafe_allow_html=True)
- 
+
     if st.button("sites_tab", key="_sites_ghost_tab_sites_"):
         st.session_state.sites_main_tab = "sites"
         st.rerun()
     if st.button("analise_tab", key="_sites_ghost_tab_analise_"):
         st.session_state.sites_main_tab = "analise"
         st.rerun()
- 
+
     # ══════════════════════════════════════════════════════════════
     # GHOST BUTTONS — Análise individual por site
     # ══════════════════════════════════════════════════════════════
@@ -3850,12 +3850,12 @@ html, body { background: transparent; overflow: hidden; }
         for i in range(len(sites_disponiveis))
     ])
     st.markdown(f"<style>{ghost_css_ia}</style>", unsafe_allow_html=True)
- 
+
     site_ia_triggers = {}
     for idx_s in range(len(sites_disponiveis)):
         triggered = st.button(f"SITE_IA_{idx_s}", key=f"btn_site_ia_{idx_s}")
         site_ia_triggers[idx_s] = triggered
- 
+
     # ══════════════════════════════════════════════════════════════
     # GHOST BUTTONS — Extração de SEO por site
     # ══════════════════════════════════════════════════════════════
@@ -3865,11 +3865,11 @@ html, body { background: transparent; overflow: hidden; }
         for i in range(len(sites_disponiveis))
     ])
     st.markdown(f"<style>{ghost_css_seo}</style>", unsafe_allow_html=True)
- 
+
     site_seo_triggers = {}
     for idx_s in range(len(sites_disponiveis)):
         site_seo_triggers[idx_s] = st.button(f"SITE_SEO_{idx_s}", key=f"btn_site_seo_{idx_s}")
- 
+
     # ══════════════════════════════════════════════════════════════
     # GHOST BUTTONS — Remover análises salvas
     # ══════════════════════════════════════════════════════════════
@@ -3877,27 +3877,27 @@ html, body { background: transparent; overflow: hidden; }
     acoes_rm = {}
     for i in range(len(analises_para_rm)):
         acoes_rm[f"rm_{i}"] = st.button(f"_rm_analise_{i}_", key=f"btn_rm_analise_{i}")
- 
+
     rm_css = "\n".join([
         f".st-key-btn_rm_analise_{i} {{ display: none !important; }}"
         f".stElementContainer:has(.st-key-btn_rm_analise_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
         for i in range(len(analises_para_rm))
     ])
     st.markdown(f"<style>{rm_css}</style>", unsafe_allow_html=True)
- 
+
     for i in range(len(analises_para_rm) - 1, -1, -1):
         if acoes_rm.get(f"rm_{i}"):
             st.session_state.analises_salvas.pop(i)
             salvar_dados_usuario(st.session_state.user.id)
             st.rerun()
- 
+
     # ══════════════════════════════════════════════════════════════
     # PROCESSAR — Extração de SEO com spinner
     # ══════════════════════════════════════════════════════════════
     for idx_s, s in enumerate(sites_disponiveis):
         if site_seo_triggers.get(idx_s):
             modal_seo_ph = st.empty()
- 
+
             def _render_modal_seo(fase, nome, pct, _ph=modal_seo_ph):
                 is_done  = fase == "concluido"
                 sub1     = "SEO extraído!" if is_done else "Extraindo dados de SEO…"
@@ -3951,16 +3951,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </script>"""
                 with _ph:
                     components.html(html_modal, height=600, scrolling=False)
- 
+
             _render_modal_seo("extraindo", s["nome"], 30)
             seo_data = extrair_seo_site(s["url"])
             _render_modal_seo("extraindo", s["nome"], 65)
             seo_data["sitemap"] = extrair_sitemap(s["url"])
- 
+
             if "seo_cache" not in st.session_state:
                 st.session_state.seo_cache = {}
             st.session_state.seo_cache[s["nome"]] = seo_data
- 
+
             # ── Persiste no Supabase ──
             try:
                 user_id = st.session_state.user.id
@@ -3977,12 +3977,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
             except Exception as e_seo:
                 st.toast(f"⚠️ Erro ao salvar SEO: {e_seo}", icon="⚠️")
- 
+
             _render_modal_seo("concluido", s["nome"], 100)
             import time as _time; _time.sleep(1.2)
             modal_seo_ph.empty()
             st.rerun()
- 
+
     # ══════════════════════════════════════════════════════════════
     # PROCESSAR — Análise individual com overlay de loading
     # ══════════════════════════════════════════════════════════════
@@ -3993,7 +3993,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 st.session_state[f"sites_analise_{idx_s}"] = "⚠️ Configure GEMINI_API_KEY nos secrets."
             else:
                 modal_site_placeholder = st.empty()
- 
+
                 def _render_modal_site(fase: str, nome: str, pct: int, _ph=modal_site_placeholder):
                     fases = {
                         "lendo":     ("Acessando o site…",       "Lendo conteúdo da página…"),
@@ -4056,56 +4056,56 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </script>"""
                     with _ph:
                         components.html(html_modal, height=600, scrolling=False)
- 
+
                 _render_modal_site("lendo", s["nome"], 15)
                 conteudo_site = extrair_conteudo_site(s["url"])
- 
+
                 _render_modal_site("enviando", s["nome"], 50)
                 try:
                     prompt_individual = f"""
 Você é um especialista em marketing digital e posicionamento de marca.
 Analise o conteúdo extraído do site abaixo e gere uma análise individual detalhada em português.
- 
+
 Empresa: {s['nome']} ({s['url']})
 URL: {s['url']}
 Tipo: {"Minha Empresa" if is_minha else "Concorrente"}
- 
+
 Conteúdo extraído do site:
 {conteudo_site[:4000] if conteudo_site else "Não foi possível extrair conteúdo."}
- 
+
 ---
- 
+
 IMPORTANTE: Sempre que mencionar o nome da empresa ao longo do relatório, inclua o endereço do site entre parênteses. Exemplo: "{s['nome']} ({s['url']})".
- 
+
 Responda com as seguintes seções:
- 
+
 ### 📌 Proposta de Valor
 Qual é a proposta central comunicada no site?
- 
+
 ### 🎯 Posicionamento
 Como esta empresa se posiciona no mercado? (premium, popular, nicho, generalista etc.)
- 
+
 ### 🔑 Mensagens Principais
 Quais são os termos, promessas e mensagens mais repetidos?
- 
+
 ### 🛠️ Serviços / Produtos Destacados
 Liste os principais serviços ou produtos apresentados no site.
- 
+
 ### ✅ Pontos Fortes
 3 pontos positivos observados na comunicação do site.
- 
+
 ### ⚠️ Pontos de Atenção
 2 pontos que poderiam ser melhorados.
- 
+
 ### 💡 Recomendação
 1 ação concreta de alto impacto para melhorar o posicionamento.
- 
+
 Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
 """
                     _render_modal_site("gerando", s["nome"], 80)
                     resp = gemini_model.generate_content(prompt_individual)
                     st.session_state[f"sites_analise_{idx_s}"] = resp.text
- 
+
                     st.session_state.analises_salvas = [
                         a for a in st.session_state.analises_salvas
                         if not (a.get("tipo") == "individual" and s["nome"] in a.get("sites", []))
@@ -4120,30 +4120,30 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         "empresa": f"{s['nome']} ({s['url']})",
                         "url": s["url"],
                     })
- 
+
                     salvar_dados_usuario(st.session_state.user.id)
- 
+
                     _render_modal_site("concluido", s["nome"], 100)
                     import time as _time; _time.sleep(1.5)
                     modal_site_placeholder.empty()
- 
+
                     st.session_state.sites_main_tab = "analise"
                     st.rerun()
- 
+
                 except Exception as e:
                     modal_site_placeholder.empty()
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()
- 
+
     # ══════════════════════════════════════════════════════════════
     # PROCESSAR — Relatório geral com modal de loading
     # ══════════════════════════════════════════════════════════════
     if gerar_btn:
         st.session_state.relatorio_gemini = ""
         st.session_state.relatorio_sites = {}
- 
+
         modal_geral_placeholder = st.empty()
- 
+
         def _render_modal_geral(fase: str, descricao: str, pct: int, _ph=modal_geral_placeholder):
             fases = {
                 "lendo":     ("Acessando os sites…",       "Lendo conteúdo das páginas…"),
@@ -4206,16 +4206,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </script>"""
             with _ph:
                 components.html(html_modal, height=600, scrolling=False)
- 
+
         total_sites = len(sites_disponiveis)
         for i_s, s in enumerate(sites_disponiveis):
             pct_leitura = int(10 + (i_s / total_sites) * 35)
             _render_modal_geral("lendo", f"Lendo {s['nome']} ({s['url']}) — {i_s + 1}/{total_sites}", pct_leitura)
             conteudo = extrair_conteudo_site(s["url"])
             st.session_state.relatorio_sites[s["url"]] = conteudo
- 
+
         _render_modal_geral("enviando", f"{total_sites} site{'s' if total_sites != 1 else ''} lido{'s' if total_sites != 1 else ''} — enviando para IA…", 55)
- 
+
         empresa_principal = None
         concorrentes_data = []
         for s in sites_disponiveis:
@@ -4228,20 +4228,20 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 empresa_principal = item
             else:
                 concorrentes_data.append(item)
- 
+
         if empresa_principal is None and sites_disponiveis:
             empresa_principal = {
                 "nome": sites_disponiveis[0]["nome"],
                 "url":  sites_disponiveis[0]["url"],
                 "conteudo": st.session_state.relatorio_sites.get(sites_disponiveis[0]["url"], ""),
             }
- 
+
         _render_modal_geral("gerando", "Comparando posicionamentos…", 80)
- 
+
         relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data)
         st.session_state.relatorio_gemini = relatorio
         st.session_state["sites_ultima_geracao"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
- 
+
         nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
         titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
         st.session_state.analises_salvas.append({
@@ -4251,28 +4251,28 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             "sites": nomes_com_url,
             "tipo": "geral",
         })
- 
+
         salvar_dados_usuario(st.session_state.user.id)
- 
+
         _render_modal_geral("concluido", "Relatório geral pronto!", 100)
         import time as _time; _time.sleep(1.5)
         modal_geral_placeholder.empty()
- 
+
         st.session_state.sites_main_tab = "analise"
         st.rerun()
- 
+
     # ══════════════════════════════════════════════════════════════
     # BARRA DE NAVEGAÇÃO PRINCIPAL
     # ══════════════════════════════════════════════════════════════
     main_tab = st.session_state.sites_main_tab
     analises_nav = st.session_state.get("analises_salvas", [])
     qtd_total_analise = len(analises_nav)
- 
+
     nao_lidas = max(0, qtd_total_analise - st.session_state.sites_analise_vistas)
     if main_tab == "analise":
         st.session_state.sites_analise_vistas = qtd_total_analise
         nao_lidas = 0
- 
+
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4329,7 +4329,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 </style>
 <div class="nav-bar">
- 
+
     <div class="nav-item {'active' if main_tab == 'sites' else ''}" onclick="triggerTab('sites_tab')">
         <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'sites' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4346,7 +4346,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <div class="count-badge {'has' if len(sites_disponiveis) > 0 else ''}">{len(sites_disponiveis)}</div>
         </div>
     </div>
- 
+
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('analise_tab')">
         <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'analise' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4362,7 +4362,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             {'<div class="new-badge">NOVA</div>' if nao_lidas > 0 else ''}
         </div>
     </div>
- 
+
 </div>
 <script>
 function triggerTab(label) {{
@@ -4386,14 +4386,14 @@ function triggerTab(label) {{
 }})();
 </script>
 """, height=90, scrolling=False)
- 
+
     # ══════════════════════════════════════════════════════════════
     # ABA: SITES CONFIGURADOS
     # ══════════════════════════════════════════════════════════════
     if main_tab == "sites":
- 
+
         seo_cache_atual = st.session_state.get("seo_cache", {})
- 
+
         cards_data = []
         for idx_s, s in enumerate(sites_disponiveis):
             is_minha   = s["tipo"] == "minha"
@@ -4404,17 +4404,17 @@ function triggerTab(label) {{
             badge_lbl  = "Minha Empresa" if is_minha else "Concorrente"
             avatar_letras = gerar_avatar(s["nome"])
             tem_analise = bool(st.session_state.get(f"sites_analise_{idx_s}", ""))
- 
+
             ultima_analise = ""
             for a in reversed(st.session_state.get("analises_salvas", [])):
                 if a.get("tipo") == "individual" and s["nome"] in a.get("sites", []):
                     ultima_analise = a.get("data", "")
                     break
- 
+
             # ── Dados de SEO do cache ──
             seo       = seo_cache_atual.get(s["nome"], {})
             sitemap   = seo.get("sitemap", {})
- 
+
             cards_data.append({
                 "idx":             idx_s,
                 "nome":            s["nome"],
@@ -4440,9 +4440,9 @@ function triggerTab(label) {{
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
             })
- 
+
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
- 
+
         _html_cards = f"""<!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -4491,63 +4491,49 @@ body {{ padding-bottom:8px; }}
     width:100%;height:100%; display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
 }}
-/* ── SEO Accordion ── */
-.seo-wrap {{
-    margin:0 14px 10px; border-radius:8px;
-    border:1px solid #e5e7eb; overflow:hidden;
-}}
-.seo-hdr {{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e5e7eb;
-    cursor:pointer; user-select:none;
-}}
-.seo-hdr-left {{ display:flex; align-items:center; gap:6px; }}
-.seo-label {{ font-size:11px; font-weight:700; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.5px; }}
-.seo-badge-ok {{
-    font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
-    background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0;
-}}
-.seo-badge-no {{
-    font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
-    background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb;
-}}
-.seo-chevron {{ font-size:12px; color:#9ca3af; transition:transform 0.2s; }}
-.seo-body {{
-    padding:10px 12px; display:none; flex-direction:column;
-    gap:8px; background:#fff;
-}}
-.seo-item-label {{
-    font-size:9px; font-weight:700; text-transform:uppercase;
-    letter-spacing:0.8px; color:#9ca3af; margin-bottom:2px;
-}}
-.seo-item-value {{ font-size:12px; color:#374151; line-height:1.5; font-weight:500; word-break:break-word; }}
-.seo-item-empty {{ font-size:12px; color:#d1d5db; font-style:italic; }}
-.seo-h2-list {{ display:flex; flex-direction:column; gap:3px; margin-top:2px; }}
-.seo-h2-pill {{
-    font-size:11px; color:#374151; background:#f3f4f6; border-radius:6px;
-    padding:3px 8px; display:inline-block; width:fit-content;
-}}
-.sitemap-list {{
-    display:flex; flex-direction:column; gap:3px; margin-top:2px;
-    max-height:160px; overflow-y:auto;
-}}
-.sitemap-item {{
-    font-size:11px; color:#374151; background:#f3f4f6; border-radius:5px;
-    padding:3px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}}
-.seo-ts {{
-    font-size:10px; color:#9ca3af; text-align:right;
-    padding-top:4px; border-top:1px solid #f3f4f6; margin-top:4px;
-}}
-.btn-extrair-seo {{
-    width:100%; padding:9px; border-radius:8px;
-    border:1px solid #bfdbfe; background:#eff6ff;
-    font-size:13px; font-weight:700; color:#1d4ed8;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    display:flex; align-items:center; justify-content:center; gap:6px;
-    transition:background 0.15s;
-}}
-.btn-extrair-seo:hover {{ background:#dbeafe; border-color:#93c5fd; }}
+
+/* ══════════════════════════════════════════════════════
+   SEO Accordion v2
+══════════════════════════════════════════════════════ */
+.seo-wrap2{{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}}
+.seo-hdr2{{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}}
+.seo-hdr2:hover{{background:#f1f5f9;}}
+.seo-hdr2.open{{border-bottom-color:#e5e7eb;}}
+.seo-hdr2-left{{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}}
+.seo-hdr2-label{{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}}
+.seo-score-pill{{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
+.seo-score-pill.s-great{{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}}
+.seo-score-pill.s-ok{{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}}
+.seo-score-pill.s-bad{{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}}
+.seo-score-pill.s-none{{background:#f9fafb;color:#9ca3af;border:1px solid #e5e7eb;}}
+.seo-body2{{display:none;flex-direction:column;gap:0;}}
+.seo-section{{padding:12px 14px;border-bottom:1px solid #f3f4f6;}}
+.seo-section:last-child{{border-bottom:none;}}
+.seo-section-title{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}}
+.seo-field-val{{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}}
+.seo-field-empty{{font-size:12px;color:#d1d5db;font-style:italic;}}
+.score-breakdown{{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}}
+.score-item{{display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;padding:3px 8px;}}
+.score-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
+.score-dot.ok{{background:#22c55e;}}
+.score-dot.nok{{background:#e5e7eb;}}
+.services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
+.service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
+.pages-list{{display:flex;flex-direction:column;gap:4px;margin-top:4px;}}
+.page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
+.page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
+.page-icon{{font-size:13px;flex-shrink:0;}}
+.page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
+.page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
+.sitemap-scroll{{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:4px;border-radius:6px;padding:2px 0;}}
+.sitemap-item2{{font-size:11px;color:#4b5563;padding:3px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f9fafb;border:1px solid #f3f4f6;}}
+.seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
+.seo-ts2{{font-size:10px;color:#9ca3af;}}
+.btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}
+.btn-reextract:hover{{background:#dbeafe;}}
+.btn-extrair2{{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}}
+.btn-extrair2:hover{{background:#eff6ff;}}
+
 /* ── demais ── */
 .analise-badge {{
     margin: 0 14px 10px;
@@ -4587,23 +4573,85 @@ body {{ padding-bottom:8px; }}
 <div class="outer-wrap">
     <div class="cards-grid" id="cards-grid"></div>
 </div>
- 
+
 <script>
 var CARDS = {cards_json_str};
- 
+
 function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
- 
+
+// ── SEO v2 helpers (inicializados uma vez) ──────────────────────
+if (!window._seoHelpersReady) {{
+    window._seoHelpersReady = true;
+
+    window.calcSeoScore = function(c) {{
+        var items = [
+            {{ label:'Title',       ok: !!c.seo_title }},
+            {{ label:'H1',          ok: !!c.seo_h1 }},
+            {{ label:'Meta Desc.',  ok: !!c.seo_desc }},
+            {{ label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 }},
+            {{ label:'Sitemap',     ok: c.sitemap_status === 'ok' }},
+        ];
+        var pts = items.filter(function(i){{return i.ok;}}).length * 20;
+        return {{ score: pts, items: items }};
+    }};
+
+    window.PAGE_PATTERNS = [
+        {{ re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' }},
+        {{ re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' }},
+        {{ re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' }},
+        {{ re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' }},
+        {{ re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' }},
+        {{ re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' }},
+        {{ re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' }},
+        {{ re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' }},
+        {{ re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' }},
+        {{ re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' }},
+    ];
+
+    window.classifyPages = function(urls) {{
+        var found = {{}}, homeUrl = null, result = [];
+        (urls || []).forEach(function(u) {{
+            var path = u.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
+            if (path === '' || path === '/') {{ homeUrl = u; return; }}
+            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {{
+                var p = window.PAGE_PATTERNS[i];
+                if (p.re.test(u) && !found[p.label]) {{ found[p.label] = {{ icon:p.icon, label:p.label, url:u }}; break; }}
+            }}
+        }});
+        if (homeUrl) result.push({{ icon:'🏠', label:'Home', url:homeUrl }});
+        window.PAGE_PATTERNS.forEach(function(p) {{ if (found[p.label]) result.push(found[p.label]); }});
+        return result;
+    }};
+
+    window.extractServices = function(c) {{
+        var cands = [];
+        (c.seo_h2s || []).forEach(function(h) {{
+            var cl = h.trim();
+            if (/^(receba|clique|saiba|entre|acesse|confira|veja|descubra|por que|nosso|nossa|os |as |um |uma )/i.test(cl)) return;
+            if (cl.length < 4 || cl.length > 80) return;
+            cands.push(cl);
+        }});
+        if (c.seo_title) {{
+            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {{
+                var s = seg.trim();
+                if (s.length > 4 && s.length < 50 && cands.indexOf(s) < 0) cands.unshift(s);
+            }});
+        }}
+        return cands.slice(0, 6);
+    }};
+}}
+
 function buildCards() {{
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
- 
+
     CARDS.forEach(function(c) {{
         var card = document.createElement('div');
         card.className = 'site-card';
         card.style.borderTop = '3px solid ' + c.cor;
- 
+
         // ── Header ──
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
@@ -4614,7 +4662,7 @@ function buildCards() {{
             + '<span class="badge" style="background:' + c.badge_bg + ';color:' + c.badge_txt + ';border:1px solid ' + c.badge_brd + '">' + c.badge_lbl + '</span>'
             + '</div>';
         card.appendChild(hdr);
- 
+
         // ── URL row ──
         var urlRow = document.createElement('div');
         urlRow.className = 'url-row';
@@ -4625,7 +4673,7 @@ function buildCards() {{
             + '</svg>'
             + '<span>' + esc(c.url) + '</span>';
         card.appendChild(urlRow);
- 
+
         // ── Preview ──
         var prevWrap = document.createElement('div');
         prevWrap.className = 'preview-wrap';
@@ -4643,148 +4691,148 @@ function buildCards() {{
         img.addEventListener('load', function() {{ setTimeout(syncHeight, 100); }});
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
- 
+
         // ══════════════════════════════════════════════════
-        // ── SEO Accordion ──
+        // ── SEO Accordion v2 ──
         // ══════════════════════════════════════════════════
-        var hasSeo = c.seo_status === 'ok';
-        var seoWrap = document.createElement('div');
-        seoWrap.className = 'seo-wrap';
- 
-        var seoHdr = document.createElement('div');
-        seoHdr.className = 'seo-hdr';
-        seoHdr.innerHTML =
-            '<div class="seo-hdr-left">'
+        var hasSeo     = c.seo_status === 'ok';
+        var seoScore   = hasSeo ? window.calcSeoScore(c) : null;
+        var scoreVal   = seoScore ? seoScore.score : -1;
+        var scoreCls   = scoreVal >= 80 ? 's-great' : scoreVal >= 40 ? 's-ok' : scoreVal >= 0 ? 's-bad' : 's-none';
+        var scoreTxt   = scoreVal >= 0
+            ? 'SEO ' + scoreVal + '/100' + (scoreVal >= 80 ? ' ✓' : scoreVal < 40 ? ' ⚠' : '')
+            : 'Sem dados';
+        var keyPages   = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
+        var services   = hasSeo ? window.extractServices(c) : [];
+
+        var seoWrap2   = document.createElement('div');
+        seoWrap2.className = 'seo-wrap2';
+
+        // header
+        var seoHdr2 = document.createElement('div');
+        seoHdr2.className = 'seo-hdr2';
+        seoHdr2.innerHTML =
+            '<div class="seo-hdr2-left">'
             + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a2e4a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-            + '<span class="seo-label">SEO & Conteúdo</span>'
-            + (hasSeo
-                ? '<span class="seo-badge-ok">✓ Extraído</span>'
-                : '<span class="seo-badge-no">Sem dados</span>')
+            + '<span class="seo-hdr2-label">SEO & Conteúdo</span>'
+            + '<span class="seo-score-pill ' + scoreCls + '">' + scoreTxt + '</span>'
             + '</div>'
-            + '<span class="seo-chevron" id="seo_chev_' + c.idx + '">▼</span>';
- 
-        var seoBody = document.createElement('div');
-        seoBody.className = 'seo-body';
-        seoBody.id = 'seo_body_' + c.idx;
- 
+            + '<span id="seo_chev2_' + c.idx + '" style="color:#9ca3af;transition:transform 0.2s;font-size:11px;">▼</span>';
+
+        // body
+        var seoBody2 = document.createElement('div');
+        seoBody2.className = 'seo-body2';
+        seoBody2.id = 'seo_body2_' + c.idx;
+
         if (hasSeo) {{
-            // Title
-            var divTitle = document.createElement('div');
-            divTitle.innerHTML =
-                '<div class="seo-item-label">🏷️ Title</div>'
-                + (c.seo_title
-                    ? '<div class="seo-item-value">' + esc(c.seo_title) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrado</div>');
-            seoBody.appendChild(divTitle);
- 
-            // H1
-            var divH1 = document.createElement('div');
-            divH1.innerHTML =
-                '<div class="seo-item-label">📌 H1 — Título principal</div>'
-                + (c.seo_h1
-                    ? '<div class="seo-item-value">' + esc(c.seo_h1) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrado</div>');
-            seoBody.appendChild(divH1);
- 
-            // Meta Description
-            var divDesc = document.createElement('div');
-            divDesc.innerHTML =
-                '<div class="seo-item-label">📝 Meta Description</div>'
-                + (c.seo_desc
-                    ? '<div class="seo-item-value">' + esc(c.seo_desc) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrada</div>');
-            seoBody.appendChild(divDesc);
- 
-            // H2s
+            // §1 score breakdown
+            var sec1 = document.createElement('div'); sec1.className = 'seo-section';
+            var bd = '<div class="seo-section-title">📊 Pontuação SEO</div><div class="score-breakdown">';
+            seoScore.items.forEach(function(it) {{
+                bd += '<div class="score-item"><div class="score-dot ' + (it.ok?'ok':'nok') + '"></div>' + it.label + '</div>';
+            }});
+            sec1.innerHTML = bd + '</div>';
+            seoBody2.appendChild(sec1);
+
+            // §2 serviços
+            if (services.length > 0) {{
+                var sec2 = document.createElement('div'); sec2.className = 'seo-section';
+                var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
+                services.forEach(function(s) {{ sh += '<span class="service-pill">' + esc(s) + '</span>'; }});
+                sec2.innerHTML = sh + '</div>';
+                seoBody2.appendChild(sec2);
+            }}
+
+            // §3 metadados
+            var sec3 = document.createElement('div'); sec3.className = 'seo-section';
+            sec3.innerHTML =
+                '<div class="seo-section-title">🏷️ Metadados</div>'
+                + '<div style="display:flex;flex-direction:column;gap:8px;">'
+                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">Title</div>'
+                + (c.seo_title ? '<div class="seo-field-val">' + esc(c.seo_title) + '</div>' : '<div class="seo-field-empty">Não encontrado</div>') + '</div>'
+                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">H1</div>'
+                + (c.seo_h1 ? '<div class="seo-field-val">' + esc(c.seo_h1) + '</div>' : '<div class="seo-field-empty">Não encontrado</div>') + '</div>'
+                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">Meta Description</div>'
+                + (c.seo_desc ? '<div class="seo-field-val">' + esc(c.seo_desc) + '</div>' : '<div class="seo-field-empty">Não encontrada</div>') + '</div>'
+                + '</div>';
+            seoBody2.appendChild(sec3);
+
+            // §4 H2s
             if (c.seo_h2s && c.seo_h2s.length > 0) {{
-                var divH2 = document.createElement('div');
-                var h2list = '<div class="seo-h2-list">';
-                c.seo_h2s.forEach(function(h) {{
-                    h2list += '<div class="seo-h2-pill">▸ ' + esc(h) + '</div>';
-                }});
-                h2list += '</div>';
-                divH2.innerHTML = '<div class="seo-item-label">📂 Seções (H2)</div>' + h2list;
-                seoBody.appendChild(divH2);
+                var sec4 = document.createElement('div'); sec4.className = 'seo-section';
+                var hh = '<div class="seo-section-title">📂 Seções da página (H2)</div><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">';
+                c.seo_h2s.forEach(function(h) {{ hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; }});
+                sec4.innerHTML = hh + '</div>';
+                seoBody2.appendChild(sec4);
             }}
- 
-            // Sitemap
+
+            // §5 páginas principais
+            if (keyPages.length > 0) {{
+                var sec5 = document.createElement('div'); sec5.className = 'seo-section';
+                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list">';
+                keyPages.forEach(function(p) {{
+                    var path = p.url.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
+                    ph += '<a class="page-row" href="' + esc(p.url) + '" target="_blank" rel="noopener">'
+                        + '<span class="page-icon">' + p.icon + '</span>'
+                        + '<span class="page-label">' + esc(p.label) + '</span>'
+                        + '<span class="page-url">' + esc(path) + '</span>'
+                        + '</a>';
+                }});
+                sec5.innerHTML = ph + '</div>';
+                seoBody2.appendChild(sec5);
+            }}
+
+            // §6 sitemap
             if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {{
-                var divSm = document.createElement('div');
-                var smList = '<div class="sitemap-list">';
-                c.sitemap_urls.slice(0, 30).forEach(function(u) {{
-                    smList += '<div class="sitemap-item">🔗 ' + esc(u) + '</div>';
-                }});
-                smList += '</div>';
-                if (c.sitemap_total > 30) {{
-                    smList += '<div style="font-size:10px;color:#9ca3af;margin-top:4px;">... e mais ' + (c.sitemap_total - 30) + ' páginas no sitemap</div>';
-                }}
-                divSm.innerHTML = '<div class="seo-item-label">🗺️ Sitemap (' + c.sitemap_total + ' páginas)</div>' + smList;
-                seoBody.appendChild(divSm);
+                var sec6 = document.createElement('div'); sec6.className = 'seo-section';
+                var sm = '<div class="seo-section-title"><span>🗂️ Sitemap completo</span>'
+                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span></div>'
+                    + '<div class="sitemap-scroll">';
+                c.sitemap_urls.slice(0,30).forEach(function(u) {{ sm += '<div class="sitemap-item2">🔗 ' + esc(u) + '</div>'; }});
+                if (c.sitemap_total > 30) sm += '<div style="font-size:10px;color:#9ca3af;padding:3px 4px;">… e mais '+(c.sitemap_total-30)+' páginas</div>';
+                sec6.innerHTML = sm + '</div>';
+                seoBody2.appendChild(sec6);
             }} else if (c.sitemap_status === 'sem_sitemap') {{
-                var divSm2 = document.createElement('div');
-                divSm2.innerHTML =
-                    '<div class="seo-item-label">🗺️ Sitemap</div>'
-                    + '<div class="seo-item-empty">Sitemap não encontrado</div>';
-                seoBody.appendChild(divSm2);
+                var sec6b = document.createElement('div'); sec6b.className = 'seo-section';
+                sec6b.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
+                    + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
+                seoBody2.appendChild(sec6b);
             }}
- 
-            // Timestamp
-            if (c.seo_extraido_em) {{
-                var divTs = document.createElement('div');
-                divTs.className = 'seo-ts';
-                divTs.textContent = '🕒 Extraído em: ' + c.seo_extraido_em;
-                seoBody.appendChild(divTs);
-            }}
- 
-            // Botão re-extrair
-            var reexWrap = document.createElement('div');
-            reexWrap.style.cssText = 'padding-top:6px;border-top:1px solid #f3f4f6;margin-top:2px;';
-            var reexBtn = document.createElement('button');
-            reexBtn.className = 'btn-extrair-seo';
-            reexBtn.style.fontSize = '12px';
-            reexBtn.innerHTML = '🔄 Atualizar SEO e Sitemap';
-            reexBtn.onclick = (function(idx) {{
-                return function() {{
-                    reexBtn.disabled = true;
-                    reexBtn.innerHTML = '⏳ Extraindo…';
-                    triggerSiteSEO(idx);
-                }};
-            }})(c.idx);
-            reexWrap.appendChild(reexBtn);
-            seoBody.appendChild(reexWrap);
- 
+
+            // footer
+            var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
+            seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';
+            var reBtn = document.createElement('button'); reBtn.className = 'btn-reextract';
+            reBtn.innerHTML = '🔄 Atualizar SEO';
+            reBtn.onclick = (function(idx) {{ return function() {{ reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx);
+            seoFoot.appendChild(reBtn);
+            seoBody2.appendChild(seoFoot);
+
         }} else {{
-            // Sem dados — botão extrair
-            var btnWrapSeo = document.createElement('div');
-            var btnSeo = document.createElement('button');
-            btnSeo.className = 'btn-extrair-seo';
-            btnSeo.innerHTML = '🔍 Extrair SEO e Sitemap';
-            btnSeo.onclick = (function(idx, btn) {{
-                return function() {{
-                    btn.disabled = true;
-                    btn.innerHTML = '⏳ Extraindo…';
-                    triggerSiteSEO(idx);
-                }};
-            }})(c.idx, btnSeo);
-            btnWrapSeo.appendChild(btnSeo);
-            seoBody.appendChild(btnWrapSeo);
+            var btnEx = document.createElement('button'); btnEx.className = 'btn-extrair2';
+            btnEx.innerHTML = '🔍 Extrair SEO, Páginas e Serviços';
+            btnEx.onclick = (function(idx,btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }}; }})(c.idx, btnEx);
+            seoBody2.appendChild(btnEx);
         }}
- 
-        // Toggle accordion
-        seoHdr.addEventListener('click', (function(body, chevId) {{
+
+        // toggle
+        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {{
             return function() {{
                 var open = body.style.display === 'flex';
                 body.style.display = open ? 'none' : 'flex';
+                hdrEl.classList.toggle('open', !open);
                 var ch = document.getElementById(chevId);
                 if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
                 setTimeout(syncHeight, 150);
             }};
-        }})(seoBody, 'seo_chev_' + c.idx));
- 
-        seoWrap.appendChild(seoHdr);
-        seoWrap.appendChild(seoBody);
-        card.appendChild(seoWrap);
- 
+        }})(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
+
+        seoWrap2.appendChild(seoHdr2);
+        seoWrap2.appendChild(seoBody2);
+        card.appendChild(seoWrap2);
+
+        // ── FIM BLOCO SEO v2 ──
+
         // ── Badge de análise ──
         if (c.tem_analise && c.ultima_analise) {{
             var abadge = document.createElement('div');
@@ -4799,7 +4847,7 @@ function buildCards() {{
             abadge.onclick = function() {{ triggerAnaliseTab(); }};
             card.appendChild(abadge);
         }}
- 
+
         // ── Botão analisar ──
         var btnWrap = document.createElement('div');
         btnWrap.className = 'btn-wrap';
@@ -4816,13 +4864,13 @@ function buildCards() {{
         }})(c.idx, c.nome, btn);
         btnWrap.appendChild(btn);
         card.appendChild(btnWrap);
- 
+
         grid.appendChild(card);
     }});
- 
+
     syncHeight();
 }}
- 
+
 function triggerAnaliseTab() {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var i = 0; i < btns.length; i++) {{
@@ -4830,7 +4878,7 @@ function triggerAnaliseTab() {{
         if (txt === 'analise_tab') {{ btns[i].click(); return; }}
     }}
 }}
- 
+
 function triggerSiteIA(idx, nome) {{
     var targetText = 'SITE_IA_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
@@ -4839,7 +4887,7 @@ function triggerSiteIA(idx, nome) {{
         if (txt === targetText) {{ btns[i].click(); return; }}
     }}
 }}
- 
+
 function triggerSiteSEO(idx) {{
     var targetText = 'SITE_SEO_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
@@ -4848,7 +4896,7 @@ function triggerSiteSEO(idx) {{
         if (txt === targetText) {{ btns[i].click(); return; }}
     }}
 }}
- 
+
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
@@ -4861,14 +4909,14 @@ function syncHeight() {{
         }} catch(e) {{}}
     }}
 }}
- 
+
 try {{
     buildCards();
 }} catch(err) {{
     document.getElementById('cards-grid').innerHTML =
         '<div style="padding:20px;color:red;font-size:13px">Erro ao renderizar cards: ' + err.message + '</div>';
 }}
- 
+
 syncHeight();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 window.addEventListener('load', syncHeight);
@@ -4879,22 +4927,22 @@ setTimeout(syncHeight, 1500);
 setTimeout(syncHeight, 3000);
 </script>
 </body></html>"""
- 
+
         components.html(_html_cards, height=1200, scrolling=False)
- 
+
     # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
- 
+
         analises = st.session_state.get("analises_salvas", [])
         st.session_state.sites_analise_vistas = len(analises)
- 
+
         subtabs_sites_def = [
             ("individual", "🏢", "Individuais"),
             ("geral",      "📋", "Relatórios Gerais"),
         ]
- 
+
         ghost_subtabs_sites_css = ", ".join([
             f".st-key-btn_sites_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_sites_analise_sub_{stk})"
             for stk, _, _ in subtabs_sites_def
@@ -4909,23 +4957,23 @@ setTimeout(syncHeight, 3000);
         }}
         </style>
         """, unsafe_allow_html=True)
- 
+
         if "sites_analise_subtab" not in st.session_state:
             st.session_state.sites_analise_subtab = "individual"
- 
+
         for stk, _, _ in subtabs_sites_def:
             if st.button(f"sites_analise_sub_{stk}", key=f"btn_sites_analise_sub_{stk}"):
                 st.session_state.sites_analise_subtab = stk
                 st.rerun()
- 
+
         subtab_sites = st.session_state.sites_analise_subtab
-        contagens_sites = {
+        contagens_sites = {{
             stk: len([a for a in analises if a.get("tipo") == stk])
             for stk, _, _ in subtabs_sites_def
-        }
- 
+        }}
+
         st.session_state.relatorio_gemini = ""
- 
+
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4972,47 +5020,47 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=52, scrolling=False)
- 
+
         lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
-        icons_sites_map   = {"individual": "🏢", "geral": "📋"}
-        labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
+        icons_sites_map   = {{"individual": "🏢", "geral": "📋"}}
+        labels_sites_map  = {{"individual": "Individuais", "geral": "Relatórios Gerais"}}
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
- 
+
         def _md_to_html_sites(txt):
             if not txt: return ""
             import re as _re
- 
+
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
- 
+
             def _apply_inline(s):
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
- 
+
             def _get_ol_match(line):
                 return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
- 
+
             def _get_ul_match(line):
                 return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
- 
+
             lines = txt.split('\n')
             output = []
             list_stack = []
- 
+
             def close_until(target_indent):
                 while list_stack and list_stack[-1][1] >= target_indent:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
- 
+
             def close_all():
                 while list_stack:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
- 
+
             i = 0
             while i < len(lines):
                 line = lines[i]
@@ -5056,15 +5104,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 close_all()
                 output.append(f'<p>{_apply_inline(stripped)}</p>')
                 i += 1
- 
+
             close_all()
             return '\n'.join(output)
- 
-        relatorios_sites_html     = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
+
+        relatorios_sites_html     = {{str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}}
         relatorios_sites_json     = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
-        relatorios_sites_raw      = {str(i): a.get("relatorio","") for i, a in enumerate(analises)}
+        relatorios_sites_raw      = {{str(i): a.get("relatorio","") for i, a in enumerate(analises)}}
         relatorios_sites_raw_json = _json_sites.dumps(relatorios_sites_raw, ensure_ascii=False)
- 
+
         if lista_sites_ativa:
             cards_sites_html = ""
             for a in reversed(lista_sites_ativa):
@@ -5120,7 +5168,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 </div>
             </div>
         </div>"""
- 
+
             components.html(f"""
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
@@ -5152,15 +5200,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         #smb ol > li > ul > li {{ position:relative; padding-left:18px; margin-bottom:8px; line-height:1.6; }}
         #smb ol > li > ul > li::before {{ content:'◦'; position:absolute; left:0; top:0; color:#00aae6; font-size:18px; line-height:1.3; font-weight:normal; background:none; border-radius:0; width:auto; height:auto; }}
         </style>
- 
+
         <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
             {cards_sites_html}
         </div>
- 
+
         <script>
         var RELS     = {relatorios_sites_json};
         var RELS_RAW = {relatorios_sites_raw_json};
- 
+
         function syncH() {{
             var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
             var frames = window.parent.document.querySelectorAll('iframe');
@@ -5172,7 +5220,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 }} }} catch(e) {{}}
             }}
         }}
- 
+
         function toggleSite(idx) {{
             var b = document.getElementById('sb_' + idx);
             var r = document.getElementById('sr_' + idx);
@@ -5187,7 +5235,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             }}
             setTimeout(syncH, 100);
         }}
- 
+
         function abrirModal(idx) {{
             var doc  = window.parent.document;
             var html = RELS[String(idx)] || '';
@@ -5238,7 +5286,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             window.parent.__sitesModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
             doc.addEventListener('keydown', window.parent.__sitesModalEsc);
         }}
- 
+
         function toggleModalView(html, raw) {{
             var doc  = window.parent.document;
             var body = doc.getElementById('smb');
@@ -5256,7 +5304,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 btn.textContent = 'Ver texto original';
             }}
         }}
- 
+
         function fecharModal() {{
             var doc = window.parent.document;
             var ov  = doc.getElementById('sites_modal_overlay');
@@ -5266,7 +5314,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 window.parent.__sitesModalEsc = null;
             }}
         }}
- 
+
         function abrirRaw(idx) {{
             var doc = window.parent.document;
             var raw = RELS_RAW[String(idx)] || '';
@@ -5324,7 +5372,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
             doc.addEventListener('keydown', escFn);
         }}
- 
+
         document.addEventListener('click', function(e) {{
             var fs = e.target.closest('.btn-fullscreen');
             if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
@@ -5348,7 +5396,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             var ch = e.target.closest('.btn-chevron');
             if (ch) {{ toggleSite(parseInt(ch.dataset.idx)); return; }}
         }});
- 
+
         (function() {{
             var cards = document.querySelectorAll('[id^="sb_"]');
             if (cards.length === 1) {{
@@ -5356,19 +5404,19 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if (m) setTimeout(function() {{ toggleSite(parseInt(m[1])); }}, 150);
             }}
         }})();
- 
+
         if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
         setTimeout(syncH, 200);
         setTimeout(syncH, 600);
         </script>
         """, height=100, scrolling=False)
- 
+
         else:
-            empty_msg = {
+            empty_msg = {{
                 "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
                 "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
-            }.get(subtab_sites, "Nenhuma análise ainda.")
- 
+            }}.get(subtab_sites, "Nenhuma análise ainda.")
+
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;

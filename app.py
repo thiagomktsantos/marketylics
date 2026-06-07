@@ -405,11 +405,87 @@ def extrair_seo_site(url: str) -> dict:
 
 
 def extrair_e_salvar_seo(url: str, chave: str):
-    """Extrai SEO de uma URL e salva em st.session_state.seo_cache[chave]."""
     if "seo_cache" not in st.session_state:
         st.session_state.seo_cache = {}
     if url:
-        st.session_state.seo_cache[chave] = extrair_seo_site(url)
+        seo = extrair_seo_site(url)
+        seo["sitemap"] = extrair_sitemap(url)
+        st.session_state.seo_cache[chave] = seo
+
+# SITEMAP -----------------
+
+def extrair_sitemap(url: str) -> dict:
+    import re as _re
+    import datetime as _dt
+
+    resultado = {
+        "urls": [], "total": 0,
+        "status": "erro", "extraido_em": ""
+    }
+    url_fmt = formatar_url(url)
+    if not url_fmt:
+        return resultado
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xml,text/xml,*/*;q=0.8",
+    }
+
+    def buscar_urls_sitemap(sitemap_url, profundidade=0):
+        if profundidade > 2:
+            return []
+        try:
+            r = requests.get(sitemap_url, headers=headers, timeout=10, allow_redirects=True)
+            if r.status_code != 200:
+                return []
+            conteudo = r.text
+
+            # Sitemap index — contém outros sitemaps
+            sub_sitemaps = _re.findall(r'<loc>\s*(.*?sitemap.*?)\s*</loc>', conteudo, _re.IGNORECASE)
+            if sub_sitemaps:
+                todas = []
+                for sub in sub_sitemaps[:5]:
+                    todas += buscar_urls_sitemap(sub.strip(), profundidade + 1)
+                return todas
+
+            # Sitemap normal — contém páginas
+            locs = _re.findall(r'<loc>\s*(https?://[^\s<]+)\s*</loc>', conteudo)
+            return [l.strip() for l in locs]
+        except Exception:
+            return []
+
+    # 1. Tenta achar pelo robots.txt
+    base = url_fmt.rstrip("/")
+    try:
+        robots = requests.get(f"{base}/robots.txt", headers=headers, timeout=8)
+        sm_declarado = _re.findall(r'(?i)sitemap:\s*(https?://\S+)', robots.text)
+    except Exception:
+        sm_declarado = []
+
+    candidatos = sm_declarado + [
+        f"{base}/sitemap.xml",
+        f"{base}/sitemap_index.xml",
+        f"{base}/sitemap-index.xml",
+        f"{base}/wp-sitemap.xml",
+        f"{base}/sitemap/sitemap-index.xml",
+    ]
+
+    todas_urls = []
+    for candidato in candidatos:
+        urls = buscar_urls_sitemap(candidato)
+        if urls:
+            todas_urls = urls
+            break
+
+    if todas_urls:
+        resultado["urls"]   = todas_urls[:80]  # limita a 80 para exibição
+        resultado["total"]  = len(todas_urls)
+        resultado["status"] = "ok"
+    else:
+        resultado["status"] = "sem_sitemap"
+
+    resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+    return resultado
 
 # ---------------------------------------------------
 # GEMINI — RELATÓRIO DE POSICIONAMENTO
@@ -2981,18 +3057,27 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 site_url  = e.get("site", "") or ""
                 ig_url    = e.get("instagram", "") or ""
 
-                seo = seo_cache.get(e["nome"], {})
+                seo     = seo_cache.get(e["nome"], {})
+                sitemap = seo.get("sitemap", {})
                 sites_cards_data.append({
-                    "nome":      e["nome"], "cor": cor, "av": av,
-                    "badge_lbl": badge_lbl, "badge_bg": badge_bg,
-                    "badge_col": badge_col, "badge_brd": badge_brd,
-                    "site":      site_url,  "ig": ig_url,
-                    "seo_title": seo.get("title", ""),
-                    "seo_desc":  seo.get("description", ""),
-                    "seo_h1":    seo.get("h1", ""),
-                    "seo_h2s":   seo.get("h2s", []),
+                    "nome":             e["nome"],
+                    "cor":              cor,
+                    "av":               av,
+                    "badge_lbl":        badge_lbl,
+                    "badge_bg":         badge_bg,
+                    "badge_col":        badge_col,
+                    "badge_brd":        badge_brd,
+                    "site":             site_url,
+                    "ig":               ig_url,
+                    "seo_title":        seo.get("title", ""),
+                    "seo_desc":         seo.get("description", ""),
+                    "seo_h1":           seo.get("h1", ""),
+                    "seo_h2s":          seo.get("h2s", []),
                     "seo_status":       seo.get("status", ""),
                     "seo_extraido_em":  seo.get("extraido_em", ""),
+                    "sitemap_urls":     sitemap.get("urls", []),
+                    "sitemap_total":    sitemap.get("total", 0),
+                    "sitemap_status":   sitemap.get("status", ""),
                 })
 
             sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
@@ -3039,8 +3124,6 @@ body {{ padding-bottom:8px; }}
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
     flex-direction:column; gap:6px; background:#f3f4f6; border-radius:8px;
 }}
-
-/* SEO section */
 .seo-wrap {{
     margin:10px 12px 0; border-radius:8px;
     border:1px solid #e5e7eb; overflow:hidden;
@@ -3074,7 +3157,6 @@ body {{ padding-bottom:8px; }}
 }}
 .seo-ts {{ font-size:10px; color:#9ca3af; text-align:right; padding-top:4px;
     border-top:1px solid #f3f4f6; margin-top:4px; }}
-
 .scard-footer {{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px; }}
 .link-row {{
     display:flex; align-items:center; gap:6px; padding:7px 10px;
@@ -3196,6 +3278,32 @@ function buildCards() {{
                     '<div>'
                     + '<div class="seo-item-label">📂 Seções (H2)</div>'
                     + h2html
+                    + '</div>';
+            }}
+
+            // Sitemap
+            if (d.sitemap_status === 'ok' && d.sitemap_urls && d.sitemap_urls.length > 0) {{
+                var smHtml = '<div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;max-height:160px;overflow-y:auto;">';
+                d.sitemap_urls.slice(0, 30).forEach(function(u) {{
+                    smHtml += '<div style="font-size:11px;color:#374151;background:#f3f4f6;border-radius:5px;'
+                        + 'padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+                        + '🔗 ' + esc(u) + '</div>';
+                }});
+                smHtml += '</div>';
+                if (d.sitemap_total > 30) {{
+                    smHtml += '<div style="font-size:10px;color:#9ca3af;margin-top:4px;">... e mais '
+                        + (d.sitemap_total - 30) + ' páginas no sitemap</div>';
+                }}
+                seoBody.innerHTML +=
+                    '<div>'
+                    + '<div class="seo-item-label">🗺️ Sitemap (' + d.sitemap_total + ' páginas)</div>'
+                    + smHtml
+                    + '</div>';
+            }} else if (d.sitemap_status === 'sem_sitemap') {{
+                seoBody.innerHTML +=
+                    '<div>'
+                    + '<div class="seo-item-label">🗺️ Sitemap</div>'
+                    + '<div class="seo-item-empty">Sitemap não encontrado</div>'
                     + '</div>';
             }}
 

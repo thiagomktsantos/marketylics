@@ -3729,7 +3729,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------
  
-if main_tab == "sites":
+    if main_tab == "sites":
 
         seo_cache_atual = st.session_state.get("seo_cache", {})
 

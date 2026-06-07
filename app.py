@@ -4736,21 +4736,21 @@ function buildCards() {{
             var scoreBarId = 'seo_score_bar_' + c.idx;
 
             var chipsHtml = '';
-            seoScore.items.forEach(function(it) {
-                if (it.ok) {
+            seoScore.items.forEach(function(it) {{
+                if (it.ok) {{
                     chipsHtml += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;'
                         + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
                         + 'padding:5px 12px;border-radius:20px;white-space:nowrap;">'
                         + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
                         + ' ' + it.label + '</div>';
-                }
-            });
-            var nok = seoScore.items.filter(function(i){return !i.ok;}).length;
-            if (nok > 0) {
+                }}
+            }});
+            var nok = seoScore.items.filter(function(i){{return !i.ok;}}).length;
+            if (nok > 0) {{
                 chipsHtml += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;'
                     + 'color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;'
                     + 'border-radius:20px;white-space:nowrap;">+' + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>';
-            }
+            }}
 
             sec1.innerHTML =
                 '<div class="seo-section-title" style="margin-bottom:12px;">📊 Pontuação SEO</div>'
@@ -4774,10 +4774,11 @@ function buildCards() {{
             seoBody2.appendChild(sec1);
 
             // Animar barra após inserir no DOM
-            setTimeout(function() {
+            setTimeout(function() {{
                 var bar = document.getElementById(scoreBarId);
                 if (bar) bar.style.width = scoreFill;
-            }, 200 + c.idx * 80);
+            }}, 200 + c.idx * 80);
+            
             // §2 serviços
             if (services.length > 0) {{
                 var sec2 = document.createElement('div'); sec2.className = 'seo-section';
@@ -4973,6 +4974,7 @@ setTimeout(syncHeight, 3000);
 </body></html>"""
 
         components.html(_html_cards, height=1200, scrolling=False)
+        
     # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════

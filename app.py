@@ -4503,8 +4503,8 @@ body {{ padding-bottom:8px; }}
     border-radius:12px;
 }}
 .seo-score-block-title {{
-    font-size:9px;font-weight:800;text-transform:uppercase;
-    letter-spacing:0.8px;color:#9ca3af;margin-bottom:10px;
+    font-size:12px;font-weight:700;text-transform:uppercase;
+    letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;
 }}
  
 /* ══════════════════════════════════════════════════════
@@ -4753,7 +4753,7 @@ function buildCards() {{
             var scoreBlock = document.createElement('div');
             scoreBlock.className = 'seo-score-block';
             scoreBlock.innerHTML =
-                '<div class="seo-score-block-title">📊 Pontuação SEO</div>'
+                '<div class="seo-score-block-title">Score de SEO</div>'
                 + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
                 +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
                 +     '<span style="font-size:35px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'

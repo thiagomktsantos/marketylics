@@ -3729,6 +3729,667 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------
  
+    elif st.session_state.pagina == "sites":
+
+    import datetime as _dt
+    import json as _json_sites
+
+    emp = st.session_state.dados["minha_empresa"]
+    concorrentes = st.session_state.dados["concorrentes"]
+
+    if "redes_analises_salvas" not in st.session_state:
+        st.session_state.redes_analises_salvas = []
+    if "redes_analise_vistas" not in st.session_state:
+        st.session_state.redes_analise_vistas = 0
+
+    # ── Inicializar estados ────────────────────────────────────────
+    if "sites_main_tab" not in st.session_state:
+        st.session_state.sites_main_tab = "sites"
+    if "relatorio_sites" not in st.session_state:
+        st.session_state.relatorio_sites = {}
+    if "relatorio_gemini" not in st.session_state:
+        st.session_state.relatorio_gemini = ""
+    if "analises_salvas" not in st.session_state:
+        st.session_state.analises_salvas = []
+    if "sites_analise_vistas" not in st.session_state:
+        st.session_state.sites_analise_vistas = 0
+    if "seo_cache" not in st.session_state:
+        st.session_state.seo_cache = {}
+
+    # ── Montar lista de sites ──────────────────────────────────────
+    sites_disponiveis = []
+    if emp.get("site"):
+        sites_disponiveis.append({
+            "nome": emp["nome"], "url": emp["site"],
+            "tipo": "minha", "instagram": emp.get("instagram", "")
+        })
+    for c in concorrentes:
+        if c.get("url"):
+            sites_disponiveis.append({
+                "nome": c["nome"], "url": c["url"],
+                "tipo": "concorrente", "instagram": c.get("instagram", "")
+            })
+
+    if not sites_disponiveis:
+        st.info("Cadastre o site da sua empresa e de pelo menos um concorrente para usar esta funcionalidade.")
+        st.stop()
+
+    # ── Estado das análises individuais ───────────────────────────
+    for idx_s, s in enumerate(sites_disponiveis):
+        chave = f"sites_analise_{idx_s}"
+        if chave not in st.session_state:
+            st.session_state[chave] = ""
+
+    # ── Cabeçalho ──────────────────────────────────────────────────
+    h1, h2 = st.columns([7, 3])
+    with h1:
+        components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div class="titulo">Confronto de Sites</div>
+<div class="sub">Análise comparativa de posicionamento via IA.</div>
+""", height=65)
+
+    with h2:
+        gerar_btn = st.button("Gerar Relatório Geral", type="primary", use_container_width=True)
+        ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
+        if ultimo_relatorio:
+            st.markdown(
+                f"<div style='font-size:13px;color:#6b7280;text-align:center;margin-top:-8px'>"
+                f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
+                unsafe_allow_html=True,
+            )
+
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # GHOST BUTTONS — Navegação de abas
+    # ══════════════════════════════════════════════════════════════
+    st.markdown("""
+    <style>
+    .st-key-_sites_ghost_tab_sites_,
+    .st-key-_sites_ghost_tab_analise_ {
+        position: fixed !important; top: -9999px !important; left: -9999px !important;
+        width: 0 !important; height: 0 !important; overflow: hidden !important;
+        opacity: 0 !important; pointer-events: none !important; visibility: hidden !important; display: none !important;
+    }
+    .stElementContainer:has(.st-key-_sites_ghost_tab_sites_),
+    .stElementContainer:has(.st-key-_sites_ghost_tab_analise_) {
+        display: none !important; height: 0 !important; min-height: 0 !important;
+        max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    if st.button("sites_tab", key="_sites_ghost_tab_sites_"):
+        st.session_state.sites_main_tab = "sites"
+        st.rerun()
+    if st.button("analise_tab", key="_sites_ghost_tab_analise_"):
+        st.session_state.sites_main_tab = "analise"
+        st.rerun()
+
+    # ══════════════════════════════════════════════════════════════
+    # GHOST BUTTONS — Análise individual por site
+    # ══════════════════════════════════════════════════════════════
+    ghost_css_ia = "\n".join([
+        f".st-key-btn_site_ia_{i} {{ display: none !important; }}"
+        f".stElementContainer:has(.st-key-btn_site_ia_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+        for i in range(len(sites_disponiveis))
+    ])
+    st.markdown(f"<style>{ghost_css_ia}</style>", unsafe_allow_html=True)
+
+    site_ia_triggers = {}
+    for idx_s in range(len(sites_disponiveis)):
+        triggered = st.button(f"SITE_IA_{idx_s}", key=f"btn_site_ia_{idx_s}")
+        site_ia_triggers[idx_s] = triggered
+
+    # ══════════════════════════════════════════════════════════════
+    # GHOST BUTTONS — Extração de SEO por site
+    # ══════════════════════════════════════════════════════════════
+    ghost_css_seo = "\n".join([
+        f".st-key-btn_site_seo_{i} {{ display: none !important; }}"
+        f".stElementContainer:has(.st-key-btn_site_seo_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+        for i in range(len(sites_disponiveis))
+    ])
+    st.markdown(f"<style>{ghost_css_seo}</style>", unsafe_allow_html=True)
+
+    site_seo_triggers = {}
+    for idx_s in range(len(sites_disponiveis)):
+        site_seo_triggers[idx_s] = st.button(f"SITE_SEO_{idx_s}", key=f"btn_site_seo_{idx_s}")
+
+    # ══════════════════════════════════════════════════════════════
+    # GHOST BUTTONS — Remover análises salvas
+    # ══════════════════════════════════════════════════════════════
+    analises_para_rm = st.session_state.get("analises_salvas", [])
+    acoes_rm = {}
+    for i in range(len(analises_para_rm)):
+        acoes_rm[f"rm_{i}"] = st.button(f"_rm_analise_{i}_", key=f"btn_rm_analise_{i}")
+
+    rm_css = "\n".join([
+        f".st-key-btn_rm_analise_{i} {{ display: none !important; }}"
+        f".stElementContainer:has(.st-key-btn_rm_analise_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+        for i in range(len(analises_para_rm))
+    ])
+    st.markdown(f"<style>{rm_css}</style>", unsafe_allow_html=True)
+
+    for i in range(len(analises_para_rm) - 1, -1, -1):
+        if acoes_rm.get(f"rm_{i}"):
+            st.session_state.analises_salvas.pop(i)
+            salvar_dados_usuario(st.session_state.user.id)
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════
+    # PROCESSAR — Extração de SEO com spinner
+    # ══════════════════════════════════════════════════════════════
+    for idx_s, s in enumerate(sites_disponiveis):
+        if site_seo_triggers.get(idx_s):
+            modal_seo_ph = st.empty()
+
+            def _render_modal_seo(fase, nome, pct, _ph=modal_seo_ph):
+                is_done  = fase == "concluido"
+                sub1     = "SEO extraído!" if is_done else "Extraindo dados de SEO…"
+                sub2     = "Salvando…"     if is_done else "Lendo title, H1, meta, sitemap…"
+                cor_pct  = "#22c55e" if is_done else "#3a9fd6"
+                rodape   = '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">Fechando automaticamente…</div>' if is_done else ""
+                nome_safe = (nome or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                html_modal = f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
+.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+</style>
+<div class="overlay"><div class="card">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
+        </div>
+        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
+    </div>
+    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
+    </div>
+    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
+        <div>
+            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{nome_safe}</div>
+            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Extraindo SEO e Sitemap…</div>
+        </div>
+        <div style="font-size:18px;">{'✅' if is_done else '⏳'}</div>
+    </div>
+    {rodape}
+</div></div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
+            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
+            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>"""
+                with _ph:
+                    components.html(html_modal, height=600, scrolling=False)
+
+            _render_modal_seo("extraindo", s["nome"], 30)
+            seo_data = extrair_seo_site(s["url"])
+            _render_modal_seo("extraindo", s["nome"], 65)
+            seo_data["sitemap"] = extrair_sitemap(s["url"])
+
+            if "seo_cache" not in st.session_state:
+                st.session_state.seo_cache = {}
+            st.session_state.seo_cache[s["nome"]] = seo_data
+
+            # ── Persiste no Supabase ──
+            try:
+                user_id = st.session_state.user.id
+                payload = {
+                    "user_id":               user_id,
+                    "minha_empresa":         st.session_state.dados["minha_empresa"],
+                    "concorrentes":          st.session_state.dados["concorrentes"],
+                    "metricas_redes":        st.session_state.get("metricas_redes", {}),
+                    "analises_salvas":       st.session_state.get("analises_salvas", []),
+                    "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
+                    "ads_analises_salvas":   st.session_state.get("ads_analises_salvas", []),
+                    "seo_cache":             st.session_state.seo_cache,
+                }
+                supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
+            except Exception as e_seo:
+                st.toast(f"⚠️ Erro ao salvar SEO: {e_seo}", icon="⚠️")
+
+            _render_modal_seo("concluido", s["nome"], 100)
+            import time as _time; _time.sleep(1.2)
+            modal_seo_ph.empty()
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════
+    # PROCESSAR — Análise individual com overlay de loading
+    # ══════════════════════════════════════════════════════════════
+    for idx_s, s in enumerate(sites_disponiveis):
+        if site_ia_triggers.get(idx_s):
+            is_minha = s["tipo"] == "minha"
+            if gemini_model is None:
+                st.session_state[f"sites_analise_{idx_s}"] = "⚠️ Configure GEMINI_API_KEY nos secrets."
+            else:
+                modal_site_placeholder = st.empty()
+
+                def _render_modal_site(fase: str, nome: str, pct: int, _ph=modal_site_placeholder):
+                    fases = {
+                        "lendo":     ("Acessando o site…",       "Lendo conteúdo da página…"),
+                        "enviando":  ("Enviando para o Gemini…", "Processando com IA…"),
+                        "gerando":   ("Gerando relatório…",      "Finalizando análise…"),
+                        "concluido": ("Análise concluída!",      "Redirecionando…"),
+                    }
+                    sub1, sub2 = fases.get(fase, ("Processando…", "Aguarde…"))
+                    is_done  = fase == "concluido"
+                    cor_pct  = "#22c55e" if is_done else "#3a9fd6"
+                    icone    = "✅" if is_done else "⏳"
+                    rodape   = (
+                        '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">'
+                        'Fechando automaticamente…</div>'
+                    ) if is_done else ""
+                    nome_safe = (nome or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'", "&#39;").replace('"', "&quot;")
+                    html_modal = f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
+.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+</style>
+<div class="overlay"><div class="card">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
+        </div>
+        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
+    </div>
+    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
+    </div>
+    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
+        <div>
+            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{nome_safe}</div>
+            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Analisando site com IA…</div>
+        </div>
+        <div style="font-size:18px;">{icone}</div>
+    </div>
+    {rodape}
+</div></div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
+            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
+            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>"""
+                    with _ph:
+                        components.html(html_modal, height=600, scrolling=False)
+
+                _render_modal_site("lendo", s["nome"], 15)
+                conteudo_site = extrair_conteudo_site(s["url"])
+
+                _render_modal_site("enviando", s["nome"], 50)
+                try:
+                    prompt_individual = f"""
+Você é um especialista em marketing digital e posicionamento de marca.
+Analise o conteúdo extraído do site abaixo e gere uma análise individual detalhada em português.
+
+Empresa: {s['nome']} ({s['url']})
+URL: {s['url']}
+Tipo: {"Minha Empresa" if is_minha else "Concorrente"}
+
+Conteúdo extraído do site:
+{conteudo_site[:4000] if conteudo_site else "Não foi possível extrair conteúdo."}
+
+---
+
+IMPORTANTE: Sempre que mencionar o nome da empresa ao longo do relatório, inclua o endereço do site entre parênteses. Exemplo: "{s['nome']} ({s['url']})".
+
+Responda com as seguintes seções:
+
+### 📌 Proposta de Valor
+Qual é a proposta central comunicada no site?
+
+### 🎯 Posicionamento
+Como esta empresa se posiciona no mercado? (premium, popular, nicho, generalista etc.)
+
+### 🔑 Mensagens Principais
+Quais são os termos, promessas e mensagens mais repetidos?
+
+### 🛠️ Serviços / Produtos Destacados
+Liste os principais serviços ou produtos apresentados no site.
+
+### ✅ Pontos Fortes
+3 pontos positivos observados na comunicação do site.
+
+### ⚠️ Pontos de Atenção
+2 pontos que poderiam ser melhorados.
+
+### 💡 Recomendação
+1 ação concreta de alto impacto para melhorar o posicionamento.
+
+Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
+"""
+                    _render_modal_site("gerando", s["nome"], 80)
+                    resp = gemini_model.generate_content(prompt_individual)
+                    st.session_state[f"sites_analise_{idx_s}"] = resp.text
+
+                    st.session_state.analises_salvas = [
+                        a for a in st.session_state.analises_salvas
+                        if not (a.get("tipo") == "individual" and s["nome"] in a.get("sites", []))
+                    ]
+                    titulo_auto = f"Análise Individual — {s['nome']} ({s['url']}) — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    st.session_state.analises_salvas.append({
+                        "titulo": titulo_auto,
+                        "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "sites": [f"{s['nome']} ({s['url']})"],
+                        "tipo": "individual",
+                        "empresa": f"{s['nome']} ({s['url']})",
+                        "url": s["url"],
+                    })
+
+                    salvar_dados_usuario(st.session_state.user.id)
+
+                    _render_modal_site("concluido", s["nome"], 100)
+                    import time as _time; _time.sleep(1.5)
+                    modal_site_placeholder.empty()
+
+                    st.session_state.sites_main_tab = "analise"
+                    st.rerun()
+
+                except Exception as e:
+                    modal_site_placeholder.empty()
+                    st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
+                    st.rerun()
+
+    # ══════════════════════════════════════════════════════════════
+    # PROCESSAR — Relatório geral com modal de loading
+    # ══════════════════════════════════════════════════════════════
+    if gerar_btn:
+        st.session_state.relatorio_gemini = ""
+        st.session_state.relatorio_sites = {}
+
+        modal_geral_placeholder = st.empty()
+
+        def _render_modal_geral(fase: str, descricao: str, pct: int, _ph=modal_geral_placeholder):
+            fases = {
+                "lendo":     ("Acessando os sites…",       "Lendo conteúdo das páginas…"),
+                "enviando":  ("Enviando para o Gemini…",   "Processando com IA…"),
+                "gerando":   ("Gerando relatório geral…",  "Comparando posicionamentos…"),
+                "concluido": ("Relatório concluído!",       "Redirecionando…"),
+            }
+            sub1, sub2 = fases.get(fase, ("Processando…", "Aguarde…"))
+            is_done  = fase == "concluido"
+            cor_pct  = "#22c55e" if is_done else "#3a9fd6"
+            icone    = "✅" if is_done else "⏳"
+            rodape   = (
+                '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">'
+                'Fechando automaticamente…</div>'
+            ) if is_done else ""
+            desc_safe = (descricao or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'","&#39;").replace('"',"&quot;")
+            html_modal = f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
+.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
+.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+</style>
+<div class="overlay"><div class="card">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
+        </div>
+        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
+    </div>
+    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;transition:width 0.3s;"></div>
+    </div>
+    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
+        <div>
+            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{desc_safe}</div>
+            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Relatório comparativo geral…</div>
+        </div>
+        <div style="font-size:18px;">{icone}</div>
+    </div>
+    {rodape}
+</div></div>
+<script>
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
+            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
+            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>"""
+            with _ph:
+                components.html(html_modal, height=600, scrolling=False)
+
+        total_sites = len(sites_disponiveis)
+        for i_s, s in enumerate(sites_disponiveis):
+            pct_leitura = int(10 + (i_s / total_sites) * 35)
+            _render_modal_geral("lendo", f"Lendo {s['nome']} ({s['url']}) — {i_s + 1}/{total_sites}", pct_leitura)
+            conteudo = extrair_conteudo_site(s["url"])
+            st.session_state.relatorio_sites[s["url"]] = conteudo
+
+        _render_modal_geral("enviando", f"{total_sites} site{'s' if total_sites != 1 else ''} lido{'s' if total_sites != 1 else ''} — enviando para IA…", 55)
+
+        empresa_principal = None
+        concorrentes_data = []
+        for s in sites_disponiveis:
+            item = {
+                "nome": s["nome"],
+                "url":  s["url"],
+                "conteudo": st.session_state.relatorio_sites.get(s["url"], ""),
+            }
+            if s["tipo"] == "minha":
+                empresa_principal = item
+            else:
+                concorrentes_data.append(item)
+
+        if empresa_principal is None and sites_disponiveis:
+            empresa_principal = {
+                "nome": sites_disponiveis[0]["nome"],
+                "url":  sites_disponiveis[0]["url"],
+                "conteudo": st.session_state.relatorio_sites.get(sites_disponiveis[0]["url"], ""),
+            }
+
+        _render_modal_geral("gerando", "Comparando posicionamentos…", 80)
+
+        relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data)
+        st.session_state.relatorio_gemini = relatorio
+        st.session_state["sites_ultima_geracao"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
+        titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        st.session_state.analises_salvas.append({
+            "titulo": titulo_auto,
+            "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "relatorio": relatorio,
+            "sites": nomes_com_url,
+            "tipo": "geral",
+        })
+
+        salvar_dados_usuario(st.session_state.user.id)
+
+        _render_modal_geral("concluido", "Relatório geral pronto!", 100)
+        import time as _time; _time.sleep(1.5)
+        modal_geral_placeholder.empty()
+
+        st.session_state.sites_main_tab = "analise"
+        st.rerun()
+
+    # ══════════════════════════════════════════════════════════════
+    # BARRA DE NAVEGAÇÃO PRINCIPAL
+    # ══════════════════════════════════════════════════════════════
+    main_tab = st.session_state.sites_main_tab
+    analises_nav = st.session_state.get("analises_salvas", [])
+    qtd_total_analise = len(analises_nav)
+
+    nao_lidas = max(0, qtd_total_analise - st.session_state.sites_analise_vistas)
+    if main_tab == "analise":
+        st.session_state.sites_analise_vistas = qtd_total_analise
+        nao_lidas = 0
+
+    components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+.nav-bar {{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; width:100%; }}
+.nav-item {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:16px 20px; cursor:pointer; display:flex; align-items:center;
+    gap:14px; transition:all 0.15s; position:relative; overflow:hidden;
+}}
+.nav-item:hover {{ border-color:#3a9fd6; box-shadow:0 2px 12px rgba(58,159,214,0.12); }}
+.nav-item.active {{
+    background:#0e2a47; border-color:#0e2a47;
+    box-shadow:0 4px 20px rgba(14,42,71,0.22);
+}}
+.nav-item.active::after {{
+    content:''; position:absolute; bottom:0;left:0;right:0; height:3px;
+    background:linear-gradient(90deg,#3a9fd6,#2ecc71);
+    border-radius:0 0 14px 14px;
+}}
+.nav-icon {{
+    width:40px;height:40px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0; background:#f3f4f6; transition:background 0.15s;
+}}
+.nav-item.active .nav-icon {{ background:rgba(255,255,255,0.12); }}
+.nav-icon svg {{ width:20px;height:20px; }}
+.nav-content {{ flex:1;min-width:0; }}
+.nav-title {{ font-size:15px;font-weight:700;color:#1a2e4a; display:block;margin-bottom:2px; }}
+.nav-item.active .nav-title {{ color:#ffffff; }}
+.nav-sub {{ font-size:12px;color:#9ca3af; }}
+.nav-item.active .nav-sub {{ color:rgba(255,255,255,0.55); }}
+.nav-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0; }}
+.count-badge {{
+    min-width:26px; height:26px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; padding:0 5px;
+    background:#e5e7eb; color:#6b7280;
+}}
+.count-badge.has {{ background:#3a9fd6; color:#fff; }}
+.nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
+.nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
+.new-badge {{
+    background:#ef4444; color:#fff;
+    font-size:10px; font-weight:800;
+    padding:2px 7px; border-radius:20px;
+    letter-spacing:0.3px; text-transform:uppercase;
+    animation: pulse 1.5s infinite;
+}}
+@keyframes pulse {{
+    0%,100% {{ opacity:1; transform:scale(1); }}
+    50%      {{ opacity:0.75; transform:scale(0.95); }}
+}}
+</style>
+<div class="nav-bar">
+
+    <div class="nav-item {'active' if main_tab == 'sites' else ''}" onclick="triggerTab('sites_tab')">
+        <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'sites' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="2" y1="12" x2="22" y2="12"/>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+            </svg>
+        </div>
+        <div class="nav-content">
+            <span class="nav-title">Sites configurados</span>
+            <span class="nav-sub">Visualize, extraia SEO e analise individualmente</span>
+        </div>
+        <div class="nav-right">
+            <div class="count-badge {'has' if len(sites_disponiveis) > 0 else ''}">{len(sites_disponiveis)}</div>
+        </div>
+    </div>
+
+    <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('analise_tab')">
+        <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'analise' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+        </div>
+        <div class="nav-content">
+            <span class="nav-title">Análise de IA</span>
+            <span class="nav-sub">Relatórios individuais e comparativos</span>
+        </div>
+        <div class="nav-right">
+            <div class="count-badge {'has' if qtd_total_analise > 0 else ''}">{qtd_total_analise}</div>
+            {'<div class="new-badge">NOVA</div>' if nao_lidas > 0 else ''}
+        </div>
+    </div>
+
+</div>
+<script>
+function triggerTab(label) {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(' ').filter(Boolean).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
+}}
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{
+          if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '90px';
+            iframes[i].style.marginTop = '-10px';
+            break;
+          }}
+        }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=90, scrolling=False)
+
+    # ══════════════════════════════════════════════════════════════
+    # ABA: SITES CONFIGURADOS
+    # ══════════════════════════════════════════════════════════════
     if main_tab == "sites":
 
         seo_cache_atual = st.session_state.get("seo_cache", {})
@@ -3750,6 +4411,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     ultima_analise = a.get("data", "")
                     break
 
+            # ── Dados de SEO do cache ──
             seo       = seo_cache_atual.get(s["nome"], {})
             sitemap   = seo.get("sitemap", {})
 
@@ -3766,12 +4428,14 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 "avatar":          avatar_letras,
                 "tem_analise":     tem_analise,
                 "ultima_analise":  ultima_analise,
+                # SEO
                 "seo_status":      seo.get("status", ""),
                 "seo_title":       seo.get("title", ""),
                 "seo_desc":        seo.get("description", ""),
                 "seo_h1":          seo.get("h1", ""),
                 "seo_h2s":         seo.get("h2s", []),
                 "seo_extraido_em": seo.get("extraido_em", ""),
+                # Sitemap
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
@@ -3779,143 +4443,99 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
 
-        _html_cards = """<!DOCTYPE html><html>
+        _html_cards = f"""<!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body {
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{
     background:transparent; font-family:'DM Sans',sans-serif;
     -webkit-font-smoothing:antialiased; overflow:visible;
-}
-body { padding-bottom:8px; }
-.outer-wrap { background:#d2dde9; border-radius:16px; padding:20px; }
-.cards-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }
-.site-card {
+}}
+body {{ padding-bottom:8px; }}
+.outer-wrap {{ background:#d2dde9; border-radius:16px; padding:20px; }}
+.cards-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }}
+.site-card {{
     background:#fff; border:1px solid #fff; border-radius:14px;
     overflow:hidden; display:flex; flex-direction:column;
     transition:box-shadow 0.15s; box-shadow:0 4px 20px rgba(0,0,0,0.10);
-}
-.site-card:hover { border:1px solid #6fd1f3!important; }
-.card-header {
+}}
+.site-card:hover {{ border:1px solid #6fd1f3!important; }}
+.card-header {{
     display:flex; align-items:center; gap:12px;
     padding:16px 18px 14px; border-bottom:1px solid #f3f4f6;
-}
-.avatar {
+}}
+.avatar {{
     width:40px;height:40px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     font-size:14px;font-weight:700;color:#fff;flex-shrink:0;
-}
-.card-name { font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.badge { display:inline-block; padding:2px 10px;border-radius:20px; font-size:11px;font-weight:700; }
-.url-row {
+}}
+.card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
+.badge {{ display:inline-block; padding:2px 10px;border-radius:20px; font-size:11px;font-weight:700; }}
+.url-row {{
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
     overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-}
-.preview-wrap {
+}}
+.preview-wrap {{
     margin:14px; border-radius:10px; overflow:hidden;
     border:1px solid #e5e7eb; background:#f9fafb;
     aspect-ratio:16/9; position:relative; flex-shrink:0;
-}
-.preview-wrap img {
+}}
+.preview-wrap img {{
     width:100%;height:100%; display:block;
     object-fit:cover; object-position:top; border-radius:10px;
-}
-.preview-fallback {
+}}
+.preview-fallback {{
     width:100%;height:100%; display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
-}
-.score-section {
-    margin:0 14px 10px;
-    padding:16px 20px;
-    border:1px solid #e5e7eb;
-    border-radius:10px;
-    background:#fff;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-}
-.score-section-title {
-    font-size:12px;font-weight:700;color:#1a2e4a;
-    text-transform:uppercase;letter-spacing:1px;
-}
-.score-top-row {
-    display:flex;align-items:center;gap:14px;justify-content:space-between;
-}
-.score-number-wrap {
-    display:flex;align-items:baseline;gap:4px;line-height:1;
-}
-.score-number {
-    font-size:52px;font-weight:900;letter-spacing:-2px;line-height:1;
-}
-.score-denom {
-    font-size:16px;font-weight:600;color:#9ca3af;
-}
-.score-badge-pill {
-    display:inline-flex;align-items:center;gap:7px;
-    padding:10px 20px;border-radius:14px;
-    font-size:17px;font-weight:800;
-    letter-spacing:0.1px;white-space:nowrap;
-}
-.score-bar-track {
-    height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;
-}
-.score-bar-fill {
-    height:100%;border-radius:4px;
-    background:linear-gradient(90deg,#3b82f6,var(--score-cor));
-    transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
-    width:0%;
-}
-.score-breakdown2 {
-    display:flex;gap:5px;flex-wrap:wrap;margin-top:2px;
-}
-.score-item2 {
-    display:flex;align-items:center;gap:4px;
-    font-size:11px;color:#6b7280;
-    background:#f9fafb;border:1px solid #f3f4f6;
-    border-radius:6px;padding:3px 8px;
-}
-.score-dot2 { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
-.score-dot2.ok  { background:#22c55e; }
-.score-dot2.nok { background:#e5e7eb; }
-.seo-wrap2{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}
-.seo-hdr2{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}
-.seo-hdr2:hover{background:#f1f5f9;}
-.seo-hdr2.open{border-bottom-color:#e5e7eb;}
-.seo-hdr2-left{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}
-.seo-hdr2-label{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}
-.seo-body2{display:none;flex-direction:column;gap:0;}
-.seo-section{padding:12px 14px;border-bottom:1px solid #f3f4f6;}
-.seo-section:last-child{border-bottom:none;}
-.seo-section-title{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}
-.seo-field-val{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}
-.seo-field-empty{font-size:12px;color:#d1d5db;font-style:italic;}
-.services-wrap{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
-.service-pill{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}
-.pages-list{display:flex;flex-direction:column;gap:4px;}
-.page-row{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}
-.page-row:hover{border-color:#bfdbfe;background:#eff6ff;}
-.page-icon{font-size:13px;flex-shrink:0;}
-.page-label{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}
-.page-url{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
-.seo-footer2{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}
-.seo-ts2{font-size:10px;color:#9ca3af;}
-.btn-reextract{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}
-.btn-reextract:hover{background:#dbeafe;}
-.btn-extrair2{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}
-.btn-extrair2:hover{background:#eff6ff;}
-.btn-sitemap-modal{
-    display:inline-flex;align-items:center;gap:6px;
-    font-size:11px;font-weight:700;color:#1d4ed8;
-    background:#eff6ff;border:1px solid #bfdbfe;
-    border-radius:6px;padding:4px 10px;cursor:pointer;
-    font-family:'DM Sans',sans-serif;transition:background 0.15s;
-    margin-top:6px;
-}
-.btn-sitemap-modal:hover{background:#dbeafe;}
-.analise-badge {
+}}
+
+/* ══════════════════════════════════════════════════════
+   SEO Accordion v2
+══════════════════════════════════════════════════════ */
+.seo-wrap2{{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}}
+.seo-hdr2{{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}}
+.seo-hdr2:hover{{background:#f1f5f9;}}
+.seo-hdr2.open{{border-bottom-color:#e5e7eb;}}
+.seo-hdr2-left{{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}}
+.seo-hdr2-label{{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}}
+.seo-score-pill{{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
+.seo-score-pill.s-great{{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}}
+.seo-score-pill.s-ok{{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}}
+.seo-score-pill.s-bad{{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}}
+.seo-score-pill.s-none{{background:#f9fafb;color:#9ca3af;border:1px solid #e5e7eb;}}
+.seo-body2{{display:none;flex-direction:column;gap:0;}}
+.seo-section{{padding:12px 14px;border-bottom:1px solid #f3f4f6;}}
+.seo-section:last-child{{border-bottom:none;}}
+.seo-section-title{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}}
+.seo-field-val{{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}}
+.seo-field-empty{{font-size:12px;color:#d1d5db;font-style:italic;}}
+.score-breakdown{{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}}
+.score-item{{display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;padding:3px 8px;}}
+.score-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
+.score-dot.ok{{background:#22c55e;}}
+.score-dot.nok{{background:#e5e7eb;}}
+.services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
+.service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
+.pages-list{{display:flex;flex-direction:column;gap:4px;margin-top:4px;}}
+.page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
+.page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
+.page-icon{{font-size:13px;flex-shrink:0;}}
+.page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
+.page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
+.sitemap-scroll{{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:4px;border-radius:6px;padding:2px 0;}}
+.sitemap-item2{{font-size:11px;color:#4b5563;padding:3px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f9fafb;border:1px solid #f3f4f6;}}
+.seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
+.seo-ts2{{font-size:10px;color:#9ca3af;}}
+.btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}
+.btn-reextract:hover{{background:#dbeafe;}}
+.btn-extrair2{{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}}
+.btn-extrair2:hover{{background:#eff6ff;}}
+
+/* ── demais ── */
+.analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
     background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
@@ -3930,23 +4550,23 @@ body { padding-bottom:8px; }
     gap: 8px;
     cursor: pointer;
     transition: all 0.15s;
-}
-.analise-badge:hover {
+}}
+.analise-badge:hover {{
     background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
     border-color: #4ade80;
     box-shadow: 0 2px 8px rgba(34,197,94,0.15);
     transform: translateY(-1px);
-}
-.btn-wrap { padding:0 14px 16px; }
-.btn-analisar {
+}}
+.btn-wrap {{ padding:0 14px 16px; }}
+.btn-analisar {{
     width:100%;padding:11px 0;
     border:1px solid #3a9fd6;border-radius:8px;
     background:#eff6ff;font-size:14px;font-weight:700;color:#1d4ed8;
     cursor:pointer;font-family:'DM Sans',sans-serif;
     transition:background 0.15s;
     display:flex;align-items:center;justify-content:center;gap:7px;
-}
-.btn-analisar:hover { background:#dbeafe; }
+}}
+.btn-analisar:hover {{ background:#dbeafe; }}
 </style>
 </head>
 <body>
@@ -3955,148 +4575,84 @@ body { padding-bottom:8px; }
 </div>
 
 <script>
-var CARDS = __CARDS_JSON__;
+var CARDS = {cards_json_str};
 
-function esc(s) {
+function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+}}
 
-if (!window._seoHelpersReady) {
+// ── SEO v2 helpers (inicializados uma vez) ──────────────────────
+if (!window._seoHelpersReady) {{
     window._seoHelpersReady = true;
 
-    window.calcSeoScore = function(c) {
+    window.calcSeoScore = function(c) {{
         var items = [
-            { label:'Title',       ok: !!c.seo_title },
-            { label:'H1',          ok: !!c.seo_h1 },
-            { label:'Meta Desc.',  ok: !!c.seo_desc },
-            { label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 },
-            { label:'Sitemap',     ok: c.sitemap_status === 'ok' },
+            {{ label:'Title',       ok: !!c.seo_title }},
+            {{ label:'H1',          ok: !!c.seo_h1 }},
+            {{ label:'Meta Desc.',  ok: !!c.seo_desc }},
+            {{ label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 }},
+            {{ label:'Sitemap',     ok: c.sitemap_status === 'ok' }},
         ];
-        var pts = items.filter(function(i){ return i.ok; }).length * 20;
-        return { score: pts, items: items };
-    };
+        var pts = items.filter(function(i){{return i.ok;}}).length * 20;
+        return {{ score: pts, items: items }};
+    }};
 
     window.PAGE_PATTERNS = [
-        { re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' },
-        { re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' },
-        { re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' },
-        { re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' },
-        { re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' },
-        { re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' },
-        { re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' },
-        { re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' },
-        { re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' },
-        { re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' },
+        {{ re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' }},
+        {{ re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' }},
+        {{ re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' }},
+        {{ re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' }},
+        {{ re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' }},
+        {{ re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' }},
+        {{ re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' }},
+        {{ re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' }},
+        {{ re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' }},
+        {{ re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' }},
     ];
 
-    window.classifyPages = function(urls) {
-        var found = {}, homeUrl = null, result = [];
-        (urls || []).forEach(function(u) {
+    window.classifyPages = function(urls) {{
+        var found = {{}}, homeUrl = null, result = [];
+        (urls || []).forEach(function(u) {{
             var path = u.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
-            if (path === '' || path === '/') { homeUrl = u; return; }
-            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {
+            if (path === '' || path === '/') {{ homeUrl = u; return; }}
+            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {{
                 var p = window.PAGE_PATTERNS[i];
-                if (p.re.test(u) && !found[p.label]) { found[p.label] = { icon:p.icon, label:p.label, url:u }; break; }
-            }
-        });
-        if (homeUrl) result.push({ icon:'🏠', label:'Home', url:homeUrl });
-        window.PAGE_PATTERNS.forEach(function(p) { if (found[p.label]) result.push(found[p.label]); });
+                if (p.re.test(u) && !found[p.label]) {{ found[p.label] = {{ icon:p.icon, label:p.label, url:u }}; break; }}
+            }}
+        }});
+        if (homeUrl) result.push({{ icon:'🏠', label:'Home', url:homeUrl }});
+        window.PAGE_PATTERNS.forEach(function(p) {{ if (found[p.label]) result.push(found[p.label]); }});
         return result;
-    };
+    }};
 
-    window.extractServices = function(c) {
+    window.extractServices = function(c) {{
         var cands = [];
-        (c.seo_h2s || []).forEach(function(h) {
+        (c.seo_h2s || []).forEach(function(h) {{
             var cl = h.trim();
             if (/^(receba|clique|saiba|entre|acesse|confira|veja|descubra|por que|nosso|nossa|os |as |um |uma )/i.test(cl)) return;
             if (cl.length < 4 || cl.length > 80) return;
             cands.push(cl);
-        });
-        if (c.seo_title) {
-            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {
+        }});
+        if (c.seo_title) {{
+            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {{
                 var s = seg.trim();
                 if (s.length > 4 && s.length < 50 && cands.indexOf(s) < 0) cands.unshift(s);
-            });
-        }
+            }});
+        }}
         return cands.slice(0, 6);
-    };
-}
+    }};
+}}
 
-function abrirSitemapModal(nome, urls, total) {
-    var doc = window.parent.document;
-    var old = doc.getElementById('sitemap_modal_overlay');
-    if (old) old.remove();
-
-    var listaStr = urls.join('\n');
-    var ov = doc.createElement('div');
-    ov.id = 'sitemap_modal_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
-
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,900px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #21262d;background:#0e1e35;flex-shrink:0;';
-    hdr.innerHTML =
-        '<div>'
-        + '<div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">🗂️ Sitemap completo — ' + esc(nome) + '</div>'
-        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">' + total + ' URLs encontradas</div>'
-        + '</div>'
-        + '<div style="display:flex;gap:10px;">'
-        + '<button id="sitemap_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
-        + '<button id="sitemap_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar .txt</button>'
-        + '<button id="sitemap_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
-        + '</div>';
-
-    var pre = doc.createElement('pre');
-    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre-wrap;word-break:break-all;max-height:calc(88vh - 80px);';
-    pre.textContent = listaStr;
-
-    box.appendChild(hdr);
-    box.appendChild(pre);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    doc.getElementById('sitemap_close_btn').addEventListener('click', function() { ov.remove(); });
-
-    doc.getElementById('sitemap_copy_btn').addEventListener('click', function() {
-        var btn = doc.getElementById('sitemap_copy_btn');
-        try {
-            var ta = doc.createElement('textarea');
-            ta.value = listaStr;
-            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-            doc.body.appendChild(ta); ta.focus(); ta.select();
-            doc.execCommand('copy');
-            doc.body.removeChild(ta);
-            btn.textContent = '✅ Copiado!';
-            setTimeout(function() { btn.textContent = '📋 Copiar'; }, 2000);
-        } catch(e) {
-            btn.textContent = '❌ Erro';
-            setTimeout(function() { btn.textContent = '📋 Copiar'; }, 2000);
-        }
-    });
-
-    doc.getElementById('sitemap_down_btn').addEventListener('click', function() {
-        var a = doc.createElement('a');
-        a.href = URL.createObjectURL(new Blob([listaStr], {type:'text/plain'}));
-        a.download = 'sitemap_' + nome.replace(/[^a-zA-Z0-9]/g,'_') + '.txt';
-        a.click();
-    });
-
-    var escFn = function(e) { if (e.key === 'Escape') { ov.remove(); doc.removeEventListener('keydown', escFn); } };
-    doc.addEventListener('keydown', escFn);
-}
-
-function buildCards() {
+function buildCards() {{
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
 
-    CARDS.forEach(function(c) {
+    CARDS.forEach(function(c) {{
         var card = document.createElement('div');
         card.className = 'site-card';
         card.style.borderTop = '3px solid ' + c.cor;
 
+        // ── Header ──
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
@@ -4107,6 +4663,7 @@ function buildCards() {
             + '</div>';
         card.appendChild(hdr);
 
+        // ── URL row ──
         var urlRow = document.createElement('div');
         urlRow.className = 'url-row';
         urlRow.innerHTML =
@@ -4117,92 +4674,41 @@ function buildCards() {
             + '<span>' + esc(c.url) + '</span>';
         card.appendChild(urlRow);
 
+        // ── Preview ──
         var prevWrap = document.createElement('div');
         prevWrap.className = 'preview-wrap';
         var img = document.createElement('img');
         img.src = 'https://api.microlink.io/?url=https://' + c.url + '&screenshot=true&meta=false&embed=screenshot.url';
         img.loading = 'lazy';
         img.alt = 'Preview ' + c.nome;
-        img.onerror = function() {
+        img.onerror = function() {{
             prevWrap.innerHTML =
                 '<div class="preview-fallback">'
                 + '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
                 + '<span style="font-size:12px;color:#9ca3af">Prévia indisponível</span>'
                 + '</div>';
-        };
-        img.addEventListener('load', function() { setTimeout(syncHeight, 100); });
+        }};
+        img.addEventListener('load', function() {{ setTimeout(syncHeight, 100); }});
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
 
-        var hasSeo   = c.seo_status === 'ok';
-        var seoScore = hasSeo ? window.calcSeoScore(c) : null;
-        var scoreVal = seoScore ? seoScore.score : -1;
+        // ══════════════════════════════════════════════════
+        // ── SEO Accordion v2 ──
+        // ══════════════════════════════════════════════════
+        var hasSeo     = c.seo_status === 'ok';
+        var seoScore   = hasSeo ? window.calcSeoScore(c) : null;
+        var scoreVal   = seoScore ? seoScore.score : -1;
+        var scoreCls   = scoreVal >= 80 ? 's-great' : scoreVal >= 40 ? 's-ok' : scoreVal >= 0 ? 's-bad' : 's-none';
+        var scoreTxt   = scoreVal >= 0
+            ? 'SEO ' + scoreVal + '/100' + (scoreVal >= 80 ? ' ✓' : scoreVal < 40 ? ' ⚠' : '')
+            : 'Sem dados';
+        var keyPages   = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
+        var services   = hasSeo ? window.extractServices(c) : [];
 
-        var scoreCor, scoreBg, scoreIcon, scoreCls;
-        if (scoreVal >= 80) {
-            scoreCor = '#22c55e'; scoreBg = 'rgba(240,253,244,1)'; scoreIcon = '🏆'; scoreCls = 'Excelente';
-        } else if (scoreVal >= 60) {
-            scoreCor = '#3b82f6'; scoreBg = 'rgba(239,246,255,1)'; scoreIcon = '👍'; scoreCls = 'Bom';
-        } else if (scoreVal >= 40) {
-            scoreCor = '#f59e0b'; scoreBg = 'rgba(255,251,235,1)'; scoreIcon = '⚠️'; scoreCls = 'Regular';
-        } else if (scoreVal >= 0) {
-            scoreCor = '#ef4444'; scoreBg = 'rgba(254,242,242,1)'; scoreIcon = '📝'; scoreCls = 'Precisa melhorar';
-        } else {
-            scoreCor = '#9ca3af'; scoreBg = '#f9fafb'; scoreIcon = '—'; scoreCls = 'Sem dados';
-        }
-
-        if (hasSeo) {
-            var scoreSection = document.createElement('div');
-            scoreSection.className = 'score-section';
-
-            var scoreTitle = document.createElement('div');
-            scoreTitle.className = 'score-section-title';
-            scoreTitle.textContent = 'SCORE DE PERFIL SEO';
-            scoreSection.appendChild(scoreTitle);
-
-            var scoreTopRow = document.createElement('div');
-            scoreTopRow.className = 'score-top-row';
-
-            var numWrap = document.createElement('div');
-            numWrap.className = 'score-number-wrap';
-            numWrap.innerHTML =
-                '<span class="score-number" style="color:' + scoreCor + ';">' + scoreVal + '</span>'
-                + '<span class="score-denom">/100</span>';
-            scoreTopRow.appendChild(numWrap);
-
-            var badgePill = document.createElement('div');
-            badgePill.className = 'score-badge-pill';
-            badgePill.style.cssText = 'background:' + scoreBg + ';color:' + scoreCor + ';';
-            badgePill.textContent = scoreIcon + ' ' + scoreCls;
-            scoreTopRow.appendChild(badgePill);
-            scoreSection.appendChild(scoreTopRow);
-
-            var barTrack = document.createElement('div');
-            barTrack.className = 'score-bar-track';
-            var barFill = document.createElement('div');
-            barFill.className = 'score-bar-fill';
-            barFill.style.setProperty('--score-cor', scoreCor);
-            barTrack.appendChild(barFill);
-            scoreSection.appendChild(barTrack);
-            setTimeout((function(bf, sv) { return function() { bf.style.width = sv + '%'; }; })(barFill, scoreVal), 200);
-
-            var bdWrap = document.createElement('div');
-            bdWrap.className = 'score-breakdown2';
-            bdWrap.innerHTML = '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#9ca3af;margin-bottom:4px;width:100%;">Pontuação SEO</div>';
-            seoScore.items.forEach(function(it) {
-                bdWrap.innerHTML += '<div class="score-item2"><div class="score-dot2 ' + (it.ok?'ok':'nok') + '"></div>' + it.label + '</div>';
-            });
-            scoreSection.appendChild(bdWrap);
-
-            card.appendChild(scoreSection);
-        }
-
-        var keyPages  = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
-        var services  = hasSeo ? window.extractServices(c) : [];
-
-        var seoWrap2 = document.createElement('div');
+        var seoWrap2   = document.createElement('div');
         seoWrap2.className = 'seo-wrap2';
 
+        // header
         var seoHdr2 = document.createElement('div');
         seoHdr2.className = 'seo-hdr2';
         seoHdr2.innerHTML =
@@ -4212,19 +4718,76 @@ function buildCards() {
             + '</div>'
             + '<span id="seo_chev2_' + c.idx + '" style="color:#9ca3af;transition:transform 0.2s;font-size:11px;">▼</span>';
 
+        // body
         var seoBody2 = document.createElement('div');
         seoBody2.className = 'seo-body2';
         seoBody2.id = 'seo_body2_' + c.idx;
 
-        if (hasSeo) {
-            if (services.length > 0) {
-                var sec2 = document.createElement('div'); sec2.className = 'seo-section';
-                var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
-                services.forEach(function(s) { sh += '<span class="service-pill">' + esc(s) + '</span>'; });
-                sec2.innerHTML = sh + '</div>';
-                seoBody2.appendChild(sec2);
+        if (hasSeo) {{
+            // §1 score — estilo Redes Sociais
+            var sec1 = document.createElement('div'); sec1.className = 'seo-section';
+            var scoreNum  = seoScore.score;
+            var scoreCls2 = scoreNum >= 80 ? 's-great' : scoreNum >= 40 ? 's-ok' : 's-bad';
+            var scoreTxt2 = scoreNum >= 80 ? 'Excelente 🏆' : scoreNum >= 40 ? 'Regular ⚠️' : 'Precisa melhorar 📝';
+            var scoreFill = scoreNum + '%';
+            var scoreBarColor = scoreNum >= 80 ? '#22c55e' : scoreNum >= 40 ? '#f59e0b' : '#ef4444';
+            var scoreTextColor = scoreNum >= 80 ? '#15803d' : scoreNum >= 40 ? '#92400e' : '#b91c1c';
+            var scoreBg = scoreNum >= 80 ? '#f0fdf4' : scoreNum >= 40 ? '#fffbeb' : '#fef2f2';
+            var scoreBarId = 'seo_score_bar_' + c.idx;
+
+            var chipsHtml = '';
+            seoScore.items.forEach(function(it) {
+                if (it.ok) {
+                    chipsHtml += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;'
+                        + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+                        + 'padding:5px 12px;border-radius:20px;white-space:nowrap;">'
+                        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                        + ' ' + it.label + '</div>';
+                }
+            });
+            var nok = seoScore.items.filter(function(i){return !i.ok;}).length;
+            if (nok > 0) {
+                chipsHtml += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:700;'
+                    + 'color:#2563eb;background:#dbeafe;border:1px solid #bfdbfe;padding:5px 12px;'
+                    + 'border-radius:20px;white-space:nowrap;">+' + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>';
             }
 
+            sec1.innerHTML =
+                '<div class="seo-section-title" style="margin-bottom:12px;">📊 Pontuação SEO</div>'
+                + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:12px;">'
+                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
+                +     '<span style="font-size:46px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
+                +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
+                +   '</div>'
+                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+                +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;">'
+                +     scoreTxt2
+                +   '</div>'
+                + '</div>'
+                + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:12px;">'
+                +   '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;'
+                +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');'
+                +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
+                + '</div>'
+                + '<div style="display:flex;flex-wrap:wrap;gap:7px;">' + chipsHtml + '</div>';
+
+            seoBody2.appendChild(sec1);
+
+            // Animar barra após inserir no DOM
+            setTimeout(function() {
+                var bar = document.getElementById(scoreBarId);
+                if (bar) bar.style.width = scoreFill;
+            }, 200 + c.idx * 80);
+            // §2 serviços
+            if (services.length > 0) {{
+                var sec2 = document.createElement('div'); sec2.className = 'seo-section';
+                var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
+                services.forEach(function(s) {{ sh += '<span class="service-pill">' + esc(s) + '</span>'; }});
+                sec2.innerHTML = sh + '</div>';
+                seoBody2.appendChild(sec2);
+            }}
+
+            // §3 metadados
             var sec3 = document.createElement('div'); sec3.className = 'seo-section';
             sec3.innerHTML =
                 '<div class="seo-section-title">🏷️ Metadados</div>'
@@ -4238,83 +4801,84 @@ function buildCards() {
                 + '</div>';
             seoBody2.appendChild(sec3);
 
-            if (c.seo_h2s && c.seo_h2s.length > 0) {
+            // §4 H2s
+            if (c.seo_h2s && c.seo_h2s.length > 0) {{
                 var sec4 = document.createElement('div'); sec4.className = 'seo-section';
                 var hh = '<div class="seo-section-title">📂 Seções da página (H2)</div><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">';
-                c.seo_h2s.forEach(function(h) { hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; });
+                c.seo_h2s.forEach(function(h) {{ hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; }});
                 sec4.innerHTML = hh + '</div>';
                 seoBody2.appendChild(sec4);
-            }
+            }}
 
-            if (keyPages.length > 0) {
+            // §5 páginas principais
+            if (keyPages.length > 0) {{
                 var sec5 = document.createElement('div'); sec5.className = 'seo-section';
-                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list" style="margin-top:4px;">';
-                keyPages.forEach(function(p) {
+                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list">';
+                keyPages.forEach(function(p) {{
                     var path = p.url.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
                     ph += '<a class="page-row" href="' + esc(p.url) + '" target="_blank" rel="noopener">'
                         + '<span class="page-icon">' + p.icon + '</span>'
                         + '<span class="page-label">' + esc(p.label) + '</span>'
                         + '<span class="page-url">' + esc(path) + '</span>'
                         + '</a>';
-                });
+                }});
                 sec5.innerHTML = ph + '</div>';
                 seoBody2.appendChild(sec5);
-            }
+            }}
 
-            var sec6 = document.createElement('div'); sec6.className = 'seo-section';
-            if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {
-                var smHdr = '<div class="seo-section-title">'
-                    + '<span>🗂️ Sitemap</span>'
-                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span>'
-                    + '</div>';
-                sec6.innerHTML = smHdr;
-                var sitemapBtn = document.createElement('button');
-                sitemapBtn.className = 'btn-sitemap-modal';
-                sitemapBtn.innerHTML = '🔍 Ver sitemap completo (' + c.sitemap_total + ' URLs)';
-                sitemapBtn.addEventListener('click', (function(nome, urls, total) {
-                    return function() { abrirSitemapModal(nome, urls, total); };
-                })(c.nome, c.sitemap_urls, c.sitemap_total));
-                sec6.appendChild(sitemapBtn);
-            } else if (c.sitemap_status === 'sem_sitemap') {
-                sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
+            // §6 sitemap
+            if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {{
+                var sec6 = document.createElement('div'); sec6.className = 'seo-section';
+                var sm = '<div class="seo-section-title"><span>🗂️ Sitemap completo</span>'
+                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span></div>'
+                    + '<div class="sitemap-scroll">';
+                c.sitemap_urls.slice(0,30).forEach(function(u) {{ sm += '<div class="sitemap-item2">🔗 ' + esc(u) + '</div>'; }});
+                if (c.sitemap_total > 30) sm += '<div style="font-size:10px;color:#9ca3af;padding:3px 4px;">… e mais '+(c.sitemap_total-30)+' páginas</div>';
+                sec6.innerHTML = sm + '</div>';
+                seoBody2.appendChild(sec6);
+            }} else if (c.sitemap_status === 'sem_sitemap') {{
+                var sec6b = document.createElement('div'); sec6b.className = 'seo-section';
+                sec6b.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
                     + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
-            } else {
-                sec6.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
-                    + '<div style="font-size:12px;color:#d1d5db;font-style:italic;">Extraia o SEO para verificar o sitemap.</div>';
-            }
-            seoBody2.appendChild(sec6);
+                seoBody2.appendChild(sec6b);
+            }}
 
+            // footer
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
             seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';
             var reBtn = document.createElement('button'); reBtn.className = 'btn-reextract';
             reBtn.innerHTML = '🔄 Atualizar SEO';
-            reBtn.onclick = (function(idx) { return function() { reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }; })(c.idx);
+            reBtn.onclick = (function(idx) {{ return function() {{ reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx);
             seoFoot.appendChild(reBtn);
             seoBody2.appendChild(seoFoot);
 
-        } else {
+        }} else {{
             var btnEx = document.createElement('button'); btnEx.className = 'btn-extrair2';
             btnEx.innerHTML = '🔍 Extrair SEO, Páginas e Serviços';
-            btnEx.onclick = (function(idx,btn) { return function() { btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }; })(c.idx, btnEx);
+            btnEx.onclick = (function(idx,btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }}; }})(c.idx, btnEx);
             seoBody2.appendChild(btnEx);
-        }
+        }}
 
-        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {
-            return function() {
+        // toggle
+        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {{
+            return function() {{
                 var open = body.style.display === 'flex';
                 body.style.display = open ? 'none' : 'flex';
                 hdrEl.classList.toggle('open', !open);
                 var ch = document.getElementById(chevId);
                 if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
                 setTimeout(syncHeight, 150);
-            };
-        })(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
+            }};
+        }})(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
 
         seoWrap2.appendChild(seoHdr2);
         seoWrap2.appendChild(seoBody2);
         card.appendChild(seoWrap2);
 
-        if (c.tem_analise && c.ultima_analise) {
+        // ── FIM BLOCO SEO v2 ──
+
+        // ── Badge de análise ──
+        if (c.tem_analise && c.ultima_analise) {{
             var abadge = document.createElement('div');
             abadge.className = 'analise-badge';
             abadge.title = 'Ver análise na aba Análise de IA';
@@ -4324,77 +4888,78 @@ function buildCards() {
                 + '<span>Última análise: <b>' + c.ultima_analise + '</b></span>'
                 + '</div>'
                 + '<span style="font-size:12px;opacity:0.7;">→ Ver análise</span>';
-            abadge.onclick = function() { triggerAnaliseTab(); };
+            abadge.onclick = function() {{ triggerAnaliseTab(); }};
             card.appendChild(abadge);
-        }
+        }}
 
+        // ── Botão analisar ──
         var btnWrap = document.createElement('div');
         btnWrap.className = 'btn-wrap';
         var btn = document.createElement('button');
         btn.className = 'btn-analisar';
         btn.id = 'btn_analisar_' + c.idx;
         btn.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '✨ Analisar este site com IA';
-        btn.onclick = (function(idx, nome, btnEl) {
-            return function() {
+        btn.onclick = (function(idx, nome, btnEl) {{
+            return function() {{
                 btnEl.disabled = true;
                 btnEl.innerHTML = '⏳ Analisando…';
                 triggerSiteIA(idx, nome);
-            };
-        })(c.idx, c.nome, btn);
+            }};
+        }})(c.idx, c.nome, btn);
         btnWrap.appendChild(btn);
         card.appendChild(btnWrap);
 
         grid.appendChild(card);
-    });
+    }});
 
     syncHeight();
-}
+}}
 
-function triggerAnaliseTab() {
+function triggerAnaliseTab() {{
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {
+    for (var i = 0; i < btns.length; i++) {{
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g,' ').trim();
-        if (txt === 'analise_tab') { btns[i].click(); return; }
-    }
-}
+        if (txt === 'analise_tab') {{ btns[i].click(); return; }}
+    }}
+}}
 
-function triggerSiteIA(idx, nome) {
+function triggerSiteIA(idx, nome) {{
     var targetText = 'SITE_IA_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {
+    for (var i = 0; i < btns.length; i++) {{
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();
-        if (txt === targetText) { btns[i].click(); return; }
-    }
-}
+        if (txt === targetText) {{ btns[i].click(); return; }}
+    }}
+}}
 
-function triggerSiteSEO(idx) {
+function triggerSiteSEO(idx) {{
     var targetText = 'SITE_SEO_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {
+    for (var i = 0; i < btns.length; i++) {{
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();
-        if (txt === targetText) { btns[i].click(); return; }
-    }
-}
+        if (txt === targetText) {{ btns[i].click(); return; }}
+    }}
+}}
 
-function syncHeight() {
+function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try {
-            if (iframes[i].contentWindow === window) {
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{
+            if (iframes[i].contentWindow === window) {{
                 iframes[i].style.height = (h + 12) + 'px';
                 break;
-            }
-        } catch(e) {}
-    }
-}
+            }}
+        }} catch(e) {{}}
+    }}
+}}
 
-try {
+try {{
     buildCards();
-} catch(err) {
+}} catch(err) {{
     document.getElementById('cards-grid').innerHTML =
         '<div style="padding:20px;color:red;font-size:13px">Erro ao renderizar cards: ' + err.message + '</div>';
-}
+}}
 
 syncHeight();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
@@ -4407,9 +4972,7 @@ setTimeout(syncHeight, 3000);
 </script>
 </body></html>"""
 
-        _html_cards = _html_cards.replace("__CARDS_JSON__", cards_json_str)
         components.html(_html_cards, height=1200, scrolling=False)
-
     # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════

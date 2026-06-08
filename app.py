@@ -3402,7 +3402,7 @@ function buildCards() {{
                 + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📡 Canais de Contato</div>'
                 + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
                 +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
-                +     '<span style="font-size:35px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreCor + ';">' + presentes.length + '</span>'
+                +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreCor + ';">' + presentes.length + '</span>'
                 +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/' + canais.length + '</span>'
                 +   '</div>'
                 +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'

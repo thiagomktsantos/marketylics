@@ -5014,6 +5014,7 @@ function buildCards() {{
 
             var topWords = combined
                 .sort(function(a, b) {{ return b.count - a.count; }})
+                .filter(function(item) { return item.count > 1; })
                 .slice(0, 14);
 
             if (topWords.length > 0) {{

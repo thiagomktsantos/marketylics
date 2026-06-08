@@ -13100,13 +13100,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             # ── Pós-processamento: envolve seções especiais em caixas ──
             BOX_RULES = [
-                (r'(?i)(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
                  '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                (r'(?i)(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
                  '#d97706', '#fffbeb', '#fde68a', '💡'),
-                (r'(?i)(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
                  '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(?i)(oportunidade[s]?[^<]*)',
+                (r'(oportunidade[s]?[^<]*)',
                  '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
             ]
 

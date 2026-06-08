@@ -13113,6 +13113,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             def _wrap_section(html_str):
                 import re as _r2
                 result = html_str
+
                 for pattern, border, bg, border_light, icon in BOX_RULES:
                     def replacer(m, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
                         heading_text = m.group(2)
@@ -13136,60 +13137,45 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     )
 
                 # Agrupa caixas consecutivas em grid de 2 colunas
-                def _group_boxes(html_s):
-                    parts   = _r2.split(r'(<div class="section-box".*?</div>\s*</div>)', html_s, flags=_r2.DOTALL)
-                    output  = []
-                    boxes   = []
-                    for part in parts:
-                        if part.startswith('<div class="section-box"'):
-                            boxes.append(part)
+                parts  = _r2.split(r'(<div class="section-box"[\s\S]*?</div>\s*</div>)', result)
+                output = []
+                boxes  = []
+                for part in parts:
+                    if part.startswith('<div class="section-box"'):
+                        boxes.append(part)
+                    else:
+                        if boxes:
+                            i = 0
+                            while i < len(boxes):
+                                if i + 1 < len(boxes):
+                                    output.append(
+                                        '<div style="display:grid;grid-template-columns:1fr 1fr;'
+                                        'gap:12px;margin:12px 0;">'
+                                        + boxes[i] + boxes[i + 1]
+                                        + '</div>'
+                                    )
+                                    i += 2
+                                else:
+                                    output.append(boxes[i])
+                                    i += 1
+                            boxes = []
+                        output.append(part)
+                if boxes:
+                    i = 0
+                    while i < len(boxes):
+                        if i + 1 < len(boxes):
+                            output.append(
+                                '<div style="display:grid;grid-template-columns:1fr 1fr;'
+                                'gap:12px;margin:12px 0;">'
+                                + boxes[i] + boxes[i + 1]
+                                + '</div>'
+                            )
+                            i += 2
                         else:
-                            if boxes:
-                                # Emite as boxes em pares dentro de um grid
-                                i = 0
-                                while i < len(boxes):
-                                    if i + 1 < len(boxes):
-                                        output.append(
-                                            f'<div style="display:grid;grid-template-columns:1fr 1fr;'
-                                            f'gap:12px;margin:12px 0;">'
-                                            + boxes[i] + boxes[i + 1] +
-                                            f'</div>'
-                                        )
-                                        i += 2
-                                    else:
-                                        output.append(
-                                            f'<div style="margin:12px 0;">'
-                                            + boxes[i] +
-                                            f'</div>'
-                                        )
-                                        i += 1
-                                boxes = []
-                            output.append(part)
-                    if boxes:
-                        i = 0
-                        while i < len(boxes):
-                            if i + 1 < len(boxes):
-                                output.append(
-                                    f'<div style="display:grid;grid-template-columns:1fr 1fr;'
-                                    f'gap:12px;margin:12px 0;">'
-                                    + boxes[i] + boxes[i + 1] +
-                                    f'</div>'
-                                )
-                                i += 2
-                            else:
-                                output.append(
-                                    f'<div style="margin:12px 0;">'
-                                    + boxes[i] +
-                                    f'</div>'
-                                )
-                                i += 1
+                            output.append(boxes[i])
+                            i += 1
+
                 return ''.join(output)
-
-                result = _group_boxes(result)
-                return result
-
-            html = _wrap_section(html)
-            return html
 
         relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)

@@ -5087,54 +5087,57 @@ function buildCards() {{
         if (hasSeo) {{
             var ct = c.seo_contato || {{}};
 
-            var checks = [
-                {{ key: 'whatsapp',        icon: '💬', label: 'WhatsApp',      grupo: 'contato'  }},
-                {{ key: 'telefone',        icon: '📞', label: 'Telefone',       grupo: 'contato'  }},
-                {{ key: 'email',           icon: '✉️',  label: 'E-mail',         grupo: 'contato'  }},
-                {{ key: 'instagram',       icon: '📸', label: 'Instagram',      grupo: 'redes'    }},
-                {{ key: 'facebook',        icon: '👥', label: 'Facebook',       grupo: 'redes'    }},
-                {{ key: 'linkedin',        icon: '💼', label: 'LinkedIn',       grupo: 'redes'    }},
-                {{ key: 'youtube',         icon: '▶️',  label: 'YouTube',        grupo: 'redes'    }},
-                {{ key: 'chat_ao_vivo',    icon: '🗨️', label: 'Chat ao vivo',  grupo: 'recursos' }},
-                {{ key: 'formulario',      icon: '📋', label: 'Formulário',     grupo: 'recursos' }},
-                {{ key: 'botao_flutuante', icon: '🔘', label: 'Btn. flutuante', grupo: 'recursos' }},
-                {{ key: 'popup_saida',     icon: '🚪', label: 'Popup saída',    grupo: 'recursos' }},
-                {{ key: 'popup_rolagem',   icon: '📜', label: 'Popup rolagem',  grupo: 'recursos' }},
-            ];
+                            var checks = [
+                    {{ key: 'whatsapp',        label: 'WhatsApp',      grupo: 'contato'  }},
+                    {{ key: 'telefone',        label: 'Telefone',      grupo: 'contato'  }},
+                    {{ key: 'email',           label: 'E-mail',        grupo: 'contato'  }},
+                    {{ key: 'instagram',       label: 'Instagram',     grupo: 'redes'    }},
+                    {{ key: 'facebook',        label: 'Facebook',      grupo: 'redes'    }},
+                    {{ key: 'linkedin',        label: 'LinkedIn',      grupo: 'redes'    }},
+                    {{ key: 'youtube',         label: 'YouTube',       grupo: 'redes'    }},
+                    {{ key: 'chat_ao_vivo',    label: 'Chat ao vivo',  grupo: 'recursos' }},
+                    {{ key: 'formulario',      label: 'Formulário',    grupo: 'recursos' }},
+                    {{ key: 'botao_flutuante', label: 'Btn. flutuante',grupo: 'recursos' }},
+                    {{ key: 'popup_saida',     label: 'Popup saída',   grupo: 'recursos' }},
+                    {{ key: 'popup_rolagem',   label: 'Popup rolagem', grupo: 'recursos' }},
+                ];
 
-            function renderGrupoContato(titulo, grupo) {{
-                var itens = checks.filter(function(ch) {{ return ch.grupo === grupo; }});
-                var h = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:6px;">' + titulo + '</div>'
-                    + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
-                itens.forEach(function(ch) {{
-                    var ativo = !!ct[ch.key];
-                    h += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
-                        + 'padding:3px 10px;border-radius:20px;white-space:nowrap;'
-                        + (ativo
-                            ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
-                            : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.55;')
-                        + '">'
-                        + (ativo ? '✓' : '✗') + ' ' + ch.icon + ' ' + ch.label
-                        + '</div>';
-                }});
-                h += '</div>';
-                return h;
-            }}
+                function renderGrupoContato(titulo, grupo) {{
+                    var itens = checks.filter(function(ch) {{ return ch.grupo === grupo; }});
+                    var h = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                        + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:6px;">' + titulo + '</div>'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
+                    itens.forEach(function(ch) {{
+                        var ativo = !!ct[ch.key];
+                        h += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+                            + 'padding:4px 12px;border-radius:20px;white-space:nowrap;'
+                            + (ativo
+                                ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+                                : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.6;text-decoration:line-through;')
+                            + '">'
+                            + (ativo
+                                ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                                : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>')
+                            + ch.label
+                            + '</div>';
+                    }});
+                    h += '</div>';
+                    return h;
+                }}
 
-            if (Object.keys(ct).length > 0) {{
-                var ctBlock = document.createElement('div');
-                ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
-                    + 'border:1px solid #e5e7eb;border-radius:12px;';
-                ctBlock.innerHTML =
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📞 Canais de Contato</div>'
-                    + renderGrupoContato('Contato Direto', 'contato')
-                    + renderGrupoContato('Redes Sociais', 'redes')
-                    + renderGrupoContato('Recursos de Engajamento', 'recursos');
-                card.appendChild(ctBlock);
+                if (Object.keys(ct).length > 0) {{
+                    var ctBlock = document.createElement('div');
+                    ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
+                        + 'border:1px solid #e5e7eb;border-radius:12px;';
+                    ctBlock.innerHTML =
+                        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                        + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div>'
+                        + renderGrupoContato('Contato Direto', 'contato')
+                        + renderGrupoContato('Redes Sociais', 'redes')
+                        + renderGrupoContato('Recursos de Engajamento', 'recursos');
+                    card.appendChild(ctBlock);
+                }}
             }}
-        }}
 
         // ══════════════════════════════════════════════════════════════
         // ── Termos e Palavras Mais Usados ──
@@ -5263,46 +5266,71 @@ function buildCards() {{
 
             if (topWords.length > 0) {{
                 var maxCount = topWords[0].count;
+
                 var colorPalette = [
-                    {{ bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' }},
-                    {{ bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' }},
-                    {{ bg: '#fdf4ff', border: '#e9d5ff', text: '#7e22ce' }},
-                    {{ bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' }},
-                    {{ bg: '#f0fdfa', border: '#99f6e4', text: '#0f766e' }},
+                    {{ bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' }},
+                    {{ bg: '#f0fdf4', border: '#6ee7b7', text: '#15803d' }},
+                    {{ bg: '#fdf4ff', border: '#d8b4fe', text: '#7e22ce' }},
+                    {{ bg: '#fff7ed', border: '#fdba74', text: '#c2410c' }},
+                    {{ bg: '#f0fdfa', border: '#5eead4', text: '#0f766e' }},
+                    {{ bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c' }},
                 ];
 
-                var wordsHtml = '';
-                topWords.forEach(function(item, idx) {{
-                    var size   = 11 + Math.round((item.count / maxCount) * 7);
-                    var weight = item.count >= maxCount ? '800' : item.count >= maxCount * 0.6 ? '700' : '600';
+                var bigrams  = topWords.filter(function(w) {{ return w.word.indexOf(' ') > -1; }});
+                var unigrams = topWords.filter(function(w) {{ return w.word.indexOf(' ') === -1; }});
+
+                function makeChip(item, idx, isBigram) {{
+                    var ratio  = item.count / maxCount;
+                    var size   = isBigram
+                        ? (14 + Math.round(ratio * 6))
+                        : (12 + Math.round(ratio * 8));
+                    var weight = ratio >= 0.85 ? '800' : ratio >= 0.5 ? '700' : '600';
                     var col    = colorPalette[idx % colorPalette.length];
-                    wordsHtml +=
-                        '<span style="'
-                        + 'display:inline-flex;align-items:center;gap:4px;'
+                    var countBadge = item.count > 1
+                        ? '<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">'
+                          + item.count + 'x</span>'
+                        : '';
+                    return '<span style="'
+                        + 'display:inline-flex;align-items:center;gap:2px;'
                         + 'font-size:' + size + 'px;font-weight:' + weight + ';'
                         + 'color:' + col.text + ';'
                         + 'background:' + col.bg + ';'
-                        + 'border:1px solid ' + col.border + ';'
-                        + 'border-radius:20px;padding:3px 10px;'
-                        + 'cursor:default;'
+                        + 'border:1.5px solid ' + col.border + ';'
+                        + 'border-radius:' + (isBigram ? '10px' : '20px') + ';'
+                        + 'padding:' + (isBigram ? '4px 12px' : '3px 10px') + ';'
+                        + 'cursor:default;line-height:1.3;'
                         + '" title="' + item.count + 'x mencionado">'
-                        + esc(item.word)
-                        + (item.count > 1
-                            ? '<span style="font-size:9px;font-weight:700;opacity:0.65;">' + item.count + 'x</span>'
-                            : '')
+                        + esc(item.word) + countBadge
                         + '</span>';
-                }});
+                }}
+
+                var bigramsHtml  = bigrams.map(function(item, i)  {{ return makeChip(item, i, true);  }}).join('');
+                var unigramsHtml = unigrams.map(function(item, i) {{ return makeChip(item, i, false); }}).join('');
 
                 var kwBlock = document.createElement('div');
                 kwBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
                     + 'border:1px solid #e5e7eb;border-radius:12px;';
-                kwBlock.innerHTML =
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">'
-                    + '🏷️ Termos mais usados</div>'
-                    + '<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">'
-                    + wordsHtml
-                    + '</div>';
+
+                var innerHtml = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
+
+                if (bigramsHtml) {{
+                    innerHtml +=
+                        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;'
+                        + 'color:#b0b8c4;margin-bottom:7px;">Expressões-chave</div>'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;">'
+                        + bigramsHtml + '</div>';
+                }}
+
+                if (unigramsHtml) {{
+                    innerHtml +=
+                        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;'
+                        + 'color:#b0b8c4;margin-bottom:7px;">Palavras frequentes</div>'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">'
+                        + unigramsHtml + '</div>';
+                }}
+
+                kwBlock.innerHTML = innerHtml;
                 card.appendChild(kwBlock);
             }}
         }}

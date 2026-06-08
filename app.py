@@ -13118,7 +13118,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         tag     = m.group(1)
                         content = m.group(2)
                         rest    = m.group(3)
-                        nxt = _r2.search(r'<h[123]', rest)
+                        # ← Só para em h1/h2, não em h3
+                        nxt = _r2.search(r'<h[12](?!\d)', rest)
                         if nxt:
                             bloco    = rest[:nxt.start()]
                             restante = rest[nxt.start():]
@@ -13143,9 +13144,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         flags=_r2.DOTALL | _r2.IGNORECASE,
                     )
                 return result
-
-            html = _wrap_section(html)
-            return html
 
         relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)

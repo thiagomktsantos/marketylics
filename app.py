@@ -13011,7 +13011,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         icon_ativo  = icons_map.get(subtab_analise, "📋")
         label_ativo = labels_map.get(subtab_analise, "")
 
-        def _md_to_html_redes(txt):
+        
             if not txt: return ""
             import re as _re
 
@@ -13097,6 +13097,55 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             close_all()
             html = '\n'.join(output)
+
+            # ── Pós-processamento: envolve seções especiais em caixas ──
+            BOX_RULES = [
+                (r'(?i)(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                 '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
+                (r'(?i)(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                 '#d97706', '#fffbeb', '#fde68a', '💡'),
+                (r'(?i)(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                 '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
+                (r'(?i)(oportunidade[s]?[^<]*)',
+                 '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
+            ]
+
+            def _wrap_section(html_str):
+                import re as _r2
+                result = html_str
+                for pattern, border, bg, border_light, icon in BOX_RULES:
+                    def replacer(m, _pat=pattern, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
+                        tag     = m.group(1)
+                        content = m.group(2)
+                        rest    = m.group(3)
+                        nxt = _r2.search(r'<h[123]', rest)
+                        if nxt:
+                            bloco    = rest[:nxt.start()]
+                            restante = rest[nxt.start():]
+                        else:
+                            bloco    = rest
+                            restante = ''
+                        bloco = bloco.strip()
+                        caixa = (
+                            f'<div style="border:2px solid {_bl};border-left:4px solid {_brd};'
+                            f'border-radius:10px;background:{_bg};padding:16px 20px;margin:12px 0;">'
+                            f'<div style="font-size:13px;font-weight:800;color:{_brd};'
+                            f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                            f'{_ic} {content}</div>'
+                            f'<div>{bloco}</div>'
+                            f'</div>'
+                        )
+                        return caixa + restante
+                    result = _r2.sub(
+                        r'<(h[23])>(' + pattern + r')<\/\1>(.*?)(?=<h[123]>|$)',
+                        replacer,
+                        result,
+                        flags=_r2.DOTALL | _r2.IGNORECASE,
+                    )
+                return result
+
+            html = _wrap_section(html)
+            return html
 
             # ── Pós-processamento: envolve seções especiais em caixas ──
             BOX_RULES = [

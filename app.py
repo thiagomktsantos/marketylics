@@ -4378,7 +4378,7 @@ function triggerTab(label) {{
         try {{
           if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-10px';
+            iframes[i].style.marginTop = '-35px';
             break;
           }}
         }} catch(e) {{}}
@@ -4979,6 +4979,7 @@ function syncHeight() {{
         try {{
             if (iframes[i].contentWindow === window) {{
                 iframes[i].style.height = (h + 12) + 'px';
+                iframes[i].style.MarginTop = '-30px';
                 break;
             }}
         }} catch(e) {{}}

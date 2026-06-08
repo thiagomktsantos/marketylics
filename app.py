@@ -4439,6 +4439,16 @@ function triggerTab(label) {{
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
+                # ── NOVO: seo_raw para o modal de Dados Brutos ──
+                "seo_raw": {
+                    "status":      seo.get("status", ""),
+                    "title":       seo.get("title", ""),
+                    "description": seo.get("description", ""),
+                    "h1":          seo.get("h1", ""),
+                    "h2s":         seo.get("h2s", []),
+                    "extraido_em": seo.get("extraido_em", ""),
+                    "sitemap":     sitemap,
+                },
             })
  
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
@@ -4657,6 +4667,107 @@ if (!window._seoHelpersReady) {{
         return cands.slice(0, 6);
     }};
 }}
+
+// ══════════════════════════════════════════════════════════════
+// ── FUNÇÃO: Modal de Dados Brutos (SEO + Sitemap) ──
+// ══════════════════════════════════════════════════════════════
+function abrirDadosBrutos(idx) {{
+    var c = CARDS[idx];
+    if (!c) return;
+    var rawData = {{
+        nome: c.nome,
+        url: c.url,
+        seo: c.seo_raw || {{
+            status: c.seo_status, title: c.seo_title,
+            description: c.seo_desc, h1: c.seo_h1,
+            h2s: c.seo_h2s, extraido_em: c.seo_extraido_em,
+        }},
+        sitemap: {{
+            status: c.sitemap_status,
+            total: c.sitemap_total,
+            urls: c.sitemap_urls,
+        }},
+    }};
+    var Dstr = JSON.stringify(rawData, null, 2);
+    var doc = window.parent.document;
+    var old = doc.getElementById('sites_raw_dados_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'sites_raw_dados_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
+        + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
+        + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+
+    var info = doc.createElement('div');
+    info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Dados brutos — SEO & Sitemap</div>'
+        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">' + esc(c.nome) + ' (' + esc(c.url) + ')</div>';
+
+    var btnsWrap = doc.createElement('div');
+    btnsWrap.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+    var copyBtn = doc.createElement('button');
+    copyBtn.textContent = '📋 Copiar';
+    copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    copyBtn.addEventListener('click', function() {{
+        var ta = doc.createElement('textarea');
+        ta.value = Dstr;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        doc.body.appendChild(ta); ta.focus(); ta.select();
+        try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
+        catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
+        doc.body.removeChild(ta);
+        setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
+    }});
+
+    var dlBtn = doc.createElement('button');
+    dlBtn.textContent = '⬇️ Baixar JSON';
+    dlBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    dlBtn.addEventListener('click', function() {{
+        var fname = (c.nome || 'site').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        var a = doc.createElement('a');
+        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
+        a.download = 'seo_' + fname + '.json';
+        a.click();
+    }});
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
+        + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;';
+    closeBtn.addEventListener('click', function() {{ ov.remove(); }});
+
+    btnsWrap.appendChild(copyBtn);
+    btnsWrap.appendChild(dlBtn);
+    btnsWrap.appendChild(closeBtn);
+    hdr.appendChild(info);
+    hdr.appendChild(btnsWrap);
+
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
+        + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
+        + 'white-space:pre-wrap;word-break:break-word;';
+    pre.textContent = Dstr;
+
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
  
 function buildCards() {{
     var grid = document.getElementById('cards-grid');
@@ -4668,7 +4779,6 @@ function buildCards() {{
         card.style.borderTop = '3px solid ' + c.cor;
  
         // ── Header ──────────────────────────────────────────────
-        // ALTERAÇÃO: badge movido para a direita (ml-auto), nome sozinho à esquerda
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
@@ -4876,12 +4986,23 @@ function buildCards() {{
                 seoBody2.appendChild(sec5b);
             }}
  
-            // footer
+            // ── footer com botões Dados Brutos + Atualizar SEO ──
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
             seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';
+
+            // botão Dados Brutos (roxo)
+            var rawDataBtn = document.createElement('button');
+            rawDataBtn.className = 'btn-reextract';
+            rawDataBtn.innerHTML = '📦 Dados brutos';
+            rawDataBtn.style.cssText += ';color:#7c3aed;background:#f5f3ff;border-color:#ddd6fe;';
+            rawDataBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
+
+            // botão Atualizar SEO (azul)
             var reBtn = document.createElement('button'); reBtn.className = 'btn-reextract';
             reBtn.innerHTML = '🔄 Atualizar SEO';
             reBtn.onclick = (function(idx) {{ return function() {{ reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx);
+
+            seoFoot.appendChild(rawDataBtn);
             seoFoot.appendChild(reBtn);
             seoBody2.appendChild(seoFoot);
  
@@ -5043,10 +5164,10 @@ setTimeout(syncHeight, 3000);
                 st.rerun()
 
         subtab_sites = st.session_state.sites_analise_subtab
-        contagens_sites = {{
+        contagens_sites = {
             stk: len([a for a in analises if a.get("tipo") == stk])
             for stk, _, _ in subtabs_sites_def
-        }}
+        }
 
         st.session_state.relatorio_gemini = ""
 
@@ -5098,8 +5219,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 """, height=52, scrolling=False)
 
         lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
-        icons_sites_map   = {{"individual": "🏢", "geral": "📋"}}
-        labels_sites_map  = {{"individual": "Individuais", "geral": "Relatórios Gerais"}}
+        icons_sites_map   = {"individual": "🏢", "geral": "📋"}
+        labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
 
@@ -5184,9 +5305,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             close_all()
             return '\n'.join(output)
 
-        relatorios_sites_html     = {{str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}}
+        relatorios_sites_html     = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
         relatorios_sites_json     = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
-        relatorios_sites_raw      = {{str(i): a.get("relatorio","") for i, a in enumerate(analises)}}
+        relatorios_sites_raw      = {str(i): a.get("relatorio","") for i, a in enumerate(analises)}
         relatorios_sites_raw_json = _json_sites.dumps(relatorios_sites_raw, ensure_ascii=False)
 
         if lista_sites_ativa:
@@ -5488,10 +5609,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         """, height=100, scrolling=False)
 
         else:
-            empty_msg = {{
+            empty_msg = {
                 "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
                 "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
-            }}.get(subtab_sites, "Nenhuma análise ainda.")
+            }.get(subtab_sites, "Nenhuma análise ainda.")
 
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;

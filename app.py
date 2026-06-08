@@ -13025,9 +13025,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             def _apply_inline(s):
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
-            def _get_indent(line):
-                return len(line) - len(line.lstrip(' \t'))
-
             def _get_ol_match(line):
                 return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
 
@@ -13099,7 +13096,56 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 i += 1
 
             close_all()
-            return '\n'.join(output)
+            html = '\n'.join(output)
+
+            # ── Pós-processamento: envolve seções especiais em caixas ──
+            BOX_RULES = [
+                (r'(?i)(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                 '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
+                (r'(?i)(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                 '#d97706', '#fffbeb', '#fde68a', '💡'),
+                (r'(?i)(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                 '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
+                (r'(?i)(oportunidade[s]?[^<]*)',
+                 '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
+            ]
+
+            def _wrap_section(html_str):
+                import re as _r2
+                result = html_str
+                for pattern, border, bg, border_light, icon in BOX_RULES:
+                    def replacer(m, _pat=pattern, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
+                        tag     = m.group(1)
+                        content = m.group(2)
+                        rest    = m.group(3)
+                        nxt = _r2.search(r'<h[123]', rest)
+                        if nxt:
+                            bloco    = rest[:nxt.start()]
+                            restante = rest[nxt.start():]
+                        else:
+                            bloco    = rest
+                            restante = ''
+                        bloco = bloco.strip()
+                        caixa = (
+                            f'<div style="border:2px solid {_bl};border-left:4px solid {_brd};'
+                            f'border-radius:10px;background:{_bg};padding:16px 20px;margin:12px 0;">'
+                            f'<div style="font-size:13px;font-weight:800;color:{_brd};'
+                            f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                            f'{_ic} {content}</div>'
+                            f'<div>{bloco}</div>'
+                            f'</div>'
+                        )
+                        return caixa + restante
+                    result = _r2.sub(
+                        r'<(h[23])>(' + pattern + r')<\/\1>(.*?)(?=<h[123]>|$)',
+                        replacer,
+                        result,
+                        flags=_r2.DOTALL | _r2.IGNORECASE,
+                    )
+                return result
+
+            html = _wrap_section(html)
+            return html
 
         relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)
@@ -13172,51 +13218,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
         body {{ padding-bottom:8px; }}
-        [id^="rr_"] h1,[id^="rr_"] h2,[id^="rr_"] h3 {{
-            font-size:15px; font-weight:800; color:#0f1f35;
-            margin:14px 0 8px; padding-bottom:5px;
-            border-bottom:2px solid #e5e7eb; text-transform:uppercase;
-        }}
-        [id^="rr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
-        [id^="rr_"] ul {{ margin:5px 0 15px 28px; }}
-        [id^="rr_"] li {{ margin:0 0 3px; line-height:1.6; }}
-        [id^="rr_"] li::marker {{ color:#00c162; }}
-        [id^="rr_"] hr {{ display:none; }}
-        [id^="rr_"] ol {{
-            margin: 5px 0 15px 5px;
-            list-style: none;
-            counter-reset: meu-contador;
-        }}
-        [id^="rr_"] ol > li {{
-            margin: 0 0 3px;
-            line-height: 1.6;
-            position: relative;
-            padding-left: 35px;
-            margin-bottom: 15px;
-        }}
-        [id^="rr_"] ol > li::before {{
-            counter-increment: meu-contador;
-            content: counter(meu-contador);
-            position: absolute;
-            left: 0; top: 0;
-            background-color: #00aae6;
-            color: #ffffff;
-            border-radius: 50%;
-            width: 25px; height: 25px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px; font-weight: bold;
-        }}
-        [id^="rr_"] ol > li > ul {{
-            margin: 6px 0 0 0;
-            list-style: none;
-            padding-left: 0;
-        }}
-        [id^="rr_"] ol > li > ul > li {{
-            position: relative;
-            padding-left: 18px;
-            margin-bottom: 8px;
-            line-height: 1.6;
-        }}
         [id^="rr_"] ol > li > ul > li::before {{
             content: '◦';
             position: absolute;
@@ -13228,6 +13229,49 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             background: none;
             border-radius: 0;
             width: auto; height: auto;
+        }}
+        /* ── Caixas coloridas de seção ── */
+        [id^="rr_"] div[style*="border-left"] ul,
+        #smb_redes div[style*="border-left"] ul {{
+            margin: 4px 0 0 18px;
+            list-style: disc;
+        }}
+        [id^="rr_"] div[style*="border-left"] li,
+        #smb_redes div[style*="border-left"] li {{
+            margin-bottom: 6px;
+            line-height: 1.6;
+        }}
+        [id^="rr_"] div[style*="border-left"] ol,
+        #smb_redes div[style*="border-left"] ol {{
+            margin: 4px 0 0 0;
+            list-style: none;
+            counter-reset: meu-contador;
+            padding-left: 0;
+        }}
+        [id^="rr_"] div[style*="border-left"] ol > li,
+        #smb_redes div[style*="border-left"] ol > li {{
+            position: relative;
+            padding-left: 34px;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }}
+        [id^="rr_"] div[style*="border-left"] ol > li::before,
+        #smb_redes div[style*="border-left"] ol > li::before {{
+            counter-increment: meu-contador;
+            content: counter(meu-contador);
+            position: absolute;
+            left: 0; top: 0;
+            background-color: #00aae6;
+            color: #fff;
+            border-radius: 50%;
+            width: 24px; height: 24px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: bold;
+        }}
+        [id^="rr_"] div[style*="border-left"] p,
+        #smb_redes div[style*="border-left"] p {{
+            margin: 0 0 6px;
+            line-height: 1.7;
         }}
         #smb_redes h1,#smb_redes h2,#smb_redes h3 {{
             font-size:16px; font-weight:800; color:#0f1f35;

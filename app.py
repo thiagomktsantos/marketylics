@@ -13114,34 +13114,78 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 import re as _r2
                 result = html_str
                 for pattern, border, bg, border_light, icon in BOX_RULES:
-                    def replacer(m, _pat=pattern, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
-                        tag     = m.group(1)
-                        content = m.group(2)
-                        rest    = m.group(3)
-                        nxt = _r2.search(r'<h[123]', rest)
-                        if nxt:
-                            bloco    = rest[:nxt.start()]
-                            restante = rest[nxt.start():]
-                        else:
-                            bloco    = rest
-                            restante = ''
-                        bloco = bloco.strip()
+                    def replacer(m, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
+                        heading_text = m.group(2)
+                        bloco        = (m.group(3) or '').strip()
+                        restante     = (m.group(4) or '')
                         caixa = (
-                            f'<div style="border:2px solid {_bl};border-left:4px solid {_brd};'
-                            f'border-radius:10px;background:{_bg};padding:16px 20px;margin:12px 0;">'
+                            f'<div class="section-box" style="border:2px solid {_bl};border-left:4px solid {_brd};'
+                            f'border-radius:10px;background:{_bg};padding:16px 20px;">'
                             f'<div style="font-size:13px;font-weight:800;color:{_brd};'
                             f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                            f'{_ic} {content}</div>'
+                            f'{_ic} {heading_text}</div>'
                             f'<div>{bloco}</div>'
                             f'</div>'
                         )
                         return caixa + restante
                     result = _r2.sub(
-                        r'<(h[23])>(' + pattern + r')<\/\1>(.*?)(?=<h[123]>|$)',
+                        r'<h[23]>(' + pattern + r')<\/h[23]>(.*?)((?=<h[123]>)|$)',
                         replacer,
                         result,
                         flags=_r2.DOTALL | _r2.IGNORECASE,
                     )
+
+                # Agrupa caixas consecutivas em grid de 2 colunas
+                def _group_boxes(html_s):
+                    parts   = _r2.split(r'(<div class="section-box".*?</div>\s*</div>)', html_s, flags=_r2.DOTALL)
+                    output  = []
+                    boxes   = []
+                    for part in parts:
+                        if part.startswith('<div class="section-box"'):
+                            boxes.append(part)
+                        else:
+                            if boxes:
+                                # Emite as boxes em pares dentro de um grid
+                                i = 0
+                                while i < len(boxes):
+                                    if i + 1 < len(boxes):
+                                        output.append(
+                                            f'<div style="display:grid;grid-template-columns:1fr 1fr;'
+                                            f'gap:12px;margin:12px 0;">'
+                                            + boxes[i] + boxes[i + 1] +
+                                            f'</div>'
+                                        )
+                                        i += 2
+                                    else:
+                                        output.append(
+                                            f'<div style="margin:12px 0;">'
+                                            + boxes[i] +
+                                            f'</div>'
+                                        )
+                                        i += 1
+                                boxes = []
+                            output.append(part)
+                    if boxes:
+                        i = 0
+                        while i < len(boxes):
+                            if i + 1 < len(boxes):
+                                output.append(
+                                    f'<div style="display:grid;grid-template-columns:1fr 1fr;'
+                                    f'gap:12px;margin:12px 0;">'
+                                    + boxes[i] + boxes[i + 1] +
+                                    f'</div>'
+                                )
+                                i += 2
+                            else:
+                                output.append(
+                                    f'<div style="margin:12px 0;">'
+                                    + boxes[i] +
+                                    f'</div>'
+                                )
+                                i += 1
+                return ''.join(output)
+
+                result = _group_boxes(result)
                 return result
 
             html = _wrap_section(html)

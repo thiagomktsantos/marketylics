@@ -13011,7 +13011,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         icon_ativo  = icons_map.get(subtab_analise, "📋")
         label_ativo = labels_map.get(subtab_analise, "")
 
-        
+        def _md_to_html_redes(txt):
             if not txt: return ""
             import re as _re
 
@@ -13100,13 +13100,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             # ── Pós-processamento: envolve seções especiais em caixas ──
             BOX_RULES = [
-                (r'(?i)(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
                  '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                (r'(?i)(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
                  '#d97706', '#fffbeb', '#fde68a', '💡'),
-                (r'(?i)(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
                  '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(?i)(oportunidade[s]?[^<]*)',
+                (r'(oportunidade[s]?[^<]*)',
                  '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
             ]
 
@@ -13146,85 +13146,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             html = _wrap_section(html)
             return html
-
-            # ── Pós-processamento: envolve seções especiais em caixas ──
-            BOX_RULES = [
-                (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
-                 '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
-                 '#d97706', '#fffbeb', '#fde68a', '💡'),
-                (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
-                 '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(oportunidade[s]?[^<]*)',
-                 '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
-            ]
-
-            def _wrap_section(html_str):
-                import re as _r2
-                result = html_str
-
-                for pattern, border, bg, border_light, icon in BOX_RULES:
-                    def replacer(m, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
-                        heading_text = m.group(2)
-                        bloco        = (m.group(3) or '').strip()
-                        restante     = (m.group(4) or '')
-                        caixa = (
-                            f'<div class="section-box" style="border:2px solid {_bl};border-left:4px solid {_brd};'
-                            f'border-radius:10px;background:{_bg};padding:16px 20px;">'
-                            f'<div style="font-size:13px;font-weight:800;color:{_brd};'
-                            f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                            f'{_ic} {heading_text}</div>'
-                            f'<div>{bloco}</div>'
-                            f'</div>'
-                        )
-                        return caixa + restante
-                    result = _r2.sub(
-                        r'<h[23]>(' + pattern + r')<\/h[23]>(.*?)((?=<h[123]>)|$)',
-                        replacer,
-                        result,
-                        flags=_r2.DOTALL | _r2.IGNORECASE,
-                    )
-
-                # Agrupa caixas consecutivas em grid de 2 colunas
-                parts  = _r2.split(r'(<div class="section-box"[\s\S]*?</div>\s*</div>)', result)
-                output = []
-                boxes  = []
-                for part in parts:
-                    if part.startswith('<div class="section-box"'):
-                        boxes.append(part)
-                    else:
-                        if boxes:
-                            i = 0
-                            while i < len(boxes):
-                                if i + 1 < len(boxes):
-                                    output.append(
-                                        '<div style="display:grid;grid-template-columns:1fr 1fr;'
-                                        'gap:12px;margin:12px 0;">'
-                                        + boxes[i] + boxes[i + 1]
-                                        + '</div>'
-                                    )
-                                    i += 2
-                                else:
-                                    output.append(boxes[i])
-                                    i += 1
-                            boxes = []
-                        output.append(part)
-                if boxes:
-                    i = 0
-                    while i < len(boxes):
-                        if i + 1 < len(boxes):
-                            output.append(
-                                '<div style="display:grid;grid-template-columns:1fr 1fr;'
-                                'gap:12px;margin:12px 0;">'
-                                + boxes[i] + boxes[i + 1]
-                                + '</div>'
-                            )
-                            i += 2
-                        else:
-                            output.append(boxes[i])
-                            i += 1
-
-                return ''.join(output)
 
         relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)

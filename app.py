@@ -5282,8 +5282,8 @@ function buildCards() {{
                 function makeChip(item, idx, isBigram) {{
                     var ratio  = item.count / maxCount;
                     var size   = isBigram
-                        ? (14 + Math.round(ratio * 6))
-                        : (12 + Math.round(ratio * 8));
+                        ? (12 + Math.round(ratio * 2))
+                        : (11 + Math.round(ratio * 3));
                     var weight = ratio >= 0.85 ? '800' : ratio >= 0.5 ? '700' : '600';
                     var col    = colorPalette[idx % colorPalette.length];
                     var countBadge = item.count > 1
@@ -5297,7 +5297,7 @@ function buildCards() {{
                         + 'background:' + col.bg + ';'
                         + 'border:1.5px solid ' + col.border + ';'
                         + 'border-radius:' + (isBigram ? '10px' : '20px') + ';'
-                        + 'padding:' + (isBigram ? '4px 12px' : '3px 10px') + ';'
+                        + 'padding:' + (isBigram ? '4px 11px' : '3px 10px') + ';'
                         + 'cursor:default;line-height:1.3;'
                         + '" title="' + item.count + 'x mencionado">'
                         + esc(item.word) + countBadge

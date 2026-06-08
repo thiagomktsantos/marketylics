@@ -358,7 +358,7 @@ def extrair_seo_site(url: str) -> dict:
     url_fmt = formatar_url(url)
     resultado = {
         "title": "", "description": "", "h1": "",
-        "h2s": [], "status": "erro", "extraido_em": ""
+        "h2s": [], "status": "erro", "extraido_em": "", "contato": {}
     }
     if not url_fmt:
         return resultado
@@ -377,7 +377,6 @@ def extrair_seo_site(url: str) -> dict:
         m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         if m_title:
             resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()
-
         m_desc = _re.search(
             r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
             html, _re.IGNORECASE
@@ -387,16 +386,90 @@ def extrair_seo_site(url: str) -> dict:
         )
         if m_desc:
             resultado["description"] = _re.sub(r'\s+', ' ', m_desc.group(1)).strip()
-
         m_h1 = _re.search(r'<h1[^>]*>(.*?)</h1>', html, _re.IGNORECASE | _re.DOTALL)
         if m_h1:
             resultado["h1"] = _re.sub(r'<[^>]+>', '', m_h1.group(1)).strip()
-
         h2s = _re.findall(r'<h2[^>]*>(.*?)</h2>', html, _re.IGNORECASE | _re.DOTALL)
         resultado["h2s"] = [
             _re.sub(r'<[^>]+>', '', h).strip()
             for h in h2s if _re.sub(r'<[^>]+>', '', h).strip()
         ][:6]
+
+        # ── Canais de Contato ─────────────────────────────────────
+        ct = {}
+
+        # WhatsApp
+        wa = _re.findall(
+            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=](\d{8,15})',
+            html, _re.IGNORECASE
+        )
+        ct["whatsapp"] = wa[0] if wa else ""
+
+        # Telefone (href="tel:...")
+        tel = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
+        ct["telefone"] = tel[0].strip() if tel else ""
+
+        # E-mail (href="mailto:...")
+        mail = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
+        mail = [m for m in mail if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
+        ct["email"] = mail[0] if mail else ""
+
+        # Chat ao vivo
+        ct["chat_ao_vivo"] = bool(_re.search(
+            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio)',
+            html, _re.IGNORECASE
+        ))
+
+        # Formulário de contato
+        ct["formulario"] = bool(_re.search(
+            r'<form[^>]*>.{0,600}(contato|contact|mensagem|message|nome|name|fale)',
+            html, _re.IGNORECASE | _re.DOTALL
+        ))
+
+        # Botão/widget flutuante
+        ct["botao_flutuante"] = bool(_re.search(
+            r'position\s*:\s*fixed.{0,200}(button|btn|cta|chat|contato|whats|fale)',
+            html, _re.IGNORECASE | _re.DOTALL
+        ))
+
+        # Popup de saída (exit intent)
+        ct["popup_saida"] = bool(_re.search(
+            r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal)',
+            html, _re.IGNORECASE
+        ))
+
+        # Instagram
+        ig = _re.findall(
+            r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ig = [i for i in ig if i.lower() not in ('p','reel','reels','explore','stories','tv','share','accounts')]
+        ct["instagram"] = ig[0] if ig else ""
+
+        # Facebook
+        fb = _re.findall(
+            r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        fb = [f for f in fb if f.lower() not in ('sharer','share','tr','login','dialog','plugins','photo','watch')]
+        ct["facebook"] = fb[0] if fb else ""
+
+        # LinkedIn
+        li = _re.findall(
+            r'linkedin\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ct["linkedin"] = li[0] if li else ""
+
+        # YouTube
+        yt = _re.findall(
+            r'youtube\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ct["youtube"] = yt[0] if yt else ""
+
+        resultado["contato"] = ct
+        # ── fim canais de contato ──────────────────────────────────
 
         resultado["status"] = "ok"
         resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -3098,9 +3171,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "seo_h2s":          seo.get("h2s", []),
                     "seo_status":       seo.get("status", ""),
                     "seo_extraido_em":  seo.get("extraido_em", ""),
+                    "contato":        seo.get("contato", {})
                     "sitemap_urls":     sitemap.get("urls", []),
                     "sitemap_total":    sitemap.get("total", 0),
-                    "sitemap_status":   sitemap.get("status", ""),
+                    "sitemap_status":   sitemap.get("status", ""),              
                 })
 
             sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
@@ -3239,6 +3313,94 @@ function buildCards() {{
                 + '<span style="font-size:11px;color:#9ca3af">Sem site cadastrado</span></div>';
         }}
         card.appendChild(prev);
+
+        // ══════════════════════════════════════════════════════════════
+        // ── Canais de Contato ──
+        // ══════════════════════════════════════════════════════════════
+        (function() {{
+            var ct = c.contato || {{}};
+
+            var canais = [
+                {{ key: "whatsapp", icon: "📱", label: "WhatsApp", presente: !!ct.whatsapp, detalhe: ct.whatsapp ? ("+" + ct.whatsapp).replace(/^\+\+/,"+") : "" }},
+                {{ key: "telefone", icon: "📞", label: "Telefone", presente: !!ct.telefone, detalhe: ct.telefone || "" }},
+                {{ key: "email", icon: "✉️", label: "E-mail", presente: !!ct.email, detalhe: ct.email || "" }},
+                {{ key: "chat_ao_vivo", icon: "💬", label: "Chat ao vivo", presente: !!ct.chat_ao_vivo, detalhe: "" }},
+                {{ key: "formulario", icon: "📝", label: "Formulário", presente: !!ct.formulario, detalhe: "" }},
+                {{ key: "botao_flutuante", icon: "🔘", label: "Botão flutuante", presente: !!ct.botao_flutuante, detalhe: "" }},
+                {{ key: "popup_saida", icon: "🪟", label: "Popup de saída", presente: !!ct.popup_saida, detalhe: "" }},
+                {{ key: "instagram", icon: "📸", label: "Instagram", presente: !!ct.instagram, detalhe: ct.instagram ? "@" + ct.instagram : "" }},
+                {{ key: "facebook", icon: "👤", label: "Facebook", presente: !!ct.facebook, detalhe: ct.facebook || "" }},
+                {{ key: "linkedin", icon: "💼", label: "LinkedIn", presente: !!ct.linkedin, detalhe: ct.linkedin || "" }},
+                {{ key: "youtube", icon: "▶️", label: "YouTube", presente: !!ct.youtube, detalhe: ct.youtube || "" }},
+            ];
+
+            if (!hasSeo) return;
+
+            var presentes  = canais.filter(function(x) {{ return x.presente; }});
+            var ausentes   = canais.filter(function(x) {{ return !x.presente; }});
+            var totalScore = Math.round((presentes.length / canais.length) * 100);
+            var scoreCor   = totalScore >= 70 ? "#15803d" : totalScore >= 40 ? "#92400e" : "#b91c1c";
+            var scoreBg2   = totalScore >= 70 ? "#f0fdf4" : totalScore >= 40 ? "#fffbeb" : "#fef2f2";
+            var scoreBarC2 = totalScore >= 70 ? "#22c55e"  : totalScore >= 40 ? "#f59e0b"  : "#ef4444";
+            var scoreBarId2 = "ct_bar_" + c.idx;
+
+            var itemsHtml = "";
+            presentes.forEach(function(canal) {{
+                var det = canal.detalhe
+                    ? '<span style="font-size:11px;color:#6b7280;margin-left:4px;overflow:hidden;'
+                      + 'text-overflow:ellipsis;white-space:nowrap;max-width:110px;">'
+                      + esc(canal.detalhe) + '</span>'
+                    : "";
+                itemsHtml +=
+                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;'
+                    + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;min-width:0;">'
+                    + '<span style="font-size:14px;flex-shrink:0;">' + canal.icon + '</span>'
+                    + '<span style="font-size:12px;font-weight:700;color:#15803d;white-space:nowrap;">' + canal.label + '</span>'
+                    + det
+                    + '</div>';
+            }});
+
+            ausentes.forEach(function(canal) {{
+                itemsHtml +=
+                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;'
+                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;opacity:0.55;">'
+                    + '<span style="font-size:14px;flex-shrink:0;filter:grayscale(1);">' + canal.icon + '</span>'
+                    + '<span style="font-size:12px;font-weight:600;color:#9ca3af;white-space:nowrap;text-decoration:line-through;">' + canal.label + '</span>'
+                    + '</div>';
+            }});
+
+            var ctBlock = document.createElement("div");
+            ctBlock.style.cssText = "margin:0 14px 10px;padding:14px 16px;background:#fff;"
+                + "border:1px solid #e5e7eb;border-radius:12px;";
+            ctBlock.innerHTML =
+                '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📡 Canais de Contato</div>'
+                + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
+                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
+                +     '<span style="font-size:35px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreCor + ';">' + presentes.length + '</span>'
+                +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/' + canais.length + '</span>'
+                +   '</div>'
+                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+                +     'font-size:14px;font-weight:800;background:' + scoreBg2 + ';color:' + scoreCor + ';white-space:nowrap;">'
+                +     (totalScore >= 70 ? 'Bem coberto ✓' : totalScore >= 40 ? 'Parcial ⚠️' : 'Pouca cobertura 📝')
+                +   '</div>'
+                + '</div>'
+                + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:12px;">'
+                +   '<div id="' + scoreBarId2 + '" style="height:100%;width:0%;border-radius:4px;'
+                +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarC2 + ');'
+                +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
+                + '</div>'
+                + '<div style="display:flex;flex-wrap:wrap;gap:7px;">' + itemsHtml + '</div>';
+
+            card.appendChild(ctBlock);
+
+            setTimeout((function(barId, val) {{
+                return function() {{
+                    var bar = document.getElementById(barId);
+                    if (bar) bar.style.width = val + "%";
+                }};
+            }})(scoreBarId2, totalScore), 200 + c.idx * 80);
+        }})();
 
         // ── SEO Accordion ──
         var hasSeo = d.seo_status === 'ok';

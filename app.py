@@ -4596,6 +4596,7 @@ function triggerTab(label) {{
                 "seo_h1":          seo.get("h1", ""),
                 "seo_h2s":         seo.get("h2s", []),
                 "seo_extraido_em": seo.get("extraido_em", ""),
+                "seo_contato":     seo.get("contato", {}),
                 # Sitemap
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
@@ -5054,6 +5055,98 @@ function buildCards() {{
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
 
+        // ══════════════════════════════════════════════════
+        // ── Canais de Contato — FORA DO ACORDEÃO ──
+        // ══════════════════════════════════════════════════
+        if (hasSeo) {{
+            var ct = c.seo_contato || {{}};
+
+            var contatosHtml = '';
+            var redesHtml = '';
+            var recursosHtml = '';
+
+            if (ct.whatsapp) {{
+                contatosHtml += '<a href="https://wa.me/' + esc(ct.whatsapp) + '" target="_blank" rel="noopener"'
+                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#15803d;'
+                    + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:5px 10px;text-decoration:none;">'
+                    + '💬 WhatsApp: <strong>' + esc(ct.whatsapp) + '</strong></a>';
+            }}
+            if (ct.telefone) {{
+                contatosHtml += '<a href="tel:' + esc(ct.telefone) + '"'
+                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;'
+                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;text-decoration:none;">'
+                    + '📞 Telefone: <strong>' + esc(ct.telefone) + '</strong></a>';
+            }}
+            if (ct.email) {{
+                contatosHtml += '<a href="mailto:' + esc(ct.email) + '"'
+                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;'
+                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;text-decoration:none;">'
+                    + '✉️ E-mail: <strong>' + esc(ct.email) + '</strong></a>';
+            }}
+
+            var redes = [
+                {{ key: 'instagram', icon: '📸', label: 'Instagram', base: 'instagram.com/' }},
+                {{ key: 'facebook',  icon: '👥', label: 'Facebook',  base: 'facebook.com/' }},
+                {{ key: 'linkedin',  icon: '💼', label: 'LinkedIn',  base: 'linkedin.com/company/' }},
+                {{ key: 'youtube',   icon: '▶️', label: 'YouTube',   base: 'youtube.com/@' }},
+            ];
+            redes.forEach(function(r) {{
+                if (ct[r.key]) {{
+                    redesHtml += '<a href="https://' + r.base + esc(ct[r.key]) + '" target="_blank" rel="noopener"'
+                        + ' style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+                        + 'color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;'
+                        + 'padding:3px 10px;text-decoration:none;white-space:nowrap;">'
+                        + r.icon + ' ' + esc(ct[r.key]) + '</a>';
+                }}
+            }});
+
+            var recursos = [
+                {{ key: 'chat_ao_vivo',    icon: '💬', label: 'Chat ao vivo' }},
+                {{ key: 'formulario',      icon: '📋', label: 'Formulário' }},
+                {{ key: 'botao_flutuante', icon: '🔘', label: 'Btn. flutuante' }},
+                {{ key: 'popup_saida',     icon: '🪟', label: 'Popup de saída' }},
+            ];
+            recursos.forEach(function(r) {{
+                var ativo = ct[r.key];
+                recursosHtml += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
+                    + 'padding:3px 9px;border-radius:20px;white-space:nowrap;'
+                    + (ativo
+                        ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+                        : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.6;')
+                    + '">'
+                    + (ativo ? '✓' : '✗') + ' ' + r.icon + ' ' + r.label + '</div>';
+            }});
+
+            var temContato = ct.whatsapp || ct.telefone || ct.email || redesHtml || recursosHtml;
+            if (temContato) {{
+                var ctBlock = document.createElement('div');
+                ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
+                    + 'border:1px solid #e5e7eb;border-radius:12px;';
+
+                var ctInner = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📞 Canais de Contato</div>';
+
+                if (contatosHtml) {{
+                    ctInner += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">'
+                        + contatosHtml + '</div>';
+                }}
+                if (redesHtml) {{
+                    ctInner += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                        + 'letter-spacing:0.6px;color:#b0b8c4;margin-bottom:6px;">Redes Sociais</div>'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">'
+                        + redesHtml + '</div>';
+                }}
+                if (recursosHtml) {{
+                    ctInner += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                        + 'letter-spacing:0.6px;color:#b0b8c4;margin-bottom:6px;">Recursos de Engajamento</div>'
+                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;">' + recursosHtml + '</div>';
+                }}
+
+                ctBlock.innerHTML = ctInner;
+                card.appendChild(ctBlock);
+            }}
+        }}
+
         // ══════════════════════════════════════════════════════════════
         // ── Termos e Palavras Mais Usados ──
         // ══════════════════════════════════════════════════════════════
@@ -5318,6 +5411,8 @@ function buildCards() {{
                     + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
                 seoBody2.appendChild(sec5b);
             }}
+
+
  
             // ── footer com botões Dados Brutos + Atualizar SEO ──
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';

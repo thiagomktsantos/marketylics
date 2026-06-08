@@ -416,7 +416,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # Chat ao vivo
         ct["chat_ao_vivo"] = bool(_re.search(
-            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio)',
+            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift)',
             html, _re.IGNORECASE
         ))
 
@@ -426,15 +426,41 @@ def extrair_seo_site(url: str) -> dict:
             html, _re.IGNORECASE | _re.DOTALL
         ))
 
-        # Botão/widget flutuante
-        ct["botao_flutuante"] = bool(_re.search(
-            r'position\s*:\s*fixed.{0,200}(button|btn|cta|chat|contato|whats|fale)',
-            html, _re.IGNORECASE | _re.DOTALL
-        ))
+        # Botão/widget flutuante — detecção ampliada
+        ct["botao_flutuante"] = bool(
+            _re.search(
+                r'(whatsapp[-_]?(button|widget|float|fixed|sticky|fab)'
+                r'|float(ing)?[-_]?(button|btn|whats|chat|cta|action)'
+                r'|fixed[-_]?(button|btn|cta|whats|chat|widget|action)'
+                r'|fab[-_]?button|sticky[-_]?(button|btn|cta|chat)'
+                r'|btn[-_]?float|button[-_]?fixed'
+                r'|zopim|tawk|crisp|jivochat|tidio|drift|intercom|freshchat)',
+                html, _re.IGNORECASE
+            ) or _re.search(
+                r'position\s*:\s*(fixed|sticky).{0,500}'
+                r'(button|btn|cta|chat|contato|whats|fale|ajuda|help|atendimento|speak|flutuante|float)',
+                html, _re.IGNORECASE | _re.DOTALL
+            ) or _re.search(
+                r'(button|btn|cta|chat|contato|whats|fale|ajuda|atendimento).{0,500}'
+                r'position\s*:\s*(fixed|sticky)',
+                html, _re.IGNORECASE | _re.DOTALL
+            )
+        )
 
         # Popup de saída (exit intent)
         ct["popup_saida"] = bool(_re.search(
-            r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal)',
+            r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal'
+            r'|exitIntent|exit_intent|onmouseleave.*modal)',
+            html, _re.IGNORECASE
+        ))
+
+        # Popup de rolagem (scroll trigger)
+        ct["popup_rolagem"] = bool(_re.search(
+            r'(scroll.{0,20}(popup|modal|trigger|show|banner|offer|lead)'
+            r'|scrollDepth|scroll_depth|scrollPercent|scroll.?percent'
+            r'|ScrollTrigger|data-scroll-trigger'
+            r'|onscroll.{0,50}(modal|popup|show)'
+            r'|(popup|modal).{0,50}scroll)',
             html, _re.IGNORECASE
         ))
 
@@ -5055,94 +5081,57 @@ function buildCards() {{
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
 
-        // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
         // ── Canais de Contato — FORA DO ACORDEÃO ──
         // ══════════════════════════════════════════════════
         if (hasSeo) {{
             var ct = c.seo_contato || {{}};
 
-            var contatosHtml = '';
-            var redesHtml = '';
-            var recursosHtml = '';
-
-            if (ct.whatsapp) {{
-                contatosHtml += '<a href="https://wa.me/' + esc(ct.whatsapp) + '" target="_blank" rel="noopener"'
-                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#15803d;'
-                    + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:5px 10px;text-decoration:none;">'
-                    + '💬 WhatsApp: <strong>' + esc(ct.whatsapp) + '</strong></a>';
-            }}
-            if (ct.telefone) {{
-                contatosHtml += '<a href="tel:' + esc(ct.telefone) + '"'
-                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;'
-                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;text-decoration:none;">'
-                    + '📞 Telefone: <strong>' + esc(ct.telefone) + '</strong></a>';
-            }}
-            if (ct.email) {{
-                contatosHtml += '<a href="mailto:' + esc(ct.email) + '"'
-                    + ' style="display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;'
-                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:5px 10px;text-decoration:none;">'
-                    + '✉️ E-mail: <strong>' + esc(ct.email) + '</strong></a>';
-            }}
-
-            var redes = [
-                {{ key: 'instagram', icon: '📸', label: 'Instagram', base: 'instagram.com/' }},
-                {{ key: 'facebook',  icon: '👥', label: 'Facebook',  base: 'facebook.com/' }},
-                {{ key: 'linkedin',  icon: '💼', label: 'LinkedIn',  base: 'linkedin.com/company/' }},
-                {{ key: 'youtube',   icon: '▶️', label: 'YouTube',   base: 'youtube.com/@' }},
+            var checks = [
+                {{ key: 'whatsapp',        icon: '💬', label: 'WhatsApp',      grupo: 'contato'  }},
+                {{ key: 'telefone',        icon: '📞', label: 'Telefone',       grupo: 'contato'  }},
+                {{ key: 'email',           icon: '✉️',  label: 'E-mail',         grupo: 'contato'  }},
+                {{ key: 'instagram',       icon: '📸', label: 'Instagram',      grupo: 'redes'    }},
+                {{ key: 'facebook',        icon: '👥', label: 'Facebook',       grupo: 'redes'    }},
+                {{ key: 'linkedin',        icon: '💼', label: 'LinkedIn',       grupo: 'redes'    }},
+                {{ key: 'youtube',         icon: '▶️',  label: 'YouTube',        grupo: 'redes'    }},
+                {{ key: 'chat_ao_vivo',    icon: '🗨️', label: 'Chat ao vivo',  grupo: 'recursos' }},
+                {{ key: 'formulario',      icon: '📋', label: 'Formulário',     grupo: 'recursos' }},
+                {{ key: 'botao_flutuante', icon: '🔘', label: 'Btn. flutuante', grupo: 'recursos' }},
+                {{ key: 'popup_saida',     icon: '🚪', label: 'Popup saída',    grupo: 'recursos' }},
+                {{ key: 'popup_rolagem',   icon: '📜', label: 'Popup rolagem',  grupo: 'recursos' }},
             ];
-            redes.forEach(function(r) {{
-                if (ct[r.key]) {{
-                    redesHtml += '<a href="https://' + r.base + esc(ct[r.key]) + '" target="_blank" rel="noopener"'
-                        + ' style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
-                        + 'color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;'
-                        + 'padding:3px 10px;text-decoration:none;white-space:nowrap;">'
-                        + r.icon + ' ' + esc(ct[r.key]) + '</a>';
-                }}
-            }});
 
-            var recursos = [
-                {{ key: 'chat_ao_vivo',    icon: '💬', label: 'Chat ao vivo' }},
-                {{ key: 'formulario',      icon: '📋', label: 'Formulário' }},
-                {{ key: 'botao_flutuante', icon: '🔘', label: 'Btn. flutuante' }},
-                {{ key: 'popup_saida',     icon: '🪟', label: 'Popup de saída' }},
-            ];
-            recursos.forEach(function(r) {{
-                var ativo = ct[r.key];
-                recursosHtml += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
-                    + 'padding:3px 9px;border-radius:20px;white-space:nowrap;'
-                    + (ativo
-                        ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
-                        : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.6;')
-                    + '">'
-                    + (ativo ? '✓' : '✗') + ' ' + r.icon + ' ' + r.label + '</div>';
-            }});
+            function renderGrupoContato(titulo, grupo) {{
+                var itens = checks.filter(function(ch) {{ return ch.grupo === grupo; }});
+                var h = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:6px;">' + titulo + '</div>'
+                    + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
+                itens.forEach(function(ch) {{
+                    var ativo = !!ct[ch.key];
+                    h += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
+                        + 'padding:3px 10px;border-radius:20px;white-space:nowrap;'
+                        + (ativo
+                            ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+                            : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.55;')
+                        + '">'
+                        + (ativo ? '✓' : '✗') + ' ' + ch.icon + ' ' + ch.label
+                        + '</div>';
+                }});
+                h += '</div>';
+                return h;
+            }}
 
-            var temContato = ct.whatsapp || ct.telefone || ct.email || redesHtml || recursosHtml;
-            if (temContato) {{
+            if (Object.keys(ct).length > 0) {{
                 var ctBlock = document.createElement('div');
                 ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
                     + 'border:1px solid #e5e7eb;border-radius:12px;';
-
-                var ctInner = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📞 Canais de Contato</div>';
-
-                if (contatosHtml) {{
-                    ctInner += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">'
-                        + contatosHtml + '</div>';
-                }}
-                if (redesHtml) {{
-                    ctInner += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-                        + 'letter-spacing:0.6px;color:#b0b8c4;margin-bottom:6px;">Redes Sociais</div>'
-                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">'
-                        + redesHtml + '</div>';
-                }}
-                if (recursosHtml) {{
-                    ctInner += '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-                        + 'letter-spacing:0.6px;color:#b0b8c4;margin-bottom:6px;">Recursos de Engajamento</div>'
-                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;">' + recursosHtml + '</div>';
-                }}
-
-                ctBlock.innerHTML = ctInner;
+                ctBlock.innerHTML =
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📞 Canais de Contato</div>'
+                    + renderGrupoContato('Contato Direto', 'contato')
+                    + renderGrupoContato('Redes Sociais', 'redes')
+                    + renderGrupoContato('Recursos de Engajamento', 'recursos');
                 card.appendChild(ctBlock);
             }}
         }}

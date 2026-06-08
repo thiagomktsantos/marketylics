@@ -13011,139 +13011,148 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         icon_ativo  = icons_map.get(subtab_analise, "📋")
         label_ativo = labels_map.get(subtab_analise, "")
 
-        def _md_to_html_redes(txt):
-            if not txt: return ""
-            import re as _re
+            def _md_to_html_redes(txt):
+                if not txt: return ""
+                import re as _re
 
-            txt = txt.replace("&", "&amp;")
-            txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
-            txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
-            txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
+                txt = txt.replace("&", "&amp;")
+                txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+                txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
+                txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
+                txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
+                txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
 
-            def _apply_inline(s):
-                return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
+                def _apply_inline(s):
+                    return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
-            def _get_ol_match(line):
-                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                def _get_ol_match(line):
+                    return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
 
-            def _get_ul_match(line):
-                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                def _get_ul_match(line):
+                    return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
 
-            lines = txt.split('\n')
-            output = []
-            list_stack = []
+                lines = txt.split('\n')
+                output = []
+                list_stack = []
 
-            def close_until(target_indent):
-                while list_stack and list_stack[-1][1] >= target_indent:
-                    tag, _ = list_stack.pop()
-                    output.append(f'</{tag}>')
+                def close_until(target_indent):
+                    while list_stack and list_stack[-1][1] >= target_indent:
+                        tag, _ = list_stack.pop()
+                        output.append(f'</{tag}>')
 
-            def close_all():
-                while list_stack:
-                    tag, _ = list_stack.pop()
-                    output.append(f'</{tag}>')
+                def close_all():
+                    while list_stack:
+                        tag, _ = list_stack.pop()
+                        output.append(f'</{tag}>')
 
-            i = 0
-            while i < len(lines):
-                line = lines[i]
+                i = 0
+                while i < len(lines):
+                    line = lines[i]
 
-                if not line.strip():
-                    i += 1
-                    continue
+                    if not line.strip():
+                        i += 1
+                        continue
 
-                stripped = line.strip()
+                    stripped = line.strip()
 
-                if _re.match(r'^\s*<(h[123]|hr)', line):
+                    if _re.match(r'^\s*<(h[123]|hr)', line):
+                        close_all()
+                        output.append(stripped)
+                        i += 1
+                        continue
+
+                    m_ol = _get_ol_match(line)
+                    if m_ol:
+                        item_indent = len(m_ol.group(1))
+                        content     = _apply_inline(m_ol.group(3))
+                        close_until(item_indent + 1)
+                        if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ol':
+                            if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ol':
+                                tag, _ = list_stack.pop()
+                                output.append(f'</{tag}>')
+                            output.append('<ol>')
+                            list_stack.append(('ol', item_indent))
+                        output.append(f'<li>{content}</li>')
+                        i += 1
+                        continue
+
+                    m_ul = _get_ul_match(line)
+                    if m_ul:
+                        item_indent = len(m_ul.group(1))
+                        content     = _apply_inline(m_ul.group(2))
+                        close_until(item_indent + 1)
+                        if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ul':
+                            if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ul':
+                                tag, _ = list_stack.pop()
+                                output.append(f'</{tag}>')
+                            output.append('<ul>')
+                            list_stack.append(('ul', item_indent))
+                        output.append(f'<li>{content}</li>')
+                        i += 1
+                        continue
+
                     close_all()
-                    output.append(stripped)
+                    output.append(f'<p>{_apply_inline(stripped)}</p>')
                     i += 1
-                    continue
-
-                m_ol = _get_ol_match(line)
-                if m_ol:
-                    item_indent = len(m_ol.group(1))
-                    content     = _apply_inline(m_ol.group(3))
-                    close_until(item_indent + 1)
-                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ol':
-                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ol':
-                            tag, _ = list_stack.pop()
-                            output.append(f'</{tag}>')
-                        output.append('<ol>')
-                        list_stack.append(('ol', item_indent))
-                    output.append(f'<li>{content}</li>')
-                    i += 1
-                    continue
-
-                m_ul = _get_ul_match(line)
-                if m_ul:
-                    item_indent = len(m_ul.group(1))
-                    content     = _apply_inline(m_ul.group(2))
-                    close_until(item_indent + 1)
-                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ul':
-                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ul':
-                            tag, _ = list_stack.pop()
-                            output.append(f'</{tag}>')
-                        output.append('<ul>')
-                        list_stack.append(('ul', item_indent))
-                    output.append(f'<li>{content}</li>')
-                    i += 1
-                    continue
 
                 close_all()
-                output.append(f'<p>{_apply_inline(stripped)}</p>')
-                i += 1
+                html = '\n'.join(output)
 
-            close_all()
-            html = '\n'.join(output)
+                # ── Pós-processamento: envolve seções especiais em caixas ──
+                BOX_RULES = [
+                    (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                     '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
+                    (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                     '#d97706', '#fffbeb', '#fde68a', '💡'),
+                    (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                     '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
+                    (r'(oportunidade[s]?[^<]*)',
+                     '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
+                ]
 
-            # ── Pós-processamento: envolve seções especiais em caixas ──
-            BOX_RULES = [
-                (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
-                 '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
-                 '#d97706', '#fffbeb', '#fde68a', '💡'),
-                (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
-                 '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(oportunidade[s]?[^<]*)',
-                 '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
-            ]
+                def _wrap_section(html_str):
+                    import re as _r2
+                    result = html_str
 
-            def _wrap_section(html_str):
-                import re as _r2
-                result = html_str
-                for pattern, border, bg, border_light, icon in BOX_RULES:
-                    def replacer(m, _pat=pattern, _brd=border, _bg=bg, _bl=border_light, _ic=icon):
-                        tag     = m.group(1)
-                        content = m.group(2)
-                        rest    = m.group(3)
-                        # ← Só para em h1/h2, não em h3
-                        nxt = _r2.search(r'<h[12](?!\d)', rest)
-                        if nxt:
-                            bloco    = rest[:nxt.start()]
-                            restante = rest[nxt.start():]
+                    partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', result, flags=_r2.DOTALL)
+
+                    output_parts = []
+                    i2 = 0
+                    while i2 < len(partes):
+                        parte = partes[i2]
+                        m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                        if m_hdr:
+                            tag_h   = m_hdr.group(1)
+                            hdr_txt = m_hdr.group(2)
+                            conteudo = partes[i2 + 1] if i2 + 1 < len(partes) else ""
+                            i2 += 1
+
+                            matched_box = False
+                            for pattern, border, bg, border_light, icon in BOX_RULES:
+                                if _r2.search(pattern, hdr_txt, flags=_r2.IGNORECASE):
+                                    caixa = (
+                                        f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
+                                        f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
+                                        f'<div style="font-size:13px;font-weight:800;color:{border};'
+                                        f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                                        f'{icon} {hdr_txt}</div>'
+                                        f'<div>{conteudo}</div>'
+                                        f'</div>'
+                                    )
+                                    output_parts.append(caixa)
+                                    matched_box = True
+                                    break
+                            if not matched_box:
+                                output_parts.append(parte)
+                                output_parts.append(conteudo)
                         else:
-                            bloco    = rest
-                            restante = ''
-                        bloco = bloco.strip()
-                        caixa = (
-                            f'<div style="border:2px solid {_bl};border-left:4px solid {_brd};'
-                            f'border-radius:10px;background:{_bg};padding:16px 20px;margin:12px 0;">'
-                            f'<div style="font-size:13px;font-weight:800;color:{_brd};'
-                            f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                            f'{_ic} {content}</div>'
-                            f'<div>{bloco}</div>'
-                            f'</div>'
-                        )
-                        return caixa + restante
-                    result = _r2.sub(
-                        r'<(h[23])>(' + pattern + r')<\/\1>(.*?)(?=<h[123]>|$)',
-                        replacer,
-                        result,
-                        flags=_r2.DOTALL | _r2.IGNORECASE,
-                    )
-                return result
+                            output_parts.append(parte)
+                        i2 += 1
+
+                    return ''.join(output_parts)
+
+                html = _wrap_section(html)
+                return html
 
         relatorios_redes     = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)

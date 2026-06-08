@@ -4891,6 +4891,88 @@ function buildCards() {{
                 }};
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
+
+// ══════════════════════════════════════════════════════════════
+        // ── Termos e Palavras Mais Usados ──
+        // ══════════════════════════════════════════════════════════════
+        if (hasSeo) {{
+            var textoFull = [
+                c.seo_title || '',
+                c.seo_h1 || '',
+                c.seo_desc || '',
+            ].concat(c.seo_h2s || []).join(' ');
+
+            var stopWords = new Set([
+                'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
+                'para','por','com','que','se','na','no','nas','nos','ao','aos',
+                'mais','ou','mas','como','são','sua','seu','suas','seus','esta','este',
+                'essa','esse','pelo','pela','pelos','pelas','ser','ter','pode','todo',
+                'toda','todos','todas','entre','até','the','and','of','to','in','is',
+                'it','for','on','with','that','this','are','from','at','an','be','by',
+                'not','or','was','we','our','your','have','has','will','can','more',
+                'also','their','which','about','when','than','its','into','been'
+            ]);
+
+            var words = textoFull.toLowerCase()
+                .replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi, ' ')
+                .split(/\s+/)
+                .filter(function(w) {{
+                    return w.length >= 4 && !stopWords.has(w);
+                }});
+
+            var freq = {{}};
+            words.forEach(function(w) {{ freq[w] = (freq[w] || 0) + 1; }});
+
+            var topWords = Object.keys(freq)
+                .map(function(w) {{ return {{ word: w, count: freq[w] }}; }})
+                .sort(function(a, b) {{ return b.count - a.count; }})
+                .slice(0, 16);
+
+            if (topWords.length > 0) {{
+                var maxCount = topWords[0].count;
+                var colorPalette = [
+                    {{ bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' }},
+                    {{ bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' }},
+                    {{ bg: '#fdf4ff', border: '#e9d5ff', text: '#7e22ce' }},
+                    {{ bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' }},
+                    {{ bg: '#f0fdfa', border: '#99f6e4', text: '#0f766e' }},
+                ];
+
+                var wordsHtml = '';
+                topWords.forEach(function(item, idx) {{
+                    var size   = 11 + Math.round((item.count / maxCount) * 7);
+                    var weight = item.count >= maxCount ? '800' : item.count >= maxCount * 0.6 ? '700' : '600';
+                    var col    = colorPalette[idx % colorPalette.length];
+                    wordsHtml +=
+                        '<span style="'
+                        + 'display:inline-flex;align-items:center;gap:4px;'
+                        + 'font-size:' + size + 'px;font-weight:' + weight + ';'
+                        + 'color:' + col.text + ';'
+                        + 'background:' + col.bg + ';'
+                        + 'border:1px solid ' + col.border + ';'
+                        + 'border-radius:20px;padding:3px 10px;'
+                        + 'cursor:default;'
+                        + '" title="' + item.count + 'x mencionado">'
+                        + esc(item.word)
+                        + (item.count > 1
+                            ? '<span style="font-size:9px;font-weight:700;opacity:0.65;">' + item.count + 'x</span>'
+                            : '')
+                        + '</span>';
+                }});
+
+                var kwBlock = document.createElement('div');
+                kwBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
+                    + 'border:1px solid #e5e7eb;border-radius:12px;';
+                kwBlock.innerHTML =
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">'
+                    + '🏷️ Termos mais usados</div>'
+                    + '<div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;">'
+                    + wordsHtml
+                    + '</div>';
+                card.appendChild(kwBlock);
+            }}
+        }}
  
         // ══════════════════════════════════════════════════
         // ── SEO Accordion v2 — detalhes técnicos ──

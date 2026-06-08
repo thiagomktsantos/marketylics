@@ -365,8 +365,6 @@ def extrair_seo_site(url: str) -> dict:
     try:
         import re as _re
         import datetime as _dt
-        from bs4 import BeautifulSoup as _BS
-
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -375,14 +373,10 @@ def extrair_seo_site(url: str) -> dict:
         resp = requests.get(url_fmt, headers=headers, timeout=12, allow_redirects=True)
         resp.encoding = resp.apparent_encoding
         html = resp.text
-        _soup = _BS(html, "html.parser")
 
-        # ── Title ─────────────────────────────────────────────────
         m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         if m_title:
             resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()
-
-        # ── Meta description ──────────────────────────────────────
         m_desc = _re.search(
             r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
             html, _re.IGNORECASE
@@ -392,181 +386,122 @@ def extrair_seo_site(url: str) -> dict:
         )
         if m_desc:
             resultado["description"] = _re.sub(r'\s+', ' ', m_desc.group(1)).strip()
-
-        # ── H1 ────────────────────────────────────────────────────
         m_h1 = _re.search(r'<h1[^>]*>(.*?)</h1>', html, _re.IGNORECASE | _re.DOTALL)
         if m_h1:
             resultado["h1"] = _re.sub(r'<[^>]+>', '', m_h1.group(1)).strip()
-
-        # ── H2s ───────────────────────────────────────────────────
         h2s = _re.findall(r'<h2[^>]*>(.*?)</h2>', html, _re.IGNORECASE | _re.DOTALL)
         resultado["h2s"] = [
             _re.sub(r'<[^>]+>', '', h).strip()
             for h in h2s if _re.sub(r'<[^>]+>', '', h).strip()
         ][:6]
 
-        # ══════════════════════════════════════════════════════════
-        # CANAIS DE CONTATO
-        # ══════════════════════════════════════════════════════════
+        # ── Canais de Contato ─────────────────────────────────────
         ct = {}
 
-        # ── WhatsApp ──────────────────────────────────────────────
+        # WhatsApp
         wa = _re.findall(
             r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=]?(\d{8,15})',
             html, _re.IGNORECASE
         )
         ct["whatsapp"] = wa[0] if wa else ""
 
-        # ── Telefone ──────────────────────────────────────────────
+        # Telefone (href="tel:...")
         tel = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
         ct["telefone"] = tel[0].strip() if tel else ""
 
-        # ── E-mail ────────────────────────────────────────────────
+        # E-mail (href="mailto:...")
         mail = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
         mail = [m for m in mail if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
         ct["email"] = mail[0] if mail else ""
 
-        # ── Redes sociais ─────────────────────────────────────────
-        ig = _re.findall(
-            r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
+        # Chat ao vivo
+        ct["chat_ao_vivo"] = bool(_re.search(
+            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift)',
             html, _re.IGNORECASE
-        )
-        ig = [i for i in ig if i.lower() not in (
-            'p','reel','reels','explore','stories','tv','share','accounts'
-        )]
-        ct["instagram"] = ig[0] if ig else ""
+        ))
 
-        fb = _re.findall(
-            r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
-            html, _re.IGNORECASE
-        )
-        fb = [f for f in fb if f.lower() not in (
-            'sharer','share','tr','login','dialog','plugins','photo','watch'
-        )]
-        ct["facebook"] = fb[0] if fb else ""
-
-        li = _re.findall(
-            r'linkedin\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
-            html, _re.IGNORECASE
-        )
-        ct["linkedin"] = li[0] if li else ""
-
-        yt = _re.findall(
-            r'youtube\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
-            html, _re.IGNORECASE
-        )
-        ct["youtube"] = yt[0] if yt else ""
-
-        # ── Formulário de contato ─────────────────────────────────
+        # Formulário de contato
         ct["formulario"] = bool(_re.search(
             r'<form[^>]*>.{0,600}(contato|contact|mensagem|message|nome|name|fale)',
             html, _re.IGNORECASE | _re.DOTALL
         ))
 
-        # ══════════════════════════════════════════════════════════
-        # BOTÃO FLUTUANTE — hierarquia clara para evitar duplicidade
-        # com chat_ao_vivo e falsos positivos de CSS genérico
-        # ══════════════════════════════════════════════════════════
-
-        # Plataformas que se manifestam como WIDGET FLUTUANTE visível
-        # (bolinha/fab no canto da tela) — NÃO são chat_ao_vivo puro
-        _WIDGET_FLUTUANTE = _re.compile(
-            r'(tawk\.to|tidio|jivochat|crisp\.chat|smartsupp'
-            r'|olark|chaport|chatra|userlike|liveagent'
-            r'|leadster|octadesk|blip\.ai|take\.net'
-            r'|zopim|drift\.com|omnisend|sendpulse)',
-            _re.IGNORECASE
-        )
-
-        # Plataformas de chat ao vivo MAS sem widget flutuante típico
-        # (integradas via painel/embed sem bolinha fixa)
-        _CHAT_PURO = _re.compile(
-            r'(intercom|freshchat|zendesk|hubspot.*chat'
-            r'|salesforce.*chat|livechat\.com)',
-            _re.IGNORECASE
-        )
-
-        # 1. Script src ou conteúdo inline com lib de widget flutuante
-        def _script_text(tag):
-            return (tag.get("src") or "") + (tag.string or "")
-
-        _fab_script = any(
-            _WIDGET_FLUTUANTE.search(_script_text(t))
-            for t in _soup.find_all("script")
-        )
-
-        # 2. Iframe de widget flutuante
-        _fab_iframe = any(
-            _WIDGET_FLUTUANTE.search(t.get("src") or "")
-            for t in _soup.find_all("iframe")
-        )
-
-        # 3. class/id com semântica de FAB/flutuante — padrões cirúrgicos
-        #    (evita float-left, sticky-header, fixed-top etc.)
-        _FAB_NAMES = _re.compile(
-            r'(whatsapp[-_]?(btn|button|widget|icon|bubble|float|fab)'
-            r'|chat[-_]?(launcher|bubble|fab|float|widget[-_]?btn)'
-            r'|fab[-_]?(btn|button|icon|chat|whats)'
-            r'|floating[-_]?(btn|button|chat|cta|whats|action|icon)'
-            r'|sticky[-_]?(chat|whats|cta|fab|contact)'
-            r'|fixed[-_]?(chat|whats|cta|fab|contact[-_]?btn)'
-            r'|cta[-_]?(float|fab|fixed[-_]?btn)'
-            r'|widget[-_]?(float|fab|fixed))',
-            _re.IGNORECASE
-        )
-        _fab_elem = any(
-            _FAB_NAMES.search(
-                " ".join(t.get("class") or []) + " " + (t.get("id") or "")
-            )
-            for t in _soup.find_all(True)
-        )
-
-        # 4. wa.me link dentro de elemento com position:fixed no style inline
-        #    (botão WhatsApp flutuante sem classe semântica)
-        _wa_fixed_tags = _soup.find_all(
-            href=_re.compile(r'wa\.me|whatsapp\.com/send', _re.IGNORECASE)
-        ) + _soup.find_all(
-            attrs={"style": _re.compile(r'position\s*:\s*(fixed|sticky)', _re.IGNORECASE)}
-        )
-        _fab_wa_inline = len(_wa_fixed_tags) > 0
-
+        # Botão/widget flutuante — detecção ampliada
         ct["botao_flutuante"] = bool(
-            _fab_script or _fab_iframe or _fab_elem or _fab_wa_inline
+            _re.search(
+                r'(whatsapp[-_]?(button|widget|float|fixed|sticky|fab)'
+                r'|float(ing)?[-_]?(button|btn|whats|chat|cta|action)'
+                r'|fixed[-_]?(button|btn|cta|whats|chat|widget|action)'
+                r'|fab[-_]?button|sticky[-_]?(button|btn|cta|chat)'
+                r'|btn[-_]?float|button[-_]?fixed'
+                r'|zopim|tawk|crisp|jivochat|tidio|drift|intercom|freshchat)',
+                html, _re.IGNORECASE
+            ) or _re.search(
+                r'position\s*:\s*(fixed|sticky).{0,500}'
+                r'(button|btn|cta|chat|contato|whats|fale|ajuda|help|atendimento|speak|flutuante|float)',
+                html, _re.IGNORECASE | _re.DOTALL
+            ) or _re.search(
+                r'(button|btn|cta|chat|contato|whats|fale|ajuda|atendimento).{0,500}'
+                r'position\s*:\s*(fixed|sticky)',
+                html, _re.IGNORECASE | _re.DOTALL
+            )
         )
 
-        # ── Chat ao vivo ──────────────────────────────────────────
-        # Positivo se encontrou lib de chat_puro OU widget flutuante
-        # (todo widget flutuante de chat também é chat ao vivo)
-        _chat_script = any(
-            (_CHAT_PURO.search(_script_text(t)) or _WIDGET_FLUTUANTE.search(_script_text(t)))
-            for t in _soup.find_all("script")
-        )
-        ct["chat_ao_vivo"] = bool(_chat_script or _fab_script or _fab_iframe)
-
-        # ── Popup de saída (exit intent) ──────────────────────────
+        # Popup de saída (exit intent)
         ct["popup_saida"] = bool(_re.search(
             r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal'
             r'|exitIntent|exit_intent|onmouseleave.*modal)',
             html, _re.IGNORECASE
         ))
 
-        # ── Popup de rolagem (scroll trigger) ─────────────────────
+        # Popup de rolagem (scroll trigger)
         ct["popup_rolagem"] = bool(_re.search(
             r'(scroll.{0,20}(popup|modal|trigger|show|banner|offer|lead)'
             r'|scrollDepth|scroll_depth|scrollPercent|scroll.?percent'
             r'|ScrollTrigger|data-scroll-trigger'
             r'|onscroll.{0,50}(modal|popup|show)'
-            r'|(popup|modal).{0,50}scroll'
-            r'|elementor-popup|elementor.*popup.*open'
+            r'|(popup|modal).{0,50}scroll)'
+            r'|elementor-popup|elementor.*popup.*open' 
             r'|data-e-type=["\']section["\'].*popup'
             r'|popup.*elementor-action)',
             html, _re.IGNORECASE
         ))
 
+        # Instagram
+        ig = _re.findall(
+            r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ig = [i for i in ig if i.lower() not in ('p','reel','reels','explore','stories','tv','share','accounts')]
+        ct["instagram"] = ig[0] if ig else ""
+
+        # Facebook
+        fb = _re.findall(
+            r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        fb = [f for f in fb if f.lower() not in ('sharer','share','tr','login','dialog','plugins','photo','watch')]
+        ct["facebook"] = fb[0] if fb else ""
+
+        # LinkedIn
+        li = _re.findall(
+            r'linkedin\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ct["linkedin"] = li[0] if li else ""
+
+        # YouTube
+        yt = _re.findall(
+            r'youtube\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            html, _re.IGNORECASE
+        )
+        ct["youtube"] = yt[0] if yt else ""
+
         resultado["contato"] = ct
+        # ── fim canais de contato ──────────────────────────────────
+
         resultado["status"] = "ok"
         resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
-
     except Exception as e:
         resultado["status"] = f"erro: {e}"
     return resultado
@@ -5149,40 +5084,25 @@ function buildCards() {{
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
 
-        // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
         // ── Canais de Contato — FORA DO ACORDEÃO ──
         // ══════════════════════════════════════════════════
         if (hasSeo) {{
             var ct = c.seo_contato || {{}};
 
-            var tooltips = {{
-                whatsapp:        'Número de WhatsApp encontrado na página',
-                telefone:        'Telefone fixo ou celular encontrado na página',
-                email:           'Endereço de e-mail encontrado na página',
-                instagram:       'Link para perfil do Instagram encontrado',
-                facebook:        'Link para página do Facebook encontrado',
-                linkedin:        'Link para perfil do LinkedIn encontrado',
-                youtube:         'Link para canal do YouTube encontrado',
-                chat_ao_vivo:    'Widget de chat em tempo real detectado (ex: Intercom, Drift)',
-                formulario:      'Formulário de contato detectado — geralmente na página /contato ou seção da home',
-                botao_flutuante: 'Botão flutuante detectado — pode ser WhatsApp, chatbot ou outro CTA fixo na tela',
-                popup_saida:     'Popup de intenção de saída detectado',
-                popup_rolagem:   'Popup acionado por rolagem de página detectado',
-            }};
-
             var checks = [
-                {{ key: 'whatsapp',        label: 'WhatsApp',       grupo: 'contato'  }},
-                {{ key: 'telefone',        label: 'Telefone',        grupo: 'contato'  }},
-                {{ key: 'email',           label: 'E-mail',          grupo: 'contato'  }},
-                {{ key: 'instagram',       label: 'Instagram',       grupo: 'redes'    }},
-                {{ key: 'facebook',        label: 'Facebook',        grupo: 'redes'    }},
-                {{ key: 'linkedin',        label: 'LinkedIn',        grupo: 'redes'    }},
-                {{ key: 'youtube',         label: 'YouTube',         grupo: 'redes'    }},
-                {{ key: 'chat_ao_vivo',    label: 'Chat ao vivo',   grupo: 'recursos' }},
-                {{ key: 'formulario',      label: 'Formulário',      grupo: 'recursos' }},
-                {{ key: 'botao_flutuante', label: 'Btn. flutuante',  grupo: 'recursos' }},
-                {{ key: 'popup_saida',     label: 'Popup saída',     grupo: 'recursos' }},
-                {{ key: 'popup_rolagem',   label: 'Popup rolagem',   grupo: 'recursos' }},
+                {{ key: 'whatsapp',        icon: '💬', label: 'WhatsApp',      grupo: 'contato'  }},
+                {{ key: 'telefone',        icon: '📞', label: 'Telefone',       grupo: 'contato'  }},
+                {{ key: 'email',           icon: '✉️',  label: 'E-mail',         grupo: 'contato'  }},
+                {{ key: 'instagram',       icon: '📸', label: 'Instagram',      grupo: 'redes'    }},
+                {{ key: 'facebook',        icon: '👥', label: 'Facebook',       grupo: 'redes'    }},
+                {{ key: 'linkedin',        icon: '💼', label: 'LinkedIn',       grupo: 'redes'    }},
+                {{ key: 'youtube',         icon: '▶️',  label: 'YouTube',        grupo: 'redes'    }},
+                {{ key: 'chat_ao_vivo',    icon: '🗨️', label: 'Chat ao vivo',  grupo: 'recursos' }},
+                {{ key: 'formulario',      icon: '📋', label: 'Formulário',     grupo: 'recursos' }},
+                {{ key: 'botao_flutuante', icon: '🔘', label: 'Btn. flutuante', grupo: 'recursos' }},
+                {{ key: 'popup_saida',     icon: '🚪', label: 'Popup saída',    grupo: 'recursos' }},
+                {{ key: 'popup_rolagem',   icon: '📜', label: 'Popup rolagem',  grupo: 'recursos' }},
             ];
 
             function renderGrupoContato(titulo, grupo) {{
@@ -5192,18 +5112,13 @@ function buildCards() {{
                     + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
                 itens.forEach(function(ch) {{
                     var ativo = !!ct[ch.key];
-                    var tip   = tooltips[ch.key] || '';
-                    var statusTxt = ativo
-                        ? '<span style="font-size:10px;font-weight:800;color:#15803d;">✓</span> '
-                        : '<span style="font-size:10px;font-weight:800;color:#9ca3af;">✗</span> ';
-                    h += '<div title="' + tip + '" style="'
-                        + 'display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
-                        + 'padding:3px 10px;border-radius:20px;white-space:nowrap;cursor:help;'
+                    h += '<div style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;'
+                        + 'padding:3px 10px;border-radius:20px;white-space:nowrap;'
                         + (ativo
                             ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
                             : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.55;')
                         + '">'
-                        + statusTxt + ch.label
+                        + (ativo ? '✓' : '✗') + ' ' + ch.icon + ' ' + ch.label
                         + '</div>';
                 }});
                 h += '</div>';
@@ -5216,7 +5131,7 @@ function buildCards() {{
                     + 'border:1px solid #e5e7eb;border-radius:12px;';
                 ctBlock.innerHTML =
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div>'
+                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📞 Canais de Contato</div>'
                     + renderGrupoContato('Contato Direto', 'contato')
                     + renderGrupoContato('Redes Sociais', 'redes')
                     + renderGrupoContato('Recursos de Engajamento', 'recursos');

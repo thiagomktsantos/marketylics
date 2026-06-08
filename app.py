@@ -3171,7 +3171,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "seo_h2s":          seo.get("h2s", []),
                     "seo_status":       seo.get("status", ""),
                     "seo_extraido_em":  seo.get("extraido_em", ""),
-                    "contato":        seo.get("contato", {})
+                    "contato":        seo.get("contato", {}),
                     "sitemap_urls":     sitemap.get("urls", []),
                     "sitemap_total":    sitemap.get("total", 0),
                     "sitemap_status":   sitemap.get("status", ""),              

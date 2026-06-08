@@ -4892,7 +4892,7 @@ function buildCards() {{
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
 
-// ══════════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════════
         // ── Termos e Palavras Mais Usados ──
         // ══════════════════════════════════════════════════════════════
         if (hasSeo) {{
@@ -4913,18 +4913,65 @@ function buildCards() {{
                 'also','their','which','about','when','than','its','into','been'
             ]);
 
-            var words = textoFull.toLowerCase()
+            var tokens = textoFull.toLowerCase()
                 .replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi, ' ')
                 .split(/\s+/)
-                .filter(function(w) {{
-                    return w.length >= 4 && !stopWords.has(w);
-                }});
+                .filter(function(w) {{ return w.length >= 2; }});
 
-            var freq = {{}};
-            words.forEach(function(w) {{ freq[w] = (freq[w] || 0) + 1; }});
+            // Contar bigramas (pares adjacentes, excluindo stopwords nas extremidades)
+            var freqBi = {{}};
+            for (var bi = 0; bi < tokens.length - 1; bi++) {{
+                var w1 = tokens[bi], w2 = tokens[bi + 1];
+                if (w1.length >= 3 && w2.length >= 3 && !stopWords.has(w1) && !stopWords.has(w2)) {{
+                    var pair = w1 + ' ' + w2;
+                    freqBi[pair] = (freqBi[pair] || 0) + 1;
+                }}
+            }}
 
-            var topWords = Object.keys(freq)
-                .map(function(w) {{ return {{ word: w, count: freq[w] }}; }})
+            // Contar unigramas (apenas não-stopwords com 4+ chars)
+            var freqUni = {{}};
+            tokens.forEach(function(w) {{
+                if (w.length >= 4 && !stopWords.has(w)) {{
+                    freqUni[w] = (freqUni[w] || 0) + 1;
+                }}
+            }});
+
+            // Bigramas que aparecem 2+ vezes entram na lista final
+            // e "consomem" as palavras individuais para evitar duplicidade
+            var usedInBigram = new Set();
+            var combined = [];
+
+            Object.keys(freqBi).forEach(function(pair) {{
+                if (freqBi[pair] >= 2) {{
+                    var parts = pair.split(' ');
+                    usedInBigram.add(parts[0]);
+                    usedInBigram.add(parts[1]);
+                    combined.push({{ word: pair, count: freqBi[pair], bigram: true }});
+                }}
+            }});
+
+            // Bigramas que aparecem 1x: só entram se ambas as palavras
+            // aparecem juntas mais do que sozinhas (heurística de coesão)
+            Object.keys(freqBi).forEach(function(pair) {{
+                if (freqBi[pair] === 1) {{
+                    var parts = pair.split(' ');
+                    var coesao = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
+                    if (coesao && !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1])) {{
+                        usedInBigram.add(parts[0]);
+                        usedInBigram.add(parts[1]);
+                        combined.push({{ word: pair, count: 1, bigram: true }});
+                    }}
+                }}
+            }});
+
+            // Unigramas restantes (não absorvidos por bigramas)
+            Object.keys(freqUni).forEach(function(w) {{
+                if (!usedInBigram.has(w)) {{
+                    combined.push({{ word: w, count: freqUni[w], bigram: false }});
+                }}
+            }});
+
+            var topWords = combined
                 .sort(function(a, b) {{ return b.count - a.count; }})
                 .slice(0, 16);
 

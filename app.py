@@ -4904,13 +4904,18 @@ function buildCards() {{
 
             var stopWords = new Set([
                 'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
-                'para','por','com','que','se','na','no','nas','nos','ao','aos',
+                'para','por','com','que','se','na','no','nas','nos','ao','aos','à','às',
                 'mais','ou','mas','como','são','sua','seu','suas','seus','esta','este',
                 'essa','esse','pelo','pela','pelos','pelas','ser','ter','pode','todo',
-                'toda','todos','todas','entre','até','the','and','of','to','in','is',
-                'it','for','on','with','that','this','are','from','at','an','be','by',
-                'not','or','was','we','our','your','have','has','will','can','more',
-                'also','their','which','about','when','than','its','into','been'
+                'toda','todos','todas','entre','até','já','pra','pro','pros','pras',
+                'vai','vão','tem','têm','bem','sim','não','sem','só','já','lá','cá',
+                'dia','ano','mês','vez','vez','aqui','ali','você','voce','azul','além',
+                'anos','dias','meses','vezes','isso','isto','aquilo','tudo','nada',
+                'muito','muita','muitos','muitas','pouco','poucos','poucas',
+                'the','and','of','to','in','is','it','for','on','with','that','this',
+                'are','from','at','an','be','by','not','or','was','we','our','your',
+                'have','has','will','can','more','also','their','which','about',
+                'when','than','its','into','been','they','them','what','who',
             ]);
 
             var tokens = textoFull.toLowerCase()
@@ -4918,62 +4923,67 @@ function buildCards() {{
                 .split(/\s+/)
                 .filter(function(w) {{ return w.length >= 2; }});
 
-            // Contar bigramas (pares adjacentes, excluindo stopwords nas extremidades)
+            // Bigramas
             var freqBi = {{}};
             for (var bi = 0; bi < tokens.length - 1; bi++) {{
                 var w1 = tokens[bi], w2 = tokens[bi + 1];
-                if (w1.length >= 3 && w2.length >= 3 && !stopWords.has(w1) && !stopWords.has(w2)) {{
+                if (
+                    w1.length >= 3 && w2.length >= 3 &&
+                    !stopWords.has(w1) && !stopWords.has(w2) &&
+                    w1 !== w2
+                ) {{
                     var pair = w1 + ' ' + w2;
                     freqBi[pair] = (freqBi[pair] || 0) + 1;
                 }}
             }}
 
-            // Contar unigramas (apenas não-stopwords com 4+ chars)
+            // Unigramas
             var freqUni = {{}};
             tokens.forEach(function(w) {{
-                if (w.length >= 4 && !stopWords.has(w)) {{
+                if (w.length >= 5 && !stopWords.has(w)) {{
                     freqUni[w] = (freqUni[w] || 0) + 1;
                 }}
             }});
 
-            // Bigramas que aparecem 2+ vezes entram na lista final
-            // e "consomem" as palavras individuais para evitar duplicidade
             var usedInBigram = new Set();
             var combined = [];
 
+            // Bigramas com 2+ ocorrências — entram direto
             Object.keys(freqBi).forEach(function(pair) {{
                 if (freqBi[pair] >= 2) {{
                     var parts = pair.split(' ');
                     usedInBigram.add(parts[0]);
                     usedInBigram.add(parts[1]);
-                    combined.push({{ word: pair, count: freqBi[pair], bigram: true }});
+                    combined.push({{ word: pair, count: freqBi[pair] }});
                 }}
             }});
 
-            // Bigramas que aparecem 1x: só entram se ambas as palavras
-            // aparecem juntas mais do que sozinhas (heurística de coesão)
+            // Bigramas com 1 ocorrência — só entram se ambas as palavras têm 5+ chars
+            // e não aparecem em outros bigramas já aceitos
             Object.keys(freqBi).forEach(function(pair) {{
                 if (freqBi[pair] === 1) {{
                     var parts = pair.split(' ');
-                    var coesao = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
-                    if (coesao && !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1])) {{
+                    var ambosLongos = parts[0].length >= 5 && parts[1].length >= 5;
+                    var naoUsados   = !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1]);
+                    var ambosRaros  = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
+                    if (ambosLongos && naoUsados && ambosRaros) {{
                         usedInBigram.add(parts[0]);
                         usedInBigram.add(parts[1]);
-                        combined.push({{ word: pair, count: 1, bigram: true }});
+                        combined.push({{ word: pair, count: 1 }});
                     }}
                 }}
             }});
 
-            // Unigramas restantes (não absorvidos por bigramas)
+            // Unigramas restantes
             Object.keys(freqUni).forEach(function(w) {{
                 if (!usedInBigram.has(w)) {{
-                    combined.push({{ word: w, count: freqUni[w], bigram: false }});
+                    combined.push({{ word: w, count: freqUni[w] }});
                 }}
             }});
 
             var topWords = combined
                 .sort(function(a, b) {{ return b.count - a.count; }})
-                .slice(0, 16);
+                .slice(0, 14);
 
             if (topWords.length > 0) {{
                 var maxCount = topWords[0].count;

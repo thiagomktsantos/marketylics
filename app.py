@@ -4898,49 +4898,76 @@ function buildCards() {{
         if (hasSeo) {{
             var textoFull = [
                 c.seo_title || '',
-                c.seo_h1 || '',
-                c.seo_desc || '',
+                c.seo_h1    || '',
+                c.seo_desc  || '',
             ].concat(c.seo_h2s || []).join(' ');
 
             var stopWords = new Set([
                 'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
                 'para','por','com','que','se','na','no','nas','nos','ao','aos','à','às',
                 'mais','ou','mas','como','são','sua','seu','suas','seus','esta','este',
-                'essa','esse','pelo','pela','pelos','pelas','ser','ter','pode','todo',
-                'toda','todos','todas','entre','até','já','pra','pro','pros','pras',
-                'vai','vão','tem','têm','bem','sim','não','sem','só','já','lá','cá',
-                'dia','ano','mês','vez','vez','aqui','ali','você','voce','azul','além',
-                'anos','dias','meses','vezes','isso','isto','aquilo','tudo','nada',
+                'essa','esse','pelo','pela','pelos','pelas','entre','até','já','pra','pro',
+                'pros','pras','vai','vão','tem','têm','bem','sim','não','sem','só',
+                'lá','cá','você','voce','além','isso','isto','aquilo','tudo','nada',
                 'muito','muita','muitos','muitas','pouco','poucos','poucas',
+                'dia','ano','mês','vez','aqui','ali','anos','dias','meses','vezes',
+                'todo','toda','todos','todas','ser','ter','pode','nosso','nossa',
+                'nossos','nossas','qual','quais','quando','onde','quem','porque',
+                'clique','clicar','acesse','acessar','saiba','saber','veja','ver',
+                'descubra','descobrir','confira','conferir','fale','contate','contatar',
+                'receba','receber','envie','enviar','inscreva','inscrever','baixe','baixar',
+                'assine','assinar','comece','começar','inicie','iniciar','experimente',
+                'testar','teste','ligue','ligar','entrar','entre','sair','voltar',
+                'conheça','conhecer','aprenda','aprender','entenda','entender',
+                'ofereça','oferecer','oferecendo','garantir','garanta','crescer','cresça',
+                'facilitar','facilitamos','acabar','acabam','ajudar','ajudamos',
+                'transformar','transformamos','impulsionar','realizar','realizamos',
+                'promover','promovemos','permitir','permitimos','gerar','geramos',
+                'presentes','presença','presente','melhor','melhorar','grande','maior',
+                'menor','rápido','fácil','simples','novo','nova','novos','novas',
+                'completo','completa','completos','completas','único','única',
+                'especial','especiais','perfeito','perfeita','ideal','principais',
+                'principal','importante','importantes','eficiente','eficientes',
+                'inovador','inovadora','moderno','moderna','avançado','avançada',
                 'the','and','of','to','in','is','it','for','on','with','that','this',
                 'are','from','at','an','be','by','not','or','was','we','our','your',
                 'have','has','will','can','more','also','their','which','about',
                 'when','than','its','into','been','they','them','what','who',
             ]);
 
-            var tokens = textoFull.toLowerCase()
-                .replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi, ' ')
-                .split(/\s+/)
-                .filter(function(w) {{ return w.length >= 2; }});
+            function isVerbLike(w) {{
+                return /^(clica|acessa|saib|vej|descubr|confir|receb|envi|inscrev|baix|assin|comec|inici|experim|lig|entr|conhec|aprend|entend|ofer|garant|cresc|facilit|acab|ajud|transform|impulsion|realiz|promov|permit|ger|apresent|mostr|demonstr|ilustr|explor|desenvolv)/.test(w);
+            }}
 
-            // Bigramas
-            var freqBi = {{}};
+            var textoNorm = textoFull
+                .toLowerCase()
+                .replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi, ' ');
+
+            var tokens = textoNorm.split(/\s+/).filter(function(w) {{ return w.length >= 2; }});
+
+            function bigramKey(w1, w2) {{
+                return [w1, w2].sort().join('|');
+            }}
+
+            var freqBiRaw = {{}};
             for (var bi = 0; bi < tokens.length - 1; bi++) {{
                 var w1 = tokens[bi], w2 = tokens[bi + 1];
                 if (
                     w1.length >= 3 && w2.length >= 3 &&
                     !stopWords.has(w1) && !stopWords.has(w2) &&
-                    w1 !== w2
+                    !isVerbLike(w1)   && !isVerbLike(w2)
                 ) {{
-                    var pair = w1 + ' ' + w2;
-                    freqBi[pair] = (freqBi[pair] || 0) + 1;
+                    var bk = bigramKey(w1, w2);
+                    if (!freqBiRaw[bk]) {{
+                        freqBiRaw[bk] = {{ count: 0, displayPair: w1 + ' ' + w2 }};
+                    }}
+                    freqBiRaw[bk].count++;
                 }}
             }}
 
-            // Unigramas
             var freqUni = {{}};
             tokens.forEach(function(w) {{
-                if (w.length >= 5 && !stopWords.has(w)) {{
+                if (w.length >= 5 && !stopWords.has(w) && !isVerbLike(w)) {{
                     freqUni[w] = (freqUni[w] || 0) + 1;
                 }}
             }});
@@ -4948,37 +4975,41 @@ function buildCards() {{
             var usedInBigram = new Set();
             var combined = [];
 
-            // Bigramas com 2+ ocorrências — entram direto
-            Object.keys(freqBi).forEach(function(pair) {{
-                if (freqBi[pair] >= 2) {{
-                    var parts = pair.split(' ');
+            Object.keys(freqBiRaw).forEach(function(bk) {{
+                var entry = freqBiRaw[bk];
+                if (entry.count >= 2) {{
+                    var parts = bk.split('|');
                     usedInBigram.add(parts[0]);
                     usedInBigram.add(parts[1]);
-                    combined.push({{ word: pair, count: freqBi[pair] }});
+                    combined.push({{ word: entry.displayPair, count: entry.count }});
                 }}
             }});
 
-            // Bigramas com 1 ocorrência — só entram se ambas as palavras têm 5+ chars
-            // e não aparecem em outros bigramas já aceitos
-            Object.keys(freqBi).forEach(function(pair) {{
-                if (freqBi[pair] === 1) {{
-                    var parts = pair.split(' ');
+            Object.keys(freqBiRaw).forEach(function(bk) {{
+                var entry = freqBiRaw[bk];
+                if (entry.count === 1) {{
+                    var parts = bk.split('|');
                     var ambosLongos = parts[0].length >= 5 && parts[1].length >= 5;
                     var naoUsados   = !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1]);
                     var ambosRaros  = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
-                    if (ambosLongos && naoUsados && ambosRaros) {{
+                    var naoGenerico = parts[0].length >= 4 && parts[1].length >= 4;
+                    if (ambosLongos && naoUsados && ambosRaros && naoGenerico) {{
                         usedInBigram.add(parts[0]);
                         usedInBigram.add(parts[1]);
-                        combined.push({{ word: pair, count: 1 }});
+                        combined.push({{ word: entry.displayPair, count: 1 }});
                     }}
                 }}
             }});
 
-            // Unigramas restantes
             Object.keys(freqUni).forEach(function(w) {{
                 if (!usedInBigram.has(w)) {{
                     combined.push({{ word: w, count: freqUni[w] }});
                 }}
+            }});
+
+            combined = combined.filter(function(item) {{
+                var parts = item.word.split(' ');
+                return parts.every(function(p) {{ return p.length >= 3; }});
             }});
 
             var topWords = combined

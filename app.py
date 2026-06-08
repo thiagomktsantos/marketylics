@@ -400,7 +400,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # WhatsApp
         wa = _re.findall(
-            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=](\d{8,15})',
+            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=]?(\d{8,15})',
             html, _re.IGNORECASE
         )
         ct["whatsapp"] = wa[0] if wa else ""
@@ -460,7 +460,10 @@ def extrair_seo_site(url: str) -> dict:
             r'|scrollDepth|scroll_depth|scrollPercent|scroll.?percent'
             r'|ScrollTrigger|data-scroll-trigger'
             r'|onscroll.{0,50}(modal|popup|show)'
-            r'|(popup|modal).{0,50}scroll)',
+            r'|(popup|modal).{0,50}scroll)'
+            r'|elementor-popup|elementor.*popup.*open' 
+            r'|data-e-type=["\']section["\'].*popup'
+            r'|popup.*elementor-action)',
             html, _re.IGNORECASE
         ))
 

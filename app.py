@@ -12656,7 +12656,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
         # ══════════════════════════════════════════════════════════════
         
         resultados_ia_btns = {}
-        or btn_sfx in ["postagens", "geral"]:
+        for btn_sfx in ["postagens", "geral"]:
             ghost_k_ia = f"btn_{btn_sfx}_{aba_ativa}_ia"
             st.markdown(f"""
             <style>

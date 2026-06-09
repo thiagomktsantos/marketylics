@@ -11552,6 +11552,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
+                    st.session_state[chave_bio_ia] = ""
                     st.session_state.redes_main_tab = "analise"
                     st.session_state.redes_analise_subtab = "bio"
                     st.rerun()

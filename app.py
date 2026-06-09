@@ -11285,10 +11285,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .cards-grid {{
     display:grid;
-    grid-template-columns: repeat(3,1fr) auto;
+    grid-template-columns: repeat(3,1fr);
     gap:15px;
     padding:15px;
-    align-items:stretch;
 }}
 .emp-card {{
     background:#f9fafb;
@@ -11346,7 +11345,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 </style>
 <div class="main-wrap">
-    <div class="cards-grid" id="cards-grid"></div>
+    <div class="cards-grid" id="cards-grid" style="grid-template-columns: repeat(3,1fr) auto;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11413,7 +11412,7 @@ function syncHeight() {{
     for (var i = 0; i < frames.length; i++) {{
         try {{ if (frames[i].contentWindow === window) {{
             frames[i].style.height = (h + 2) + 'px';
-            frames[i].style.marginTop = '-140px';
+            frames[i].style.marginTop = '-62px';
             break;
         }} }} catch(e) {{}}
     }}
@@ -11424,7 +11423,7 @@ document.addEventListener('DOMContentLoaded', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
-""", height=200, scrolling=False)
+""", height=100, scrolling=False)
 
         # ── Dados do perfil ativo ────────────────────────────────────
         r = ok[aba_ativa]

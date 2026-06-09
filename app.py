@@ -13098,23 +13098,49 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             close_all()
             html = '\n'.join(output)
 
-            # ── Pós-processamento: envolve seções especiais em caixas ──
+            # ── Pós-processamento: envolve seções em caixas ──
             BOX_RULES = [
-                (r'(pontos?\s+forte[s]?[^<]*|positivo[s]?[^<]*|destaques?[^<]*)',
+                # ── VERDE: pontos positivos / fortes / destaques
+                (r'(pontos?\s+forte[s]?|positivo[s]?|destaques?|quem\s+se\s+destaca|o\s+que\s+funciona|o\s+que\s+est[aá]\s+funcionando|aspectos?\s+positivos?|qualidade[s]?)',
                  '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                (r'(o\s+que\s+melhorar[^<]*|pontos?\s+de\s+aten[çc][ãa]o[^<]*|fraqueza[s]?[^<]*)',
+                # ── AMARELO: melhorias / atenção / fraquezas
+                (r'(o\s+que\s+melhorar|pontos?\s+de\s+aten[çc][ãa]o|fraqueza[s]?|clareza|inconsist[eê]ncia[s]?|o\s+que\s+pode\s+melhorar|limita[çc][õo]e[s]?|gaps?)',
                  '#d97706', '#fffbeb', '#fde68a', '💡'),
-                (r'(recomenda[çc][õo]e[s]?[^<]*|a[çc][õo]e[s]?\s+concreta[s]?[^<]*|pr[oó]ximos?\s+passo[s]?[^<]*)',
+                # ── AZUL: recomendações / ações / bio/caption sugeridos
+                (r'(recomenda[çc][õo]e[s]?|a[çc][õo]e[s]?\s+concreta[s]?|pr[oó]ximos?\s+passo[s]?|sugest[õo]e[s]?|como\s+melhorar|plano\s+de\s+a[çc][ãa]o|bio\s+sugerida|caption[s]?\s+sugerido[s]?|legenda[s]?\s+sugerida[s]?|copy\s+sugerido|texto[s]?\s+sugerido[s]?|exemplo[s]?\s+de\s+copy|exemplo[s]?\s+de\s+caption|exemplo[s]?\s+de\s+legenda)',
                  '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(oportunidade[s]?[^<]*)',
+                # ── ROXO: oportunidades / estratégia / crescimento
+                (r'(oportunidade[s]?|estrat[eé]gia[s]?|crescimento|potencial|expans[ãa]o|nichos?|mercado[s]?|tend[eê]ncia[s]?)',
                  '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
+                # ── CIANO: visão geral / análise geral / comparativo
+                (r'(vis[ãa]o\s+geral|an[aá]lise\s+geral|an[aá]lise\s+comparativa|vis[ãa]o\s+geral\s+comparativa|contexto|panorama|resumo\s+geral|overview)',
+                 '#0891b2', '#ecfeff', '#a5f3fc', '📊'),
+                # ── ÍNDIGO: posicionamento / identidade / tom de voz
+                (r'(posicionamento|identidade|tom\s+de\s+voz|persona|voz\s+da\s+marca|proposta\s+de\s+valor|diferencial)',
+                 '#4f46e5', '#eef2ff', '#c7d2fe', '🎨'),
+                # ── ROSA: engajamento / métricas / desempenho
+                (r'(engajamento|m[eé]trica[s]?|desempenho|resultado[s]?|performance|taxa[s]?|alcance|impress[õo]e[s]?|frequ[eê]ncia|cad[eê]ncia|consist[eê]ncia)',
+                 '#db2777', '#fdf2f8', '#fbcfe8', '📈'),
+                # ── LARANJA: criativos / visual / estética / formato
+                (r'(criativo[s]?|visual|est[eé]tica|formato[s]?|design|imagens?|v[ií]deos?|reels?|stories?|carrossel[s]?|layout|paleta)',
+                 '#ea580c', '#fff7ed', '#fed7aa', '🖼️'),
+                # ── VERDE-ESCURO: hashtags / SEO / descoberta
+                (r'(hashtag[s]?|seo|descoberta|palavras?\s*[- ]?\s*chave|busca|indexa[çc][ãa]o|alcance\s+org[âa]nico)',
+                 '#059669', '#ecfdf5', '#a7f3d0', '#️⃣'),
+                # ── CINZA-AZULADO: análise de bio / perfil atual
+                (r'(an[aá]lise\s+d[ao]\s+bio|an[aá]lise\s+d[ao]\s+perfil|sobre\s+o\s+perfil|apresenta[çc][ãa]o|descri[çc][ãa]o\s+d[ao]\s+perfil|bio\s+atual)',
+                 '#475569', '#f8fafc', '#cbd5e1', '👤'),
+                # ── TEAL: público-alvo / audiência / segmento
+                (r'(p[úu]blico[- ]alvo|audi[êe]ncia|segmento|seguidor[es]?|comunidade|nicho\s+de\s+p[úu]blico)',
+                 '#0d9488', '#f0fdfa', '#99f6e4', '🎯'),
             ]
+
+            FALLBACK_BOX = ('#1e40af', '#f0f9ff', '#bae6fd', '📋')
 
             def _wrap_section(html_str):
                 import re as _r2
-                result = html_str
 
-                partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', result, flags=_r2.DOTALL)
+                partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
 
                 output_parts = []
                 i2 = 0
@@ -13122,28 +13148,39 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     parte = partes[i2]
                     m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
-                        hdr_txt  = m_hdr.group(2)
-                        conteudo = partes[i2 + 1] if i2 + 1 < len(partes) else ""
+                        hdr_txt       = m_hdr.group(2)
+                        hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
+                        conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
 
                         matched_box = False
                         for pattern, border, bg, border_light, icon in BOX_RULES:
-                            if _r2.search(pattern, hdr_txt, flags=_r2.IGNORECASE):
+                            if _r2.search(pattern, hdr_txt_clean, flags=_r2.IGNORECASE):
                                 caixa = (
                                     f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
                                     f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
                                     f'<div style="font-size:13px;font-weight:800;color:{border};'
                                     f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                                    f'{icon} {hdr_txt}</div>'
+                                    f'{icon} {hdr_txt_clean}</div>'
                                     f'<div>{conteudo}</div>'
                                     f'</div>'
                                 )
                                 output_parts.append(caixa)
                                 matched_box = True
                                 break
+
                         if not matched_box:
-                            output_parts.append(parte)
-                            output_parts.append(conteudo)
+                            border, bg, border_light, icon = FALLBACK_BOX
+                            caixa = (
+                                f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
+                                f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
+                                f'<div style="font-size:13px;font-weight:800;color:{border};'
+                                f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                                f'{icon} {hdr_txt_clean}</div>'
+                                f'<div>{conteudo}</div>'
+                                f'</div>'
+                            )
+                            output_parts.append(caixa)
                     else:
                         output_parts.append(parte)
                     i2 += 1

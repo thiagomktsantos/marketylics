@@ -11285,9 +11285,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .cards-grid {{
     display:grid;
-    grid-template-columns: repeat(3,1fr);
+    grid-template-columns: repeat(3,1fr) auto;
     gap:15px;
     padding:15px;
+    align-items:stretch;
 }}
 .emp-card {{
     background:#f9fafb;
@@ -11345,7 +11346,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 </style>
 <div class="main-wrap">
-    <div class="cards-grid" id="cards-grid" style="grid-template-columns: repeat(3,1fr) auto;"></div>
+    <div class="cards-grid" id="cards-grid"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};

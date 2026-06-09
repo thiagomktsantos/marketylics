@@ -13159,7 +13159,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                                 caixa = (
                                     f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
                                     f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
-                                    f'<div style="font-size:13px;font-weight:800;color:{border};'
+                                    f'<div style="font-size:13px;font-weight:800;color:{border};border:2px solid {border}'
                                     f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
                                     f'{icon} {hdr_txt_clean}</div>'
                                     f'<div>{conteudo}</div>'

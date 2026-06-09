@@ -11346,18 +11346,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </style>
 <div class="main-wrap">
     <div class="cards-grid" id="cards-grid"></div>
-    <div style="padding:0 15px 15px;">
-        <button onclick="triggerBtn('redes_comparativo')"
-            style="width:100%;padding:11px 0;border-radius:10px;border:none;
-                   background:#0e2a47;color:#fff;font-size:14px;font-weight:700;
-                   cursor:pointer;font-family:'DM Sans',sans-serif;
-                   display:flex;align-items:center;justify-content:center;gap:8px;
-                   transition:background 0.15s;"
-            onmouseover="this.style.background='#1a3a5c'"
-            onmouseout="this.style.background='#0e2a47'">
-            🏆 Análise Comparativa de IA
-        </button>
-    </div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11388,6 +11376,32 @@ function buildUI() {{
         card.addEventListener('click', function() {{ selectAba(e.i); }});
         grid.appendChild(card);
     }});
+
+    var compCard = document.createElement('div');
+    compCard.style.cssText =
+        'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
+        + 'border:1.5px solid #1e3a5f;border-radius:12px;padding:16px;'
+        + 'display:flex;align-items:center;gap:12px;cursor:pointer;'
+        + 'transition:all 0.15s;';
+    compCard.onmouseover = function() {{
+        this.style.borderColor = '#3a9fd6';
+        this.style.boxShadow = '0 4px 16px rgba(58,159,214,0.25)';
+    }};
+    compCard.onmouseout = function() {{
+        this.style.borderColor = '#1e3a5f';
+        this.style.boxShadow = 'none';
+    }};
+    compCard.innerHTML =
+        '<div style="width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,0.1);'
+        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🏆</div>'
+        + '<div style="flex:1;min-width:0;">'
+        + '<div style="font-size:14px;font-weight:700;color:#ffffff;">Análise Comparativa</div>'
+        + '<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:2px;">Gerar análise com IA</div>'
+        + '</div>'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+    compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
+    grid.appendChild(compCard);
+
     syncHeight();
 }}
 function selectAba(i) {{

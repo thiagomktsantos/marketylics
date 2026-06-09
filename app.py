@@ -4784,20 +4784,8 @@ body {{ padding-bottom:8px; }}
 </style>
 </head>
 <body>
-<div class="main-wrap">
+<div class="outer-wrap">
     <div class="cards-grid" id="cards-grid"></div>
-    <div style="padding:0 15px 15px;">
-        <button onclick="triggerBtn('redes_comparativo')"
-            style="width:100%;padding:11px 0;border-radius:10px;border:none;
-                   background:#0e2a47;color:#fff;font-size:14px;font-weight:700;
-                   cursor:pointer;font-family:'DM Sans',sans-serif;
-                   display:flex;align-items:center;justify-content:center;gap:8px;
-                   transition:background 0.15s;"
-            onmouseover="this.style.background='#1a3a5c'"
-            onmouseout="this.style.background='#0e2a47'">
-            🏆 Análise Comparativa de IA
-        </button>
-    </div>
 </div>
  
 <script>
@@ -8803,19 +8791,26 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <div class="analises-bar-titulo">Gerar análises</div>
             <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nos anúncios.</div>
         </div>
-        <div class="analises-grid" style="grid-template-columns:repeat(2,1fr);">
-            <button class="atalho-card {'done' if (tem_criativo or tem_copy) else ''}" onclick="trigger('postagens_{aba_ativa}')">
-                <div class="atalho-icon-wrap blue">📸</div>
+        <div class="analises-grid">
+            <button class="atalho-card {'done' if tem_criativo_ads else ''}" onclick="triggerBtn('ia_criativos_{sk}')">
+                <div class="atalho-icon-wrap blue">🎨</div>
                 <div class="atalho-text">
-                    <span class="atalho-nome">Analisar postagens</span>
-                    <span class="atalho-desc">{'✅ Gerado' if (tem_criativo or tem_copy) else 'Analise criativos, copy, tom de voz e gatilhos de conversão.'}</span>
+                    <span class="atalho-nome">Analisar criativos</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_criativo_ads else 'Avalie formatos visuais e mix de criativos.'}</span>
                 </div>
             </button>
-            <button class="atalho-card {'done' if tem_geral else ''}" onclick="trigger('geral_{aba_ativa}')">
+            <button class="atalho-card {'done' if tem_copy_ads else ''}" onclick="triggerBtn('ia_copys_{sk}')">
+                <div class="atalho-icon-wrap green">✏️</div>
+                <div class="atalho-text">
+                    <span class="atalho-nome">Analisar copy</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Analise textos, CTAs e tom de voz dos anúncios.'}</span>
+                </div>
+            </button>
+            <button class="atalho-card {'done' if tem_geral_ads else ''}" onclick="triggerBtn('ia_geral_{sk}')">
                 <div class="atalho-icon-wrap purple">📊</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar estratégia</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_geral else 'Avalie posicionamento, oferta, público e oportunidades de crescimento.'}</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_geral_ads else 'Avalie estratégia geral de mídia paga.'}</span>
                 </div>
             </button>
         </div>
@@ -12656,7 +12651,7 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
         # ══════════════════════════════════════════════════════════════
         
         resultados_ia_btns = {}
-        for btn_sfx in ["postagens", "geral"]:
+        for btn_sfx in ["criativo", "copy", "geral"]:
             ghost_k_ia = f"btn_{btn_sfx}_{aba_ativa}_ia"
             st.markdown(f"""
             <style>
@@ -12696,17 +12691,14 @@ Seguidores: {r.get('seguidores',0)} | Posts: {r.get('total_posts',0)} | Eng. mé
 {resumo_posts}
 """
 
-        if resultados_ia_btns["postagens"]:
+        if resultados_ia_btns["criativo"]:
             if gemini_model is None:
-                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+                st.session_state[chave_criativo] = "Configure GEMINI_API_KEY nos secrets."
             else:
                 _ph = st.empty()
-                import datetime as _dt_redes
-                import time as _t
-
-                _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 30, _ph)
+                _render_modal_redes_ia("gerando", f"Criativos — {r['nome']}", 40, _ph)
                 try:
-                    resp_cri = gemini_model.generate_content(f"""
+                    resp = gemini_model.generate_content(f"""
 {perfil_ctx}
 Analise os CRIATIVOS (imagens/vídeos) deste perfil com base nas legendas e métricas.
 Responda em português com:
@@ -12718,21 +12710,36 @@ Responda em português com:
 **O que melhorar:** (2 pontos)
 Seja direto e objetivo.
 """)
-                    st.session_state[chave_criativo] = resp_cri.text
+                    st.session_state[chave_criativo] = resp.text
+                    import datetime as _dt_redes
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Criativos — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp_cri.text,
+                        "relatorio": resp.text,
                         "tipo": "criativos",
                         "perfil": r.get("handle", ""),
                         "nome": r["nome"],
                     })
+                    _render_modal_redes_ia("concluido", f"Criativos — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "criativos"
+                    st.rerun()
                 except Exception as e:
-                    st.toast(f"Erro nos criativos: {e}", icon="⚠️")
+                    _ph.empty()
+                    st.session_state[chave_criativo] = f"Erro: {e}"
+                    st.rerun()
 
-                _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 70, _ph)
+        if resultados_ia_btns["copy"]:
+            if gemini_model is None:
+                st.session_state[chave_copy] = "Configure GEMINI_API_KEY nos secrets."
+            else:
+                _ph = st.empty()
+                _render_modal_redes_ia("gerando", f"Copy — {r['nome']}", 40, _ph)
                 try:
-                    resp_cop = gemini_model.generate_content(f"""
+                    resp = gemini_model.generate_content(f"""
 {perfil_ctx}
 Analise as LEGENDAS (copy) deste perfil Instagram.
 Responda em português com:
@@ -12744,25 +12751,27 @@ Responda em português com:
 **O que melhorar:** (2 pontos)
 Seja direto e objetivo.
 """)
-                    st.session_state[chave_copy] = resp_cop.text
+                    st.session_state[chave_copy] = resp.text
+                    import datetime as _dt_redes
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Copy — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp_cop.text,
+                        "relatorio": resp.text,
                         "tipo": "copy",
                         "perfil": r.get("handle", ""),
                         "nome": r["nome"],
                     })
+                    _render_modal_redes_ia("concluido", f"Copy — {r['nome']}", 100, _ph)
+                    salvar_dados_usuario(st.session_state.user.id)
+                    import time as _t; _t.sleep(1.2)
+                    _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "copy"
+                    st.rerun()
                 except Exception as e:
-                    st.toast(f"Erro no copy: {e}", icon="⚠️")
-
-                _render_modal_redes_ia("concluido", f"Postagens — {r['nome']}", 100, _ph)
-                salvar_dados_usuario(st.session_state.user.id)
-                _t.sleep(1.2)
-                _ph.empty()
-                st.session_state.redes_main_tab = "analise"
-                st.session_state.redes_analise_subtab = "criativos"
-                st.rerun()
+                    _ph.empty()
+                    st.session_state[chave_copy] = f"Erro: {e}"
+                    st.rerun()
 
         if resultados_ia_btns["geral"]:
             if gemini_model is None:

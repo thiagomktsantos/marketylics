@@ -11413,7 +11413,7 @@ function syncHeight() {{
     for (var i = 0; i < frames.length; i++) {{
         try {{ if (frames[i].contentWindow === window) {{
             frames[i].style.height = (h + 2) + 'px';
-            frames[i].style.marginTop = '-50px';
+            frames[i].style.marginTop = '-140px';
             break;
         }} }} catch(e) {{}}
     }}
@@ -11424,7 +11424,7 @@ document.addEventListener('DOMContentLoaded', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
-""", height=100, scrolling=False)
+""", height=200, scrolling=False)
 
         # ── Dados do perfil ativo ────────────────────────────────────
         r = ok[aba_ativa]

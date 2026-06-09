@@ -11535,10 +11535,6 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                     st.session_state[chave_bio_ia] = resp.text
 
                     import datetime as _dt_redes
-                    st.session_state.redes_analises_salvas = [
-                        a for a in st.session_state.redes_analises_salvas
-                        if not (a.get("tipo") == "bio" and a.get("perfil") == r.get("handle"))
-                    ]
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -12716,10 +12712,6 @@ Seja direto e objetivo.
 """)
                     st.session_state[chave_criativo] = resp.text
                     import datetime as _dt_redes
-                    st.session_state.redes_analises_salvas = [
-                        a for a in st.session_state.redes_analises_salvas
-                        if not (a.get("tipo") == "criativos" and a.get("perfil") == r.get("handle"))
-                    ]
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Criativos — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -12761,10 +12753,6 @@ Seja direto e objetivo.
 """)
                     st.session_state[chave_copy] = resp.text
                     import datetime as _dt_redes
-                    st.session_state.redes_analises_salvas = [
-                        a for a in st.session_state.redes_analises_salvas
-                        if not (a.get("tipo") == "copy" and a.get("perfil") == r.get("handle"))
-                    ]
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Copy — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -12806,10 +12794,6 @@ Seja direto e objetivo.
 """)
                     st.session_state[chave_geral] = resp.text
                     import datetime as _dt_redes
-                    st.session_state.redes_analises_salvas = [
-                        a for a in st.session_state.redes_analises_salvas
-                        if not (a.get("tipo") == "geral_perfil" and a.get("perfil") == r.get("handle"))
-                    ]
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Análise Geral — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),

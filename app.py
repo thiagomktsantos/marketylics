@@ -1580,7 +1580,7 @@ def salvar_cache_ads(dados: dict):
         st.toast(f"⚠️ Erro ao salvar cache de ads: {e}", icon="⚠️")
 
 # ---------------------------------------------------
-# HOME — Minha Empresa
+# HOME — Pagina - Minha Empresa
 # ---------------------------------------------------
 
 if st.session_state.pagina == "home":
@@ -11552,6 +11552,8 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "bio"
                     st.rerun()
                 except Exception as e:
                     _ph.empty()
@@ -12729,6 +12731,8 @@ Seja direto e objetivo.
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "criativos"
                     st.rerun()
                 except Exception as e:
                     _ph.empty()
@@ -12772,6 +12776,8 @@ Seja direto e objetivo.
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "copy"
                     st.rerun()
                 except Exception as e:
                     _ph.empty()
@@ -12815,6 +12821,8 @@ Seja direto e objetivo.
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
+                    st.session_state.redes_main_tab = "analise"
+                    st.session_state.redes_analise_subtab = "geral_perfil"
                     st.rerun()
                 except Exception as e:
                     _ph.empty()

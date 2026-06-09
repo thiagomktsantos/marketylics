@@ -13195,6 +13195,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                 return ''.join(output_parts)
 
+            import re as _re_promote
+            html = _re_promote.sub(
+                r'<p><strong>([^<]+?):?</strong></p>',
+                r'<h3>\1</h3>',
+                html
+            )
             html = _wrap_section(html)
             return html
 

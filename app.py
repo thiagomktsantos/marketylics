@@ -11345,19 +11345,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 </style>
 <div class="main-wrap">
-    <div class="cards-grid" id="cards-grid"></div>
-    <div style="padding:0 15px 15px;">
-        <button onclick="triggerBtn('redes_comparativo')"
-            style="width:100%;padding:11px 0;border-radius:10px;border:none;
-                   background:#0e2a47;color:#fff;font-size:14px;font-weight:700;
-                   cursor:pointer;font-family:'DM Sans',sans-serif;
-                   display:flex;align-items:center;justify-content:center;gap:8px;
-                   transition:background 0.15s;"
-            onmouseover="this.style.background='#1a3a5c'"
-            onmouseout="this.style.background='#0e2a47'">
-            🏆 Análise Comparativa de IA
-        </button>
-    </div>
+    <div class="cards-grid" id="cards-grid" style="grid-template-columns: repeat(3,1fr) auto;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11388,8 +11376,22 @@ function buildUI() {{
         card.addEventListener('click', function() {{ selectAba(e.i); }});
         grid.appendChild(card);
     }});
+        // Botão comparativo como último item do grid
+    var compBtn = document.createElement('button');
+    compBtn.style.cssText = 'background:#0e2a47;border:2px dashed #2d5a8a;border-radius:12px;'
+        + 'padding:16px 20px;cursor:pointer;display:flex;flex-direction:column;'
+        + 'align-items:center;justify-content:center;gap:8px;'
+        + 'font-family:\'DM Sans\',sans-serif;transition:all 0.15s;min-width:160px;';
+    compBtn.innerHTML = '<span style="font-size:22px;">🏆</span>'
+        + '<span style="font-size:13px;font-weight:700;color:#fff;text-align:center;line-height:1.3;">Análise Comparativa de IA</span>';
+    compBtn.onmouseover = function() {{ this.style.background='#1a3a5c'; this.style.borderColor='#3a9fd6'; }};
+    compBtn.onmouseout  = function() {{ this.style.background='#0e2a47'; this.style.borderColor='#2d5a8a'; }};
+    compBtn.onclick = function() {{ triggerBtn('redes_comparativo'); }};
+    grid.appendChild(compBtn);
+
     syncHeight();
 }}
+
 function selectAba(i) {{
     ABA_ATIVA = i;
     document.querySelectorAll('.emp-card').forEach(function(c) {{ c.classList.remove('active'); }});

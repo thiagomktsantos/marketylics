@@ -5766,7 +5766,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div class="card-row" style="border-bottom:1px solid #f3f4f6;background:#fff;">
             <div class="card-hdr" data-idx="{idx_real}"
                  style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        cursor:pointer;background-color:#24658e;">
+                        cursor:pointer;background-color:#0e2a47;">
                 <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
                 <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
@@ -12840,8 +12840,6 @@ Seja direto e objetivo.
         subtabs_def = [
             ("bio",          "👤", "Perfil"),
             ("postagem",     "📸", "Postagens"),
-            ("criativos",    "🎨", "Criativos"),
-            ("copy",         "✍️", "Copy"),
             ("geral_perfil", "📊", "Geral"),
             ("comparativo",  "🏆", "Comparativo"),
         ]
@@ -12947,7 +12945,15 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 st.rerun()
 
         subtab_analise = st.session_state.redes_analise_subtab
-        contagens = {stk: len([a for a in analises_redes if a.get("tipo") == stk]) for stk, _, _ in subtabs_def}
+        contagens = {}
+        for stk, _, _ in subtabs_def:
+            if stk == "postagem":
+                contagens[stk] = len([
+                    a for a in analises_redes
+                    if a.get("tipo") in ("postagem", "criativos", "copy")
+                ])
+            else:
+                contagens[stk] = len([a for a in analises_redes if a.get("tipo") == stk])
 
         # ── Barra de subtabs
         components.html(f"""
@@ -12957,7 +12963,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .tabs-wrap {{
     display:grid;
-    grid-template-columns:repeat(6,1fr);
+    grid-template-columns:repeat(4,1fr);
     gap:8px;
     width:100%;
 }}
@@ -13003,6 +13009,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 """, height=52, scrolling=False)
 
         # ── Conteúdo da subtab ativa
+        if subtab_analise == "postagem":
+            lista_ativa = [
+                a for a in analises_redes
+                if a.get("tipo") in ("postagem", "criativos", "copy")
+            ]
+        else:
         lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
         icons_map   = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
         labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}

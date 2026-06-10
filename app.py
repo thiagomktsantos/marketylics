@@ -13015,7 +13015,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if a.get("tipo") in ("postagem", "criativos", "copy")
             ]
         else:
-        lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
+            lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
         icons_map   = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
         labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
         icon_ativo  = icons_map.get(subtab_analise, "📋")

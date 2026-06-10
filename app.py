@@ -10846,11 +10846,14 @@ function triggerBtn(label) {
 
     def _build_links_html(urls_str: str) -> str:
         urls = [u.strip() for u in urls_str.split("|") if u.strip()]
+        if not urls:
+            return ""
+
         icon_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
-        rows = []
-        for url in urls:
+
+        def _link_row(url):
             display = url.replace("https://", "").replace("http://", "").rstrip("/")
-            rows.append(
+            return (
                 f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
                 f'{icon_svg}'
                 f'<a href="{url}" target="_blank" style="font-size:13px;font-weight:600;'
@@ -10858,7 +10861,34 @@ function triggerBtn(label) {
                 f'text-overflow:ellipsis;max-width:340px;">{display}</a>'
                 f'</div>'
             )
-        return "".join(rows)
+
+        import hashlib
+        uid = hashlib.md5(urls[0].encode()).hexdigest()[:8]
+
+        first_row = _link_row(urls[0])
+        extras = urls[1:]
+
+        if not extras:
+            return first_row
+
+        extra_rows = "".join(_link_row(u) for u in extras)
+        n_extra = len(extras)
+        lbl_plural = "s" if n_extra > 1 else ""
+
+        return (
+            first_row
+            + f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
+            + f'<button '
+              f'onclick="var el=document.getElementById(\'extra_links_{uid}\'),'
+              f'btn=document.getElementById(\'btn_links_{uid}\');'
+              f'if(el.style.display===\'none\'){{el.style.display=\'block\';btn.textContent=\'Mostrar menos\';}}' 
+              f'else{{el.style.display=\'none\';btn.textContent=\'+{n_extra} link{lbl_plural}\';}}" '
+              f'id="btn_links_{uid}" '
+              f'style="background:none;border:none;padding:2px 0 0;font-size:12px;font-weight:700;'
+              f'color:#3a9fd6;cursor:pointer;font-family:\'DM Sans\',sans-serif;display:block;margin-top:2px;">'
+              f'+{n_extra} link{lbl_plural}'
+              f'</button>'
+        )
     
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []

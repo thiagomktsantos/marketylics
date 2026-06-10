@@ -8766,7 +8766,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .analises-bar-left {{ display:flex; flex-direction:column; gap:6px; }}
 .analises-bar-titulo {{ font-size:18px; font-weight:800; color:#0f1f35; letter-spacing:-0.3px; line-height:1.2; }}
 .analises-bar-sub {{ font-size:13px; color:#9ca3af; line-height:1.5; }}
-.analises-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }}
+.analises-grid {{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }}
 .atalho-card {{
     background:#fff; border:2px solid #e5e7eb; border-radius:14px;
     padding:20px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
@@ -8792,18 +8792,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nos anúncios.</div>
         </div>
         <div class="analises-grid">
-            <button class="atalho-card {'done' if tem_criativo_ads else ''}" onclick="triggerBtn('ia_criativos_{sk}')">
-                <div class="atalho-icon-wrap blue">🎨</div>
-                <div class="atalho-text">
-                    <span class="atalho-nome">Analisar criativos</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_criativo_ads else 'Avalie formatos visuais e mix de criativos.'}</span>
-                </div>
-            </button>
             <button class="atalho-card {'done' if tem_copy_ads else ''}" onclick="triggerBtn('ia_copys_{sk}')">
-                <div class="atalho-icon-wrap green">✏️</div>
+                <div class="atalho-icon-wrap green">📢</div>
                 <div class="atalho-text">
-                    <span class="atalho-nome">Analisar copy</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Analise textos, CTAs e tom de voz dos anúncios.'}</span>
+                    <span class="atalho-nome">Analisar anúncio</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Analise textos, criativos e CTAs dos anúncios.'}</span>
                 </div>
             </button>
             <button class="atalho-card {'done' if tem_geral_ads else ''}" onclick="triggerBtn('ia_geral_{sk}')">
@@ -8828,14 +8821,14 @@ function triggerBtn(label) {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '144px';
+            iframes[i].style.height = '120px';
             iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=144, scrolling=False)
+""", height=120, scrolling=False)
 
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])

@@ -10865,31 +10865,40 @@ function triggerBtn(label) {
         import hashlib
         uid = hashlib.md5(urls[0].encode()).hexdigest()[:8]
 
-        first_row = _link_row(urls[0])
         extras = urls[1:]
 
         if not extras:
-            return f'<div style="display:flex;flex-direction:column;gap:0;">{first_row}</div>'
+            return _link_row(urls[0])
 
         extra_rows = "".join(_link_row(u) for u in extras)
         n_extra = len(extras)
-        lbl_plural = "s" if n_extra > 1 else ""
+        display_first = urls[0].replace("https://", "").replace("http://", "").rstrip("/")
 
         return (
             f'<div style="display:flex;flex-direction:column;gap:0;">'
-            f'{first_row}'
-            f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
+
+            # Primeira linha: ícone + link + "e mais N"
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+            f'{icon_svg}'
+            f'<a href="{urls[0]}" target="_blank" style="font-size:13px;font-weight:600;'
+            f'color:#3a9fd6;text-decoration:none;white-space:nowrap;overflow:hidden;'
+            f'text-overflow:ellipsis;max-width:220px;">{display_first}</a>'
             f'<button '
             f'onclick="var el=document.getElementById(\'extra_links_{uid}\'),'
             f'btn=document.getElementById(\'btn_links_{uid}\');'
-            f'if(el.style.display===\'none\'){{el.style.display=\'block\';btn.textContent=\'Mostrar menos\';}}' 
-            f'else{{el.style.display=\'none\';btn.textContent=\'+{n_extra} link{lbl_plural}\';}}" '
+            f'if(el.style.display===\'none\'){{el.style.display=\'block\';btn.textContent=\'ver menos\';}}' 
+            f'else{{el.style.display=\'none\';btn.textContent=\'e mais {n_extra}\';}}" '
             f'id="btn_links_{uid}" '
-            f'style="background:none;border:none;padding:0;margin-top:2px;font-size:12px;font-weight:700;'
-            f'color:#3a9fd6;cursor:pointer;font-family:\'DM Sans\',sans-serif;'
-            f'text-align:left;width:fit-content;">'
-            f'+{n_extra} link{lbl_plural}'
+            f'style="background:none;border:none;padding:0;font-size:13px;font-weight:600;'
+            f'color:#6b7280;cursor:pointer;font-family:\'DM Sans\',sans-serif;'
+            f'white-space:nowrap;flex-shrink:0;">'
+            f'e mais {n_extra} links'
             f'</button>'
+            f'</div>'
+
+            # Links extras ocultos
+            f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
+
             f'</div>'
         )
     

@@ -10869,25 +10869,28 @@ function triggerBtn(label) {
         extras = urls[1:]
 
         if not extras:
-            return first_row
+            return f'<div style="display:flex;flex-direction:column;gap:0;">{first_row}</div>'
 
         extra_rows = "".join(_link_row(u) for u in extras)
         n_extra = len(extras)
         lbl_plural = "s" if n_extra > 1 else ""
 
         return (
-            first_row
-            + f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
-            + f'<button '
-              f'onclick="var el=document.getElementById(\'extra_links_{uid}\'),'
-              f'btn=document.getElementById(\'btn_links_{uid}\');'
-              f'if(el.style.display===\'none\'){{el.style.display=\'block\';btn.textContent=\'Mostrar menos\';}}' 
-              f'else{{el.style.display=\'none\';btn.textContent=\'+{n_extra} link{lbl_plural}\';}}" '
-              f'id="btn_links_{uid}" '
-              f'style="background:none;border:none;padding:2px 0 0;font-size:12px;font-weight:700;'
-              f'color:#3a9fd6;cursor:pointer;font-family:\'DM Sans\',sans-serif;display:block;margin-top:2px;">'
-              f'+{n_extra} link{lbl_plural}'
-              f'</button>'
+            f'<div style="display:flex;flex-direction:column;gap:0;">'
+            f'{first_row}'
+            f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
+            f'<button '
+            f'onclick="var el=document.getElementById(\'extra_links_{uid}\'),'
+            f'btn=document.getElementById(\'btn_links_{uid}\');'
+            f'if(el.style.display===\'none\'){{el.style.display=\'block\';btn.textContent=\'Mostrar menos\';}}' 
+            f'else{{el.style.display=\'none\';btn.textContent=\'+{n_extra} link{lbl_plural}\';}}" '
+            f'id="btn_links_{uid}" '
+            f'style="background:none;border:none;padding:0;margin-top:2px;font-size:12px;font-weight:700;'
+            f'color:#3a9fd6;cursor:pointer;font-family:\'DM Sans\',sans-serif;'
+            f'text-align:left;width:fit-content;">'
+            f'+{n_extra} link{lbl_plural}'
+            f'</button>'
+            f'</div>'
         )
     
     # ── Lista de perfis ─────────────────────────────────────────────

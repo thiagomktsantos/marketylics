@@ -12131,6 +12131,7 @@ body{{padding-bottom:8px;}}
             </button>
         </div>
     </div>
+    </div>
 
     <!-- BIO + SCORE -->
     <div style="display:grid;grid-template-columns:1fr auto 1fr;

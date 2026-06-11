@@ -8598,7 +8598,7 @@ Amostra dos anúncios:
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
-                                <span style='display:flex;align-items:flex-start;gap:10px;'>
+                                <span style='display:flex;align-items:center;gap:10px;'>
                                     <span style='font-size:20px;line-height:1;flex-shrink:0;margin-top:1px;'>📢</span>
                                     <span style='display:flex;flex-direction:column;gap:2px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar anúncios</span>
@@ -8611,7 +8611,7 @@ Amostra dos anúncios:
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
-                                <span style='display:flex;align-items:flex-start;gap:10px;'>
+                                <span style='display:flex;align-items:center;gap:10px;'>
                                     <span style='font-size:20px;line-height:1;flex-shrink:0;margin-top:1px;'>📊</span>
                                     <span style='display:flex;flex-direction:column;gap:2px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar estratégia</span>

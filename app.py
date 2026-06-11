@@ -8592,7 +8592,22 @@ Amostra dos anúncios:
                             <div style='font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
                         </div>
                         <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
-                        {lib_btn_top}
+                        <div style='display:flex;align-items:center;gap:10px;flex-shrink:0'>
+                            <a href='javascript:void(0)'
+                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_copys_{sk}'){{b.click();return;}}}}}})()"
+                               style='display:inline-flex;align-items:center;gap:8px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;'
+                               onmouseover="this.style.borderColor='#3a9fd6';this.style.color='#1d4ed8'"
+                               onmouseout="this.style.borderColor='#e5e7eb';this.style.color='#111827'">
+                                📢 Analisar anúncio
+                            </a>
+                            <a href='javascript:void(0)'
+                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
+                               style='display:inline-flex;align-items:center;gap:8px;background:#0e2a47;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:background 0.15s;font-family:DM Sans,sans-serif;'
+                               onmouseover="this.style.background='#1a3a5c'"
+                               onmouseout="this.style.background='#0e2a47'">
+                                📊 Analisar estratégia
+                            </a>
+                        </div>
                     </div>
                 </div>
                 <div style='border-top:1px solid #f3f4f6;background:#f8fbff;padding:20px 24px;'>

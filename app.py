@@ -11821,14 +11821,31 @@ body{{padding-bottom:8px;}}
 .stat {{ text-align:center; }}
 .stat-num {{ font-size:22px; font-weight:800; color:#111827; }}
 .stat-lbl {{ font-size:12px; font-weight:600; color:#6b7280; text-transform:uppercase; margin-top:2px; }}
-.btn-ig {{
-    display:inline-flex; align-items:center; gap:7px;
-    background:#0e2a47; color:#fff;
-    padding:9px 18px; border-radius:9px;
-    font-size:13px; font-weight:700; text-decoration:none;
-    white-space:nowrap; flex-shrink:0; transition:background 0.15s;
+.action-btns {{
+    display:flex; flex-direction:row; gap:10px; flex-shrink:0;
 }}
-.btn-ig:hover {{ background:#1a3a5c; }}
+.action-btn {{
+    display:flex; align-items:center; gap:10px;
+    background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
+    padding:10px 14px; cursor:pointer;
+    font-family:'DM Sans',sans-serif;
+    transition:all 0.15s; min-width:180px;
+    text-align:left;
+}}
+.action-btn:hover {{
+    border-color:#c7d2fe;
+    box-shadow:0 4px 14px rgba(99,102,241,0.1);
+}}
+.action-btn-icon {{
+    width:38px; height:38px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; flex-shrink:0;
+}}
+.action-btn-icon.blue   {{ background:#e0f0ff; }}
+.action-btn-icon.purple {{ background:#ede9fe; }}
+.action-btn-text {{ display:flex; flex-direction:column; gap:2px; }}
+.action-btn-title {{ font-size:13px; font-weight:700; color:#111827; }}
+.action-btn-desc  {{ font-size:11px; color:#9ca3af; line-height:1.3; }}
 
 .bio-section {{
     display:grid; grid-template-columns:15% 50% 35%;
@@ -12086,18 +12103,32 @@ body{{padding-bottom:8px;}}
             <div class="badge">{badge_lbl}</div>
         </div>
         <div class="stat-wrap">
-            <div class="divider-v"></div>
-            <div class="stat">
-                <div class="stat-num">{seg_fmt}</div>
-                <div class="stat-lbl">Seguidores</div>
-            </div>
-            <div class="divider-v"></div>
-            <div class="stat">
-                <div class="stat-num">{posts_fmt}</div>
-                <div class="stat-lbl">Postagens</div>
-            </div>
-            <div class="divider-v"></div>
-            <a class="btn-ig" href="{ig_url}" target="_blank">Ver no Instagram</a>
+        <div class="divider-v"></div>
+        <div class="stat">
+            <div class="stat-num">{seg_fmt}</div>
+            <div class="stat-lbl">Seguidores</div>
+        </div>
+        <div class="divider-v"></div>
+        <div class="stat">
+            <div class="stat-num">{posts_fmt}</div>
+            <div class="stat-lbl">Postagens</div>
+        </div>
+        <div class="divider-v"></div>
+        <div class="action-btns">
+            <button class="action-btn" onclick="trigger('postagens_{aba_ativa}')">
+                <div class="action-btn-icon blue">📸</div>
+                <div class="action-btn-text">
+                    <span class="action-btn-title">Analisar postagens</span>
+                    <span class="action-btn-desc">Criativos, copy e gatilhos</span>
+                </div>
+            </button>
+            <button class="action-btn" onclick="trigger('geral_{aba_ativa}')">
+                <div class="action-btn-icon purple">📊</div>
+                <div class="action-btn-text">
+                    <span class="action-btn-title">Analisar estratégia</span>
+                    <span class="action-btn-desc">Posicionamento e crescimento</span>
+                </div>
+            </button>
         </div>
     </div>
 
@@ -12206,30 +12237,6 @@ body{{padding-bottom:8px;}}
             ✨ Análise de Perfil
         </div>
         {bio_resultado_html}
-    </div>
-
-    <div class="analises-bar">
-    <div class="analises-bar-inner">
-        <div class="analises-bar-left">
-            <div class="analises-bar-titulo">Gerar análises</div>
-            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nas postagens.</div>
-        </div>
-        <div class="analises-grid" style="grid-template-columns:repeat(2,1fr);">
-            <button class="atalho-card {'done' if (tem_criativo or tem_copy) else ''}" onclick="trigger('postagens_{aba_ativa}')">
-                <div class="atalho-icon-wrap blue">📸</div>
-                <div class="atalho-text">
-                    <span class="atalho-nome">Analisar postagens</span>
-                    <span class="atalho-desc">{'✅ Gerado' if (tem_criativo or tem_copy) else 'Analise criativos, copy, tom de voz e gatilhos de conversão.'}</span>
-                </div>
-            </button>
-            <button class="atalho-card {'done' if tem_geral else ''}" onclick="trigger('geral_{aba_ativa}')">
-                <div class="atalho-icon-wrap purple">📊</div>
-                <div class="atalho-text">
-                    <span class="atalho-nome">Analisar estratégia</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_geral else 'Avalie posicionamento, oferta, público e oportunidades de crescimento.'}</span>
-                </div>
-            </button>
-        </div>
     </div>
 </div>
 

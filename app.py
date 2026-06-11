@@ -8758,52 +8758,44 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background:#ffffff;
     border:1px solid #e5e7eb;
     border-top:none;
-    padding:24px 20px 26px;
+    padding:14px 20px;
 }}
 .analises-bar-inner {{
-    display:grid; grid-template-columns:180px 1fr; gap:20px; align-items:center;
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
 }}
-.analises-bar-left {{ display:flex; flex-direction:column; gap:6px; }}
-.analises-bar-titulo {{ font-size:18px; font-weight:800; color:#0f1f35; letter-spacing:-0.3px; line-height:1.2; }}
-.analises-bar-sub {{ font-size:13px; color:#9ca3af; line-height:1.5; }}
-.analises-grid {{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }}
+.analises-grid {{ display:flex; gap:12px; flex-wrap:wrap; }}
 .atalho-card {{
-    background:#fff; border:2px solid #e5e7eb; border-radius:14px;
-    padding:20px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
-    display:flex; flex-direction:row; align-items:flex-start; gap:14px;
-    transition:all 0.15s; text-align:left;
+    background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
+    padding:12px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; flex-direction:row; align-items:center; gap:12px;
+    transition:all 0.15s; text-align:left; width:210px; flex-shrink:0;
 }}
 .atalho-card:hover {{ border-color:#c7d2fe; box-shadow:0 4px 16px rgba(99,102,241,0.1); transform:translateY(-1px); }}
 .atalho-card.done {{ border-color:#bbf7d0; background:#f0fdf4; }}
 .atalho-card.done:hover {{ border-color:#22c55e; box-shadow:0 4px 16px rgba(34,197,94,0.1); }}
-.atalho-icon-wrap {{ width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:22px; }}
-.atalho-icon-wrap.blue   {{ background:#e0f0ff; }}
+.atalho-icon-wrap {{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; }}
 .atalho-icon-wrap.green  {{ background:#e4f9ee; }}
 .atalho-icon-wrap.purple {{ background:#ede9fe; }}
-.atalho-text {{ display:flex; flex-direction:column; gap:3px; }}
-.atalho-nome {{ font-size:14px; font-weight:700; color:#111827; }}
+.atalho-text {{ display:flex; flex-direction:column; gap:2px; }}
+.atalho-nome {{ font-size:13px; font-weight:700; color:#111827; }}
 .atalho-desc {{ font-size:12px; color:#9ca3af; line-height:1.4; }}
 .atalho-card.done .atalho-desc {{ color:#15803d; font-weight:600; }}
 </style>
     <div class="analises-bar" style="border-top:none;">
     <div class="analises-bar-inner">
-        <div class="analises-bar-left">
-            <div class="analises-bar-titulo">Gerar análises</div>
-            <div class="analises-bar-sub">Escolha o tipo de análise que deseja executar nos anúncios.</div>
-        </div>
         <div class="analises-grid">
             <button class="atalho-card {'done' if tem_copy_ads else ''}" onclick="triggerBtn('ia_copys_{sk}')">
                 <div class="atalho-icon-wrap green">📢</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar anúncio</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Analise textos, criativos e CTAs dos anúncios.'}</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Criativos, copy e gatilhos.'}</span>
                 </div>
             </button>
             <button class="atalho-card {'done' if tem_geral_ads else ''}" onclick="triggerBtn('ia_geral_{sk}')">
                 <div class="atalho-icon-wrap purple">📊</div>
                 <div class="atalho-text">
                     <span class="atalho-nome">Analisar estratégia</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_geral_ads else 'Avalie estratégia geral de mídia paga.'}</span>
+                    <span class="atalho-desc">{'✅ Gerado' if tem_geral_ads else 'Posicionamento e oportunidades.'}</span>
                 </div>
             </button>
         </div>
@@ -8821,14 +8813,14 @@ function triggerBtn(label) {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '120px';
+            iframes[i].style.height = '80px';
             iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=120, scrolling=False)
+""", height=80, scrolling=False)
 
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])

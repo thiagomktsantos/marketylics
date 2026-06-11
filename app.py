@@ -8595,17 +8595,19 @@ Amostra dos anúncios:
                         <div style='display:flex;align-items:center;gap:10px;flex-shrink:0'>
                             <a href='javascript:void(0)'
                                onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_copys_{sk}'){{b.click();return;}}}}}})()"
-                               style='display:inline-flex;align-items:center;gap:8px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;'
-                               onmouseover="this.style.borderColor='#3a9fd6';this.style.color='#1d4ed8'"
-                               onmouseout="this.style.borderColor='#e5e7eb';this.style.color='#111827'">
-                                📢 Analisar anúncios
+                               style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
+                               onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
+                               onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
+                                <span style='display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#111827;'>📢 Analisar anúncios</span>
+                                <span style='font-size:11px;font-weight:400;color:#9ca3af;'>Copies, CTAs e padrões de texto</span>
                             </a>
                             <a href='javascript:void(0)'
                                onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
-                               style='display:inline-flex;align-items:center;gap:8px;background:#0e2a47;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:background 0.15s;font-family:DM Sans,sans-serif;'
-                               onmouseover="this.style.background='#1a3a5c'"
-                               onmouseout="this.style.background='#0e2a47'">
-                                📊 Analisar estratégia
+                               style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
+                               onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
+                               onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
+                                <span style='display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#111827;'>📊 Analisar estratégia</span>
+                                <span style='font-size:11px;font-weight:400;color:#9ca3af;'>Formatos, mix de mídia e insights</span>
                             </a>
                         </div>
                     </div>

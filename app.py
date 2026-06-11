@@ -8598,7 +8598,7 @@ Amostra dos anúncios:
                                style='display:inline-flex;align-items:center;gap:8px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.color='#1d4ed8'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.color='#111827'">
-                                📢 Analisar anúncio
+                                📢 Analisar anúncios
                             </a>
                             <a href='javascript:void(0)'
                                onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
@@ -8763,79 +8763,6 @@ CTA: {ad_ind.get('cta','') or '—'}
                 tem_criativo_ads   = bool(st.session_state.get(chave_criativo_ads, ""))
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
-
-                components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.analises-bar {{
-    background:#ffffff;
-    border:1px solid #e5e7eb;
-    border-top:none;
-    padding:14px 20px;
-}}
-.analises-bar-inner {{
-    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
-}}
-.analises-grid {{ display:flex; gap:12px; flex-wrap:wrap; }}
-.atalho-card {{
-    background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
-    padding:12px 16px; cursor:pointer; font-family:'DM Sans',sans-serif;
-    display:flex; flex-direction:row; align-items:center; gap:12px;
-    transition:all 0.15s; text-align:left; width:210px; flex-shrink:0;
-}}
-.atalho-card:hover {{ border-color:#c7d2fe; box-shadow:0 4px 16px rgba(99,102,241,0.1); transform:translateY(-1px); }}
-.atalho-card.done {{ border-color:#bbf7d0; background:#f0fdf4; }}
-.atalho-card.done:hover {{ border-color:#22c55e; box-shadow:0 4px 16px rgba(34,197,94,0.1); }}
-.atalho-icon-wrap {{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:20px; }}
-.atalho-icon-wrap.green  {{ background:#e4f9ee; }}
-.atalho-icon-wrap.purple {{ background:#ede9fe; }}
-.atalho-text {{ display:flex; flex-direction:column; gap:2px; }}
-.atalho-nome {{ font-size:13px; font-weight:700; color:#111827; }}
-.atalho-desc {{ font-size:12px; color:#9ca3af; line-height:1.4; }}
-.atalho-card.done .atalho-desc {{ color:#15803d; font-weight:600; }}
-</style>
-    <div class="analises-bar" style="border-top:none;">
-    <div class="analises-bar-inner">
-        <div class="analises-grid">
-            <button class="atalho-card {'done' if tem_copy_ads else ''}" onclick="triggerBtn('ia_copys_{sk}')">
-                <div class="atalho-icon-wrap green">📢</div>
-                <div class="atalho-text">
-                    <span class="atalho-nome">Analisar anúncio</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_copy_ads else 'Criativos, copy e gatilhos.'}</span>
-                </div>
-            </button>
-            <button class="atalho-card {'done' if tem_geral_ads else ''}" onclick="triggerBtn('ia_geral_{sk}')">
-                <div class="atalho-icon-wrap purple">📊</div>
-                <div class="atalho-text">
-                    <span class="atalho-nome">Analisar estratégia</span>
-                    <span class="atalho-desc">{'✅ Gerado' if tem_geral_ads else 'Posicionamento e oportunidades.'}</span>
-                </div>
-            </button>
-        </div>
-    </div>
-</div>
-<script>
-function triggerBtn(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '80px';
-            iframes[i].style.marginTop = '-15px';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
-</script>
-""", height=80, scrolling=False)
 
                 with st.container(key=filtros_key):
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])

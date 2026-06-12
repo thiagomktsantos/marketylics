@@ -11266,7 +11266,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .cards-grid {{
     display:grid;
-    grid-template-columns: repeat(4,1fr);
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap:15px;
     padding:15px;
 }}
@@ -11325,8 +11325,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     margin-left: auto;  /* ← adicionar */
 }}
 </style>
-<div class="main-wrap">
-    <div class="cards-grid" id="cards-grid"></div>
+<div style="display:flex;gap:0px;align-items:stretch;">
+    <div class="main-wrap" style="flex:1;min-width:0;">
+        <div class="cards-grid" id="cards-grid"></div>
+    </div>
+    <div id="comp-card-wrap" style="flex-shrink:0;width:220px;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11381,7 +11384,8 @@ function buildUI() {{
         + '</div>'
         + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
-    grid.appendChild(compCard);
+    var wrap = document.getElementById('comp-card-wrap');
+    if (wrap) wrap.appendChild(compCard);
 
     syncHeight();
 }}

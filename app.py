@@ -11325,11 +11325,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     margin-left: auto;  /* ← adicionar */
 }}
 </style>
-<div style="display:flex;align-items:stretch;gap:12px;">
+<div style="display:flex;align-items:stretch;gap:0px;">
     <div class="main-wrap" style="flex:1;min-width:0;max-width:calc(100% - 232px);">
         <div class="cards-grid" id="cards-grid"></div>
     </div>
-    <div id="comp-card-wrap" style="flex-shrink:0;width:220px;display:flex;align-self:stretch;"></div>
+    <div id="comp-card-wrap" style="flex-shrink:0;width:232px;display:flex;align-self:stretch;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11366,7 +11366,7 @@ function buildUI() {{
     var compCard = document.createElement('div');
     compCard.style.cssText =
         'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
-        + 'border:1.5px solid #1e3a5f;border-radius:12px;padding:16px;'
+        + 'border-radius:12px;padding:16px;'
         + 'display:flex;align-items:center;gap:12px;cursor:pointer;'
         + 'transition:all 0.15s;width:100%;box-sizing:border-box;flex:1;';
     compCard.onmouseover = function() {{

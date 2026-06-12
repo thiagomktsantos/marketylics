@@ -13099,37 +13099,26 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             # ── Pós-processamento: envolve seções em caixas ──
             BOX_RULES = [
-                # ── VERDE: pontos positivos / fortes / destaques
                 (r'(pontos?\s+forte[s]?|positivo[s]?|destaques?|quem\s+se\s+destaca|o\s+que\s+funciona|o\s+que\s+est[aá]\s+funcionando|aspectos?\s+positivos?|qualidade[s]?)',
                  '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
-                # ── AMARELO: melhorias / atenção / fraquezas
                 (r'(o\s+que\s+melhorar|pontos?\s+de\s+aten[çc][ãa]o|fraqueza[s]?|clareza|inconsist[eê]ncia[s]?|o\s+que\s+pode\s+melhorar|limita[çc][õo]e[s]?|gaps?)',
                  '#d97706', '#fffbeb', '#fde68a', '💡'),
-                # ── AZUL: recomendações / ações / bio/caption sugeridos
                 (r'(recomenda[çc][õo]e[s]?|a[çc][õo]e[s]?\s+concreta[s]?|pr[oó]ximos?\s+passo[s]?|sugest[õo]e[s]?|como\s+melhorar|plano\s+de\s+a[çc][ãa]o|bio\s+sugerida|caption[s]?\s+sugerido[s]?|legenda[s]?\s+sugerida[s]?|copy\s+sugerido|texto[s]?\s+sugerido[s]?|exemplo[s]?\s+de\s+copy|exemplo[s]?\s+de\s+caption|exemplo[s]?\s+de\s+legenda)',
                  '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                # ── ROXO: oportunidades / estratégia / crescimento
                 (r'(oportunidade[s]?|estrat[eé]gia[s]?|crescimento|potencial|expans[ãa]o|nichos?|mercado[s]?|tend[eê]ncia[s]?)',
                  '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
-                # ── CIANO: visão geral / análise geral / comparativo
                 (r'(vis[ãa]o\s+geral|an[aá]lise\s+geral|an[aá]lise\s+comparativa|vis[ãa]o\s+geral\s+comparativa|contexto|panorama|resumo\s+geral|overview)',
                  '#0891b2', '#ecfeff', '#a5f3fc', '📊'),
-                # ── ÍNDIGO: posicionamento / identidade / tom de voz
                 (r'(posicionamento|identidade|tom\s+de\s+voz|persona|voz\s+da\s+marca|proposta\s+de\s+valor|diferencial)',
                  '#4f46e5', '#eef2ff', '#c7d2fe', '🎨'),
-                # ── ROSA: engajamento / métricas / desempenho
                 (r'(engajamento|m[eé]trica[s]?|desempenho|resultado[s]?|performance|taxa[s]?|alcance|impress[õo]e[s]?|frequ[eê]ncia|cad[eê]ncia|consist[eê]ncia)',
                  '#db2777', '#fdf2f8', '#fbcfe8', '📈'),
-                # ── LARANJA: criativos / visual / estética / formato
                 (r'(criativo[s]?|visual|est[eé]tica|formato[s]?|design|imagens?|v[ií]deos?|reels?|stories?|carrossel[s]?|layout|paleta)',
                  '#ea580c', '#fff7ed', '#fed7aa', '🖼️'),
-                # ── VERDE-ESCURO: hashtags / SEO / descoberta
                 (r'(hashtag[s]?|seo|descoberta|palavras?\s*[- ]?\s*chave|busca|indexa[çc][ãa]o|alcance\s+org[âa]nico)',
                  '#059669', '#ecfdf5', '#a7f3d0', '#️⃣'),
-                # ── CINZA-AZULADO: análise de bio / perfil atual
                 (r'(an[aá]lise\s+d[ao]\s+bio|an[aá]lise\s+d[ao]\s+perfil|sobre\s+o\s+perfil|apresenta[çc][ãa]o|descri[çc][ãa]o\s+d[ao]\s+perfil|bio\s+atual)',
                  '#475569', '#f8fafc', '#cbd5e1', '👤'),
-                # ── TEAL: público-alvo / audiência / segmento
                 (r'(p[úu]blico[- ]alvo|audi[êe]ncia|segmento|seguidor[es]?|comunidade|nicho\s+de\s+p[úu]blico)',
                  '#0d9488', '#f0fdfa', '#99f6e4', '🎯'),
             ]
@@ -13211,7 +13200,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div class="card-row" style="border-bottom:1px solid #f3f4f6;background:#fff;">
             <div class="card-hdr" data-idx="{idx_real}"
                  style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        cursor:pointer;background-color:#24658e;">
+                        cursor:pointer;background-color:#0e2a47;">
                 <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
                 <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
                             overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
@@ -13255,6 +13244,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                                background:#fff;font-size:13px;font-weight:600;color:#374151;
                                cursor:pointer;font-family:'DM Sans',sans-serif;">
                         ⬇️ Baixar .txt
+                    </button>
+                    <button class="btn-excluir" data-idx="{idx_real}"
+                        style="padding:9px 16px;border-radius:8px;border:1px solid #fecaca;
+                               background:#fef2f2;font-size:13px;font-weight:600;color:#dc2626;
+                               cursor:pointer;font-family:'DM Sans',sans-serif;
+                               display:flex;align-items:center;gap:6px;white-space:nowrap;
+                               transition:all 0.15s;"
+                        onmouseover="this.style.background='#dc2626';this.style.color='#fff';this.style.borderColor='#dc2626';"
+                        onmouseout="this.style.background='#fef2f2';this.style.color='#dc2626';this.style.borderColor='#fecaca';">
+                        🗑️ Excluir
                     </button>
                 </div>
             </div>
@@ -13432,7 +13431,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             var hdr = doc.createElement('div');
             hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
-                + 'background:#24658e;flex-shrink:0;gap:12px;';
+                + 'background:#0e2a47;flex-shrink:0;gap:12px;';
 
             var titleEl = doc.createElement('div');
             titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
@@ -13572,6 +13571,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             doc.addEventListener('keydown', escFn);
         }}
 
+        function excluirAnalise(idx) {{
+            var label = '_rm_redes_analise_' + idx + '_';
+            var btns  = window.parent.document.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+                if (txt === label) {{ b.click(); return; }}
+            }}
+        }}
+
         document.addEventListener('click', function(e) {{
             var fs = e.target.closest('.btn-fullscreen');
             if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
@@ -13587,6 +13595,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
                 a.download = dl.dataset.filename + '.txt';
                 a.click();
+                return;
+            }}
+
+            var ex = e.target.closest('.btn-excluir');
+            if (ex) {{
+                e.stopPropagation();
+                excluirAnalise(parseInt(ex.dataset.idx));
                 return;
             }}
 

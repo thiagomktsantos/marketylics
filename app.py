@@ -11266,9 +11266,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .cards-grid {{
     display:grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap:15px;
-    padding:15px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap:12px;
+    padding:12px;
 }}
 .emp-card {{
     background:#f9fafb;
@@ -11352,11 +11352,13 @@ function buildUI() {{
             + '<circle cx="17.5" cy="6.5" r="1.2" fill="' + (e.i === ABA_ATIVA ? '#3b82f6' : '#64748b') + '"/>'
             + '</svg>'
             + '</div>'
-            + '<div class="emp-info">'
-            + '<div class="emp-nome" style="white-space:normal;overflow:visible;text-overflow:unset;">' + e.nome + '</div>'
-            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
+            + '<div class="emp-info" style="min-width:0;flex:1;">'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">'
+            + '<div class="emp-nome" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + e.nome + '</div>'
+            + badgeHtml
             + '</div>'
-            + badgeHtml; 
+            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
+            + '</div>';
         card.addEventListener('click', function() {{ selectAba(e.i); }});
         grid.appendChild(card);
     }});

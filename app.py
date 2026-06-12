@@ -11845,8 +11845,8 @@ body{{padding-bottom:8px;}}
     display:flex; align-items:center; justify-content:center;
     font-size:20px; flex-shrink:0;
 }}
-.action-btn-icon.blue   {{ background:#e0f0ff; }}
-.action-btn-icon.purple {{ background:#ede9fe; }}
+.action-btn-icon.blue   {{ background:#f3f4f6; }}
+.action-btn-icon.purple {{ background:#f3f4f6; }}
 .action-btn-text {{ display:flex; flex-direction:column; gap:2px; }}
 .action-btn-title {{ font-size:13px; font-weight:700; color:#111827; }}
 .action-btn-desc  {{ font-size:11px; color:#9ca3af; line-height:1.3; }}

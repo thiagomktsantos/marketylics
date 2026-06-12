@@ -11325,11 +11325,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     margin-left: auto;  /* ← adicionar */
 }}
 </style>
-<div style="display:flex;align-items:center;gap:12px;">
-    <div class="main-wrap" style="flex:1;min-width:0;overflow:visible;">
+<div style="display:flex;align-items:stretch;gap:12px;">
+    <div class="main-wrap" style="flex:1;min-width:0;max-width:calc(100% - 232px);">
         <div class="cards-grid" id="cards-grid"></div>
     </div>
-    <div id="comp-card-wrap" style="flex-shrink:0;width:220px;align-self:stretch;display:flex;align-items:stretch;"></div>
+    <div id="comp-card-wrap" style="flex-shrink:0;width:220px;display:flex;align-items:stretch;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};

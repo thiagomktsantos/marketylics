@@ -11382,8 +11382,7 @@ function buildUI() {{
         + '<div style="flex:1;min-width:0;">'
         + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>'
         + '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;white-space:nowrap;">Gerar análise com IA</div>'
-        + '</div>'
-        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+        + '</div>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
     var wrap = document.getElementById('comp-card-wrap');
     if (wrap) wrap.appendChild(compCard);

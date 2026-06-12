@@ -12590,7 +12590,7 @@ function analisarPost(idx) {{
     var html = '';
     crits.filter(function(c) {{ return c.ok; }}).forEach(function(c) {{
         html += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;'
-              + 'font-weight:600;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+              + 'font-weight:600;color:#15803d;background:#ffffff;border:1px solid #bbf7d0;'
               + 'padding:5px 12px;border-radius:20px;">'
               + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
               + ' ' + c.label + '</div>';

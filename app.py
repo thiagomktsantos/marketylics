@@ -3378,7 +3378,7 @@ function buildCards() {{
                     : "";
                 itemsHtml +=
                     '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;'
-                    + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;min-width:0;">'
+                    + 'background:#ffffff;border:1px solid #bbf7d0;border-radius:8px;min-width:0;">'
                     + '<span style="font-size:14px;flex-shrink:0;">' + canal.icon + '</span>'
                     + '<span style="font-size:12px;font-weight:700;color:#15803d;white-space:nowrap;">' + canal.label + '</span>'
                     + det

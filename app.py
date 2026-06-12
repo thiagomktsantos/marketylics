@@ -11378,7 +11378,7 @@ function buildUI() {{
         this.style.boxShadow = 'none';
     }};
     compCard.innerHTML =
-        '<div style="width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,0.1);'
+        '<div style="width:44px;height:44px;border-radius:0px 16px 16px 0px;background:rgba(255,255,255,0.1);'
         + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🏆</div>'
         + '<div style="flex:1;min-width:0;">'
         + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>'

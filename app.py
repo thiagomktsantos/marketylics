@@ -11329,7 +11329,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     <div class="main-wrap" style="flex:1;min-width:0;">
         <div class="cards-grid" id="cards-grid"></div>
     </div>
-    <div id="comp-card-wrap" style="flex-shrink:0;width:220px;"></div>
+    <div id="comp-card-wrap" style="flex-shrink:0;width:240px;"></div>
 </div>
 <script>
 var EMPRESAS = {empresas_redes_str};
@@ -11353,8 +11353,8 @@ function buildUI() {{
             + '</svg>'
             + '</div>'
             + '<div class="emp-info">'
-            + '<div class="emp-nome">' + e.nome + '</div>'
-            + (e.handle ? '<div style="font-size:13px;color:#9ca3af;">' + e.handle + '</div>' : '')
+            + '<div class="emp-nome" style="white-space:normal;overflow:visible;text-overflow:unset;">' + e.nome + '</div>'
+            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
             + '</div>'
             + badgeHtml; 
         card.addEventListener('click', function() {{ selectAba(e.i); }});
@@ -11379,8 +11379,8 @@ function buildUI() {{
         '<div style="width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,0.1);'
         + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🏆</div>'
         + '<div style="flex:1;min-width:0;">'
-        + '<div style="font-size:14px;font-weight:700;color:#ffffff;">Análise Comparativa</div>'
-        + '<div style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:2px;">Gerar análise com IA</div>'
+        + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>'
+        + '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;white-space:nowrap;">Gerar análise com IA</div>'
         + '</div>'
         + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});

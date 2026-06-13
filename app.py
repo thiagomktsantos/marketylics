@@ -483,7 +483,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # Chat ao vivo
         ct["chat_ao_vivo"] = bool(_re.search(
-            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift)',
+            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift|leadster)',
             html, _re.IGNORECASE
         ))
 
@@ -501,7 +501,8 @@ def extrair_seo_site(url: str) -> dict:
                 r'|fixed[-_]?(button|btn|cta|whats|chat|widget|action)'
                 r'|fab[-_]?button|sticky[-_]?(button|btn|cta|chat)'
                 r'|btn[-_]?float|button[-_]?fixed'
-                r'|zopim|tawk|crisp|jivochat|tidio|drift|intercom|freshchat)',
+                r'|zopim|tawk|crisp|jivochat|tidio|drift|intercom|freshchat'
+                r'|leadster|nld-chatbot|nld-avatar)',
                 html, _re.IGNORECASE
             ) or _re.search(
                 r'position\s*:\s*(fixed|sticky).{0,500}'

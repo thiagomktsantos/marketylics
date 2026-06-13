@@ -374,6 +374,18 @@ def extrair_seo_site(url: str) -> dict:
         resp.encoding = resp.apparent_encoding
         html = resp.text
 
+        # DEBUG EMAIL — remover depois
+        print("=== HTML BRUTO PERTO DE 'suporte' ===")
+        import re as _re_debug
+        trechos = _re_debug.findall(r'.{0,60}suporte.{0,60}', html, _re_debug.IGNORECASE)
+        for t in trechos[:15]:
+            print(repr(t))
+        
+        print("\n=== TODOS OS @ ENCONTRADOS ===")
+        arrobas = _re_debug.findall(r'.{0,30}@.{0,30}', html)
+        for a in arrobas[:20]:
+            print(repr(a))
+        
         m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         if m_title:
             resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()

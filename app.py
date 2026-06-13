@@ -4694,7 +4694,7 @@ function triggerTab(label) {{
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
-                # ── NOVO: seo_raw para o modal de Dados Brutos ──
+                # ── seo_raw para o modal de Dados Brutos ──
                 "seo_raw": {
                     "status":      seo.get("status", ""),
                     "title":       seo.get("title", ""),
@@ -4708,6 +4708,13 @@ function triggerTab(label) {{
             })
  
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
+ 
+        # ── Calcular altura dinâmica com base na quantidade de cards ──
+        n_cards = len(cards_data)
+        # Cada card tem aproximadamente 900px de altura; grid é 2 colunas
+        import math as _math
+        n_rows = _math.ceil(n_cards / 2) if n_cards > 0 else 1
+        altura_estimada = max(2000, n_rows * 1100 + 200)
  
         _html_cards = r"""<!DOCTYPE html><html>
 <head>
@@ -4779,7 +4786,7 @@ body { padding-bottom:8px; }
 }
  
 /* ══════════════════════════════════════════════
-   SECTION BLOCK — padrão visual da imagem
+   SECTION BLOCK
 ══════════════════════════════════════════════ */
 .section-block {
     margin:0 16px 12px;
@@ -4967,7 +4974,6 @@ function esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
  
-/* ── Icon SVGs inline para canais de contato ── */
 var CONTACT_ICONS = {
     whatsapp: '<svg width="20" height="20" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.139.564 4.146 1.547 5.882L0 24l6.293-1.522A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.374l-.36-.213-3.732.902.955-3.624-.234-.374A9.818 9.818 0 012.182 12c0-5.421 4.397-9.818 9.818-9.818S21.818 6.579 21.818 12 17.421 21.818 12 21.818z"/></svg>',
     telefone: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.22 1.18 2 2 0 012.18.07h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.18 6.18l1.21-1.21a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>',
@@ -4998,7 +5004,6 @@ var CONTACT_CHECK_DEF = [
     { key:'popup_rolagem',   label:'Popup rolagem',   grupo:'recursos' },
 ];
  
-/* ── helpers SEO (idêntico ao original) ── */
 if (!window._seoHelpersReady) {
     window._seoHelpersReady = true;
     window.calcSeoScore = function(c) {
@@ -5055,7 +5060,6 @@ if (!window._seoHelpersReady) {
     };
 }
  
-/* ── Modal dados brutos ── */
 function abrirDadosBrutos(idx) {
     var c = CARDS[idx];
     if (!c) return;
@@ -5113,9 +5117,6 @@ function abrirDadosBrutos(idx) {
     doc.addEventListener('keydown', escFn);
 }
  
-/* ══════════════════════════════════════════════════════
-   BUILD CARDS
-══════════════════════════════════════════════════════ */
 function buildCards() {
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
@@ -5130,7 +5131,7 @@ function buildCards() {
         var keyPages = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
         var services = hasSeo ? window.extractServices(c) : [];
  
-        /* ── Header ── */
+        /* Header */
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
@@ -5141,7 +5142,7 @@ function buildCards() {
             +'<span class="badge" style="background:'+c.badge_bg+';color:'+c.badge_txt+';border:1px solid '+c.badge_brd+';">'+c.badge_lbl+'</span>';
         card.appendChild(hdr);
  
-        /* ── URL ── */
+        /* URL */
         var urlRow = document.createElement('div');
         urlRow.className = 'url-row';
         urlRow.innerHTML =
@@ -5149,7 +5150,7 @@ function buildCards() {
             +'<span>'+esc(c.url)+'</span>';
         card.appendChild(urlRow);
  
-        /* ── Preview ── */
+        /* Preview */
         var prevWrap = document.createElement('div');
         prevWrap.className = 'preview-wrap';
         var img = document.createElement('img');
@@ -5166,9 +5167,7 @@ function buildCards() {
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
  
-        /* ══════════════════════════════════════════════
-           SCORE SEO — section block estilo imagem
-        ══════════════════════════════════════════════ */
+        /* Score SEO */
         if (hasSeo && seoScore) {
             var sc       = seoScore.score;
             var scColor  = sc>=80 ? '#15803d' : sc>=40 ? '#92400e' : '#b91c1c';
@@ -5176,8 +5175,6 @@ function buildCards() {
             var scLabel  = sc>=80 ? 'Excelente 🏆' : sc>=40 ? 'Regular ⚠️' : 'Precisa melhorar 📝';
             var barColor = sc>=80 ? '#22c55e'   : sc>=40 ? '#f59e0b' : '#ef4444';
             var barId    = 'seo_bar_'+c.idx;
- 
-            /* chips de itens ok */
             var chipsHtml = '';
             seoScore.items.forEach(function(it) {
                 if (it.ok) {
@@ -5188,7 +5185,6 @@ function buildCards() {
             });
             var nok = seoScore.items.filter(function(i){return !i.ok;}).length;
             if (nok>0) chipsHtml += '<div class="score-chip-opp">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>';
- 
             var scoreBlock = document.createElement('div');
             scoreBlock.className = 'section-block';
             scoreBlock.innerHTML =
@@ -5208,39 +5204,31 @@ function buildCards() {
                 +'</div>'
                 +'<div class="score-chips">'+chipsHtml+'</div>';
             card.appendChild(scoreBlock);
- 
             setTimeout((function(bid,val) {
                 return function() { var b=document.getElementById(bid); if(b) b.style.width=val+'%'; };
             })(barId, sc), 200 + c.idx*80);
         }
  
-        /* ══════════════════════════════════════════════
-           CANAIS DE CONTATO — estilo imagem
-        ══════════════════════════════════════════════ */
+        /* Canais de Contato */
         if (hasSeo) {
             var ct = c.seo_contato || {};
             var hasAny = CONTACT_CHECK_DEF.some(function(ch) { return !!ct[ch.key]; });
- 
             if (hasAny) {
                 var ctBlock = document.createElement('div');
                 ctBlock.className = 'section-block';
- 
                 var grupos = [
                     { key:'contato',  title:'Contato Direto' },
                     { key:'redes',    title:'Redes Sociais' },
                     { key:'recursos', title:'Recursos de Engajamento' },
                 ];
- 
                 var ctHtml = '<div class="section-header">'
                     +'<div class="section-icon" style="background:#eff6ff;">📞</div>'
                     +'<span class="section-title">Canais de Contato</span>'
                     +'</div>';
- 
                 grupos.forEach(function(g) {
                     var itens = CONTACT_CHECK_DEF.filter(function(ch){return ch.grupo===g.key;});
                     var hasGroup = itens.some(function(ch){return !!ct[ch.key];});
                     if (!hasGroup) return;
- 
                     ctHtml += '<div class="contact-group-title">'+esc(g.title)+'</div>'
                         +'<div class="contact-chips">';
                     itens.forEach(function(ch) {
@@ -5249,21 +5237,16 @@ function buildCards() {
                             ? '<span style="display:flex;align-items:center;flex-shrink:0;">'+CONTACT_ICONS[ch.key]+'</span>'
                             : '';
                         ctHtml += '<div class="contact-chip '+(ativo?'active':'inactive')+'">'
-                            +iconSvg
-                            +esc(ch.label)
-                            +'</div>';
+                            +iconSvg+esc(ch.label)+'</div>';
                     });
                     ctHtml += '</div>';
                 });
- 
                 ctBlock.innerHTML = ctHtml;
                 card.appendChild(ctBlock);
             }
         }
  
-        /* ══════════════════════════════════════════════
-           TERMOS MAIS USADOS — estilo imagem
-        ══════════════════════════════════════════════ */
+        /* Termos mais usados */
         if (hasSeo) {
             var textoFull = [c.seo_title||'', c.seo_h1||'', c.seo_desc||''].concat(c.seo_h2s||[]).join(' ');
             var stopWords = new Set([
@@ -5290,7 +5273,6 @@ function buildCards() {
                 return /^(clica|acessa|saib|vej|descubr|confir|receb|envi|inscrev|baix|assin|comec|inici|experim|lig|entr|conhec|aprend|entend|ofer|garant|cresc|facilit|acab|ajud|transform|impulsion|realiz|promov|permit|ger|apresent|mostr|demonstr|ilustr|explor|desenvolv)/.test(w);
             }
             var tokens = textoFull.toLowerCase().replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi,' ').split(/\s+/).filter(function(w){return w.length>=2;});
- 
             function bigramKey(w1,w2) { return [w1,w2].sort().join('|'); }
             var freqBiRaw={};
             for (var bi=0;bi<tokens.length-1;bi++) {
@@ -5311,7 +5293,6 @@ function buildCards() {
             Object.keys(freqUni).forEach(function(w) { if (!usedInBigram.has(w)) combined.push({word:w,count:freqUni[w]}); });
             combined = combined.filter(function(item){return item.word.split(' ').every(function(p){return p.length>=3;});});
             var topWords = combined.sort(function(a,b){return b.count-a.count;}).filter(function(item){return item.count>1;}).slice(0,14);
- 
             if (topWords.length>0) {
                 var maxCount = topWords[0].count;
                 var colorPalette = [
@@ -5324,7 +5305,6 @@ function buildCards() {
                 ];
                 var bigrams  = topWords.filter(function(w){return w.word.indexOf(' ')>-1;});
                 var unigrams = topWords.filter(function(w){return w.word.indexOf(' ')===-1;});
- 
                 function makeChip(item,idx,isBigram) {
                     var ratio  = item.count/maxCount;
                     var size   = isBigram ? (12+Math.round(ratio*2)) : (11+Math.round(ratio*3));
@@ -5337,10 +5317,8 @@ function buildCards() {
                         +';cursor:default;line-height:1.3;" title="'+item.count+'x mencionado">'
                         +esc(item.word)+cBadge+'</span>';
                 }
- 
                 var bigramsHtml  = bigrams.map(function(item,i){return makeChip(item,i,true);}).join('');
                 var unigramsHtml = unigrams.map(function(item,i){return makeChip(item,i,false);}).join('');
- 
                 var kwBlock = document.createElement('div');
                 kwBlock.className = 'section-block';
                 var kwHtml = '<div class="section-header">'
@@ -5354,16 +5332,12 @@ function buildCards() {
             }
         }
  
-        /* ══════════════════════════════════════════════
-           SEO ACCORDION — detalhes técnicos
-        ══════════════════════════════════════════════ */
+        /* SEO Accordion */
         var scoreVal = seoScore ? seoScore.score : -1;
         var scoreCls = scoreVal>=80?'s-great':scoreVal>=40?'s-ok':scoreVal>=0?'s-bad':'s-none';
         var scoreTxt = scoreVal>=0 ? 'SEO '+scoreVal+'/100'+(scoreVal>=80?' ✓':scoreVal<40?' ⚠':'') : 'Sem dados';
- 
         var seoWrap = document.createElement('div');
         seoWrap.className = 'seo-wrap';
- 
         var seoHdr = document.createElement('div');
         seoHdr.className = 'seo-hdr';
         seoHdr.innerHTML =
@@ -5373,11 +5347,9 @@ function buildCards() {
             +'<span class="seo-score-pill '+scoreCls+'">'+scoreTxt+'</span>'
             +'</div>'
             +'<span id="seo_chev_'+c.idx+'" style="color:#9ca3af;transition:transform 0.2s;font-size:11px;">▼</span>';
- 
         var seoBody = document.createElement('div');
         seoBody.className = 'seo-body';
         seoBody.id = 'seo_body_'+c.idx;
- 
         if (hasSeo) {
             if (services.length>0) {
                 var sec1=document.createElement('div'); sec1.className='seo-section';
@@ -5428,7 +5400,6 @@ function buildCards() {
                     +'<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado</div>';
                 seoBody.appendChild(sec5b);
             }
- 
             var seoFoot=document.createElement('div'); seoFoot.className='seo-footer';
             seoFoot.innerHTML='<span class="seo-ts">'+(c.seo_extraido_em?'🕒 '+esc(c.seo_extraido_em):'')+'</span>';
             var rawDataBtn=document.createElement('button'); rawDataBtn.className='btn-reextract';
@@ -5446,7 +5417,6 @@ function buildCards() {
             btnEx.onclick=(function(idx,btn){return function(){btn.disabled=true;btn.innerHTML='⏳ Extraindo…';triggerSiteSEO(idx);};})(c.idx,btnEx);
             seoBody.appendChild(btnEx);
         }
- 
         seoHdr.addEventListener('click', (function(body,chevId,hdrEl) {
             return function() {
                 var open = body.style.display==='flex';
@@ -5457,12 +5427,11 @@ function buildCards() {
                 setTimeout(syncHeight,150);
             };
         })(seoBody,'seo_chev_'+c.idx,seoHdr));
- 
         seoWrap.appendChild(seoHdr);
         seoWrap.appendChild(seoBody);
         card.appendChild(seoWrap);
  
-        /* ── Análise badge ── */
+        /* Análise badge */
         if (c.tem_analise&&c.ultima_analise) {
             var abadge=document.createElement('div'); abadge.className='analise-badge';
             abadge.innerHTML=
@@ -5475,7 +5444,7 @@ function buildCards() {
             card.appendChild(abadge);
         }
  
-        /* ── Botão analisar ── */
+        /* Botão analisar */
         var btnWrap=document.createElement('div'); btnWrap.className='btn-wrap';
         var btn=document.createElement('button'); btn.className='btn-analisar'; btn.id='btn_analisar_'+c.idx;
         btn.innerHTML=c.tem_analise?'🔁 Fazer nova análise com IA':'✨ Analisar este site com IA';
@@ -5514,14 +5483,15 @@ function triggerSiteSEO(idx) {
         if (txt===targetText){btns[i].click();return;}
     }
 }
+ 
+/* ── syncHeight CORRIGIDO: sem marginTop ── */
 function syncHeight() {
-    var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-    var iframes=window.parent.document.querySelectorAll('iframe');
-    for (var i=0;i<iframes.length;i++) {
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
         try {
-            if (iframes[i].contentWindow===window) {
-                iframes[i].style.height=(h+12)+'px';
-                iframes[i].style.marginTop='-30px';
+            if (iframes[i].contentWindow === window) {
+                iframes[i].style.height = (h + 12) + 'px';
                 break;
             }
         } catch(e) {}
@@ -5535,12 +5505,13 @@ try { buildCards(); } catch(err) {
  
 syncHeight();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-window.addEventListener('load',syncHeight);
-[100,300,800,1500,3000].forEach(function(t){setTimeout(syncHeight,t);});
+window.addEventListener('load', syncHeight);
+[100, 300, 800, 1500, 3000].forEach(function(t){ setTimeout(syncHeight, t); });
 </script>
 </body></html>"""
  
-        components.html(_html_cards, height=1200, scrolling=False)
+        # ── CORREÇÃO: altura inicial generosa + sem marginTop no syncHeight ──
+        components.html(_html_cards, height=altura_estimada, scrolling=False)
         
     # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA

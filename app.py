@@ -445,16 +445,20 @@ def extrair_seo_site(url: str) -> dict:
         )
         mail_ignorar = {
             'sentry','example','test','noreply','no-reply','wordpress',
-            'schema','email','user','privacy','w3','jquery','elementor',
+            'schema','w3','jquery','elementor',
             'woocommerce','plugin','theme','cdn','static','assets',
             'googletagmanager','google-analytics','facebook','pixel'
         }
+        
+        # Remove apenas e-mails claramente técnicos/de sistema
         mail_texto = [
             m for m in mail_texto
             if not any(ign in m.lower() for ign in mail_ignorar)
             and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js','.gif'))
             and '@' in m
+            and '.' in m.split('@')[-1]   # domínio válido
             and len(m) < 80
+            and not m.startswith('@')
         ]
         mail_todos = mail_link if mail_link else mail_texto
         ct["email"] = mail_todos[0] if mail_todos else ""

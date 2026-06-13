@@ -448,27 +448,33 @@ def extrair_seo_site(url: str) -> dict:
         tel_todos = [t for t in (tel_link or tel_depois or tel_antes) if nao_e_whatsapp(t)]
         ct["telefone"] = tel_todos[0].strip() if tel_todos else ""
 
-        # E-mail — href mailto: OU padrão @dominio no HTML
+        # E-mail — decodifica proteção anti-spam antes de buscar
+        import html as _html_parser
+        html_decoded = _html_parser.unescape(html)
+        
+        # Também trata [email protected] e variações de ofuscação
+        html_decoded = html_decoded.replace('&#160;', '').replace('&nbsp;', '').replace('\u00a0', '')
+        
+        # Busca mailto: no HTML original
         mail_link = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
         mail_link = [m for m in mail_link if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
+        
+        # Busca padrão @dominio no HTML decodificado
         mail_texto = _re.findall(
             r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b',
-            html, _re.IGNORECASE
+            html_decoded, _re.IGNORECASE
         )
         mail_ignorar = {
             'sentry','example','test','noreply','no-reply','wordpress',
-            'schema','w3','jquery','elementor',
-            'woocommerce','plugin','theme','cdn','static','assets',
-            'googletagmanager','google-analytics','facebook','pixel'
+            'schema','w3','jquery','elementor','woocommerce','plugin',
+            'theme','cdn','static','assets','googletagmanager',
+            'google-analytics','facebook','pixel','yoast'
         }
-        
-        # Remove apenas e-mails claramente técnicos/de sistema
         mail_texto = [
             m for m in mail_texto
             if not any(ign in m.lower() for ign in mail_ignorar)
             and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js','.gif'))
-            and '@' in m
-            and '.' in m.split('@')[-1]   # domínio válido
+            and '.' in m.split('@')[-1]
             and len(m) < 80
             and not m.startswith('@')
         ]

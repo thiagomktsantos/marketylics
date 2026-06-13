@@ -398,21 +398,51 @@ def extrair_seo_site(url: str) -> dict:
         # ── Canais de Contato ─────────────────────────────────────
         ct = {}
 
-        # WhatsApp
-        wa = _re.findall(
-            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=](\d{8,15})',
+        # WhatsApp — link wa.me OU api.whatsapp OU número com texto "whatsapp"
+        wa_link = _re.findall(
+            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=]?(\d{8,15})',
             html, _re.IGNORECASE
         )
-        ct["whatsapp"] = wa[0] if wa else ""
+        # Também captura href="https://wa.me/5511..."
+        wa_href = _re.findall(
+            r'href=["\']https?://(?:wa\.me|api\.whatsapp\.com/send)[^\'"]*?(\d{10,15})[^\'"]*["\']',
+            html, _re.IGNORECASE
+        )
+        # Número próximo a menção de whatsapp no texto
+        wa_texto = _re.findall(
+            r'(?:whatsapp|whats|zap)\D{0,30}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+            html, _re.IGNORECASE
+        )
+        wa_todos = wa_link or wa_href or wa_texto
+        ct["whatsapp"] = wa_todos[0] if wa_todos else ""
 
-        # Telefone (href="tel:...")
-        tel = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
-        ct["telefone"] = tel[0].strip() if tel else ""
+        # Telefone — href="tel:..." OU número próximo a ícone/texto de telefone
+        tel_link = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
+        tel_texto = _re.findall(
+            r'(?:telefone|phone|fone|tel|ligamos|ligue|cel|celular)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+            html, _re.IGNORECASE
+        )
+        tel_todos = tel_link or tel_texto
+        ct["telefone"] = tel_todos[0].strip() if tel_todos else ""
 
-        # E-mail (href="mailto:...")
-        mail = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
-        mail = [m for m in mail if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
-        ct["email"] = mail[0] if mail else ""
+        # E-mail — href="mailto:..." OU endereço @dominio no texto
+        mail_link = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
+        mail_link = [m for m in mail_link if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
+        mail_texto = _re.findall(
+            r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
+            html, _re.IGNORECASE
+        )
+        # Filtra e-mails genéricos/falsos comuns
+        mail_ignorar = {'sentry','example','test','noreply','no-reply','wordpress',
+                        'schema','email','user','privacy','dpo','suporte.familias',
+                        'w3','jquery','elementor'}
+        mail_texto = [
+            m for m in mail_texto
+            if not any(ign in m.lower() for ign in mail_ignorar)
+            and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js'))
+        ]
+        mail_todos = mail_link or mail_texto
+        ct["email"] = mail_todos[0] if mail_todos else ""
 
         # Chat ao vivo
         ct["chat_ao_vivo"] = bool(_re.search(
@@ -426,7 +456,7 @@ def extrair_seo_site(url: str) -> dict:
             html, _re.IGNORECASE | _re.DOTALL
         ))
 
-        # Botão/widget flutuante — detecção ampliada
+        # Botão/widget flutuante
         ct["botao_flutuante"] = bool(
             _re.search(
                 r'(whatsapp[-_]?(button|widget|float|fixed|sticky|fab)'
@@ -495,8 +525,6 @@ def extrair_seo_site(url: str) -> dict:
         ct["youtube"] = yt[0] if yt else ""
 
         resultado["contato"] = ct
-        # ── fim canais de contato ──────────────────────────────────
-
         resultado["status"] = "ok"
         resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
     except Exception as e:
@@ -5081,7 +5109,7 @@ function buildCards() {{
             }})(scoreBarId, scoreNum), 200 + c.idx * 80);
         }}
 
-// ══════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════
         // ── Canais de Contato — FORA DO ACORDEÃO ──
         // ══════════════════════════════════════════════════
         if (hasSeo) {{

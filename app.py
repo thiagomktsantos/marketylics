@@ -374,21 +374,10 @@ def extrair_seo_site(url: str) -> dict:
         resp.encoding = resp.apparent_encoding
         html = resp.text
 
-        # DEBUG EMAIL — remover depois
-        import re as _re_debug
-        trechos = _re_debug.findall(r'.{0,60}suporte.{0,60}', html, _re_debug.IGNORECASE)
-        st.write("=== TRECHOS SUPORTE ===")
-        for t in trechos[:10]:
-            st.code(repr(t))
-        
-        arrobas = _re_debug.findall(r'.{0,30}@.{0,30}', html)
-        st.write("=== TODOS OS @ ===")
-        for a in arrobas[:15]:
-            st.code(repr(a))
-        
         m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         if m_title:
             resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()
+
         m_desc = _re.search(
             r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
             html, _re.IGNORECASE
@@ -398,9 +387,11 @@ def extrair_seo_site(url: str) -> dict:
         )
         if m_desc:
             resultado["description"] = _re.sub(r'\s+', ' ', m_desc.group(1)).strip()
+
         m_h1 = _re.search(r'<h1[^>]*>(.*?)</h1>', html, _re.IGNORECASE | _re.DOTALL)
         if m_h1:
             resultado["h1"] = _re.sub(r'<[^>]+>', '', m_h1.group(1)).strip()
+
         h2s = _re.findall(r'<h2[^>]*>(.*?)</h2>', html, _re.IGNORECASE | _re.DOTALL)
         resultado["h2s"] = [
             _re.sub(r'<[^>]+>', '', h).strip()
@@ -410,7 +401,7 @@ def extrair_seo_site(url: str) -> dict:
         # ── Canais de Contato ─────────────────────────────────────
         ct = {}
 
-        # WhatsApp — múltiplas estratégias
+        # WhatsApp
         wa_link = _re.findall(
             r'(?:wa\.me|whatsapp\.com/send|api\.whatsapp\.com/send)[^\d]*(\d{8,15})',
             html, _re.IGNORECASE
@@ -419,7 +410,6 @@ def extrair_seo_site(url: str) -> dict:
             r'href=["\'][^"\']*(?:wa\.me|whatsapp)[^"\']*?(\d{10,15})[^"\']*["\']',
             html, _re.IGNORECASE
         )
-        # Número ANTES ou DEPOIS de menção a whatsapp (até 50 chars de distância)
         wa_texto_depois = _re.findall(
             r'(?:whatsapp|whats|zap|wpp)\D{0,50}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
             html, _re.IGNORECASE
@@ -431,7 +421,7 @@ def extrair_seo_site(url: str) -> dict:
         wa_todos = wa_link or wa_href or wa_texto_depois or wa_texto_antes
         ct["whatsapp"] = wa_todos[0] if wa_todos else ""
 
-        # Telefone — href tel: OU número próximo a palavra de telefone (antes ou depois)
+        # Telefone
         tel_link = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
         tel_depois = _re.findall(
             r'(?:telefone|fone|tel\.?|ligamos|ligue|celular|cel\.?)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
@@ -441,44 +431,54 @@ def extrair_seo_site(url: str) -> dict:
             r'(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})\D{0,30}(?:telefone|fone|ligue|celular)',
             html, _re.IGNORECASE
         )
-        # Evita capturar o mesmo número que já foi pego como WhatsApp
         wa_num_limpo = _re.sub(r'\D', '', ct.get("whatsapp", ""))
         def nao_e_whatsapp(n):
             return _re.sub(r'\D', '', n) != wa_num_limpo if wa_num_limpo else True
         tel_todos = [t for t in (tel_link or tel_depois or tel_antes) if nao_e_whatsapp(t)]
         ct["telefone"] = tel_todos[0].strip() if tel_todos else ""
 
-        # E-mail — decodifica proteção anti-spam antes de buscar
+        # E-mail — decodifica proteção Cloudflare/Elementor (data-cfemail) + fallback regex
+        def decode_cfemail(encoded: str) -> str:
+            try:
+                enc = bytes.fromhex(encoded)
+                key = enc[0]
+                return ''.join(chr(b ^ key) for b in enc[1:])
+            except Exception:
+                return ""
+
+        cf_emails = _re.findall(r'data-cfemail=["\']([0-9a-fA-F]+)["\']', html)
+        cf_decoded = [decode_cfemail(e) for e in cf_emails]
+
+        cf_script = _re.findall(r'__cf_email__["\s]*,["\s]*["\']([0-9a-fA-F]+)["\']', html)
+        cf_decoded += [decode_cfemail(e) for e in cf_script]
+
         import html as _html_parser
         html_decoded = _html_parser.unescape(html)
-        
-        # Também trata [email protected] e variações de ofuscação
         html_decoded = html_decoded.replace('&#160;', '').replace('&nbsp;', '').replace('\u00a0', '')
-        
-        # Busca mailto: no HTML original
+
         mail_link = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
         mail_link = [m for m in mail_link if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
-        
-        # Busca padrão @dominio no HTML decodificado
+
         mail_texto = _re.findall(
             r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b',
             html_decoded, _re.IGNORECASE
         )
         mail_ignorar = {
-            'sentry','example','test','noreply','no-reply','wordpress',
-            'schema','w3','jquery','elementor','woocommerce','plugin',
-            'theme','cdn','static','assets','googletagmanager',
-            'google-analytics','facebook','pixel','yoast'
+            'sentry', 'example', 'test', 'noreply', 'no-reply', 'wordpress',
+            'schema', 'w3', 'jquery', 'elementor', 'woocommerce', 'plugin',
+            'theme', 'cdn', 'static', 'assets', 'googletagmanager',
+            'google-analytics', 'facebook', 'pixel', 'yoast'
         }
         mail_texto = [
             m for m in mail_texto
             if not any(ign in m.lower() for ign in mail_ignorar)
-            and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js','.gif'))
+            and not m.endswith(('.png', '.jpg', '.svg', '.webp', '.css', '.js', '.gif'))
             and '.' in m.split('@')[-1]
             and len(m) < 80
             and not m.startswith('@')
         ]
-        mail_todos = mail_link if mail_link else mail_texto
+
+        mail_todos = cf_decoded if cf_decoded else (mail_link if mail_link else mail_texto)
         ct["email"] = mail_todos[0] if mail_todos else ""
 
         # Chat ao vivo
@@ -514,14 +514,14 @@ def extrair_seo_site(url: str) -> dict:
             )
         )
 
-        # Popup de saída (exit intent)
+        # Popup de saída
         ct["popup_saida"] = bool(_re.search(
             r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal'
             r'|exitIntent|exit_intent|onmouseleave.*modal)',
             html, _re.IGNORECASE
         ))
 
-        # Popup de rolagem (scroll trigger)
+        # Popup de rolagem
         ct["popup_rolagem"] = bool(_re.search(
             r'(scroll.{0,20}(popup|modal|trigger|show|banner|offer|lead)'
             r'|scrollDepth|scroll_depth|scrollPercent|scroll.?percent'
@@ -536,7 +536,7 @@ def extrair_seo_site(url: str) -> dict:
             r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
         )
-        ig = [i for i in ig if i.lower() not in ('p','reel','reels','explore','stories','tv','share','accounts')]
+        ig = [i for i in ig if i.lower() not in ('p', 'reel', 'reels', 'explore', 'stories', 'tv', 'share', 'accounts')]
         ct["instagram"] = ig[0] if ig else ""
 
         # Facebook
@@ -544,7 +544,7 @@ def extrair_seo_site(url: str) -> dict:
             r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
         )
-        fb = [f for f in fb if f.lower() not in ('sharer','share','tr','login','dialog','plugins','photo','watch')]
+        fb = [f for f in fb if f.lower() not in ('sharer', 'share', 'tr', 'login', 'dialog', 'plugins', 'photo', 'watch')]
         ct["facebook"] = fb[0] if fb else ""
 
         # LinkedIn
@@ -564,10 +564,11 @@ def extrair_seo_site(url: str) -> dict:
         resultado["contato"] = ct
         resultado["status"] = "ok"
         resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+
     except Exception as e:
         resultado["status"] = f"erro: {e}"
-    return resultado
 
+    return resultado
 
 def extrair_e_salvar_seo(url: str, chave: str):
     if "seo_cache" not in st.session_state:

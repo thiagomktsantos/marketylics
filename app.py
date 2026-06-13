@@ -398,50 +398,65 @@ def extrair_seo_site(url: str) -> dict:
         # ── Canais de Contato ─────────────────────────────────────
         ct = {}
 
-        # WhatsApp — link wa.me OU api.whatsapp OU número com texto "whatsapp"
+        # WhatsApp — múltiplas estratégias
         wa_link = _re.findall(
-            r'(?:wa\.me|whatsapp\.com/send\?phone=|api\.whatsapp\.com/send\?phone=)[/=]?(\d{8,15})',
+            r'(?:wa\.me|whatsapp\.com/send|api\.whatsapp\.com/send)[^\d]*(\d{8,15})',
             html, _re.IGNORECASE
         )
-        # Também captura href="https://wa.me/5511..."
         wa_href = _re.findall(
-            r'href=["\']https?://(?:wa\.me|api\.whatsapp\.com/send)[^\'"]*?(\d{10,15})[^\'"]*["\']',
+            r'href=["\'][^"\']*(?:wa\.me|whatsapp)[^"\']*?(\d{10,15})[^"\']*["\']',
             html, _re.IGNORECASE
         )
-        # Número próximo a menção de whatsapp no texto
-        wa_texto = _re.findall(
-            r'(?:whatsapp|whats|zap)\D{0,30}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+        # Número ANTES ou DEPOIS de menção a whatsapp (até 50 chars de distância)
+        wa_texto_depois = _re.findall(
+            r'(?:whatsapp|whats|zap|wpp)\D{0,50}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
             html, _re.IGNORECASE
         )
-        wa_todos = wa_link or wa_href or wa_texto
+        wa_texto_antes = _re.findall(
+            r'(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})\D{0,50}(?:whatsapp|whats|zap|wpp)',
+            html, _re.IGNORECASE
+        )
+        wa_todos = wa_link or wa_href or wa_texto_depois or wa_texto_antes
         ct["whatsapp"] = wa_todos[0] if wa_todos else ""
 
-        # Telefone — href="tel:..." OU número próximo a ícone/texto de telefone
+        # Telefone — href tel: OU número próximo a palavra de telefone (antes ou depois)
         tel_link = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
-        tel_texto = _re.findall(
-            r'(?:telefone|phone|fone|tel|ligamos|ligue|cel|celular)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+        tel_depois = _re.findall(
+            r'(?:telefone|fone|tel\.?|ligamos|ligue|celular|cel\.?)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
             html, _re.IGNORECASE
         )
-        tel_todos = tel_link or tel_texto
+        tel_antes = _re.findall(
+            r'(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})\D{0,30}(?:telefone|fone|ligue|celular)',
+            html, _re.IGNORECASE
+        )
+        # Evita capturar o mesmo número que já foi pego como WhatsApp
+        wa_num_limpo = _re.sub(r'\D', '', ct.get("whatsapp", ""))
+        def nao_e_whatsapp(n):
+            return _re.sub(r'\D', '', n) != wa_num_limpo if wa_num_limpo else True
+        tel_todos = [t for t in (tel_link or tel_depois or tel_antes) if nao_e_whatsapp(t)]
         ct["telefone"] = tel_todos[0].strip() if tel_todos else ""
 
-        # E-mail — href="mailto:..." OU endereço @dominio no texto
+        # E-mail — href mailto: OU padrão @dominio no HTML
         mail_link = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
         mail_link = [m for m in mail_link if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
         mail_texto = _re.findall(
-            r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}',
+            r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b',
             html, _re.IGNORECASE
         )
-        # Filtra e-mails genéricos/falsos comuns
-        mail_ignorar = {'sentry','example','test','noreply','no-reply','wordpress',
-                        'schema','email','user','privacy','dpo','suporte.familias',
-                        'w3','jquery','elementor'}
+        mail_ignorar = {
+            'sentry','example','test','noreply','no-reply','wordpress',
+            'schema','email','user','privacy','w3','jquery','elementor',
+            'woocommerce','plugin','theme','cdn','static','assets',
+            'googletagmanager','google-analytics','facebook','pixel'
+        }
         mail_texto = [
             m for m in mail_texto
             if not any(ign in m.lower() for ign in mail_ignorar)
-            and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js'))
+            and not m.endswith(('.png','.jpg','.svg','.webp','.css','.js','.gif'))
+            and '@' in m
+            and len(m) < 80
         ]
-        mail_todos = mail_link or mail_texto
+        mail_todos = mail_link if mail_link else mail_texto
         ct["email"] = mail_todos[0] if mail_todos else ""
 
         # Chat ao vivo

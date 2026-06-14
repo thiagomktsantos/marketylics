@@ -5123,18 +5123,16 @@ function buildCards() {{
             scoreBlock.innerHTML =
                 '<div class="seo-score-block-title">Score de SEO</div>'
                 // ── linha principal: número + badge "Excelente" + badge "+N oportunidades" alinhado à direita ──
-                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
-                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
+                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
                 +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
                 +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
                 +   '</div>'
-                +   '<div style="display:flex;align-items:center;gap:8px;">'
-                +     '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-                +       'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;">'
-                +       scoreTxt2
-                +     '</div>'
-                +     nokHtml
+                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+                +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;flex-shrink:0;">'
+                +     scoreTxt2
                 +   '</div>'
+                +   nokHtml
                 + '</div>'
                 + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
                 +   '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;'

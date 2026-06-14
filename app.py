@@ -4694,7 +4694,7 @@ function triggerTab(label) {{
                 "sitemap_status":  sitemap.get("status", ""),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
-                # ── NOVO: seo_raw para o modal de Dados Brutos ──
+                # ── seo_raw para o modal de Dados Brutos ──
                 "seo_raw": {
                     "status":      seo.get("status", ""),
                     "title":       seo.get("title", ""),
@@ -5095,7 +5095,8 @@ function buildCards() {{
             var scoreTxt2      = scoreNum >= 80 ? 'Excelente 🏆' : scoreNum >= 40 ? 'Regular ⚠️' : 'Precisa melhorar 📝';
             var scoreBarColor  = scoreNum >= 80 ? '#22c55e' : scoreNum >= 40 ? '#f59e0b' : '#ef4444';
             var scoreBarId     = 'seo_score_bar_' + c.idx;
- 
+
+            // ── chips de itens OK ──
             var chipsHtml = '';
             seoScore.items.forEach(function(it) {{
                 if (it.ok) {{
@@ -5107,27 +5108,32 @@ function buildCards() {{
                         + ' ' + it.label + '</div>';
                 }}
             }});
+
+            // ── badge de oportunidades (vai para a mesma linha do score) ──
             var nok = seoScore.items.filter(function(i) {{ return !i.ok; }}).length;
-            if (nok > 0) {{
-                chipsHtml +=
-                    '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-                    + 'color:#2563eb;background:#dbeafe;padding:5px 12px;'
-                    + 'border-radius:20px;white-space:nowrap;">+'
-                    + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>';
-            }}
+            var nokHtml = nok > 0
+                ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
+                  + 'color:#2563eb;background:#dbeafe;padding:4px 11px;'
+                  + 'border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+                  + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>'
+                : '';
  
             var scoreBlock = document.createElement('div');
             scoreBlock.className = 'seo-score-block';
             scoreBlock.innerHTML =
                 '<div class="seo-score-block-title">Score de SEO</div>'
-                + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
+                // ── linha principal: número + badge "Excelente" + badge "+N oportunidades" alinhado à direita ──
+                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
                 +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
                 +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
                 +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
                 +   '</div>'
-                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-                +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;">'
-                +     scoreTxt2
+                +   '<div style="display:flex;align-items:center;gap:8px;">'
+                +     '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+                +       'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;">'
+                +       scoreTxt2
+                +     '</div>'
+                +     nokHtml
                 +   '</div>'
                 + '</div>'
                 + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
@@ -5154,57 +5160,60 @@ function buildCards() {{
         if (hasSeo) {{
             var ct = c.seo_contato || {{}};
 
-                            var checks = [
-                    {{ key: 'whatsapp',        label: 'WhatsApp',      grupo: 'contato'  }},
-                    {{ key: 'telefone',        label: 'Telefone',      grupo: 'contato'  }},
-                    {{ key: 'email',           label: 'E-mail',        grupo: 'contato'  }},
-                    {{ key: 'instagram',       label: 'Instagram',     grupo: 'redes'    }},
-                    {{ key: 'facebook',        label: 'Facebook',      grupo: 'redes'    }},
-                    {{ key: 'linkedin',        label: 'LinkedIn',      grupo: 'redes'    }},
-                    {{ key: 'youtube',         label: 'YouTube',       grupo: 'redes'    }},
-                    {{ key: 'chat_ao_vivo',    label: 'Chat ao vivo',  grupo: 'recursos' }},
-                    {{ key: 'formulario',      label: 'Formulário',    grupo: 'recursos' }},
-                    {{ key: 'botao_flutuante', label: 'Btn. flutuante',grupo: 'recursos' }},
-                    {{ key: 'popup_saida',     label: 'Popup saída',   grupo: 'recursos' }},
-                    {{ key: 'popup_rolagem',   label: 'Popup rolagem', grupo: 'recursos' }},
-                ];
+            var checks = [
+                {{ key: 'whatsapp',        label: 'WhatsApp',      grupo: 'contato'  }},
+                {{ key: 'telefone',        label: 'Telefone',      grupo: 'contato'  }},
+                {{ key: 'email',           label: 'E-mail',        grupo: 'contato'  }},
+                {{ key: 'instagram',       label: 'Instagram',     grupo: 'redes'    }},
+                {{ key: 'facebook',        label: 'Facebook',      grupo: 'redes'    }},
+                {{ key: 'linkedin',        label: 'LinkedIn',      grupo: 'redes'    }},
+                {{ key: 'youtube',         label: 'YouTube',       grupo: 'redes'    }},
+                {{ key: 'chat_ao_vivo',    label: 'Chat ao vivo',  grupo: 'recursos' }},
+                {{ key: 'formulario',      label: 'Formulário',    grupo: 'recursos' }},
+                {{ key: 'botao_flutuante', label: 'Btn. flutuante',grupo: 'recursos' }},
+                {{ key: 'popup_saida',     label: 'Popup saída',   grupo: 'recursos' }},
+                {{ key: 'popup_rolagem',   label: 'Popup rolagem', grupo: 'recursos' }},
+            ];
 
-                function renderGrupoContato(titulo, grupo) {{
-                    var itens = checks.filter(function(ch) {{ return ch.grupo === grupo; }});
-                    var h = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-                        + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:6px;">' + titulo + '</div>'
-                        + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
-                    itens.forEach(function(ch) {{
-                        var ativo = !!ct[ch.key];
-                        h += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:600;gap:5px;'
-                            + 'white-space:nowrap;'
-                            + (ativo
-                                ? 'color:#15803d;'
-                                : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.6;text-decoration:line-through;')
-                            + '">'
-                            + (ativo
-                                ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                                : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>')
-                            + ch.label
-                            + '</div>';
-                    }});
-                    h += '</div>';
-                    return h;
-                }}
+            // ── FIX: renderiza apenas itens ATIVOS (sem cinzas/tachados) ──
+            function renderGrupoContato(titulo, grupo) {{
+                var itens = checks.filter(function(ch) {{ return ch.grupo === grupo; }});
+                var ativos = itens.filter(function(ch) {{ return !!ct[ch.key]; }});
+                if (ativos.length === 0) return '';   // omite o grupo inteiro se vazio
+                var h = '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:6px;">' + titulo + '</div>'
+                    + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
+                ativos.forEach(function(ch) {{
+                    h += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:600;gap:5px;'
+                        + 'white-space:nowrap;color:#15803d;">'
+                        + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                        + ch.label
+                        + '</div>';
+                }});
+                h += '</div>';
+                return h;
+            }}
 
-                if (Object.keys(ct).length > 0) {{
+            if (Object.keys(ct).length > 0) {{
+                var grupoContato  = renderGrupoContato('Contato Direto', 'contato');
+                var grupoRedes    = renderGrupoContato('Redes Sociais', 'redes');
+                var grupoRecursos = renderGrupoContato('Recursos de Engajamento', 'recursos');
+
+                // só renderiza o bloco se ao menos um grupo tem conteúdo
+                if (grupoContato || grupoRedes || grupoRecursos) {{
                     var ctBlock = document.createElement('div');
                     ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
                         + 'border:1px solid #e5e7eb;border-radius:12px;';
                     ctBlock.innerHTML =
                         '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
                         + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div>'
-                        + renderGrupoContato('Contato Direto', 'contato')
-                        + renderGrupoContato('Redes Sociais', 'redes')
-                        + renderGrupoContato('Recursos de Engajamento', 'recursos');
+                        + grupoContato
+                        + grupoRedes
+                        + grupoRecursos;
                     card.appendChild(ctBlock);
                 }}
             }}
+        }}
 
         // ══════════════════════════════════════════════════════════════
         // ── Termos e Palavras Mais Usados ──
@@ -5496,8 +5505,6 @@ function buildCards() {{
                 seoBody2.appendChild(sec5b);
             }}
 
-
- 
             // ── footer com botões Dados Brutos + Atualizar SEO ──
             var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
             seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';

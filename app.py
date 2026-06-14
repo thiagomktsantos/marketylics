@@ -5176,7 +5176,7 @@ function buildCards() {{
                         + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
                     itens.forEach(function(ch) {{
                         var ativo = !!ct[ch.key];
-                        h += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:600;'
+                        h += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:600;gap:5px;'
                             + 'white-space:nowrap;'
                             + (ativo
                                 ? 'color:#15803d;'

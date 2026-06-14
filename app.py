@@ -5125,7 +5125,7 @@ function buildCards() {{
                 +   '<div class="seo-score-block-title" style="margin-bottom:0;">Score de SEO</div>'
                 +   nokHtml
                 + '</div>'
-                + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
                 +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
                 +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
                 +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'

@@ -5135,7 +5135,7 @@ function buildCards() {{
                 +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');'
                 +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
                 + '</div>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:7px;">' + chipsHtml + '</div>';
+                + '<div style="display:flex;flex-wrap:wrap;">' + chipsHtml + '</div>';
  
             card.appendChild(scoreBlock);
  

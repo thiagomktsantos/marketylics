@@ -3444,8 +3444,8 @@ function buildCards() {{
                       + esc(canal.detalhe) + '</span>'
                     : "";
                 itemsHtml +=
-                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;'
-                    + 'background:#ffffff;border:1px solid #bbf7d0;border-radius:8px;min-width:0;">'
+                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 5px;'
+                    + 'min-width:0;">'
                     + '<span style="font-size:14px;flex-shrink:0;">' + canal.icon + '</span>'
                     + '<span style="font-size:12px;font-weight:700;color:#15803d;white-space:nowrap;">' + canal.label + '</span>'
                     + det
@@ -5101,8 +5101,8 @@ function buildCards() {{
                 if (it.ok) {{
                     chipsHtml +=
                         '<div style="display:inline-flex;align-items:center;gap:3px;font-size:12px;'
-                        + 'font-weight:600;color:#15803d;background:#ffffff;border:1px solid #bbf7d0;'
-                        + 'padding:2px 7px;border-radius:20px;white-space:nowrap;">'
+                        + 'font-weight:600;color:#15803d;'
+                        + 'padding:2px 5px;white-space:nowrap;">'
                         + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
                         + ' ' + it.label + '</div>';
                 }}

@@ -4759,18 +4759,37 @@ body {{ padding-bottom:8px; }}
 }}
  
 /* ══════════════════════════════════════════════════════
-   Bloco de pontuação SEO (fora do acordeão)
+   Cards "clean" (Score SEO / Canais de Contato / Termos)
 ══════════════════════════════════════════════════════ */
-.seo-score-block {{
-    margin:0 14px 10px;
-    padding:14px 16px;
+.clean-card {{
+    margin:0 14px 12px;
+    padding:24px;
     background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
+    border:1px solid #f1f5f9;
+    border-radius:20px;
 }}
-.seo-score-block-title {{
-    font-size:12px;font-weight:700;text-transform:uppercase;
-    letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;
+.clean-card-header {{
+    display:flex; align-items:center; gap:14px; margin-bottom:20px;
+}}
+.clean-card-icon {{
+    width:48px;height:48px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}}
+.clean-card-icon svg {{ width:22px;height:22px; }}
+.clean-card-title {{ font-size:18px;font-weight:800;color:#1a2e4a; }}
+.clean-section-label {{
+    font-size:11px;font-weight:700;text-transform:uppercase;
+    letter-spacing:0.8px;color:#9ca3af;margin-bottom:12px;
+}}
+.clean-divider {{ height:1px;background:#f1f5f9;margin:16px 0; }}
+.clean-channels-row {{ display:flex;flex-wrap:wrap;gap:24px 28px; }}
+.clean-channel-item {{
+    display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;color:#374151;
+}}
+.clean-channel-item.inactive {{ opacity:0.35; }}
+.clean-channel-item .ch-icon {{
+    width:22px;height:22px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
 }}
  
 /* ══════════════════════════════════════════════════════
@@ -4806,8 +4825,6 @@ body {{ padding-bottom:8px; }}
 .page-icon{{font-size:13px;flex-shrink:0;}}
 .page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
 .page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
-.sitemap-scroll{{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:4px;border-radius:6px;padding:2px 0;}}
-.sitemap-item2{{font-size:11px;color:#4b5563;padding:3px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f9fafb;border:1px solid #f3f4f6;}}
 .seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
 .seo-ts2{{font-size:10px;color:#9ca3af;}}
 .btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}

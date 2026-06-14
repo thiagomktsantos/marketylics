@@ -5176,10 +5176,10 @@ function buildCards() {{
                         + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">';
                     itens.forEach(function(ch) {{
                         var ativo = !!ct[ch.key];
-                        h += '<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
-                            + 'padding:4px 12px;border-radius:20px;white-space:nowrap;'
+                        h += '<div style="display:inline-flex;align-items:center;font-size:12px;font-weight:600;'
+                            + 'white-space:nowrap;'
                             + (ativo
-                                ? 'color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;'
+                                ? 'color:#15803d;'
                                 : 'color:#9ca3af;background:#f9fafb;border:1px solid #e5e7eb;opacity:0.6;text-decoration:line-through;')
                             + '">'
                             + (ativo

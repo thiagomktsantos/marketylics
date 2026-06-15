@@ -5198,8 +5198,8 @@ function buildCards() {{
                     gruposHtml += '<hr style="border:none;border-top:1px solid #f3f4f6;margin:10px 0;"/>';
                 }}
                 gruposHtml +=
-                    '<div style="font-size:9px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#b0b8c4;margin-bottom:8px;">' + g.titulo + '</div>'
+                    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;'
+                    + 'letter-spacing:0.8px;color:#7d8084;margin-bottom:8px;">' + g.titulo + '</div>'
                     + '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:4px;">';
                 ativos.forEach(function(k) {{
                     gruposHtml +=

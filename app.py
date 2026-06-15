@@ -5349,10 +5349,8 @@ function buildCards() {{
 
                 function makeChip(item, idx, isBigram) {{
                     var ratio  = item.count / maxCount;
-                    var size   = isBigram
-                        ? (12 + Math.round(ratio * 2))
-                        : (11 + Math.round(ratio * 3));
-                    var weight = ratio >= 0.85 ? '800' : ratio >= 0.5 ? '700' : '600';
+                    var size   = 12;
+                    var weight = '600';
                     var col    = colorPalette[idx % colorPalette.length];
                     var countBadge = item.count > 1
                         ? '<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">'

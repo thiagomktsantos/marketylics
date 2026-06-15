@@ -5406,55 +5406,54 @@ function buildCards() {{
         //    (substitui o acordeão "SEO & Conteúdo")
         // ══════════════════════════════════════════════════════════════
         var seoActionsBar = document.createElement('div');
-        seoActionsBar.style.cssText = 'margin:0 14px 10px;display:flex;align-items:center;'
-            + 'justify-content:space-between;gap:8px;padding:10px 14px;'
-            + 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;'
-            + 'flex-wrap:nowrap;';
+        seoActionsBar.style.cssText = 'margin:0 14px 10px;display:flex;flex-direction:column;gap:8px;padding:12px 14px;'
+            + 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;';
 
-        var tsSpan = document.createElement('div');
-        tsSpan.style.cssText = 'display:flex;align-items:center;gap:5px;';
-        tsSpan.innerHTML = c.seo_extraido_em
-            ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
-              + '<span style="font-size:11px;color:#9ca3af;font-weight:500;">' + c.seo_extraido_em + '</span>'
-            : '';
-        seoActionsBar.appendChild(tsSpan);
-
-        var btnsRight = document.createElement('div');
-        btnsRight.style.cssText = 'display:flex;flex-direction:column;gap:5px;align-items:stretch;flex-shrink:0;';
+        var btnsRow = document.createElement('div');
+        btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
 
         if (hasSeo) {{
             var rawBtn = document.createElement('button');
             rawBtn.innerHTML = '📦 Dados brutos';
             rawBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#7c3aed;background:#f5f3ff;border:1px solid #ede9fe;border-radius:8px;'
-                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
+                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             rawBtn.onmouseover = function() {{ this.style.background='#ede9fe'; }};
             rawBtn.onmouseout  = function() {{ this.style.background='#f5f3ff'; }};
             rawBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
-            btnsRight.appendChild(rawBtn);
+            btnsRow.appendChild(rawBtn);
 
             var reBtn = document.createElement('button');
             reBtn.innerHTML = '🔄 Atualizar SEO';
             reBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
+                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             reBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
             reBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
             reBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, reBtn);
-            btnsRight.appendChild(reBtn);
+            btnsRow.appendChild(reBtn);
         }} else {{
             var extBtn = document.createElement('button');
             extBtn.innerHTML = '🔍 Extrair SEO';
             extBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
+                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             extBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
             extBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
             extBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, extBtn);
-            btnsRight.appendChild(extBtn);
+            btnsRow.appendChild(extBtn);
         }}
 
-        seoActionsBar.appendChild(btnsRight);
+        seoActionsBar.appendChild(btnsRow);
+
+        var tsRow = document.createElement('div');
+        tsRow.style.cssText = 'display:flex;align-items:center;gap:5px;border-top:1px solid #e5e7eb;padding-top:8px;';
+        tsRow.innerHTML = c.seo_extraido_em
+            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+              + '<span style="font-size:11px;color:#9ca3af;font-weight:500;">Dados coletados em ' + c.seo_extraido_em + '</span>'
+            : '<span style="font-size:11px;color:#9ca3af;font-weight:500;">Nenhuma coleta realizada</span>';
+        seoActionsBar.appendChild(tsRow);
+
         card.appendChild(seoActionsBar);
 
         // ── Badge de análise ──

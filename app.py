@@ -5360,7 +5360,7 @@ function buildCards() {{
                         + 'display:inline-flex;align-items:center;gap:2px;'
                         + 'font-size:' + size + 'px;font-weight:' + weight + ';'
                         + 'color:' + col.text + ';'
-                        + 'background:' + col.bg + ';'
+                        + 'background:transparent;'
                         + 'border:1.5px solid ' + col.border + ';'
                         + 'border-radius:' + (isBigram ? '10px' : '20px') + ';'
                         + 'padding:' + (isBigram ? '4px 11px' : '3px 10px') + ';'

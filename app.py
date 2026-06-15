@@ -5408,7 +5408,8 @@ function buildCards() {{
         var seoActionsBar = document.createElement('div');
         seoActionsBar.style.cssText = 'margin:0 14px 10px;display:flex;align-items:center;'
             + 'justify-content:space-between;gap:8px;padding:10px 14px;'
-            + 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;';
+            + 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;'
+            + 'flex-wrap:nowrap;';
 
         var tsSpan = document.createElement('div');
         tsSpan.style.cssText = 'display:flex;align-items:center;gap:5px;';
@@ -5419,14 +5420,14 @@ function buildCards() {{
         seoActionsBar.appendChild(tsSpan);
 
         var btnsRight = document.createElement('div');
-        btnsRight.style.cssText = 'display:flex;gap:6px;align-items:center;';
+        btnsRight.style.cssText = 'display:flex;flex-direction:column;gap:5px;align-items:stretch;flex-shrink:0;';
 
         if (hasSeo) {{
             var rawBtn = document.createElement('button');
             rawBtn.innerHTML = '📦 Dados brutos';
-            rawBtn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+            rawBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#7c3aed;background:#f5f3ff;border:1px solid #ede9fe;border-radius:8px;'
-                + 'padding:6px 12px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;';
+                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             rawBtn.onmouseover = function() {{ this.style.background='#ede9fe'; }};
             rawBtn.onmouseout  = function() {{ this.style.background='#f5f3ff'; }};
             rawBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
@@ -5434,9 +5435,9 @@ function buildCards() {{
 
             var reBtn = document.createElement('button');
             reBtn.innerHTML = '🔄 Atualizar SEO';
-            reBtn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+            reBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:6px 12px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;';
+                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             reBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
             reBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
             reBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, reBtn);
@@ -5444,9 +5445,9 @@ function buildCards() {{
         }} else {{
             var extBtn = document.createElement('button');
             extBtn.innerHTML = '🔍 Extrair SEO';
-            extBtn.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+            extBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
                 + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:6px 12px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;';
+                + 'padding:5px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
             extBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
             extBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
             extBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, extBtn);

@@ -5407,7 +5407,7 @@ function buildCards() {{
         // ══════════════════════════════════════════════════════════════
         var seoActionsBar = document.createElement('div');
         seoActionsBar.style.cssText = 'margin:0 14px 10px;display:flex;flex-direction:column;gap:8px;padding:12px 14px;'
-            + 'background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;';
+            + 'border:1px solid #e5e7eb;border-radius:10px;';
 
         var btnsRow = document.createElement('div');
         btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';

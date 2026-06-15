@@ -4434,7 +4434,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
     </div>
     <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
-        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;transition:width 0.3s;"></div>
+        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;transition:width 0.3s;border-radius:8px;"></div>
     </div>
     <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
         <div>
@@ -4757,9 +4757,21 @@ body {{ padding-bottom:8px; }}
     width:100%;height:100%; display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
 }}
- 
+
+/* ── Botão analisar (agora logo abaixo do preview) ── */
+.btn-wrap-preview {{ padding:0 14px 12px; }}
+.btn-analisar {{
+    width:100%;padding:11px 0;
+    border:1px solid #3a9fd6;border-radius:8px;
+    background:#eff6ff;font-size:14px;font-weight:700;color:#1d4ed8;
+    cursor:pointer;font-family:'DM Sans',sans-serif;
+    transition:background 0.15s;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+}}
+.btn-analisar:hover {{ background:#dbeafe; }}
+
 /* ══════════════════════════════════════════════════════
-   Bloco de pontuação SEO (fora do acordeão)
+   Bloco de pontuação SEO
 ══════════════════════════════════════════════════════ */
 .seo-score-block {{
     margin:0 14px 10px;
@@ -4772,50 +4784,48 @@ body {{ padding-bottom:8px; }}
     font-size:12px;font-weight:700;text-transform:uppercase;
     letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;
 }}
- 
-/* ══════════════════════════════════════════════════════
-   SEO Accordion v2
-══════════════════════════════════════════════════════ */
-.seo-wrap2{{margin:0 14px 10px;border-radius:10px;border:1px solid #e5e7eb;overflow:hidden;background:#fff;}}
-.seo-hdr2{{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid transparent;cursor:pointer;user-select:none;transition:background 0.15s;}}
-.seo-hdr2:hover{{background:#f1f5f9;}}
-.seo-hdr2.open{{border-bottom-color:#e5e7eb;}}
-.seo-hdr2-left{{display:flex;align-items:center;gap:7px;flex:1;min-width:0;}}
-.seo-hdr2-label{{font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.6px;}}
-.seo-score-pill{{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
+
+/* ── Barra de ações SEO (Dados brutos + Atualizar SEO) ── */
+.seo-actions-bar {{
+    margin:0 14px 10px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:10px 14px;
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+}}
+.seo-ts2 {{ font-size:10px;color:#9ca3af; }}
+.btn-reextract {{
+    font-size:11px;font-weight:700;color:#1d4ed8;
+    background:#eff6ff;border:1px solid #bfdbfe;
+    border-radius:6px;padding:5px 12px;cursor:pointer;
+    font-family:'DM Sans',sans-serif;
+    display:flex;align-items:center;gap:4px;
+    transition:background 0.15s;
+}}
+.btn-reextract:hover {{ background:#dbeafe; }}
+.btn-extrair-seo {{
+    width:100%;padding:10px;border-radius:8px;
+    border:1px dashed #bfdbfe;
+    background:#f8faff;font-size:13px;font-weight:700;
+    color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    transition:background 0.15s;
+    margin:0 14px 10px; width:calc(100% - 28px);
+}}
+.btn-extrair-seo:hover {{ background:#eff6ff; }}
+
+/* ── demais ── */
+.seo-score-pill {{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
 .seo-score-pill.s-great{{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}}
 .seo-score-pill.s-ok{{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}}
 .seo-score-pill.s-bad{{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}}
 .seo-score-pill.s-none{{background:#f9fafb;color:#9ca3af;border:1px solid #e5e7eb;}}
-.seo-body2{{display:none;flex-direction:column;gap:0;}}
-.seo-section{{padding:12px 14px;border-bottom:1px solid #f3f4f6;}}
-.seo-section:last-child{{border-bottom:none;}}
-.seo-section-title{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;gap:5px;}}
-.seo-field-val{{font-size:12.5px;color:#1e293b;font-weight:500;line-height:1.5;}}
-.seo-field-empty{{font-size:12px;color:#d1d5db;font-style:italic;}}
-.score-breakdown{{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px;}}
-.score-item{{display:flex;align-items:center;gap:4px;font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #f3f4f6;border-radius:6px;padding:3px 8px;}}
-.score-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
-.score-dot.ok{{background:#22c55e;}}
-.score-dot.nok{{background:#e5e7eb;}}
 .services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
 .service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
-.pages-list{{display:flex;flex-direction:column;gap:4px;}}
-.page-row{{display:flex;align-items:center;gap:7px;font-size:12px;color:#374151;background:#f8fafc;border:1px solid #f3f4f6;border-radius:6px;padding:5px 9px;text-decoration:none;transition:border-color 0.1s;}}
-.page-row:hover{{border-color:#bfdbfe;background:#eff6ff;}}
-.page-icon{{font-size:13px;flex-shrink:0;}}
-.page-label{{font-weight:600;flex-shrink:0;min-width:60px;color:#1a2e4a;}}
-.page-url{{color:#6b7280;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}}
-.sitemap-scroll{{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;margin-top:4px;border-radius:6px;padding:2px 0;}}
-.sitemap-item2{{font-size:11px;color:#4b5563;padding:3px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#f9fafb;border:1px solid #f3f4f6;}}
-.seo-footer2{{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:#f8fafc;border-top:1px solid #f3f4f6;gap:8px;}}
-.seo-ts2{{font-size:10px;color:#9ca3af;}}
-.btn-reextract{{font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;transition:background 0.15s;}}
-.btn-reextract:hover{{background:#dbeafe;}}
-.btn-extrair2{{width:100%;padding:11px;border-radius:0 0 10px 10px;border:none;border-top:1px solid #e5e7eb;background:#f8fafc;font-size:13px;font-weight:700;color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s;}}
-.btn-extrair2:hover{{background:#eff6ff;}}
- 
-/* ── demais ── */
 .analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
@@ -4838,16 +4848,6 @@ body {{ padding-bottom:8px; }}
     box-shadow: 0 2px 8px rgba(34,197,94,0.15);
     transform: translateY(-1px);
 }}
-.btn-wrap {{ padding:0 14px 16px; }}
-.btn-analisar {{
-    width:100%;padding:11px 0;
-    border:1px solid #3a9fd6;border-radius:8px;
-    background:#eff6ff;font-size:14px;font-weight:700;color:#1d4ed8;
-    cursor:pointer;font-family:'DM Sans',sans-serif;
-    transition:background 0.15s;
-    display:flex;align-items:center;justify-content:center;gap:7px;
-}}
-.btn-analisar:hover {{ background:#dbeafe; }}
 </style>
 </head>
 <body>
@@ -4862,7 +4862,6 @@ function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
  
-// ── SEO v2 helpers (inicializados uma vez) ──────────────────────
 if (!window._seoHelpersReady) {{
     window._seoHelpersReady = true;
  
@@ -4876,34 +4875,6 @@ if (!window._seoHelpersReady) {{
         ];
         var pts = items.filter(function(i){{return i.ok;}}).length * 20;
         return {{ score: pts, items: items }};
-    }};
- 
-    window.PAGE_PATTERNS = [
-        {{ re:/\/(home|inicio|index)(\/|$|\?)/i,                             icon:'🏠', label:'Home' }},
-        {{ re:/\/(sobre|about|quem-somos|empresa)(\/|$|\?)/i,                icon:'ℹ️', label:'Sobre' }},
-        {{ re:/\/(servicos|services|solucoes|solutions|produtos|products)(\/|$|\?)/i, icon:'⚙️', label:'Serviços' }},
-        {{ re:/\/(contato|contact|fale-conosco)(\/|$|\?)/i,                  icon:'📞', label:'Contato' }},
-        {{ re:/\/(blog|noticias|news|artigos|posts)(\/|$|\?)/i,              icon:'📝', label:'Blog' }},
-        {{ re:/\/(precos|pricing|planos|plans)(\/|$|\?)/i,                   icon:'💰', label:'Preços' }},
-        {{ re:/\/(cases|clientes|depoimentos|testimonials)(\/|$|\?)/i,       icon:'⭐', label:'Cases' }},
-        {{ re:/\/(parceiros|partners)(\/|$|\?)/i,                            icon:'🤝', label:'Parceiros' }},
-        {{ re:/\/(carreiras|careers|trabalhe)(\/|$|\?)/i,                    icon:'💼', label:'Carreiras' }},
-        {{ re:/\/(suporte|support|ajuda|help|faq)(\/|$|\?)/i,               icon:'🆘', label:'Suporte' }},
-    ];
- 
-    window.classifyPages = function(urls) {{
-        var found = {{}}, homeUrl = null, result = [];
-        (urls || []).forEach(function(u) {{
-            var path = u.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
-            if (path === '' || path === '/') {{ homeUrl = u; return; }}
-            for (var i=0; i<window.PAGE_PATTERNS.length; i++) {{
-                var p = window.PAGE_PATTERNS[i];
-                if (p.re.test(u) && !found[p.label]) {{ found[p.label] = {{ icon:p.icon, label:p.label, url:u }}; break; }}
-            }}
-        }});
-        if (homeUrl) result.push({{ icon:'🏠', label:'Home', url:homeUrl }});
-        window.PAGE_PATTERNS.forEach(function(p) {{ if (found[p.label]) result.push(found[p.label]); }});
-        return result;
     }};
  
     window.extractServices = function(c) {{
@@ -4925,7 +4896,7 @@ if (!window._seoHelpersReady) {{
 }}
 
 // ══════════════════════════════════════════════════════════════
-// ── FUNÇÃO: Modal de Dados Brutos (SEO + Sitemap) ──
+// ── Modal de Dados Brutos ──
 // ══════════════════════════════════════════════════════════════
 function abrirDadosBrutos(idx) {{
     var c = CARDS[idx];
@@ -5079,13 +5050,29 @@ function buildCards() {{
         img.addEventListener('load', function() {{ setTimeout(syncHeight, 100); }});
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
- 
+
+        // ── Botão Analisar com IA (logo abaixo do preview) ──
+        var btnWrapPreview = document.createElement('div');
+        btnWrapPreview.className = 'btn-wrap-preview';
+        var btnIA = document.createElement('button');
+        btnIA.className = 'btn-analisar';
+        btnIA.id = 'btn_analisar_' + c.idx;
+        btnIA.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '✨ Analisar este site com IA';
+        btnIA.onclick = (function(idx, btnEl) {{
+            return function() {{
+                btnEl.disabled = true;
+                btnEl.innerHTML = '⏳ Analisando…';
+                triggerSiteIA(idx);
+            }};
+        }})(c.idx, btnIA);
+        btnWrapPreview.appendChild(btnIA);
+        card.appendChild(btnWrapPreview);
+
         // ══════════════════════════════════════════════════
-        // ── Pontuação SEO — FORA DO ACORDEÃO ──
+        // ── Score de SEO ──
         // ══════════════════════════════════════════════════
         var hasSeo   = c.seo_status === 'ok';
         var seoScore = hasSeo ? window.calcSeoScore(c) : null;
-        var keyPages = hasSeo ? window.classifyPages(c.sitemap_urls) : [];
         var services = hasSeo ? window.extractServices(c) : [];
  
         if (hasSeo && seoScore) {{
@@ -5096,20 +5083,17 @@ function buildCards() {{
             var scoreBarColor  = scoreNum >= 80 ? '#22c55e' : scoreNum >= 40 ? '#f59e0b' : '#ef4444';
             var scoreBarId     = 'seo_score_bar_' + c.idx;
 
-            // ── chips de itens OK ──
             var chipsHtml = '';
             seoScore.items.forEach(function(it) {{
                 if (it.ok) {{
                     chipsHtml +=
                         '<div style="display:inline-flex;align-items:center;gap:3px;font-size:11px;'
-                        + 'font-weight:600;color:#15803d;'
-                        + 'padding:2px 4px;white-space:nowrap;">'
+                        + 'font-weight:600;color:#15803d;padding:2px 4px;white-space:nowrap;">'
                         + '<svg style="border:1px solid #22c45f;border-radius:5px;background-color:#22c45e;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
                         + ' ' + it.label + '</div>';
                 }}
             }});
 
-            // ── badge de oportunidades (vai para a mesma linha do score) ──
             var nok = seoScore.items.filter(function(i) {{ return !i.ok; }}).length;
             var nokHtml = nok > 0
                 ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
@@ -5144,7 +5128,6 @@ function buildCards() {{
  
             card.appendChild(scoreBlock);
  
-            // Animar barra após inserir no DOM
             setTimeout((function(barId, val) {{
                 return function() {{
                     var bar = document.getElementById(barId);
@@ -5154,7 +5137,7 @@ function buildCards() {{
         }}
 
         // ══════════════════════════════════════════════════════════════
-        // ── Canais de Contato — FORA DO ACORDEÃO ──
+        // ── Canais de Contato ──
         // ══════════════════════════════════════════════════════════════
         if (hasSeo) {{
             var ct = c.seo_contato || {{}};
@@ -5419,144 +5402,49 @@ function buildCards() {{
                 card.appendChild(kwBlock);
             }}
         }}
- 
-        // ══════════════════════════════════════════════════
-        // ── SEO Accordion v2 — detalhes técnicos ──
-        // ══════════════════════════════════════════════════
-        var scoreVal = seoScore ? seoScore.score : -1;
-        var scoreCls = scoreVal >= 80 ? 's-great' : scoreVal >= 40 ? 's-ok' : scoreVal >= 0 ? 's-bad' : 's-none';
-        var scoreTxt = scoreVal >= 0
-            ? 'SEO ' + scoreVal + '/100' + (scoreVal >= 80 ? ' ✓' : scoreVal < 40 ? ' ⚠' : '')
-            : 'Sem dados';
- 
-        var seoWrap2 = document.createElement('div');
-        seoWrap2.className = 'seo-wrap2';
- 
-        // header do acordeão
-        var seoHdr2 = document.createElement('div');
-        seoHdr2.className = 'seo-hdr2';
-        seoHdr2.innerHTML =
-            '<div class="seo-hdr2-left">'
-            + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a2e4a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
-            + '<span class="seo-hdr2-label">SEO & Conteúdo</span>'
-            + '</div>'
-            + '<span id="seo_chev2_' + c.idx + '" style="color:#9ca3af;transition:transform 0.2s;font-size:11px;">▼</span>';
- 
-        // body do acordeão
-        var seoBody2 = document.createElement('div');
-        seoBody2.className = 'seo-body2';
-        seoBody2.id = 'seo_body2_' + c.idx;
- 
+
+        // ══════════════════════════════════════════════════════════════
+        // ── Barra de ações SEO: Dados brutos + Atualizar SEO ──
+        //    (substitui o acordeão "SEO & Conteúdo")
+        // ══════════════════════════════════════════════════════════════
+        var seoActionsBar = document.createElement('div');
+        seoActionsBar.className = 'seo-actions-bar';
+
+        var tsSpan = document.createElement('span');
+        tsSpan.className = 'seo-ts2';
+        tsSpan.textContent = c.seo_extraido_em ? '🕒 ' + c.seo_extraido_em : '';
+        seoActionsBar.appendChild(tsSpan);
+
+        var btnsRight = document.createElement('div');
+        btnsRight.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
         if (hasSeo) {{
- 
-            // §1 serviços
-            if (services.length > 0) {{
-                var sec1 = document.createElement('div'); sec1.className = 'seo-section';
-                var sh = '<div class="seo-section-title">⚙️ Serviços / Destaques</div><div class="services-wrap">';
-                services.forEach(function(s) {{ sh += '<span class="service-pill">' + esc(s) + '</span>'; }});
-                sec1.innerHTML = sh + '</div>';
-                seoBody2.appendChild(sec1);
-            }}
- 
-            // §2 metadados
-            var sec2 = document.createElement('div'); sec2.className = 'seo-section';
-            sec2.innerHTML =
-                '<div class="seo-section-title">🏷️ Metadados</div>'
-                + '<div style="display:flex;flex-direction:column;gap:8px;">'
-                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">Title</div>'
-                + (c.seo_title ? '<div class="seo-field-val">' + esc(c.seo_title) + '</div>' : '<div class="seo-field-empty">Não encontrado</div>') + '</div>'
-                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">H1</div>'
-                + (c.seo_h1 ? '<div class="seo-field-val">' + esc(c.seo_h1) + '</div>' : '<div class="seo-field-empty">Não encontrado</div>') + '</div>'
-                + '<div><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:#b0b8c4;margin-bottom:2px;">Meta Description</div>'
-                + (c.seo_desc ? '<div class="seo-field-val">' + esc(c.seo_desc) + '</div>' : '<div class="seo-field-empty">Não encontrada</div>') + '</div>'
-                + '</div>';
-            seoBody2.appendChild(sec2);
- 
-            // §3 H2s
-            if (c.seo_h2s && c.seo_h2s.length > 0) {{
-                var sec3 = document.createElement('div'); sec3.className = 'seo-section';
-                var hh = '<div class="seo-section-title">📂 Seções da página (H2)</div><div style="display:flex;flex-direction:column;gap:3px;margin-top:4px;">';
-                c.seo_h2s.forEach(function(h) {{ hh += '<div style="font-size:12px;color:#374151;background:#f3f4f6;border-radius:6px;padding:4px 9px;border:1px solid #e5e7eb;">▸ ' + esc(h) + '</div>'; }});
-                sec3.innerHTML = hh + '</div>';
-                seoBody2.appendChild(sec3);
-            }}
- 
-            // §4 páginas principais
-            if (keyPages.length > 0) {{
-                var sec4 = document.createElement('div'); sec4.className = 'seo-section';
-                var ph = '<div class="seo-section-title">🗺️ Páginas principais</div><div class="pages-list">';
-                keyPages.forEach(function(p) {{
-                    var path = p.url.replace(/https?:\/\/[^/]+/,'').replace(/\/$/,'') || '/';
-                    ph += '<a class="page-row" href="' + esc(p.url) + '" target="_blank" rel="noopener">'
-                        + '<span class="page-icon">' + p.icon + '</span>'
-                        + '<span class="page-label">' + esc(p.label) + '</span>'
-                        + '<span class="page-url">' + esc(path) + '</span>'
-                        + '</a>';
-                }});
-                sec4.innerHTML = ph + '</div>';
-                seoBody2.appendChild(sec4);
-            }}
- 
-            // §5 sitemap
-            if (c.sitemap_status === 'ok' && c.sitemap_urls && c.sitemap_urls.length > 0) {{
-                var sec5 = document.createElement('div'); sec5.className = 'seo-section';
-                var sm = '<div class="seo-section-title"><span>🗂️ Sitemap completo</span>'
-                    + '<span style="font-size:9px;background:#e5e7eb;color:#6b7280;padding:1px 7px;border-radius:20px;">' + c.sitemap_total + ' págs</span></div>'
-                    + '<div class="sitemap-scroll">';
-                c.sitemap_urls.slice(0,30).forEach(function(u) {{ sm += '<div class="sitemap-item2">🔗 ' + esc(u) + '</div>'; }});
-                if (c.sitemap_total > 30) sm += '<div style="font-size:10px;color:#9ca3af;padding:3px 4px;">… e mais '+(c.sitemap_total-30)+' páginas</div>';
-                sec5.innerHTML = sm + '</div>';
-                seoBody2.appendChild(sec5);
-            }} else if (c.sitemap_status === 'sem_sitemap') {{
-                var sec5b = document.createElement('div'); sec5b.className = 'seo-section';
-                sec5b.innerHTML = '<div class="seo-section-title">🗂️ Sitemap</div>'
-                    + '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;font-size:12px;color:#991b1b;font-weight:500;">⚠️ Sitemap não encontrado — isso pode impactar o rastreamento do site.</div>';
-                seoBody2.appendChild(sec5b);
-            }}
+            // Botão Dados Brutos
+            var rawBtn = document.createElement('button');
+            rawBtn.className = 'btn-reextract';
+            rawBtn.innerHTML = '📦 Dados brutos';
+            rawBtn.style.cssText += ';color:#7c3aed;background:#f5f3ff;border-color:#ddd6fe;';
+            rawBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
+            btnsRight.appendChild(rawBtn);
 
-            // ── footer com botões Dados Brutos + Atualizar SEO ──
-            var seoFoot = document.createElement('div'); seoFoot.className = 'seo-footer2';
-            seoFoot.innerHTML = '<span class="seo-ts2">' + (c.seo_extraido_em ? '🕒 ' + esc(c.seo_extraido_em) : '') + '</span>';
-
-            // botão Dados Brutos (roxo)
-            var rawDataBtn = document.createElement('button');
-            rawDataBtn.className = 'btn-reextract';
-            rawDataBtn.innerHTML = '📦 Dados brutos';
-            rawDataBtn.style.cssText += ';color:#7c3aed;background:#f5f3ff;border-color:#ddd6fe;';
-            rawDataBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
-
-            // botão Atualizar SEO (azul)
-            var reBtn = document.createElement('button'); reBtn.className = 'btn-reextract';
+            // Botão Atualizar SEO
+            var reBtn = document.createElement('button');
+            reBtn.className = 'btn-reextract';
             reBtn.innerHTML = '🔄 Atualizar SEO';
-            reBtn.onclick = (function(idx) {{ return function() {{ reBtn.disabled=true; reBtn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx);
-
-            seoFoot.appendChild(rawDataBtn);
-            seoFoot.appendChild(reBtn);
-            seoBody2.appendChild(seoFoot);
- 
+            reBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, reBtn);
+            btnsRight.appendChild(reBtn);
         }} else {{
-            var btnEx = document.createElement('button'); btnEx.className = 'btn-extrair2';
-            btnEx.innerHTML = '🔍 Extrair SEO, Páginas e Serviços';
-            btnEx.onclick = (function(idx,btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳ Extraindo…'; triggerSiteSEO(idx); }}; }})(c.idx, btnEx);
-            seoBody2.appendChild(btnEx);
+            // Sem SEO: botão para extrair
+            var extBtn = document.createElement('button');
+            extBtn.className = 'btn-reextract';
+            extBtn.innerHTML = '🔍 Extrair SEO';
+            extBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, extBtn);
+            btnsRight.appendChild(extBtn);
         }}
- 
-        // toggle do acordeão
-        seoHdr2.addEventListener('click', (function(body, chevId, hdrEl) {{
-            return function() {{
-                var open = body.style.display === 'flex';
-                body.style.display = open ? 'none' : 'flex';
-                hdrEl.classList.toggle('open', !open);
-                var ch = document.getElementById(chevId);
-                if (ch) ch.style.transform = open ? '' : 'rotate(180deg)';
-                setTimeout(syncHeight, 150);
-            }};
-        }})(seoBody2, 'seo_chev2_' + c.idx, seoHdr2));
- 
-        seoWrap2.appendChild(seoHdr2);
-        seoWrap2.appendChild(seoBody2);
-        card.appendChild(seoWrap2);
- 
+
+        seoActionsBar.appendChild(btnsRight);
+        card.appendChild(seoActionsBar);
+
         // ── Badge de análise ──
         if (c.tem_analise && c.ultima_analise) {{
             var abadge = document.createElement('div');
@@ -5571,24 +5459,12 @@ function buildCards() {{
             abadge.onclick = function() {{ triggerAnaliseTab(); }};
             card.appendChild(abadge);
         }}
- 
-        // ── Botão analisar ──
-        var btnWrap = document.createElement('div');
-        btnWrap.className = 'btn-wrap';
-        var btn = document.createElement('button');
-        btn.className = 'btn-analisar';
-        btn.id = 'btn_analisar_' + c.idx;
-        btn.innerHTML = c.tem_analise ? '🔁 Fazer nova análise com IA' : '✨ Analisar este site com IA';
-        btn.onclick = (function(idx, nome, btnEl) {{
-            return function() {{
-                btnEl.disabled = true;
-                btnEl.innerHTML = '⏳ Analisando…';
-                triggerSiteIA(idx, nome);
-            }};
-        }})(c.idx, c.nome, btn);
-        btnWrap.appendChild(btn);
-        card.appendChild(btnWrap);
- 
+
+        // ── Padding final ──
+        var spacer = document.createElement('div');
+        spacer.style.height = '6px';
+        card.appendChild(spacer);
+
         grid.appendChild(card);
     }});
  
@@ -5603,7 +5479,7 @@ function triggerAnaliseTab() {{
     }}
 }}
  
-function triggerSiteIA(idx, nome) {{
+function triggerSiteIA(idx) {{
     var targetText = 'SITE_IA_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
     for (var i = 0; i < btns.length; i++) {{

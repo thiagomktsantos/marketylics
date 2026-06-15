@@ -5203,8 +5203,8 @@ function buildCards() {{
                     + '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:4px;">';
                 ativos.forEach(function(k) {{
                     gruposHtml +=
-                        '<div style="display:inline-flex;align-items:center;gap:6px;'
-                        + 'font-size:12px;font-weight:600;color:#374151;">'
+                        '<div style="display:inline-flex;align-items:center;gap:3px;'
+                        + 'font-size:11px;font-weight:600;color:#374151;">'
                         + (ICONS[k] || '')
                         + (LABEL_MAP[k] || k)
                         + '</div>';

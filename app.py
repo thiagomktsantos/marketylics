@@ -7919,7 +7919,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 /* ── Container principal ── */
 .main-wrap {{
-    background:#ffffff;
+    background:#d2dde9;
     border-radius:16px;
     overflow:hidden;
     margin-bottom:0;

@@ -11228,7 +11228,7 @@ function triggerTab(label) {{
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 .main-wrap {{
-    background:#ffffff;
+    background:#d2dde9;
     border-radius:16px 0 0 16px;
     overflow:hidden;
     margin-bottom:0;

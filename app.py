@@ -11294,7 +11294,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     margin-left: auto;  /* ← adicionar */
 }}
 </style>
-<div style="display:flex;flex-direction:column;gap:10px;">
+<div style="display:flex;flex-direction:column;">
     <div class="main-wrap" style="width:100%;">
         <div class="cards-grid" id="cards-grid"></div>
     </div>

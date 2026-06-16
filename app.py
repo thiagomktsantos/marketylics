@@ -11335,7 +11335,7 @@ function buildUI() {{
     var compCard = document.createElement('div');
     compCard.style.cssText =
         'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
-        + 'border-radius:14px;padding:10px 16px;'
+        + 'border-radius:0 0 14px 14px;padding:10px 16px;'
         + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
         + 'transition:all 0.15s;width:98%;margin:0 auto;box-sizing:border-box;';
     compCard.onmouseover = function() {{

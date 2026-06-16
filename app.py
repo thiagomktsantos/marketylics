@@ -11335,9 +11335,9 @@ function buildUI() {{
     var compCard = document.createElement('div');
     compCard.style.cssText =
         'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
-        + 'border-radius:16px;padding:16px;'
-        + 'display:flex;align-items:center;gap:12px;cursor:pointer;'
-        + 'transition:all 0.15s;width:100%;box-sizing:border-box;';
+        + 'border-radius:14px;padding:10px 16px;'
+        + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
+        + 'transition:all 0.15s;width:98%;margin:0 auto;box-sizing:border-box;';
     compCard.onmouseover = function() {{
         this.style.borderColor = '#3a9fd6';
         this.style.boxShadow = '0 4px 16px rgba(58,159,214,0.25)';
@@ -11346,17 +11346,13 @@ function buildUI() {{
         this.style.borderColor = '#1e3a5f';
         this.style.boxShadow = 'none';
     }};
-    /* ===== Versão inline (compacta) do botão Análise Comparativa ===== */
-    compCard.style.cssText =
-        'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
-        + 'border-radius:14px;padding:10px 16px;'
-        + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
-        + 'transition:all 0.15s;width:100%;box-sizing:border-box;';
-
     compCard.innerHTML =
         '<div style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.1);'
         + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;">🏆</div>'
-        + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>';
+        + '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
+        + '<span style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Gerar Análise Comparativa</span>'
+        + '<span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.55);white-space:nowrap;">(Compara todos os perfis lado a lado com IA)</span>'
+        + '</div>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
     var wrap = document.getElementById('comp-card-wrap');
     if (wrap) wrap.appendChild(compCard);

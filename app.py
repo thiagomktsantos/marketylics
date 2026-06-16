@@ -11346,13 +11346,17 @@ function buildUI() {{
         this.style.borderColor = '#1e3a5f';
         this.style.boxShadow = 'none';
     }};
+    /* ===== Versão inline (compacta) do botão Análise Comparativa ===== */
+    compCard.style.cssText =
+        'background:linear-gradient(135deg,#0e2a47 0%,#1a3a5c 100%);'
+        + 'border-radius:14px;padding:10px 16px;'
+        + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
+        + 'transition:all 0.15s;width:100%;box-sizing:border-box;';
+
     compCard.innerHTML =
-        '<div style="width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,0.1);'
-        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px;">🏆</div>'
-        + '<div style="flex:1;min-width:0;">'
-        + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>'
-        + '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px;white-space:nowrap;">Gerar análise com IA</div>'
-        + '</div>';
+        '<div style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.1);'
+        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;">🏆</div>'
+        + '<div style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Análise Comparativa</div>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
     var wrap = document.getElementById('comp-card-wrap');
     if (wrap) wrap.appendChild(compCard);

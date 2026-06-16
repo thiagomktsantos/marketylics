@@ -11229,7 +11229,7 @@ function triggerTab(label) {{
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 .main-wrap {{
     background:#d2dde9;
-    border-radius:16px 16px 0 0;
+    border-radius:16px;
     overflow:hidden;
     margin-bottom:0;
 }}

@@ -11346,7 +11346,7 @@ function buildUI() {{
         this.style.borderColor = '#1e3a5f';
         this.style.boxShadow = 'none';
     }};
-    compCard.innerHTML = '<div style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;">🏆</div><div style="display:flex;flex-direction:column;align-items:center;gap:2px;"><span style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Gerar Análise Comparativa</span><span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.55);white-space:nowrap;">(Compara todos os perfis lado a lado com IA)</span></div>';
+    compCard.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div style="width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;">🏆</div><span style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Gerar Análise Comparativa</span><span style="font-size:11px;font-weight:400;color:rgba(255,255,255,0.55);white-space:nowrap;">(Compara todos os perfis lado a lado com IA)</span></div>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
     var wrap = document.getElementById('comp-card-wrap');
     if (wrap) wrap.appendChild(compCard);

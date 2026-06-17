@@ -2939,13 +2939,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
     if dash_aba == "presenca":
 
-        if ok_redes:
-            nomes_g   = [r["nome"] for r in ok_redes]
-            segs_g    = [r.get("seguidores", 0) for r in ok_redes]
-            eng_pct_g = [float(r.get("eng_pct", 0.0)) for r in ok_redes]
-            posts_g   = [r.get("total_posts", 0) for r in ok_redes]
-            eng_med_g = [float(r.get("eng_medio", 0.0)) for r in ok_redes]
-            cores_g   = [get_avatar_color(i) for i in range(len(ok_redes))]
+        if todas_empresas_geral:
 
             def make_donut_svg(pct, color, label, count):
                 import math
@@ -2966,310 +2960,205 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     f' font-size="12" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
                     f'</svg>'
                     f'<span style="font-size:10px;font-weight:700;color:{color};">{pct}%</span>'
-                    f'<span style="font-size:10px;color:#9ca3af;font-weight:600;">{label}</span>'
+                    f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">{label}</span>'
                     f'</div>'
                 )
 
-            metricas_cards = []
-            for i, r in enumerate(ok_redes):
-                cor = get_avatar_color(i)
-                av  = gerar_avatar(r["nome"])
-                pp  = r.get("profile_pic", "")
-                if pp and pp.startswith("data:"):
-                    av_html = (
-                        '<div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
-                        f'<img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />'
-                        '</div>'
-                    )
-                else:
-                    av_html = (
-                        f'<div style="width:36px;height:36px;border-radius:50%;background:{cor};'
-                        f'display:flex;align-items:center;justify-content:center;'
-                        f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
-                    )
-
-                bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
-                ext_url_geral = (r.get("external_url") or "").strip()
-                score_geral   = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
-                sv            = score_geral["score"]
-                sc_cor        = score_geral["cor_classe"]
-                sc_icon       = score_geral["classificacao_icon"]
-                sc_lbl        = score_geral["classificacao"]
-
-                posts_lista = r.get("posts", [])
-                n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
-                n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
-                n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
-                n_total_tp  = len(posts_lista) or 1
-
-                pct_foto = round(n_fotos    / n_total_tp * 100)
-                pct_vid  = round(n_videos   / n_total_tp * 100)
-                pct_carr = round(n_carrossel / n_total_tp * 100)
-
-                metricas_cards.append({
-                    "nome":        r["nome"],
-                    "av_html":     av_html,
-                    "seg":         fmt_num(r.get("seguidores", 0)),
-                    "eng":         f'{r.get("eng_pct",0):.1f}%',
-                    "posts":       fmt_num(r.get("total_posts", 0)),
-                    "eng_med":     fmt_num(int(r.get("eng_medio", 0))),
-                    "cor":         cor,
-                    "score_val":   sv,
-                    "score_cor":   sc_cor,
-                    "score_icon":  sc_icon,
-                    "score_lbl":   sc_lbl,
-                    "n_fotos":     n_fotos,
-                    "n_videos":    n_videos,
-                    "n_carrossel": n_carrossel,
-                    "pct_foto":    pct_foto,
-                    "pct_vid":     pct_vid,
-                    "pct_carr":    pct_carr,
-                    "n_total_tp":  len(posts_lista),
-                })
-
-            tooltip_css = """
-<style>
-.score-tooltip-wrap {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-}
-.score-tooltip-wrap .tip {
-    display: none;
-    position: absolute;
-    bottom: 22px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1a2e4a;
-    color: #fff;
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 11px;
-    line-height: 1.8;
-    width: 215px;
-    z-index: 9999;
-    white-space: normal;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    pointer-events: none;
-    font-family: 'DM Sans', sans-serif;
-}
-.score-tooltip-wrap .tip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 5px solid transparent;
-    border-top-color: #1a2e4a;
-}
-.score-tooltip-wrap:hover .tip {
-    display: block;
-}
-.q-badge {
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-    background: #e5e7eb;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 800;
-    color: #9ca3af;
-    cursor: default;
-    flex-shrink: 0;
-    margin-left: 5px;
-    font-family: 'DM Sans', sans-serif;
-}
-</style>
-"""
-
-            cards_row = tooltip_css
-            for m in metricas_cards:
-                bar_pct = m["score_val"]
-
-                # ── Mini donuts para tipos de conteúdo — cor da empresa ─
-                def make_donut_svg(pct, color, label, count):
-                    import math
-                    r = 20
-                    cx = cy = 27
-                    circum = round(2 * math.pi * r, 2)
-                    dash = round(pct / 100 * circum, 2)
-                    gap  = round(circum - dash, 2)
-                    offset = round(circum * 0.25, 2)
-                    return (
-                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;">'
-                        f'<svg width="54" height="54" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg">'
-                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="6"/>'
-                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="6"'
-                        f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
-                        f' stroke-linecap="round"/>'
-                        f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
-                        f' font-size="12" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
-                        f'</svg>'
-                        f'<span style="font-size:10px;font-weight:700;color:{color};">{pct}%</span>'
-                        f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">{label}</span>'
-                        f'</div>'
-                    )
-
-                # Todos os 3 donuts usam a cor da empresa
-                tipo_donuts = (
-                    f'<div style="display:flex;gap:4px;justify-content:space-around;padding:4px 0 6px 0;">'
-                    + make_donut_svg(m["pct_foto"],  m["cor"], "Fotos",     m["n_fotos"])
-                    + make_donut_svg(m["pct_vid"],   m["cor"], "Reels",     m["n_videos"])
-                    + make_donut_svg(m["pct_carr"],  m["cor"], "Carrossel", m["n_carrossel"])
-                    + f'</div>'
-                )
-
-                # ── Score label com tooltip CSS puro ────────────────────
-                score_label_html = (
-                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:-16px;">'
-                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
-                    '<div class="score-tooltip-wrap">'
-                    '<div class="q-badge">?</div>'
-                    '<div class="tip">'
-                    '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-                    '✅ Tem bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+20<br>'
-                    '✅ Proposta de valor &nbsp;&nbsp;&nbsp;+20<br>'
-                    '✅ Posicionamento &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+20<br>'
-                    '✅ Link na bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+15<br>'
-                    '✅ CTA na bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+15<br>'
-                    '✅ Engajamento ≥3% &nbsp;&nbsp;&nbsp;+10'
-                    '</div>'
-                    '</div>'
-                    '</div>'
-                )
-
-                # ── Badge Minha Empresa / Concorrente ───────────────────
-                is_minha_empresa = any(
-                    e["nome"] == m["nome"] and e["tipo"] == "minha"
-                    for e in todas_empresas_geral
-                )
-                if is_minha_empresa:
-                    badge_html = (
-                        '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;'
-                        'background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;white-space:nowrap;'
-                        'flex-shrink:0;">Minha empresa</span>'
-                    )
-                else:
-                    badge_html = (
-                        '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:20px;'
-                        'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;white-space:nowrap;'
-                        'flex-shrink:0;">Concorrente</span>'
-                    )
-
-                cards_row += (
-                    '<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e5e7eb;'
-                    f'border-radius:12px;padding:14px 16px;border-top:3px solid {m["cor"]}">'
-
-                    # ── Cabeçalho com badge ──────────────────────────────
-                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
-                    f'{m["av_html"]}'
-                    '<div style="font-size:13px;font-weight:700;color:#1a2e4a;'
-                    'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;">'
-                    f'{m["nome"]}</div>'
-                    f'{badge_html}'
-                    '</div>'
-
-                    # ── HR antes das métricas ────────────────────────────
-                    '<hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0"/>'
-
-                    # ── Métricas 4 colunas ───────────────────────────────
-                    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center;">'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
-                    f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj. %</div>'
-                    f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
-                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:10px;color:#838484;font-weight:700;'
-                    'text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
-                    f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
-                    '</div>'
-
-                    # ── Score de perfil com tooltip ──────────────────────
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:20px;margin-bottom:22px;">'
-                    + score_label_html +
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
-                    '<div></div>'
-                    '<div style="display:flex;align-items:center;gap:5px;">'
-                    f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                    '<span style="font-size:10px;color:#9ca3af;font-weight:700;">/100</span>'
-                    f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;'
-                    f'font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
-                    '</div></div>'
-                    f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                    f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
-                    '</div>'
-                    '</div>'
-
-                    # ── Tipos de conteúdo — por último ──────────────────
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;">'
-                    '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                    'letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
-                    + tipo_donuts +
-                    '</div>'
-
-                    '</div>'
-                )
-
-            st.markdown(
-                f"""
-                <div style='background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                            padding:18px 20px 20px;margin-top:-49px;'>
-                    <div style='font-size:18px;font-weight:800;color:#1a2e4a;text-transform:uppercase;
-                                letter-spacing:0.6px;padding-bottom:10px;border-bottom:2px solid #e5e7eb;
-                                margin-bottom:16px;display:flex;align-items:center;gap:10px;'>
-                        📱 Redes Sociais
-                    </div>
-                    <div style='display:flex;gap:12px;flex-wrap:wrap;'>{cards_row}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # ── Seção: Sites das Empresas ──────────────────────────────
             seo_cache = st.session_state.get("seo_cache", {})
 
-            sites_cards_data = []
+            # ── Monta um registro combinado por empresa (rede social + site/SEO) ──
+            empresas_cards_data = []
             for i, e in enumerate(todas_empresas_geral):
-                is_minha  = e["tipo"] == "minha"
-                cor       = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
-                av        = gerar_avatar(e["nome"])
+                is_minha = e["tipo"] == "minha"
+                cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+                av  = gerar_avatar(e["nome"])
                 badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
                 badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
                 badge_col = "#15803d" if is_minha else "#1d4ed8"
                 badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-                site_url  = e.get("site", "") or ""
-                ig_url    = e.get("instagram", "") or ""
 
-                seo     = seo_cache.get(e["nome"], {})
-                sitemap = seo.get("sitemap", {})
-                sites_cards_data.append({
-                    "nome":             e["nome"],
-                    "cor":              cor,
-                    "av":               av,
-                    "badge_lbl":        badge_lbl,
-                    "badge_bg":         badge_bg,
-                    "badge_col":        badge_col,
-                    "badge_brd":        badge_brd,
-                    "site":             site_url,
-                    "ig":               ig_url,
-                    "seo_title":        seo.get("title", ""),
-                    "seo_desc":         seo.get("description", ""),
-                    "seo_h1":           seo.get("h1", ""),
-                    "seo_h2s":          seo.get("h2s", []),
-                    "seo_status":       seo.get("status", ""),
-                    "seo_extraido_em":  seo.get("extraido_em", ""),
-                    "sitemap_urls":     sitemap.get("urls", []),
-                    "sitemap_total":    sitemap.get("total", 0),
-                    "sitemap_status":   sitemap.get("status", ""),              
+                # ── Dados de redes sociais (se existirem) ──
+                r = dados_redes_map.get(e["nome"])
+                tem_redes = bool(r)
+
+                redes_info = None
+                if tem_redes:
+                    pp = r.get("profile_pic", "")
+                    if pp and pp.startswith("data:"):
+                        av_html = (
+                            '<div style="width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
+                            f'<img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />'
+                            '</div>'
+                        )
+                    else:
+                        av_html = (
+                            f'<div style="width:36px;height:36px;border-radius:50%;background:{cor};'
+                            f'display:flex;align-items:center;justify-content:center;'
+                            f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
+                        )
+
+                    bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
+                    ext_url_geral = (r.get("external_url") or "").strip()
+                    score_geral = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
+
+                    posts_lista = r.get("posts", [])
+                    n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
+                    n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
+                    n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
+                    n_total_tp  = len(posts_lista) or 1
+
+                    redes_info = {
+                        "av_html":     av_html,
+                        "seg":         fmt_num(r.get("seguidores", 0)),
+                        "eng":         f'{r.get("eng_pct",0):.1f}%',
+                        "posts":       fmt_num(r.get("total_posts", 0)),
+                        "eng_med":     fmt_num(int(r.get("eng_medio", 0))),
+                        "score_val":   score_geral["score"],
+                        "score_cor":   score_geral["cor_classe"],
+                        "score_icon":  score_geral["classificacao_icon"],
+                        "score_lbl":   score_geral["classificacao"],
+                        "pct_foto":    round(n_fotos / n_total_tp * 100),
+                        "pct_vid":     round(n_videos / n_total_tp * 100),
+                        "pct_carr":    round(n_carrossel / n_total_tp * 100),
+                        "n_fotos":     n_fotos,
+                        "n_videos":    n_videos,
+                        "n_carrossel": n_carrossel,
+                    }
+
+                if not tem_redes:
+                    av_html_fallback = (
+                        f'<div style="width:36px;height:36px;border-radius:50%;background:{cor};'
+                        f'display:flex;align-items:center;justify-content:center;'
+                        f'font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
+                    )
+                else:
+                    av_html_fallback = redes_info["av_html"]
+
+                # ── Dados de site/SEO (se existirem) ──
+                site_url = e.get("site", "") or ""
+                ig_url   = e.get("instagram", "") or ""
+                seo      = seo_cache.get(e["nome"], {})
+                sitemap  = seo.get("sitemap", {})
+
+                empresas_cards_data.append({
+                    "nome":            e["nome"],
+                    "cor":             cor,
+                    "av_html":         av_html_fallback,
+                    "badge_lbl":       badge_lbl,
+                    "badge_bg":        badge_bg,
+                    "badge_col":       badge_col,
+                    "badge_brd":       badge_brd,
+                    "tem_redes":       tem_redes,
+                    "redes":           redes_info,
+                    "site":            site_url,
+                    "ig":              ig_url,
+                    "seo_title":       seo.get("title", ""),
+                    "seo_desc":        seo.get("description", ""),
+                    "seo_h1":          seo.get("h1", ""),
+                    "seo_h2s":         seo.get("h2s", []),
+                    "seo_status":      seo.get("status", ""),
+                    "seo_extraido_em": seo.get("extraido_em", ""),
+                    "sitemap_urls":    sitemap.get("urls", []),
+                    "sitemap_total":   sitemap.get("total", 0),
+                    "sitemap_status":  sitemap.get("status", ""),
                 })
 
-            sites_cards_json = _json.dumps(sites_cards_data, ensure_ascii=False)
+            # ── Pré-renderiza, em Python, o bloco de métricas+score+donuts de redes sociais ──
+            tooltip_css = """
+<style>
+.score-tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
+.score-tooltip-wrap .tip {
+    display: none; position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: #1a2e4a; color: #fff; border-radius: 8px; padding: 10px 12px; font-size: 11px;
+    line-height: 1.8; width: 215px; z-index: 9999; white-space: normal;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25); pointer-events: none; font-family: 'DM Sans', sans-serif;
+}
+.score-tooltip-wrap .tip::after {
+    content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: #1a2e4a;
+}
+.score-tooltip-wrap:hover .tip { display: block; }
+.q-badge {
+    width: 15px; height: 15px; border-radius: 50%; background: #e5e7eb; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: #9ca3af;
+    cursor: default; flex-shrink: 0; margin-left: 5px; font-family: 'DM Sans', sans-serif;
+}
+</style>
+"""
+
+            for d in empresas_cards_data:
+                if d["tem_redes"]:
+                    m = d["redes"]
+                    bar_pct = m["score_val"]
+
+                    tipo_donuts = (
+                        f'<div style="display:flex;gap:4px;justify-content:space-around;padding:4px 0 6px 0;">'
+                        + make_donut_svg(m["pct_foto"], d["cor"], "Fotos", m["n_fotos"])
+                        + make_donut_svg(m["pct_vid"], d["cor"], "Reels", m["n_videos"])
+                        + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
+                        + f'</div>'
+                    )
+
+                    score_label_html = (
+                        '<div style="display:flex;align-items:center;gap:0px;margin-bottom:-16px;">'
+                        '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Score de perfil</div>'
+                        '<div class="score-tooltip-wrap">'
+                        '<div class="q-badge">?</div>'
+                        '<div class="tip">'
+                        '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+                        '✅ Tem bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+20<br>'
+                        '✅ Proposta de valor &nbsp;&nbsp;&nbsp;+20<br>'
+                        '✅ Posicionamento &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+20<br>'
+                        '✅ Link na bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+15<br>'
+                        '✅ CTA na bio &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+15<br>'
+                        '✅ Engajamento ≥3% &nbsp;&nbsp;&nbsp;+10'
+                        '</div>'
+                        '</div>'
+                        '</div>'
+                    )
+
+                    redes_block_html = (
+                        '<hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0"/>'
+                        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;text-align:center;">'
+                        '<div><div style="font-size:10px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Seguidores</div>'
+                        f'<div style="font-size:16px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
+                        '<div><div style="font-size:10px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Engaj. %</div>'
+                        f'<div style="font-size:16px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
+                        '<div><div style="font-size:10px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Posts</div>'
+                        f'<div style="font-size:16px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
+                        '<div><div style="font-size:10px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Engaj/Post</div>'
+                        f'<div style="font-size:16px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                        '</div>'
+                        '<div style="border-top:1px solid #f3f4f6;padding-top:20px;margin-bottom:22px;">'
+                        + score_label_html +
+                        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+                        '<div></div>'
+                        '<div style="display:flex;align-items:center;gap:5px;">'
+                        f'<span style="font-size:14px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
+                        '<span style="font-size:10px;color:#9ca3af;font-weight:700;">/100</span>'
+                        f'<span style="font-size:11px;background:#f3f4f6;padding:2px 7px;border-radius:20px;font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
+                        '</div></div>'
+                        f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                        f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
+                        '</div>'
+                        '</div>'
+                        '<div style="padding-top:0;">'
+                        '<div style="font-size:10px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Tipos de conteúdo</div>'
+                        + tipo_donuts +
+                        '</div>'
+                    )
+                else:
+                    redes_block_html = (
+                        '<hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 10px 0"/>'
+                        '<div style="text-align:center;padding:24px 12px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
+                        '<div style="font-size:22px;margin-bottom:6px;">📊</div>'
+                        '<div style="font-size:12px;color:#9ca3af;">Sem dados de redes sociais coletados</div>'
+                        '</div>'
+                    )
+
+                d["redes_block_html"] = redes_block_html
+
+            empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 
             components.html(f"""
 <!DOCTYPE html><html>
@@ -3279,113 +3168,89 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
-.wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 20px; margin-top:16px; }}
-.sec-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase;
-    letter-spacing:0.6px; padding-bottom:10px; border-bottom:2px solid #e5e7eb;
-    margin-bottom:16px; display:flex; align-items:center; gap:10px; }}
-.cards {{ display:flex; gap:12px; flex-wrap:wrap; }}
-.scard {{
-    flex:1; min-width:240px;
-    border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;
-    display:flex; flex-direction:column;
-    transition:border-color 0.15s;
+{tooltip_css}
+.empresa-card {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:18px 20px 20px; margin-top:16px; overflow:hidden;
 }}
-.scard:hover {{ border-color:#6fd1f3; }}
-.scard-hdr {{
-    display:flex; align-items:center; gap:10px; padding:12px 14px 10px;
-    border-bottom:1px solid #f3f4f6;
-}}
-.avatar {{
-    width:34px; height:34px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:12px; font-weight:700; color:#fff; flex-shrink:0;
-}}
-.scard-name {{ font-size:13px; font-weight:700; color:#111827; flex:1; min-width:0;
+.empresa-card-hdr {{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }}
+.empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.badge {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
+.badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
 .preview {{
-    margin:12px 12px 0; border-radius:8px; overflow:hidden;
-    border:1px solid #e5e7eb; background:#f9fafb;
-    aspect-ratio:16/9; position:relative; flex-shrink:0;
+    margin-top:14px; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;
+    background:#f9fafb; aspect-ratio:21/6; position:relative; flex-shrink:0;
 }}
 .preview img {{ width:100%; height:100%; object-fit:cover; object-position:top; display:block; }}
 .preview-fallback {{
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
-    flex-direction:column; gap:6px; background:#f3f4f6; border-radius:8px;
+    flex-direction:column; gap:6px; background:#f3f4f6; border-radius:8px; min-height:90px;
 }}
-.seo-wrap {{
-    margin:10px 12px 0; border-radius:8px;
-    border:1px solid #e5e7eb; overflow:hidden;
-}}
+.seo-wrap {{ margin-top:10px; border-radius:8px; border:1px solid #e5e7eb; overflow:hidden; }}
 .seo-header {{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:8px 12px; background:#f8fafc; border-bottom:1px solid #e5e7eb;
-    cursor:pointer; user-select:none;
+    display:flex; align-items:center; justify-content:space-between; padding:8px 12px;
+    background:#f8fafc; border-bottom:1px solid #e5e7eb; cursor:pointer; user-select:none;
 }}
 .seo-header-left {{ display:flex; align-items:center; gap:6px; }}
 .seo-label {{ font-size:11px; font-weight:700; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.5px; }}
-.seo-badge-ok {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
-    background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
-.seo-badge-no {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px;
-    background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }}
+.seo-badge-ok {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
+.seo-badge-no {{ font-size:9px; font-weight:700; padding:2px 7px; border-radius:20px; background:#f9fafb; color:#9ca3af; border:1px solid #e5e7eb; }}
 .seo-chevron {{ font-size:12px; color:#9ca3af; transition:transform 0.2s; }}
 .seo-body {{ padding:10px 12px; display:flex; flex-direction:column; gap:8px; background:#fff; }}
-.seo-item-label {{
-    font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px;
-    color:#9ca3af; margin-bottom:2px;
-}}
-.seo-item-value {{
-    font-size:12px; color:#374151; line-height:1.5; font-weight:500;
-    word-break:break-word;
-}}
+.seo-item-label {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#9ca3af; margin-bottom:2px; }}
+.seo-item-value {{ font-size:12px; color:#374151; line-height:1.5; font-weight:500; word-break:break-word; }}
 .seo-item-empty {{ font-size:12px; color:#d1d5db; font-style:italic; }}
 .seo-h2-list {{ display:flex; flex-direction:column; gap:3px; margin-top:2px; }}
-.seo-h2-pill {{
-    font-size:11px; color:#374151; background:#f3f4f6; border-radius:6px;
-    padding:3px 8px; display:inline-block; width:fit-content;
-}}
-.seo-ts {{ font-size:10px; color:#9ca3af; text-align:right; padding-top:4px;
-    border-top:1px solid #f3f4f6; margin-top:4px; }}
-.scard-footer {{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:6px; }}
+.seo-h2-pill {{ font-size:11px; color:#374151; background:#f3f4f6; border-radius:6px; padding:3px 8px; display:inline-block; width:fit-content; }}
+.seo-ts {{ font-size:10px; color:#9ca3af; text-align:right; padding-top:4px; border-top:1px solid #f3f4f6; margin-top:4px; }}
+.scard-footer {{ padding-top:10px; display:flex; flex-direction:column; gap:6px; }}
 .link-row {{
-    display:flex; align-items:center; gap:6px; padding:7px 10px;
-    border-radius:7px; background:#f9fafb; border:1px solid #f3f4f6;
-    font-size:12px; color:#374151; font-weight:500;
-    text-decoration:none; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+    display:flex; align-items:center; gap:6px; padding:7px 10px; border-radius:7px; background:#f9fafb;
+    border:1px solid #f3f4f6; font-size:12px; color:#374151; font-weight:500; text-decoration:none;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
 }}
 .link-row:hover {{ background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }}
 .no-link {{ color:#d1d5db; font-style:italic; font-size:12px; padding:4px 2px; }}
+.section-sub-label {{
+    font-size:10px; color:#1a2e4a; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.5px; margin-top:14px; margin-bottom:4px;
+}}
 </style>
 </head>
 <body>
-<div class="wrap">
-    <div class="sec-title">🌐 Sites das Empresas</div>
-    <div class="cards" id="cards"></div>
-</div>
+<div id="cards"></div>
 <script>
-var DATA = {sites_cards_json};
+var DATA = {empresas_cards_json};
 
-function esc(s) {{
-    return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}}
+function esc(s) {{ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
 function buildCards() {{
     var el = document.getElementById('cards');
     DATA.forEach(function(d, di) {{
         var card = document.createElement('div');
-        card.className = 'scard';
+        card.className = 'empresa-card';
         card.style.borderTop = '3px solid ' + d.cor;
 
-        // ── Header ──
+        // ── Cabeçalho ──
         var hdr = document.createElement('div');
-        hdr.className = 'scard-hdr';
-        hdr.innerHTML =
-            '<div class="avatar" style="background:' + d.cor + '">' + d.av + '</div>'
-            + '<span class="scard-name">' + esc(d.nome) + '</span>'
+        hdr.className = 'empresa-card-hdr';
+        hdr.innerHTML = d.av_html
+            + '<span class="empresa-card-nome">' + esc(d.nome) + '</span>'
             + '<span class="badge" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span>';
         card.appendChild(hdr);
 
-        // ── Preview ──
+        // ── Bloco de Redes Sociais (métricas + score + donuts), pré-renderizado em Python ──
+        var redesBlock = document.createElement('div');
+        redesBlock.innerHTML = d.redes_block_html;
+        card.appendChild(redesBlock);
+
+        // ── Sub-título Site ──
+        var siteLabel = document.createElement('div');
+        siteLabel.className = 'section-sub-label';
+        siteLabel.textContent = '🌐 Site';
+        card.appendChild(siteLabel);
+
+        // ── Preview do site ──
         var prev = document.createElement('div');
         prev.className = 'preview';
         if (d.site) {{
@@ -3394,105 +3259,17 @@ function buildCards() {{
             img.src = 'https://api.microlink.io/?url=' + encodeURIComponent(d.site) + '&screenshot=true&meta=false&embed=screenshot.url';
             img.onerror = function() {{
                 prev.innerHTML = '<div class="preview-fallback">'
-                    + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+                    + '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
                     + '<span style="font-size:11px;color:#9ca3af">Prévia indisponível</span></div>';
             }};
             img.addEventListener('load', function() {{ setTimeout(syncH, 100); }});
             prev.appendChild(img);
         }} else {{
             prev.innerHTML = '<div class="preview-fallback">'
-                + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+                + '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
                 + '<span style="font-size:11px;color:#9ca3af">Sem site cadastrado</span></div>';
         }}
         card.appendChild(prev);
-
-        // ══════════════════════════════════════════════════════════════
-        // ── Canais de Contato ──
-        // ══════════════════════════════════════════════════════════════
-        (function() {{
-            var ct = c.contato || {{}};
-
-            var canais = [
-                {{ key: "whatsapp", icon: "📱", label: "WhatsApp", presente: !!ct.whatsapp, detalhe: ct.whatsapp ? ("+" + ct.whatsapp).replace(/^\+\+/,"+") : "" }},
-                {{ key: "telefone", icon: "📞", label: "Telefone", presente: !!ct.telefone, detalhe: ct.telefone || "" }},
-                {{ key: "email", icon: "✉️", label: "E-mail", presente: !!ct.email, detalhe: ct.email || "" }},
-                {{ key: "chat_ao_vivo", icon: "💬", label: "Chat ao vivo", presente: !!ct.chat_ao_vivo, detalhe: "" }},
-                {{ key: "formulario", icon: "📝", label: "Formulário", presente: !!ct.formulario, detalhe: "" }},
-                {{ key: "botao_flutuante", icon: "🔘", label: "Botão flutuante", presente: !!ct.botao_flutuante, detalhe: "" }},
-                {{ key: "popup_saida", icon: "🪟", label: "Popup de saída", presente: !!ct.popup_saida, detalhe: "" }},
-                {{ key: "instagram", icon: "📸", label: "Instagram", presente: !!ct.instagram, detalhe: ct.instagram ? "@" + ct.instagram : "" }},
-                {{ key: "facebook", icon: "👤", label: "Facebook", presente: !!ct.facebook, detalhe: ct.facebook || "" }},
-                {{ key: "linkedin", icon: "💼", label: "LinkedIn", presente: !!ct.linkedin, detalhe: ct.linkedin || "" }},
-                {{ key: "youtube", icon: "▶️", label: "YouTube", presente: !!ct.youtube, detalhe: ct.youtube || "" }},
-            ];
-
-            if (!hasSeo) return;
-
-            var presentes  = canais.filter(function(x) {{ return x.presente; }});
-            var ausentes   = canais.filter(function(x) {{ return !x.presente; }});
-            var totalScore = Math.round((presentes.length / canais.length) * 100);
-            var scoreCor   = totalScore >= 70 ? "#15803d" : totalScore >= 40 ? "#92400e" : "#b91c1c";
-            var scoreBg2   = totalScore >= 70 ? "#f0fdf4" : totalScore >= 40 ? "#fffbeb" : "#fef2f2";
-            var scoreBarC2 = totalScore >= 70 ? "#22c55e"  : totalScore >= 40 ? "#f59e0b"  : "#ef4444";
-            var scoreBarId2 = "ct_bar_" + c.idx;
-
-            var itemsHtml = "";
-            presentes.forEach(function(canal) {{
-                var det = canal.detalhe
-                    ? '<span style="font-size:11px;color:#6b7280;margin-left:4px;overflow:hidden;'
-                      + 'text-overflow:ellipsis;white-space:nowrap;max-width:110px;">'
-                      + esc(canal.detalhe) + '</span>'
-                    : "";
-                itemsHtml +=
-                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 5px;'
-                    + 'min-width:0;">'
-                    + '<span style="font-size:14px;flex-shrink:0;">' + canal.icon + '</span>'
-                    + '<span style="font-size:12px;font-weight:700;color:#15803d;white-space:nowrap;">' + canal.label + '</span>'
-                    + det
-                    + '</div>';
-            }});
-
-            ausentes.forEach(function(canal) {{
-                itemsHtml +=
-                    '<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;'
-                    + 'background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;opacity:0.55;">'
-                    + '<span style="font-size:14px;flex-shrink:0;filter:grayscale(1);">' + canal.icon + '</span>'
-                    + '<span style="font-size:12px;font-weight:600;color:#9ca3af;white-space:nowrap;text-decoration:line-through;">' + canal.label + '</span>'
-                    + '</div>';
-            }});
-
-            var ctBlock = document.createElement("div");
-            ctBlock.style.cssText = "margin:0 14px 10px;padding:14px 16px;background:#fff;"
-                + "border:1px solid #e5e7eb;border-radius:12px;";
-            ctBlock.innerHTML =
-                '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">📡 Canais de Contato</div>'
-                + '<div style="display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;margin-bottom:10px;">'
-                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;">'
-                +     '<span style="font-size:35px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreCor + ';">' + presentes.length + '</span>'
-                +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/' + canais.length + '</span>'
-                +   '</div>'
-                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-                +     'font-size:14px;font-weight:800;background:' + scoreBg2 + ';color:' + scoreCor + ';white-space:nowrap;">'
-                +     (totalScore >= 70 ? 'Bem coberto ✓' : totalScore >= 40 ? 'Parcial ⚠️' : 'Pouca cobertura 📝')
-                +   '</div>'
-                + '</div>'
-                + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:12px;">'
-                +   '<div id="' + scoreBarId2 + '" style="height:100%;width:0%;border-radius:4px;'
-                +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarC2 + ');'
-                +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
-                + '</div>'
-                + '<div style="display:flex;flex-wrap:wrap;gap:7px;">' + itemsHtml + '</div>';
-
-            card.appendChild(ctBlock);
-
-            setTimeout((function(barId, val) {{
-                return function() {{
-                    var bar = document.getElementById(barId);
-                    if (bar) bar.style.width = val + "%";
-                }};
-            }})(scoreBarId2, totalScore), 200 + c.idx * 80);
-        }})();
 
         // ── SEO Accordion ──
         var hasSeo = d.seo_status === 'ok';
@@ -3505,9 +3282,7 @@ function buildCards() {{
             '<div class="seo-header-left">'
             + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a2e4a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
             + '<span class="seo-label">SEO & Conteúdo</span>'
-            + (hasSeo
-                ? '<span class="seo-badge-ok">✓ Extraído</span>'
-                : '<span class="seo-badge-no">Sem dados</span>')
+            + (hasSeo ? '<span class="seo-badge-ok">✓ Extraído</span>' : '<span class="seo-badge-no">Sem dados</span>')
             + '</div>'
             + '<span class="seo-chevron" id="chev_' + di + '">▼</span>';
 
@@ -3517,83 +3292,45 @@ function buildCards() {{
         seoBody.style.display = 'none';
 
         if (hasSeo) {{
-            // Title
             seoBody.innerHTML +=
-                '<div>'
-                + '<div class="seo-item-label">🏷️ Title</div>'
-                + (d.seo_title
-                    ? '<div class="seo-item-value">' + esc(d.seo_title) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrado</div>')
+                '<div><div class="seo-item-label">🏷️ Title</div>'
+                + (d.seo_title ? '<div class="seo-item-value">' + esc(d.seo_title) + '</div>' : '<div class="seo-item-empty">Não encontrado</div>')
+                + '</div>';
+            seoBody.innerHTML +=
+                '<div><div class="seo-item-label">📌 H1 — Título principal</div>'
+                + (d.seo_h1 ? '<div class="seo-item-value">' + esc(d.seo_h1) + '</div>' : '<div class="seo-item-empty">Não encontrado</div>')
+                + '</div>';
+            seoBody.innerHTML +=
+                '<div><div class="seo-item-label">📝 Meta Description</div>'
+                + (d.seo_desc ? '<div class="seo-item-value">' + esc(d.seo_desc) + '</div>' : '<div class="seo-item-empty">Não encontrada</div>')
                 + '</div>';
 
-            // H1
-            seoBody.innerHTML +=
-                '<div>'
-                + '<div class="seo-item-label">📌 H1 — Título principal</div>'
-                + (d.seo_h1
-                    ? '<div class="seo-item-value">' + esc(d.seo_h1) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrado</div>')
-                + '</div>';
-
-            // Description
-            seoBody.innerHTML +=
-                '<div>'
-                + '<div class="seo-item-label">📝 Meta Description</div>'
-                + (d.seo_desc
-                    ? '<div class="seo-item-value">' + esc(d.seo_desc) + '</div>'
-                    : '<div class="seo-item-empty">Não encontrada</div>')
-                + '</div>';
-
-            // H2s
             if (d.seo_h2s && d.seo_h2s.length > 0) {{
                 var h2html = '<div class="seo-h2-list">';
-                d.seo_h2s.forEach(function(h) {{
-                    h2html += '<div class="seo-h2-pill">▸ ' + esc(h) + '</div>';
-                }});
+                d.seo_h2s.forEach(function(h) {{ h2html += '<div class="seo-h2-pill">▸ ' + esc(h) + '</div>'; }});
                 h2html += '</div>';
-                seoBody.innerHTML +=
-                    '<div>'
-                    + '<div class="seo-item-label">📂 Seções (H2)</div>'
-                    + h2html
-                    + '</div>';
+                seoBody.innerHTML += '<div><div class="seo-item-label">📂 Seções (H2)</div>' + h2html + '</div>';
             }}
 
-            // Sitemap
             if (d.sitemap_status === 'ok' && d.sitemap_urls && d.sitemap_urls.length > 0) {{
                 var smHtml = '<div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;max-height:160px;overflow-y:auto;">';
                 d.sitemap_urls.slice(0, 30).forEach(function(u) {{
-                    smHtml += '<div style="font-size:11px;color:#374151;background:#f3f4f6;border-radius:5px;'
-                        + 'padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-                        + '🔗 ' + esc(u) + '</div>';
+                    smHtml += '<div style="font-size:11px;color:#374151;background:#f3f4f6;border-radius:5px;padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🔗 ' + esc(u) + '</div>';
                 }});
                 smHtml += '</div>';
                 if (d.sitemap_total > 30) {{
-                    smHtml += '<div style="font-size:10px;color:#9ca3af;margin-top:4px;">... e mais '
-                        + (d.sitemap_total - 30) + ' páginas no sitemap</div>';
+                    smHtml += '<div style="font-size:10px;color:#9ca3af;margin-top:4px;">... e mais ' + (d.sitemap_total - 30) + ' páginas no sitemap</div>';
                 }}
-                seoBody.innerHTML +=
-                    '<div>'
-                    + '<div class="seo-item-label">🗺️ Sitemap (' + d.sitemap_total + ' páginas)</div>'
-                    + smHtml
-                    + '</div>';
+                seoBody.innerHTML += '<div><div class="seo-item-label">🗺️ Sitemap (' + d.sitemap_total + ' páginas)</div>' + smHtml + '</div>';
             }} else if (d.sitemap_status === 'sem_sitemap') {{
-                seoBody.innerHTML +=
-                    '<div>'
-                    + '<div class="seo-item-label">🗺️ Sitemap</div>'
-                    + '<div class="seo-item-empty">Sitemap não encontrado</div>'
-                    + '</div>';
+                seoBody.innerHTML += '<div><div class="seo-item-label">🗺️ Sitemap</div><div class="seo-item-empty">Sitemap não encontrado</div></div>';
             }}
 
-            // Timestamp
             if (d.seo_extraido_em) {{
-                seoBody.innerHTML +=
-                    '<div class="seo-ts">🕒 Extraído em: ' + esc(d.seo_extraido_em) + '</div>';
+                seoBody.innerHTML += '<div class="seo-ts">🕒 Extraído em: ' + esc(d.seo_extraido_em) + '</div>';
             }}
         }} else {{
-            seoBody.innerHTML =
-                '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:8px 0;">'
-                + 'Salve a empresa/concorrente para extrair os dados de SEO automaticamente.'
-                + '</div>';
+            seoBody.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:8px 0;">Salve a empresa/concorrente para extrair os dados de SEO automaticamente.</div>';
         }}
 
         seoHdr.addEventListener('click', (function(body, chevId) {{
@@ -3610,7 +3347,7 @@ function buildCards() {{
         seoWrap.appendChild(seoBody);
         card.appendChild(seoWrap);
 
-        // ── Footer links ──
+        // ── Footer com links ──
         var footer = document.createElement('div');
         footer.className = 'scard-footer';
 
@@ -3650,9 +3387,7 @@ function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = (h + 8) + 'px'; break;
-        }} }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
     }}
 }}
 
@@ -3661,15 +3396,15 @@ if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
 </script>
 </body></html>
-""", height=600, scrolling=False)
+""", height=900, scrolling=False)
 
         else:
             st.markdown(
                 "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
                 "padding:48px 32px;text-align:center;margin-top:16px'>"
                 "<div style='font-size:32px;margin-bottom:12px'>📊</div>"
-                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem dados de redes sociais</div>"
-                "<div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e clique em <b>Coletar dados</b>.</div>"
+                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem empresas cadastradas</div>"
+                "<div style='font-size:13px;color:#9ca3af'>Cadastre sua empresa e concorrentes para ver o painel.</div>"
                 "</div>",
                 unsafe_allow_html=True
             )

@@ -11966,7 +11966,7 @@ body{{padding-bottom:8px;}}
 .stats-row {{ display:flex; gap:12px; padding:16px 0 4px; flex-wrap:wrap; }}
 .stat-card {{
     flex:1; min-width:90px; background:#fff;
-    border:1px solid #e5e7eb; border-radius:12px;
+    border-radius:12px;
     padding:14px 10px; text-align:center;
 }}
 .stat-num2 {{ font-size:22px; font-weight:800; color:#0f1f35; line-height:1; margin-bottom:5px; }}

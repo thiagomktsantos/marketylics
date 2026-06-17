@@ -3064,8 +3064,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 })
 
             # ── Pré-renderiza, em Python, o bloco de métricas+score+donuts de redes sociais ──
+            # NOTA: apenas CSS puro aqui, SEM tags <style> — ele é injetado dentro de um
+            # <style> já aberto no template HTML abaixo. Colocar <style> aqui de novo
+            # cria uma tag aninhada e quebra o parsing do navegador.
             tooltip_css = """
-<style>
 .score-tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
 .score-tooltip-wrap .tip {
     display: none; position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
@@ -3083,7 +3085,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     align-items: center; justify-content: center; font-size: 9px; font-weight: 800; color: #9ca3af;
     cursor: default; flex-shrink: 0; margin-left: 5px; font-family: 'DM Sans', sans-serif;
 }
-</style>
 """
 
             for d in empresas_cards_data:

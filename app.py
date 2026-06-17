@@ -11334,18 +11334,17 @@ function buildUI() {{
 
     var compCard = document.createElement('div');
     compCard.style.cssText =
-        'background:#036e77;'
+        'background:#034777;'
         + 'border-radius:0 0 14px 14px;padding:10px 16px;'
         + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
         + 'transition:all 0.15s;width:98%;margin:0 auto;box-sizing:border-box;';
     compCard.onmouseover = function() {{
         this.style.boxShadow = '0 4px 16px rgba(58,159,214,0.25)';
-        this.style.background = '#034777';
+        this.style.background = '#036e77';
     }};
     compCard.onmouseout = function() {{
-        this.style.borderColor = '#1e3a5f';
         this.style.boxShadow = 'none';
-        this.style.background = '#036e77';
+        this.style.background = '#034777';
     }};
     compCard.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🏆</div><span style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Gerar Análise Comparativa</span><span style="font-size:12px;font-weight:400;color:#76bbe0;white-space:nowrap;">(Compara todos os perfis das empresas com IA)</span></div>';
     compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});

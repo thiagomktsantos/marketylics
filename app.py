@@ -11341,7 +11341,7 @@ function buildUI() {{
     compCard.onmouseover = function() {{
         this.style.borderColor = '#3a9fd6';
         this.style.boxShadow = '0 4px 16px rgba(58,159,214,0.25)';
-        this.style.color = '#034777';
+        this.style.background = '#034777';
     }};
     compCard.onmouseout = function() {{
         this.style.borderColor = '#1e3a5f';

@@ -2798,7 +2798,7 @@ html, body { background: transparent; overflow: hidden; }
                 "estado": "",
             })
 
-    # ── Filtro de empresa (clique nos cards para filtrar) ──────────────────────────────────────────
+    # ── Filtro de empresa ──────────────────────────────────────────────
     if "geral_empresa_filtro" not in st.session_state:
         st.session_state.geral_empresa_filtro = 0 if todas_empresas_geral else "todas"
 
@@ -2843,7 +2843,7 @@ html, body { background: transparent; overflow: hidden; }
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
 
     # ══════════════════════════════════════════════════════════════════
-    # CARDS DE EMPRESA (mesmo estilo da página Redes Sociais)
+    # CARDS DE EMPRESA
     # ══════════════════════════════════════════════════════════════════
 
     if todas_empresas_geral:
@@ -2875,68 +2875,31 @@ html, body { background: transparent; overflow: hidden; }
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
-.main-wrap {{
-    background:#d2dde9;
-    border-radius:16px;
-    overflow:hidden;
-}}
-.cards-grid {{
-    display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap:12px;
-    padding:12px;
-}}
+.main-wrap {{ background:#d2dde9; border-radius:16px; overflow:hidden; }}
+.cards-grid {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; padding:12px; }}
 .emp-card {{
-    background:#f9fafb;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
-    padding:16px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    cursor:pointer;
-    transition:all 0.15s;
-    position:relative;
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px;
+    display:flex; align-items:center; gap:12px; cursor:pointer; transition:all 0.15s; position:relative;
 }}
-.emp-card:hover {{
-    border-color:#3a9fd6;
-    background:#fff;
-    box-shadow:0 2px 10px rgba(58,159,214,0.1);
-}}
-.emp-card.active {{
-    background:#fff;
-    border:2px solid #3b82f6;
-}}
-.emp-card.active .emp-icon {{
-    background:#dbeafe;
-}}
+.emp-card:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.emp-card.active {{ background:#fff; border:2px solid #3b82f6; }}
+.emp-card.active .emp-icon {{ background:#dbeafe; }}
 .emp-icon {{
-    width:44px; height:44px; border-radius:10px;
-    background:#e9eef5;
-    display:flex; align-items:center; justify-content:center;
-    flex-shrink:0; overflow:hidden;
+    width:44px; height:44px; border-radius:10px; background:#e9eef5;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;
 }}
 .emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:10px; }}
 .emp-icon svg {{ width:22px; height:22px; }}
 .emp-info {{ flex:1; min-width:0; }}
-.emp-nome {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}}
+.emp-nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge-minha {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#f0fdf4; color:#15803d;
-    border:1px solid #bbf7d0;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
+    display:inline-flex; align-items:center; gap:5px; background:#f0fdf4; color:#15803d;
+    border:1px solid #bbf7d0; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
     flex-shrink:0; margin-left:auto;
 }}
 .badge-conc {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#eff6ff; color:#1d4ed8;
-    border:1px solid #bfdbfe;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
+    display:inline-flex; align-items:center; gap:5px; background:#eff6ff; color:#1d4ed8;
+    border:1px solid #bfdbfe; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
     flex-shrink:0; margin-left:auto;
 }}
 </style>
@@ -2991,8 +2954,7 @@ function syncHeight() {{
     var frames = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < frames.length; i++) {{
         try {{ if (frames[i].contentWindow === window) {{
-            frames[i].style.height = (h + 2) + 'px';
-            break;
+            frames[i].style.height = (h + 2) + 'px'; break;
         }} }} catch(e) {{}}
     }}
 }}
@@ -3008,7 +2970,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
-    # PRESENÇA DIGITAL — Redes Sociais, Site/SEO e Anúncios por empresa
+    # PRESENÇA DIGITAL
     # ══════════════════════════════════════════════════════════════════
 
     if todas_empresas_geral:
@@ -3032,6 +2994,29 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 f' font-size="10" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
                 f'</svg>'
                 f'<span style="font-size:9px;font-weight:700;color:{color};">{pct}%</span>'
+                f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
+                f'</div>'
+            )
+
+        def make_donut_svg_emoji(pct, color, label, count, emoji, size=52, stroke=5):
+            import math
+            r = (size / 2) - stroke - 2
+            cx = cy = size / 2
+            circum = round(2 * math.pi * r, 2)
+            dash = round(pct / 100 * circum, 2)
+            gap  = round(circum - dash, 2)
+            offset = round(circum * 0.25, 2)
+            return (
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:0;">'
+                f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
+                f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
+                f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+                f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
+                f' stroke-linecap="round"/>'
+                f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
+                f' font-size="13" font-family="DM Sans,sans-serif">{emoji}</text>'
+                f'</svg>'
+                f'<span style="font-size:9px;font-weight:700;color:{color};">{count}</span>'
                 f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
                 f'</div>'
             )
@@ -3097,14 +3082,9 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 import re as _re
                 snapshot = ad.get("snapshot") or {}
                 candidatos = [
-                    ad.get("caption"),
-                    ad.get("destination_url"),
-                    ad.get("website_url"),
-                    ad.get("link_url"),
-                    snapshot.get("caption"),
-                    snapshot.get("link_url"),
-                    snapshot.get("website_url"),
-                    snapshot.get("destination_url"),
+                    ad.get("caption"), ad.get("destination_url"), ad.get("website_url"),
+                    ad.get("link_url"), snapshot.get("caption"), snapshot.get("link_url"),
+                    snapshot.get("website_url"), snapshot.get("destination_url"),
                 ]
                 for url in candidatos:
                     if not url or not isinstance(url, str):
@@ -3126,20 +3106,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
             for ad in ads_lista:
                 txt = texto_do_anuncio(ad)
-                if any(p in txt for p in palavras_beneficio):
-                    contagens["beneficio"] += 1
-                if any(p in txt for p in palavras_prova_social):
-                    contagens["prova_social"] += 1
-                if any(p in txt for p in palavras_urgencia):
-                    contagens["urgencia"] += 1
-                if any(p in txt for p in palavras_cta_direto):
-                    contagens["cta_direto"] += 1
-
+                if any(p in txt for p in palavras_beneficio):    contagens["beneficio"] += 1
+                if any(p in txt for p in palavras_prova_social): contagens["prova_social"] += 1
+                if any(p in txt for p in palavras_urgencia):     contagens["urgencia"] += 1
+                if any(p in txt for p in palavras_cta_direto):   contagens["cta_direto"] += 1
                 midia[tipo_midia(ad)] += 1
-
                 for p in extrair_plataformas(ad):
                     plat_count[p] = plat_count.get(p, 0) + 1
-
                 dest = extrair_destino(ad)
                 if dest:
                     dest_count[dest] = dest_count.get(dest, 0) + 1
@@ -3161,10 +3134,18 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         seo_cache = st.session_state.get("seo_cache", {})
 
-        # ── Monta um registro combinado por empresa (rede social + site/SEO + anúncios) ──
+        PLAT_CONFIG = {
+            "facebook":         ("🔵", "Facebook",  "#1877f2"),
+            "instagram":        ("📸", "Instagram", "#e1306c"),
+            "messenger":        ("💬", "Messenger", "#0084ff"),
+            "whatsapp":         ("🟢", "WhatsApp",  "#25d366"),
+            "audience_network": ("🌐", "Audience",  "#3a9fd6"),
+            "threads":          ("🧵", "Threads",   "#1a2e4a"),
+        }
+
+        # ── Monta um registro combinado por empresa ────────────────────
         empresas_cards_data = []
         for i, e in enumerate(todas_empresas_geral):
-            # ── FILTRO: pula empresas que não correspondem ao filtro ativo ──
             if i != filtro_empresa_ativo:
                 continue
 
@@ -3176,7 +3157,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             badge_col = "#15803d" if is_minha else "#1d4ed8"
             badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
 
-            # ── Dados de redes sociais (se existirem) ──
             r = dados_redes_map.get(e["nome"])
             tem_redes = bool(r)
 
@@ -3236,7 +3216,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             else:
                 av_html_fallback = redes_info["av_html"]
 
-            # ── Dados de site/SEO (se existirem) ──
             site_url = e.get("site", "") or ""
             ig_url   = e.get("instagram", "") or ""
             seo      = seo_cache.get(e["nome"], {})
@@ -3244,13 +3223,12 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
             seo_status_ok = seo.get("status") == "ok"
             seo_pontos = 0
-            seo_criterios_total = 5
-            if seo.get("title"): seo_pontos += 1
-            if seo.get("h1"): seo_pontos += 1
-            if seo.get("description"): seo_pontos += 1
-            if seo.get("h2s"): seo_pontos += 1
+            if seo.get("title"):              seo_pontos += 1
+            if seo.get("h1"):                 seo_pontos += 1
+            if seo.get("description"):        seo_pontos += 1
+            if seo.get("h2s"):                seo_pontos += 1
             if sitemap.get("status") == "ok": seo_pontos += 1
-            seo_score_val = round((seo_pontos / seo_criterios_total) * 100) if seo_status_ok else 0
+            seo_score_val = round((seo_pontos / 5) * 100) if seo_status_ok else 0
 
             if seo_score_val >= 80:
                 seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente", "🏆", "#22c55e"
@@ -3261,7 +3239,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             else:
                 seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar", "📝", "#ef4444"
 
-            # ── Dados de anúncios (se existirem) ──
             ads_entry = ads_cache.get(e["nome"], {})
             ads_lista = ads_entry.get("data", []) if ads_entry else []
             tem_ads = len(ads_lista) > 0
@@ -3297,7 +3274,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 "ads":             ads_info,
             })
 
-        # ── Pré-renderiza, em Python, os blocos de coluna de cada empresa ──
         tooltip_css = """
 .score-tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
 .score-tooltip-wrap .tip {
@@ -3320,7 +3296,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         for d in empresas_cards_data:
 
-            # ── Coluna 1: Redes Sociais ────────────────────────────
+            # ── Coluna 1: Redes Sociais ────────────────────────────────
             if d["tem_redes"]:
                 m = d["redes"]
                 bar_pct = m["score_val"]
@@ -3328,12 +3304,11 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 tipo_donuts = (
                     '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos", m["n_fotos"])
-                    + make_donut_svg(m["pct_vid"], d["cor"], "Reels", m["n_videos"])
+                    + make_donut_svg(m["pct_vid"],  d["cor"], "Reels", m["n_videos"])
                     + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
                     + '</div>'
                 )
 
-                # ── Bloco: Estatísticas (4 colunas, estilo "card" branco) ──
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Estatísticas</div>'
@@ -3350,7 +3325,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     '</div>'
                 )
 
-                # ── Bloco: Score de perfil (mesmo estilo do "Score de SEO") ──
                 score_nok = m["score_oportunidades"]
                 score_nok_html = ""
                 if score_nok > 0:
@@ -3379,15 +3353,9 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     '<div class="q-badge">?</div>'
                     '<div class="tip">'
                     '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-                    '✅ Tem bio +20<br>'
-                    '✅ Proposta de valor +20<br>'
-                    '✅ Posicionamento +20<br>'
-                    '✅ Link na bio +15<br>'
-                    '✅ CTA na bio +15<br>'
-                    '✅ Engajamento ≥3% +10'
-                    '</div>'
-                    '</div>'
-                    '</div>'
+                    '✅ Tem bio +20<br>✅ Proposta de valor +20<br>✅ Posicionamento +20<br>'
+                    '✅ Link na bio +15<br>✅ CTA na bio +15<br>✅ Engajamento ≥3% +10'
+                    '</div></div></div>'
                     + score_nok_html +
                     '</div>'
                     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
@@ -3396,10 +3364,9 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
                     '</div>'
                     f'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-                    f'font-size:14px;font-weight:800;background:{d["badge_bg"] if False else m["score_cor"]+"1a"};color:{m["score_cor"]};white-space:nowrap;flex-shrink:0;">'
+                    f'font-size:14px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;flex-shrink:0;">'
                     f'{m["score_icon"]} {m["score_lbl"]}'
-                    '</div>'
-                    '</div>'
+                    '</div></div>'
                     f'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
                     f'<div style="height:100%;width:{bar_pct}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div>'
                     '</div>'
@@ -3407,7 +3374,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     '</div>'
                 )
 
-                # ── Bloco: Tipos de conteúdo (com total) ──
                 tipos_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
@@ -3428,15 +3394,15 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 )
             d["redes_block_html"] = redes_block_html
 
-            # ── Coluna 3: Anúncios ──────────────────────────────────
+            # ── Coluna 3: Anúncios ─────────────────────────────────────
             if d["tem_ads"]:
                 a = d["ads"]
                 total_ads = a["total"] or 1
 
-                def barra_categoria(label, valor, total, cor):
+                def barra_tipo(label, valor, total, cor):
                     pct = round(valor / total * 100) if total else 0
                     return (
-                        '<div style="margin-bottom:7px;">'
+                        '<div style="margin-bottom:8px;">'
                         '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
                         f'<span style="font-size:11px;color:#374151;font-weight:600;">{label}</span>'
                         f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span>'
@@ -3447,76 +3413,8 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         '</div>'
                     )
 
-                ads_categorias_html = (
-                    barra_categoria("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
-                    + barra_categoria("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
-                    + barra_categoria("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
-                    + barra_categoria("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
-                )
-
-                PLAT_LABELS = {
-                    "facebook":         ("🔵", "Facebook"),
-                    "instagram":        ("📸", "Instagram"),
-                    "messenger":        ("💬", "Messenger"),
-                    "whatsapp":         ("🟢", "WhatsApp"),
-                    "audience_network": ("🌐", "Audience Network"),
-                    "threads":          ("🧵", "Threads"),
-                }
-
-                plat_dict = a.get("plataformas", {})
-
-                if plat_dict:
-                    plat_sorted = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)
-                    plat_max    = max(v for _, v in plat_sorted) or 1
-                    plat_rows_html = ""
-                    for plat_key, plat_val in plat_sorted:
-                        emoji, label = PLAT_LABELS.get(plat_key, ("📡", plat_key.capitalize()))
-                        pct = round(plat_val / plat_max * 100)
-                        plat_rows_html += (
-                            '<div style="margin-bottom:7px;">'
-                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;">{emoji} {label}</span>'
-                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{plat_val}</span>'
-                            '</div>'
-                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                            f'<div style="height:100%;width:{pct}%;background:#3a9fd6;border-radius:3px;"></div>'
-                            '</div>'
-                            '</div>'
-                        )
-                    plat_section_html = plat_rows_html
-                else:
-                    plat_section_html = (
-                        '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de plataforma</div>'
-                    )
-
-                destinos = a.get("destinos", [])
-
-                if destinos:
-                    dest_max = max(v for _, v in destinos) or 1
-                    dest_rows_html = ""
-                    for dom, cnt in destinos:
-                        pct = round(cnt / dest_max * 100)
-                        dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
-                        dest_rows_html += (
-                            '<div style="margin-bottom:7px;">'
-                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;'
-                            f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">'
-                            f'🔗 {dom_display}</span>'
-                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span>'
-                            '</div>'
-                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                            f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div>'
-                            '</div>'
-                            '</div>'
-                        )
-                    dest_section_html = dest_rows_html
-                else:
-                    dest_section_html = (
-                        '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
-                    )
-
-                ads_midia_donuts = (
+                # ── Card 1: Formato (com total) ──────────────────────
+                plat_donuts_formato = (
                     '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
                     + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
@@ -3524,32 +3422,77 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     + '</div>'
                 )
 
-                ads_block_html = (
-                    '<div style="text-align:center;margin-bottom:10px;">'
-                    f'<span style="font-size:22px;font-weight:900;color:#1a2e4a;">{a["total"]}</span>'
-                    '<span style="font-size:11px;color:#9ca3af;font-weight:700;"> anúncios ativos</span>'
+                ads_formato_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {a["total"]}</div>'
                     '</div>'
-                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                      'letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio</div>'
-                    + ads_categorias_html
-                    + '</div>'
-                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                      'letter-spacing:0.4px;margin-bottom:6px;">Plataformas</div>'
-                    + plat_section_html
-                    + '</div>'
-                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                      'letter-spacing:0.4px;margin-bottom:6px;">Destinos dos anúncios</div>'
-                    + dest_section_html
-                    + '</div>'
-                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
-                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                      'letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
-                    + ads_midia_donuts
+                    + plat_donuts_formato
                     + '</div>'
                 )
+
+                # ── Card 2: Tipos de anúncio ─────────────────────────
+                ads_tipos_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Tipos de anúncio</div>'
+                    + barra_tipo("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
+                    + barra_tipo("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
+                    + barra_tipo("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
+                    + barra_tipo("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
+                    + '</div>'
+                )
+
+                # ── Card 3: Plataformas (donuts com emoji) ───────────
+                plat_dict = a.get("plataformas", {})
+                plat_total = sum(plat_dict.values()) or 1
+
+                plat_donuts = '<div style="display:flex;gap:4px;justify-content:space-between;padding:2px 0 4px 0;flex-wrap:wrap;">'
+                for plat_key, plat_val in sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]:
+                    emoji, label, cor = PLAT_CONFIG.get(plat_key, ("📡", plat_key.capitalize(), "#64748b"))
+                    pct = round(plat_val / plat_total * 100)
+                    plat_donuts += make_donut_svg_emoji(pct, cor, label, plat_val, emoji, size=52, stroke=5)
+                plat_donuts += '</div>'
+
+                ads_plat_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Plataformas</div>'
+                    + plat_donuts
+                    + '</div>'
+                )
+
+                # ── Card 4: Destinos ─────────────────────────────────
+                destinos = a.get("destinos", [])
+                if destinos:
+                    dest_max = max(v for _, v in destinos) or 1
+                    dest_rows = ""
+                    for dom, cnt in destinos:
+                        pct = round(cnt / dest_max * 100)
+                        dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                        dest_rows += (
+                            '<div style="margin-bottom:8px;">'
+                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">🔗 {dom_display}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span>'
+                            '</div>'
+                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div>'
+                            '</div>'
+                            '</div>'
+                        )
+                    ads_dest_content = dest_rows
+                else:
+                    ads_dest_content = '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
+
+                ads_dest_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Destinos dos anúncios</div>'
+                    + ads_dest_content
+                    + '</div>'
+                )
+
+                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block
+
             else:
                 ads_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
@@ -3578,7 +3521,6 @@ body {{ padding-bottom:8px; }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
-
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
@@ -3586,12 +3528,8 @@ body {{ padding-bottom:8px; }}
     text-transform:uppercase; letter-spacing:0.5px; padding-bottom:8px; border-bottom:1.5px solid #e5e7eb;
     margin-bottom:10px;
 }}
-
-/* ── SEO Score ── */
 .seo-score-row {{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }}
 .seo-score-num {{ font-size:28px; font-weight:900; line-height:1; letter-spacing:-1px; }}
-
-/* ── SEO items ── */
 .seo-item-label {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#9ca3af; margin-bottom:2px; }}
 .seo-item-value {{ font-size:11px; color:#374151; line-height:1.4; font-weight:500; word-break:break-word; }}
 .seo-item-empty {{ font-size:11px; color:#d1d5db; font-style:italic; }}
@@ -3610,52 +3548,30 @@ body {{ padding-bottom:8px; }}
 }}
 .link-row:hover {{ background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }}
 .no-link {{ color:#d1d5db; font-style:italic; font-size:11px; padding:4px 2px; }}
-
-/* ── Canais de Contato ── */
 .contato-section {{ margin-bottom:10px; }}
-.contato-grupo-title {{
-    font-size:9px; font-weight:700; text-transform:uppercase;
-    letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px;
-}}
+.contato-grupo-title {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
 .contato-chips {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:4px; }}
-.contato-chip {{
-    display:inline-flex; align-items:center; gap:3px;
-    font-size:11px; font-weight:600; color:#374151;
-}}
+.contato-chip {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#374151; }}
 .contato-divider {{ border:none; border-top:1px solid #f3f4f6; margin:8px 0; }}
-
-/* ── Termos mais usados ── */
 .termos-section {{ margin-bottom:10px; }}
-.termos-sub {{
-    font-size:9px; font-weight:700; text-transform:uppercase;
-    letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px;
-}}
+.termos-sub {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
 .termos-chips {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }}
 .termo-chip {{
-    display:inline-flex; align-items:center; gap:2px;
-    font-size:11px; font-weight:600;
-    background:#f8f8f8; border:none;
-    border-radius:20px; padding:3px 10px;
-    cursor:default; line-height:1.3;
+    display:inline-flex; align-items:center; gap:2px; font-size:11px; font-weight:600;
+    background:#f8f8f8; border:none; border-radius:20px; padding:3px 10px; cursor:default; line-height:1.3;
 }}
 .termo-chip-bigram {{ border-radius:10px; padding:4px 11px; }}
 .termo-count {{ font-size:9px; font-weight:700; opacity:0.55; margin-left:2px; }}
-
-/* ── Score chips inline ── */
 .score-chips {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }}
 .score-chip-ok {{
-    display:inline-flex; align-items:center; gap:3px;
-    font-size:11px; font-weight:600; color:#15803d;
+    display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#15803d;
     padding:2px 4px; white-space:nowrap;
 }}
 .score-check {{
     border:1px solid #22c45f; border-radius:5px; background:#22c45e;
     width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
-
-@media (max-width: 760px) {{
-    .cols-wrap {{ grid-template-columns:1fr; }}
-}}
+@media (max-width: 760px) {{ .cols-wrap {{ grid-template-columns:1fr; }} }}
 </style>
 </head>
 <body>
@@ -3665,9 +3581,6 @@ var DATA = {empresas_cards_json};
 
 function esc(s) {{ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
-// ══════════════════════════════════════════════════════════════════
-// Ícones dos canais de contato (idênticos à página de Sites)
-// ══════════════════════════════════════════════════════════════════
 var CONTACT_ICONS = {{
     whatsapp:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
     telefone:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C9.61 21 3 14.39 3 6a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>',
@@ -3696,9 +3609,6 @@ var CONTACT_GRUPOS = [
     {{ titulo: 'Recursos de engajamento', keys: ['chat_ao_vivo','formulario','botao_flutuante','popup_saida','popup_rolagem'] }},
 ];
 
-// ══════════════════════════════════════════════════════════════════
-// Stop words para termos mais usados (idênticas à página de Sites)
-// ══════════════════════════════════════════════════════════════════
 var STOP_WORDS = new Set([
     'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
     'para','por','com','que','se','na','no','nas','nos','ao','aos','à','às',
@@ -3746,16 +3656,8 @@ function isVerbLike(w) {{
 }}
 
 function calcTopWords(d) {{
-    var textoFull = [
-        d.seo_title || '',
-        d.seo_h1    || '',
-        d.seo_desc  || '',
-    ].concat(d.seo_h2s || []).join(' ');
-
-    var textoNorm = textoFull
-        .toLowerCase()
-        .replace(/[^a-záéíóúàãõâêîôûçñü\\s]/gi, ' ');
-
+    var textoFull = [d.seo_title||'', d.seo_h1||'', d.seo_desc||''].concat(d.seo_h2s||[]).join(' ');
+    var textoNorm = textoFull.toLowerCase().replace(/[^a-záéíóúàãõâêîôûçñü\\s]/gi, ' ');
     var tokens = textoNorm.split(/\\s+/).filter(function(w) {{ return w.length >= 2; }});
 
     function bigramKey(w1, w2) {{ return [w1, w2].sort().join('|'); }}
@@ -3763,11 +3665,7 @@ function calcTopWords(d) {{
     var freqBiRaw = {{}};
     for (var bi = 0; bi < tokens.length - 1; bi++) {{
         var w1 = tokens[bi], w2 = tokens[bi + 1];
-        if (
-            w1.length >= 3 && w2.length >= 3 &&
-            !STOP_WORDS.has(w1) && !STOP_WORDS.has(w2) &&
-            !isVerbLike(w1)    && !isVerbLike(w2)
-        ) {{
+        if (w1.length >= 3 && w2.length >= 3 && !STOP_WORDS.has(w1) && !STOP_WORDS.has(w2) && !isVerbLike(w1) && !isVerbLike(w2)) {{
             var bk = bigramKey(w1, w2);
             if (!freqBiRaw[bk]) freqBiRaw[bk] = {{ count: 0, displayPair: w1 + ' ' + w2 }};
             freqBiRaw[bk].count++;
@@ -3816,22 +3714,16 @@ function calcTopWords(d) {{
         return parts.every(function(p) {{ return p.length >= 3; }});
     }});
 
-    return combined
-        .sort(function(a, b) {{ return b.count - a.count; }})
-        .filter(function(item) {{ return item.count > 1; }})
-        .slice(0, 14);
+    return combined.sort(function(a, b) {{ return b.count - a.count; }})
+        .filter(function(item) {{ return item.count > 1; }}).slice(0, 14);
 }}
 
-// ══════════════════════════════════════════════════════════════════
-// buildSeoColumn — idêntica à página de Sites (sem o bloco "Links")
-// ══════════════════════════════════════════════════════════════════
 function buildSeoColumn(d, colEl) {{
     if (!d.seo_status_ok) {{
         colEl.innerHTML += '<div class="placeholder-box">Extraia o SEO na página de Sites para ver os dados aqui.</div>';
         return;
     }}
 
-    // ── Score de SEO ──────────────────────────────────────────────
     var scoreNum       = d.seo_score_val;
     var scoreTextColor = scoreNum >= 80 ? '#15803d' : scoreNum >= 40 ? '#92400e' : '#b91c1c';
     var scoreBg        = scoreNum >= 80 ? '#f0fdf4' : scoreNum >= 40 ? '#fffbeb' : '#fef2f2';
@@ -3849,19 +3741,13 @@ function buildSeoColumn(d, colEl) {{
 
     var nok = SEO_ITEMS.filter(function(i) {{ return !i.ok; }}).length;
     var nokHtml = nok > 0
-        ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-          + 'color:#2563eb;background:#dbeafe;padding:4px 11px;'
-          + 'border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
-          + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>'
+        ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+' + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>'
         : '';
 
     var chipsHtml = '';
     SEO_ITEMS.forEach(function(it) {{
         if (it.ok) {{
-            chipsHtml +=
-                '<div class="score-chip-ok">'
-                + '<span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
-                + ' ' + it.label + '</div>';
+            chipsHtml += '<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> ' + it.label + '</div>';
         }}
     }});
 
@@ -3870,33 +3756,19 @@ function buildSeoColumn(d, colEl) {{
     scoreBlock.innerHTML =
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
         + '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
-        + nokHtml
-        + '</div>'
+        + nokHtml + '</div>'
         + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
-        +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
-        +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
-        +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
-        +   '</div>'
-        +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-        +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;flex-shrink:0;">'
-        +     scoreTxt2
-        +   '</div>'
-        + '</div>'
+        + '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
+        + '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
+        + '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
+        + '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;flex-shrink:0;">' + scoreTxt2 + '</div></div>'
         + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
-        +   '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;'
-        +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');'
-        +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
-        + '</div>'
+        + '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
         + '<div style="display:flex;flex-wrap:wrap;">' + chipsHtml + '</div>';
 
     colEl.appendChild(scoreBlock);
+    setTimeout(function() {{ var bar = document.getElementById(scoreBarId); if (bar) bar.style.width = scoreNum + '%'; }}, 250);
 
-    setTimeout(function() {{
-        var bar = document.getElementById(scoreBarId);
-        if (bar) bar.style.width = scoreNum + '%';
-    }}, 250);
-
-    // ── Canais de Contato ─────────────────────────────────────────
     var ct = d.seo_contato || {{}};
     var gruposHtml = '';
     var algumGrupo = false;
@@ -3906,15 +3778,9 @@ function buildSeoColumn(d, colEl) {{
         if (!ativos.length) return;
         algumGrupo = true;
         if (gruposHtml) gruposHtml += '<hr class="contato-divider"/>';
-        gruposHtml +=
-            '<div class="contato-grupo-title">' + g.titulo + '</div>'
-            + '<div class="contato-chips">';
+        gruposHtml += '<div class="contato-grupo-title">' + g.titulo + '</div><div class="contato-chips">';
         ativos.forEach(function(k) {{
-            gruposHtml +=
-                '<div class="contato-chip">'
-                + (CONTACT_ICONS[k] || '')
-                + (CONTACT_LABEL_MAP[k] || k)
-                + '</div>';
+            gruposHtml += '<div class="contato-chip">' + (CONTACT_ICONS[k] || '') + (CONTACT_LABEL_MAP[k] || k) + '</div>';
         }});
         gruposHtml += '</div>';
     }});
@@ -3922,29 +3788,19 @@ function buildSeoColumn(d, colEl) {{
     if (algumGrupo) {{
         var ctBlock = document.createElement('div');
         ctBlock.style.cssText = 'background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        ctBlock.innerHTML =
-            '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>'
-            + gruposHtml;
+        ctBlock.innerHTML = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>' + gruposHtml;
         colEl.appendChild(ctBlock);
     }}
 
-    // ── Termos mais usados ────────────────────────────────────────
     var topWords = calcTopWords(d);
     if (topWords.length > 0) {{
-        var maxCount = topWords[0].count;
         var bigrams  = topWords.filter(function(w) {{ return w.word.indexOf(' ') > -1; }});
         var unigrams = topWords.filter(function(w) {{ return w.word.indexOf(' ') === -1; }});
 
         function makeChip(item, idx, isBigram) {{
             var col = COLOR_PALETTE[idx % COLOR_PALETTE.length];
-            var countBadge = item.count > 1
-                ? '<span class="termo-count">' + item.count + 'x</span>'
-                : '';
-            return '<span class="termo-chip' + (isBigram ? ' termo-chip-bigram' : '') + '" '
-                + 'style="color:' + col.text + ';" '
-                + 'title="' + item.count + 'x mencionado">'
-                + esc(item.word) + countBadge
-                + '</span>';
+            var countBadge = item.count > 1 ? '<span class="termo-count">' + item.count + 'x</span>' : '';
+            return '<span class="termo-chip' + (isBigram ? ' termo-chip-bigram' : '') + '" style="color:' + col.text + ';" title="' + item.count + 'x mencionado">' + esc(item.word) + countBadge + '</span>';
         }}
 
         var bigramsHtml  = bigrams.map(function(item, i)  {{ return makeChip(item, i, true);  }}).join('');
@@ -3952,28 +3808,14 @@ function buildSeoColumn(d, colEl) {{
 
         var kwBlock = document.createElement('div');
         kwBlock.style.cssText = 'background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-
         var innerHtml = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
-
-        if (bigramsHtml) {{
-            innerHtml +=
-                '<div class="termos-sub">Expressões-chave</div>'
-                + '<div class="termos-chips">' + bigramsHtml + '</div>';
-        }}
-        if (unigramsHtml) {{
-            innerHtml +=
-                '<div class="termos-sub">Palavras frequentes</div>'
-                + '<div class="termos-chips">' + unigramsHtml + '</div>';
-        }}
-
+        if (bigramsHtml)  innerHtml += '<div class="termos-sub">Expressões-chave</div><div class="termos-chips">' + bigramsHtml + '</div>';
+        if (unigramsHtml) innerHtml += '<div class="termos-sub">Palavras frequentes</div><div class="termos-chips">' + unigramsHtml + '</div>';
         kwBlock.innerHTML = innerHtml;
         colEl.appendChild(kwBlock);
     }}
 }}
 
-// ══════════════════════════════════════════════════════════════════
-// buildCards — monta o card completo de cada empresa
-// ══════════════════════════════════════════════════════════════════
 function buildCards() {{
     var el = document.getElementById('cards');
     DATA.forEach(function(d) {{
@@ -3991,12 +3833,10 @@ function buildCards() {{
         var cols = document.createElement('div');
         cols.className = 'cols-wrap';
 
-        // Coluna 1: Redes Sociais
         var colRedes = document.createElement('div');
         colRedes.className = 'col';
         colRedes.innerHTML = '<div class="col-title">📱 Redes Sociais</div>' + d.redes_block_html;
 
-        // Coluna 2: Site (idêntica à página de Sites)
         var colSite = document.createElement('div');
         colSite.className = 'col';
         var colSiteTitle = document.createElement('div');
@@ -4005,7 +3845,6 @@ function buildCards() {{
         colSite.appendChild(colSiteTitle);
         buildSeoColumn(d, colSite);
 
-        // Coluna 3: Anúncios
         var colAds = document.createElement('div');
         colAds.className = 'col';
         colAds.innerHTML = '<div class="col-title">📣 Anúncios</div>' + d.ads_block_html;
@@ -4014,7 +3853,6 @@ function buildCards() {{
         cols.appendChild(colSite);
         cols.appendChild(colAds);
         card.appendChild(cols);
-
         el.appendChild(card);
     }});
     syncH();

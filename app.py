@@ -2848,7 +2848,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .emp-card:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .emp-card.active {{ background:#fff; border:2px solid #3b82f6; }}
-.emp-icon {{ width:44px; height:44px; border-radius:22px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
+.emp-icon {{ width:44px; height:44px; border-radius:10px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
 .emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:10px; }}
 .emp-nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge-minha {{ display:inline-flex; align-items:center; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}
@@ -3383,24 +3383,14 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 # ── Nuvem de palavras ──────────────────────────────────
                 nuvem = m.get("nuvem_palavras", [])
                 if nuvem:
-                    max_freq = nuvem[0][1] if nuvem else 1
-                    COLOR_NUVEM = [
-                        ("#eff6ff","#1d4ed8"), ("#f0fdf4","#15803d"), ("#fdf4ff","#7e22ce"),
-                        ("#fff7ed","#c2410c"), ("#f0fdfa","#0f766e"), ("#fef2f2","#b91c1c"),
-                        ("#fefce8","#854d0e"), ("#f8fafc","#334155"),
-                    ]
                     nuvem_chips = ""
-                    for idx, (palavra, freq) in enumerate(nuvem):
-                        bg_c, txt_c = COLOR_NUVEM[idx % len(COLOR_NUVEM)]
-                        # Tamanho proporcional à frequência: 11px a 15px
-                        fs = round(11 + (freq / max_freq) * 4, 1)
-                        fw = "800" if freq == max_freq else ("700" if freq >= max_freq * 0.6 else "600")
+                    for palavra, freq in nuvem:
                         nuvem_chips += (
-                            f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:{fs}px;'
-                            f'font-weight:{fw};background:{bg_c};color:{txt_c};padding:3px 10px;'
-                            f'border-radius:20px;line-height:1.4;white-space:nowrap;">'
+                            f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;'
+                            f'font-weight:600;background:#f8f8f8;color:#374151;padding:3px 10px;'
+                            f'border-radius:20px;line-height:1.3;white-space:nowrap;cursor:default;">'
                             f'{palavra}'
-                            f'<span style="font-size:9px;opacity:0.55;margin-left:2px;">{freq}x</span>'
+                            f'<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">{freq}x</span>'
                             f'</span>'
                         )
                     nuvem_block_html = (

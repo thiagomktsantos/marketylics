@@ -2961,7 +2961,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
         ),
     }
 
-    # MELHORIA 2: Donut para plataformas com círculo em cima, legenda embaixo (grid)
+    # Donut para plataformas com círculo em cima, legenda embaixo (grid)
     def make_donut_plat(pct, color, label, count, plat_key, size=52, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
@@ -2988,7 +2988,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 f'</defs>'
             )
 
-        # Retorna apenas o SVG + legenda vertical para uso no grid
         return (
             f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
@@ -3127,6 +3126,31 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
                 n_total_tp  = len(posts_lista) or 1
 
+                # ── Nuvem de palavras: extrai palavras da bio + legenda dos posts ──
+                import re as _re
+                stop_words_bio = {
+                    "de","da","do","das","dos","em","e","a","o","as","os","um","uma","uns","umas",
+                    "para","por","com","que","se","na","no","nas","nos","ao","aos","à","às","mais",
+                    "ou","mas","como","são","sua","seu","suas","seus","esta","este","essa","esse",
+                    "pelo","pela","pelos","pelas","entre","até","já","pra","pro","pros","pras",
+                    "vai","vão","tem","têm","bem","sim","não","sem","só","lá","cá","você","voce",
+                    "além","isso","isto","aquilo","tudo","nada","muito","muita","muitos","muitas",
+                    "pouco","poucos","poucas","dia","ano","mês","vez","aqui","ali","anos","dias",
+                    "meses","vezes","todo","toda","todos","todas","ser","ter","pode","nosso","nossa",
+                    "nossos","nossas","qual","quais","quando","onde","quem","porque","the","and","of",
+                    "to","in","is","it","for","on","with","that","this","are","from","at","an","be",
+                    "by","not","or","was","we","our","your","have","has","will","can","more","also",
+                }
+                texto_nuvem = bio_txt_geral + " "
+                for p in posts_lista[:30]:
+                    texto_nuvem += (p.get("caption") or "") + " "
+                tokens_nuvem = _re.sub(r'[^a-záéíóúàãõâêîôûçñü\s]', ' ', texto_nuvem.lower()).split()
+                freq_nuvem = {}
+                for w in tokens_nuvem:
+                    if len(w) >= 4 and w not in stop_words_bio:
+                        freq_nuvem[w] = freq_nuvem.get(w, 0) + 1
+                nuvem_palavras = sorted(freq_nuvem.items(), key=lambda x: x[1], reverse=True)[:20]
+
                 redes_info = {
                     "av_html": av_html,
                     "seg":     fmt_num(r.get("seguidores",0)),
@@ -3139,7 +3163,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     "score_lbl":  score_geral["classificacao"],
                     "score_criterios":     score_geral["criterios"],
                     "score_oportunidades": score_geral["oportunidades"],
-                    # MELHORIA 4: lista do que falta para o tooltip
                     "score_faltando": [c["label"] for c in score_geral["criterios"] if not c["ok"]],
                     "pct_foto":    round(n_fotos     / n_total_tp * 100),
                     "pct_vid":     round(n_videos    / n_total_tp * 100),
@@ -3148,6 +3171,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     "n_videos":    n_videos,
                     "n_carrossel": n_carrossel,
                     "n_total_tp":  len(posts_lista),
+                    "nuvem_palavras": nuvem_palavras,
                 }
 
             av_html_fallback = (redes_info["av_html"] if tem_redes else
@@ -3167,7 +3191,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular","⚠️","#f59e0b"
             else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar","📝","#ef4444"
 
-            # MELHORIA 4: lista do que falta no SEO para tooltip
             seo_items_check = [
                 {"label": "Title",       "ok": bool(seo.get("title"))},
                 {"label": "H1",          "ok": bool(seo.get("h1"))},
@@ -3266,7 +3289,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             if d["tem_redes"]:
                 m = d["redes"]
 
-                # Estatísticas: ícone em círculo colorido + valor grande + label (mesmo padrão dos outros cards)
                 def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
                     return (
                         f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">'
@@ -3298,7 +3320,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 )
 
                 score_nok = m["score_oportunidades"]
-                # MELHORIA 4: Badge com tooltip mostrando o que falta
                 score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">❌ {f}</div>' for f in m.get("score_faltando", []))
                 if score_nok > 0:
                     score_nok_html = (
@@ -3342,7 +3363,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>'
                 )
 
-                # Tipos de conteúdo: 3 itens lado a lado
+                # Tipos de conteúdo
                 tipo_donuts = (
                     '<div style="display:flex;gap:8px;align-items:center;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
@@ -3359,7 +3380,39 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>' + tipo_donuts + '</div>'
                 )
 
-                redes_block_html = stats_block_html + score_block_html + tipos_block_html
+                # ── Nuvem de palavras ──────────────────────────────────
+                nuvem = m.get("nuvem_palavras", [])
+                if nuvem:
+                    max_freq = nuvem[0][1] if nuvem else 1
+                    COLOR_NUVEM = [
+                        ("#eff6ff","#1d4ed8"), ("#f0fdf4","#15803d"), ("#fdf4ff","#7e22ce"),
+                        ("#fff7ed","#c2410c"), ("#f0fdfa","#0f766e"), ("#fef2f2","#b91c1c"),
+                        ("#fefce8","#854d0e"), ("#f8fafc","#334155"),
+                    ]
+                    nuvem_chips = ""
+                    for idx, (palavra, freq) in enumerate(nuvem):
+                        bg_c, txt_c = COLOR_NUVEM[idx % len(COLOR_NUVEM)]
+                        # Tamanho proporcional à frequência: 11px a 15px
+                        fs = round(11 + (freq / max_freq) * 4, 1)
+                        fw = "800" if freq == max_freq else ("700" if freq >= max_freq * 0.6 else "600")
+                        nuvem_chips += (
+                            f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:{fs}px;'
+                            f'font-weight:{fw};background:{bg_c};color:{txt_c};padding:3px 10px;'
+                            f'border-radius:20px;line-height:1.4;white-space:nowrap;">'
+                            f'{palavra}'
+                            f'<span style="font-size:9px;opacity:0.55;margin-left:2px;">{freq}x</span>'
+                            f'</span>'
+                        )
+                    nuvem_block_html = (
+                        '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
+                        f'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">{nuvem_chips}</div>'
+                        '</div>'
+                    )
+                else:
+                    nuvem_block_html = ""
+
+                redes_block_html = stats_block_html + score_block_html + tipos_block_html + nuvem_block_html
             else:
                 redes_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
@@ -3384,7 +3437,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                         f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
                     )
 
-                # Formato: 3 itens lado a lado
                 formato_donuts = (
                     '<div style="display:flex;gap:8px;align-items:center;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
@@ -3410,7 +3462,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     + '</div>'
                 )
 
-                # MELHORIA 2: Plataformas em grid de círculos com legenda embaixo
                 plat_dict  = a.get("plataformas", {})
                 plat_total = sum(plat_dict.values()) or 1
                 plat_items = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]
@@ -3477,15 +3528,28 @@ body {{ padding-bottom:8px; }}
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:18px 20px 20px; margin-top:16px; overflow:hidden;
 }}
-.empresa-card-hdr {{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }}
+/* ── Cabeçalho do card ── */
+.empresa-card-hdr {{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
+/* ── Divisor abaixo do nome ── */
+.empresa-card-divider {{ border:none; border-top:1.5px solid #e5e7eb; margin:0 0 16px 0; }}
+/* ── Grid de colunas ── */
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
+/* ── Título de coluna com cor específica por seção ── */
 .col-title {{
-    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.5px; padding-bottom:8px; border-bottom:1.5px solid #e5e7eb; margin-bottom:10px;
+    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800;
+    text-transform:uppercase; letter-spacing:0.5px;
+    padding:8px 12px; border-radius:8px; margin-bottom:10px;
 }}
+.col-title-redes  {{ background:#eff6ff; color:#1d4ed8; border-left:3px solid #3b82f6; }}
+.col-title-site   {{ background:#f0fdf4; color:#15803d; border-left:3px solid #22c55e; }}
+.col-title-ads    {{ background:#fff7ed; color:#c2410c; border-left:3px solid #f97316; }}
+/* ── Borda lateral colorida por coluna ── */
+.col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
+.col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
+.col-ads    {{ border-left:2px solid #f9731620; padding-left:8px; margin-left:-8px; }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
@@ -3599,14 +3663,24 @@ function buildSeoColumn(d,colEl) {{
     }}
     var chipsHtml='';
     SEO_ITEMS.forEach(function(it){{if(it.ok)chipsHtml+='<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> '+it.label+'</div>';}});
+
+    /* ── Score de SEO com badge "?" igual ao de Redes ── */
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
     scoreBlock.innerHTML=
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'+nokHtml+'</div>'
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+        +'<div style="display:flex;align-items:center;">'
+        +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
+        +'<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
+        +'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+        +'✅ Title +20<br>✅ H1 +20<br>✅ Meta Desc. +20<br>✅ Seções (H2) +20<br>✅ Sitemap +20'
+        +'</div></div>'
+        +'</div>'
+        +nokHtml+'</div>'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
         +'<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;"><span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:'+scoreTextColor+';">'+scoreNum+'</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
         +'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;flex-shrink:0;">'+scoreTxt2+'</div></div>'
-        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
+        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#22c55e,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
         +'<div style="display:flex;flex-wrap:wrap;">'+chipsHtml+'</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
@@ -3653,26 +3727,42 @@ function buildCards() {{
         var card=document.createElement('div');
         card.className='empresa-card';
         card.style.borderTop='3px solid '+d.cor;
+
+        /* ── Cabeçalho com nome + divider ── */
         var hdr=document.createElement('div');
         hdr.className='empresa-card-hdr';
         hdr.innerHTML=d.av_html+'<span class="empresa-card-nome">'+esc(d.nome)+'</span>'
             +'<span class="badge" style="background:'+d.badge_bg+';color:'+d.badge_col+';border:1px solid '+d.badge_brd+'">'+d.badge_lbl+'</span>';
         card.appendChild(hdr);
+
+        /* ── HR abaixo do nome ── */
+        var divider=document.createElement('hr');
+        divider.className='empresa-card-divider';
+        card.appendChild(divider);
+
+        /* ── Grid de 3 colunas ── */
         var cols=document.createElement('div');
         cols.className='cols-wrap';
+
+        /* Coluna Redes – azul */
         var colRedes=document.createElement('div');
-        colRedes.className='col';
-        colRedes.innerHTML='<div class="col-title">📱 Redes Sociais</div>'+d.redes_block_html;
+        colRedes.className='col col-redes';
+        colRedes.innerHTML='<div class="col-title col-title-redes">📱 Redes Sociais</div>'+d.redes_block_html;
+
+        /* Coluna Site – verde */
         var colSite=document.createElement('div');
-        colSite.className='col';
+        colSite.className='col col-site';
         var colSiteTitle=document.createElement('div');
-        colSiteTitle.className='col-title';
+        colSiteTitle.className='col-title col-title-site';
         colSiteTitle.textContent='🌐 Site';
         colSite.appendChild(colSiteTitle);
         buildSeoColumn(d,colSite);
+
+        /* Coluna Anúncios – laranja */
         var colAds=document.createElement('div');
-        colAds.className='col';
-        colAds.innerHTML='<div class="col-title">📣 Anúncios</div>'+d.ads_block_html;
+        colAds.className='col col-ads';
+        colAds.innerHTML='<div class="col-title col-title-ads">📣 Anúncios</div>'+d.ads_block_html;
+
         cols.appendChild(colRedes);
         cols.appendChild(colSite);
         cols.appendChild(colAds);

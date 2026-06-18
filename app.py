@@ -2904,7 +2904,8 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
     # FUNÇÕES DE DONUT
     # ══════════════════════════════════════════════════════════════════
 
-    def make_donut_svg(pct, color, label, count, size=46, stroke=5):
+    # MELHORIA 1: Donut para tipos de conteúdo lado a lado (horizontal compacto)
+    def make_donut_svg(pct, color, label, count, size=52, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
         circum = round(2 * _math.pi * r, 2)
@@ -2912,22 +2913,21 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            f'<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">'
-            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">'
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
             f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
-            f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
-            f' font-size="10" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="middle"'
+            f' font-size="11" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
             f'</svg>'
-            f'<div style="display:flex;flex-direction:column;min-width:0;">'
-            f'<span style="font-size:11px;font-weight:700;color:{color};">{pct}%</span>'
-            f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
+            f'<div style="text-align:center;">'
+            f'<div style="font-size:12px;font-weight:700;color:{color};">{pct}%</div>'
+            f'<div style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</div>'
             f'</div></div>'
         )
 
-    # SVGs inline das redes (data URI base64 ou path SVG embutido via foreignObject não funciona em SVG)
-    # Usamos paths SVG embutidos diretamente como <g> dentro do SVG do donut
+    # SVGs inline das redes
     PLAT_ICONS_SVG = {
         "facebook": (
             '#1877f2',
@@ -2961,6 +2961,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
         ),
     }
 
+    # MELHORIA 2: Donut para plataformas com círculo em cima, legenda embaixo (grid)
     def make_donut_plat(pct, color, label, count, plat_key, size=52, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
@@ -2973,7 +2974,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
         icon_y = cy - icon_s / 2
         _, _, path_data = PLAT_ICONS_SVG.get(plat_key, ('#64748b', label, '<circle cx="12" cy="12" r="8" fill="#64748b"/>'))
 
-        # Gradiente especial para instagram
         defs = ""
         if plat_key == "instagram":
             defs = (
@@ -2988,9 +2988,10 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 f'</defs>'
             )
 
+        # Retorna apenas o SVG + legenda vertical para uso no grid
         return (
-            f'<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">'
-            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">'
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
             f'{defs}'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
@@ -2999,9 +3000,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             f'{path_data}'
             f'</g>'
             f'</svg>'
-            f'<div style="display:flex;flex-direction:column;min-width:0;">'
-            f'<span style="font-size:11px;font-weight:700;color:{color};">{count}</span>'
-            f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
+            f'<div style="text-align:center;">'
+            f'<div style="font-size:12px;font-weight:700;color:{color};">{count}</div>'
+            f'<div style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</div>'
             f'</div></div>'
         )
 
@@ -3138,6 +3139,8 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     "score_lbl":  score_geral["classificacao"],
                     "score_criterios":     score_geral["criterios"],
                     "score_oportunidades": score_geral["oportunidades"],
+                    # MELHORIA 4: lista do que falta para o tooltip
+                    "score_faltando": [c["label"] for c in score_geral["criterios"] if not c["ok"]],
                     "pct_foto":    round(n_fotos     / n_total_tp * 100),
                     "pct_vid":     round(n_videos    / n_total_tp * 100),
                     "pct_carr":    round(n_carrossel / n_total_tp * 100),
@@ -3164,6 +3167,16 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular","⚠️","#f59e0b"
             else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar","📝","#ef4444"
 
+            # MELHORIA 4: lista do que falta no SEO para tooltip
+            seo_items_check = [
+                {"label": "Title",       "ok": bool(seo.get("title"))},
+                {"label": "H1",          "ok": bool(seo.get("h1"))},
+                {"label": "Meta Desc.",  "ok": bool(seo.get("description"))},
+                {"label": "Seções (H2)", "ok": bool(seo.get("h2s"))},
+                {"label": "Sitemap",     "ok": sitemap.get("status") == "ok"},
+            ]
+            seo_faltando = [c["label"] for c in seo_items_check if not c["ok"]]
+
             ads_entry = ads_cache.get(e["nome"],{})
             ads_lista = ads_entry.get("data",[]) if ads_entry else []
             tem_ads   = len(ads_lista) > 0
@@ -3176,6 +3189,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 "site": site_url, "ig": e.get("instagram","") or "",
                 "seo_status_ok": seo_status_ok, "seo_score_val": seo_score_val,
                 "seo_score_lbl": seo_score_lbl, "seo_score_icon": seo_score_icon, "seo_score_cor": seo_score_cor,
+                "seo_faltando": seo_faltando,
                 "seo_title": seo.get("title",""), "seo_desc": seo.get("description",""),
                 "seo_h1": seo.get("h1",""), "seo_h2s": seo.get("h2s",[]),
                 "seo_extraido_em": seo.get("extraido_em",""), "seo_contato": seo.get("contato",{}),
@@ -3186,6 +3200,46 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
 
         # ── Tooltip CSS ────────────────────────────────────────────────
         tooltip_css = """
+/* ── Tooltip genérico para badges de oportunidade ── */
+.oport-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+}
+.oport-wrap .oport-tip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a2e4a;
+    color: #fff;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 11px;
+    line-height: 1.9;
+    min-width: 190px;
+    max-width: 230px;
+    z-index: 9999;
+    white-space: normal;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+    pointer-events: none;
+    font-family: 'DM Sans', sans-serif;
+    text-align: left;
+}
+.oport-wrap .oport-tip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1a2e4a;
+}
+.oport-wrap:hover .oport-tip { display: block; }
+
+/* ── Score tooltip (ícone ?) ── */
 .score-tooltip-wrap { position:relative; display:inline-flex; align-items:center; }
 .score-tooltip-wrap .tip {
     display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
@@ -3212,38 +3266,47 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             if d["tem_redes"]:
                 m = d["redes"]
 
-                # Ícones SVG para estatísticas
-                icon_seg  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'
-                icon_eng  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>'
-                icon_post = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>'
-                icon_enm  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
+                # MELHORIA 3: Ícones maiores nas estatísticas (18px)
+                icon_seg  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'
+                icon_eng  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>'
+                icon_post = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>'
+                icon_enm  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Estatísticas</div>'
                     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;">'
 
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:3px;">{icon_seg}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguid.</span></div>'
+                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_seg}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguid.</span></div>'
                     f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
 
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:3px;">{icon_eng}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj.%</span></div>'
+                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_eng}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj.%</span></div>'
                     f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
 
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:3px;">{icon_post}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</span></div>'
+                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_post}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</span></div>'
                     f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
 
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:3px;margin-bottom:3px;">{icon_enm}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Eng/Post</span></div>'
+                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_enm}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Eng/Post</span></div>'
                     f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
 
                     '</div></div>'
                 )
 
                 score_nok = m["score_oportunidades"]
-                score_nok_html = (
-                    f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-                    f'color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
-                    f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
-                ) if score_nok > 0 else ""
+                # MELHORIA 4: Badge com tooltip mostrando o que falta
+                score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">❌ {f}</div>' for f in m.get("score_faltando", []))
+                if score_nok > 0:
+                    score_nok_html = (
+                        f'<div class="oport-wrap">'
+                        f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
+                        f'color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+                        f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
+                        f'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'
+                        f'{score_faltando_html}</div>'
+                        f'</div>'
+                    )
+                else:
+                    score_nok_html = ""
 
                 score_chips_html = "".join(
                     '<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> ' + c["label"] + '</div>'
@@ -3274,8 +3337,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>'
                 )
 
+                # MELHORIA 1: Tipos de conteúdo lado a lado (grid horizontal de 3)
                 tipo_donuts = (
-                    '<div style="display:flex;flex-direction:column;gap:6px;padding:2px 0 4px 0;">'
+                    '<div style="display:flex;gap:8px;align-items:flex-start;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
                     + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
                     + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
@@ -3315,9 +3379,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                         f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
                     )
 
-                # Card 1: Formato com total
+                # MELHORIA 1 (ads formato): lado a lado também
                 formato_donuts = (
-                    '<div style="display:flex;flex-direction:column;gap:6px;padding:2px 0 4px 0;">'
+                    '<div style="display:flex;gap:8px;align-items:flex-start;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
                     + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
                     + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
@@ -3331,7 +3395,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>' + formato_donuts + '</div>'
                 )
 
-                # Card 2: Tipos de anúncio
                 ads_tipos_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Tipos de anúncio</div>'
@@ -3342,11 +3405,13 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     + '</div>'
                 )
 
-                # Card 3: Plataformas com ícones reais
+                # MELHORIA 2: Plataformas em grid de círculos com legenda embaixo
                 plat_dict  = a.get("plataformas", {})
                 plat_total = sum(plat_dict.values()) or 1
-                plat_donuts = '<div style="display:flex;flex-direction:column;gap:6px;padding:2px 0 4px 0;">'
-                for plat_key, plat_val in sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]:
+                plat_items = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+
+                plat_donuts = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;">'
+                for plat_key, plat_val in plat_items:
                     cor_plat, label_plat, _ = PLAT_ICONS_SVG.get(plat_key, ("#64748b", plat_key.capitalize(), ""))
                     pct_plat = round(plat_val / plat_total * 100)
                     plat_donuts += make_donut_plat(pct_plat, cor_plat, label_plat, plat_val, plat_key, size=52, stroke=5)
@@ -3358,7 +3423,6 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     + plat_donuts + '</div>'
                 )
 
-                # Card 4: Destinos
                 destinos = a.get("destinos", [])
                 if destinos:
                     dest_max  = max(v for _, v in destinos) or 1
@@ -3520,7 +3584,14 @@ function buildSeoColumn(d,colEl) {{
         {{label:'Sitemap',ok:d.sitemap_status==='ok'}},
     ];
     var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
-    var nokHtml=nok>0?'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>':'';
+    var seoFaltandoHtml=(d.seo_faltando||[]).map(function(f){{return '<div style="display:flex;align-items:center;gap:5px;">❌ '+esc(f)+'</div>';}}).join('');
+    var nokHtml='';
+    if(nok>0){{
+        nokHtml='<div class="oport-wrap">'
+            +'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>'
+            +'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'+seoFaltandoHtml+'</div>'
+            +'</div>';
+    }}
     var chipsHtml='';
     SEO_ITEMS.forEach(function(it){{if(it.ok)chipsHtml+='<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> '+it.label+'</div>';}});
     var scoreBlock=document.createElement('div');

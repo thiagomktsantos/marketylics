@@ -3216,12 +3216,15 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     "score_cor":   score_geral["cor_classe"],
                     "score_icon":  score_geral["classificacao_icon"],
                     "score_lbl":   score_geral["classificacao"],
+                    "score_criterios": score_geral["criterios"],
+                    "score_oportunidades": score_geral["oportunidades"],
                     "pct_foto":    round(n_fotos / n_total_tp * 100),
                     "pct_vid":     round(n_videos / n_total_tp * 100),
                     "pct_carr":    round(n_carrossel / n_total_tp * 100),
                     "n_fotos":     n_fotos,
                     "n_videos":    n_videos,
                     "n_carrossel": n_carrossel,
+                    "n_total_tp":  len(posts_lista),
                 }
 
             if not tem_redes:
@@ -3330,9 +3333,48 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     + '</div>'
                 )
 
-                score_label_html = (
-                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:4px;">'
-                    '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Score de perfil</div>'
+                # ── Bloco: Estatísticas (4 colunas, estilo "card" branco) ──
+                stats_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Estatísticas</div>'
+                    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;">'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguidores</div>'
+                    f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj. %</div>'
+                    f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj/Post</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                    '</div>'
+                    '</div>'
+                )
+
+                # ── Bloco: Score de perfil (mesmo estilo do "Score de SEO") ──
+                score_nok = m["score_oportunidades"]
+                score_nok_html = ""
+                if score_nok > 0:
+                    score_nok_html = (
+                        '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
+                        'color:#2563eb;background:#dbeafe;padding:4px 11px;'
+                        'border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+                        f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
+                    )
+
+                score_chips_html = ""
+                for crit in m["score_criterios"]:
+                    if crit["ok"]:
+                        score_chips_html += (
+                            '<div class="score-chip-ok">'
+                            '<span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+                            f' {crit["label"]}</div>'
+                        )
+
+                score_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;gap:0px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
                     '<div class="score-tooltip-wrap">'
                     '<div class="q-badge">?</div>'
                     '<div class="tip">'
@@ -3346,35 +3388,37 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     '</div>'
                     '</div>'
                     '</div>'
+                    + score_nok_html +
+                    '</div>'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
+                    f'<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:{m["score_cor"]};">{m["score_val"]}</span>'
+                    '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
+                    '</div>'
+                    f'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+                    f'font-size:14px;font-weight:800;background:{d["badge_bg"] if False else m["score_cor"]+"1a"};color:{m["score_cor"]};white-space:nowrap;flex-shrink:0;">'
+                    f'{m["score_icon"]} {m["score_lbl"]}'
+                    '</div>'
+                    '</div>'
+                    f'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
+                    f'<div style="height:100%;width:{bar_pct}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div>'
+                    '</div>'
+                    f'<div style="display:flex;flex-wrap:wrap;">{score_chips_html}</div>'
+                    '</div>'
                 )
 
-                redes_block_html = (
-                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;text-align:center;">'
-                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguidores</div>'
-                    f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj. %</div>'
-                    f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</div>'
-                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj/Post</div>'
-                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                # ── Bloco: Tipos de conteúdo (com total) ──
+                tipos_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Tipos de Conteúdo</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {m["n_total_tp"]}</div>'
                     '</div>'
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:10px;">'
-                    + score_label_html +
-                    '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">'
-                    f'<span style="font-size:13px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                    '<span style="font-size:9px;color:#9ca3af;font-weight:700;">/100</span>'
-                    f'<span style="font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:20px;font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
-                    '</div>'
-                    f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                    f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
-                    '</div>'
-                    '</div>'
-                    '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
-                    '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;">Tipos de conteúdo</div>'
                     + tipo_donuts +
                     '</div>'
                 )
+
+                redes_block_html = stats_block_html + score_block_html + tipos_block_html
             else:
                 redes_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
@@ -3779,12 +3823,11 @@ function calcTopWords(d) {{
 }}
 
 // ══════════════════════════════════════════════════════════════════
-// buildSeoColumn — idêntica à página de Sites
+// buildSeoColumn — idêntica à página de Sites (sem o bloco "Links")
 // ══════════════════════════════════════════════════════════════════
 function buildSeoColumn(d, colEl) {{
     if (!d.seo_status_ok) {{
         colEl.innerHTML += '<div class="placeholder-box">Extraia o SEO na página de Sites para ver os dados aqui.</div>';
-        appendLinks(d, colEl);
         return;
     }}
 
@@ -3926,26 +3969,6 @@ function buildSeoColumn(d, colEl) {{
         kwBlock.innerHTML = innerHtml;
         colEl.appendChild(kwBlock);
     }}
-
-    // ── Links ─────────────────────────────────────────────────────
-    appendLinks(d, colEl);
-}}
-
-function appendLinks(d, colEl) {{
-    var linksHtml = '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Links</div>';
-    if (d.site) {{
-        var siteHref = d.site.startsWith('http') ? d.site : 'https://' + d.site;
-        linksHtml += '<a class="link-row" href="' + siteHref + '" target="_blank" rel="noopener">🌐 ' + esc(d.site) + '</a>';
-    }} else {{
-        linksHtml += '<div class="no-link">Sem site cadastrado</div>';
-    }}
-    if (d.ig) {{
-        var igHandle = d.ig.replace('@','');
-        linksHtml += '<a class="link-row" href="https://instagram.com/' + igHandle + '" target="_blank" rel="noopener">📸 @' + esc(igHandle) + '</a>';
-    }}
-    var linksDiv = document.createElement('div');
-    linksDiv.innerHTML = linksHtml;
-    colEl.appendChild(linksDiv);
 }}
 
 // ══════════════════════════════════════════════════════════════════

@@ -2800,7 +2800,7 @@ html, body { background: transparent; overflow: hidden; }
 
     # ── Filtro de empresa (clique nos cards para filtrar) ──────────────────────────────────────────
     if "geral_empresa_filtro" not in st.session_state:
-        st.session_state.geral_empresa_filtro = "todas"
+        st.session_state.geral_empresa_filtro = 0 if todas_empresas_geral else "todas"
 
     _filtro_ghost_css = []
     for _i in range(len(todas_empresas_geral)):
@@ -2816,31 +2816,14 @@ html, body { background: transparent; overflow: hidden; }
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
         }}
         """)
-    _filtro_ghost_css.append("""
-    .st-key-btn_geral_filtro_todas {
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-        opacity:0 !important; pointer-events:none !important; display:none !important;
-    }
-    .stElementContainer:has(.st-key-btn_geral_filtro_todas) {
-        display:none !important; height:0 !important; min-height:0 !important;
-        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-    }
-    """)
     st.markdown(f"<style>{''.join(_filtro_ghost_css)}</style>", unsafe_allow_html=True)
 
     for _i in range(len(todas_empresas_geral)):
         if st.button(f"geral_filtro_{_i}", key=f"btn_geral_filtro_{_i}"):
-            st.session_state.geral_empresa_filtro = (
-                "todas" if st.session_state.geral_empresa_filtro == _i else _i
-            )
+            st.session_state.geral_empresa_filtro = _i
             st.rerun()
 
-    if st.button("geral_filtro_todas", key="btn_geral_filtro_todas"):
-        st.session_state.geral_empresa_filtro = "todas"
-        st.rerun()
-
-    filtro_empresa_ativo = st.session_state.get("geral_empresa_filtro", "todas")
+    filtro_empresa_ativo = st.session_state.get("geral_empresa_filtro", 0)
 
     # ── Dados de redes sociais do cache ────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
@@ -3023,18 +3006,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-        # ── Indicador de filtro ativo ──────────────────────────────────
-        if filtro_empresa_ativo != "todas" and filtro_empresa_ativo < len(todas_empresas_geral):
-            nome_filtrado = todas_empresas_geral[filtro_empresa_ativo]["nome"]
-            st.markdown(
-                f"<div style='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px;'>"
-                f"<span style='font-size:12px;color:#6b7280;'>Mostrando apenas: <b>{nome_filtrado}</b></span>"
-                f"<button onclick=\"(function(){{var btns=document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='geral_filtro_todas'){{b.click();return;}}}}}})()\" "
-                f"style='font-size:12px;color:#1d4ed8;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;'>Ver todas</button>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
@@ -3195,7 +3166,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         empresas_cards_data = []
         for i, e in enumerate(todas_empresas_geral):
             # ── FILTRO: pula empresas que não correspondem ao filtro ativo ──
-            if filtro_empresa_ativo != "todas" and i != filtro_empresa_ativo:
+            if i != filtro_empresa_ativo:
                 continue
 
             is_minha = e["tipo"] == "minha"
@@ -3733,7 +3704,6 @@ setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
             "</div>",
             unsafe_allow_html=True
         )
-
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------

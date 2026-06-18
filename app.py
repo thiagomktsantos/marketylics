@@ -2848,8 +2848,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .emp-card:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .emp-card.active {{ background:#fff; border:2px solid #3b82f6; }}
-.emp-icon {{ width:44px; height:44px; border-radius:10px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
-.emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:10px; }}
+.emp-icon {{ width:44px; height:44px; border-radius:22px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
+.emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:22px; }}
 .emp-nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge-minha {{ display:inline-flex; align-items:center; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}
 .badge-conc  {{ display:inline-flex; align-items:center; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}
@@ -3383,11 +3383,16 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 # ── Nuvem de palavras ──────────────────────────────────
                 nuvem = m.get("nuvem_palavras", [])
                 if nuvem:
+                    COLOR_NUVEM_TXT = [
+                        "#1d4ed8", "#15803d", "#7e22ce", "#c2410c",
+                        "#0f766e", "#b91c1c", "#854d0e", "#334155",
+                    ]
                     nuvem_chips = ""
-                    for palavra, freq in nuvem:
+                    for idx, (palavra, freq) in enumerate(nuvem):
+                        txt_c = COLOR_NUVEM_TXT[idx % len(COLOR_NUVEM_TXT)]
                         nuvem_chips += (
                             f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;'
-                            f'font-weight:600;background:#f8f8f8;color:#374151;padding:3px 10px;'
+                            f'font-weight:600;background:#f8f8f8;color:{txt_c};padding:3px 10px;'
                             f'border-radius:20px;line-height:1.3;white-space:nowrap;cursor:default;">'
                             f'{palavra}'
                             f'<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">{freq}x</span>'

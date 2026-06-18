@@ -3342,9 +3342,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>'
                 )
 
-                # Tipos de conteúdo: cada item ocupa uma linha (círculo à esq, texto à dir)
+                # Tipos de conteúdo: 3 itens lado a lado
                 tipo_donuts = (
-                    '<div style="display:flex;flex-direction:column;gap:8px;">'
+                    '<div style="display:flex;gap:12px;align-items:center;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
                     + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
                     + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
@@ -3384,9 +3384,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                         f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
                     )
 
-                # Formato: cada item ocupa uma linha (círculo à esq, texto à dir)
+                # Formato: 3 itens lado a lado
                 formato_donuts = (
-                    '<div style="display:flex;flex-direction:column;gap:8px;">'
+                    '<div style="display:flex;gap:12px;align-items:center;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
                     + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
                     + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])

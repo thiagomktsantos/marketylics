@@ -2816,413 +2816,429 @@ html, body { background: transparent; overflow: hidden; }
     ok_redes = [r for r in cache_redes if not r.get("erro") and r.get("seguidores", 0) > 0]
 
     # ══════════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO POR ABAS
+    # CARDS DE EMPRESA (mesmo estilo da página Redes Sociais)
     # ══════════════════════════════════════════════════════════════════
 
-    if "dash_aba" not in st.session_state:
-        st.session_state.dash_aba = "presenca"
+    if todas_empresas_geral:
 
-    for _aba in ["presenca", "discurso", "diferenciais"]:
-        k = f"btn_dash_aba_{_aba}"
-        st.markdown(f"""
-        <style>
-        .st-key-{k} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }}
-        .stElementContainer:has(.st-key-{k}) {{
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-        if st.button(f"dash_{_aba}", key=k):
-            st.session_state.dash_aba = _aba
-            st.rerun()
+        empresas_cards_nav_json = []
+        for i, e in enumerate(todas_empresas_geral):
+            is_minha = e["tipo"] == "minha"
+            cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+            r_nav = dados_redes_map.get(e["nome"], {})
+            profile_pic_nav = r_nav.get("profile_pic", "") if r_nav else ""
+            handle_nav = e.get("instagram", "") or (r_nav.get("handle", "") if r_nav else "")
 
-    dash_aba = st.session_state.dash_aba
+            empresas_cards_nav_json.append({
+                "nome": e["nome"],
+                "tipo": e["tipo"],
+                "handle": handle_nav,
+                "is_minha": is_minha,
+                "badge_lbl": "Minha empresa" if is_minha else "Concorrente",
+                "cor": cor,
+                "profile_pic": profile_pic_nav,
+            })
 
-    _n_redes  = len(ok_redes)
-    _n_ads    = sum(1 for e in todas_empresas_geral if e["nome"] in ads_cache)
-    _n_sites  = sum(1 for e in todas_empresas_geral if e.get("site"))
+        empresas_cards_nav_str = _json.dumps(empresas_cards_nav_json, ensure_ascii=False)
 
-    abas_def = [
-        ("presenca",    "📊", "Presença Digital",  _n_redes,  "Redes sociais e engajamento"),
-        ("discurso",    "☁️", "Discurso",          _n_redes,  "Palavras e legendas"),
-        ("diferenciais","🏆", "Diferenciais",      len(todas_empresas_geral), "Visão comparativa"),
-    ]
-
-    botoes_html = ""
-    for stk, icon, lbl, cnt, desc in abas_def:
-        active_class = "active" if dash_aba == stk else ""
-        has_class = "has" if cnt > 0 else ""
-        botoes_html += (
-            f'<button class="tab-pill {active_class}" style="position:relative"'
-            f' onclick="(function(){{var btns=window.parent.document.querySelectorAll(\'button\');'
-            f'for(var b of btns){{var t=(b.textContent||b.innerText||\'\').split(/\\s+/).join(\' \').trim();'
-            f'if(t===\'dash_{stk}\'){{b.click();return;}}}}}})()">  '
-            f'<div class="tab-icon-wrap">{icon}</div>'
-            f'<div class="tab-content">'
-            f'<span class="tab-title">{lbl}</span>'
-            f'<span class="tab-sub">{desc}</span>'
-            f'</div>'
-            f'<span class="tab-badge {has_class}">{cnt}</span>'
-            f'</button>'
-        )
-
-    components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.tabs-wrap {{
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+.main-wrap {{
+    background:#d2dde9;
+    border-radius:16px;
+    overflow:hidden;
+}}
+.cards-grid {{
     display:grid;
-    grid-template-columns:repeat(3,1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap:12px;
-    width:100%;
+    padding:12px;
 }}
-.tab-pill {{
-    display:flex; align-items:center; justify-content:flex-start; gap:12px;
-    padding:14px 18px; border-radius:12px; cursor:pointer;
-    border:1.5px solid #e5e7eb; background:#fff;
-    font-family:'DM Sans',sans-serif; transition:all 0.15s;
-    text-align:left; width:100%;
+.emp-card {{
+    background:#f9fafb;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:16px;
+    display:flex;
+    align-items:center;
+    gap:12px;
 }}
-.tab-pill:hover {{ border-color:#3a9fd6; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
-.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; box-shadow:0 4px 16px rgba(14,42,71,0.2); overflow:hidden; }}
-.tab-pill.active::after {{
-    content:''; position:absolute; bottom:0; left:0; right:0;
-    height:3px; background:linear-gradient(90deg,#3a9fd6,#2ecc71);
-    border-radius:0 0 12px 12px;
-}}
-.tab-icon-wrap {{
-    width:38px; height:38px; border-radius:10px;
+.emp-icon {{
+    width:44px; height:44px; border-radius:10px;
+    background:#e9eef5;
     display:flex; align-items:center; justify-content:center;
-    flex-shrink:0; font-size:18px;
-    background:#f3f4f6; transition:background 0.15s;
+    flex-shrink:0; overflow:hidden;
 }}
-.tab-pill.active .tab-icon-wrap {{ background:rgba(255,255,255,0.12); }}
-.tab-content {{ flex:1; min-width:0; }}
-.tab-title {{ font-size:14px; font-weight:700; color:#1a2e4a; display:block; }}
-.tab-pill.active .tab-title {{ color:#fff; }}
-.tab-sub {{ font-size:11px; color:#9ca3af; display:block; margin-top:2px; }}
-.tab-pill.active .tab-sub {{ color:rgba(255,255,255,0.55); }}
-.tab-badge {{
-    font-size:11px; font-weight:800; padding:2px 8px;
-    border-radius:20px; background:#e5e7eb; color:#6b7280;
-    flex-shrink:0;
+.emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:10px; }}
+.emp-icon svg {{ width:22px; height:22px; }}
+.emp-info {{ flex:1; min-width:0; }}
+.emp-nome {{
+    font-size:14px; font-weight:700; color:#1a2e4a;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }}
-.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
-.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
+.badge-minha {{
+    display:inline-flex; align-items:center; gap:5px;
+    background:#f0fdf4; color:#15803d;
+    border:1px solid #bbf7d0;
+    padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:700;
+    flex-shrink:0; margin-left:auto;
+}}
+.badge-conc {{
+    display:inline-flex; align-items:center; gap:5px;
+    background:#eff6ff; color:#1d4ed8;
+    border:1px solid #bfdbfe;
+    padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:700;
+    flex-shrink:0; margin-left:auto;
+}}
 </style>
-<div class="tabs-wrap">
-{botoes_html}
+<div class="main-wrap">
+    <div class="cards-grid" id="cards-grid-geral"></div>
 </div>
 <script>
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '86px';
-            iframes[i].style.marginTop = '-42px';
+var EMPRESAS = {empresas_cards_nav_str};
+function buildUI() {{
+    var grid = document.getElementById('cards-grid-geral');
+    grid.innerHTML = '';
+    EMPRESAS.forEach(function(e) {{
+        var card = document.createElement('div');
+        card.className = 'emp-card';
+        var badgeHtml = e.is_minha
+            ? '<span class="badge-minha">Minha empresa</span>'
+            : '<span class="badge-conc">Concorrente</span>';
+        var iconInner = '<svg viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+            + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
+            + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
+            + '<circle cx="17.5" cy="6.5" r="1.2" fill="#64748b"/>'
+            + '</svg>';
+        if (e.profile_pic) {{
+            iconInner = '<img src="' + e.profile_pic + '" />';
+        }}
+        card.innerHTML =
+            '<div class="emp-icon">' + iconInner + '</div>'
+            + '<div class="emp-info" style="min-width:0;flex:1;">'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">'
+            + '<div class="emp-nome" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">' + e.nome + '</div>'
+            + badgeHtml
+            + '</div>'
+            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
+            + '</div>';
+        grid.appendChild(card);
+    }});
+    syncHeight();
+}}
+function syncHeight() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 2) + 'px';
             break;
         }} }} catch(e) {{}}
     }}
-}})();
+}}
+buildUI();
+if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+document.addEventListener('DOMContentLoaded', syncHeight);
+window.addEventListener('load', syncHeight);
+setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
-""", height=86, scrolling=False)
+""", height=100, scrolling=False)
+
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
-    # ABA 1: PRESENÇA DIGITAL
+    # PRESENÇA DIGITAL — Redes Sociais, Site/SEO e Anúncios por empresa
     # ══════════════════════════════════════════════════════════════════
 
-    if dash_aba == "presenca":
+    if todas_empresas_geral:
 
-        if todas_empresas_geral:
+        def make_donut_svg(pct, color, label, count, size=46, stroke=5):
+            import math
+            r = (size / 2) - stroke - 2
+            cx = cy = size / 2
+            circum = round(2 * math.pi * r, 2)
+            dash = round(pct / 100 * circum, 2)
+            gap  = round(circum - dash, 2)
+            offset = round(circum * 0.25, 2)
+            return (
+                f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:0;">'
+                f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
+                f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
+                f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+                f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
+                f' stroke-linecap="round"/>'
+                f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
+                f' font-size="10" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+                f'</svg>'
+                f'<span style="font-size:9px;font-weight:700;color:{color};">{pct}%</span>'
+                f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
+                f'</div>'
+            )
 
-            def make_donut_svg(pct, color, label, count, size=46, stroke=5):
-                import math
-                r = (size / 2) - stroke - 2
-                cx = cy = size / 2
-                circum = round(2 * math.pi * r, 2)
-                dash = round(pct / 100 * circum, 2)
-                gap  = round(circum - dash, 2)
-                offset = round(circum * 0.25, 2)
-                return (
-                    f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;min-width:0;">'
-                    f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
-                    f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
-                    f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
-                    f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}"'
-                    f' stroke-linecap="round"/>'
-                    f'<text x="{cx}" y="{cy+1}" text-anchor="middle" dominant-baseline="middle"'
-                    f' font-size="10" font-weight="700" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
-                    f'</svg>'
-                    f'<span style="font-size:9px;font-weight:700;color:{color};">{pct}%</span>'
-                    f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</span>'
-                    f'</div>'
+        def calcular_categorias_ads(ads_lista: list) -> dict:
+            """
+            Classifica anúncios por palavras-chave, tipo de mídia, plataforma e destino.
+            Tolerante a diferentes nomes de campo no cache.
+            """
+            palavras_beneficio = [
+                "economiz", "aumente", "aumenta", "melhora", "melhore", "resultado", "resultados",
+                "transforma", "conquiste", "conquista", "garanta", "garante", "lucro", "lucre",
+                "ganhe", "ganha", "facilita", "simplifica", "reduza", "reduz", "alcance",
+            ]
+            palavras_prova_social = [
+                "cliente", "clientes", "avaliaç", "avaliacoes", "depoimento", "depoimentos",
+                "estrelas", "aprovado", "milhares", "mais de", "comprovado", "case",
+                "satisfeitos", "recomendam",
+            ]
+            palavras_urgencia = [
+                "agora", "hoje", "últim", "ultim", "corre", "corra", "acaba em", "vagas limitadas",
+                "por tempo limitado", "termina", "última chance", "apenas hoje", "não perca",
+                "restam", "expira",
+            ]
+            palavras_cta_direto = [
+                "clique", "saiba mais", "compre", "compra", "agende", "agora mesmo", "fale com",
+                "chame no whatsapp", "acesse", "cadastre-se", "inscreva-se", "garanta já",
+                "peça já", "solicite",
+            ]
+
+            def texto_do_anuncio(ad: dict) -> str:
+                campos = ["body", "texto", "ad_creative_body", "title", "headline", "description", "creative_text"]
+                partes = []
+                for c in campos:
+                    v = ad.get(c)
+                    if isinstance(v, str) and v.strip():
+                        partes.append(v)
+                return " ".join(partes).lower()
+
+            def tipo_midia(ad: dict) -> str:
+                if ad.get("is_video") or ad.get("media_type") == "video" or ad.get("video_url") or ad.get("formato") == "Vídeo":
+                    return "video"
+                if ad.get("media_type") == 8 or ad.get("is_carousel") or ad.get("media_type") == "carousel" or ad.get("formato") == "Carrossel":
+                    return "carrossel"
+                return "imagem"
+
+            def extrair_plataformas(ad: dict) -> list:
+                plats_raw = (
+                    ad.get("plataformas")
+                    or ad.get("publisher_platform")
+                    or ad.get("publisherPlatform")
+                    or ad.get("publisher_platforms")
+                    or []
                 )
+                if isinstance(plats_raw, str):
+                    plats_raw = [plats_raw]
+                result = []
+                for p in plats_raw:
+                    if isinstance(p, dict):
+                        val = p.get("name") or p.get("value") or str(p)
+                        result.append(val.strip().lower())
+                    elif isinstance(p, str) and p.strip():
+                        result.append(p.strip().lower())
+                return result
 
-            def calcular_categorias_ads(ads_lista: list) -> dict:
-                """
-                Classifica anúncios por palavras-chave, tipo de mídia, plataforma e destino.
-                Tolerante a diferentes nomes de campo no cache.
-                """
-                palavras_beneficio = [
-                    "economiz", "aumente", "aumenta", "melhora", "melhore", "resultado", "resultados",
-                    "transforma", "conquiste", "conquista", "garanta", "garante", "lucro", "lucre",
-                    "ganhe", "ganha", "facilita", "simplifica", "reduza", "reduz", "alcance",
+            def extrair_destino(ad: dict) -> str:
+                import re as _re
+                snapshot = ad.get("snapshot") or {}
+                candidatos = [
+                    ad.get("caption"),
+                    ad.get("destination_url"),
+                    ad.get("website_url"),
+                    ad.get("link_url"),
+                    snapshot.get("caption"),
+                    snapshot.get("link_url"),
+                    snapshot.get("website_url"),
+                    snapshot.get("destination_url"),
                 ]
-                palavras_prova_social = [
-                    "cliente", "clientes", "avaliaç", "avaliacoes", "depoimento", "depoimentos",
-                    "estrelas", "aprovado", "milhares", "mais de", "comprovado", "case",
-                    "satisfeitos", "recomendam",
-                ]
-                palavras_urgencia = [
-                    "agora", "hoje", "últim", "ultim", "corre", "corra", "acaba em", "vagas limitadas",
-                    "por tempo limitado", "termina", "última chance", "apenas hoje", "não perca",
-                    "restam", "expira",
-                ]
-                palavras_cta_direto = [
-                    "clique", "saiba mais", "compre", "compra", "agende", "agora mesmo", "fale com",
-                    "chame no whatsapp", "acesse", "cadastre-se", "inscreva-se", "garanta já",
-                    "peça já", "solicite",
-                ]
+                for url in candidatos:
+                    if not url or not isinstance(url, str):
+                        continue
+                    url = url.strip()
+                    dominio = _re.sub(r'^https?://', '', url).split('/')[0].split('?')[0]
+                    dominio = dominio.replace('www.', '').strip()
+                    if (dominio and '.' in dominio
+                            and 'facebook.com' not in dominio
+                            and 'fb.com' not in dominio
+                            and 'fbcdn' not in dominio):
+                        return dominio
+                return ""
 
-                def texto_do_anuncio(ad: dict) -> str:
-                    campos = ["body", "texto", "ad_creative_body", "title", "headline", "description", "creative_text"]
-                    partes = []
-                    for c in campos:
-                        v = ad.get(c)
-                        if isinstance(v, str) and v.strip():
-                            partes.append(v)
-                    return " ".join(partes).lower()
+            contagens  = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
+            midia      = {"video": 0, "imagem": 0, "carrossel": 0}
+            plat_count = {}
+            dest_count = {}
 
-                def tipo_midia(ad: dict) -> str:
-                    if ad.get("is_video") or ad.get("media_type") == "video" or ad.get("video_url") or ad.get("formato") == "Vídeo":
-                        return "video"
-                    if ad.get("media_type") == 8 or ad.get("is_carousel") or ad.get("media_type") == "carousel" or ad.get("formato") == "Carrossel":
-                        return "carrossel"
-                    return "imagem"
+            for ad in ads_lista:
+                txt = texto_do_anuncio(ad)
+                if any(p in txt for p in palavras_beneficio):
+                    contagens["beneficio"] += 1
+                if any(p in txt for p in palavras_prova_social):
+                    contagens["prova_social"] += 1
+                if any(p in txt for p in palavras_urgencia):
+                    contagens["urgencia"] += 1
+                if any(p in txt for p in palavras_cta_direto):
+                    contagens["cta_direto"] += 1
 
-                def extrair_plataformas(ad: dict) -> list:
-                    plats_raw = (
-                        ad.get("plataformas")
-                        or ad.get("publisher_platform")
-                        or ad.get("publisherPlatform")
-                        or ad.get("publisher_platforms")
-                        or []
+                midia[tipo_midia(ad)] += 1
+
+                for p in extrair_plataformas(ad):
+                    plat_count[p] = plat_count.get(p, 0) + 1
+
+                dest = extrair_destino(ad)
+                if dest:
+                    dest_count[dest] = dest_count.get(dest, 0) + 1
+
+            top_destinos = sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:3]
+
+            return {
+                "total":        len(ads_lista),
+                "beneficio":    contagens["beneficio"],
+                "prova_social": contagens["prova_social"],
+                "urgencia":     contagens["urgencia"],
+                "cta_direto":   contagens["cta_direto"],
+                "video":        midia["video"],
+                "imagem":       midia["imagem"],
+                "carrossel":    midia["carrossel"],
+                "plataformas":  plat_count,
+                "destinos":     top_destinos,
+            }
+
+        seo_cache = st.session_state.get("seo_cache", {})
+
+        # ── Monta um registro combinado por empresa (rede social + site/SEO + anúncios) ──
+        empresas_cards_data = []
+        for i, e in enumerate(todas_empresas_geral):
+            is_minha = e["tipo"] == "minha"
+            cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
+            av  = gerar_avatar(e["nome"])
+            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
+            badge_col = "#15803d" if is_minha else "#1d4ed8"
+            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+
+            # ── Dados de redes sociais (se existirem) ──
+            r = dados_redes_map.get(e["nome"])
+            tem_redes = bool(r)
+
+            redes_info = None
+            if tem_redes:
+                pp = r.get("profile_pic", "")
+                if pp and pp.startswith("data:"):
+                    av_html = (
+                        '<div style="width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
+                        f'<img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />'
+                        '</div>'
                     )
-                    if isinstance(plats_raw, str):
-                        plats_raw = [plats_raw]
-                    result = []
-                    for p in plats_raw:
-                        if isinstance(p, dict):
-                            val = p.get("name") or p.get("value") or str(p)
-                            result.append(val.strip().lower())
-                        elif isinstance(p, str) and p.strip():
-                            result.append(p.strip().lower())
-                    return result
-
-                def extrair_destino(ad: dict) -> str:
-                    import re as _re
-                    snapshot = ad.get("snapshot") or {}
-                    candidatos = [
-                        ad.get("caption"),
-                        ad.get("destination_url"),
-                        ad.get("website_url"),
-                        ad.get("link_url"),
-                        snapshot.get("caption"),
-                        snapshot.get("link_url"),
-                        snapshot.get("website_url"),
-                        snapshot.get("destination_url"),
-                    ]
-                    for url in candidatos:
-                        if not url or not isinstance(url, str):
-                            continue
-                        url = url.strip()
-                        dominio = _re.sub(r'^https?://', '', url).split('/')[0].split('?')[0]
-                        dominio = dominio.replace('www.', '').strip()
-                        if (dominio and '.' in dominio
-                                and 'facebook.com' not in dominio
-                                and 'fb.com' not in dominio
-                                and 'fbcdn' not in dominio):
-                            return dominio
-                    return ""
-
-                contagens  = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
-                midia      = {"video": 0, "imagem": 0, "carrossel": 0}
-                plat_count = {}
-                dest_count = {}
-
-                for ad in ads_lista:
-                    txt = texto_do_anuncio(ad)
-                    if any(p in txt for p in palavras_beneficio):
-                        contagens["beneficio"] += 1
-                    if any(p in txt for p in palavras_prova_social):
-                        contagens["prova_social"] += 1
-                    if any(p in txt for p in palavras_urgencia):
-                        contagens["urgencia"] += 1
-                    if any(p in txt for p in palavras_cta_direto):
-                        contagens["cta_direto"] += 1
-
-                    midia[tipo_midia(ad)] += 1
-
-                    for p in extrair_plataformas(ad):
-                        plat_count[p] = plat_count.get(p, 0) + 1
-
-                    dest = extrair_destino(ad)
-                    if dest:
-                        dest_count[dest] = dest_count.get(dest, 0) + 1
-
-                top_destinos = sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:3]
-
-                return {
-                    "total":        len(ads_lista),
-                    "beneficio":    contagens["beneficio"],
-                    "prova_social": contagens["prova_social"],
-                    "urgencia":     contagens["urgencia"],
-                    "cta_direto":   contagens["cta_direto"],
-                    "video":        midia["video"],
-                    "imagem":       midia["imagem"],
-                    "carrossel":    midia["carrossel"],
-                    "plataformas":  plat_count,
-                    "destinos":     top_destinos,
-                }
-
-            seo_cache = st.session_state.get("seo_cache", {})
-
-            # ── Monta um registro combinado por empresa (rede social + site/SEO + anúncios) ──
-            empresas_cards_data = []
-            for i, e in enumerate(todas_empresas_geral):
-                is_minha = e["tipo"] == "minha"
-                cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
-                av  = gerar_avatar(e["nome"])
-                badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
-                badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
-                badge_col = "#15803d" if is_minha else "#1d4ed8"
-                badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-
-                # ── Dados de redes sociais (se existirem) ──
-                r = dados_redes_map.get(e["nome"])
-                tem_redes = bool(r)
-
-                redes_info = None
-                if tem_redes:
-                    pp = r.get("profile_pic", "")
-                    if pp and pp.startswith("data:"):
-                        av_html = (
-                            '<div style="width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;">'
-                            f'<img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />'
-                            '</div>'
-                        )
-                    else:
-                        av_html = (
-                            f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};'
-                            f'display:flex;align-items:center;justify-content:center;'
-                            f'font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
-                        )
-
-                    bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
-                    ext_url_geral = (r.get("external_url") or "").strip()
-                    score_geral = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
-
-                    posts_lista = r.get("posts", [])
-                    n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
-                    n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
-                    n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
-                    n_total_tp  = len(posts_lista) or 1
-
-                    redes_info = {
-                        "av_html":     av_html,
-                        "seg":         fmt_num(r.get("seguidores", 0)),
-                        "eng":         f'{r.get("eng_pct",0):.1f}%',
-                        "posts":       fmt_num(r.get("total_posts", 0)),
-                        "eng_med":     fmt_num(int(r.get("eng_medio", 0))),
-                        "score_val":   score_geral["score"],
-                        "score_cor":   score_geral["cor_classe"],
-                        "score_icon":  score_geral["classificacao_icon"],
-                        "score_lbl":   score_geral["classificacao"],
-                        "pct_foto":    round(n_fotos / n_total_tp * 100),
-                        "pct_vid":     round(n_videos / n_total_tp * 100),
-                        "pct_carr":    round(n_carrossel / n_total_tp * 100),
-                        "n_fotos":     n_fotos,
-                        "n_videos":    n_videos,
-                        "n_carrossel": n_carrossel,
-                    }
-
-                if not tem_redes:
-                    av_html_fallback = (
+                else:
+                    av_html = (
                         f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};'
                         f'display:flex;align-items:center;justify-content:center;'
                         f'font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
                     )
-                else:
-                    av_html_fallback = redes_info["av_html"]
 
-                # ── Dados de site/SEO (se existirem) ──
-                site_url = e.get("site", "") or ""
-                ig_url   = e.get("instagram", "") or ""
-                seo      = seo_cache.get(e["nome"], {})
-                sitemap  = seo.get("sitemap", {})
+                bio_txt_geral = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;")
+                ext_url_geral = (r.get("external_url") or "").strip()
+                score_geral = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores", 0), r.get("eng_pct", 0.0))
 
-                seo_status_ok = seo.get("status") == "ok"
-                seo_pontos = 0
-                seo_criterios_total = 5
-                if seo.get("title"): seo_pontos += 1
-                if seo.get("h1"): seo_pontos += 1
-                if seo.get("description"): seo_pontos += 1
-                if seo.get("h2s"): seo_pontos += 1
-                if sitemap.get("status") == "ok": seo_pontos += 1
-                seo_score_val = round((seo_pontos / seo_criterios_total) * 100) if seo_status_ok else 0
+                posts_lista = r.get("posts", [])
+                n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type", 1) != 8)
+                n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
+                n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
+                n_total_tp  = len(posts_lista) or 1
 
-                if seo_score_val >= 80:
-                    seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente", "🏆", "#22c55e"
-                elif seo_score_val >= 60:
-                    seo_score_lbl, seo_score_icon, seo_score_cor = "Bom", "👍", "#3b82f6"
-                elif seo_score_val >= 40:
-                    seo_score_lbl, seo_score_icon, seo_score_cor = "Regular", "⚠️", "#f59e0b"
-                else:
-                    seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar", "📝", "#ef4444"
+                redes_info = {
+                    "av_html":     av_html,
+                    "seg":         fmt_num(r.get("seguidores", 0)),
+                    "eng":         f'{r.get("eng_pct",0):.1f}%',
+                    "posts":       fmt_num(r.get("total_posts", 0)),
+                    "eng_med":     fmt_num(int(r.get("eng_medio", 0))),
+                    "score_val":   score_geral["score"],
+                    "score_cor":   score_geral["cor_classe"],
+                    "score_icon":  score_geral["classificacao_icon"],
+                    "score_lbl":   score_geral["classificacao"],
+                    "pct_foto":    round(n_fotos / n_total_tp * 100),
+                    "pct_vid":     round(n_videos / n_total_tp * 100),
+                    "pct_carr":    round(n_carrossel / n_total_tp * 100),
+                    "n_fotos":     n_fotos,
+                    "n_videos":    n_videos,
+                    "n_carrossel": n_carrossel,
+                }
 
-                # ── Dados de anúncios (se existirem) ──
-                ads_entry = ads_cache.get(e["nome"], {})
-                ads_lista = ads_entry.get("data", []) if ads_entry else []
-                tem_ads = len(ads_lista) > 0
-                ads_info = calcular_categorias_ads(ads_lista) if tem_ads else None
+            if not tem_redes:
+                av_html_fallback = (
+                    f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
+                )
+            else:
+                av_html_fallback = redes_info["av_html"]
 
-                empresas_cards_data.append({
-                    "nome":            e["nome"],
-                    "cor":             cor,
-                    "av_html":         av_html_fallback,
-                    "badge_lbl":       badge_lbl,
-                    "badge_bg":        badge_bg,
-                    "badge_col":       badge_col,
-                    "badge_brd":       badge_brd,
-                    "tem_redes":       tem_redes,
-                    "redes":           redes_info,
-                    "site":            site_url,
-                    "ig":              ig_url,
-                    "seo_status_ok":   seo_status_ok,
-                    "seo_score_val":   seo_score_val,
-                    "seo_score_lbl":   seo_score_lbl,
-                    "seo_score_icon":  seo_score_icon,
-                    "seo_score_cor":   seo_score_cor,
-                    "seo_title":       seo.get("title", ""),
-                    "seo_desc":        seo.get("description", ""),
-                    "seo_h1":          seo.get("h1", ""),
-                    "seo_h2s":         seo.get("h2s", []),
-                    "seo_extraido_em": seo.get("extraido_em", ""),
-                    "sitemap_urls":    sitemap.get("urls", []),
-                    "sitemap_total":   sitemap.get("total", 0),
-                    "sitemap_status":  sitemap.get("status", ""),
-                    "tem_ads":         tem_ads,
-                    "ads":             ads_info,
-                })
+            # ── Dados de site/SEO (se existirem) ──
+            site_url = e.get("site", "") or ""
+            ig_url   = e.get("instagram", "") or ""
+            seo      = seo_cache.get(e["nome"], {})
+            sitemap  = seo.get("sitemap", {})
 
-            # ── Pré-renderiza, em Python, os blocos de coluna de cada empresa ──
-            tooltip_css = """
+            seo_status_ok = seo.get("status") == "ok"
+            seo_pontos = 0
+            seo_criterios_total = 5
+            if seo.get("title"): seo_pontos += 1
+            if seo.get("h1"): seo_pontos += 1
+            if seo.get("description"): seo_pontos += 1
+            if seo.get("h2s"): seo_pontos += 1
+            if sitemap.get("status") == "ok": seo_pontos += 1
+            seo_score_val = round((seo_pontos / seo_criterios_total) * 100) if seo_status_ok else 0
+
+            if seo_score_val >= 80:
+                seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente", "🏆", "#22c55e"
+            elif seo_score_val >= 60:
+                seo_score_lbl, seo_score_icon, seo_score_cor = "Bom", "👍", "#3b82f6"
+            elif seo_score_val >= 40:
+                seo_score_lbl, seo_score_icon, seo_score_cor = "Regular", "⚠️", "#f59e0b"
+            else:
+                seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar", "📝", "#ef4444"
+
+            # ── Dados de anúncios (se existirem) ──
+            ads_entry = ads_cache.get(e["nome"], {})
+            ads_lista = ads_entry.get("data", []) if ads_entry else []
+            tem_ads = len(ads_lista) > 0
+            ads_info = calcular_categorias_ads(ads_lista) if tem_ads else None
+
+            empresas_cards_data.append({
+                "nome":            e["nome"],
+                "cor":             cor,
+                "av_html":         av_html_fallback,
+                "badge_lbl":       badge_lbl,
+                "badge_bg":        badge_bg,
+                "badge_col":       badge_col,
+                "badge_brd":       badge_brd,
+                "tem_redes":       tem_redes,
+                "redes":           redes_info,
+                "site":            site_url,
+                "ig":              ig_url,
+                "seo_status_ok":   seo_status_ok,
+                "seo_score_val":   seo_score_val,
+                "seo_score_lbl":   seo_score_lbl,
+                "seo_score_icon":  seo_score_icon,
+                "seo_score_cor":   seo_score_cor,
+                "seo_title":       seo.get("title", ""),
+                "seo_desc":        seo.get("description", ""),
+                "seo_h1":          seo.get("h1", ""),
+                "seo_h2s":         seo.get("h2s", []),
+                "seo_extraido_em": seo.get("extraido_em", ""),
+                "sitemap_urls":    sitemap.get("urls", []),
+                "sitemap_total":   sitemap.get("total", 0),
+                "sitemap_status":  sitemap.get("status", ""),
+                "tem_ads":         tem_ads,
+                "ads":             ads_info,
+            })
+
+        # ── Pré-renderiza, em Python, os blocos de coluna de cada empresa ──
+        tooltip_css = """
 .score-tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
 .score-tooltip-wrap .tip {
     display: none; position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
@@ -3242,224 +3258,224 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }
 """
 
-            for d in empresas_cards_data:
+        for d in empresas_cards_data:
 
-                # ── Coluna 1: Redes Sociais ────────────────────────────
-                if d["tem_redes"]:
-                    m = d["redes"]
-                    bar_pct = m["score_val"]
+            # ── Coluna 1: Redes Sociais ────────────────────────────
+            if d["tem_redes"]:
+                m = d["redes"]
+                bar_pct = m["score_val"]
 
-                    tipo_donuts = (
-                        '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
-                        + make_donut_svg(m["pct_foto"], d["cor"], "Fotos", m["n_fotos"])
-                        + make_donut_svg(m["pct_vid"], d["cor"], "Reels", m["n_videos"])
-                        + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
-                        + '</div>'
-                    )
+                tipo_donuts = (
+                    '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
+                    + make_donut_svg(m["pct_foto"], d["cor"], "Fotos", m["n_fotos"])
+                    + make_donut_svg(m["pct_vid"], d["cor"], "Reels", m["n_videos"])
+                    + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
+                    + '</div>'
+                )
 
-                    score_label_html = (
-                        '<div style="display:flex;align-items:center;gap:0px;margin-bottom:4px;">'
-                        '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Score de perfil</div>'
-                        '<div class="score-tooltip-wrap">'
-                        '<div class="q-badge">?</div>'
-                        '<div class="tip">'
-                        '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-                        '✅ Tem bio +20<br>'
-                        '✅ Proposta de valor +20<br>'
-                        '✅ Posicionamento +20<br>'
-                        '✅ Link na bio +15<br>'
-                        '✅ CTA na bio +15<br>'
-                        '✅ Engajamento ≥3% +10'
-                        '</div>'
-                        '</div>'
-                        '</div>'
-                    )
+                score_label_html = (
+                    '<div style="display:flex;align-items:center;gap:0px;margin-bottom:4px;">'
+                    '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Score de perfil</div>'
+                    '<div class="score-tooltip-wrap">'
+                    '<div class="q-badge">?</div>'
+                    '<div class="tip">'
+                    '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+                    '✅ Tem bio +20<br>'
+                    '✅ Proposta de valor +20<br>'
+                    '✅ Posicionamento +20<br>'
+                    '✅ Link na bio +15<br>'
+                    '✅ CTA na bio +15<br>'
+                    '✅ Engajamento ≥3% +10'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
 
-                    redes_block_html = (
-                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;text-align:center;">'
-                        '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguidores</div>'
-                        f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-                        '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj. %</div>'
-                        f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-                        '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</div>'
-                        f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-                        '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj/Post</div>'
-                        f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
-                        '</div>'
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:10px;">'
-                        + score_label_html +
-                        '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">'
-                        f'<span style="font-size:13px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
-                        '<span style="font-size:9px;color:#9ca3af;font-weight:700;">/100</span>'
-                        f'<span style="font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:20px;font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
+                redes_block_html = (
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;text-align:center;">'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguidores</div>'
+                    f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj. %</div>'
+                    f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
+                    '<div><div style="font-size:9px;color:#838484;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj/Post</div>'
+                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
+                    '</div>'
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:10px;margin-bottom:10px;">'
+                    + score_label_html +
+                    '<div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">'
+                    f'<span style="font-size:13px;font-weight:900;color:{m["score_cor"]}">{m["score_val"]}</span>'
+                    '<span style="font-size:9px;color:#9ca3af;font-weight:700;">/100</span>'
+                    f'<span style="font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:20px;font-weight:700;color:{m["score_cor"]}">{m["score_icon"]} {m["score_lbl"]}</span>'
+                    '</div>'
+                    f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                    f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
+                    '</div>'
+                    '</div>'
+                    '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
+                    '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;">Tipos de conteúdo</div>'
+                    + tipo_donuts +
+                    '</div>'
+                )
+            else:
+                redes_block_html = (
+                    '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
+                    '<div style="font-size:20px;margin-bottom:6px;">📊</div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados de redes sociais coletados</div>'
+                    '</div>'
+                )
+            d["redes_block_html"] = redes_block_html
+
+            # ── Coluna 3: Anúncios ──────────────────────────────────
+            if d["tem_ads"]:
+                a = d["ads"]
+                total_ads = a["total"] or 1
+
+                # ── helper: barra de categoria ──────────────────────
+                def barra_categoria(label, valor, total, cor):
+                    pct = round(valor / total * 100) if total else 0
+                    return (
+                        '<div style="margin-bottom:7px;">'
+                        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                        f'<span style="font-size:11px;color:#374151;font-weight:600;">{label}</span>'
+                        f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span>'
                         '</div>'
                         f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                        f'<div style="height:100%;width:{bar_pct}%;background:{m["score_cor"]};border-radius:3px;"></div>'
+                        f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div>'
                         '</div>'
-                        '</div>'
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
-                        '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;">Tipos de conteúdo</div>'
-                        + tipo_donuts +
                         '</div>'
                     )
-                else:
-                    redes_block_html = (
-                        '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
-                        '<div style="font-size:20px;margin-bottom:6px;">📊</div>'
-                        '<div style="font-size:11px;color:#9ca3af;">Sem dados de redes sociais coletados</div>'
-                        '</div>'
-                    )
-                d["redes_block_html"] = redes_block_html
 
-                # ── Coluna 3: Anúncios ──────────────────────────────────
-                if d["tem_ads"]:
-                    a = d["ads"]
-                    total_ads = a["total"] or 1
+                # ── Seção 1: Tipos de anúncio ───────────────────────
+                ads_categorias_html = (
+                    barra_categoria("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
+                    + barra_categoria("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
+                    + barra_categoria("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
+                    + barra_categoria("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
+                )
 
-                    # ── helper: barra de categoria ──────────────────────
-                    def barra_categoria(label, valor, total, cor):
-                        pct = round(valor / total * 100) if total else 0
-                        return (
+                # ── Seção 2: Plataformas ────────────────────────────
+                PLAT_LABELS = {
+                    "facebook":         ("🔵", "Facebook"),
+                    "instagram":        ("📸", "Instagram"),
+                    "messenger":        ("💬", "Messenger"),
+                    "whatsapp":         ("🟢", "WhatsApp"),
+                    "audience_network": ("🌐", "Audience Network"),
+                    "threads":          ("🧵", "Threads"),
+                }
+
+                plat_dict = a.get("plataformas", {})
+
+                if plat_dict:
+                    plat_sorted = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)
+                    plat_max    = max(v for _, v in plat_sorted) or 1
+                    plat_rows_html = ""
+                    for plat_key, plat_val in plat_sorted:
+                        emoji, label = PLAT_LABELS.get(plat_key, ("📡", plat_key.capitalize()))
+                        pct = round(plat_val / plat_max * 100)
+                        plat_rows_html += (
                             '<div style="margin-bottom:7px;">'
                             '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;">{label}</span>'
-                            f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span>'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;">{emoji} {label}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{plat_val}</span>'
                             '</div>'
                             f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                            f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div>'
+                            f'<div style="height:100%;width:{pct}%;background:#3a9fd6;border-radius:3px;"></div>'
                             '</div>'
                             '</div>'
                         )
-
-                    # ── Seção 1: Tipos de anúncio ───────────────────────
-                    ads_categorias_html = (
-                        barra_categoria("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
-                        + barra_categoria("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
-                        + barra_categoria("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
-                        + barra_categoria("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
-                    )
-
-                    # ── Seção 2: Plataformas ────────────────────────────
-                    PLAT_LABELS = {
-                        "facebook":         ("🔵", "Facebook"),
-                        "instagram":        ("📸", "Instagram"),
-                        "messenger":        ("💬", "Messenger"),
-                        "whatsapp":         ("🟢", "WhatsApp"),
-                        "audience_network": ("🌐", "Audience Network"),
-                        "threads":          ("🧵", "Threads"),
-                    }
-
-                    plat_dict = a.get("plataformas", {})
-
-                    if plat_dict:
-                        plat_sorted = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)
-                        plat_max    = max(v for _, v in plat_sorted) or 1
-                        plat_rows_html = ""
-                        for plat_key, plat_val in plat_sorted:
-                            emoji, label = PLAT_LABELS.get(plat_key, ("📡", plat_key.capitalize()))
-                            pct = round(plat_val / plat_max * 100)
-                            plat_rows_html += (
-                                '<div style="margin-bottom:7px;">'
-                                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                                f'<span style="font-size:11px;color:#374151;font-weight:600;">{emoji} {label}</span>'
-                                f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{plat_val}</span>'
-                                '</div>'
-                                f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                                f'<div style="height:100%;width:{pct}%;background:#3a9fd6;border-radius:3px;"></div>'
-                                '</div>'
-                                '</div>'
-                            )
-                        plat_section_html = plat_rows_html
-                    else:
-                        plat_section_html = (
-                            '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de plataforma</div>'
-                        )
-
-                    # ── Seção 3: Destinos dos anúncios ──────────────────
-                    destinos = a.get("destinos", [])
-
-                    if destinos:
-                        dest_max = max(v for _, v in destinos) or 1
-                        dest_rows_html = ""
-                        for dom, cnt in destinos:
-                            pct = round(cnt / dest_max * 100)
-                            dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
-                            dest_rows_html += (
-                                '<div style="margin-bottom:7px;">'
-                                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                                f'<span style="font-size:11px;color:#374151;font-weight:600;'
-                                f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">'
-                                f'🔗 {dom_display}</span>'
-                                f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span>'
-                                '</div>'
-                                f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                                f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div>'
-                                '</div>'
-                                '</div>'
-                            )
-                        dest_section_html = dest_rows_html
-                    else:
-                        dest_section_html = (
-                            '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
-                        )
-
-                    # ── Formato (donuts) ────────────────────────────────
-                    ads_midia_donuts = (
-                        '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
-                        + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
-                        + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
-                        + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
-                        + '</div>'
-                    )
-
-                    # ── Bloco completo de anúncios ──────────────────────
-                    ads_block_html = (
-                        # Cabeçalho: total
-                        '<div style="text-align:center;margin-bottom:10px;">'
-                        f'<span style="font-size:22px;font-weight:900;color:#1a2e4a;">{a["total"]}</span>'
-                        '<span style="font-size:11px;color:#9ca3af;font-weight:700;"> anúncios ativos</span>'
-                        '</div>'
-
-                        # 1. Tipos de anúncio
-                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                          'letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio</div>'
-                        + ads_categorias_html
-                        + '</div>'
-
-                        # 2. Plataformas
-                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                          'letter-spacing:0.4px;margin-bottom:6px;">Plataformas</div>'
-                        + plat_section_html
-                        + '</div>'
-
-                        # 3. Destinos
-                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                          'letter-spacing:0.4px;margin-bottom:6px;">Destinos dos anúncios</div>'
-                        + dest_section_html
-                        + '</div>'
-
-                        # 4. Formato (donuts)
-                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
-                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
-                          'letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
-                        + ads_midia_donuts
-                        + '</div>'
-                    )
+                    plat_section_html = plat_rows_html
                 else:
-                    ads_block_html = (
-                        '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
-                        '<div style="font-size:20px;margin-bottom:6px;">📣</div>'
-                        '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div>'
-                        '</div>'
+                    plat_section_html = (
+                        '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de plataforma</div>'
                     )
-                d["ads_block_html"] = ads_block_html
 
-            empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
+                # ── Seção 3: Destinos dos anúncios ──────────────────
+                destinos = a.get("destinos", [])
 
-            components.html(f"""
+                if destinos:
+                    dest_max = max(v for _, v in destinos) or 1
+                    dest_rows_html = ""
+                    for dom, cnt in destinos:
+                        pct = round(cnt / dest_max * 100)
+                        dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                        dest_rows_html += (
+                            '<div style="margin-bottom:7px;">'
+                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;'
+                            f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">'
+                            f'🔗 {dom_display}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span>'
+                            '</div>'
+                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div>'
+                            '</div>'
+                            '</div>'
+                        )
+                    dest_section_html = dest_rows_html
+                else:
+                    dest_section_html = (
+                        '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
+                    )
+
+                # ── Formato (donuts) ────────────────────────────────
+                ads_midia_donuts = (
+                    '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
+                    + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
+                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
+                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
+                    + '</div>'
+                )
+
+                # ── Bloco completo de anúncios ──────────────────────
+                ads_block_html = (
+                    # Cabeçalho: total
+                    '<div style="text-align:center;margin-bottom:10px;">'
+                    f'<span style="font-size:22px;font-weight:900;color:#1a2e4a;">{a["total"]}</span>'
+                    '<span style="font-size:11px;color:#9ca3af;font-weight:700;"> anúncios ativos</span>'
+                    '</div>'
+
+                    # 1. Tipos de anúncio
+                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                      'letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio</div>'
+                    + ads_categorias_html
+                    + '</div>'
+
+                    # 2. Plataformas
+                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                      'letter-spacing:0.4px;margin-bottom:6px;">Plataformas</div>'
+                    + plat_section_html
+                    + '</div>'
+
+                    # 3. Destinos
+                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                      'letter-spacing:0.4px;margin-bottom:6px;">Destinos dos anúncios</div>'
+                    + dest_section_html
+                    + '</div>'
+
+                    # 4. Formato (donuts)
+                    + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
+                    + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                      'letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
+                    + ads_midia_donuts
+                    + '</div>'
+                )
+            else:
+                ads_block_html = (
+                    '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
+                    '<div style="font-size:20px;margin-bottom:6px;">📣</div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div>'
+                    '</div>'
+                )
+            d["ads_block_html"] = ads_block_html
+
+        empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
+
+        components.html(f"""
 <!DOCTYPE html><html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -3638,321 +3654,16 @@ setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
 </body></html>
 """, height=900, scrolling=False)
 
-        else:
-            st.markdown(
-                "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
-                "padding:48px 32px;text-align:center;margin-top:16px'>"
-                "<div style='font-size:32px;margin-bottom:12px'>📊</div>"
-                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem empresas cadastradas</div>"
-                "<div style='font-size:13px;color:#9ca3af'>Cadastre sua empresa e concorrentes para ver o painel.</div>"
-                "</div>",
-                unsafe_allow_html=True
-            )
-            
-    # ══════════════════════════════════════════════════════════════════
-    # ABA 2: DISCURSO — Nuvem de Palavras
-    # ══════════════════════════════════════════════════════════════════
-
-    elif dash_aba == "discurso":
-
-        if ok_redes:
-            import re as _re
-
-            stopwords_pt = {
-                "de","do","da","dos","das","e","o","a","os","as","em","no","na","nos","nas",
-                "um","uma","uns","umas","por","para","com","que","se","ao","à","este","esta",
-                "esse","essa","seu","sua","seus","suas","mais","mas","ou","não","é","são",
-                "foi","ser","ter","tem","como","pelo","pela","pelos","pelas","já","também",
-                "muito","bem","aqui","nosso","nossa","nos","nós","você","vocês","isso","isto",
-                "todo","toda","todos","todas","quando","onde","quem","qual","quais",
-                "via","até","após","sobre","me","te","lhe","lhes","meu","minha","teu","tua",
-            }
-
-            empresas_palavras = {}
-            for r in ok_redes:
-                texto_total = " ".join([p.get("caption", "") or "" for p in r.get("posts", [])])
-                palavras = _re.findall(r'[a-záàâãéêíóôõúüçA-ZÁÀÂÃÉÊÍÓÔÕÚÜÇ]{3,}', texto_total)
-                freq = {}
-                for w in palavras:
-                    w_low = w.lower()
-                    if w_low not in stopwords_pt and not w_low.startswith("http"):
-                        freq[w_low] = freq.get(w_low, 0) + 1
-                top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:60]
-                empresas_palavras[r["nome"]] = top
-
-            todas_palavras_geral = {}
-            for r in ok_redes:
-                for palavra, freq in empresas_palavras.get(r["nome"], []):
-                    todas_palavras_geral[palavra] = todas_palavras_geral.get(palavra, 0) + freq
-            top_geral = sorted(todas_palavras_geral.items(), key=lambda x: x[1], reverse=True)[:60]
-            empresas_palavras["__geral__"] = top_geral
-
-            empresas_palavras_json = _json.dumps(empresas_palavras, ensure_ascii=False)
-            nomes_nuvem_json = _json.dumps(["__geral__"] + [r["nome"] for r in ok_redes], ensure_ascii=False)
-            cores_nuvem_json = _json.dumps(["#0e2a47"] + [get_avatar_color(i) for i in range(len(ok_redes))], ensure_ascii=False)
-
-            components.html(f"""
-<!DOCTYPE html><html>
-<head>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-body {{ padding-bottom:8px; }}
-.card {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 20px 20px; margin-top:16px; }}
-.card-header {{ display:flex; align-items:center; justify-content:space-between;
-    padding-bottom:12px; border-bottom:2px solid #e5e7eb; margin-bottom:16px; flex-wrap:wrap; gap:10px; }}
-.card-title {{ font-size:18px; font-weight:800; color:#1a2e4a; text-transform:uppercase; letter-spacing:0.6px; }}
-.filter-tabs {{ display:flex; gap:8px; flex-wrap:wrap; }}
-.ftab {{ padding:6px 14px; border-radius:8px; border:1.5px solid #e5e7eb; background:#fff;
-    font-size:12px; font-weight:700; color:#6b7280; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
-.ftab.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
-.ftab:hover:not(.active) {{ border-color:#3a9fd6; color:#1d4ed8; }}
-.body-wrap {{ display:flex; gap:16px; align-items:flex-start; }}
-.cloud-wrap {{ flex:1; min-height:180px; display:flex; flex-wrap:wrap; gap:10px 14px; align-items:center; padding:8px 4px; }}
-.word-tag {{ display:inline-block; cursor:default; transition:opacity 0.15s; line-height:1.2; font-weight:700; }}
-.word-tag:hover {{ opacity:0.6 !important; }}
-.ranking-col {{ width:38%; flex-shrink:0; background:#f8f9fa; border-radius:10px; padding:12px 14px; }}
-.ranking-title {{ font-size:11px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:10px; }}
-.rank-item {{ display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:0.5px solid #e5e7eb; }}
-.rank-item:last-child {{ border-bottom:none; }}
-.rank-pos {{ font-size:10px; font-weight:700; color:#d1d5db; width:14px; flex-shrink:0; text-align:right; }}
-.rank-word {{ font-size:13px; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.rank-count {{ font-size:11px; font-weight:700; color:#fff; padding:2px 7px; border-radius:20px; flex-shrink:0; }}
-.rank-bar-wrap {{ height:3px; background:#e5e7eb; border-radius:2px; margin-top:3px; width:100%; }}
-.rank-bar {{ height:3px; border-radius:2px; }}
-</style>
-</head>
-<body>
-<div class="card">
-    <div class="card-header">
-        <div class="card-title">☁️ Nuvem de Palavras — Legendas</div>
-        <div class="filter-tabs" id="filter-tabs"></div>
-    </div>
-    <div class="body-wrap">
-        <div class="cloud-wrap" id="cloud-wrap"></div>
-        <div class="ranking-col">
-            <div class="ranking-title">🏆 Mais citadas</div>
-            <div id="ranking-list"></div>
-        </div>
-    </div>
-</div>
-<script>
-var DADOS  = {empresas_palavras_json};
-var NOMES  = {nomes_nuvem_json};
-var CORES  = {cores_nuvem_json};
-var LABELS = {{}};
-NOMES.forEach(function(n) {{ LABELS[n] = n === '__geral__' ? 'Geral' : n; }});
-var ativo = NOMES[0] || '';
-function buildTabs() {{
-    var el = document.getElementById('filter-tabs'); el.innerHTML = '';
-    NOMES.forEach(function(nome, i) {{
-        var btn = document.createElement('button');
-        btn.className = 'ftab' + (nome === ativo ? ' active' : '');
-        btn.textContent = LABELS[nome];
-        btn.onclick = function() {{
-            ativo = nome;
-            document.querySelectorAll('.ftab').forEach(function(b) {{ b.classList.remove('active'); }});
-            btn.classList.add('active'); renderCloud();
-        }};
-        el.appendChild(btn);
-    }});
-}}
-function renderCloud() {{
-    var wrap = document.getElementById('cloud-wrap');
-    var rankList = document.getElementById('ranking-list');
-    wrap.innerHTML = ''; rankList.innerHTML = '';
-    var palavras = DADOS[ativo] || [];
-    if (!palavras.length) {{ wrap.innerHTML = '<div style="font-size:14px;color:#9ca3af;text-align:center;padding:40px 0;width:100%">Nenhuma legenda encontrada.</div>'; syncHeight(); return; }}
-    var maxFreq = palavras[0][1] || 1;
-    var minFreq = palavras[palavras.length - 1][1] || 1;
-    var corIdx  = NOMES.indexOf(ativo);
-    var corBase = ativo === '__geral__' ? '#0e2a47' : (CORES[corIdx] || '#3a9fd6');
-    palavras.forEach(function(item) {{
-        var ratio   = maxFreq === minFreq ? 0.5 : (item[1] - minFreq) / (maxFreq - minFreq);
-        var size    = Math.round(13 + ratio * 23);
-        var opacity = (0.45 + ratio * 0.55).toFixed(2);
-        var tag = document.createElement('span');
-        tag.className = 'word-tag'; tag.textContent = item[0]; tag.title = item[1] + 'x';
-        tag.style.fontSize = size + 'px'; tag.style.color = corBase; tag.style.opacity = opacity;
-        wrap.appendChild(tag);
-    }});
-    palavras.slice(0, 7).forEach(function(item, idx) {{
-        var barW = Math.round((item[1] / maxFreq) * 100);
-        var row = document.createElement('div'); row.className = 'rank-item';
-        row.innerHTML = '<span class="rank-pos">' + (idx+1) + '</span><div style="flex:1;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:4px"><span class="rank-word" style="color:' + corBase + '">' + item[0] + '</span><span class="rank-count" style="background:' + corBase + '">' + item[1] + '</span></div><div class="rank-bar-wrap"><div class="rank-bar" style="width:' + barW + '%;background:' + corBase + '"></div></div></div>';
-        rankList.appendChild(row);
-    }});
-    syncHeight();
-}}
-function syncHeight() {{
-    setTimeout(function() {{
-        var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var iframes = window.parent.document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {{
-            try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
-        }}
-    }}, 100);
-}}
-buildTabs(); renderCloud();
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight, 400);
-</script>
-</body></html>
-""", height=420, scrolling=False)
-
-        else:
-            st.markdown(
-                "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
-                "padding:48px 32px;text-align:center;margin-top:16px'>"
-                "<div style='font-size:32px;margin-bottom:12px'>☁️</div>"
-                "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem dados de legendas</div>"
-                "<div style='font-size:13px;color:#9ca3af'>Acesse <b>Redes Sociais</b> e colete dados para ver as palavras aqui.</div>"
-                "</div>",
-                unsafe_allow_html=True
-            )
-
-    # ══════════════════════════════════════════════════════════════════
-    # ABA 3: DIFERENCIAIS — Visão Comparativa Completa
-    # ══════════════════════════════════════════════════════════════════
-
-    elif dash_aba == "diferenciais":
-
-        if not todas_empresas_geral:
-            st.info("Cadastre sua empresa e concorrentes para ver os diferenciais.")
-            st.stop()
-
-        linhas_empresas = []
-        for i, e in enumerate(todas_empresas_geral):
-            is_minha  = e["tipo"] == "minha"
-            cor       = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
-            av        = gerar_avatar(e["nome"])
-            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
-            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_col = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
-
-            redes_data = dados_redes_map.get(e["nome"], {})
-            seg       = fmt_num(redes_data.get("seguidores", 0)) if redes_data else "—"
-            eng       = f'{redes_data.get("eng_pct", 0):.1f}%' if redes_data else "—"
-            posts_tot = fmt_num(redes_data.get("total_posts", 0)) if redes_data else "—"
-            bio_raw   = redes_data.get("bio", "") or "" if redes_data else ""
-            bio       = bio_raw[:80] + ("..." if len(bio_raw) > 80 else "") if redes_data else "—"
-
-            ads_entry = ads_cache.get(e["nome"], {})
-            n_ads     = len(ads_entry.get("data", [])) if ads_entry else 0
-            ads_txt   = str(n_ads) if n_ads else "—"
-
-            site_txt  = e.get("site") or "—"
-            ig_txt    = e.get("instagram") or "—"
-
-            linhas_empresas.append({
-                "nome": e["nome"],
-                "cor": cor,
-                "av": av,
-                "badge_lbl": badge_lbl,
-                "badge_bg": badge_bg,
-                "badge_col": badge_col,
-                "badge_brd": badge_brd,
-                "seg": seg,
-                "eng": eng,
-                "posts": posts_tot,
-                "bio": bio,
-                "n_ads": ads_txt,
-                "site": site_txt,
-                "ig": ig_txt,
-                "setor": e.get("setor", "—") or "—",
-            })
-
-        linhas_json = _json.dumps(linhas_empresas, ensure_ascii=False)
-
-        components.html(f"""
-<!DOCTYPE html><html>
-<head>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-body {{ padding-bottom:8px; }}
-.table-wrap {{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; margin-top:16px; }}
-.table-header {{ padding:16px 20px 12px; border-bottom:2px solid #e5e7eb; font-size:18px; font-weight:800; color:#1a2e4a;
-    text-transform:uppercase; letter-spacing:0.6px; display:flex; align-items:center; gap:10px; }}
-table {{ width:100%; border-collapse:collapse; }}
-th {{ padding:10px 14px; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase;
-    letter-spacing:0.8px; text-align:left; background:#f9fafb; border-bottom:1px solid #e5e7eb; }}
-td {{ padding:14px 14px; font-size:13px; color:#374151; border-bottom:1px solid #f3f4f6; vertical-align:top; }}
-tr:last-child td {{ border-bottom:none; }}
-tr:hover td {{ background:#fafafa; }}
-.empresa-cell {{ display:flex; align-items:center; gap:10px; }}
-.avatar-td {{ width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-    font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }}
-.badge-td {{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; margin-top:3px; }}
-.metric-badge {{ display:inline-flex; align-items:center; background:#f3f4f6; color:#374151;
-    padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }}
-.metric-badge.blue  {{ background:#eff6ff; color:#1d4ed8; }}
-.metric-badge.green {{ background:#f0fdf4; color:#15803d; }}
-.metric-badge.empty {{ background:#f9fafb; color:#d1d5db; font-style:italic; }}
-</style>
-</head>
-<body>
-<div class="table-wrap">
-    <div class="table-header"><span>🏆</span> Visão Comparativa Completa</div>
-    <table>
-        <thead><tr>
-            <th>Empresa</th><th>Setor</th><th>Instagram</th>
-            <th>Seguidores</th><th>Eng. %</th><th>Posts</th><th>Anúncios</th><th>Site</th>
-        </tr></thead>
-        <tbody id="tbody"></tbody>
-    </table>
-</div>
-<script>
-var DADOS = {linhas_json};
-function buildTable() {{
-    var tbody = document.getElementById('tbody');
-    DADOS.forEach(function(d) {{
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-            '<td><div class="empresa-cell">' +
-            '<div class="avatar-td" style="background:' + d.cor + '">' + d.av + '</div>' +
-            '<div><div style="font-size:13px;font-weight:700;color:#111827">' + d.nome + '</div>' +
-            '<span class="badge-td" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span></div></div></td>' +
-            '<td><span class="metric-badge">' + (d.setor || '—') + '</span></td>' +
-            '<td style="font-size:12px;color:#6b7280;font-family:monospace">' + d.ig + '</td>' +
-            '<td><span class="metric-badge blue">' + d.seg + '</span></td>' +
-            '<td><span class="metric-badge ' + (d.eng !== '—' ? 'green' : 'empty') + '">' + d.eng + '</span></td>' +
-            '<td><span class="metric-badge">' + d.posts + '</span></td>' +
-            '<td><span class="metric-badge ' + (d.n_ads !== '—' ? 'blue' : '') + '">' + d.n_ads + '</span></td>' +
-            '<td><span style="font-size:11px;color:#9ca3af;font-family:monospace">' + (d.site !== '—' ? d.site.substring(0, 22) + (d.site.length > 22 ? '…' : '') : '—') + '</span></td>';
-        tbody.appendChild(tr);
-    }});
-    syncHeight();
-}}
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{ iframes[i].style.height = (h + 8) + 'px'; break; }} }} catch(e) {{}}
-    }}
-}}
-buildTable();
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
-</script>
-</body></html>
-""", height=400, scrolling=False)
-
-        if not ok_redes and not ads_cache:
-            st.markdown(
-                "<div style='background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;"
-                "padding:14px 18px;font-size:14px;color:#92400e;"
-                "display:flex;align-items:flex-start;gap:12px;margin-top:12px'>"
-                "<span style='font-size:20px;flex-shrink:0'>💡</span>"
-                "<div><b>Para enriquecer este painel:</b><br>"
-                "• Acesse <b>Redes Sociais</b> → clique em <b>Coletar dados</b><br>"
-                "• Acesse <b>Biblioteca de Ads</b> → configure e busque anúncios</div>"
-                "</div>",
-                unsafe_allow_html=True
-            )
+    else:
+        st.markdown(
+            "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
+            "padding:48px 32px;text-align:center;margin-top:16px'>"
+            "<div style='font-size:32px;margin-bottom:12px'>📊</div>"
+            "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem empresas cadastradas</div>"
+            "<div style='font-size:13px;color:#9ca3af'>Cadastre sua empresa e concorrentes para ver o painel.</div>"
+            "</div>",
+            unsafe_allow_html=True
+        )
 
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES

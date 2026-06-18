@@ -2798,6 +2798,50 @@ html, body { background: transparent; overflow: hidden; }
                 "estado": "",
             })
 
+    # ── Filtro de empresa (clique nos cards para filtrar) ──────────────────────────────────────────
+    if "geral_empresa_filtro" not in st.session_state:
+        st.session_state.geral_empresa_filtro = "todas"
+
+    _filtro_ghost_css = []
+    for _i in range(len(todas_empresas_geral)):
+        _k = f"btn_geral_filtro_{_i}"
+        _filtro_ghost_css.append(f"""
+        .st-key-{_k} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }}
+        .stElementContainer:has(.st-key-{_k}) {{
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }}
+        """)
+    _filtro_ghost_css.append("""
+    .st-key-btn_geral_filtro_todas {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }
+    .stElementContainer:has(.st-key-btn_geral_filtro_todas) {
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }
+    """)
+    st.markdown(f"<style>{''.join(_filtro_ghost_css)}</style>", unsafe_allow_html=True)
+
+    for _i in range(len(todas_empresas_geral)):
+        if st.button(f"geral_filtro_{_i}", key=f"btn_geral_filtro_{_i}"):
+            st.session_state.geral_empresa_filtro = (
+                "todas" if st.session_state.geral_empresa_filtro == _i else _i
+            )
+            st.rerun()
+
+    if st.button("geral_filtro_todas", key="btn_geral_filtro_todas"):
+        st.session_state.geral_empresa_filtro = "todas"
+        st.rerun()
+
+    filtro_empresa_ativo = st.session_state.get("geral_empresa_filtro", "todas")
+
     # ── Dados de redes sociais do cache ────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
@@ -2837,6 +2881,8 @@ html, body { background: transparent; overflow: hidden; }
                 "badge_lbl": "Minha empresa" if is_minha else "Concorrente",
                 "cor": cor,
                 "profile_pic": profile_pic_nav,
+                "i": i,                                              # NOVO
+                "active": (filtro_empresa_ativo == i),               # NOVO
             })
 
         empresas_cards_nav_str = _json.dumps(empresas_cards_nav_json, ensure_ascii=False)
@@ -2865,6 +2911,21 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex;
     align-items:center;
     gap:12px;
+    cursor:pointer;
+    transition:all 0.15s;
+    position:relative;
+}}
+.emp-card:hover {{
+    border-color:#3a9fd6;
+    background:#fff;
+    box-shadow:0 2px 10px rgba(58,159,214,0.1);
+}}
+.emp-card.active {{
+    background:#fff;
+    border:2px solid #3b82f6;
+}}
+.emp-card.active .emp-icon {{
+    background:#dbeafe;
 }}
 .emp-icon {{
     width:44px; height:44px; border-radius:10px;
@@ -2906,14 +2967,16 @@ function buildUI() {{
     grid.innerHTML = '';
     EMPRESAS.forEach(function(e) {{
         var card = document.createElement('div');
-        card.className = 'emp-card';
+        card.className = 'emp-card' + (e.active ? ' active' : '');
+        card.id = 'geral_emp_card_' + e.i;
         var badgeHtml = e.is_minha
             ? '<span class="badge-minha">Minha empresa</span>'
             : '<span class="badge-conc">Concorrente</span>';
-        var iconInner = '<svg viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+        var strokeColor = e.active ? '#3b82f6' : '#64748b';
+        var iconInner = '<svg viewBox="0 0 24 24" fill="none" stroke="' + strokeColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
             + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
             + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
-            + '<circle cx="17.5" cy="6.5" r="1.2" fill="#64748b"/>'
+            + '<circle cx="17.5" cy="6.5" r="1.2" fill="' + strokeColor + '"/>'
             + '</svg>';
         if (e.profile_pic) {{
             iconInner = '<img src="' + e.profile_pic + '" />';
@@ -2927,9 +2990,18 @@ function buildUI() {{
             + '</div>'
             + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
             + '</div>';
+        card.addEventListener('click', function() {{ selectFiltro(e.i); }});
         grid.appendChild(card);
     }});
     syncHeight();
+}}
+function selectFiltro(i) {{
+    var label = 'geral_filtro_' + i;
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
 }}
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
@@ -2949,7 +3021,21 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 </script>
 """, height=100, scrolling=False)
 
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+        # ── Indicador de filtro ativo ──────────────────────────────────
+        if filtro_empresa_ativo != "todas" and filtro_empresa_ativo < len(todas_empresas_geral):
+            nome_filtrado = todas_empresas_geral[filtro_empresa_ativo]["nome"]
+            st.markdown(
+                f"<div style='display:flex;align-items:center;gap:8px;margin:10px 0 0 4px;'>"
+                f"<span style='font-size:12px;color:#6b7280;'>Mostrando apenas: <b>{nome_filtrado}</b></span>"
+                f"<button onclick=\"(function(){{var btns=document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='geral_filtro_todas'){{b.click();return;}}}}}})()\" "
+                f"style='font-size:12px;color:#1d4ed8;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;'>Ver todas</button>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # PRESENÇA DIGITAL — Redes Sociais, Site/SEO e Anúncios por empresa
@@ -2981,10 +3067,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
             )
 
         def calcular_categorias_ads(ads_lista: list) -> dict:
-            """
-            Classifica anúncios por palavras-chave, tipo de mídia, plataforma e destino.
-            Tolerante a diferentes nomes de campo no cache.
-            """
             palavras_beneficio = [
                 "economiz", "aumente", "aumenta", "melhora", "melhore", "resultado", "resultados",
                 "transforma", "conquiste", "conquista", "garanta", "garante", "lucro", "lucre",
@@ -3112,6 +3194,10 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
         # ── Monta um registro combinado por empresa (rede social + site/SEO + anúncios) ──
         empresas_cards_data = []
         for i, e in enumerate(todas_empresas_geral):
+            # ── FILTRO: pula empresas que não correspondem ao filtro ativo ──
+            if filtro_empresa_ativo != "todas" and i != filtro_empresa_ativo:
+                continue
+
             is_minha = e["tipo"] == "minha"
             cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
             av  = gerar_avatar(e["nome"])
@@ -3332,7 +3418,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 a = d["ads"]
                 total_ads = a["total"] or 1
 
-                # ── helper: barra de categoria ──────────────────────
                 def barra_categoria(label, valor, total, cor):
                     pct = round(valor / total * 100) if total else 0
                     return (
@@ -3347,7 +3432,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         '</div>'
                     )
 
-                # ── Seção 1: Tipos de anúncio ───────────────────────
                 ads_categorias_html = (
                     barra_categoria("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
                     + barra_categoria("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
@@ -3355,7 +3439,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     + barra_categoria("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
                 )
 
-                # ── Seção 2: Plataformas ────────────────────────────
                 PLAT_LABELS = {
                     "facebook":         ("🔵", "Facebook"),
                     "instagram":        ("📸", "Instagram"),
@@ -3391,7 +3474,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de plataforma</div>'
                     )
 
-                # ── Seção 3: Destinos dos anúncios ──────────────────
                 destinos = a.get("destinos", [])
 
                 if destinos:
@@ -3419,7 +3501,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                         '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
                     )
 
-                # ── Formato (donuts) ────────────────────────────────
                 ads_midia_donuts = (
                     '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
@@ -3428,36 +3509,26 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                     + '</div>'
                 )
 
-                # ── Bloco completo de anúncios ──────────────────────
                 ads_block_html = (
-                    # Cabeçalho: total
                     '<div style="text-align:center;margin-bottom:10px;">'
                     f'<span style="font-size:22px;font-weight:900;color:#1a2e4a;">{a["total"]}</span>'
                     '<span style="font-size:11px;color:#9ca3af;font-weight:700;"> anúncios ativos</span>'
                     '</div>'
-
-                    # 1. Tipos de anúncio
                     + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
                     + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                       'letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio</div>'
                     + ads_categorias_html
                     + '</div>'
-
-                    # 2. Plataformas
                     + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
                     + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                       'letter-spacing:0.4px;margin-bottom:6px;">Plataformas</div>'
                     + plat_section_html
                     + '</div>'
-
-                    # 3. Destinos
                     + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
                     + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                       'letter-spacing:0.4px;margin-bottom:6px;">Destinos dos anúncios</div>'
                     + dest_section_html
                     + '</div>'
-
-                    # 4. Formato (donuts)
                     + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
                     + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
                       'letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
@@ -3605,7 +3676,6 @@ function buildCards() {{
         card.className = 'empresa-card';
         card.style.borderTop = '3px solid ' + d.cor;
 
-        // ── Cabeçalho ──
         var hdr = document.createElement('div');
         hdr.className = 'empresa-card-hdr';
         hdr.innerHTML = d.av_html
@@ -3613,7 +3683,6 @@ function buildCards() {{
             + '<span class="badge" style="background:' + d.badge_bg + ';color:' + d.badge_col + ';border:1px solid ' + d.badge_brd + '">' + d.badge_lbl + '</span>';
         card.appendChild(hdr);
 
-        // ── 3 colunas ──
         var cols = document.createElement('div');
         cols.className = 'cols-wrap';
 

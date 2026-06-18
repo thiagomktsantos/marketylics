@@ -2966,8 +2966,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def calcular_categorias_ads(ads_lista: list) -> dict:
                 """
-                Classifica anúncios por palavras-chave no texto/criativo e por tipo de mídia.
-                Tolerante a diferentes nomes de campo no cache (body, texto, title, etc.).
+                Classifica anúncios por palavras-chave, tipo de mídia, plataforma e destino.
+                Tolerante a diferentes nomes de campo no cache.
                 """
                 palavras_beneficio = [
                     "economiz", "aumente", "aumenta", "melhora", "melhore", "resultado", "resultados",
@@ -3000,14 +3000,61 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     return " ".join(partes).lower()
 
                 def tipo_midia(ad: dict) -> str:
-                    if ad.get("is_video") or ad.get("media_type") == "video" or ad.get("video_url"):
+                    if ad.get("is_video") or ad.get("media_type") == "video" or ad.get("video_url") or ad.get("formato") == "Vídeo":
                         return "video"
-                    if ad.get("media_type") == 8 or ad.get("is_carousel") or ad.get("media_type") == "carousel":
+                    if ad.get("media_type") == 8 or ad.get("is_carousel") or ad.get("media_type") == "carousel" or ad.get("formato") == "Carrossel":
                         return "carrossel"
                     return "imagem"
 
-                contagens = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
-                midia = {"video": 0, "imagem": 0, "carrossel": 0}
+                def extrair_plataformas(ad: dict) -> list:
+                    plats_raw = (
+                        ad.get("plataformas")
+                        or ad.get("publisher_platform")
+                        or ad.get("publisherPlatform")
+                        or ad.get("publisher_platforms")
+                        or []
+                    )
+                    if isinstance(plats_raw, str):
+                        plats_raw = [plats_raw]
+                    result = []
+                    for p in plats_raw:
+                        if isinstance(p, dict):
+                            val = p.get("name") or p.get("value") or str(p)
+                            result.append(val.strip().lower())
+                        elif isinstance(p, str) and p.strip():
+                            result.append(p.strip().lower())
+                    return result
+
+                def extrair_destino(ad: dict) -> str:
+                    import re as _re
+                    snapshot = ad.get("snapshot") or {}
+                    candidatos = [
+                        ad.get("caption"),
+                        ad.get("destination_url"),
+                        ad.get("website_url"),
+                        ad.get("link_url"),
+                        snapshot.get("caption"),
+                        snapshot.get("link_url"),
+                        snapshot.get("website_url"),
+                        snapshot.get("destination_url"),
+                    ]
+                    for url in candidatos:
+                        if not url or not isinstance(url, str):
+                            continue
+                        url = url.strip()
+                        dominio = _re.sub(r'^https?://', '', url).split('/')[0].split('?')[0]
+                        dominio = dominio.replace('www.', '').strip()
+                        if (dominio and '.' in dominio
+                                and 'facebook.com' not in dominio
+                                and 'fb.com' not in dominio
+                                and 'fbcdn' not in dominio):
+                            return dominio
+                    return ""
+
+                contagens  = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
+                midia      = {"video": 0, "imagem": 0, "carrossel": 0}
+                plat_count = {}
+                dest_count = {}
 
                 for ad in ads_lista:
                     txt = texto_do_anuncio(ad)
@@ -3019,17 +3066,29 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         contagens["urgencia"] += 1
                     if any(p in txt for p in palavras_cta_direto):
                         contagens["cta_direto"] += 1
+
                     midia[tipo_midia(ad)] += 1
 
+                    for p in extrair_plataformas(ad):
+                        plat_count[p] = plat_count.get(p, 0) + 1
+
+                    dest = extrair_destino(ad)
+                    if dest:
+                        dest_count[dest] = dest_count.get(dest, 0) + 1
+
+                top_destinos = sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:3]
+
                 return {
-                    "total": len(ads_lista),
-                    "beneficio": contagens["beneficio"],
+                    "total":        len(ads_lista),
+                    "beneficio":    contagens["beneficio"],
                     "prova_social": contagens["prova_social"],
-                    "urgencia": contagens["urgencia"],
-                    "cta_direto": contagens["cta_direto"],
-                    "video": midia["video"],
-                    "imagem": midia["imagem"],
-                    "carrossel": midia["carrossel"],
+                    "urgencia":     contagens["urgencia"],
+                    "cta_direto":   contagens["cta_direto"],
+                    "video":        midia["video"],
+                    "imagem":       midia["imagem"],
+                    "carrossel":    midia["carrossel"],
+                    "plataformas":  plat_count,
+                    "destinos":     top_destinos,
                 }
 
             seo_cache = st.session_state.get("seo_cache", {})
@@ -3108,7 +3167,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 seo      = seo_cache.get(e["nome"], {})
                 sitemap  = seo.get("sitemap", {})
 
-                # Score de SEO simplificado: baseado em presença de title, h1, description, h2s, sitemap
                 seo_status_ok = seo.get("status") == "ok"
                 seo_pontos = 0
                 seo_criterios_total = 5
@@ -3163,7 +3221,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     "ads":             ads_info,
                 })
 
-            # ── Pré-renderiza, em Python, os 3 blocos de coluna de cada empresa ──
+            # ── Pré-renderiza, em Python, os blocos de coluna de cada empresa ──
             tooltip_css = """
 .score-tooltip-wrap { position: relative; display: inline-flex; align-items: center; }
 .score-tooltip-wrap .tip {
@@ -3185,6 +3243,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 """
 
             for d in empresas_cards_data:
+
                 # ── Coluna 1: Redes Sociais ────────────────────────────
                 if d["tem_redes"]:
                     m = d["redes"]
@@ -3257,6 +3316,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     a = d["ads"]
                     total_ads = a["total"] or 1
 
+                    # ── helper: barra de categoria ──────────────────────
                     def barra_categoria(label, valor, total, cor):
                         pct = round(valor / total * 100) if total else 0
                         return (
@@ -3271,34 +3331,122 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                             '</div>'
                         )
 
+                    # ── Seção 1: Tipos de anúncio ───────────────────────
                     ads_categorias_html = (
-                        barra_categoria("💰 Com benefício", a["beneficio"], total_ads, "#3a9fd6")
+                        barra_categoria("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
                         + barra_categoria("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
-                        + barra_categoria("⏰ Com urgência", a["urgencia"], total_ads, "#f59e0b")
-                        + barra_categoria("👉 CTA direto", a["cta_direto"], total_ads, "#8b5cf6")
+                        + barra_categoria("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
+                        + barra_categoria("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
                     )
 
+                    # ── Seção 2: Plataformas ────────────────────────────
+                    PLAT_LABELS = {
+                        "facebook":         ("🔵", "Facebook"),
+                        "instagram":        ("📸", "Instagram"),
+                        "messenger":        ("💬", "Messenger"),
+                        "whatsapp":         ("🟢", "WhatsApp"),
+                        "audience_network": ("🌐", "Audience Network"),
+                        "threads":          ("🧵", "Threads"),
+                    }
+
+                    plat_dict = a.get("plataformas", {})
+
+                    if plat_dict:
+                        plat_sorted = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)
+                        plat_max    = max(v for _, v in plat_sorted) or 1
+                        plat_rows_html = ""
+                        for plat_key, plat_val in plat_sorted:
+                            emoji, label = PLAT_LABELS.get(plat_key, ("📡", plat_key.capitalize()))
+                            pct = round(plat_val / plat_max * 100)
+                            plat_rows_html += (
+                                '<div style="margin-bottom:7px;">'
+                                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                                f'<span style="font-size:11px;color:#374151;font-weight:600;">{emoji} {label}</span>'
+                                f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{plat_val}</span>'
+                                '</div>'
+                                f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                                f'<div style="height:100%;width:{pct}%;background:#3a9fd6;border-radius:3px;"></div>'
+                                '</div>'
+                                '</div>'
+                            )
+                        plat_section_html = plat_rows_html
+                    else:
+                        plat_section_html = (
+                            '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de plataforma</div>'
+                        )
+
+                    # ── Seção 3: Destinos dos anúncios ──────────────────
+                    destinos = a.get("destinos", [])
+
+                    if destinos:
+                        dest_max = max(v for _, v in destinos) or 1
+                        dest_rows_html = ""
+                        for dom, cnt in destinos:
+                            pct = round(cnt / dest_max * 100)
+                            dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                            dest_rows_html += (
+                                '<div style="margin-bottom:7px;">'
+                                '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                                f'<span style="font-size:11px;color:#374151;font-weight:600;'
+                                f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">'
+                                f'🔗 {dom_display}</span>'
+                                f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span>'
+                                '</div>'
+                                f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                                f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div>'
+                                '</div>'
+                                '</div>'
+                            )
+                        dest_section_html = dest_rows_html
+                    else:
+                        dest_section_html = (
+                            '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
+                        )
+
+                    # ── Formato (donuts) ────────────────────────────────
                     ads_midia_donuts = (
                         '<div style="display:flex;gap:2px;justify-content:space-between;padding:2px 0 4px 0;">'
-                        + make_donut_svg(round(a["video"]/total_ads*100), d["cor"], "Vídeo", a["video"])
-                        + make_donut_svg(round(a["imagem"]/total_ads*100), d["cor"], "Imagem", a["imagem"])
-                        + make_donut_svg(round(a["carrossel"]/total_ads*100), d["cor"], "Carrossel", a["carrossel"])
+                        + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
+                        + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
+                        + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
                         + '</div>'
                     )
 
+                    # ── Bloco completo de anúncios ──────────────────────
                     ads_block_html = (
+                        # Cabeçalho: total
                         '<div style="text-align:center;margin-bottom:10px;">'
                         f'<span style="font-size:22px;font-weight:900;color:#1a2e4a;">{a["total"]}</span>'
                         '<span style="font-size:11px;color:#9ca3af;font-weight:700;"> anúncios ativos</span>'
                         '</div>'
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
-                        '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio mais usados</div>'
-                        + ads_categorias_html +
-                        '</div>'
-                        '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
-                        '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
-                        + ads_midia_donuts +
-                        '</div>'
+
+                        # 1. Tipos de anúncio
+                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                          'letter-spacing:0.4px;margin-bottom:6px;">Tipos de anúncio</div>'
+                        + ads_categorias_html
+                        + '</div>'
+
+                        # 2. Plataformas
+                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                          'letter-spacing:0.4px;margin-bottom:6px;">Plataformas</div>'
+                        + plat_section_html
+                        + '</div>'
+
+                        # 3. Destinos
+                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;margin-bottom:10px;">'
+                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                          'letter-spacing:0.4px;margin-bottom:6px;">Destinos dos anúncios</div>'
+                        + dest_section_html
+                        + '</div>'
+
+                        # 4. Formato (donuts)
+                        + '<div style="border-top:1px solid #f3f4f6;padding-top:8px;">'
+                        + '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;'
+                          'letter-spacing:0.4px;margin-bottom:2px;">Formato</div>'
+                        + ads_midia_donuts
+                        + '</div>'
                     )
                 else:
                     ads_block_html = (
@@ -3373,7 +3521,6 @@ function esc(s) {{ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function buildSeoColumn(d) {{
     var html = '';
 
-    // Score de SEO
     if (d.seo_status_ok) {{
         html += '<div class="seo-score-row">'
             + '<span class="seo-score-num" style="color:' + d.seo_score_cor + '">' + d.seo_score_val + '</span>'
@@ -3414,15 +3561,12 @@ function buildSeoColumn(d) {{
         html += '<div class="placeholder-box">Salve a empresa para extrair dados de SEO automaticamente.</div>';
     }}
 
-    // Canais de Contato — placeholder até a estrutura de dados real ser definida
     html += '<div class="seo-sub-title">📡 Canais de Contato</div>';
     html += '<div class="placeholder-box">Em breve — aguardando estrutura de dados.</div>';
 
-    // Termos mais usados — placeholder até a fonte de dados ser definida
     html += '<div class="seo-sub-title">🔤 Termos mais usados</div>';
     html += '<div class="placeholder-box">Em breve — aguardando estrutura de dados.</div>';
 
-    // Links (site / instagram)
     html += '<div class="seo-sub-title" style="border-top:1px solid #f3f4f6;">🔗 Links</div>';
     if (d.site) {{
         var siteHref = d.site.startsWith('http') ? d.site : 'https://' + d.site;
@@ -3504,6 +3648,7 @@ setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
                 "</div>",
                 unsafe_allow_html=True
             )
+            
     # ══════════════════════════════════════════════════════════════════
     # ABA 2: DISCURSO — Nuvem de Palavras
     # ══════════════════════════════════════════════════════════════════

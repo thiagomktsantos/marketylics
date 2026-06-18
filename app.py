@@ -2904,8 +2904,8 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
     # FUNÇÕES DE DONUT
     # ══════════════════════════════════════════════════════════════════
 
-    # MELHORIA 1: Donut para tipos de conteúdo lado a lado (horizontal compacto)
-    def make_donut_svg(pct, color, label, count, size=52, stroke=5):
+    # Donut com texto ao LADO direito (usado em Tipos de Conteúdo e Formato)
+    def make_donut_svg(pct, color, label, count, size=48, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
         circum = round(2 * _math.pi * r, 2)
@@ -2913,17 +2913,17 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">'
-            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
+            f'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">'
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
             f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
             f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="middle"'
             f' font-size="11" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
             f'</svg>'
-            f'<div style="text-align:center;">'
-            f'<div style="font-size:12px;font-weight:700;color:{color};">{pct}%</div>'
-            f'<div style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</div>'
+            f'<div style="display:flex;flex-direction:column;min-width:0;">'
+            f'<span style="font-size:13px;font-weight:800;color:{color};line-height:1.2;">{pct}%</span>'
+            f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;">{label}</span>'
             f'</div></div>'
         )
 
@@ -3266,30 +3266,35 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
             if d["tem_redes"]:
                 m = d["redes"]
 
-                # MELHORIA 3: Ícones maiores nas estatísticas (18px)
-                icon_seg  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>'
-                icon_eng  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>'
-                icon_post = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>'
-                icon_enm  = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
+                # Estatísticas: ícone em círculo colorido + valor grande + label (mesmo padrão dos outros cards)
+                def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
+                    return (
+                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">'
+                        f'<div style="width:38px;height:38px;border-radius:50%;background:{icon_bg};'
+                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                        f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
+                        f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
+                        f'</div>'
+                        f'<div style="font-size:16px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
+                        f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:0.5px;white-space:nowrap;">{label}</div>'
+                        f'</div>'
+                    )
+
+                path_seg  = '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'
+                path_eng  = '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'
+                path_post = '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'
+                path_enm  = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
 
                 stats_block_html = (
-                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Estatísticas</div>'
-                    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center;">'
-
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_seg}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Seguid.</span></div>'
-                    f'<div style="font-size:14px;font-weight:800;color:#111827">{m["seg"]}</div></div>'
-
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_eng}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Engaj.%</span></div>'
-                    f'<div style="font-size:14px;font-weight:800;color:#3a9fd6">{m["eng"]}</div></div>'
-
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_post}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Posts</span></div>'
-                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["posts"]}</div></div>'
-
-                    f'<div><div style="display:flex;align-items:center;justify-content:center;gap:4px;margin-bottom:5px;">{icon_enm}<span style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.4px">Eng/Post</span></div>'
-                    f'<div style="font-size:14px;font-weight:700;color:#374151">{m["eng_med"]}</div></div>'
-
-                    '</div></div>'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">Estatísticas</div>'
+                    '<div style="display:flex;gap:4px;align-items:flex-start;">'
+                    + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
+                    + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")
+                    + stat_item(path_post, "#8b5cf6", "#f5f3ff", m["posts"],   "#374151", "Posts")
+                    + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post")
+                    + '</div></div>'
                 )
 
                 score_nok = m["score_oportunidades"]
@@ -3337,9 +3342,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                     '</div>'
                 )
 
-                # MELHORIA 1: Tipos de conteúdo lado a lado (grid horizontal de 3)
+                # Tipos de conteúdo: cada item ocupa uma linha (círculo à esq, texto à dir)
                 tipo_donuts = (
-                    '<div style="display:flex;gap:8px;align-items:flex-start;">'
+                    '<div style="display:flex;flex-direction:column;gap:8px;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
                     + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
                     + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
@@ -3379,9 +3384,9 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                         f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
                     )
 
-                # MELHORIA 1 (ads formato): lado a lado também
+                # Formato: cada item ocupa uma linha (círculo à esq, texto à dir)
                 formato_donuts = (
-                    '<div style="display:flex;gap:8px;align-items:flex-start;">'
+                    '<div style="display:flex;flex-direction:column;gap:8px;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
                     + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
                     + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])

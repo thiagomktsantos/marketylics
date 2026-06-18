@@ -2848,7 +2848,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .emp-card:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .emp-card.active {{ background:#fff; border:2px solid #3b82f6; }}
-.emp-icon {{ width:44px; height:44px; border-radius:10px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
+.emp-icon {{ width:44px; height:44px; border-radius:22px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
 .emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:10px; }}
 .emp-nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge-minha {{ display:inline-flex; align-items:center; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}

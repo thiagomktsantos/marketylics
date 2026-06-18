@@ -2864,8 +2864,8 @@ html, body { background: transparent; overflow: hidden; }
                 "badge_lbl": "Minha empresa" if is_minha else "Concorrente",
                 "cor": cor,
                 "profile_pic": profile_pic_nav,
-                "i": i,                                              # NOVO
-                "active": (filtro_empresa_ativo == i),               # NOVO
+                "i": i,
+                "active": (filtro_empresa_ativo == i),
             })
 
         empresas_cards_nav_str = _json.dumps(empresas_cards_nav_json, ensure_ascii=False)
@@ -3005,7 +3005,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 """, height=100, scrolling=False)
 
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
@@ -3287,6 +3286,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 "seo_h1":          seo.get("h1", ""),
                 "seo_h2s":         seo.get("h2s", []),
                 "seo_extraido_em": seo.get("extraido_em", ""),
+                "seo_contato":     seo.get("contato", {}),
                 "sitemap_urls":    sitemap.get("urls", []),
                 "sitemap_total":   sitemap.get("total", 0),
                 "sitemap_status":  sitemap.get("status", ""),
@@ -3543,8 +3543,11 @@ body {{ padding-bottom:8px; }}
     margin-bottom:10px;
 }}
 
+/* ── SEO Score ── */
 .seo-score-row {{ display:flex; align-items:center; gap:8px; margin-bottom:10px; }}
-.seo-score-num {{ font-size:20px; font-weight:900; line-height:1; }}
+.seo-score-num {{ font-size:28px; font-weight:900; line-height:1; letter-spacing:-1px; }}
+
+/* ── SEO items ── */
 .seo-item-label {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#9ca3af; margin-bottom:2px; }}
 .seo-item-value {{ font-size:11px; color:#374151; line-height:1.4; font-weight:500; word-break:break-word; }}
 .seo-item-empty {{ font-size:11px; color:#d1d5db; font-style:italic; }}
@@ -3564,6 +3567,48 @@ body {{ padding-bottom:8px; }}
 .link-row:hover {{ background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }}
 .no-link {{ color:#d1d5db; font-style:italic; font-size:11px; padding:4px 2px; }}
 
+/* ── Canais de Contato ── */
+.contato-section {{ margin-bottom:10px; }}
+.contato-grupo-title {{
+    font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px;
+}}
+.contato-chips {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:4px; }}
+.contato-chip {{
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:11px; font-weight:600; color:#374151;
+}}
+.contato-divider {{ border:none; border-top:1px solid #f3f4f6; margin:8px 0; }}
+
+/* ── Termos mais usados ── */
+.termos-section {{ margin-bottom:10px; }}
+.termos-sub {{
+    font-size:9px; font-weight:700; text-transform:uppercase;
+    letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px;
+}}
+.termos-chips {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }}
+.termo-chip {{
+    display:inline-flex; align-items:center; gap:2px;
+    font-size:11px; font-weight:600;
+    background:#f8f8f8; border:none;
+    border-radius:20px; padding:3px 10px;
+    cursor:default; line-height:1.3;
+}}
+.termo-chip-bigram {{ border-radius:10px; padding:4px 11px; }}
+.termo-count {{ font-size:9px; font-weight:700; opacity:0.55; margin-left:2px; }}
+
+/* ── Score chips inline ── */
+.score-chips {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }}
+.score-chip-ok {{
+    display:inline-flex; align-items:center; gap:3px;
+    font-size:11px; font-weight:600; color:#15803d;
+    padding:2px 4px; white-space:nowrap;
+}}
+.score-check {{
+    border:1px solid #22c45f; border-radius:5px; background:#22c45e;
+    width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+}}
+
 @media (max-width: 760px) {{
     .cols-wrap {{ grid-template-columns:1fr; }}
 }}
@@ -3576,70 +3621,336 @@ var DATA = {empresas_cards_json};
 
 function esc(s) {{ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
-function buildSeoColumn(d) {{
-    var html = '';
+// ══════════════════════════════════════════════════════════════════
+// Ícones dos canais de contato (idênticos à página de Sites)
+// ══════════════════════════════════════════════════════════════════
+var CONTACT_ICONS = {{
+    whatsapp:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
+    telefone:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C9.61 21 3 14.39 3 6a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>',
+    email:           '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4.7l-8 5.334L4 8.7V6.297l8 5.333 8-5.333V8.7z"/></svg>',
+    instagram:       '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>',
+    facebook:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>',
+    linkedin:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>',
+    youtube:         '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M23.495 6.205a3.007 3.007 0 00-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 00.527 6.205a31.247 31.247 0 00-.522 5.805 31.247 31.247 0 00.522 5.783 3.007 3.007 0 002.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 002.088-2.088 31.247 31.247 0 00.5-5.783 31.247 31.247 0 00-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>',
+    chat_ao_vivo:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 2H4a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2zm-2 10H6v-2h12v2zm0-3H6V7h12v2z"/></svg>',
+    formulario:      '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13zm-5 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>',
+    botao_flutuante: '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>',
+    popup_saida:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-3.293 10.293l-1.414 1.414L12 12.414l-2.293 2.293-1.414-1.414L10.586 11 8.293 8.707l1.414-1.414L12 9.586l2.293-2.293 1.414 1.414L13.414 11l2.293 2.293z"/></svg>',
+    popup_rolagem:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 13l-5-5 1.41-1.41L12 13.17l7.59-7.59L21 7l-9 9z"/></svg>',
+}};
 
-    if (d.seo_status_ok) {{
-        html += '<div class="seo-score-row">'
-            + '<span class="seo-score-num" style="color:' + d.seo_score_cor + '">' + d.seo_score_val + '</span>'
-            + '<span style="font-size:11px;color:#9ca3af;font-weight:700;">/100</span>'
-            + '<span style="font-size:10px;background:#f3f4f6;padding:2px 7px;border-radius:20px;font-weight:700;color:' + d.seo_score_cor + '">' + d.seo_score_icon + ' ' + d.seo_score_lbl + '</span>'
-            + '</div>';
+var CONTACT_LABEL_MAP = {{
+    whatsapp:'WhatsApp', telefone:'Telefone', email:'E-mail',
+    instagram:'Instagram', facebook:'Facebook', linkedin:'LinkedIn', youtube:'YouTube',
+    chat_ao_vivo:'Chat ao vivo', formulario:'Formulário',
+    botao_flutuante:'Btn. flutuante', popup_saida:'Popup saída', popup_rolagem:'Popup rolagem',
+}};
 
-        html += '<div class="seo-block">';
-        html += '<div class="seo-item-label">🏷️ Title</div>' + (d.seo_title ? '<div class="seo-item-value">' + esc(d.seo_title) + '</div>' : '<div class="seo-item-empty">Não encontrado</div>');
-        html += '</div>';
+var CONTACT_GRUPOS = [
+    {{ titulo: 'Contato direto',         keys: ['whatsapp','telefone','email'] }},
+    {{ titulo: 'Redes sociais',           keys: ['instagram','facebook','linkedin','youtube'] }},
+    {{ titulo: 'Recursos de engajamento', keys: ['chat_ao_vivo','formulario','botao_flutuante','popup_saida','popup_rolagem'] }},
+];
 
-        html += '<div class="seo-block">';
-        html += '<div class="seo-item-label">📌 H1</div>' + (d.seo_h1 ? '<div class="seo-item-value">' + esc(d.seo_h1) + '</div>' : '<div class="seo-item-empty">Não encontrado</div>');
-        html += '</div>';
+// ══════════════════════════════════════════════════════════════════
+// Stop words para termos mais usados (idênticas à página de Sites)
+// ══════════════════════════════════════════════════════════════════
+var STOP_WORDS = new Set([
+    'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
+    'para','por','com','que','se','na','no','nas','nos','ao','aos','à','às',
+    'mais','ou','mas','como','são','sua','seu','suas','seus','esta','este',
+    'essa','esse','pelo','pela','pelos','pelas','entre','até','já','pra','pro',
+    'pros','pras','vai','vão','tem','têm','bem','sim','não','sem','só',
+    'lá','cá','você','voce','além','isso','isto','aquilo','tudo','nada',
+    'muito','muita','muitos','muitas','pouco','poucos','poucas',
+    'dia','ano','mês','vez','aqui','ali','anos','dias','meses','vezes',
+    'todo','toda','todos','todas','ser','ter','pode','nosso','nossa',
+    'nossos','nossas','qual','quais','quando','onde','quem','porque',
+    'clique','clicar','acesse','acessar','saiba','saber','veja','ver',
+    'descubra','descobrir','confira','conferir','fale','contate','contatar',
+    'receba','receber','envie','enviar','inscreva','inscrever','baixe','baixar',
+    'assine','assinar','comece','começar','inicie','iniciar','experimente',
+    'testar','teste','ligue','ligar','entrar','entre','sair','voltar',
+    'conheça','conhecer','aprenda','aprender','entenda','entender',
+    'ofereça','oferecer','oferecendo','garantir','garanta','crescer','cresça',
+    'facilitar','facilitamos','acabar','acabam','ajudar','ajudamos',
+    'transformar','transformamos','impulsionar','realizar','realizamos',
+    'promover','promovemos','permitir','permitimos','gerar','geramos',
+    'presentes','presença','presente','melhor','melhorar','grande','maior',
+    'menor','rápido','fácil','simples','novo','nova','novos','novas',
+    'completo','completa','completos','completas','único','única',
+    'especial','especiais','perfeito','perfeita','ideal','principais',
+    'principal','importante','importantes','eficiente','eficientes',
+    'inovador','inovadora','moderno','moderna','avançado','avançada',
+    'the','and','of','to','in','is','it','for','on','with','that','this',
+    'are','from','at','an','be','by','not','or','was','we','our','your',
+    'have','has','will','can','more','also','their','which','about',
+    'when','than','its','into','been','they','them','what','who',
+]);
 
-        html += '<div class="seo-block">';
-        html += '<div class="seo-item-label">📝 Meta Desc.</div>' + (d.seo_desc ? '<div class="seo-item-value">' + esc(d.seo_desc) + '</div>' : '<div class="seo-item-empty">Não encontrada</div>');
-        html += '</div>';
+var COLOR_PALETTE = [
+    {{ bg:'#eff6ff', border:'#93c5fd', text:'#1d4ed8' }},
+    {{ bg:'#f0fdf4', border:'#6ee7b7', text:'#15803d' }},
+    {{ bg:'#fdf4ff', border:'#d8b4fe', text:'#7e22ce' }},
+    {{ bg:'#fff7ed', border:'#fdba74', text:'#c2410c' }},
+    {{ bg:'#f0fdfa', border:'#5eead4', text:'#0f766e' }},
+    {{ bg:'#fef2f2', border:'#fca5a5', text:'#b91c1c' }},
+];
 
-        if (d.seo_h2s && d.seo_h2s.length > 0) {{
-            var h2html = '<div class="seo-h2-list">';
-            d.seo_h2s.forEach(function(h) {{ h2html += '<div class="seo-h2-pill">▸ ' + esc(h) + '</div>'; }});
-            h2html += '</div>';
-            html += '<div class="seo-block"><div class="seo-item-label">📂 Seções (H2)</div>' + h2html + '</div>';
+function isVerbLike(w) {{
+    return /^(clica|acessa|saib|vej|descubr|confir|receb|envi|inscrev|baix|assin|comec|inici|experim|lig|entr|conhec|aprend|entend|ofer|garant|cresc|facilit|acab|ajud|transform|impulsion|realiz|promov|permit|ger|apresent|mostr|demonstr|ilustr|explor|desenvolv)/.test(w);
+}}
+
+function calcTopWords(d) {{
+    var textoFull = [
+        d.seo_title || '',
+        d.seo_h1    || '',
+        d.seo_desc  || '',
+    ].concat(d.seo_h2s || []).join(' ');
+
+    var textoNorm = textoFull
+        .toLowerCase()
+        .replace(/[^a-záéíóúàãõâêîôûçñü\\s]/gi, ' ');
+
+    var tokens = textoNorm.split(/\\s+/).filter(function(w) {{ return w.length >= 2; }});
+
+    function bigramKey(w1, w2) {{ return [w1, w2].sort().join('|'); }}
+
+    var freqBiRaw = {{}};
+    for (var bi = 0; bi < tokens.length - 1; bi++) {{
+        var w1 = tokens[bi], w2 = tokens[bi + 1];
+        if (
+            w1.length >= 3 && w2.length >= 3 &&
+            !STOP_WORDS.has(w1) && !STOP_WORDS.has(w2) &&
+            !isVerbLike(w1)    && !isVerbLike(w2)
+        ) {{
+            var bk = bigramKey(w1, w2);
+            if (!freqBiRaw[bk]) freqBiRaw[bk] = {{ count: 0, displayPair: w1 + ' ' + w2 }};
+            freqBiRaw[bk].count++;
         }}
-
-        if (d.sitemap_status === 'ok' && d.sitemap_urls && d.sitemap_urls.length > 0) {{
-            var smHtml = '<div style="display:flex;flex-direction:column;gap:3px;margin-top:2px;max-height:110px;overflow-y:auto;">';
-            d.sitemap_urls.slice(0, 15).forEach(function(u) {{
-                smHtml += '<div style="font-size:10px;color:#374151;background:#f3f4f6;border-radius:5px;padding:3px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🔗 ' + esc(u) + '</div>';
-            }});
-            smHtml += '</div>';
-            html += '<div class="seo-block"><div class="seo-item-label">🗺️ Sitemap (' + d.sitemap_total + ' pgs)</div>' + smHtml + '</div>';
-        }} else if (d.sitemap_status === 'sem_sitemap') {{
-            html += '<div class="seo-block"><div class="seo-item-label">🗺️ Sitemap</div><div class="seo-item-empty">Não encontrado</div></div>';
-        }}
-    }} else {{
-        html += '<div class="placeholder-box">Salve a empresa para extrair dados de SEO automaticamente.</div>';
     }}
 
-    html += '<div class="seo-sub-title">📡 Canais de Contato</div>';
-    html += '<div class="placeholder-box">Em breve — aguardando estrutura de dados.</div>';
+    var freqUni = {{}};
+    tokens.forEach(function(w) {{
+        if (w.length >= 5 && !STOP_WORDS.has(w) && !isVerbLike(w))
+            freqUni[w] = (freqUni[w] || 0) + 1;
+    }});
 
-    html += '<div class="seo-sub-title">🔤 Termos mais usados</div>';
-    html += '<div class="placeholder-box">Em breve — aguardando estrutura de dados.</div>';
+    var usedInBigram = new Set();
+    var combined = [];
 
-    html += '<div class="seo-sub-title" style="border-top:1px solid #f3f4f6;">🔗 Links</div>';
+    Object.keys(freqBiRaw).forEach(function(bk) {{
+        var entry = freqBiRaw[bk];
+        if (entry.count >= 2) {{
+            var parts = bk.split('|');
+            usedInBigram.add(parts[0]); usedInBigram.add(parts[1]);
+            combined.push({{ word: entry.displayPair, count: entry.count }});
+        }}
+    }});
+
+    Object.keys(freqBiRaw).forEach(function(bk) {{
+        var entry = freqBiRaw[bk];
+        if (entry.count === 1) {{
+            var parts = bk.split('|');
+            var ambosLongos = parts[0].length >= 5 && parts[1].length >= 5;
+            var naoUsados   = !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1]);
+            var ambosRaros  = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
+            var naoGenerico = parts[0].length >= 4 && parts[1].length >= 4;
+            if (ambosLongos && naoUsados && ambosRaros && naoGenerico) {{
+                usedInBigram.add(parts[0]); usedInBigram.add(parts[1]);
+                combined.push({{ word: entry.displayPair, count: 1 }});
+            }}
+        }}
+    }});
+
+    Object.keys(freqUni).forEach(function(w) {{
+        if (!usedInBigram.has(w)) combined.push({{ word: w, count: freqUni[w] }});
+    }});
+
+    combined = combined.filter(function(item) {{
+        var parts = item.word.split(' ');
+        return parts.every(function(p) {{ return p.length >= 3; }});
+    }});
+
+    return combined
+        .sort(function(a, b) {{ return b.count - a.count; }})
+        .filter(function(item) {{ return item.count > 1; }})
+        .slice(0, 14);
+}}
+
+// ══════════════════════════════════════════════════════════════════
+// buildSeoColumn — idêntica à página de Sites
+// ══════════════════════════════════════════════════════════════════
+function buildSeoColumn(d, colEl) {{
+    if (!d.seo_status_ok) {{
+        colEl.innerHTML += '<div class="placeholder-box">Extraia o SEO na página de Sites para ver os dados aqui.</div>';
+        appendLinks(d, colEl);
+        return;
+    }}
+
+    // ── Score de SEO ──────────────────────────────────────────────
+    var scoreNum       = d.seo_score_val;
+    var scoreTextColor = scoreNum >= 80 ? '#15803d' : scoreNum >= 40 ? '#92400e' : '#b91c1c';
+    var scoreBg        = scoreNum >= 80 ? '#f0fdf4' : scoreNum >= 40 ? '#fffbeb' : '#fef2f2';
+    var scoreTxt2      = scoreNum >= 80 ? 'Excelente 🏆' : scoreNum >= 60 ? 'Bom 👍' : scoreNum >= 40 ? 'Regular ⚠️' : 'Precisa melhorar 📝';
+    var scoreBarColor  = scoreNum >= 80 ? '#22c55e' : scoreNum >= 40 ? '#f59e0b' : '#ef4444';
+    var scoreBarId     = 'seo_dash_bar_' + Math.random().toString(36).slice(2);
+
+    var SEO_ITEMS = [
+        {{ label:'Title',       ok: !!d.seo_title }},
+        {{ label:'H1',          ok: !!d.seo_h1 }},
+        {{ label:'Meta Desc.',  ok: !!d.seo_desc }},
+        {{ label:'Seções (H2)', ok: d.seo_h2s && d.seo_h2s.length > 0 }},
+        {{ label:'Sitemap',     ok: d.sitemap_status === 'ok' }},
+    ];
+
+    var nok = SEO_ITEMS.filter(function(i) {{ return !i.ok; }}).length;
+    var nokHtml = nok > 0
+        ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
+          + 'color:#2563eb;background:#dbeafe;padding:4px 11px;'
+          + 'border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+          + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>'
+        : '';
+
+    var chipsHtml = '';
+    SEO_ITEMS.forEach(function(it) {{
+        if (it.ok) {{
+            chipsHtml +=
+                '<div class="score-chip-ok">'
+                + '<span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+                + ' ' + it.label + '</div>';
+        }}
+    }});
+
+    var scoreBlock = document.createElement('div');
+    scoreBlock.style.cssText = 'background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+    scoreBlock.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+        + '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
+        + nokHtml
+        + '</div>'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
+        +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
+        +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
+        +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
+        +   '</div>'
+        +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
+        +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;flex-shrink:0;">'
+        +     scoreTxt2
+        +   '</div>'
+        + '</div>'
+        + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
+        +   '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;'
+        +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');'
+        +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
+        + '</div>'
+        + '<div style="display:flex;flex-wrap:wrap;">' + chipsHtml + '</div>';
+
+    colEl.appendChild(scoreBlock);
+
+    setTimeout(function() {{
+        var bar = document.getElementById(scoreBarId);
+        if (bar) bar.style.width = scoreNum + '%';
+    }}, 250);
+
+    // ── Canais de Contato ─────────────────────────────────────────
+    var ct = d.seo_contato || {{}};
+    var gruposHtml = '';
+    var algumGrupo = false;
+
+    CONTACT_GRUPOS.forEach(function(g) {{
+        var ativos = g.keys.filter(function(k) {{ return !!ct[k]; }});
+        if (!ativos.length) return;
+        algumGrupo = true;
+        if (gruposHtml) gruposHtml += '<hr class="contato-divider"/>';
+        gruposHtml +=
+            '<div class="contato-grupo-title">' + g.titulo + '</div>'
+            + '<div class="contato-chips">';
+        ativos.forEach(function(k) {{
+            gruposHtml +=
+                '<div class="contato-chip">'
+                + (CONTACT_ICONS[k] || '')
+                + (CONTACT_LABEL_MAP[k] || k)
+                + '</div>';
+        }});
+        gruposHtml += '</div>';
+    }});
+
+    if (algumGrupo) {{
+        var ctBlock = document.createElement('div');
+        ctBlock.style.cssText = 'background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+        ctBlock.innerHTML =
+            '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>'
+            + gruposHtml;
+        colEl.appendChild(ctBlock);
+    }}
+
+    // ── Termos mais usados ────────────────────────────────────────
+    var topWords = calcTopWords(d);
+    if (topWords.length > 0) {{
+        var maxCount = topWords[0].count;
+        var bigrams  = topWords.filter(function(w) {{ return w.word.indexOf(' ') > -1; }});
+        var unigrams = topWords.filter(function(w) {{ return w.word.indexOf(' ') === -1; }});
+
+        function makeChip(item, idx, isBigram) {{
+            var col = COLOR_PALETTE[idx % COLOR_PALETTE.length];
+            var countBadge = item.count > 1
+                ? '<span class="termo-count">' + item.count + 'x</span>'
+                : '';
+            return '<span class="termo-chip' + (isBigram ? ' termo-chip-bigram' : '') + '" '
+                + 'style="color:' + col.text + ';" '
+                + 'title="' + item.count + 'x mencionado">'
+                + esc(item.word) + countBadge
+                + '</span>';
+        }}
+
+        var bigramsHtml  = bigrams.map(function(item, i)  {{ return makeChip(item, i, true);  }}).join('');
+        var unigramsHtml = unigrams.map(function(item, i) {{ return makeChip(item, i, false); }}).join('');
+
+        var kwBlock = document.createElement('div');
+        kwBlock.style.cssText = 'background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+
+        var innerHtml = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
+
+        if (bigramsHtml) {{
+            innerHtml +=
+                '<div class="termos-sub">Expressões-chave</div>'
+                + '<div class="termos-chips">' + bigramsHtml + '</div>';
+        }}
+        if (unigramsHtml) {{
+            innerHtml +=
+                '<div class="termos-sub">Palavras frequentes</div>'
+                + '<div class="termos-chips">' + unigramsHtml + '</div>';
+        }}
+
+        kwBlock.innerHTML = innerHtml;
+        colEl.appendChild(kwBlock);
+    }}
+
+    // ── Links ─────────────────────────────────────────────────────
+    appendLinks(d, colEl);
+}}
+
+function appendLinks(d, colEl) {{
+    var linksHtml = '<div style="font-size:9px;color:#1a2e4a;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;">Links</div>';
     if (d.site) {{
         var siteHref = d.site.startsWith('http') ? d.site : 'https://' + d.site;
-        html += '<a class="link-row" href="' + siteHref + '" target="_blank" rel="noopener">🌐 ' + esc(d.site) + '</a>';
+        linksHtml += '<a class="link-row" href="' + siteHref + '" target="_blank" rel="noopener">🌐 ' + esc(d.site) + '</a>';
     }} else {{
-        html += '<div class="no-link">Sem site cadastrado</div>';
+        linksHtml += '<div class="no-link">Sem site cadastrado</div>';
     }}
     if (d.ig) {{
         var igHandle = d.ig.replace('@','');
-        html += '<a class="link-row" href="https://instagram.com/' + igHandle + '" target="_blank" rel="noopener">📸 @' + esc(igHandle) + '</a>';
+        linksHtml += '<a class="link-row" href="https://instagram.com/' + igHandle + '" target="_blank" rel="noopener">📸 @' + esc(igHandle) + '</a>';
     }}
-
-    return html;
+    var linksDiv = document.createElement('div');
+    linksDiv.innerHTML = linksHtml;
+    colEl.appendChild(linksDiv);
 }}
 
+// ══════════════════════════════════════════════════════════════════
+// buildCards — monta o card completo de cada empresa
+// ══════════════════════════════════════════════════════════════════
 function buildCards() {{
     var el = document.getElementById('cards');
     DATA.forEach(function(d) {{
@@ -3657,14 +3968,21 @@ function buildCards() {{
         var cols = document.createElement('div');
         cols.className = 'cols-wrap';
 
+        // Coluna 1: Redes Sociais
         var colRedes = document.createElement('div');
         colRedes.className = 'col';
         colRedes.innerHTML = '<div class="col-title">📱 Redes Sociais</div>' + d.redes_block_html;
 
+        // Coluna 2: Site (idêntica à página de Sites)
         var colSite = document.createElement('div');
         colSite.className = 'col';
-        colSite.innerHTML = '<div class="col-title">🌐 Site</div>' + buildSeoColumn(d);
+        var colSiteTitle = document.createElement('div');
+        colSiteTitle.className = 'col-title';
+        colSiteTitle.textContent = '🌐 Site';
+        colSite.appendChild(colSiteTitle);
+        buildSeoColumn(d, colSite);
 
+        // Coluna 3: Anúncios
         var colAds = document.createElement('div');
         colAds.className = 'col';
         colAds.innerHTML = '<div class="col-title">📣 Anúncios</div>' + d.ads_block_html;
@@ -3704,6 +4022,7 @@ setTimeout(syncH, 300); setTimeout(syncH, 800); setTimeout(syncH, 2000);
             "</div>",
             unsafe_allow_html=True
         )
+        
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES
 # ---------------------------------------------------

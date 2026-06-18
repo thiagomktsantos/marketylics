@@ -10966,7 +10966,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
         <div class="nav-right">
             <div class="count-badge {'has' if qtd_redes_analises > 0 else ''}">{qtd_redes_analises}</div>
-            {'<div class="new-badge">NOVA</div>' if nao_lidas_redes > 0 else ''}
         </div>
     </div>
 
@@ -11955,54 +11954,6 @@ body{{padding-bottom:8px;}}
                             background:linear-gradient(90deg,#3b82f6,{score_cor});
                             transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>
             </div>
-        </div>
-    </div>
-
-<!-- INSIGHTS DE IA -->
-    <div style="border-right:1px solid #e5e7eb;border-left:1px solid #e5e7eb;
-                background:#f8fbff;padding:18px 24px;border-bottom:1px solid #e5e7eb;">
-        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-
-            <!-- Ícone + título + descrição -->
-            <div style="display:flex;align-items:flex-start;gap:10px;min-width:180px;max-width:260px;flex-shrink:0;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:2px;">
-                    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
-                          fill="#3b82f6" stroke="#3b82f6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                        <span style="font-size:12px;font-weight:800;color:#1a2e4a;
-                                     text-transform:uppercase;letter-spacing:0.5px;">Insights de IA</span>
-                        <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:800;
-                                     padding:2px 7px;border-radius:20px;letter-spacing:0.5px;">BETA</span>
-                    </div>
-                    <div style="font-size:12px;color:#9ca3af;line-height:1.5;">
-                        Principais pontos de atenção e oportunidades para crescimento.
-                    </div>
-                </div>
-            </div>
-
-            <!-- Chips dos critérios OK + oportunidades juntos -->
-            <div id="insights-chips-row"
-                 style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1;min-width:0;border-left:2px solid #f0f2f4;border-right:2px solid #f0f2f4;padding:0 20px;">
-            </div>
-
-            <!-- Botão clean -->
-            <div style="flex-shrink:0;">
-                <button onclick="trigger('bio_ia_{aba_ativa}')"
-                        style="display:inline-flex;align-items:center;gap:6px;
-                               padding:9px 18px;border-radius:8px;
-                               border:none;background:#3b82f6;
-                               font-size:14px;font-weight:600;color:#ffffff;
-                               cursor:pointer;font-family:\'DM Sans\',sans-serif;
-                               white-space:nowrap;transition:all 0.15s;"
-                        onmouseover="this.style.background=\'#005b94\';"
-                        onmouseout="this.style.background=\'#3b82f6\';">
-                    Análise completa do perfil
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                </button>
-            </div>
-
         </div>
     </div>
 

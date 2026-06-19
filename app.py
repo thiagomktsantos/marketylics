@@ -11183,19 +11183,17 @@ body{{padding-bottom:8px;}}
                 border-left:1px solid #e5e7eb;min-height:170px;background:#ffffff;">
 
         <!-- Coluna esquerda: bio -->
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:0px;">
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
             <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
-            <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">
-                {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
-            </div>
+            {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
         </div>
 
         <!-- Divisor vertical -->
         <div style="width:1px;background:#e5e7eb;flex-shrink:0;height:80%;margin:auto;"></div>
 
         <!-- Coluna direita: Link da Bio -->
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;min-width:300px;justify-content:center;">
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
             <div style="font-size:12px;font-weight:700;color:#1a2e4a;
                         text-transform:uppercase;letter-spacing:1px;">LINK DA BIO</div>
             <div style="display:flex;flex-direction:column;gap:0;">

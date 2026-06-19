@@ -11180,7 +11180,7 @@ body{{padding-bottom:8px;}}
     <!-- BIO + LINK DA BIO -->
     <div style="display:grid;grid-template-columns:1fr auto 1fr;
                 border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;
-                border-left:1px solid #e5e7eb;min-height:170px;background:#ffffff;">
+                border-left:1px solid #e5e7eb;background:#ffffff;">
 
         <!-- Coluna esquerda: bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">

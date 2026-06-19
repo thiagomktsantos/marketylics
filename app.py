@@ -7757,7 +7757,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                 }}
                 .st-key-{filtros_key} div[data-testid="stTextInput"] input {{
                     background-color: #fafafa !important;
-                    border: 1px solid #e5e7eb !important;
+                    border: 1px solid #f0f4f8 !important;
                     border-radius: 8px !important;
                     height: 40px !important;
                     padding: 0 14px !important;

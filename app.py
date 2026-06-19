@@ -3442,7 +3442,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
                 ads_formato_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {a["total"]}</div>'
                     '</div>' + formato_donuts + '</div>'
                 )
@@ -3470,7 +3470,7 @@ setTimeout(syncHeight,200); setTimeout(syncHeight,600);
 
                 ads_plat_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Plataformas</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Plataformas dos anúncios</div>'
                     + plat_donuts + '</div>'
                 )
 

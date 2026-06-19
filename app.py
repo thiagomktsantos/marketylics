@@ -3923,20 +3923,6 @@ html, body { background: transparent; overflow: hidden; }
         site_ia_triggers[idx_s] = triggered
  
     # ══════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — Extração de SEO por site
-    # ══════════════════════════════════════════════════════════════
-    ghost_css_seo = "\n".join([
-        f".st-key-btn_site_seo_{i} {{ display: none !important; }}"
-        f".stElementContainer:has(.st-key-btn_site_seo_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
-        for i in range(len(sites_disponiveis))
-    ])
-    st.markdown(f"<style>{ghost_css_seo}</style>", unsafe_allow_html=True)
- 
-    site_seo_triggers = {}
-    for idx_s in range(len(sites_disponiveis)):
-        site_seo_triggers[idx_s] = st.button(f"SITE_SEO_{idx_s}", key=f"btn_site_seo_{idx_s}")
- 
-    # ══════════════════════════════════════════════════════════════
     # GHOST BUTTONS — Remover análises salvas
     # ══════════════════════════════════════════════════════════════
     analises_para_rm = st.session_state.get("analises_salvas", [])
@@ -3955,98 +3941,6 @@ html, body { background: transparent; overflow: hidden; }
         if acoes_rm.get(f"rm_{i}"):
             st.session_state.analises_salvas.pop(i)
             salvar_dados_usuario(st.session_state.user.id)
-            st.rerun()
- 
-    # ══════════════════════════════════════════════════════════════
-    # PROCESSAR — Extração de SEO com spinner
-    # ══════════════════════════════════════════════════════════════
-    for idx_s, s in enumerate(sites_disponiveis):
-        if site_seo_triggers.get(idx_s):
-            modal_seo_ph = st.empty()
- 
-            def _render_modal_seo(fase, nome, pct, _ph=modal_seo_ph):
-                is_done  = fase == "concluido"
-                sub1     = "SEO extraído!" if is_done else "Extraindo dados de SEO…"
-                sub2     = "Salvando…"     if is_done else "Lendo title, H1, meta, sitemap…"
-                cor_pct  = "#22c55e" if is_done else "#3a9fd6"
-                rodape   = '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">Fechando automaticamente…</div>' if is_done else ""
-                nome_safe = (nome or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-                html_modal = f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
-.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
-.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
-@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
-</style>
-<div class="overlay"><div class="card">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
-        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
-        <div style="flex:1;min-width:0;">
-            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
-            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
-        </div>
-        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
-    </div>
-    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
-        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
-    </div>
-    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
-        <div>
-            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{nome_safe}</div>
-            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Extraindo SEO e Sitemap…</div>
-        </div>
-        <div style="font-size:18px;">{'✅' if is_done else '⏳'}</div>
-    </div>
-    {rodape}
-</div></div>
-<script>
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
-            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
-            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
-</script>"""
-                with _ph:
-                    components.html(html_modal, height=600, scrolling=False)
- 
-            _render_modal_seo("extraindo", s["nome"], 30)
-            seo_data = extrair_seo_site(s["url"])
-            _render_modal_seo("extraindo", s["nome"], 65)
-            seo_data["sitemap"] = extrair_sitemap(s["url"])
- 
-            if "seo_cache" not in st.session_state:
-                st.session_state.seo_cache = {}
-            st.session_state.seo_cache[s["nome"]] = seo_data
- 
-            # ── Persiste no Supabase ──
-            try:
-                user_id = st.session_state.user.id
-                payload = {
-                    "user_id":               user_id,
-                    "minha_empresa":         st.session_state.dados["minha_empresa"],
-                    "concorrentes":          st.session_state.dados["concorrentes"],
-                    "metricas_redes":        st.session_state.get("metricas_redes", {}),
-                    "analises_salvas":       st.session_state.get("analises_salvas", []),
-                    "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
-                    "ads_analises_salvas":   st.session_state.get("ads_analises_salvas", []),
-                    "seo_cache":             st.session_state.seo_cache,
-                }
-                supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
-            except Exception as e_seo:
-                st.toast(f"⚠️ Erro ao salvar SEO: {e_seo}", icon="⚠️")
- 
-            _render_modal_seo("concluido", s["nome"], 100)
-            import time as _time; _time.sleep(1.2)
-            modal_seo_ph.empty()
             st.rerun()
  
     # ══════════════════════════════════════════════════════════════
@@ -4406,7 +4300,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
         <div class="nav-content">
             <span class="nav-title">Sites configurados</span>
-            <span class="nav-sub">Visualize, extraia SEO e analise individualmente</span>
+            <span class="nav-sub">Visualize e analise individualmente</span>
         </div>
         <div class="nav-right">
             <div class="count-badge {'has' if len(sites_disponiveis) > 0 else ''}">{len(sites_disponiveis)}</div>
@@ -4458,8 +4352,6 @@ function triggerTab(label) {{
     # ══════════════════════════════════════════════════════════════
     if main_tab == "sites":
  
-        seo_cache_atual = st.session_state.get("seo_cache", {})
- 
         cards_data = []
         for idx_s, s in enumerate(sites_disponiveis):
             is_minha   = s["tipo"] == "minha"
@@ -4477,46 +4369,19 @@ function triggerTab(label) {{
                     ultima_analise = a.get("data", "")
                     break
  
-            # ── Dados de SEO do cache ──
-            seo       = seo_cache_atual.get(s["nome"], {})
-            sitemap   = seo.get("sitemap", {})
- 
             cards_data.append({
-                "idx":             idx_s,
-                "nome":            s["nome"],
-                "url":             s["url"],
-                "tipo":            s["tipo"],
-                "cor":             cor_avatar,
-                "badge_bg":        badge_bg,
-                "badge_txt":       badge_txt,
-                "badge_brd":       badge_brd,
-                "badge_lbl":       badge_lbl,
-                "avatar":          avatar_letras,
-                "tem_analise":     tem_analise,
-                "ultima_analise":  ultima_analise,
-                # SEO
-                "seo_status":      seo.get("status", ""),
-                "seo_title":       seo.get("title", ""),
-                "seo_desc":        seo.get("description", ""),
-                "seo_h1":          seo.get("h1", ""),
-                "seo_h2s":         seo.get("h2s", []),
-                "seo_extraido_em": seo.get("extraido_em", ""),
-                "seo_contato":     seo.get("contato", {}),
-                # Sitemap
-                "sitemap_status":  sitemap.get("status", ""),
-                "sitemap_urls":    sitemap.get("urls", []),
-                "sitemap_total":   sitemap.get("total", 0),
-                # ── seo_raw para o modal de Dados Brutos ──
-                "seo_raw": {
-                    "status":      seo.get("status", ""),
-                    "title":       seo.get("title", ""),
-                    "description": seo.get("description", ""),
-                    "h1":          seo.get("h1", ""),
-                    "h2s":         seo.get("h2s", []),
-                    "contato":        seo.get("contato", {}),
-                    "extraido_em": seo.get("extraido_em", ""),
-                    "sitemap":     sitemap,
-                },
+                "idx":            idx_s,
+                "nome":           s["nome"],
+                "url":            s["url"],
+                "tipo":           s["tipo"],
+                "cor":            cor_avatar,
+                "badge_bg":       badge_bg,
+                "badge_txt":      badge_txt,
+                "badge_brd":      badge_brd,
+                "badge_lbl":      badge_lbl,
+                "avatar":         avatar_letras,
+                "tem_analise":    tem_analise,
+                "ultima_analise": ultima_analise,
             })
  
         cards_json_str = _json_sites.dumps(cards_data, ensure_ascii=False)
@@ -4569,8 +4434,6 @@ body {{ padding-bottom:8px; }}
     width:100%;height:100%; display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:8px; background:#f3f4f6;border-radius:10px;
 }}
-
-/* ── Botão analisar (agora logo abaixo do preview) ── */
 .btn-wrap-preview {{ padding:0 14px 12px; }}
 .btn-analisar {{
     width:100%;padding:11px 0;
@@ -4581,63 +4444,6 @@ body {{ padding-bottom:8px; }}
     display:flex;align-items:center;justify-content:center;gap:7px;
 }}
 .btn-analisar:hover {{ background:#dbeafe; }}
-
-/* ══════════════════════════════════════════════════════
-   Bloco de pontuação SEO
-══════════════════════════════════════════════════════ */
-.seo-score-block {{
-    margin:0 14px 10px;
-    padding:14px 16px;
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
-}}
-.seo-score-block-title {{
-    font-size:12px;font-weight:700;text-transform:uppercase;
-    letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;
-}}
-
-/* ── Barra de ações SEO (Dados brutos + Atualizar SEO) ── */
-.seo-actions-bar {{
-    margin:0 14px 10px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:8px;
-    padding:10px 14px;
-    background:#f8fafc;
-    border:1px solid #e5e7eb;
-    border-radius:10px;
-}}
-.seo-ts2 {{ font-size:10px;color:#9ca3af; }}
-.btn-reextract {{
-    font-size:11px;font-weight:700;color:#1d4ed8;
-    background:#eff6ff;border:1px solid #bfdbfe;
-    border-radius:6px;padding:5px 12px;cursor:pointer;
-    font-family:'DM Sans',sans-serif;
-    display:flex;align-items:center;gap:4px;
-    transition:background 0.15s;
-}}
-.btn-reextract:hover {{ background:#dbeafe; }}
-.btn-extrair-seo {{
-    width:100%;padding:10px;border-radius:8px;
-    border:1px dashed #bfdbfe;
-    background:#f8faff;font-size:13px;font-weight:700;
-    color:#1d4ed8;cursor:pointer;font-family:'DM Sans',sans-serif;
-    display:flex;align-items:center;justify-content:center;gap:6px;
-    transition:background 0.15s;
-    margin:0 14px 10px; width:calc(100% - 28px);
-}}
-.btn-extrair-seo:hover {{ background:#eff6ff; }}
-
-/* ── demais ── */
-.seo-score-pill {{font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;letter-spacing:0.3px;white-space:nowrap;}}
-.seo-score-pill.s-great{{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}}
-.seo-score-pill.s-ok{{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}}
-.seo-score-pill.s-bad{{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;}}
-.seo-score-pill.s-none{{background:#f9fafb;color:#9ca3af;border:1px solid #e5e7eb;}}
-.services-wrap{{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}}
-.service-pill{{font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;padding:3px 10px;font-weight:600;}}
 .analise-badge {{
     margin: 0 14px 10px;
     padding: 9px 14px;
@@ -4672,140 +4478,6 @@ var CARDS = {cards_json_str};
  
 function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}}
- 
-if (!window._seoHelpersReady) {{
-    window._seoHelpersReady = true;
- 
-    window.calcSeoScore = function(c) {{
-        var items = [
-            {{ label:'Title',       ok: !!c.seo_title }},
-            {{ label:'H1',          ok: !!c.seo_h1 }},
-            {{ label:'Meta Desc.',  ok: !!c.seo_desc }},
-            {{ label:'Seções (H2)', ok: c.seo_h2s && c.seo_h2s.length > 0 }},
-            {{ label:'Sitemap',     ok: c.sitemap_status === 'ok' }},
-        ];
-        var pts = items.filter(function(i){{return i.ok;}}).length * 20;
-        return {{ score: pts, items: items }};
-    }};
- 
-    window.extractServices = function(c) {{
-        var cands = [];
-        (c.seo_h2s || []).forEach(function(h) {{
-            var cl = h.trim();
-            if (/^(receba|clique|saiba|entre|acesse|confira|veja|descubra|por que|nosso|nossa|os |as |um |uma )/i.test(cl)) return;
-            if (cl.length < 4 || cl.length > 80) return;
-            cands.push(cl);
-        }});
-        if (c.seo_title) {{
-            c.seo_title.split(/[\|\-–—·•,]/).forEach(function(seg) {{
-                var s = seg.trim();
-                if (s.length > 4 && s.length < 50 && cands.indexOf(s) < 0) cands.unshift(s);
-            }});
-        }}
-        return cands.slice(0, 6);
-    }};
-}}
-
-// ══════════════════════════════════════════════════════════════
-// ── Modal de Dados Brutos ──
-// ══════════════════════════════════════════════════════════════
-function abrirDadosBrutos(idx) {{
-    var c = CARDS[idx];
-    if (!c) return;
-    var rawData = {{
-        nome: c.nome,
-        url: c.url,
-        seo: c.seo_raw || {{
-            status: c.seo_status, title: c.seo_title,
-            description: c.seo_desc, h1: c.seo_h1,
-            h2s: c.seo_h2s, extraido_em: c.seo_extraido_em,
-        }},
-        sitemap: {{
-            status: c.sitemap_status,
-            total: c.sitemap_total,
-            urls: c.sitemap_urls,
-        }},
-    }};
-    var Dstr = JSON.stringify(rawData, null, 2);
-    var doc = window.parent.document;
-    var old = doc.getElementById('sites_raw_dados_overlay');
-    if (old) old.remove();
-
-    var ov = doc.createElement('div');
-    ov.id = 'sites_raw_dados_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
-        + 'display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
-
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
-        + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
-        + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
-
-    var info = doc.createElement('div');
-    info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Dados brutos — SEO & Sitemap</div>'
-        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">' + esc(c.nome) + ' (' + esc(c.url) + ')</div>';
-
-    var btnsWrap = doc.createElement('div');
-    btnsWrap.style.cssText = 'display:flex;gap:8px;align-items:center;';
-
-    var copyBtn = doc.createElement('button');
-    copyBtn.textContent = '📋 Copiar';
-    copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
-        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    copyBtn.addEventListener('click', function() {{
-        var ta = doc.createElement('textarea');
-        ta.value = Dstr;
-        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-        doc.body.appendChild(ta); ta.focus(); ta.select();
-        try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
-        catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
-        doc.body.removeChild(ta);
-        setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
-    }});
-
-    var dlBtn = doc.createElement('button');
-    dlBtn.textContent = '⬇️ Baixar JSON';
-    dlBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
-        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    dlBtn.addEventListener('click', function() {{
-        var fname = (c.nome || 'site').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        var a = doc.createElement('a');
-        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
-        a.download = 'seo_' + fname + '.json';
-        a.click();
-    }});
-
-    var closeBtn = doc.createElement('button');
-    closeBtn.textContent = '✕';
-    closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
-        + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
-        + 'display:flex;align-items:center;justify-content:center;';
-    closeBtn.addEventListener('click', function() {{ ov.remove(); }});
-
-    btnsWrap.appendChild(copyBtn);
-    btnsWrap.appendChild(dlBtn);
-    btnsWrap.appendChild(closeBtn);
-    hdr.appendChild(info);
-    hdr.appendChild(btnsWrap);
-
-    var pre = doc.createElement('pre');
-    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
-        + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
-        + 'white-space:pre-wrap;word-break:break-word;';
-    pre.textContent = Dstr;
-
-    box.appendChild(hdr);
-    box.appendChild(pre);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
-    doc.addEventListener('keydown', escFn);
 }}
  
 function buildCards() {{
@@ -4863,7 +4535,7 @@ function buildCards() {{
         prevWrap.appendChild(img);
         card.appendChild(prevWrap);
 
-        // ── Botão Analisar com IA (logo abaixo do preview) ──
+        // ── Botão Analisar com IA ──
         var btnWrapPreview = document.createElement('div');
         btnWrapPreview.className = 'btn-wrap-preview';
         var btnIA = document.createElement('button');
@@ -4879,394 +4551,6 @@ function buildCards() {{
         }})(c.idx, btnIA);
         btnWrapPreview.appendChild(btnIA);
         card.appendChild(btnWrapPreview);
-
-        // ══════════════════════════════════════════════════
-        // ── Score de SEO ──
-        // ══════════════════════════════════════════════════
-        var hasSeo   = c.seo_status === 'ok';
-        var seoScore = hasSeo ? window.calcSeoScore(c) : null;
-        var services = hasSeo ? window.extractServices(c) : [];
- 
-        if (hasSeo && seoScore) {{
-            var scoreNum       = seoScore.score;
-            var scoreTextColor = scoreNum >= 80 ? '#15803d' : scoreNum >= 40 ? '#92400e' : '#b91c1c';
-            var scoreBg        = scoreNum >= 80 ? '#f0fdf4' : scoreNum >= 40 ? '#fffbeb' : '#fef2f2';
-            var scoreTxt2      = scoreNum >= 80 ? 'Excelente 🏆' : scoreNum >= 40 ? 'Regular ⚠️' : 'Precisa melhorar 📝';
-            var scoreBarColor  = scoreNum >= 80 ? '#22c55e' : scoreNum >= 40 ? '#f59e0b' : '#ef4444';
-            var scoreBarId     = 'seo_score_bar_' + c.idx;
-
-            var chipsHtml = '';
-            seoScore.items.forEach(function(it) {{
-                if (it.ok) {{
-                    chipsHtml +=
-                        '<div style="display:inline-flex;align-items:center;gap:3px;font-size:11px;'
-                        + 'font-weight:600;color:#15803d;padding:2px 4px;white-space:nowrap;">'
-                        + '<svg style="border:1px solid #22c45f;border-radius:5px;background-color:#22c45e;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-                        + ' ' + it.label + '</div>';
-                }}
-            }});
-
-            var nok = seoScore.items.filter(function(i) {{ return !i.ok; }}).length;
-            var nokHtml = nok > 0
-                ? '<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-                  + 'color:#2563eb;background:#dbeafe;padding:4px 11px;'
-                  + 'border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
-                  + nok + ' oportunidade' + (nok !== 1 ? 's' : '') + '</div>'
-                : '';
- 
-            var scoreBlock = document.createElement('div');
-            scoreBlock.className = 'seo-score-block';
-            scoreBlock.innerHTML =
-                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                +   '<div class="seo-score-block-title" style="margin-bottom:0;">Score de SEO</div>'
-                +   nokHtml
-                + '</div>'
-                + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
-                +   '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
-                +     '<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:' + scoreTextColor + ';">' + scoreNum + '</span>'
-                +     '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span>'
-                +   '</div>'
-                +   '<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;'
-                +     'font-size:14px;font-weight:800;background:' + scoreBg + ';color:' + scoreTextColor + ';white-space:nowrap;flex-shrink:0;">'
-                +     scoreTxt2
-                +   '</div>'
-                + '</div>'
-                + '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
-                +   '<div id="' + scoreBarId + '" style="height:100%;width:0%;border-radius:4px;'
-                +     'background:linear-gradient(90deg,#3b82f6,' + scoreBarColor + ');'
-                +     'transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>'
-                + '</div>'
-                + '<div style="display:flex;flex-wrap:wrap;">' + chipsHtml + '</div>';
- 
-            card.appendChild(scoreBlock);
- 
-            setTimeout((function(barId, val) {{
-                return function() {{
-                    var bar = document.getElementById(barId);
-                    if (bar) bar.style.width = val + '%';
-                }};
-            }})(scoreBarId, scoreNum), 200 + c.idx * 80);
-        }}
-
-        // ══════════════════════════════════════════════════════════════
-        // ── Canais de Contato ──
-        // ══════════════════════════════════════════════════════════════
-        if (hasSeo) {{
-            var ct = c.seo_contato || {{}};
-
-            var ICONS = {{
-                whatsapp:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
-                telefone:        '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C9.61 21 3 14.39 3 6a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>',
-                email:           '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4.7l-8 5.334L4 8.7V6.297l8 5.333 8-5.333V8.7z"/></svg>',
-                instagram:       '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>',
-                facebook:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>',
-                linkedin:        '<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>',
-                youtube:         '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M23.495 6.205a3.007 3.007 0 00-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 00.527 6.205a31.247 31.247 0 00-.522 5.805 31.247 31.247 0 00.522 5.783 3.007 3.007 0 002.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 002.088-2.088 31.247 31.247 0 00.5-5.783 31.247 31.247 0 00-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>',
-                chat_ao_vivo:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 2H4a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2zm-2 10H6v-2h12v2zm0-3H6V7h12v2z"/></svg>',
-                formulario:      '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13zm-5 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>',
-                botao_flutuante: '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>',
-                popup_saida:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-3.293 10.293l-1.414 1.414L12 12.414l-2.293 2.293-1.414-1.414L10.586 11 8.293 8.707l1.414-1.414L12 9.586l2.293-2.293 1.414 1.414L13.414 11l2.293 2.293z"/></svg>',
-                popup_rolagem:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 13l-5-5 1.41-1.41L12 13.17l7.59-7.59L21 7l-9 9z"/></svg>',
-            }};
-
-            var LABEL_MAP = {{
-                whatsapp:'WhatsApp', telefone:'Telefone', email:'E-mail',
-                instagram:'Instagram', facebook:'Facebook', linkedin:'LinkedIn', youtube:'YouTube',
-                chat_ao_vivo:'Chat ao vivo', formulario:'Formulário',
-                botao_flutuante:'Btn. flutuante', popup_saida:'Popup saída', popup_rolagem:'Popup rolagem',
-            }};
-
-            var GRUPOS = [
-                {{ titulo: 'Contato direto',         keys: ['whatsapp','telefone','email'] }},
-                {{ titulo: 'Redes sociais',           keys: ['instagram','facebook','linkedin','youtube'] }},
-                {{ titulo: 'Recursos de engajamento', keys: ['chat_ao_vivo','formulario','botao_flutuante','popup_saida','popup_rolagem'] }},
-            ];
-
-            var gruposHtml = '';
-            var algumGrupo = false;
-
-            GRUPOS.forEach(function(g, gi) {{
-                var ativos = g.keys.filter(function(k) {{ return !!ct[k]; }});
-                if (!ativos.length) return;
-                algumGrupo = true;
-                if (gruposHtml) {{
-                    gruposHtml += '<hr style="border:none;border-top:1px solid #f3f4f6;margin:10px 0;"/>';
-                }}
-                gruposHtml +=
-                    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#7d8084;margin-bottom:8px;">' + g.titulo + '</div>'
-                    + '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:4px;">';
-                ativos.forEach(function(k) {{
-                    gruposHtml +=
-                        '<div style="display:inline-flex;align-items:center;gap:3px;'
-                        + 'font-size:11px;font-weight:600;color:#374151;">'
-                        + (ICONS[k] || '')
-                        + (LABEL_MAP[k] || k)
-                        + '</div>';
-                }});
-                gruposHtml += '</div>';
-            }});
-
-            if (algumGrupo) {{
-                var ctBlock = document.createElement('div');
-                ctBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
-                    + 'border:1px solid #e5e7eb;border-radius:12px;';
-                ctBlock.innerHTML =
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>'
-                    + gruposHtml;
-                card.appendChild(ctBlock);
-            }}
-        }}
-
-        // ══════════════════════════════════════════════════════════════
-        // ── Termos e Palavras Mais Usados ──
-        // ══════════════════════════════════════════════════════════════
-        if (hasSeo) {{
-            var textoFull = [
-                c.seo_title || '',
-                c.seo_h1    || '',
-                c.seo_desc  || '',
-            ].concat(c.seo_h2s || []).join(' ');
-
-            var stopWords = new Set([
-                'de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas',
-                'para','por','com','que','se','na','no','nas','nos','ao','aos','à','às',
-                'mais','ou','mas','como','são','sua','seu','suas','seus','esta','este',
-                'essa','esse','pelo','pela','pelos','pelas','entre','até','já','pra','pro',
-                'pros','pras','vai','vão','tem','têm','bem','sim','não','sem','só',
-                'lá','cá','você','voce','além','isso','isto','aquilo','tudo','nada',
-                'muito','muita','muitos','muitas','pouco','poucos','poucas',
-                'dia','ano','mês','vez','aqui','ali','anos','dias','meses','vezes',
-                'todo','toda','todos','todas','ser','ter','pode','nosso','nossa',
-                'nossos','nossas','qual','quais','quando','onde','quem','porque',
-                'clique','clicar','acesse','acessar','saiba','saber','veja','ver',
-                'descubra','descobrir','confira','conferir','fale','contate','contatar',
-                'receba','receber','envie','enviar','inscreva','inscrever','baixe','baixar',
-                'assine','assinar','comece','começar','inicie','iniciar','experimente',
-                'testar','teste','ligue','ligar','entrar','entre','sair','voltar',
-                'conheça','conhecer','aprenda','aprender','entenda','entender',
-                'ofereça','oferecer','oferecendo','garantir','garanta','crescer','cresça',
-                'facilitar','facilitamos','acabar','acabam','ajudar','ajudamos',
-                'transformar','transformamos','impulsionar','realizar','realizamos',
-                'promover','promovemos','permitir','permitimos','gerar','geramos',
-                'presentes','presença','presente','melhor','melhorar','grande','maior',
-                'menor','rápido','fácil','simples','novo','nova','novos','novas',
-                'completo','completa','completos','completas','único','única',
-                'especial','especiais','perfeito','perfeita','ideal','principais',
-                'principal','importante','importantes','eficiente','eficientes',
-                'inovador','inovadora','moderno','moderna','avançado','avançada',
-                'the','and','of','to','in','is','it','for','on','with','that','this',
-                'are','from','at','an','be','by','not','or','was','we','our','your',
-                'have','has','will','can','more','also','their','which','about',
-                'when','than','its','into','been','they','them','what','who',
-            ]);
-
-            function isVerbLike(w) {{
-                return /^(clica|acessa|saib|vej|descubr|confir|receb|envi|inscrev|baix|assin|comec|inici|experim|lig|entr|conhec|aprend|entend|ofer|garant|cresc|facilit|acab|ajud|transform|impulsion|realiz|promov|permit|ger|apresent|mostr|demonstr|ilustr|explor|desenvolv)/.test(w);
-            }}
-
-            var textoNorm = textoFull
-                .toLowerCase()
-                .replace(/[^a-záéíóúàãõâêîôûçñü\s]/gi, ' ');
-
-            var tokens = textoNorm.split(/\s+/).filter(function(w) {{ return w.length >= 2; }});
-
-            function bigramKey(w1, w2) {{
-                return [w1, w2].sort().join('|');
-            }}
-
-            var freqBiRaw = {{}};
-            for (var bi = 0; bi < tokens.length - 1; bi++) {{
-                var w1 = tokens[bi], w2 = tokens[bi + 1];
-                if (
-                    w1.length >= 3 && w2.length >= 3 &&
-                    !stopWords.has(w1) && !stopWords.has(w2) &&
-                    !isVerbLike(w1)   && !isVerbLike(w2)
-                ) {{
-                    var bk = bigramKey(w1, w2);
-                    if (!freqBiRaw[bk]) {{
-                        freqBiRaw[bk] = {{ count: 0, displayPair: w1 + ' ' + w2 }};
-                    }}
-                    freqBiRaw[bk].count++;
-                }}
-            }}
-
-            var freqUni = {{}};
-            tokens.forEach(function(w) {{
-                if (w.length >= 5 && !stopWords.has(w) && !isVerbLike(w)) {{
-                    freqUni[w] = (freqUni[w] || 0) + 1;
-                }}
-            }});
-
-            var usedInBigram = new Set();
-            var combined = [];
-
-            Object.keys(freqBiRaw).forEach(function(bk) {{
-                var entry = freqBiRaw[bk];
-                if (entry.count >= 2) {{
-                    var parts = bk.split('|');
-                    usedInBigram.add(parts[0]);
-                    usedInBigram.add(parts[1]);
-                    combined.push({{ word: entry.displayPair, count: entry.count }});
-                }}
-            }});
-
-            Object.keys(freqBiRaw).forEach(function(bk) {{
-                var entry = freqBiRaw[bk];
-                if (entry.count === 1) {{
-                    var parts = bk.split('|');
-                    var ambosLongos = parts[0].length >= 5 && parts[1].length >= 5;
-                    var naoUsados   = !usedInBigram.has(parts[0]) && !usedInBigram.has(parts[1]);
-                    var ambosRaros  = (freqUni[parts[0]] || 0) <= 1 && (freqUni[parts[1]] || 0) <= 1;
-                    var naoGenerico = parts[0].length >= 4 && parts[1].length >= 4;
-                    if (ambosLongos && naoUsados && ambosRaros && naoGenerico) {{
-                        usedInBigram.add(parts[0]);
-                        usedInBigram.add(parts[1]);
-                        combined.push({{ word: entry.displayPair, count: 1 }});
-                    }}
-                }}
-            }});
-
-            Object.keys(freqUni).forEach(function(w) {{
-                if (!usedInBigram.has(w)) {{
-                    combined.push({{ word: w, count: freqUni[w] }});
-                }}
-            }});
-
-            combined = combined.filter(function(item) {{
-                var parts = item.word.split(' ');
-                return parts.every(function(p) {{ return p.length >= 3; }});
-            }});
-
-            var topWords = combined
-                .sort(function(a, b) {{ return b.count - a.count; }})
-                .filter(function(item) {{ return item.count > 1; }})
-                .slice(0, 14);
-
-            if (topWords.length > 0) {{
-                var maxCount = topWords[0].count;
-
-                var colorPalette = [
-                    {{ bg: '#eff6ff', border: '#93c5fd', text: '#1d4ed8' }},
-                    {{ bg: '#f0fdf4', border: '#6ee7b7', text: '#15803d' }},
-                    {{ bg: '#fdf4ff', border: '#d8b4fe', text: '#7e22ce' }},
-                    {{ bg: '#fff7ed', border: '#fdba74', text: '#c2410c' }},
-                    {{ bg: '#f0fdfa', border: '#5eead4', text: '#0f766e' }},
-                    {{ bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c' }},
-                ];
-
-                var bigrams  = topWords.filter(function(w) {{ return w.word.indexOf(' ') > -1; }});
-                var unigrams = topWords.filter(function(w) {{ return w.word.indexOf(' ') === -1; }});
-
-                function makeChip(item, idx, isBigram) {{
-                    var ratio  = item.count / maxCount;
-                    var size   = 12;
-                    var weight = '600';
-                    var col    = colorPalette[idx % colorPalette.length];
-                    var countBadge = item.count > 1
-                        ? '<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">'
-                          + item.count + 'x</span>'
-                        : '';
-                    return '<span style="'
-                        + 'display:inline-flex;align-items:center;gap:2px;'
-                        + 'font-size:' + size + 'px;font-weight:' + weight + ';'
-                        + 'color:' + col.text + ';'
-                        + 'background:#f8f8f8;'
-                        + 'border:none;'
-                        + 'border-radius:' + (isBigram ? '10px' : '20px') + ';'
-                        + 'padding:' + (isBigram ? '4px 11px' : '3px 10px') + ';'
-                        + 'cursor:default;line-height:1.3;'
-                        + '" title="' + item.count + 'x mencionado">'
-                        + esc(item.word) + countBadge
-                        + '</span>';
-                }}
-
-                var bigramsHtml  = bigrams.map(function(item, i)  {{ return makeChip(item, i, true);  }}).join('');
-                var unigramsHtml = unigrams.map(function(item, i) {{ return makeChip(item, i, false); }}).join('');
-
-                var kwBlock = document.createElement('div');
-                kwBlock.style.cssText = 'margin:0 14px 10px;padding:14px 16px;background:#fff;'
-                    + 'border:1px solid #e5e7eb;border-radius:12px;';
-
-                var innerHtml = '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-                    + 'letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
-
-                if (bigramsHtml) {{
-                    innerHtml +=
-                        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;'
-                        + 'color:#b0b8c4;margin-bottom:7px;">Expressões-chave</div>'
-                        + '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;">'
-                        + bigramsHtml + '</div>';
-                }}
-
-                if (unigramsHtml) {{
-                    innerHtml +=
-                        '<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.7px;'
-                        + 'color:#b0b8c4;margin-bottom:7px;">Palavras frequentes</div>'
-                        + '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">'
-                        + unigramsHtml + '</div>';
-                }}
-
-                kwBlock.innerHTML = innerHtml;
-                card.appendChild(kwBlock);
-            }}
-        }}
-
-        // ══════════════════════════════════════════════════════════════
-        // ── Barra de ações SEO: Dados brutos + Atualizar SEO ──
-        //    (substitui o acordeão "SEO & Conteúdo")
-        // ══════════════════════════════════════════════════════════════
-        var seoActionsBar = document.createElement('div');
-        seoActionsBar.style.cssText = 'margin:0 14px 10px;display:flex;flex-direction:column;gap:8px;padding:12px 14px;'
-            + 'border:1px solid #e5e7eb;border-radius:10px;';
-
-        var btnsRow = document.createElement('div');
-        btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px;';
-
-        if (hasSeo) {{
-            var rawBtn = document.createElement('button');
-            rawBtn.innerHTML = '📦 Dados brutos';
-            rawBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
-                + 'color:#7c3aed;background:#f5f3ff;border:1px solid #ede9fe;border-radius:8px;'
-                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
-            rawBtn.onmouseover = function() {{ this.style.background='#ede9fe'; }};
-            rawBtn.onmouseout  = function() {{ this.style.background='#f5f3ff'; }};
-            rawBtn.onclick = (function(idx) {{ return function() {{ abrirDadosBrutos(idx); }}; }})(c.idx);
-            btnsRow.appendChild(rawBtn);
-
-            var reBtn = document.createElement('button');
-            reBtn.innerHTML = '🔄 Atualizar SEO';
-            reBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
-                + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
-            reBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
-            reBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
-            reBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, reBtn);
-            btnsRow.appendChild(reBtn);
-        }} else {{
-            var extBtn = document.createElement('button');
-            extBtn.innerHTML = '🔍 Extrair SEO';
-            extBtn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:600;'
-                + 'color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;'
-                + 'padding:7px 10px;cursor:pointer;font-family:DM Sans,sans-serif;transition:background 0.15s;white-space:nowrap;';
-            extBtn.onmouseover = function() {{ this.style.background='#e0f2fe'; }};
-            extBtn.onmouseout  = function() {{ this.style.background='#f0f9ff'; }};
-            extBtn.onclick = (function(idx, btn) {{ return function() {{ btn.disabled=true; btn.innerHTML='⏳…'; triggerSiteSEO(idx); }}; }})(c.idx, extBtn);
-            btnsRow.appendChild(extBtn);
-        }}
-
-        seoActionsBar.appendChild(btnsRow);
-
-        var tsRow = document.createElement('div');
-        tsRow.style.cssText = 'display:flex;align-items:center;gap:5px;border-top:1px solid #e5e7eb;padding-top:8px;';
-        tsRow.innerHTML = c.seo_extraido_em
-            ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
-              + '<span style="font-size:11px;color:#9ca3af;font-weight:500;">Dados coletados em ' + c.seo_extraido_em + '</span>'
-            : '<span style="font-size:11px;color:#9ca3af;font-weight:500;">Nenhuma coleta realizada</span>';
-        seoActionsBar.appendChild(tsRow);
-
-        card.appendChild(seoActionsBar);
 
         // ── Badge de análise ──
         if (c.tem_analise && c.ultima_analise) {{
@@ -5287,7 +4571,7 @@ function buildCards() {{
         var spacer = document.createElement('div');
         spacer.style.height = '6px';
         card.appendChild(spacer);
-
+ 
         grid.appendChild(card);
     }});
  
@@ -5304,15 +4588,6 @@ function triggerAnaliseTab() {{
  
 function triggerSiteIA(idx) {{
     var targetText = 'SITE_IA_' + idx;
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var i = 0; i < btns.length; i++) {{
-        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();
-        if (txt === targetText) {{ btns[i].click(); return; }}
-    }}
-}}
- 
-function triggerSiteSEO(idx) {{
-    var targetText = 'SITE_SEO_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
     for (var i = 0; i < btns.length; i++) {{
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/ +/g, ' ').trim();

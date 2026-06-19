@@ -9878,12 +9878,12 @@ function triggerBtn(label) {
         rows = []
         for u in urls:
             display = u.replace("https://", "").replace("http://", "").rstrip("/")
+            display = display.split("?")[0]
             rows.append(
                 f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
                 f'{icon_svg}'
                 f'<a href="{u}" target="_blank" style="font-size:13px;font-weight:600;'
-                f'color:#3a9fd6;text-decoration:none;white-space:nowrap;overflow:hidden;'
-                f'text-overflow:ellipsis;max-width:340px;">{display}</a>'
+                f'color:#3a9fd6;text-decoration:none;word-break:break-all;">{display}</a>'
                 f'</div>'
             )
         return ''.join(rows)

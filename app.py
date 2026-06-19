@@ -7943,7 +7943,7 @@ CTA: {ad_ind.get('cta','') or '—'}
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:hidden;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:16px 16px 4px;}}
-.stat-card{{flex:1;min-width:90px;background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 10px;text-align:center;}}
+.stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
 .stat-lbl-green{{color:#15803d;}}
 .stat-num{{font-size:22px;font-weight:800;}}
 .stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}

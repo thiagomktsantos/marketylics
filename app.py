@@ -9867,6 +9867,27 @@ function triggerBtn(label) {
 
             f'</div>'
         )
+
+    def _build_bio_link_box(urls_str: str) -> str:
+        urls = [u.strip() for u in urls_str.split("|") if u.strip()]
+        if not urls:
+            return '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
+
+        icon_svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+
+        rows = []
+        for u in urls:
+            display = u.replace("https://", "").replace("http://", "").rstrip("/")
+            rows.append(
+                f'<a href="{u}" target="_blank" style="display:flex;align-items:center;gap:8px;'
+                f'background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;'
+                f'text-decoration:none;margin-bottom:8px;transition:background 0.15s;">'
+                f'{icon_svg}'
+                f'<span style="font-size:14px;font-weight:700;color:#1d4ed8;white-space:nowrap;'
+                f'overflow:hidden;text-overflow:ellipsis;">{display}</span>'
+                f'</a>'
+            )
+        return ''.join(rows)
     
     # ── Lista de perfis ─────────────────────────────────────────────
     todas = []
@@ -11157,7 +11178,7 @@ body{{padding-bottom:8px;}}
     </div>
     </div>
 
-    <!-- BIO + SCORE -->
+    <!-- BIO + LINK DA BIO -->
     <div style="display:grid;grid-template-columns:1fr auto 1fr;
                 border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;
                 border-left:1px solid #e5e7eb;min-height:170px;background:#ffffff;">
@@ -11168,36 +11189,18 @@ body{{padding-bottom:8px;}}
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
             <div style="display:flex;flex-direction:column;gap:10px;flex:1;justify-content:center;">
                 {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
-                {(_build_links_html(ext_url)) if ext_url else ''}
             </div>
         </div>
 
         <!-- Divisor vertical -->
         <div style="width:1px;background:#e5e7eb;flex-shrink:0;height:80%;margin:auto;"></div>
 
-        <!-- Coluna direita: Score -->
-        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;min-width:300px;">
+        <!-- Coluna direita: Link da Bio -->
+        <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;min-width:300px;justify-content:center;">
             <div style="font-size:12px;font-weight:700;color:#1a2e4a;
-                        text-transform:uppercase;letter-spacing:1px;">SCORE DE PERFIL</div>
-            <!-- Número + badge na mesma linha -->
-            <div style="display:flex;align-items:center;gap:14px;justify-content:space-between;">
-                <div style="display:flex;align-items:baseline;gap:4px;line-height:1;">
-                    <span style="font-size:52px;font-weight:900;letter-spacing:-2px;
-                                 line-height:1;color:{score_cor};">{score_val}</span>
-                    <span style="font-size:16px;font-weight:600;color:#9ca3af;">/100</span>
-                </div>
-                <div style="display:inline-flex;align-items:center;gap:7px;
-                            padding:10px 20px;border-radius:14px;font-size:17px;font-weight:800;
-                            background:{score_bg};color:{score_cor};border:none;
-                           letter-spacing:0.1px;white-space:nowrap;">
-                    {score_icon} {score_cls}
-                </div>
-            </div>
-            <div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">
-                <div id="score-bar-fill"
-                     style="height:100%;width:0%;border-radius:4px;
-                            background:linear-gradient(90deg,#3b82f6,{score_cor});
-                            transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div>
+                        text-transform:uppercase;letter-spacing:1px;">LINK DA BIO</div>
+            <div style="display:flex;flex-direction:column;gap:0;">
+                {_build_bio_link_box(ext_url)}
             </div>
         </div>
     </div>

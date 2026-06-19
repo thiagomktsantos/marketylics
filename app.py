@@ -11194,7 +11194,7 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna direita: Link da Bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
-            <div style="font-size:12px;font-weight:700;color:#1a2e4a;
+            <div style="font-size:12px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">LINK DA BIO</div>
             <div style="display:flex;flex-direction:column;gap:0;">
                 {_build_bio_link_box(ext_url)}

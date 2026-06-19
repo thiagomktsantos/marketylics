@@ -4228,11 +4228,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     analises_nav = st.session_state.get("analises_salvas", [])
     qtd_total_analise = len(analises_nav)
  
-    nao_lidas = max(0, qtd_total_analise - st.session_state.sites_analise_vistas)
-    if main_tab == "analise":
-        st.session_state.sites_analise_vistas = qtd_total_analise
-        nao_lidas = 0
- 
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -4276,17 +4271,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .count-badge.has {{ background:#3a9fd6; color:#fff; }}
 .nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
 .nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
-.new-badge {{
-    background:#ef4444; color:#fff;
-    font-size:10px; font-weight:800;
-    padding:2px 7px; border-radius:20px;
-    letter-spacing:0.3px; text-transform:uppercase;
-    animation: pulse 1.5s infinite;
-}}
-@keyframes pulse {{
-    0%,100% {{ opacity:1; transform:scale(1); }}
-    50%      {{ opacity:0.75; transform:scale(0.95); }}
-}}
 </style>
 <div class="nav-bar">
  

@@ -7751,7 +7751,6 @@ CTA: {ad_ind.get('cta','') or '—'}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
-                    border-top: none !important;
                     border-radius: 0 0 12px 12px !important;
                     padding: 20px 20px !important;
                     gap: 8px !important;

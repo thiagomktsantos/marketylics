@@ -9873,19 +9873,18 @@ function triggerBtn(label) {
         if not urls:
             return '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
 
-        icon_svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+        icon_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 
         rows = []
         for u in urls:
             display = u.replace("https://", "").replace("http://", "").rstrip("/")
             rows.append(
-                f'<a href="{u}" target="_blank" style="display:flex;align-items:center;gap:8px;'
-                f'background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 14px;'
-                f'text-decoration:none;margin-bottom:8px;transition:background 0.15s;">'
+                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
                 f'{icon_svg}'
-                f'<span style="font-size:14px;font-weight:700;color:#1d4ed8;white-space:nowrap;'
-                f'overflow:hidden;text-overflow:ellipsis;">{display}</span>'
-                f'</a>'
+                f'<a href="{u}" target="_blank" style="font-size:13px;font-weight:600;'
+                f'color:#3a9fd6;text-decoration:none;white-space:nowrap;overflow:hidden;'
+                f'text-overflow:ellipsis;max-width:340px;">{display}</a>'
+                f'</div>'
             )
         return ''.join(rows)
     

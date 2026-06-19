@@ -4319,7 +4319,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
         <div class="nav-right">
             <div class="count-badge {'has' if qtd_total_analise > 0 else ''}">{qtd_total_analise}</div>
-            {'<div class="new-badge">NOVA</div>' if nao_lidas > 0 else ''}
         </div>
     </div>
  

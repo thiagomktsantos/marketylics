@@ -7762,6 +7762,10 @@ CTA: {ad_ind.get('cta','') or '—'}
                     color: #6b7280 !important;
                     transition: border-color 0.15s !important;
                 }}
+                .st-key-{filtros_key} div[data-baseweb="select"] input {{
+                    caret-color: transparent !important;
+                    cursor: pointer !important;
+                }}
                 .st-key-ads_toggle_cols_{sk} button {{
                     height: 40px !important;
                     width: 40px !important;

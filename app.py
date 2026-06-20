@@ -8355,7 +8355,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .meta-row:last-child{{margin-bottom:0;}}
 .meta-label{{font-size:11px;color:#65676b;font-weight:700;flex-shrink:0;}}
 .plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
-.plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;}}
+.plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
 .copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
 .page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}}

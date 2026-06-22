@@ -6119,7 +6119,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     <div class="col-btns">
         <button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">🔍 Buscar / Atualizar Anúncios</button>
         {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()">🕒 Últ&sdot; busca: <b>{_ultima_ts}</b></button>
+            <button class="link-btn" onclick="abrirModal()">🕒 Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if _ultima_ts else ''}

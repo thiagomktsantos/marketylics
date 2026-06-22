@@ -7387,7 +7387,7 @@ Amostra dos anúncios:
             ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
 
             st.markdown(f"""
-            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-45px;'>
+            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-75px;'>
                 <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
                     {avatar_empresa_html}
                     <div style='flex:1;min-width:0'>

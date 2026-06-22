@@ -9204,7 +9204,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:10px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
-.dd-item:last-child {{ margin-bottom:0; }}
+.dd-item:last-child {{ margin-bottom:0; background-color: #0e2a47; }}
 .dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
 .dd-item .dd-icon {{ background:#e9eef5; }}
@@ -9325,15 +9325,15 @@ function renderList() {{
     var compItem = document.createElement('div');
     compItem.className = 'dd-item';
     compItem.innerHTML =
-        '<div class="dd-icon" style="background:#f0fdf4;">'
-        + '<svg viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
+        '<div class="dd-icon" style="background:#224161;">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
         + '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'
         + '</div>'
         + '<div class="dd-info">'
-        + '<span class="dd-nome" style="color:#15803d;">Análise Comparativa</span>'
+        + '<span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>'
         + '<div class="dd-handle">Comparar todos os perfis</div>'
         + '</div>'
-        + '<span class="dd-badge-minha" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;">🏆</span>';
+        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;border-color:#bbf7d0;">🏆</span>';
     compItem.onclick = function() {{ triggerComparativo(); closeDropdown(); }};
     list.appendChild(compItem);
 }}

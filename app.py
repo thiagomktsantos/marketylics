@@ -9291,7 +9291,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
-    padding:8px 12px; display:flex; align-items:center; gap:10px;
+    padding:8px 8px 8px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:box-shadow 0.15s;
     width:100%;
 }}
@@ -9314,7 +9314,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; }}
+.dd-arrow {{     color:#6b7280; flex-shrink:0; transition:transform 0.15s;margin-left:-4px; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
 
 .dd-list {{

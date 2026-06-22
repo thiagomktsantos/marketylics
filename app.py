@@ -9211,7 +9211,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item .dd-icon {{ background:#e9eef5; }}
 .dd-item.selected .dd-icon {{ background:#dbeafe; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:4px; justify-content:center; flex-shrink:0; min-width:160px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;

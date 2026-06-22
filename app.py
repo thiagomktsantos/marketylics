@@ -9293,6 +9293,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:box-shadow 0.15s;
+    width:100%;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
 .dd-icon {{
@@ -9336,7 +9337,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item .dd-icon {{ background:#e9eef5; }}
 .dd-item.selected .dd-icon {{ background:#dbeafe; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:8px; justify-content:center; min-width:160px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:8px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;

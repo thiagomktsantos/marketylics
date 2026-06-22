@@ -5943,194 +5943,184 @@ html, body { background: transparent; overflow: hidden; }
 """, height=65)
 
     with h2_col:
-        st.markdown("""
-        <style>
+        # ── Ghost buttons ocultos para o dropdown de empresa no header ──
+        _emp_dd_ghost_css_parts = []
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _sk_h = safe_key(_e_h["nome"])
+            _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
+            _emp_dd_ghost_css_parts.append(f"""
+            .st-key-{_k_h} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{_k_h}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            """)
+        _k_comp_h = "ads_header_emp_comparativo"
+        _emp_dd_ghost_css_parts.append(f"""
+        .st-key-{_k_comp_h} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }}
+        .stElementContainer:has(.st-key-{_k_comp_h}) {{
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }}
         .st-key-_ads_ghost_tab_configuracao_,
         .st-key-_ads_ghost_tab_empresas_,
-        .st-key-_ads_ghost_tab_analise_ {
-            display: none !important;
-        }
+        .st-key-_ads_ghost_tab_analise_ {{ display: none !important; }}
         .stElementContainer:has(.st-key-_ads_ghost_tab_configuracao_),
         .stElementContainer:has(.st-key-_ads_ghost_tab_empresas_),
-        .stElementContainer:has(.st-key-_ads_ghost_tab_analise_) {
-            display: none !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        .stElementContainer:has(.st-key-_ads_ghost_tab_analise_) {{ display: none !important; }}
+        """)
+        st.markdown(f"<style>{''.join(_emp_dd_ghost_css_parts)}</style>", unsafe_allow_html=True)
 
-    with h3_col:
-        st.markdown("""
-        <style>
-        .st-key-ads_buscar_header_btn {
-            margin-bottom: -16px !important;
-        }
-        .stElementContainer:has(.st-key-ads_buscar_header_btn) {
-            margin-bottom: -12px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        gerar_btn_ads_header = st.button(
-            "Buscar / Atualizar Anúncios",
-            type="primary",
-            use_container_width=True,
-            key="ads_buscar_header_btn",
-        )
-        if st.session_state.ads_cache:
-            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
-            if _tss:
-                _ultima_ts = min(_tss)
-                _d = {k: v for k, v in st.session_state.ads_cache.items()}
-                import json as _json_ads
-                _djs = _json_ads.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
-                _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
+        if "ads_empresa_ativa" not in st.session_state:
+            _primeira = empresas_configuradas[0]["nome"] if empresas_configuradas else (todas_empresas[0]["nome"] if todas_empresas else "")
+            st.session_state.ads_empresa_ativa = _primeira
 
-                if st.button("ads_limpar_cache", key="ads_limpar_cache_btn"):
-                    st.session_state.ads_cache = {}
-                    st.session_state.ads_erro = {}
-                    try:
-                        supabase.table("ci_dados").update({"ads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
-                    except Exception:
-                        pass
-                    st.toast("Cache limpo!", icon="🗑️")
-                    st.rerun()
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _sk_h = safe_key(_e_h["nome"])
+            _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
+            if st.button(f"hdemp_{_sk_h}", key=_k_h):
+                st.session_state.ads_empresa_ativa = _e_h["nome"]
+                st.session_state.ads_main_tab = "empresas"
+                st.rerun()
 
-                st.markdown("""
-                <style>
-                .st-key-ads_limpar_cache_btn {
-                    position: fixed !important; top: -9999px !important; left: -9999px !important;
-                    width: 0 !important; height: 0 !important; overflow: hidden !important;
-                    opacity: 0 !important; pointer-events: none !important; display: none !important;
-                }
-                .stElementContainer:has(.st-key-ads_limpar_cache_btn) {
-                    display: none !important; height: 0 !important; min-height: 0 !important;
-                    max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
+        if st.button("hdemp_comparativo", key=_k_comp_h):
+            st.session_state.ads_empresa_ativa = "__comparativo__"
+            st.session_state.ads_main_tab = "analise"
+            st.session_state.ads_analise_subtab = "comparativo_ads"
+            st.rerun()
 
-                components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+        _emp_ativa_nome = st.session_state.get("ads_empresa_ativa", "")
+        _emp_ativa_obj  = next((e for e in todas_empresas if e["nome"] == _emp_ativa_nome), None)
+
+        if _emp_ativa_obj:
+            _is_minha_h = _emp_ativa_obj["tipo"] == "minha"
+            _ads_id_h   = emp.get("ads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_id","")
+            _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
+            _badge_bg_h  = "#f0fdf4"        if _is_minha_h else "#eff6ff"
+            _badge_col_h = "#15803d"        if _is_minha_h else "#1d4ed8"
+            _badge_brd_h = "#bbf7d0"        if _is_minha_h else "#bfdbfe"
+            _page_pic_h  = emp.get("ads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_page_pic","")
+            _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
+            _av_h        = gerar_avatar(_emp_ativa_nome)
+            _sub_h       = f"@{_ads_id_h}" if _ads_id_h and not _ads_id_h.isdigit() else (f"ID: {_ads_id_h}" if _ads_id_h else "Não configurado")
+            if _page_pic_h and _page_pic_h.startswith("http"):
+                _av_html_h = f'<img src="{_page_pic_h}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0" onerror="this.style.display=\'none\'" />'
+            else:
+                _av_html_h = f'<div style="width:34px;height:34px;border-radius:50%;background:{_cor_h};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{_av_h}</div>'
+            _selected_html = f"""
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                {_av_html_h}
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
+                    <div style="font-size:11px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_sub_h}</div>
+                </div>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
+            </div>"""
+        elif _emp_ativa_nome == "__comparativo__":
+            _selected_html = """
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                <div style="width:34px;height:34px;border-radius:50%;background:#0e2a47;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏆</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#111827">Análise Comparativa</div>
+                    <div style="font-size:11px;color:#9ca3af">Comparar todos os perfis</div>
+                </div>
+            </div>"""
+        else:
+            _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
+
+        _dropdown_items = ""
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _is_m = _e_h["tipo"] == "minha"
+            _ads_id_d = emp.get("ads_id","") if _is_m else concs[_e_h["idx"]].get("ads_id","")
+            _pp_d     = emp.get("ads_page_pic","") if _is_m else concs[_e_h["idx"]].get("ads_page_pic","")
+            _cor_d    = get_minha_empresa_color() if _is_m else get_concorrente_color(_e_h["idx"])
+            _av_d     = gerar_avatar(_e_h["nome"])
+            _sub_d    = f"@{_ads_id_d}" if _ads_id_d and not _ads_id_d.isdigit() else (f"ID: {_ads_id_d}" if _ads_id_d else "Não configurado")
+            _badge_txt_d = "Minha empresa" if _is_m else "Concorrente"
+            _badge_bg_d  = "#f0fdf4"       if _is_m else "#eff6ff"
+            _badge_col_d = "#15803d"       if _is_m else "#1d4ed8"
+            _badge_brd_d = "#bbf7d0"       if _is_m else "#bfdbfe"
+            _is_active_d = (_e_h["nome"] == _emp_ativa_nome)
+            _active_bg   = "#f0f9ff" if _is_active_d else "#fff"
+            _active_brd  = "#3a9fd6" if _is_active_d else "transparent"
+            _sk_h2 = safe_key(_e_h["nome"])
+            _ghost_lbl_d = f"hdemp_{_sk_h2}"
+            if _pp_d and _pp_d.startswith("http"):
+                _av_item_html = f'<img src="{_pp_d}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;display:block" onerror="this.style.display=\'none\'" />'
+            else:
+                _av_item_html = f'<div style="width:30px;height:30px;border-radius:50%;background:{_cor_d};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">{_av_d}</div>'
+            _dropdown_items += f"""
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:{_active_bg};border-left:3px solid {_active_brd};transition:background 0.12s"
+                 onmouseover="if(this.getAttribute('data-active')!=='1')this.style.background='#f9fafb'"
+                 onmouseout="if(this.getAttribute('data-active')!=='1')this.style.background='{_active_bg}'"
+                 data-active="{'1' if _is_active_d else '0'}"
+                 onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
+                <div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0">{_av_item_html}</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_e_h["nome"]}</div>
+                    <div style="font-size:11px;color:#9ca3af">{_sub_d}</div>
+                </div>
+                <span style="background:{_badge_bg_d};color:{_badge_col_d};border:1px solid {_badge_brd_d};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_d}</span>
+                {'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' if _is_active_d else ''}
+            </div>"""
+
+        _comp_active = (_emp_ativa_nome == "__comparativo__")
+        _comp_bg = "#f0f9ff" if _comp_active else "#fff"
+        _comp_brd = "#3a9fd6" if _comp_active else "transparent"
+        _dropdown_items += f"""
+        <div style="border-top:1px solid #f3f4f6">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;background:{_comp_bg};border-left:3px solid {_comp_brd};transition:background 0.12s"
+                 onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='{_comp_bg}'"
+                 onclick="triggerGhost('hdemp_comparativo');closeDropdown()">
+                <div style="width:30px;height:30px;border-radius:50%;background:#0e2a47;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🏆</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#0e2a47">Análise Comparativa</div>
+                    <div style="font-size:11px;color:#9ca3af">Comparar todos os perfis</div>
+                </div>
+            </div>
+        </div>"""
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.row-coleta {{
-    gap:6px;
-    font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap; text-align: center;
-}}
-.link-btn {{
-    font-size:11px; color:#6b7280;
-    cursor:pointer; text-underline-offset:3px;
-    background:none; border:none; padding:0;
-    font-family:'DM Sans',sans-serif;
-}}
-.link-btn:hover {{ text-decoration:underline; color:#374151; }}
-.sep {{ color:#d1d5db; font-size:12px; }}
-.clear-btn {{
-    font-size:11px; color:#6b7280;
-    cursor:pointer; background:none; border:none; padding:0;
-    font-family:'DM Sans',sans-serif; text-underline-offset:3px;
-}}
-.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
+*{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
+.dd-wrap{{position:relative;width:100%;}}
+.dd-trigger{{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:8px 12px;cursor:pointer;width:100%;transition:border-color 0.15s;font-family:'DM Sans',sans-serif;}}
+.dd-trigger:hover{{border-color:#3a9fd6;}}
+.dd-trigger.open{{border-color:#3a9fd6;border-radius:12px 12px 0 0;border-bottom-color:#e5e7eb;}}
+.dd-chevron{{flex-shrink:0;transition:transform 0.2s;color:#9ca3af;}}
+.dd-trigger.open .dd-chevron{{transform:rotate(180deg);}}
+.dd-menu{{position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1.5px solid #3a9fd6;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.12);display:none;}}
+.dd-menu.open{{display:block;}}
 </style>
-<div class="row-coleta">
-    <button class="link-btn" onclick="abrirModal()">🕒 Última busca: <b>{_ultima_ts}</b></button>
-    <span class="sep">|</span>
-    <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
+<div class="dd-wrap" id="dd_wrap">
+    <div class="dd-trigger" id="dd_trigger" onclick="toggleDropdown()">
+        {_selected_html}
+        <svg class="dd-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="dd-menu" id="dd_menu">
+        {_dropdown_items}
+    </div>
 </div>
 <script>
-var DADOS_JSON = '{_djs}';
-var FILENAME   = '{_fn}';
-var ULTIMA     = '{_ultima_ts}';
-
-function triggerLimpar() {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === 'ads_limpar_cache') {{ b.click(); return; }}
-    }}
-}}
-
-function abrirModal() {{
-    window.fechar = function() {{
-        var o = window.parent.document.getElementById('raw_modal_overlay');
-        if (o) o.remove();
-        if (window.parent.__rawEsc) {{
-            window.parent.document.removeEventListener('keydown', window.parent.__rawEsc);
-            window.parent.__rawEsc = null;
-        }}
-    }};
-    var doc = window.parent.document;
-    var old = doc.getElementById('raw_modal_overlay');
-    if (old) old.remove();
-    var D;
-    try {{ D = JSON.parse(DADOS_JSON); }} catch(e) {{ D = []; }}
-    var Dstr = JSON.stringify(D, null, 2);
-    var ov = doc.createElement('div');
-    ov.id = 'raw_modal_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.onclick = function(e) {{ if(e.target===ov) fechar(); }};
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,1100px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
-    hdr.innerHTML =
-        '<div><div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Cache de Anúncios</div>'
-        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">Última busca: ' + ULTIMA + '</div></div>'
-        + '<div style="display:flex;gap:10px;">'
-        + '<button id="raw_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
-        + '<button id="raw_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar JSON</button>'
-        + '<button id="raw_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
-        + '</div>';
-    var pre = doc.createElement('pre');
-    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre;max-height:calc(88vh - 80px);';
-    pre.textContent = Dstr;
-    box.appendChild(hdr);
-    box.appendChild(pre);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    doc.getElementById('raw_close_btn').addEventListener('click', window.fechar);
-    doc.getElementById('raw_copy_btn').addEventListener('click', function() {{
-        var b = doc.getElementById('raw_copy_btn');
-        try {{
-            var ta = doc.createElement('textarea');
-            ta.value = Dstr;
-            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-            doc.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            doc.execCommand('copy');
-            doc.body.removeChild(ta);
-            b.textContent = '✅ Copiado!';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
-        }} catch(e) {{
-            b.textContent = '❌ Erro';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
-        }}
-    }});
-    doc.getElementById('raw_down_btn').addEventListener('click', function() {{
-        var a = doc.createElement('a');
-        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
-        a.download = FILENAME;
-        a.click();
-    }});
-
-    window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
-    doc.addEventListener('keydown', window.parent.__rawEsc);
-}}
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '28px';
-            iframes[i].style.marginTop = '-8px';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
+function toggleDropdown(){{var t=document.getElementById('dd_trigger');var m=document.getElementById('dd_menu');var open=m.classList.contains('open');if(open){{m.classList.remove('open');t.classList.remove('open');}}else{{m.classList.add('open');t.classList.add('open');syncHeight();}}}}
+function closeDropdown(){{document.getElementById('dd_menu').classList.remove('open');document.getElementById('dd_trigger').classList.remove('open');syncHeight();}}
+function triggerGhost(label){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===label){{b.click();return;}}}}}}
+function syncHeight(){{var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);var frames=window.parent.document.querySelectorAll('iframe');for(var i=0;i<frames.length;i++){{try{{if(frames[i].contentWindow===window){{frames[i].style.height=(h+4)+'px';break;}}}}catch(e){{}}}}}}
+document.addEventListener('click',function(e){{if(!document.getElementById('dd_wrap').contains(e.target))closeDropdown();}});
+if(window.ResizeObserver)new ResizeObserver(syncHeight).observe(document.body);
+setTimeout(syncHeight,100);setTimeout(syncHeight,400);
 </script>
-""", height=28, scrolling=False)
+""", height=56, scrolling=False)
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
 
@@ -6933,280 +6923,6 @@ window.addEventListener('load', syncHeight);
             ads_id_salvo = emp.get("ads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("ads_id","")
             query_values[ck] = ads_id_salvo
 
-        # ── Barra de abas de empresas ─────────────────────────────────
-        if "ads_aba_ativa" not in st.session_state:
-            st.session_state.ads_aba_ativa = 0
-
-        # Ghost buttons para abas de empresa
-        aba_ghost_css = []
-        for i in range(len(empresas_configuradas)):
-            k = f"btn_aba_ads_{i}"
-            aba_ghost_css.append(f"""
-            .st-key-{k} {{
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:0 !important; height:0 !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; display:none !important;
-            }}
-            .stElementContainer:has(.st-key-{k}) {{
-                display:none !important; height:0 !important; min-height:0 !important;
-                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-            }}
-            """)
-        if aba_ghost_css:
-            st.markdown(f"<style>{''.join(aba_ghost_css)}</style>", unsafe_allow_html=True)
-
-        for i in range(len(empresas_configuradas)):
-            if st.button(f"aba_ads_{i}", key=f"btn_aba_ads_{i}"):
-                st.session_state.ads_aba_ativa = i
-                st.rerun()
-
-        abas_nomes = [e["nome"] for e in empresas_configuradas]
-        aba_ativa  = min(st.session_state.ads_aba_ativa, len(abas_nomes) - 1)
-
-        # ── Cards de empresa no topo — estilo imagem 2
-        empresas_cards_json = []
-        for i, e in enumerate(empresas_configuradas):
-            is_minha = e["tipo"] == "minha"
-            cor = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
-            ads_id = emp.get("ads_id", "") if is_minha else concs[e["idx"]].get("ads_id", "")
-            empresas_cards_json.append({
-                "i": i,
-                "nome": e["nome"],
-                "tipo": e["tipo"],
-                "ads_id": ads_id,
-                "is_minha": is_minha,
-                "badge_lbl": "Minha empresa" if is_minha else "Concorrente",
-            })
-
-        empresas_cards_str = _json.dumps(empresas_cards_json, ensure_ascii=False)
-
-        components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
-
-/* ── Container principal ── */
-.main-wrap {{
-    background:#d2dde9;
-    border-radius:16px;
-    overflow:hidden;
-    margin-bottom:0;
-}}
-
-/* ── Grid de cards de empresa ── */
-.cards-grid {{
-    display:grid;
-    grid-template-columns: repeat(3,1fr);
-    gap:0;
-    padding:15px;
-    gap:15px;
-}}
-
-/* ── Card individual — estilo da imagem 2 ── */
-.emp-card {{
-    background:#f9fafb;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
-    padding:16px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    cursor:pointer;
-    transition:all 0.15s;
-    position:relative;
-}}
-.emp-card:hover {{
-    border-color:#3a9fd6;
-    background:#fff;
-    box-shadow:0 2px 10px rgba(58,159,214,0.1);
-}}
-.emp-card.active {{
-    background:#fff;
-    border: 2px solid #3b82f6;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-}}
-.emp-card.active::after {{
-    content:'';
-    position:absolute;
-    bottom:0; left:0; right:0;
-    height:3px;
-    border-radius:0 0 12px 12px;
-}}
-.emp-icon {{
-    width:44px; height:44px; border-radius:10px;
-    background:#e9eef5;
-    display:flex; align-items:center; justify-content:center;
-    flex-shrink:0;
-}}
-.emp-card.active .emp-icon {{ background:#dbeafe; }}
-.emp-icon svg {{ width:22px; height:22px; }}
-.emp-info {{ flex:1; min-width:0; }}
-.emp-nome {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    margin-bottom:4px;
-}}
-.badge-minha {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#f0fdf4; color:#15803d;
-    border:1px solid #bbf7d0;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
-    flex-shrink:0; align-self:center;
-}}
-.badge-conc {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#eff6ff; color:#1d4ed8;
-    border:1px solid #bfdbfe;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
-    flex-shrink:0; align-self:center;
-}}
-
-/* ── Barra de abas embaixo dos cards ── */
-.tabs-row {{
-    display:none !important;
-}}
-.tab-btn {{
-    padding:12px 20px;
-    font-size:13px; font-weight:700;
-    color:#9ca3af;
-    border:none; border-bottom:3px solid transparent;
-    cursor:pointer; font-family:'DM Sans',sans-serif;
-    transition:all 0.15s; white-space:nowrap;
-    margin-bottom:-1px;
-}}
-.tab-btn:hover {{ color:#374151; }}
-.tab-btn.active {{
-    color:#1a2e4a;
-    border-bottom:4px solid #3a9fd6;
-}}
-.right-wrap {{
-    margin-left:auto;
-    display:flex; align-items:center;
-    padding-right:4px;
-}}
-.cfg-btn {{
-    width:30px; height:30px;
-    border:1px solid #e5e7eb; border-radius:7px;
-    background:#fff; cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    color:#9ca3af; transition:all 0.12s;
-}}
-.cfg-btn:hover {{ background:#f3f4f6; color:#374151; border-color:#9ca3af; }}
-</style>
-<div class="main-wrap">
-    <div class="cards-grid" id="cards-grid"></div>
-    <div class="tabs-row" id="tabs-row">
-        <div class="right-wrap">
-            <button class="cfg-btn" onclick="triggerTab('tab_cfg')" title="Configurações">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-            </button>
-        </div>
-    </div>
-</div>
-<script>
-var EMPRESAS = {empresas_cards_str};
-var ABA_ATIVA = {aba_ativa};
-
-function buildUI() {{
-    // Cards
-    var grid = document.getElementById('cards-grid');
-    grid.innerHTML = '';
-    EMPRESAS.forEach(function(e) {{
-        var card = document.createElement('div');
-        card.className = 'emp-card' + (e.i === ABA_ATIVA ? ' active' : '');
-        card.id = 'emp_card_' + e.i;
-        var badgeHtml = e.is_minha
-            ? '<span class="badge-minha">Minha empresa</span>'
-            : '<span class="badge-conc">Concorrente</span>';
-        card.innerHTML =
-            '<div class="emp-icon">'
-            + '<svg viewBox="0 0 24 24" fill="none" stroke="' + (e.i === ABA_ATIVA ? '#3b82f6' : '#64748b') + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
-            + '<rect x="2" y="7" width="20" height="14" rx="2"/>'
-            + '<path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'
-            + '<line x1="12" y1="12" x2="12" y2="16"/>'
-            + '<line x1="10" y1="14" x2="14" y2="14"/>'
-            + '</svg>'
-            + '</div>'
-            + '<div class="emp-info">'
-            + '<div class="emp-nome">' + e.nome + '</div>'
-            + (e.ads_id ? '<div style="font-size:12px;color:#9ca3af;">ID: ' + e.ads_id + '</div>' : '')
-            + '</div>'
-            + badgeHtml
-        card.addEventListener('click', function(ev) {{
-            if (ev.target.closest('.lapiz-btn')) return;
-            selectAba(e.i);
-        }});
-        grid.appendChild(card);
-    }});
-
-    // Tabs
-    var tabsRow = document.getElementById('tabs-row');
-    var rightWrap = tabsRow.querySelector('.right-wrap');
-    // Remove existing tabs
-    tabsRow.querySelectorAll('.tab-btn').forEach(function(b) {{ b.remove(); }});
-    EMPRESAS.forEach(function(e) {{
-        var btn = document.createElement('button');
-        btn.className = 'tab-btn' + (e.i === ABA_ATIVA ? ' active' : '');
-        btn.id = 'tab_btn_' + e.i;
-        btn.textContent = e.nome;
-        btn.onclick = function() {{ selectAba(e.i); }};
-        tabsRow.insertBefore(btn, rightWrap);
-    }});
-
-    syncHeight();
-}}
-
-function selectAba(i) {{
-    ABA_ATIVA = i;
-    document.querySelectorAll('.emp-card').forEach(function(c) {{ c.classList.remove('active'); }});
-    document.querySelectorAll('.tab-btn').forEach(function(b) {{ b.classList.remove('active'); }});
-    var card = document.getElementById('emp_card_' + i);
-    var tab  = document.getElementById('tab_btn_' + i);
-    if (card) card.classList.add('active');
-    if (tab)  tab.classList.add('active');
-    triggerBtn('aba_ads_' + i);
-}}
-
-function goConfig(i, ev) {{
-    ev.stopPropagation();
-    triggerBtn('tab_cfg');
-}}
-
-function triggerTab(label) {{ triggerBtn(label); }}
-
-function triggerBtn(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {{
-        try {{ if (frames[i].contentWindow === window) {{
-            frames[i].style.height = (h + 2) + 'px';
-            frames[i].style.marginTop = '-60px'; break;
-        }} }} catch(e) {{}}
-    }}
-}}
-
-buildUI();
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-document.addEventListener('DOMContentLoaded', syncHeight);
-window.addEventListener('load', syncHeight);
-setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
-</script>
-""", height=100, scrolling=False)
-
         # ── s de conteúdo por empresa ─────────────────────────
         conteudo_tab_ghost_css = []
         for e in empresas_configuradas:
@@ -7238,7 +6954,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
 
         # ── Dados e helpers ──────────────────────────────────────────
         empresas_com_dados = [
-            e for e in todas_empresas
+            e for e in empresas_configuradas
             if e["nome"] in st.session_state.ads_cache or e["nome"] in st.session_state.ads_erro
         ]
 
@@ -7250,7 +6966,13 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600);
                 <div style='font-size:14px;color:#9ca3af'>Configure as páginas e clique em <b>Buscar / Atualizar</b>.</div>
             </div>
             """, unsafe_allow_html=True)
-            st.stop()
+        else:
+            _emp_ativa_key = st.session_state.get("ads_empresa_ativa", "")
+            _emp_render = next((e for e in empresas_com_dados if e["nome"] == _emp_ativa_key), None)
+            if _emp_render is None:
+                _emp_render = empresas_com_dados[0]
+                st.session_state.ads_empresa_ativa = _emp_render["nome"]
+            render_ads_empresa(_emp_render)
 
         # ── Plataformas SVG JS ────────────────────────────────────────
         def _plat_svg_js(uid: str) -> str:

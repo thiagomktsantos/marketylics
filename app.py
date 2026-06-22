@@ -9154,7 +9154,7 @@ html, body { background: transparent; overflow: hidden; }
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
 
 .ctrl-box {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    background:#d2dde9; border-radius:14px;
     padding:14px 16px; display:flex;
     gap:12px; align-items:center; position:relative; overflow:visible;
     width:100%; box-sizing:border-box;

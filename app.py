@@ -9504,8 +9504,12 @@ function setHeight(isOpen) {{
             while (parent && depth < 8) {{
                 parent.style.overflow = isOpen ? 'visible' : '';
                 parent.style.zIndex  = isOpen ? '9999' : '';
+                var isBlockContainer = parent.getAttribute &&
+                    (parent.getAttribute('data-testid') === 'stVerticalBlock' ||
+                     parent.getAttribute('data-testid') === 'stHorizontalBlock');
                 parent = parent.parentElement;
                 depth++;
+                if (isBlockContainer) break;
             }}
             break;
         }} }} catch(e) {{}}

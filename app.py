@@ -9211,14 +9211,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item .dd-icon {{ background:#e9eef5; }}
 .dd-item.selected .dd-icon {{ background:#dbeafe; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:8px; justify-content:center; flex-shrink:0; min-width:160px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:4px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
-.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; }}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 0; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
@@ -9226,7 +9226,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .row-coleta {{
     display:flex; justify-content:flex-end; align-items:center; gap:6px;
     font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap; padding:8px 4px 0;
+    flex-wrap:nowrap; white-space:nowrap;
 }}
 .link-btn {{
     font-size:11px; color:#6b7280;

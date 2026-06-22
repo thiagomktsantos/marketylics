@@ -9265,7 +9265,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     <div class="col-btns">
         <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">⬇️ Coletar dados</button>
         {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()">🕒 Última coleta: <b>{ultima_coleta}</b></button>
+            <button class="link-btn" onclick="abrirModal()">🕒 Últ. coleta: <b>{ultima_coleta}</b></button>
             <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if ultima_coleta else ''}

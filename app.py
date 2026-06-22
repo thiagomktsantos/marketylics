@@ -6014,10 +6014,9 @@ html, body { background: transparent; overflow: hidden; }
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .row-coleta {{
-    display:flex;
-    align-items:center; justify-content:center; gap:6px;
+    gap:6px;
     font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap;
+    flex-wrap:nowrap; white-space:nowrap; text-align: center;
 }}
 .link-btn {{
     font-size:11px; color:#6b7280;
@@ -9224,9 +9223,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 
 .row-coleta {{
-    display:flex; justify-content:center; align-items:center; gap:6px;
+    gap:6px;
     font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap;
+    flex-wrap:nowrap; white-space:nowrap; text-align: center;
 }}
 .link-btn {{
     font-size:11px; color:#6b7280;

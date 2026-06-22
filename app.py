@@ -8494,12 +8494,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 """, height=600, scrolling=False)
 
         # ── Renderiza empresa da aba ativa ───────────────────────────
-
-        empresas_com_dados = [
-            e for e in empresas_configuradas
-            if e["nome"] in st.session_state.ads_cache or e["nome"] in st.session_state.ads_erro
-        ]
-
         if not empresas_com_dados:
             st.markdown("""
             <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
@@ -8509,8 +8503,12 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
             </div>
             """, unsafe_allow_html=True)
         else:
-            aba_idx = min(st.session_state.get("ads_aba_ativa", 0), len(empresas_com_dados) - 1)
-            render_ads_empresa(empresas_com_dados[aba_idx])
+            _emp_ativa_key = st.session_state.get("ads_empresa_ativa", "")
+            _emp_render = next((e for e in empresas_com_dados if e["nome"] == _emp_ativa_key), None)
+            if _emp_render is None:
+                _emp_render = empresas_com_dados[0]
+                st.session_state.ads_empresa_ativa = _emp_render["nome"]
+            render_ads_empresa(_emp_render)
 
     # ══════════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA (resumo comparativo)

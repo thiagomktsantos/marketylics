@@ -9266,10 +9266,10 @@ html, body { background: transparent; overflow: hidden; }
         _emp_ctrl = st.session_state.dados["minha_empresa"]
         _conc_ctrl = st.session_state.dados["concorrentes"]
         if _emp_ctrl.get("nome") and _emp_ctrl.get("instagram") and _emp_ctrl["instagram"] not in ("@", ""):
-            todas_empresas_ctrl.append({"nome": _emp_ctrl["nome"], "handle": _emp_ctrl["instagram"]})
+            todas_empresas_ctrl.append({"nome": _emp_ctrl["nome"], "handle": _emp_ctrl["instagram"], "tipo": "minha"})
         for _c in _conc_ctrl:
             if _c.get("instagram") and _c["instagram"] not in ("@", ""):
-                todas_empresas_ctrl.append({"nome": _c["nome"], "handle": _c["instagram"]})
+                todas_empresas_ctrl.append({"nome": _c["nome"], "handle": _c["instagram"], "tipo": "concorrente"})
 
         import json as _jr_ctrl
         empresas_ctrl_json = _jr_ctrl.dumps(todas_empresas_ctrl, ensure_ascii=False)
@@ -9285,9 +9285,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border-radius:14px;
     padding:14px 16px;
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:1fr auto;
     gap:12px;
-    align-items:center;
+    align-items:stretch;
 }}
 .col-select {{
     display:flex;
@@ -9301,29 +9301,59 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     text-transform:uppercase;
     letter-spacing:0.8px;
 }}
+.select-wrap {{
+    position:relative;
+    width:100%;
+}}
 .ctrl-select {{
     width:100%;
-    height:40px;
-    padding:0 32px 0 12px;
-    border:1.5px solid #e5e7eb;
+    height:44px;
+    padding:0 36px 0 14px;
+    border:1.5px solid #3b82f6;
     border-radius:10px;
-    font-size:13px;
+    font-size:14px;
     font-family:'DM Sans',sans-serif;
     color:#1a2e4a;
     font-weight:600;
-    background:#f9fafb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
+    background:#fff;
     -webkit-appearance:none; appearance:none; cursor:pointer; outline:none;
-    transition:border-color 0.15s;
+    transition:border-color 0.15s, box-shadow 0.15s;
 }}
-.ctrl-select:focus {{ border-color:#3a9fd6; background-color:#fff; }}
+.ctrl-select:focus {{ border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }}
+.select-arrow {{
+    position:absolute;
+    right:12px; top:50%; transform:translateY(-50%);
+    pointer-events:none;
+    color:#6b7280;
+}}
+.badge-wrap {{
+    margin-top:5px;
+    display:flex; align-items:center; gap:6px;
+}}
+.badge-minha {{
+    display:inline-flex; align-items:center; gap:5px;
+    background:#f0fdf4; color:#15803d;
+    border:1px solid #bbf7d0;
+    padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:700;
+}}
+.badge-conc {{
+    display:inline-flex; align-items:center; gap:5px;
+    background:#eff6ff; color:#1d4ed8;
+    border:1px solid #bfdbfe;
+    padding:3px 10px; border-radius:20px;
+    font-size:11px; font-weight:700;
+}}
 .col-btns {{
     display:flex;
     flex-direction:column;
     gap:8px;
+    justify-content:center;
+    min-width:160px;
 }}
 .ctrl-btn {{
     width:100%;
-    height:38px;
+    height:44px;
     border-radius:10px;
     border:none;
     font-size:13px;
@@ -9336,25 +9366,34 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:7px;
     transition:all 0.15s;
     white-space:nowrap;
+    padding: 0 14px;
 }}
 .btn-coletar {{
     background:#0e2a47;
     color:#fff;
+    flex:1;
 }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-comparativo {{
     background:#f0fdf4;
     color:#15803d;
     border:1.5px solid #bbf7d0;
+    flex:1;
 }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 </style>
 <div class="ctrl-box">
     <div class="col-select">
         <label>Empresa</label>
-        <select class="ctrl-select" id="ctrl-empresa-select">
-            <option value="__todas__">Todas as empresas</option>
-        </select>
+        <div class="select-wrap">
+            <select class="ctrl-select" id="ctrl-empresa-select" onchange="onSelectChange()">
+            </select>
+            <svg class="select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </div>
+        <div class="badge-wrap" id="badge-wrap"></div>
     </div>
     <div class="col-btns">
         <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">
@@ -9368,6 +9407,28 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <script>
 var EMPRESAS_CTRL = {empresas_ctrl_json};
 
+function renderBadge(tipo) {{
+    var wrap = document.getElementById('badge-wrap');
+    if (!wrap) return;
+    if (tipo === 'minha') {{
+        wrap.innerHTML = '<span class="badge-minha">Minha empresa</span>';
+    }} else if (tipo === 'concorrente') {{
+        wrap.innerHTML = '<span class="badge-conc">Concorrente</span>';
+    }} else {{
+        wrap.innerHTML = '';
+    }}
+}}
+
+function onSelectChange() {{
+    var sel = document.getElementById('ctrl-empresa-select');
+    var idx = sel.selectedIndex;
+    if (idx >= 0 && EMPRESAS_CTRL[idx]) {{
+        renderBadge(EMPRESAS_CTRL[idx].tipo);
+    }} else {{
+        renderBadge('');
+    }}
+}}
+
 (function() {{
     var sel = document.getElementById('ctrl-empresa-select');
     EMPRESAS_CTRL.forEach(function(e) {{
@@ -9376,12 +9437,13 @@ var EMPRESAS_CTRL = {empresas_ctrl_json};
         opt.textContent = e.nome + ' (' + e.handle + ')';
         sel.appendChild(opt);
     }});
+    // Seleciona minha empresa por padrão
+    var minha = EMPRESAS_CTRL.findIndex(function(e) {{ return e.tipo === 'minha'; }});
+    if (minha >= 0) {{ sel.selectedIndex = minha; }}
+    onSelectChange();
 }})();
 
 function triggerColetar() {{
-    var sel = document.getElementById('ctrl-empresa-select');
-    var val = sel ? sel.value : '__todas__';
-    // Salva seleção em input oculto para Streamlit ler via ghost button
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
         var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
@@ -9401,13 +9463,13 @@ function triggerComparativo() {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '110px';
+            iframes[i].style.height = '120px';
             break;
         }} }} catch(e) {{}}
     }}
 }})();
 </script>
-""", height=110, scrolling=False)
+""", height=120, scrolling=False)
 
     # ── Ghost button coletar dados ──────────────────────────────────
     ghost_coletar_key = "btn_coletar_dados_redes"

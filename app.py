@@ -9282,13 +9282,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 .ctrl-box {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:14px 16px; display:grid; grid-template-columns:1fr auto;
+    padding:14px 16px; display:flex;
     gap:12px; align-items:center; position:relative; overflow:visible;
     width:100%; box-sizing:border-box;
 }}
-.col-select {{ position:relative; display:flex; align-items:center; min-width:0; overflow:visible; }}
+.col-select {{ position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:visible; }}
 
-.dd-wrap {{ position:relative; width:100%; max-width:100%; }}
+.dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;

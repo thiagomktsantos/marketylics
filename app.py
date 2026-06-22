@@ -6940,7 +6940,7 @@ window.addEventListener('load', syncHeight);
             ads_id_salvo = emp.get("ads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("ads_id","")
             query_values[ck] = ads_id_salvo
 
-        # ── s de conteúdo por empresa ─────────────────────────
+        # ── Ghost buttons de conteúdo por empresa ─────────────────────────
         conteudo_tab_ghost_css = []
         for e in empresas_configuradas:
             sk = safe_key(e["nome"])
@@ -6974,22 +6974,6 @@ window.addEventListener('load', syncHeight);
             e for e in empresas_configuradas
             if e["nome"] in st.session_state.ads_cache or e["nome"] in st.session_state.ads_erro
         ]
-
-        if not empresas_com_dados:
-            st.markdown("""
-            <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
-                <div style='font-size:32px;margin-bottom:12px'>📢</div>
-                <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
-                <div style='font-size:14px;color:#9ca3af'>Configure as páginas e clique em <b>Buscar / Atualizar</b>.</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            _emp_ativa_key = st.session_state.get("ads_empresa_ativa", "")
-            _emp_render = next((e for e in empresas_com_dados if e["nome"] == _emp_ativa_key), None)
-            if _emp_render is None:
-                _emp_render = empresas_com_dados[0]
-                st.session_state.ads_empresa_ativa = _emp_render["nome"]
-            render_ads_empresa(_emp_render)
 
         # ── Plataformas SVG JS ────────────────────────────────────────
         def _plat_svg_js(uid: str) -> str:
@@ -7289,7 +7273,7 @@ Amostra dos anúncios:
             page_display = configured_page if configured_page else "—"
             lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Meta Ad Library</a>' if lib_url else ""
 
-                        # ── Calcular insights rápidos dos anúncios ──────────────
+            # ── Calcular insights rápidos dos anúncios ──────────────
             _palavras_beneficio = [
                 "resultado", "transforma", "melhora", "aumenta", "economiza",
                 "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
@@ -7710,7 +7694,6 @@ setTimeout(ajustarAltura,100);
                         return None
 
                     debug_keys = {
-                        # ── Identificação
                         "id":                            ad.get("id", ""),
                         "page_id":                       ad.get("page_id", ""),
                         "page_name":                     ad.get("page_name", ""),
@@ -7721,40 +7704,28 @@ setTimeout(ajustarAltura,100);
                         "is_dynamic":                    ad.get("is_dynamic", False),
                         "ativo":                         ad.get("ativo", True),
                         "cta":                           cta,
-
-                        # ── URLs de destino / página
                         "snapshot_url":                  _safe_url(snap_url),
                         "ad_snapshot_url":               _safe_url(_raw_item.get("adSnapshotURL") or _raw_item.get("ad_snapshot_url")),
                         "link_url":                      _safe_url(_raw_item.get("link_url") or _snapshot_raw.get("link_url")),
                         "website_url":                   _safe_url(_raw_item.get("website_url") or _snapshot_raw.get("website_url")),
                         "destination_url":               _safe_url(_raw_item.get("destination_url") or _snapshot_raw.get("destination_url")),
                         "caption":                       ad.get("caption") or _snapshot_raw.get("caption"),
-
-                        # ── Imagens diretas no ad
                         "image_url":                     _safe_url(_raw_item.get("image_url")),
                         "original_image_url":            _safe_url(_raw_item.get("original_image_url")),
                         "resized_image_url":             _safe_url(_raw_item.get("resized_image_url")),
                         "thumbnail_url":                 _safe_url(_raw_item.get("thumbnail_url")),
                         "preview_image_url":             _safe_url(_raw_item.get("preview_image_url")),
                         "full_picture":                  _safe_url(_raw_item.get("full_picture")),
-
-                        # ── Imagens no snapshot
                         "snapshot.image_url":            _safe_url(_snapshot_raw.get("image_url")),
                         "snapshot.original_image_url":   _safe_url(_snapshot_raw.get("original_image_url")),
                         "snapshot.resized_image_url":    _safe_url(_snapshot_raw.get("resized_image_url")),
                         "snapshot.thumbnail_url":        _safe_url(_snapshot_raw.get("thumbnail_url")),
                         "snapshot.background_image":     _safe_url(_snapshot_raw.get("background_image")),
-
-                        # ── Vídeos
                         "video_hd_url":                  _safe_url(_raw_item.get("video_hd_url") or _snapshot_raw.get("video_hd_url")),
                         "video_sd_url":                  _safe_url(_raw_item.get("video_sd_url") or _snapshot_raw.get("video_sd_url")),
                         "video_url":                     _safe_url(_raw_item.get("video_url")    or _snapshot_raw.get("video_url")),
                         "videos_normalizados [0..3]":    videos[:4] if videos else [],
-
-                        # ── Imagens normalizadas (resultado final pipeline)
                         "images_normalizadas [0..3]":    images[:4] if images else [],
-
-                        # ── Cards (carrossel)
                         "cards_count":                   len(_cards_raw),
                         "cards[0].link_url":             _safe_url(_cards_raw[0].get("link_url"))            if _cards_raw else None,
                         "cards[0].image_url":            _safe_url(_cards_raw[0].get("image_url"))           if _cards_raw else None,
@@ -7768,8 +7739,6 @@ setTimeout(ajustarAltura,100);
                         "cards[1].image_url":            _safe_url(_cards_raw[1].get("image_url"))          if len(_cards_raw) > 1 else None,
                         "cards[1].original_image_url":   _safe_url(_cards_raw[1].get("original_image_url")) if len(_cards_raw) > 1 else None,
                         "cards[1].video_hd_url":         _safe_url(_cards_raw[1].get("video_hd_url"))       if len(_cards_raw) > 1 else None,
-
-                        # ── Copy raw
                         "body_len":                      len(body),
                         "title_len":                     len(title),
                         "ad_creative_bodies":            _raw_item.get("ad_creative_bodies"),
@@ -7778,24 +7747,19 @@ setTimeout(ajustarAltura,100);
                         "snapshot.body":                 _snapshot_raw.get("body"),
                         "snapshot.title":                _snapshot_raw.get("title"),
                         "snapshot.link_description":     _snapshot_raw.get("link_description"),
-
-                        # ── Metadados extras
                         "n_imagens_raw":                 len(images),
                         "n_videos_raw":                  len(videos),
                         "page_profile_picture":          _safe_url(ad.get("page_profile_picture")),
                         "snapshot.page_profile_picture_url": _safe_url(_snapshot_raw.get("page_profile_picture_url")),
                     }
 
-                    # Adiciona dump completo do raw para diagnóstico
                     debug_keys["__RAW_COMPLETO__"] = _raw_item if _raw_item else "NÃO ENCONTRADO NO _raw"
                     debug_json_str = _json.dumps(debug_keys, ensure_ascii=False, indent=2)
                     debug_json_html = debug_json_str.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
-                    # Thumb do card: feed baixa qualidade (índice 1), fallback para índice 0
                     img_thumb_url = images[1] if len(images) > 1 else (images[0] if images else "")
                     img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
 
-                    # Fallbacks para o thumb (não usados no modal de 4 imagens)
                     img_fallbacks = []
                     if img_thumb_url and img_thumb_url not in img_fallbacks:
                         img_fallbacks.append(img_thumb_url)
@@ -7807,8 +7771,8 @@ setTimeout(ajustarAltura,100);
                     if videos:
                         vid_sd = next((v for v in videos if any(x in v.lower() for x in ("sd","360","480","_sd"))), "")
                         vid_hd = next((v for v in videos if v != vid_sd), "")
-                        vid_thumb      = vid_sd or vid_hd or videos[0]          # SD para thumb (leve)
-                        vid_modal      = vid_hd or vid_sd or videos[0]          # HD para modal
+                        vid_thumb      = vid_sd or vid_hd or videos[0]
+                        vid_modal      = vid_hd or vid_sd or videos[0]
                         vid_fallback_modal = vid_sd if vid_sd and vid_sd != vid_modal else ""
 
                         vid_thumb_esc          = vid_thumb.replace("'","").replace('"',"")
@@ -8280,6 +8244,23 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 </script>
 </body></html>
 """, height=100, scrolling=False)
+
+        # ── Renderização final: chamada APÓS as definições das funções ──
+        if not empresas_com_dados:
+            st.markdown("""
+            <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
+                <div style='font-size:32px;margin-bottom:12px'>📢</div>
+                <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
+                <div style='font-size:14px;color:#9ca3af'>Configure as páginas e clique em <b>Buscar / Atualizar</b>.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            _emp_ativa_key = st.session_state.get("ads_empresa_ativa", "")
+            _emp_render = next((e for e in empresas_com_dados if e["nome"] == _emp_ativa_key), None)
+            if _emp_render is None:
+                _emp_render = empresas_com_dados[0]
+                st.session_state.ads_empresa_ativa = _emp_render["nome"]
+            render_ads_empresa(_emp_render)
 
             # ── ABA: ANÁLISE DE IA ────────────────────────────────────
             else:

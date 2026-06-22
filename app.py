@@ -9291,7 +9291,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
-    padding:8px 8px 8px 12px; display:flex; align-items:center; gap:10px;
+    padding:8px 12px; display:flex; align-items:center;
     cursor:pointer; transition:box-shadow 0.15s;
     width:100%;
 }}
@@ -9301,7 +9301,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .dd-icon svg {{ width:18px; height:18px; }}
-.dd-info {{ min-width:0; }}
+.dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
 .dd-nome {{
     font-size:14px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
@@ -9314,12 +9314,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-.dd-arrow {{     color:#6b7280; flex-shrink:0; transition:transform 0.15s;margin-left:-4px; }}
+#dd-trigger-badge {{ margin-left:auto; flex-shrink:0; }}
+.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
 
 .dd-list {{
     position:absolute; top:calc(100% + 6px); left:0;
-    width:100%;  /* já existe, mas garanta que não tem right:0 junto */
+    width:100%;
     background:#fff; border:1px solid #e5e7eb; border-radius:12px;
     box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
     max-height:320px; overflow-y:auto; display:none; padding:6px;

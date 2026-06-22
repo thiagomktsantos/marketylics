@@ -6017,6 +6017,7 @@ html, body { background: transparent; overflow: hidden; }
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
                 '</svg>'
             )
+            _dropdown_items += f"""
             <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
                 <div class="dd-icon">{_av_item_html}</div>
                 <div class="dd-info">
@@ -6076,7 +6077,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item:last-child {{ margin-bottom:0; }}
 .dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-icon { width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }
+.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}

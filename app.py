@@ -9178,7 +9178,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:14px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
-.dd-handle {{ font-size:12px; color:#9ca3af; margin-top:1px; }}
+.dd-handle {{ font-size:12px; color:#9ca3af; }}
 .dd-badge-minha, .dd-badge-conc {{
     margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
     gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;

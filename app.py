@@ -9278,175 +9278,183 @@ html, body { background: transparent; overflow: hidden; }
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+
 .ctrl-box {{
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    padding:14px 16px;
-    display:grid;
-    grid-template-columns:1fr auto;
-    gap:12px;
-    align-items:stretch;
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:14px 16px; display:grid; grid-template-columns:1fr auto;
+    gap:12px; align-items:stretch; position:relative;
 }}
-.col-select {{
-    display:flex;
-    flex-direction:column;
-    gap:5px;
-}}
+.col-select {{ display:flex; flex-direction:column; gap:5px; position:relative; }}
 .col-select label {{
-    font-size:11px;
-    font-weight:700;
-    color:#6b7280;
-    text-transform:uppercase;
-    letter-spacing:0.8px;
+    font-size:11px; font-weight:700; color:#6b7280;
+    text-transform:uppercase; letter-spacing:0.8px;
 }}
-.select-wrap {{
-    position:relative;
-    width:100%;
+
+/* ── Dropdown estilo "card" ──────────────────────────────── */
+.dd-wrap {{ position:relative; width:100%; }}
+.dd-trigger {{
+    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    padding:8px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:box-shadow 0.15s;
 }}
-.ctrl-select {{
-    width:100%;
-    height:44px;
-    padding:0 36px 0 14px;
-    border:1.5px solid #3b82f6;
-    border-radius:10px;
-    font-size:14px;
-    font-family:'DM Sans',sans-serif;
-    color:#1a2e4a;
-    font-weight:600;
-    background:#fff;
-    -webkit-appearance:none; appearance:none; cursor:pointer; outline:none;
-    transition:border-color 0.15s, box-shadow 0.15s;
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-icon {{
+    width:36px; height:36px; border-radius:9px; background:#dbeafe;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
-.ctrl-select:focus {{ border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,0.15); }}
-.select-arrow {{
-    position:absolute;
-    right:12px; top:50%; transform:translateY(-50%);
-    pointer-events:none;
-    color:#6b7280;
+.dd-icon svg {{ width:18px; height:18px; }}
+.dd-info {{ flex:1; min-width:0; }}
+.dd-row1 {{ display:flex; align-items:center; gap:8px; }}
+.dd-nome {{
+    font-size:14px; font-weight:700; color:#1a2e4a;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }}
-.badge-wrap {{
-    margin-top:5px;
-    display:flex; align-items:center; gap:6px;
+.dd-handle {{ font-size:12px; color:#9ca3af; margin-top:1px; }}
+.dd-badge-minha, .dd-badge-conc {{
+    margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
+    gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
 }}
-.badge-minha {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#f0fdf4; color:#15803d;
-    border:1px solid #bbf7d0;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
+.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
+.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; }}
+.dd-arrow.open {{ transform:rotate(180deg); }}
+
+.dd-list {{
+    position:absolute; top:calc(100% + 6px); left:0; right:0;
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
+    max-height:260px; overflow-y:auto; display:none; padding:6px;
 }}
-.badge-conc {{
-    display:inline-flex; align-items:center; gap:5px;
-    background:#eff6ff; color:#1d4ed8;
-    border:1px solid #bfdbfe;
-    padding:3px 10px; border-radius:20px;
-    font-size:11px; font-weight:700;
+.dd-list.open {{ display:block; }}
+.dd-item {{
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
-.col-btns {{
-    display:flex;
-    flex-direction:column;
-    gap:8px;
-    justify-content:center;
-    min-width:160px;
-}}
+.dd-item:last-child {{ margin-bottom:0; }}
+.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
+.dd-item .dd-icon {{ background:#e9eef5; }}
+.dd-item.selected .dd-icon {{ background:#dbeafe; }}
+
+.col-btns {{ display:flex; flex-direction:column; gap:8px; justify-content:center; min-width:160px; }}
 .ctrl-btn {{
-    width:100%;
-    height:44px;
-    border-radius:10px;
-    border:none;
-    font-size:13px;
-    font-weight:700;
-    cursor:pointer;
-    font-family:'DM Sans',sans-serif;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:7px;
-    transition:all 0.15s;
-    white-space:nowrap;
-    padding: 0 14px;
+    width:100%; height:44px; border-radius:10px; border:none;
+    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
-.btn-coletar {{
-    background:#0e2a47;
-    color:#fff;
-    flex:1;
-}}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
-.btn-comparativo {{
-    background:#f0fdf4;
-    color:#15803d;
-    border:1.5px solid #bbf7d0;
-    flex:1;
-}}
+.btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 </style>
+
 <div class="ctrl-box">
     <div class="col-select">
         <label>Empresa</label>
-        <div class="select-wrap">
-            <select class="ctrl-select" id="ctrl-empresa-select" onchange="onSelectChange()">
-            </select>
-            <svg class="select-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"/>
-            </svg>
+        <div class="dd-wrap" id="dd-wrap">
+            <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
+                <div class="dd-icon" id="dd-trigger-icon"></div>
+                <div class="dd-info">
+                    <div class="dd-row1">
+                        <span class="dd-nome" id="dd-trigger-nome"></span>
+                        <span id="dd-trigger-badge"></span>
+                    </div>
+                    <div class="dd-handle" id="dd-trigger-handle"></div>
+                </div>
+                <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </div>
+            <div class="dd-list" id="dd-list"></div>
         </div>
-        <div class="badge-wrap" id="badge-wrap"></div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">
-            📡 Coletar dados
-        </button>
-        <button class="ctrl-btn btn-comparativo" onclick="triggerComparativo()">
-            🏆 Análise Comparativa
-        </button>
+        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">📡 Coletar dados</button>
+        <button class="ctrl-btn btn-comparativo" onclick="triggerComparativo()">🏆 Análise Comparativa</button>
     </div>
 </div>
+
 <script>
 var EMPRESAS_CTRL = {empresas_ctrl_json};
+var SELECTED_IDX = 0;
 
-function renderBadge(tipo) {{
-    var wrap = document.getElementById('badge-wrap');
-    if (!wrap) return;
-    if (tipo === 'minha') {{
-        wrap.innerHTML = '<span class="badge-minha">Minha empresa</span>';
-    }} else if (tipo === 'concorrente') {{
-        wrap.innerHTML = '<span class="badge-conc">Concorrente</span>';
-    }} else {{
-        wrap.innerHTML = '';
-    }}
+function iconSvg() {{
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+         + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
+         + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
+         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#3b82f6"/>'
+         + '</svg>';
 }}
 
-function onSelectChange() {{
-    var sel = document.getElementById('ctrl-empresa-select');
-    var idx = sel.selectedIndex;
-    if (idx >= 0 && EMPRESAS_CTRL[idx]) {{
-        renderBadge(EMPRESAS_CTRL[idx].tipo);
-    }} else {{
-        renderBadge('');
-    }}
+function badgeHtml(tipo) {{
+    if (tipo === 'minha') return '<span class="dd-badge-minha">Minha empresa</span>';
+    if (tipo === 'concorrente') return '<span class="dd-badge-conc">Concorrente</span>';
+    return '';
 }}
 
-(function() {{
-    var sel = document.getElementById('ctrl-empresa-select');
-    EMPRESAS_CTRL.forEach(function(e) {{
-        var opt = document.createElement('option');
-        opt.value = e.handle;
-        opt.textContent = e.nome + ' (' + e.handle + ')';
-        sel.appendChild(opt);
+function renderTrigger() {{
+    var e = EMPRESAS_CTRL[SELECTED_IDX];
+    if (!e) return;
+    document.getElementById('dd-trigger-nome').textContent = e.nome;
+    document.getElementById('dd-trigger-handle').textContent = e.handle;
+    document.getElementById('dd-trigger-badge').innerHTML = badgeHtml(e.tipo);
+    document.getElementById('dd-trigger-icon').innerHTML = iconSvg();
+}}
+
+function renderList() {{
+    var list = document.getElementById('dd-list');
+    list.innerHTML = '';
+    EMPRESAS_CTRL.forEach(function(e, i) {{
+        var item = document.createElement('div');
+        item.className = 'dd-item' + (i === SELECTED_IDX ? ' selected' : '');
+        item.innerHTML =
+            '<div class="dd-icon">' + iconSvg() + '</div>'
+            + '<div class="dd-info">'
+            + '<div class="dd-row1"><span class="dd-nome">' + e.nome + '</span>' + badgeHtml(e.tipo) + '</div>'
+            + '<div class="dd-handle">' + e.handle + '</div>'
+            + '</div>';
+        item.onclick = function() {{ selectItem(i); }};
+        list.appendChild(item);
     }});
-    // Seleciona minha empresa por padrão
-    var minha = EMPRESAS_CTRL.findIndex(function(e) {{ return e.tipo === 'minha'; }});
-    if (minha >= 0) {{ sel.selectedIndex = minha; }}
-    onSelectChange();
-}})();
+}}
+
+function selectItem(i) {{
+    SELECTED_IDX = i;
+    renderTrigger();
+    closeDropdown();
+}}
+
+function toggleDropdown() {{
+    var isOpen = document.getElementById('dd-list').classList.contains('open');
+    if (isOpen) closeDropdown(); else openDropdown();
+}}
+
+function openDropdown() {{
+    renderList();
+    document.getElementById('dd-list').classList.add('open');
+    document.getElementById('dd-arrow').classList.add('open');
+    setHeight(true);
+}}
+
+function closeDropdown() {{
+    document.getElementById('dd-list').classList.remove('open');
+    document.getElementById('dd-arrow').classList.remove('open');
+    setHeight(false);
+}}
+
+document.addEventListener('click', function(e) {{
+    var wrap = document.getElementById('dd-wrap');
+    if (wrap && !wrap.contains(e.target)) closeDropdown();
+}});
 
 function triggerColetar() {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === 'coletar_dados_redes') {{ b.click(); return; }}
     }}
 }}
@@ -9454,19 +9462,29 @@ function triggerColetar() {{
 function triggerComparativo() {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === 'redes_comparativo') {{ b.click(); return; }}
     }}
 }}
 
-(function() {{
+function setHeight(isOpen) {{
+    var listH = isOpen ? Math.min(EMPRESAS_CTRL.length * 64 + 16, 260) : 0;
+    var h = 120 + (isOpen ? listH + 6 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '120px';
+            iframes[i].style.height = h + 'px';
+            iframes[i].style.zIndex = isOpen ? '9999' : '1';
             break;
         }} }} catch(e) {{}}
     }}
+}}
+
+(function() {{
+    var minha = EMPRESAS_CTRL.findIndex(function(e) {{ return e.tipo === 'minha'; }});
+    SELECTED_IDX = minha >= 0 ? minha : 0;
+    renderTrigger();
+    setHeight(false);
 }})();
 </script>
 """, height=120, scrolling=False)

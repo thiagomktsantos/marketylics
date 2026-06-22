@@ -5866,6 +5866,12 @@ elif st.session_state.pagina == "ads":
     for i, c in enumerate(concs):
         if c.get("nome"):
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
+
+    if not st.session_state.get("ads_empresa_ativa"):
+        if empresas_configuradas:
+            st.session_state.ads_empresa_ativa = empresas_configuradas[0]["nome"]
+        elif todas_empresas:
+            st.session_state.ads_empresa_ativa = todas_empresas[0]["nome"]
     
     if "ads_onboarding_empresa" not in st.session_state:
         st.session_state.ads_onboarding_empresa = None
@@ -5980,8 +5986,7 @@ html, body { background: transparent; overflow: hidden; }
         st.markdown(f"<style>{''.join(_emp_dd_ghost_css_parts)}</style>", unsafe_allow_html=True)
 
         if "ads_empresa_ativa" not in st.session_state:
-            _primeira = empresas_configuradas[0]["nome"] if empresas_configuradas else (todas_empresas[0]["nome"] if todas_empresas else "")
-            st.session_state.ads_empresa_ativa = _primeira
+            st.session_state.ads_empresa_ativa = ""
 
         for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])

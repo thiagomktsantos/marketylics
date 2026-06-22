@@ -9548,7 +9548,7 @@ function setHeight(isOpen) {{
     st.markdown("""
         <style>
         #redes-hr-wrapper {
-            margin-top: -30px !important;
+            margin-top: -50px !important;
         }
         </style>
         <div id="redes-hr-wrapper">
@@ -10354,7 +10354,7 @@ function triggerTab(label) {{
         try {{
           if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-50px';
+            iframes[i].style.marginTop = '-70px';
             break;
           }}
         }} catch(e) {{}}

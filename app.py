@@ -9493,7 +9493,7 @@ function setHeight(isOpen) {{
     var h = 86 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try { if (iframes[i].contentWindow === window) {{
+        try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = h + 'px';
             iframes[i].style.zIndex = isOpen ? '9999' : '1';
             iframes[i].style.overflow = 'visible';

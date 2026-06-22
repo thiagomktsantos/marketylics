@@ -10315,11 +10315,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             </svg>
         </div>
         <div class="nav-content">
-            <span class="nav-title">Perfis configurados</span>
+            <span class="nav-title">Dados do perfil</span>
             <span class="nav-sub">Visualize e analise cada perfil individualmente</span>
-        </div>
-        <div class="nav-right">
-            <div class="count-badge {'has' if len(ok) > 0 else ''}">{len(ok)}</div>
         </div>
     </div>
 

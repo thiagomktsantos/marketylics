@@ -5968,10 +5968,15 @@ html, body { background: transparent; overflow: hidden; }
             _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
             _av_h        = gerar_avatar(_emp_ativa_nome)
             _sub_h       = f"@{_ads_id_h}" if _ads_id_h and not _ads_id_h.isdigit() else (f"ID: {_ads_id_h}" if _ads_id_h else "Não configurado")
-            if _page_pic_h and _page_pic_h.startswith("http"):
-                _av_html_h = f'<img src="{_page_pic_h}" style="width:34px;height:34px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0" onerror="this.style.display=\'none\'" />'
-            else:
-                _av_html_h = f'<div style="width:34px;height:34px;border-radius:50%;background:{_cor_h};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">{_av_h}</div>'
+            _av_html_h = (
+                '<div style="width:34px;height:34px;border-radius:10px;background:#dbeafe;'
+                'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                'stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
+                '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
+                '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
+                '</svg></div>'
+            )
             _selected_html = f"""
             <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
                 {_av_html_h}
@@ -6005,11 +6010,13 @@ html, body { background: transparent; overflow: hidden; }
             _is_active_d = (_e_h["nome"] == _emp_ativa_nome)
             _sk_h2       = safe_key(_e_h["nome"])
             _ghost_lbl_d = f"hdemp_{_sk_h2}"
-            if _pp_d and _pp_d.startswith("http"):
-                _av_item_html = f'<img src="{_pp_d}" style="width:30px;height:30px;border-radius:50%;object-fit:cover;display:block" onerror="this.style.display=\'none\'" />'
-            else:
-                _av_item_html = f'<div style="width:30px;height:30px;border-radius:50%;background:{_cor_d};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">{_av_d}</div>'
-            _dropdown_items += f"""
+            _av_item_html = (
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                'stroke-linecap="round" stroke-linejoin="round" width="16" height="16">'
+                '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
+                '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
+                '</svg>'
+            )
             <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
                 <div class="dd-icon">{_av_item_html}</div>
                 <div class="dd-info">
@@ -6069,7 +6076,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item:last-child {{ margin-bottom:0; }}
 .dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#e9eef5; }}
+.dd-icon { width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}

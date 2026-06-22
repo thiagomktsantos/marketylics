@@ -9287,7 +9287,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .col-select {{ position:relative; display:flex; align-items:center; }}
 
-/* ── Dropdown estilo "card" ──────────────────────────────── */
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
@@ -9420,6 +9419,13 @@ function selectItem(i) {{
     SELECTED_IDX = i;
     renderTrigger();
     closeDropdown();
+    // Sincroniza com ghost button de aba
+    var label = 'redes_aba_' + i;
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
 }}
 
 function toggleDropdown() {{
@@ -9469,6 +9475,16 @@ function setHeight(isOpen) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = h + 'px';
             iframes[i].style.zIndex = isOpen ? '9999' : '1';
+            iframes[i].style.overflow = 'visible';
+            // Propaga overflow:visible nos containers pai para o dropdown não ser cortado
+            var parent = iframes[i].parentElement;
+            var depth = 0;
+            while (parent && depth < 8) {{
+                parent.style.overflow = isOpen ? 'visible' : '';
+                parent.style.zIndex  = isOpen ? '9999' : '';
+                parent = parent.parentElement;
+                depth++;
+            }}
             break;
         }} }} catch(e) {{}}
     }}
@@ -10437,14 +10453,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:14px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }}
-.emp-sep {{ color: #d1d5db; font-weight: 400; }}
-.emp-handle-inline {{ font-size: 13px; font-weight: 400; color: #9ca3af; }}
 .badge-minha {{
     display:inline-flex; align-items:center; gap:5px;
     background:#f0fdf4; color:#15803d;
     border:1px solid #bbf7d0;
     padding:3px 10px; border-radius:20px;
     font-size:11px; font-weight:700;
+    flex-shrink:0; margin-left:auto;
 }}
 .badge-conc {{
     display:inline-flex; align-items:center; gap:5px;
@@ -10452,21 +10467,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border:1px solid #bfdbfe;
     padding:3px 10px; border-radius:20px;
     font-size:11px; font-weight:700;
-}}
-.badge-minha, .badge-conc {{
-    flex-shrink: 0;
-    margin-left: auto;  /* ← adicionar */
+    flex-shrink:0; margin-left:auto;
 }}
 </style>
-<div style="display:flex;flex-direction:column;">
-    <div class="main-wrap" style="width:100%;">
-        <div class="cards-grid" id="cards-grid"></div>
-    </div>
-    <div id="comp-card-wrap" style="width:100%;display:block;"></div>
+<div class="main-wrap" style="width:100%;">
+    <div class="cards-grid" id="cards-grid"></div>
 </div>
+
 <script>
 var EMPRESAS = {empresas_redes_str};
 var ABA_ATIVA = {aba_ativa};
+
 function buildUI() {{
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
@@ -10495,35 +10506,33 @@ function buildUI() {{
         card.addEventListener('click', function() {{ selectAba(e.i); }});
         grid.appendChild(card);
     }});
-
-    var compCard = document.createElement('div');
-    compCard.style.cssText =
-        'background:#21455e;'
-        + 'border-radius:0 0 14px 14px;padding:10px 16px;'
-        + 'display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;'
-        + 'transition:all 0.15s;width:98%;margin:0 auto;box-sizing:border-box;';
-    compCard.onmouseover = function() {{
-        this.style.boxShadow = '0 4px 16px rgba(58,159,214,0.25)';
-        this.style.background = '#036e77';
-    }};
-    compCard.onmouseout = function() {{
-        this.style.boxShadow = 'none';
-        this.style.background = '#21455e';
-    }};
-    compCard.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;">🏆</div><span style="font-size:13px;font-weight:700;color:#ffffff;white-space:nowrap;">Gerar Análise Comparativa</span><span style="font-size:12px;font-weight:400;color:#76bbe0;white-space:nowrap;">(Compara todos os perfis das empresas com IA)</span></div>';
-    compCard.addEventListener('click', function() {{ triggerBtn('redes_comparativo'); }});
-    var wrap = document.getElementById('comp-card-wrap');
-    if (wrap) wrap.appendChild(compCard);
-
     syncHeight();
 }}
+
 function selectAba(i) {{
     ABA_ATIVA = i;
     document.querySelectorAll('.emp-card').forEach(function(c) {{ c.classList.remove('active'); }});
     var card = document.getElementById('emp_card_' + i);
     if (card) card.classList.add('active');
+    // Sincroniza o dropdown do header
+    syncHeaderDropdown(i);
     triggerBtn('redes_aba_' + i);
 }}
+
+function syncHeaderDropdown(i) {{
+    // Tenta atualizar o SELECTED_IDX do iframe do header
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var fi = 0; fi < iframes.length; fi++) {{
+        try {{
+            var win = iframes[fi].contentWindow;
+            if (win && typeof win.EMPRESAS_CTRL !== 'undefined' && win.SELECTED_IDX !== undefined) {{
+                win.SELECTED_IDX = i;
+                if (typeof win.renderTrigger === 'function') win.renderTrigger();
+            }}
+        }} catch(e) {{}}
+    }}
+}}
+
 function triggerBtn(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
@@ -10531,6 +10540,7 @@ function triggerBtn(label) {{
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
+
 function syncHeight() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var frames = window.parent.document.querySelectorAll('iframe');
@@ -10542,6 +10552,7 @@ function syncHeight() {{
         }} }} catch(e) {{}}
     }}
 }}
+
 buildUI();
 if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
 document.addEventListener('DOMContentLoaded', syncHeight);

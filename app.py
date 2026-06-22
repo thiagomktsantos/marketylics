@@ -6130,6 +6130,180 @@ setTimeout(syncHeight,100);setTimeout(syncHeight,400);
 </script>
 """, height=56, scrolling=False)
 
+    with h3_col:
+        st.markdown("""
+        <style>
+        .st-key-ads_buscar_header_btn {
+            margin-bottom: -16px !important;
+        }
+        .stElementContainer:has(.st-key-ads_buscar_header_btn) {
+            margin-bottom: -12px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        gerar_btn_ads_header = st.button(
+            "Buscar / Atualizar Anúncios",
+            type="primary",
+            use_container_width=True,
+            key="ads_buscar_header_btn",
+        )
+        if st.session_state.ads_cache:
+            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
+            if _tss:
+                _ultima_ts = min(_tss)
+                _d = {k: v for k, v in st.session_state.ads_cache.items()}
+                import json as _json_ads
+                _djs = _json_ads.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+                _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
+
+                if st.button("ads_limpar_cache", key="ads_limpar_cache_btn"):
+                    st.session_state.ads_cache = {}
+                    st.session_state.ads_erro = {}
+                    try:
+                        supabase.table("ci_dados").update({"ads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
+                    except Exception:
+                        pass
+                    st.toast("Cache limpo!", icon="🗑️")
+                    st.rerun()
+
+                st.markdown("""
+                <style>
+                .st-key-ads_limpar_cache_btn {
+                    position: fixed !important; top: -9999px !important; left: -9999px !important;
+                    width: 0 !important; height: 0 !important; overflow: hidden !important;
+                    opacity: 0 !important; pointer-events: none !important; display: none !important;
+                }
+                .stElementContainer:has(.st-key-ads_limpar_cache_btn) {
+                    display: none !important; height: 0 !important; min-height: 0 !important;
+                    max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+
+                components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.row-coleta {{
+    gap:6px;
+    font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
+    flex-wrap:nowrap; white-space:nowrap; text-align: center;
+}}
+.link-btn {{
+    font-size:11px; color:#6b7280;
+    cursor:pointer; text-underline-offset:3px;
+    background:none; border:none; padding:0;
+    font-family:'DM Sans',sans-serif;
+}}
+.link-btn:hover {{ text-decoration:underline; color:#374151; }}
+.sep {{ color:#d1d5db; font-size:12px; }}
+.clear-btn {{
+    font-size:11px; color:#6b7280;
+    cursor:pointer; background:none; border:none; padding:0;
+    font-family:'DM Sans',sans-serif; text-underline-offset:3px;
+}}
+.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
+</style>
+<div class="row-coleta">
+    <button class="link-btn" onclick="abrirModal()">🕒 Última busca: <b>{_ultima_ts}</b></button>
+    <span class="sep">|</span>
+    <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
+</div>
+<script>
+var DADOS_JSON = '{_djs}';
+var FILENAME   = '{_fn}';
+var ULTIMA     = '{_ultima_ts}';
+
+function triggerLimpar() {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === 'ads_limpar_cache') {{ b.click(); return; }}
+    }}
+}}
+
+function abrirModal() {{
+    window.fechar = function() {{
+        var o = window.parent.document.getElementById('raw_modal_overlay');
+        if (o) o.remove();
+        if (window.parent.__rawEsc) {{
+            window.parent.document.removeEventListener('keydown', window.parent.__rawEsc);
+            window.parent.__rawEsc = null;
+        }}
+    }};
+    var doc = window.parent.document;
+    var old = doc.getElementById('raw_modal_overlay');
+    if (old) old.remove();
+    var D;
+    try {{ D = JSON.parse(DADOS_JSON); }} catch(e) {{ D = []; }}
+    var Dstr = JSON.stringify(D, null, 2);
+    var ov = doc.createElement('div');
+    ov.id = 'raw_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if(e.target===ov) fechar(); }};
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,1100px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+    hdr.innerHTML =
+        '<div><div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Cache de Anúncios</div>'
+        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">Última busca: ' + ULTIMA + '</div></div>'
+        + '<div style="display:flex;gap:10px;">'
+        + '<button id="raw_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
+        + '<button id="raw_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar JSON</button>'
+        + '<button id="raw_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
+        + '</div>';
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre;max-height:calc(88vh - 80px);';
+    pre.textContent = Dstr;
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    doc.getElementById('raw_close_btn').addEventListener('click', window.fechar);
+    doc.getElementById('raw_copy_btn').addEventListener('click', function() {{
+        var b = doc.getElementById('raw_copy_btn');
+        try {{
+            var ta = doc.createElement('textarea');
+            ta.value = Dstr;
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+            doc.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            doc.execCommand('copy');
+            doc.body.removeChild(ta);
+            b.textContent = '✅ Copiado!';
+            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        }} catch(e) {{
+            b.textContent = '❌ Erro';
+            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        }}
+    }});
+    doc.getElementById('raw_down_btn').addEventListener('click', function() {{
+        var a = doc.createElement('a');
+        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
+        a.download = FILENAME;
+        a.click();
+    }});
+
+    window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
+    doc.addEventListener('keydown', window.parent.__rawEsc);
+}}
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '28px';
+            iframes[i].style.marginTop = '-8px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=28, scrolling=False)
+
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
 
     _ids_coletados = set(st.session_state.ads_cache.keys())
@@ -6159,27 +6333,15 @@ setTimeout(syncHeight,100);setTimeout(syncHeight,400);
     .st-key-_ads_ghost_tab_configuracao_,
     .st-key-_ads_ghost_tab_empresas_,
     .st-key-_ads_ghost_tab_analise_ {
-        position: fixed !important;
-        top: -9999px !important;
-        left: -9999px !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-        visibility: hidden !important;
-        display: none !important;
+        position: fixed !important; top: -9999px !important; left: -9999px !important;
+        width: 0 !important; height: 0 !important; overflow: hidden !important;
+        opacity: 0 !important; pointer-events: none !important; visibility: hidden !important; display: none !important;
     }
     .stElementContainer:has(.st-key-_ads_ghost_tab_configuracao_),
     .stElementContainer:has(.st-key-_ads_ghost_tab_empresas_),
     .stElementContainer:has(.st-key-_ads_ghost_tab_analise_) {
-        display: none !important;
-        height: 0 !important;
-        min-height: 0 !important;
-        max-height: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        overflow: hidden !important;
+        display: none !important; height: 0 !important; min-height: 0 !important;
+        max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -6245,159 +6407,6 @@ setTimeout(syncHeight,100);setTimeout(syncHeight,400);
             executar_busca([e for e in todas_empresas if empresa_tem_ads_id(e)], query_values_header, forcar=False)
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
-
-    # ══════════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO PRINCIPAL (3 abas) — SEM BADGES NUMÉRICOS
-    # ══════════════════════════════════════════════════════════════════
-
-    components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
-.nav-bar {{
-    display:grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap:12px;
-    width:100%;
-    margin-bottom:0px;
-}}
-.nav-item {{
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    padding:16px 20px;
-    cursor:pointer;
-    display:flex;
-    align-items:center;
-    gap:14px;
-    transition:all 0.15s;
-    position:relative;
-    overflow:hidden;
-}}
-.nav-item:hover {{
-    border-color:#3a9fd6;
-    box-shadow:0 2px 12px rgba(58,159,214,0.12);
-}}
-.nav-item.active {{
-    background:#0e2a47;
-    border-color:#0e2a47;
-    box-shadow:0 4px 20px rgba(14,42,71,0.22);
-}}
-.nav-item.active::after {{
-    content:'';
-    position:absolute;
-    bottom:0;left:0;right:0;
-    height:3px;
-    background:linear-gradient(90deg,#3a9fd6,#2ecc71);
-    border-radius:0 0 14px 14px;
-}}
-.nav-icon {{
-    width:40px;height:40px;border-radius:10px;
-    display:flex;align-items:center;justify-content:center;
-    flex-shrink:0;
-    background:#f3f4f6;
-    transition:background 0.15s;
-}}
-.nav-item.active .nav-icon {{
-    background:rgba(255,255,255,0.12);
-}}
-.nav-icon svg {{ width:20px;height:20px; }}
-.nav-content {{ flex:1;min-width:0; }}
-.nav-title {{
-    font-size:15px;font-weight:700;color:#1a2e4a;
-    display:block;margin-bottom:2px;
-}}
-.nav-item.active .nav-title {{ color:#ffffff; }}
-.nav-sub {{
-    font-size:12px;color:#9ca3af;
-}}
-.nav-item.active .nav-sub {{ color:rgba(255,255,255,0.55); }}
-.nav-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0; }}
-.count-badge {{
-    min-width:26px; height:26px; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    font-size:12px; font-weight:800; padding:0 5px;
-    background:#e5e7eb; color:#6b7280;
-}}
-.count-badge.has {{ background:#3a9fd6; color:#fff; }}
-.nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
-.nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
-</style>
-<div class="nav-bar">
-    <div class="nav-item {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')">
-        <div class="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'configuracao' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-        </div>
-        <div class="nav-content">
-            <span class="nav-title">Configuração</span>
-            <span class="nav-sub">Configure suas empresas</span>
-        </div>
-    </div>
-    <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
-        <div class="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'empresas' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-            </svg>
-        </div>
-        <div class="nav-content">
-            <span class="nav-title">Empresas configuradas</span>
-            <span class="nav-sub">Gerencie empresas cadastradas</span>
-        </div>
-        <div class="nav-right">
-            <div class="count-badge {'has' if n_configuradas > 0 else ''}">{n_configuradas}</div>
-        </div>
-    </div>
-    <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
-        <div class="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'analise' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
-        </div>
-        <div class="nav-content">
-            <span class="nav-title">Análise de IA</span>
-            <span class="nav-sub">Visualize análises inteligentes</span>
-        </div>
-        <div class="nav-right">
-            <div class="count-badge {'has' if len(st.session_state.get('ads_analises_salvas', [])) > 0 else ''}">{len(st.session_state.get('ads_analises_salvas', []))}</div>
-        </div>
-    </div>
-</div>
-<script>
-function triggerTab(label) {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
-}}
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-          if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-15px';
-            break;
-          }}
-        }} catch(e) {{}}
-    }}
-}})();
-</script>
-""", height=90, scrolling=False)
-
-    st.markdown("""
-    <style>
-    /* Remove espaço entre nav-bar e conteúdo seguinte */
-    section.main .block-container > div > div:has(> iframe) + div {
-        margin-top: -64px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
     if not todas_empresas:
         st.info("Cadastre sua empresa e concorrentes para usar esta funcionalidade.")

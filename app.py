@@ -9204,7 +9204,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:10px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
-.dd-item:last-child {{ margin-bottom:0; background-color: #0e2a47; }}
+.dd-item:last-child {{ margin-bottom:0; background-color:#0e2a47; }}
+.dd-item:last-child:hover {{ background-color:#17406a}}
 .dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
 .dd-item .dd-icon {{ background:#e9eef5; }}
@@ -9333,7 +9334,7 @@ function renderList() {{
         + '<span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>'
         + '<div class="dd-handle">Comparar todos os perfis</div>'
         + '</div>'
-        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;border-color:#bbf7d0;">🏆</span>';
+        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;">🏆</span>';
     compItem.onclick = function() {{ triggerComparativo(); closeDropdown(); }};
     list.appendChild(compItem);
 }}

@@ -9098,66 +9098,28 @@ elif st.session_state.pagina == "redes":
     concorrentes = st.session_state.dados["concorrentes"]
  
     # ── Cabeçalho ──────────────────────────────────────────────────
-    col1, col2, col3 = st.columns([6, 2, 3])
- 
-    with col1:
-        components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-@font-face {
-    font-family: 'Animo';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { background: transparent; overflow: hidden; }
-.titulo {
-    font-family: 'Animo', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
-}
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
-</style>
-<div class="titulo">Redes Sociais</div>
-<div class="sub">Acompanhe e compare métricas do Instagram dos seus concorrentes em tempo real.</div>
-""", height=65)
- 
-    with col2:
-        st.markdown("""
-    <style>
-    .st-key-_redes_ghost_tab_perfis_,
-    .st-key-_redes_ghost_tab_analise_ {
-        display: none !important;
-    }
-    .stElementContainer:has(.st-key-_redes_ghost_tab_perfis_),
-    .stElementContainer:has(.st-key-_redes_ghost_tab_analise_) {
-        display: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
- 
-    with col3:
-        coletar = st.button(
-            "Coletar dados",
-            type="primary",
-            use_container_width=True,
-        )
-        ultima_coleta = st.session_state.metricas_redes.get("ultima_coleta", "")
+    emp = st.session_state.dados["minha_empresa"]
+    concorrentes = st.session_state.dados["concorrentes"]
 
-        import json as _jr
-        d = st.session_state.metricas_redes.get("dados", [])
-        _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
-        fn = f'dados_redes_{ultima_coleta.replace("/","_").replace(" ","_").replace(":","")}.json' if ultima_coleta else ""
+    # ── Última coleta (acima do painel) ────────────────────────────
+    ultima_coleta = st.session_state.metricas_redes.get("ultima_coleta", "")
 
+    import json as _jr
+    d = st.session_state.metricas_redes.get("dados", [])
+    _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
+    fn = f'dados_redes_{ultima_coleta.replace("/","_").replace(" ","_").replace(":","")}.json' if ultima_coleta else ""
+
+    if ultima_coleta:
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 .row-coleta {{
-    display:{'flex' if ultima_coleta else 'none'};
-    align-items:center; justify-content:center; gap:6px;
+    display:flex;
+    align-items:center; gap:6px;
     font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap;
+    flex-wrap:nowrap; white-space:nowrap; padding: 0 2px 6px;
 }}
 .link-btn {{
     font-size:11px; color:#6b7280;
@@ -9172,7 +9134,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; background:none; border:none; padding:0;
     font-family:'DM Sans',sans-serif; text-underline-offset:3px;
 }}
-.clear-btn:hover {{ text-decoration:underline; color:#374151;  }}
+.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 </style>
 <div class="row-coleta">
     <button class="link-btn" onclick="abrirModal()">🕒 Última coleta: <b>{ultima_coleta}</b></button>
@@ -9265,8 +9227,8 @@ function abrirModal() {{
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '{"28px" if ultima_coleta else "0px"}';
-            iframes[i].style.marginTop = '-8px';
+            iframes[i].style.height = '28px';
+            iframes[i].style.marginBottom = '-4px';
             break;
         }} }} catch(e) {{}}
     }}
@@ -9274,7 +9236,198 @@ function abrirModal() {{
 </script>
 """, height=28, scrolling=False)
 
-    # ── Ghost button limpar cache — FORA do with col3 ──────────────
+    # ── Cabeçalho com painel de controle ───────────────────────────
+    col1, col2 = st.columns([5, 5])
+
+    with col1:
+        components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div class="titulo">Redes Sociais</div>
+<div class="sub">Acompanhe e compare métricas do Instagram dos seus concorrentes em tempo real.</div>
+""", height=65)
+
+    with col2:
+        # Monta lista de empresas para o select
+        todas_empresas_ctrl = []
+        _emp_ctrl = st.session_state.dados["minha_empresa"]
+        _conc_ctrl = st.session_state.dados["concorrentes"]
+        if _emp_ctrl.get("nome") and _emp_ctrl.get("instagram") and _emp_ctrl["instagram"] not in ("@", ""):
+            todas_empresas_ctrl.append({"nome": _emp_ctrl["nome"], "handle": _emp_ctrl["instagram"]})
+        for _c in _conc_ctrl:
+            if _c.get("instagram") and _c["instagram"] not in ("@", ""):
+                todas_empresas_ctrl.append({"nome": _c["nome"], "handle": _c["instagram"]})
+
+        import json as _jr_ctrl
+        empresas_ctrl_json = _jr_ctrl.dumps(todas_empresas_ctrl, ensure_ascii=False)
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.ctrl-box {{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:14px 16px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    align-items:center;
+}}
+.col-select {{
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+}}
+.col-select label {{
+    font-size:11px;
+    font-weight:700;
+    color:#6b7280;
+    text-transform:uppercase;
+    letter-spacing:0.8px;
+}}
+.ctrl-select {{
+    width:100%;
+    height:40px;
+    padding:0 32px 0 12px;
+    border:1.5px solid #e5e7eb;
+    border-radius:10px;
+    font-size:13px;
+    font-family:'DM Sans',sans-serif;
+    color:#1a2e4a;
+    font-weight:600;
+    background:#f9fafb url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") no-repeat right 10px center;
+    -webkit-appearance:none; appearance:none; cursor:pointer; outline:none;
+    transition:border-color 0.15s;
+}}
+.ctrl-select:focus {{ border-color:#3a9fd6; background-color:#fff; }}
+.col-btns {{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}}
+.ctrl-btn {{
+    width:100%;
+    height:38px;
+    border-radius:10px;
+    border:none;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+    font-family:'DM Sans',sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    transition:all 0.15s;
+    white-space:nowrap;
+}}
+.btn-coletar {{
+    background:#0e2a47;
+    color:#fff;
+}}
+.btn-coletar:hover {{ background:#1a3f6a; }}
+.btn-comparativo {{
+    background:#f0fdf4;
+    color:#15803d;
+    border:1.5px solid #bbf7d0;
+}}
+.btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
+</style>
+<div class="ctrl-box">
+    <div class="col-select">
+        <label>Empresa</label>
+        <select class="ctrl-select" id="ctrl-empresa-select">
+            <option value="__todas__">Todas as empresas</option>
+        </select>
+    </div>
+    <div class="col-btns">
+        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">
+            📡 Coletar dados
+        </button>
+        <button class="ctrl-btn btn-comparativo" onclick="triggerComparativo()">
+            🏆 Análise Comparativa
+        </button>
+    </div>
+</div>
+<script>
+var EMPRESAS_CTRL = {empresas_ctrl_json};
+
+(function() {{
+    var sel = document.getElementById('ctrl-empresa-select');
+    EMPRESAS_CTRL.forEach(function(e) {{
+        var opt = document.createElement('option');
+        opt.value = e.handle;
+        opt.textContent = e.nome + ' (' + e.handle + ')';
+        sel.appendChild(opt);
+    }});
+}})();
+
+function triggerColetar() {{
+    var sel = document.getElementById('ctrl-empresa-select');
+    var val = sel ? sel.value : '__todas__';
+    // Salva seleção em input oculto para Streamlit ler via ghost button
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === 'coletar_dados_redes') {{ b.click(); return; }}
+    }}
+}}
+
+function triggerComparativo() {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === 'redes_comparativo') {{ b.click(); return; }}
+    }}
+}}
+
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '110px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=110, scrolling=False)
+
+    # ── Ghost button coletar dados ──────────────────────────────────
+    ghost_coletar_key = "btn_coletar_dados_redes"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_coletar_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_coletar_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    coletar = st.button("coletar_dados_redes", key=ghost_coletar_key)
+
+    # ── Ghost button limpar cache ───────────────────────────────────
     if "redes_confirmar_limpar" not in st.session_state:
         st.session_state.redes_confirmar_limpar = False
 
@@ -9296,133 +9449,6 @@ function abrirModal() {{
     if st.button("limpar_cache_redes", key=ghost_limpar_key):
         st.session_state.redes_confirmar_limpar = True
         st.rerun()
-
-    if st.session_state.get("redes_confirmar_limpar"):
-
-        # Ghost buttons escondidos que o modal HTML vai acionar
-        st.markdown("""
-        <style>
-        .st-key-btn_cancelar_limpar_redes,
-        .st-key-btn_confirmar_limpar_redes {
-            position: fixed !important; top: -9999px !important; left: -9999px !important;
-            width: 0 !important; height: 0 !important; overflow: hidden !important;
-            opacity: 0 !important; pointer-events: none !important; display: none !important;
-        }
-        .stElementContainer:has(.st-key-btn_cancelar_limpar_redes),
-        .stElementContainer:has(.st-key-btn_confirmar_limpar_redes) {
-            display: none !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        if st.button("Cancelar", key="btn_cancelar_limpar_redes"):
-            st.session_state.redes_confirmar_limpar = False
-            st.rerun()
-
-        if st.button("Sim, apagar dados", key="btn_confirmar_limpar_redes"):
-            st.session_state.redes_confirmar_limpar = False
-            st.session_state.metricas_redes = {}
-            try:
-                supabase.table("ci_dados").update({"metricas_redes": {}}).eq("user_id", st.session_state.user.id).execute()
-            except Exception:
-                pass
-            st.rerun()
-
-        components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
-.overlay {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.72);
-    z-index: 999999;
-    display: flex; align-items: center; justify-content: center;
-    padding: 24px;
-}
-.card {
-    background: #0e2a47;
-    border-radius: 20px;
-    padding: 32px;
-    width: min(95vw, 460px);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    border: 1px solid #1e3a5f;
-}
-.hdr { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
-.hdr-icon {
-    width:46px; height:46px; border-radius:50%;
-    background:#ef4444;
-    display:flex; align-items:center; justify-content:center;
-    font-size:22px; flex-shrink:0;
-}
-.hdr-title { font-size:18px; font-weight:800; color:#f1f5f9; margin-bottom:3px; }
-.hdr-sub { font-size:13px; color:#94a3b8; }
-.msg {
-    background:#1e3a5f; border-radius:12px;
-    padding:18px 20px; margin-bottom:24px;
-    font-size:14px; color:#cbd5e1; line-height:1.65; text-align:center;
-}
-.btns { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-.btn {
-    padding:13px 0; border-radius:10px;
-    font-size:15px; font-weight:700;
-    cursor:pointer; border:none;
-    font-family:'DM Sans',sans-serif;
-    transition:background 0.15s;
-}
-.btn-cancel {
-    background:#1e3a5f; color:#94a3b8;
-    border:1px solid #2d4f6e;
-}
-.btn-cancel:hover { background:#2d4f6e; color:#e2e8f0; }
-.btn-confirm {
-    background:#ef4444; color:#fff;
-}
-.btn-confirm:hover { background:#dc2626; }
-</style>
-<div class="overlay">
-    <div class="card">
-        <div class="hdr">
-            <div class="hdr-icon">🗑️</div>
-            <div>
-                <div class="hdr-title">Limpar cache de redes?</div>
-                <div class="hdr-sub">Esta ação não pode ser desfeita.</div>
-            </div>
-        </div>
-        <div class="msg">
-            Todos os dados coletados do Instagram serão apagados.<br>
-            Será necessário coletar novamente.
-        </div>
-        <div class="btns">
-            <button class="btn btn-cancel" onclick="triggerBtn('Cancelar')">Cancelar</button>
-            <button class="btn btn-confirm" onclick="triggerBtn('Sim, limpar')">Sim, limpar</button>
-        </div>
-    </div>
-</div>
-<script>
-function triggerBtn(label) {
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) { b.click(); return; }
-    }
-}
-(function() {
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try { if (iframes[i].contentWindow === window) {
-            iframes[i].style.position = 'fixed';
-            iframes[i].style.inset = '0';
-            iframes[i].style.width = '100vw';
-            iframes[i].style.height = '100vh';
-            iframes[i].style.zIndex = '999998';
-            iframes[i].style.border = 'none';
-            break;
-        }} catch(e) {}
-    }
-})();
-</script>
-""", height=600, scrolling=False)
 
 # ── HR separador — fora das colunas, com correção de espaço ────
     st.markdown("""

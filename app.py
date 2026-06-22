@@ -9283,13 +9283,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .ctrl-box {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:14px 16px; display:grid; grid-template-columns:1fr auto;
-    gap:12px; align-items:stretch; position:relative;
+    gap:12px; align-items:center; position:relative;
 }}
-.col-select {{ display:flex; flex-direction:column; gap:5px; position:relative; }}
-.col-select label {{
-    font-size:11px; font-weight:700; color:#6b7280;
-    text-transform:uppercase; letter-spacing:0.8px;
-}}
+.col-select {{ position:relative; display:flex; align-items:center; }}
 
 /* ── Dropdown estilo "card" ──────────────────────────────── */
 .dd-wrap {{ position:relative; width:100%; }}
@@ -9304,16 +9300,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .dd-icon svg {{ width:18px; height:18px; }}
-.dd-info {{ flex:1; min-width:0; }}
-.dd-row1 {{ display:flex; align-items:center; gap:8px; }}
+.dd-info {{ min-width:0; }}
 .dd-nome {{
     font-size:14px; font-weight:700; color:#1a2e4a;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle {{ font-size:12px; color:#9ca3af; margin-top:1px; }}
 .dd-badge-minha, .dd-badge-conc {{
     margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
     gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    white-space:nowrap;
 }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
@@ -9353,17 +9349,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 <div class="ctrl-box">
     <div class="col-select">
-        <label>Empresa</label>
         <div class="dd-wrap" id="dd-wrap">
             <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
                 <div class="dd-icon" id="dd-trigger-icon"></div>
                 <div class="dd-info">
-                    <div class="dd-row1">
-                        <span class="dd-nome" id="dd-trigger-nome"></span>
-                        <span id="dd-trigger-badge"></span>
-                    </div>
+                    <span class="dd-nome" id="dd-trigger-nome"></span>
                     <div class="dd-handle" id="dd-trigger-handle"></div>
                 </div>
+                <span id="dd-trigger-badge"></span>
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
@@ -9414,9 +9407,10 @@ function renderList() {{
         item.innerHTML =
             '<div class="dd-icon">' + iconSvg() + '</div>'
             + '<div class="dd-info">'
-            + '<div class="dd-row1"><span class="dd-nome">' + e.nome + '</span>' + badgeHtml(e.tipo) + '</div>'
+            + '<span class="dd-nome">' + e.nome + '</span>'
             + '<div class="dd-handle">' + e.handle + '</div>'
-            + '</div>';
+            + '</div>'
+            + badgeHtml(e.tipo);
         item.onclick = function() {{ selectItem(i); }};
         list.appendChild(item);
     }});
@@ -9469,7 +9463,7 @@ function triggerComparativo() {{
 
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min(EMPRESAS_CTRL.length * 64 + 16, 260) : 0;
-    var h = 120 + (isOpen ? listH + 6 : 0);
+    var h = 78 + (isOpen ? listH + 6 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -9487,7 +9481,7 @@ function setHeight(isOpen) {{
     setHeight(false);
 }})();
 </script>
-""", height=120, scrolling=False)
+""", height=78, scrolling=False)
 
     # ── Ghost button coletar dados ──────────────────────────────────
     ghost_coletar_key = "btn_coletar_dados_redes"

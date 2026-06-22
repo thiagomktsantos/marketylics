@@ -9218,13 +9218,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
-.btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 0; }}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 0; min-width:240px; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 
 .row-coleta {{
-    display:flex; justify-content:flex-end; align-items:center; gap:6px;
+    display:flex; justify-content:center; align-items:center; gap:6px;
     font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
     flex-wrap:nowrap; white-space:nowrap;
 }}

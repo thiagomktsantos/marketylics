@@ -9334,7 +9334,7 @@ function renderList() {{
         + '<span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>'
         + '<div class="dd-handle">Comparar todos os perfis</div>'
         + '</div>'
-        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;">🏆</span>';
+        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;border:none;">🏆</span>';
     compItem.onclick = function() {{ triggerComparativo(); closeDropdown(); }};
     list.appendChild(compItem);
 }}

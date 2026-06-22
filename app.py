@@ -9365,8 +9365,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">📡 Coletar dados</button>
-        <button class="ctrl-btn btn-comparativo" onclick="triggerComparativo()">🏆 Análise Comparativa</button>
+        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">⬇️ Coletar dados</button>
     </div>
 </div>
 
@@ -9413,6 +9412,25 @@ function renderList() {{
         item.onclick = function() {{ selectItem(i); }};
         list.appendChild(item);
     }});
+
+    var sep = document.createElement('div');
+    sep.style.cssText = 'height:1px;background:#e5e7eb;margin:4px 0;';
+    list.appendChild(sep);
+
+    var compItem = document.createElement('div');
+    compItem.className = 'dd-item';
+    compItem.innerHTML =
+        '<div class="dd-icon" style="background:#f0fdf4;">'
+        + '<svg viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
+        + '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'
+        + '</div>'
+        + '<div class="dd-info">'
+        + '<span class="dd-nome" style="color:#15803d;">Análise Comparativa</span>'
+        + '<div class="dd-handle">Comparar todos os perfis</div>'
+        + '</div>'
+        + '<span class="dd-badge-minha" style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;">🏆</span>';
+    compItem.onclick = function() {{ triggerComparativo(); closeDropdown(); }};
+    list.appendChild(compItem);
 }}
 
 function selectItem(i) {{
@@ -9468,7 +9486,7 @@ function triggerComparativo() {{
 }}
 
 function setHeight(isOpen) {{
-    var listH = isOpen ? Math.min(EMPRESAS_CTRL.length * 64 + 16, 260) : 0;
+    var listH = isOpen ? Math.min(EMPRESAS_CTRL.length * 64 + 16 + 70, 330) : 0;
     var h = 78 + (isOpen ? listH + 6 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{

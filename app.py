@@ -6037,7 +6037,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <div class="row-coleta">
     <button class="link-btn" onclick="abrirModal()">🕒 Última busca: <b>{_ultima_ts}</b></button>
     <span class="sep">|</span>
-    <button class="clear-btn" onclick="triggerLimpar()">Limpar cache</button>
+    <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
 </div>
 <script>
 var DADOS_JSON = '{_djs}';

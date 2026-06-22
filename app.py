@@ -9134,133 +9134,6 @@ html, body { background: transparent; overflow: hidden; }
 """, height=65)
 
     with col2:
-        if ultima_coleta:
-            components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.row-coleta {{
-    display:flex;
-    align-items:center; gap:6px;
-    font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap; padding: 0 2px 6px;
-}}
-.link-btn {{
-    font-size:11px; color:#6b7280;
-    cursor:pointer; text-underline-offset:3px;
-    background:none; border:none; padding:0;
-    font-family:'DM Sans',sans-serif;
-}}
-.link-btn:hover {{ text-decoration:underline; color:#374151; }}
-.sep {{ color:#d1d5db; font-size:12px; }}
-.clear-btn {{
-    font-size:11px; color:#6b7280;
-    cursor:pointer; background:none; border:none; padding:0;
-    font-family:'DM Sans',sans-serif; text-underline-offset:3px;
-}}
-.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
-</style>
-<div class="row-coleta">
-    <button class="link-btn" onclick="abrirModal()">🕒 Última coleta: <b>{ultima_coleta}</b></button>
-    <span class="sep">|</span>
-    <button class="clear-btn" onclick="triggerLimpar()">Limpar cache</button>
-</div>
-<script>
-var DADOS_JSON = '{_djs}';
-var FILENAME   = '{fn}';
-var ULTIMA     = '{ultima_coleta}';
-
-function triggerLimpar() {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
-        if (txt === 'limpar_cache_redes') {{ b.click(); return; }}
-    }}
-}}
-
-function abrirModal() {{
-    window.fechar = function() {{
-        var o = window.parent.document.getElementById('raw_modal_overlay');
-        if (o) o.remove();
-        if (window.parent.__rawEsc) {{
-            window.parent.document.removeEventListener('keydown', window.parent.__rawEsc);
-            window.parent.__rawEsc = null;
-        }}
-    }};
-    var doc = window.parent.document;
-    var old = doc.getElementById('raw_modal_overlay');
-    if (old) old.remove();
-    var D;
-    try {{ D = JSON.parse(DADOS_JSON); }} catch(e) {{ D = []; }}
-    var Dstr = JSON.stringify(D, null, 2);
-    var ov = doc.createElement('div');
-    ov.id = 'raw_modal_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.onclick = function(e) {{ if(e.target===ov) fechar(); }};
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,1100px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-    var hdr = doc.createElement('div');
-    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #21262d;background:#0e1e35;flex-shrink:0;';
-    hdr.innerHTML =
-        '<div><div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Dados brutos das Redes</div>'
-        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">Última coleta: ' + ULTIMA + '</div></div>'
-        + '<div style="display:flex;gap:10px;">'
-        + '<button id="raw_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
-        + '<button id="raw_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar JSON</button>'
-        + '<button id="raw_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
-        + '</div>';
-    var pre = doc.createElement('pre');
-    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre;max-height:calc(88vh - 80px);';
-    pre.textContent = Dstr;
-    box.appendChild(hdr);
-    box.appendChild(pre);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    doc.getElementById('raw_close_btn').addEventListener('click', window.fechar);
-    doc.getElementById('raw_copy_btn').addEventListener('click', function() {{
-        var b = doc.getElementById('raw_copy_btn');
-        try {{
-            var ta = doc.createElement('textarea');
-            ta.value = Dstr;
-            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-            doc.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            doc.execCommand('copy');
-            doc.body.removeChild(ta);
-            b.textContent = '✅ Copiado!';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
-        }} catch(e) {{
-            b.textContent = '❌ Erro';
-            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
-        }}
-    }});
-    doc.getElementById('raw_down_btn').addEventListener('click', function() {{
-        var a = doc.createElement('a');
-        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
-        a.download = FILENAME;
-        a.click();
-    }});
-
-    window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
-    doc.addEventListener('keydown', window.parent.__rawEsc);
-}}
-
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '28px';
-            iframes[i].style.marginBottom = '-4px';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
-</script>
-""", height=28, scrolling=False)
-
         # Monta lista de empresas para o select
         todas_empresas_ctrl = []
         _emp_ctrl = st.session_state.dados["minha_empresa"]
@@ -9349,6 +9222,26 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
+
+.row-coleta {{
+    display:flex; justify-content:flex-end; align-items:center; gap:6px;
+    font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
+    flex-wrap:nowrap; white-space:nowrap; padding:8px 4px 0;
+}}
+.link-btn {{
+    font-size:11px; color:#6b7280;
+    cursor:pointer; text-underline-offset:3px;
+    background:none; border:none; padding:0;
+    font-family:'DM Sans',sans-serif;
+}}
+.link-btn:hover {{ text-decoration:underline; color:#374151; }}
+.sep {{ color:#d1d5db; font-size:12px; }}
+.clear-btn {{
+    font-size:11px; color:#6b7280;
+    cursor:pointer; background:none; border:none; padding:0;
+    font-family:'DM Sans',sans-serif; text-underline-offset:3px;
+}}
+.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 </style>
 
 <div class="ctrl-box">
@@ -9371,12 +9264,20 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     </div>
     <div class="col-btns">
         <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">⬇️ Coletar dados</button>
+        {f'''<div class="row-coleta">
+            <button class="link-btn" onclick="abrirModal()">🕒 Última coleta: <b>{ultima_coleta}</b></button>
+            <span class="sep">|</span>
+            <button class="clear-btn" onclick="triggerLimpar()">Limpar cache</button>
+        </div>''' if ultima_coleta else ''}
     </div>
 </div>
 
 <script>
 var EMPRESAS_CTRL = {empresas_ctrl_json};
 var SELECTED_IDX = 0;
+var DADOS_JSON = '{_djs}';
+var FILENAME   = '{fn}';
+var ULTIMA     = '{ultima_coleta}';
 
 function iconSvg() {{
     return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
@@ -9442,7 +9343,6 @@ function selectItem(i) {{
     SELECTED_IDX = i;
     renderTrigger();
     closeDropdown();
-    // Sincroniza com ghost button de aba
     var label = 'redes_aba_' + i;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
@@ -9490,9 +9390,87 @@ function triggerComparativo() {{
     }}
 }}
 
+function triggerLimpar() {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        if (txt === 'limpar_cache_redes') {{ b.click(); return; }}
+    }}
+}}
+
+function abrirModal() {{
+    window.fechar = function() {{
+        var o = window.parent.document.getElementById('raw_modal_overlay');
+        if (o) o.remove();
+        if (window.parent.__rawEsc) {{
+            window.parent.document.removeEventListener('keydown', window.parent.__rawEsc);
+            window.parent.__rawEsc = null;
+        }}
+    }};
+    var doc = window.parent.document;
+    var old = doc.getElementById('raw_modal_overlay');
+    if (old) old.remove();
+    var D;
+    try {{ D = JSON.parse(DADOS_JSON); }} catch(e) {{ D = []; }}
+    var Dstr = JSON.stringify(D, null, 2);
+    var ov = doc.createElement('div');
+    ov.id = 'raw_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if(e.target===ov) fechar(); }};
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,1100px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #21262d;background:#0e1e35;flex-shrink:0;';
+    hdr.innerHTML =
+        '<div><div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Dados brutos das Redes</div>'
+        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">Última coleta: ' + ULTIMA + '</div></div>'
+        + '<div style="display:flex;gap:10px;">'
+        + '<button id="raw_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
+        + '<button id="raw_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar JSON</button>'
+        + '<button id="raw_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
+        + '</div>';
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre;max-height:calc(88vh - 80px);';
+    pre.textContent = Dstr;
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    doc.getElementById('raw_close_btn').addEventListener('click', window.fechar);
+    doc.getElementById('raw_copy_btn').addEventListener('click', function() {{
+        var b = doc.getElementById('raw_copy_btn');
+        try {{
+            var ta = doc.createElement('textarea');
+            ta.value = Dstr;
+            ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+            doc.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            doc.execCommand('copy');
+            doc.body.removeChild(ta);
+            b.textContent = '✅ Copiado!';
+            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        }} catch(e) {{
+            b.textContent = '❌ Erro';
+            setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        }}
+    }});
+    doc.getElementById('raw_down_btn').addEventListener('click', function() {{
+        var a = doc.createElement('a');
+        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
+        a.download = FILENAME;
+        a.click();
+    }});
+
+    window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
+    doc.addEventListener('keydown', window.parent.__rawEsc);
+}}
+
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 64) + 70 + 28, 330) : 0;
-    var h = 86 + (isOpen ? listH + 10 : 0);
+    var extra = ULTIMA ? 26 : 0;
+    var h = 86 + extra + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -9523,7 +9501,7 @@ function setHeight(isOpen) {{
     setHeight(false);
 }})();
 </script>
-""", height=78, scrolling=False)
+""", height=104 if ultima_coleta else 78, scrolling=False)
 
     # ── Ghost button coletar dados ──────────────────────────────────
     ghost_coletar_key = "btn_coletar_dados_redes"

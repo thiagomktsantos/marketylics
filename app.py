@@ -5844,8 +5844,8 @@ elif st.session_state.pagina == "ads":
     # CABEÇALHO DA PÁGINA
     # ══════════════════════════════════════════════════════════════════
 
-    h1_col, h2_col, h3_col = st.columns([6, 2, 3])
-
+    h1_col, h2_col = st.columns([5, 5])
+ 
     with h1_col:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -5866,9 +5866,9 @@ html, body { background: transparent; overflow: hidden; }
 <div class="titulo">Biblioteca de Ads</div>
 <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
 """, height=65)
-
+ 
     with h2_col:
-        # ── Ghost buttons ocultos para o dropdown de empresa no header ──
+        # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
         _emp_dd_ghost_css_parts = []
         for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])
@@ -5886,12 +5886,16 @@ html, body { background: transparent; overflow: hidden; }
             """)
         _k_comp_h = "ads_header_emp_comparativo"
         _emp_dd_ghost_css_parts.append(f"""
-        .st-key-{_k_comp_h} {{
+        .st-key-{_k_comp_h},
+        .st-key-ads_buscar_header_btn,
+        .st-key-ads_limpar_cache_btn {{
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
             opacity:0 !important; pointer-events:none !important; display:none !important;
         }}
-        .stElementContainer:has(.st-key-{_k_comp_h}) {{
+        .stElementContainer:has(.st-key-{_k_comp_h}),
+        .stElementContainer:has(.st-key-ads_buscar_header_btn),
+        .stElementContainer:has(.st-key-ads_limpar_cache_btn) {{
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
         }}
@@ -5903,10 +5907,10 @@ html, body { background: transparent; overflow: hidden; }
         .stElementContainer:has(.st-key-_ads_ghost_tab_analise_) {{ display: none !important; }}
         """)
         st.markdown(f"<style>{''.join(_emp_dd_ghost_css_parts)}</style>", unsafe_allow_html=True)
-
+ 
         if "ads_empresa_ativa" not in st.session_state:
             st.session_state.ads_empresa_ativa = ""
-
+ 
         for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])
             _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
@@ -5914,16 +5918,45 @@ html, body { background: transparent; overflow: hidden; }
                 st.session_state.ads_empresa_ativa = _e_h["nome"]
                 st.session_state.ads_main_tab = "empresas"
                 st.rerun()
-
+ 
         if st.button("hdemp_comparativo", key=_k_comp_h):
             st.session_state.ads_empresa_ativa = "__comparativo__"
             st.session_state.ads_main_tab = "analise"
             st.session_state.ads_analise_subtab = "comparativo_ads"
             st.rerun()
-
+ 
+        # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
+        gerar_btn_ads_header = st.button("ads_buscar_header_trigger", key="ads_buscar_header_btn")
+ 
+        # Ghost: limpar cache
+        if st.session_state.ads_cache:
+            if st.button("ads_limpar_cache", key="ads_limpar_cache_btn"):
+                st.session_state.ads_cache = {}
+                st.session_state.ads_erro = {}
+                try:
+                    supabase.table("ci_dados").update({"ads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
+                except Exception:
+                    pass
+                st.toast("Cache limpo!", icon="🗑️")
+                st.rerun()
+ 
+        # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
+        _ultima_ts = ""
+        _djs = "[]"
+        _fn = ""
+        if st.session_state.ads_cache:
+            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
+            if _tss:
+                _ultima_ts = min(_tss)
+                _d = {k: v for k, v in st.session_state.ads_cache.items()}
+                _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+                _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
+ 
         _emp_ativa_nome = st.session_state.get("ads_empresa_ativa", "")
         _emp_ativa_obj  = next((e for e in todas_empresas if e["nome"] == _emp_ativa_nome), None)
-
+        _comp_active    = (_emp_ativa_nome == "__comparativo__")
+        _n_dd_items     = len(todas_empresas) + 1
+ 
         if _emp_ativa_obj:
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
             _ads_id_h    = emp.get("ads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_id","")
@@ -5948,7 +5981,7 @@ html, body { background: transparent; overflow: hidden; }
                 </div>
                 <span style="display:inline-flex;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
             </div>"""
-        elif _emp_ativa_nome == "__comparativo__":
+        elif _comp_active:
             _selected_html = """
             <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
                 <div style="width:34px;height:34px;border-radius:50%;background:#0e2a47;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏆</div>
@@ -5959,7 +5992,7 @@ html, body { background: transparent; overflow: hidden; }
             </div>"""
         else:
             _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
-
+ 
         _dropdown_items = ""
         for _ci_h, _e_h in enumerate(todas_empresas):
             _is_m     = _e_h["tipo"] == "minha"
@@ -5969,12 +6002,7 @@ html, body { background: transparent; overflow: hidden; }
             _av_d     = gerar_avatar(_e_h["nome"])
             _sub_d    = f"@{_ads_id_d}" if _ads_id_d and not _ads_id_d.isdigit() else (f"ID: {_ads_id_d}" if _ads_id_d else "Não configurado")
             _badge_txt_d = "Minha empresa" if _is_m else "Concorrente"
-            _badge_bg_d  = "#f0fdf4"       if _is_m else "#eff6ff"
-            _badge_col_d = "#15803d"       if _is_m else "#1d4ed8"
-            _badge_brd_d = "#bbf7d0"       if _is_m else "#bfdbfe"
             _is_active_d = (_e_h["nome"] == _emp_ativa_nome)
-            _active_bg   = "#f0f9ff" if _is_active_d else "#fff"
-            _active_brd  = "#3a9fd6" if _is_active_d else "transparent"
             _sk_h2       = safe_key(_e_h["nome"])
             _ghost_lbl_d = f"hdemp_{_sk_h2}"
             if _pp_d and _pp_d.startswith("http"):
@@ -5982,127 +6010,86 @@ html, body { background: transparent; overflow: hidden; }
             else:
                 _av_item_html = f'<div style="width:30px;height:30px;border-radius:50%;background:{_cor_d};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">{_av_d}</div>'
             _dropdown_items += f"""
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;
-                        background:{_active_bg};border-left:3px solid {_active_brd};transition:background 0.12s"
-                 onmouseover="if(this.getAttribute('data-active')!=='1')this.style.background='#f9fafb'"
-                 onmouseout="if(this.getAttribute('data-active')!=='1')this.style.background='{_active_bg}'"
-                 data-active="{'1' if _is_active_d else '0'}"
-                 onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
-                <div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0">{_av_item_html}</div>
-                <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_e_h["nome"]}</div>
-                    <div style="font-size:11px;color:#9ca3af">{_sub_d}</div>
+            <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
+                <div class="dd-icon">{_av_item_html}</div>
+                <div class="dd-info">
+                    <span class="dd-nome">{_e_h["nome"]}</span>
+                    <div class="dd-handle">{_sub_d}</div>
                 </div>
-                <span style="background:{_badge_bg_d};color:{_badge_col_d};border:1px solid {_badge_brd_d};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_d}</span>
-                {'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' if _is_active_d else ''}
+                <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
             </div>"""
-
-        _comp_active = (_emp_ativa_nome == "__comparativo__")
-        _comp_bg  = "#f0f9ff" if _comp_active else "#fff"
-        _comp_brd = "#3a9fd6" if _comp_active else "transparent"
+ 
         _dropdown_items += f"""
-        <div style="border-top:1px solid #f3f4f6">
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;
-                        background:{_comp_bg};border-left:3px solid {_comp_brd};transition:background 0.12s"
-                 onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='{_comp_bg}'"
-                 onclick="triggerGhost('hdemp_comparativo');closeDropdown()">
-                <div style="width:30px;height:30px;border-radius:50%;background:#0e2a47;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🏆</div>
-                <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:700;color:#0e2a47">Análise Comparativa</div>
-                    <div style="font-size:11px;color:#9ca3af">Comparar todos os perfis</div>
-                </div>
+        <div class="dd-item{' selected' if _comp_active else ''}" onclick="triggerGhost('hdemp_comparativo');closeDropdown()">
+            <div class="dd-icon" style="background:#224161;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="dd-info">
+                <span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>
+                <div class="dd-handle">Comparar todos os perfis</div>
             </div>
         </div>"""
-
+ 
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-*{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:visible;}}
-.dd-wrap{{position:relative;width:100%;}}
-.dd-trigger{{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #e5e7eb;border-radius:12px;padding:8px 12px;cursor:pointer;width:100%;transition:border-color 0.15s;font-family:'DM Sans',sans-serif;}}
-.dd-trigger:hover{{border-color:#3a9fd6;}}
-.dd-trigger.open{{border-color:#3a9fd6;border-radius:12px 12px 0 0;border-bottom-color:#e5e7eb;}}
-.dd-chevron{{flex-shrink:0;transition:transform 0.2s;color:#9ca3af;}}
-.dd-trigger.open .dd-chevron{{transform:rotate(180deg);}}
-.dd-menu{{position:absolute;top:100%;left:0;right:0;z-index:9999;background:#fff;border:1.5px solid #3a9fd6;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.12);display:none;}}
-.dd-menu.open{{display:block;}}
-</style>
-<div class="dd-wrap" id="dd_wrap">
-    <div class="dd-trigger" id="dd_trigger" onclick="toggleDropdown()">
-        {_selected_html}
-        <svg class="dd-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div class="dd-menu" id="dd_menu">
-        {_dropdown_items}
-    </div>
-</div>
-<script>
-function toggleDropdown(){{var t=document.getElementById('dd_trigger');var m=document.getElementById('dd_menu');var open=m.classList.contains('open');if(open){{m.classList.remove('open');t.classList.remove('open');}}else{{m.classList.add('open');t.classList.add('open');syncHeight();}}}}
-function closeDropdown(){{document.getElementById('dd_menu').classList.remove('open');document.getElementById('dd_trigger').classList.remove('open');syncHeight();}}
-function triggerGhost(label){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===label){{b.click();return;}}}}}}
-function syncHeight(){{var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);var frames=window.parent.document.querySelectorAll('iframe');for(var i=0;i<frames.length;i++){{try{{if(frames[i].contentWindow===window){{frames[i].style.height=(h+4)+'px';break;}}}}catch(e){{}}}}}}
-document.addEventListener('click',function(e){{if(!document.getElementById('dd_wrap').contains(e.target))closeDropdown();}});
-if(window.ResizeObserver)new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight,100);setTimeout(syncHeight,400);
-</script>
-""", height=56, scrolling=False)
-
-    with h3_col:
-        st.markdown("""
-        <style>
-        .st-key-ads_buscar_header_btn { margin-bottom: -16px !important; }
-        .stElementContainer:has(.st-key-ads_buscar_header_btn) { margin-bottom: -12px !important; }
-        </style>
-        """, unsafe_allow_html=True)
-        gerar_btn_ads_header = st.button(
-            "Buscar / Atualizar Anúncios",
-            type="primary",
-            use_container_width=True,
-            key="ads_buscar_header_btn",
-        )
-        if st.session_state.ads_cache:
-            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
-            if _tss:
-                _ultima_ts = min(_tss)
-                _d = {k: v for k, v in st.session_state.ads_cache.items()}
-                import json as _json_ads
-                _djs = _json_ads.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
-                _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
-
-                if st.button("ads_limpar_cache", key="ads_limpar_cache_btn"):
-                    st.session_state.ads_cache = {}
-                    st.session_state.ads_erro = {}
-                    try:
-                        supabase.table("ci_dados").update({"ads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
-                    except Exception:
-                        pass
-                    st.toast("Cache limpo!", icon="🗑️")
-                    st.rerun()
-
-                st.markdown("""
-                <style>
-                .st-key-ads_limpar_cache_btn {
-                    position: fixed !important; top: -9999px !important; left: -9999px !important;
-                    width: 0 !important; height: 0 !important; overflow: hidden !important;
-                    opacity: 0 !important; pointer-events: none !important; display: none !important;
-                }
-                .stElementContainer:has(.st-key-ads_limpar_cache_btn) {
-                    display: none !important; height: 0 !important; min-height: 0 !important;
-                    max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
-
-                components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+ 
+.ctrl-box {{
+    background:#d2dde9; border-radius:14px;
+    padding:14px 16px; display:flex;
+    gap:12px; align-items:center; position:relative; overflow:visible;
+    width:100%; box-sizing:border-box;
+}}
+.col-select {{ position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:visible; }}
+ 
+.dd-wrap {{ position:relative; width:100%; }}
+.dd-trigger {{
+    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    padding:8px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%;
+}}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
+.dd-arrow.open {{ transform:rotate(180deg); }}
+ 
+.dd-list {{
+    position:absolute; top:calc(100% + 6px); left:0; width:100%;
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
+    max-height:320px; overflow-y:auto; display:none; padding:6px; box-sizing:border-box;
+}}
+.dd-list.open {{ display:block; }}
+.dd-item {{
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:all 0.15s; margin-bottom:6px;
+}}
+.dd-item:last-child {{ margin-bottom:0; }}
+.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
+.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#e9eef5; }}
+.dd-info {{ flex:1; min-width:0; }}
+.dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
+.dd-handle {{ font-size:11px; color:#9ca3af; }}
+.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }}
+.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
+.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+ 
+.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
+.ctrl-btn {{
+    width:100%; height:44px; border-radius:10px; border:none;
+    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    transition:all 0.15s; white-space:nowrap; padding:0 14px;
+}}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:240px; }}
+.btn-coletar:hover {{ background:#1a3f6a; }}
+ 
 .row-coleta {{
-    display:flex; align-items:center; justify-content:center; gap:6px;
-    font-size:13px; color:#6b7280; font-family:'DM Sans',sans-serif;
-    flex-wrap:nowrap; white-space:nowrap; text-align:center;
+    gap:6px; font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
+    flex-wrap:nowrap; white-space:nowrap; text-align:center; display:flex; justify-content:center;
 }}
 .link-btn {{ font-size:11px; color:#6b7280; cursor:pointer; text-underline-offset:3px; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; }}
 .link-btn:hover {{ text-decoration:underline; color:#374151; }}
@@ -6110,22 +6097,56 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 </style>
-<div class="row-coleta">
-    <button class="link-btn" onclick="abrirModal()">🕒 Última busca: <b>{_ultima_ts}</b></button>
-    <span class="sep">|</span>
-    <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
+ 
+<div class="ctrl-box">
+    <div class="col-select">
+        <div class="dd-wrap" id="dd-wrap">
+            <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
+                {_selected_html}
+                <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="dd-list" id="dd-list">{_dropdown_items}</div>
+        </div>
+    </div>
+    <div class="col-btns">
+        <button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">🔍 Buscar / Atualizar Anúncios</button>
+        {f'''<div class="row-coleta">
+            <button class="link-btn" onclick="abrirModal()">🕒 Última busca: <b>{_ultima_ts}</b></button>
+            <span class="sep">|</span>
+            <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
+        </div>''' if _ultima_ts else ''}
+    </div>
 </div>
+ 
 <script>
 var DADOS_JSON = '{_djs}';
 var FILENAME   = '{_fn}';
 var ULTIMA     = '{_ultima_ts}';
-function triggerLimpar() {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === 'ads_limpar_cache') {{ b.click(); return; }}
-    }}
+ 
+function toggleDropdown(){{
+    var m = document.getElementById('dd-list'); var ar = document.getElementById('dd-arrow');
+    var open = m.classList.contains('open');
+    if(open){{ m.classList.remove('open'); ar.classList.remove('open'); }}
+    else{{ m.classList.add('open'); ar.classList.add('open'); }}
+    setHeight(!open);
 }}
+function closeDropdown(){{
+    document.getElementById('dd-list').classList.remove('open');
+    document.getElementById('dd-arrow').classList.remove('open');
+    setHeight(false);
+}}
+document.addEventListener('click', function(e){{
+    var wrap = document.getElementById('dd-wrap');
+    if (wrap && !wrap.contains(e.target)) closeDropdown();
+}});
+ 
+function triggerGhost(label){{
+    var btns=window.parent.document.querySelectorAll('button');
+    for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
+}}
+function triggerBuscar(){{ triggerGhost('ads_buscar_header_trigger'); }}
+function triggerLimpar(){{ triggerGhost('ads_limpar_cache'); }}
+ 
 function abrirModal() {{
     window.fechar = function() {{
         var o = window.parent.document.getElementById('raw_modal_overlay');
@@ -6177,18 +6198,37 @@ function abrirModal() {{
     window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
     doc.addEventListener('keydown', window.parent.__rawEsc);
 }}
-(function() {{
+ 
+function setHeight(isOpen) {{
+    var listH = isOpen ? Math.min(({_n_dd_items} * 64) + 70 + 28, 330) : 0;
+    var extra = ULTIMA ? 26 : 0;
+    var h = 86 + extra + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '28px';
-            iframes[i].style.marginTop = '-8px';
+            iframes[i].style.height = h + 'px';
+            iframes[i].style.zIndex = isOpen ? '9999' : '1';
+            iframes[i].style.overflow = 'visible';
+            var parent = iframes[i].parentElement;
+            var depth = 0;
+            while (parent && depth < 8) {{
+                parent.style.overflow = isOpen ? 'visible' : '';
+                parent.style.zIndex  = isOpen ? '9999' : '';
+                var isBlockContainer = parent.getAttribute &&
+                    (parent.getAttribute('data-testid') === 'stVerticalBlock' ||
+                     parent.getAttribute('data-testid') === 'stHorizontalBlock');
+                parent = parent.parentElement;
+                depth++;
+                if (isBlockContainer) break;
+            }}
             break;
         }} }} catch(e) {{}}
     }}
-}})();
+}}
+ 
+setHeight(false);
 </script>
-""", height=28, scrolling=False)
+""", height=104 if _ultima_ts else 78, scrolling=False)
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
 

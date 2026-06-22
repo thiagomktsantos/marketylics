@@ -9283,11 +9283,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .ctrl-box {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:14px 16px; display:grid; grid-template-columns:1fr auto;
-    gap:12px; align-items:center; position:relative;
+    gap:12px; align-items:center; position:relative; overflow:visible;
+    width:100%; box-sizing:border-box;
 }}
-.col-select {{ position:relative; display:flex; align-items:center; }}
+.col-select {{ position:relative; display:flex; align-items:center; min-width:0; overflow:visible; }}
 
-.dd-wrap {{ position:relative; width:100%; }}
+.dd-wrap {{ position:relative; width:100%; max-width:100%; }}
 .dd-trigger {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
@@ -9316,10 +9317,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-arrow.open {{ transform:rotate(180deg); }}
 
 .dd-list {{
-    position:absolute; top:calc(100% + 6px); left:0; right:0;
+    position:absolute; top:calc(100% + 6px); left:0;
+    width:100%;  /* já existe, mas garanta que não tem right:0 junto */
     background:#fff; border:1px solid #e5e7eb; border-radius:12px;
     box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
-    max-height:260px; overflow-y:auto; display:none; padding:6px;
+    max-height:320px; overflow-y:auto; display:none; padding:6px;
+    box-sizing:border-box;
 }}
 .dd-list.open {{ display:block; }}
 .dd-item {{
@@ -9486,15 +9489,14 @@ function triggerComparativo() {{
 }}
 
 function setHeight(isOpen) {{
-    var listH = isOpen ? Math.min(EMPRESAS_CTRL.length * 64 + 16 + 70, 330) : 0;
-    var h = 78 + (isOpen ? listH + 6 : 0);
+    var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 64) + 70 + 28, 330) : 0;
+    var h = 86 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
+        try { if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = h + 'px';
             iframes[i].style.zIndex = isOpen ? '9999' : '1';
             iframes[i].style.overflow = 'visible';
-            // Propaga overflow:visible nos containers pai para o dropdown não ser cortado
             var parent = iframes[i].parentElement;
             var depth = 0;
             while (parent && depth < 8) {{

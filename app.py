@@ -5868,8 +5868,11 @@ elif st.session_state.pagina == "ads":
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
 
     if not st.session_state.get("ads_empresa_ativa"):
-        if empresas_configuradas:
-            st.session_state.ads_empresa_ativa = empresas_configuradas[0]["nome"]
+        _emps_conf_init = [e for e in todas_empresas if (
+            emp.get("ads_id","").strip() if e["tipo"] == "minha" else concs[e["idx"]].get("ads_id","").strip()
+        )]
+        if _emps_conf_init:
+            st.session_state.ads_empresa_ativa = _emps_conf_init[0]["nome"]
         elif todas_empresas:
             st.session_state.ads_empresa_ativa = todas_empresas[0]["nome"]
     

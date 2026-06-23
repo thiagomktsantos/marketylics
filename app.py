@@ -6246,7 +6246,7 @@ setHeight(false);
 </script>
 """, height=104 if _ultima_ts else 78, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:-10px 0 8px 0'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin-top:-10px'/>", unsafe_allow_html=True)
 
     _ids_coletados       = set(st.session_state.ads_cache.keys())
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]

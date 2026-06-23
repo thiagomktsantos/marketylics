@@ -7582,8 +7582,9 @@ Amostra dos anúncios:
                 for icon, label, cor, bg, brd in _insight_chips
             ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
 
-            st.markdown(f"""
-            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-100px;'>
+            components.html(f"""
+            <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:0px;'>
                 <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
                     {avatar_empresa_html}
                     <div style='flex:1;min-width:0'>
@@ -7603,12 +7604,12 @@ Amostra dos anúncios:
                         <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
                         <div style='display:flex;align-items:center;gap:10px;flex-shrink:0'>
                             <a href='javascript:void(0)'
-                               onclick="(function(){{var el=window.parent.document.querySelector('.st-key-btn_ia_copys_{sk} button');if(el){{el.click();return;}}var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').replace(/\\s+/g,' ').trim();if(t==='ia_copys_{sk}'){{b.click();return;}}}}}})()"
+                               onclick="triggerIA('btn_ia_copys_{sk}')"
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
                                 <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg></span>
+                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg></span>
                                     <span style='display:flex;flex-direction:column;gap:0px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar anúncios</span>
                                         <span style='font-size:11px;font-weight:400;color:#747a87;'>Copies, CTAs e padrões de texto</span>
@@ -7616,7 +7617,7 @@ Amostra dos anúncios:
                                 </span>
                             </a>
                             <a href='javascript:void(0)'
-                               onclick="(function(){{var el=window.parent.document.querySelector('.st-key-btn_ia_geral_{sk} button');if(el){{el.click();return;}}var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').replace(/\\s+/g,' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
+                               onclick="triggerIA('btn_ia_geral_{sk}')"
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
@@ -7631,7 +7632,33 @@ Amostra dos anúncios:
                         </div>
                     </div>
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>
+<script>
+function triggerIA(key) {{
+    var levels = [window.parent, window.parent.parent, window.top];
+    for (var li = 0; li < levels.length; li++) {{
+        try {{
+            var doc = levels[li].document;
+            var el = doc.querySelector('.st-key-' + key + ' button');
+            if (el) {{ el.click(); return; }}
+        }} catch(e) {{}}
+    }}
+}}
+function syncH() {{
+    var h = document.body.scrollHeight;
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 4) + 'px';
+            frames[i].style.marginTop = '-100px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+window.addEventListener('load', syncH);
+setTimeout(syncH, 200);
+</script>
+""", height=160, scrolling=False)
 
             for j, ad_ind in enumerate(ads_list):
                 if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):

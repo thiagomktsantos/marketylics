@@ -5951,16 +5951,12 @@ html, body { background: transparent; overflow: hidden; height: 100%; }
                 st.rerun()
  
         # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
-        _ultima_ts = ""
         _djs = "[]"
         _fn = ""
-        if st.session_state.ads_cache:
-            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
-            if _tss:
-                _ultima_ts = min(_tss)
-                _d = {k: v for k, v in st.session_state.ads_cache.items()}
-                _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
-                _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
+        if _ultima_ts:
+            _d = {k: v for k, v in st.session_state.ads_cache.items()}
+            _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+            _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
  
         _emp_ativa_nome = st.session_state.get("ads_empresa_ativa", "")
         _emp_ativa_obj  = next((e for e in todas_empresas if e["nome"] == _emp_ativa_nome), None)

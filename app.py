@@ -10805,8 +10805,8 @@ body{{padding-bottom:8px;}}
                 </div>
             </button>
             <button class="action-btn" onclick="trigger('geral_{aba_ativa}')">
-                <div class="action-btn-icon purple">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <div class="action-btn-icon blue">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="12" width="4" height="9" rx="1"/>
                         <rect x="10" y="7" width="4" height="14" rx="1"/>
                         <rect x="17" y="3" width="4" height="18" rx="1"/>

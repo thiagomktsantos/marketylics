@@ -8954,9 +8954,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()">⬇️ Coletar dados</button>
+        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Coletar dados</button>
         {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()">🕒 Últ. coleta: <b>{ultima_coleta}</b></button>
+            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. coleta: <b>{ultima_coleta}</b></button>
             <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if ultima_coleta else ''}

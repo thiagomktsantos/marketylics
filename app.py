@@ -2916,21 +2916,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 /* coluna 2: coletas */
 .col-coletas-geral {{
-    flex-shrink:0;
-    background:#fff;
-    border-radius:7px;
-    padding:4px 10px;
-    display:flex;
-    flex-direction:column;
     min-width:0;
 }}
 .coleta-item {{
-    display:flex; align-items:center; gap:5px;
-    font-size:11px; color:#6b7280; white-space:nowrap;
+    gap:5px;
+    font-size:11px; color:#1a2e4a; white-space:nowrap;
     font-family:'DM Sans',sans-serif;
 }}
 .coleta-item strong {{
-    color:#1a2e4a; font-weight:700;
+    font-weight:700;
 }}
 </style>
 

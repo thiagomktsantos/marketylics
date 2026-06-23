@@ -2952,7 +2952,9 @@ document.addEventListener('click', function(e) {{
 
 function setHeightGeral(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_DD_GERAL.length * 64) + 24, 330) : 0;
-    var h = 64 + (isOpen ? listH + 10 : 0);
+    /* CORRIGIDO: base era 64 e cortava o card (ícone 36px + paddings ~80px reais).
+       Agora a base acompanha a altura real do componentes.html abaixo (88). */
+    var h = 88 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -2981,7 +2983,52 @@ function setHeightGeral(isOpen) {{
     setHeightGeral(false);
 }})();
 </script>
-""", height=64, scrolling=False)
+""", height=88, scrolling=False)
+        # ↑ CORRIGIDO: height era 64 (insuficiente) e cortava o card por baixo. Agora 88.
+
+        # ── NOVO: última coleta por fonte (Instagram, Meta Ads, SEO) ────
+        # Mostra a data da última coleta de cada fonte para a empresa
+        # atualmente selecionada no dropdown acima. Texto simples, sem botão.
+        empresa_sel_geral = todas_empresas_geral[filtro_empresa_ativo] if todas_empresas_geral else None
+        nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
+
+        r_sel_geral   = dados_redes_map.get(nome_sel_geral, {}) or {}
+        ads_sel_geral = ads_cache.get(nome_sel_geral, {}) or {}
+        seo_sel_geral = st.session_state.get("seo_cache", {}).get(nome_sel_geral, {}) or {}
+
+        def _fmt_ultima_coleta(valor):
+            return str(valor) if valor else "Sem coleta"
+
+        # ⚠️ Ajuste os nomes das chaves abaixo se forem diferentes no resto do seu app.
+        # Tenta algumas variações comuns antes de cair em "Sem coleta".
+        coleta_ig_geral = _fmt_ultima_coleta(
+            r_sel_geral.get("atualizado_em")
+            or r_sel_geral.get("coletado_em")
+            or r_sel_geral.get("ultima_coleta")
+            or r_sel_geral.get("timestamp")
+        )
+        coleta_ads_geral = _fmt_ultima_coleta(
+            ads_sel_geral.get("atualizado_em")
+            or ads_sel_geral.get("coletado_em")
+            or ads_sel_geral.get("ultima_coleta")
+            or ads_sel_geral.get("timestamp")
+        )
+        coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
+
+        st.markdown(f"""
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; padding:0 6px;
+                    font-family:'DM Sans',sans-serif;">
+            <div style="font-size:11px; color:#6b7280;">
+                <strong style="color:#1a2e4a;">📱 Instagram:</strong> {coleta_ig_geral}
+            </div>
+            <div style="font-size:11px; color:#6b7280;">
+                <strong style="color:#1a2e4a;">📣 Meta Ads:</strong> {coleta_ads_geral}
+            </div>
+            <div style="font-size:11px; color:#6b7280;">
+                <strong style="color:#1a2e4a;">🌐 SEO:</strong> {coleta_seo_geral}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
 

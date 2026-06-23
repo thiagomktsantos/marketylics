@@ -3481,7 +3481,7 @@ function setHeightGeral(isOpen) {{
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Estatísticas</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Estatísticas</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
@@ -3515,7 +3515,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
                     '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
                     '<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
                     '✅ Tem bio +20<br>✅ Proposta de valor +20<br>✅ Posicionamento +20<br>'
@@ -3547,7 +3547,7 @@ function setHeightGeral(isOpen) {{
                 tipos_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Tipos de Conteúdo</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Tipos de Conteúdo</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {m["n_total_tp"]}</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
@@ -3573,7 +3573,7 @@ function setHeightGeral(isOpen) {{
                         )
                     nuvem_block_html = (
                         '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
+                        '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
                         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                         f'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">{nuvem_chips}</div>'
                         '</div>'
@@ -3616,7 +3616,7 @@ function setHeightGeral(isOpen) {{
                 ads_formato_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato dos anúncios</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {a["total"]}</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
@@ -3625,7 +3625,7 @@ function setHeightGeral(isOpen) {{
 
                 ads_tipos_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + barra_tipo("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
                     + barra_tipo("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
@@ -3647,7 +3647,7 @@ function setHeightGeral(isOpen) {{
 
                 ads_plat_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Plataformas dos anúncios</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Plataformas dos anúncios</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + plat_donuts + '</div>'
                 )
@@ -3673,7 +3673,7 @@ function setHeightGeral(isOpen) {{
 
                 ads_dest_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Destinos dos anúncios</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Destinos dos anúncios</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + ads_dest_content + '</div>'
                 )
@@ -3837,7 +3837,7 @@ function buildSeoColumn(d,colEl) {{
     scoreBlock.innerHTML=
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
         +'<div style="display:flex;align-items:center;">'
-        +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
+        +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
         +'<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
         +'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
         +'✅ Title +20<br>✅ H1 +20<br>✅ Meta Desc. +20<br>✅ Seções (H2) +20<br>✅ Sitemap +20'
@@ -3866,7 +3866,7 @@ function buildSeoColumn(d,colEl) {{
     if(algumGrupo){{
         var ctBlock=document.createElement('div');
         ctBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        ctBlock.innerHTML='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'+gruposHtml;
+        ctBlock.innerHTML='<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'+gruposHtml;
         colEl.appendChild(ctBlock);
     }}
     var topWords=calcTopWords(d);
@@ -3882,7 +3882,7 @@ function buildSeoColumn(d,colEl) {{
         var unigramsHtml=unigrams.map(function(item,i){{return makeChip(item,i,false);}}).join('');
         var kwBlock=document.createElement('div');
         kwBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        var innerHtml='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Termos mais usados</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>';
+        var innerHtml='<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Termos mais usados</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>';
         if(bigramsHtml)innerHtml+='<div class="termos-sub">Expressões-chave</div><div class="termos-chips">'+bigramsHtml+'</div>';
         if(unigramsHtml)innerHtml+='<div class="termos-sub">Palavras frequentes</div><div class="termos-chips">'+unigramsHtml+'</div>';
         kwBlock.innerHTML=innerHtml;

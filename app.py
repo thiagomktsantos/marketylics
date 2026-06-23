@@ -5855,7 +5855,11 @@ elif st.session_state.pagina == "ads":
     src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { background: transparent; overflow: hidden; }
+html, body { background: transparent; overflow: hidden; height: 100%; }
+.wrap {
+    display: flex; flex-direction: column; justify-content: center;
+    height: 100%;
+}
 .titulo {
     font-family: 'Animo', 'DM Sans', sans-serif;
     font-size: 32px; font-weight: 700; color: #1a2e4a;
@@ -5865,7 +5869,7 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div class="titulo">Biblioteca de Ads</div>
 <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
-""", height=65)
+""", height=104 if _ultima_ts else 78)
  
     with h2_col:
         # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──

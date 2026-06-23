@@ -7582,7 +7582,7 @@ Amostra dos anúncios:
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
                                 <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M3 9v6h4l5 4V5L7 9H3z"/><path d="M16 7c1.5 1 2.5 2.5 2.5 5s-1 4-2.5 5"/><path d="M19.5 4c2.5 2 4 5 4 8s-1.5 6-4 8"/></svg></span>
+                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg></span>
                                     <span style='display:flex;flex-direction:column;gap:0px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar anúncios</span>
                                         <span style='font-size:11px;font-weight:400;color:#747a87;'>Copies, CTAs e padrões de texto</span>

@@ -7681,7 +7681,7 @@ CTA: {ad_ind.get('cta','') or '—'}
 <style>
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:hidden;}}
-.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:16px 16px 4px;}}
+.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:13px 16px 4px;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
 .stat-lbl-green{{color:#15803d;}}
 .stat-num{{font-size:22px;font-weight:800;}}

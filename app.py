@@ -3813,7 +3813,7 @@ function buildSeoColumn(d,colEl) {{
     var scoreNum=d.seo_score_val;
     var scoreTextColor=scoreNum>=80?'#15803d':scoreNum>=40?'#92400e':'#b91c1c';
     var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
-    var scoreTxt2=scoreNum>=80?'Excelente 🏆':scoreNum>=60?'Bom 👍':scoreNum>=40?'Regular ⚠️':'Precisa melhorar 📝';
+    var scoreTxt2=scoreNum>=80?'🏆 Excelente':scoreNum>=60?'👍 Bom':scoreNum>=40?'⚠️ Regular':'📝 Precisa melhorar';
     var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
     var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);
     var SEO_ITEMS=[

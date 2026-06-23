@@ -3709,7 +3709,7 @@ body {{ padding-bottom:8px; }}
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
-    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800;
+    display:flex; align-items:center; gap:6px; font-size:17px; font-weight:800;
     text-transform:uppercase; letter-spacing:0.5px;
     padding:8px 12px; border-radius:8px; margin-bottom:10px;
 }}

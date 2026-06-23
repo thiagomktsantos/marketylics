@@ -3117,7 +3117,7 @@ function setHeightGeral(isOpen) {{
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            f'<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">'
+            f'<div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'

@@ -2756,9 +2756,24 @@ elif st.session_state.pagina == "geral":
     def _fmt_ultima_coleta(valor):
         return str(valor) if valor else "Sem coleta"
 
+    # Garante que metricas_redes está carregado do banco
+    if not st.session_state.metricas_redes.get("ultima_coleta"):
+        try:
+            _res_redes = (
+                supabase.table("ci_dados")
+                .select("metricas_redes")
+                .eq("user_id", st.session_state.user.id)
+                .execute()
+            )
+            if _res_redes.data and _res_redes.data[0].get("metricas_redes"):
+                st.session_state.metricas_redes = _res_redes.data[0]["metricas_redes"]
+        except Exception:
+            pass
+
     _ultima_coleta_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
     coleta_ig_geral = _fmt_ultima_coleta(
-        r_sel_geral.get("atualizado_em")
+        _ultima_coleta_redes
+        or r_sel_geral.get("atualizado_em")
         or r_sel_geral.get("coletado_em")
         or r_sel_geral.get("ultima_coleta")
         or r_sel_geral.get("timestamp")

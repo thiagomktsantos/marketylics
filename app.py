@@ -3723,11 +3723,11 @@ body {{ padding-bottom:8px; }}
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
 }}
-.contato-grupo-title {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
+.contato-grupo-title {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#9ca3af; margin-bottom:7px; }}
 .contato-chips {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:4px; }}
 .contato-chip {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#374151; }}
 .contato-divider {{ border:none; border-top:1px solid #f3f4f6; margin:8px 0; }}
-.termos-sub {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
+.termos-sub {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#9ca3af; margin-bottom:7px; }}
 .termos-chips {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }}
 .termo-chip {{ display:inline-flex; align-items:center; gap:2px; font-size:11px; font-weight:600; background:#f8f8f8; border-radius:20px; padding:3px 10px; cursor:default; line-height:1.3; }}
 .termo-chip-bigram {{ border-radius:10px; padding:4px 11px; }}

@@ -2885,11 +2885,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .col-coletas-geral {{
     flex-shrink:0;
     background:#fff;
-    border-radius:10px;
-    padding:8px 12px;
+    border-radius:7px;
+    padding:4px 10px;
     display:flex;
     flex-direction:column;
-    gap:5px;
     min-width:0;
 }}
 .coleta-item {{
@@ -2912,7 +2911,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     <div class="dd-icon-geral" id="dd-trigger-icon-geral"></div>
                     <div class="dd-info-geral">
                         <span class="dd-nome-geral" id="dd-trigger-nome-geral"></span>
-                        <div class="dd-handle-geral" id="dd-trigger-handle-geral"></div>
                     </div>
                     <span id="dd-trigger-badge-geral"></span>
                     <svg class="dd-arrow-geral" id="dd-arrow-geral" width="14" height="14" viewBox="0 0 24 24" fill="none"

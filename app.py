@@ -5845,36 +5845,38 @@ elif st.session_state.pagina == "ads":
     # ══════════════════════════════════════════════════════════════════
 
     _ultima_ts = ""
-        if st.session_state.ads_cache:
+    if st.session_state.ads_cache:
         _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
         if _tss:
-            _ultima_ts = min(_tss)  
-    
+            _ultima_ts = min(_tss)
+
     h1_col, h2_col = st.columns([5, 5])
- 
+
     with h1_col:
-        components.html("""
+        components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-@font-face {
+@font-face {{
     font-family: 'Animo';
     src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { background: transparent; overflow: hidden; height: 100%; }
-.wrap {
+}}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ background: transparent; overflow: hidden; height: 100%; }}
+.wrap {{
     display: flex; flex-direction: column; justify-content: center;
     height: 100%;
-}
-.titulo {
+}}
+.titulo {{
     font-family: 'Animo', 'DM Sans', sans-serif;
     font-size: 32px; font-weight: 700; color: #1a2e4a;
     text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
-}
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+}}
+.sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
 </style>
-<div class="titulo">Biblioteca de Ads</div>
-<div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
+<div class="wrap">
+    <div class="titulo">Biblioteca de Ads</div>
+    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
+</div>
 """, height=104 if _ultima_ts else 78)
  
     with h2_col:

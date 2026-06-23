@@ -3607,7 +3607,7 @@ function setHeightGeral(isOpen) {{
                     )
 
                 formato_donuts = (
-                    '<div style="display:flex;gap:8px;align-items:center;">'
+                    '<div style="display:flex;align-items:center;">'
                     + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
                     + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
                     + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])

@@ -3103,7 +3103,7 @@ function setHeightGeral(isOpen) {{
 </script>
 """, height=88, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 24px 0'/>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # FUNÇÕES DE DONUT

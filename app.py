@@ -2970,10 +2970,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             </div>
             <div class="coleta-item">
                 <strong>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 11v2a1 1 0 001 1h2l3.5 3.5a1 1 0 001.5-.86V7.36a1 1 0 00-1.5-.86L6 10H4a1 1 0 00-1 1z"/>
-                        <path d="M14.5 8.5a4 4 0 010 7"/>
-                        <path d="M17 6a7 7 0 010 12"/>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#f97316" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:3px;">
+                        <path fill-rule="evenodd" d="M8.217 5.243C9.145 3.988 10.171 3 11.483 3 13.96 3 16 6.153 16.001 9.907c0 2.29-.986 3.725-2.757 3.725-1.543 0-2.395-.866-3.924-3.424l-.667-1.123-.118-.197a55 55 0 0 0-.53-.877l-1.178 2.08c-1.673 2.925-2.615 3.541-3.923 3.541C1.086 13.632 0 12.217 0 9.973 0 6.388 1.995 3 4.598 3q.477-.001.924.122c.31.086.611.22.913.407.577.359 1.154.915 1.782 1.714m1.516 2.224q-.378-.615-.727-1.133L9 6.326c.845-1.305 1.543-1.954 2.372-1.954 1.723 0 3.102 2.537 3.102 5.653 0 1.188-.39 1.877-1.195 1.877-.773 0-1.142-.51-2.61-2.87zM4.846 4.756c.725.1 1.385.634 2.34 2.001A212 212 0 0 0 5.551 9.3c-1.357 2.126-1.826 2.603-2.581 2.603-.777 0-1.24-.682-1.24-1.9 0-2.602 1.298-5.264 2.846-5.264q.137 0 .27.018"/>
                     </svg>
                     Meta Ads:
                 </strong> {coleta_ads_geral}

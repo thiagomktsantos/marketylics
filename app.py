@@ -6362,13 +6362,16 @@ setHeight(false);
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 .nav-bar {{
-    display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; width:100%;
+    display:grid; grid-template-columns:auto 1fr 1fr; gap:12px; width:100%;
 }}
 .nav-item {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:16px 20px; cursor:pointer;
     display:flex; align-items:center; gap:14px;
     transition:all 0.15s; position:relative; overflow:hidden;
+}}
+.nav-item.icon-only {{
+    padding:16px 22px; justify-content:center;
 }}
 .nav-item:hover {{ border-color:#3a9fd6; box-shadow:0 2px 12px rgba(58,159,214,0.12); }}
 .nav-item.active {{
@@ -6404,16 +6407,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
 </style>
 <div class="nav-bar">
-    <div class="nav-item {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')">
+    <div class="nav-item icon-only {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')" title="Configuração">
         <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'configuracao' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"/>
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
-        </div>
-        <div class="nav-content">
-            <span class="nav-title">Configuração</span>
-            <span class="nav-sub">Configure suas empresas</span>
         </div>
     </div>
     <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
@@ -6426,9 +6425,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div class="nav-content">
             <span class="nav-title">Empresas configuradas</span>
             <span class="nav-sub">Gerencie empresas cadastradas</span>
-        </div>
-        <div class="nav-right">
-            <div class="count-badge {'has' if n_configuradas > 0 else ''}">{n_configuradas}</div>
         </div>
     </div>
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
@@ -6459,7 +6455,7 @@ function triggerTab(label) {{
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-35px';
+            iframes[i].style.marginTop = '-15px';
             break;
         }} }} catch(e) {{}}
     }}

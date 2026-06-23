@@ -3705,7 +3705,7 @@ body {{ padding-bottom:8px; }}
     border-top:3px solid var(--cor);
 }}
 .empresa-card {{
-    overflow:hidden;
+    overflow:hidden; margin-top: 10px;
 }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
@@ -3716,9 +3716,9 @@ body {{ padding-bottom:8px; }}
     text-transform:uppercase; letter-spacing:0.5px;
     padding:8px 12px; border-radius:8px; margin-bottom:10px;
 }}
-.col-title-redes  {{ background:#eff6ff; color:#1d4ed8; border-left:3px solid #3b82f6; }}
-.col-title-site   {{ background:#f0fdf4; color:#15803d; border-left:3px solid #22c55e; }}
-.col-title-ads    {{ background:#fff7ed; color:#c2410c; border-left:3px solid #f97316; }}
+.col-title-redes  {{ background:#fff; color:#1d4ed8; border-left:3px solid #3b82f6; }}
+.col-title-site   {{ background:#fff; color:#15803d; border-left:3px solid #22c55e; }}
+.col-title-ads    {{ background:#fff; color:#c2410c; border-left:3px solid #f97316; }}
 .col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
 .col-ads    {{ border-left:2px solid #f9731620; padding-left:8px; margin-left:-8px; }}

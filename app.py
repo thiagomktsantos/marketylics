@@ -3497,7 +3497,7 @@ function setHeightGeral(isOpen) {{
                     score_nok_html = (
                         f'<div class="oport-wrap">'
                         f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-                        f'color:#3b9fd6;background:#ffffff;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+                        f'color:#3b9fd6;background:#fbfbfb;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
                         f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
                         f'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'
                         f'{score_faltando_html}</div>'
@@ -3826,7 +3826,7 @@ function buildSeoColumn(d,colEl) {{
     var nokHtml='';
     if(nok>0){{
         nokHtml='<div class="oport-wrap">'
-            +'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>'
+            +'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#3b9fd6;background:#fbfbfb;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>'
             +'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'+seoFaltandoHtml+'</div>'
             +'</div>';
     }}

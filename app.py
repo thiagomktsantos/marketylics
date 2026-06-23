@@ -7271,14 +7271,14 @@ window.addEventListener('load', syncHeight);
             else:
                 ads_list = ads_list_raw
 
-            # Ghost buttons para análise IA — padrão Redes
+            # Ghost buttons para análise IA
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
                 ia_analise_ghost_css.append(f"""
                 .st-key-{_gk} {{
                     position:fixed !important; top:-9999px !important; left:-9999px !important;
                     width:1px !important; height:1px !important;
-                    opacity:0 !important; pointer-events:none !important;
+                    opacity:0 !important;
                 }}
                 .stElementContainer:has(.st-key-{_gk}) {{
                     position:fixed !important; top:-9999px !important; left:-9999px !important;
@@ -7454,7 +7454,7 @@ Amostra dos anúncios:
                 .st-key-{_gk_ind} {{
                     position:fixed !important; top:-9999px !important; left:-9999px !important;
                     width:1px !important; height:1px !important;
-                    opacity:0 !important; pointer-events:none !important;
+                    opacity:0 !important;
                 }}
                 .stElementContainer:has(.st-key-{_gk_ind}) {{
                     position:fixed !important; top:-9999px !important; left:-9999px !important;
@@ -8435,10 +8435,13 @@ function toggleDebug(uid) {{
     setTimeout(syncHeight, 50);
 }}
 function analisarAd(uid, j) {{
+    var key = 'btn_ia_ind_{sk}_' + j;
+    var el = window.parent.document.querySelector('.st-key-' + key + ' button');
+    if (el) {{ el.click(); return; }}
     var label = 'ia_ind_{sk}_' + j;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}

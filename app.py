@@ -2916,7 +2916,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 /* coluna 2: coletas */
 .col-coletas-geral {{
-    min-width:0;
+    min-width:175px;
 }}
 .coleta-item {{
     gap:5px;

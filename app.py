@@ -7288,7 +7288,8 @@ window.addEventListener('load', syncHeight);
                 """)
             st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
 
-            if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
+            Aqui está o bloco completo para substituir:
+python            if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
                 if gemini_model is None:
                     st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
                 else:
@@ -7445,6 +7446,32 @@ Amostra dos anúncios:
                         _ph_ads.empty()
                         st.session_state[chave_ia_geral] = f"Erro: {ex}"
                         st.rerun()
+
+            # DEBUG TEMPORÁRIO — abra o console do navegador (F12) e veja os logs
+            import streamlit.components.v1 as _comp_debug
+            _comp_debug.html(f"""
+<script>
+(function() {{
+    var sk = '{sk}';
+    var keys = ['btn_ia_copys_' + sk, 'btn_ia_geral_' + sk, 'btn_ia_criativos_' + sk];
+    console.log('=== DEBUG GHOST BUTTONS ===');
+    keys.forEach(function(k) {{
+        var el = window.parent.document.querySelector('.st-key-' + k + ' button');
+        console.log('Seletor CSS .st-key-' + k + ' button:', el ? 'ENCONTRADO ✅' : 'NÃO ENCONTRADO ❌');
+        if (el) {{
+            console.log('  textContent:', JSON.stringify(el.textContent.trim()));
+            console.log('  pointer-events:', window.parent.getComputedStyle(el).pointerEvents);
+            console.log('  display:', window.parent.getComputedStyle(el).display);
+            console.log('  visibility:', window.parent.getComputedStyle(el).visibility);
+        }}
+    }});
+    var allBtns = Array.from(window.parent.document.querySelectorAll('button'))
+        .map(function(b) {{ return b.textContent.replace(/\\s+/g,' ').trim(); }})
+        .filter(function(t) {{ return t.includes('ia_') || t.includes('copys') || t.includes('geral'); }});
+    console.log('Botões com ia_/copys/geral:', allBtns);
+}})();
+</script>
+""", height=0)
 
             # Ghost buttons análise individual por anúncio
             ia_ind_ghost_css = []

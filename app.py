@@ -2745,8 +2745,33 @@ elif st.session_state.pagina == "geral":
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
 
+    # ── Dados de coleta da empresa selecionada ─────────────────────────
+    empresa_sel_geral = todas_empresas_geral[filtro_empresa_ativo] if todas_empresas_geral else None
+    nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
+
+    r_sel_geral   = dados_redes_map.get(nome_sel_geral, {}) or {}
+    ads_sel_geral = ads_cache.get(nome_sel_geral, {}) or {}
+    seo_sel_geral = st.session_state.get("seo_cache", {}).get(nome_sel_geral, {}) or {}
+
+    def _fmt_ultima_coleta(valor):
+        return str(valor) if valor else "Sem coleta"
+
+    coleta_ig_geral = _fmt_ultima_coleta(
+        r_sel_geral.get("atualizado_em")
+        or r_sel_geral.get("coletado_em")
+        or r_sel_geral.get("ultima_coleta")
+        or r_sel_geral.get("timestamp")
+    )
+    coleta_ads_geral = _fmt_ultima_coleta(
+        ads_sel_geral.get("atualizado_em")
+        or ads_sel_geral.get("coletado_em")
+        or ads_sel_geral.get("ultima_coleta")
+        or ads_sel_geral.get("timestamp")
+    )
+    coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
+
     # ══════════════════════════════════════════════════════════════════
-    # CABEÇALHO COM DROPDOWN DE EMPRESAS
+    # CABEÇALHO
     # ══════════════════════════════════════════════════════════════════
     h1, h2 = st.columns([5, 5])
 
@@ -2792,18 +2817,25 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 .ctrl-box-geral {{
     background:#d2dde9; border-radius:14px;
-    padding:14px 16px; display:flex;
-    align-items:center; position:relative; overflow:visible;
+    padding:12px 16px 12px 16px;
+    position:relative; overflow:visible;
     width:100%; box-sizing:border-box;
+    display:flex; flex-direction:column; gap:10px;
 }}
-.col-select-geral {{ position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:visible; }}
+
+/* ── linha 1: dropdown + coletas ── */
+.ctrl-row-geral {{
+    display:flex; align-items:center; gap:12px;
+}}
+
+/* coluna 1: dropdown */
+.col-dd-geral {{ flex:1; min-width:0; position:relative; overflow:visible; }}
 
 .dd-wrap-geral {{ position:relative; width:100%; }}
 .dd-trigger-geral {{
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center;
-    cursor:pointer; transition:box-shadow 0.15s;
-    width:100%;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
 .dd-trigger-geral:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
 .dd-icon-geral {{
@@ -2848,25 +2880,63 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item-geral.selected {{ background:#fff; border:2px solid #3b82f6; }}
 .dd-item-geral .dd-icon-geral {{ background:#e9eef5; }}
 .dd-item-geral.selected .dd-icon-geral {{ background:#dbeafe; }}
+
+/* coluna 2: coletas */
+.col-coletas-geral {{
+    flex-shrink:0;
+    background:#fff;
+    border-radius:10px;
+    padding:8px 12px;
+    display:flex;
+    flex-direction:column;
+    gap:5px;
+    min-width:0;
+}}
+.coleta-item {{
+    display:flex; align-items:center; gap:5px;
+    font-size:11px; color:#6b7280; white-space:nowrap;
+    font-family:'DM Sans',sans-serif;
+}}
+.coleta-item strong {{
+    color:#1a2e4a; font-weight:700;
+}}
 </style>
 
 <div class="ctrl-box-geral">
-    <div class="col-select-geral">
-        <div class="dd-wrap-geral" id="dd-wrap-geral">
-            <div class="dd-trigger-geral" id="dd-trigger-geral" onclick="toggleDropdownGeral()">
-                <div class="dd-icon-geral" id="dd-trigger-icon-geral"></div>
-                <div class="dd-info-geral">
-                    <span class="dd-nome-geral" id="dd-trigger-nome-geral"></span>
-                    <div class="dd-handle-geral" id="dd-trigger-handle-geral"></div>
+    <div class="ctrl-row-geral">
+
+        <!-- coluna 1: dropdown -->
+        <div class="col-dd-geral">
+            <div class="dd-wrap-geral" id="dd-wrap-geral">
+                <div class="dd-trigger-geral" id="dd-trigger-geral" onclick="toggleDropdownGeral()">
+                    <div class="dd-icon-geral" id="dd-trigger-icon-geral"></div>
+                    <div class="dd-info-geral">
+                        <span class="dd-nome-geral" id="dd-trigger-nome-geral"></span>
+                        <div class="dd-handle-geral" id="dd-trigger-handle-geral"></div>
+                    </div>
+                    <span id="dd-trigger-badge-geral"></span>
+                    <svg class="dd-arrow-geral" id="dd-arrow-geral" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
                 </div>
-                <span id="dd-trigger-badge-geral"></span>
-                <svg class="dd-arrow-geral" id="dd-arrow-geral" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="6 9 12 15 18 9"/>
-                </svg>
+                <div class="dd-list-geral" id="dd-list-geral"></div>
             </div>
-            <div class="dd-list-geral" id="dd-list-geral"></div>
         </div>
+
+        <!-- coluna 2: coletas -->
+        <div class="col-coletas-geral">
+            <div class="coleta-item">
+                <strong>📱 Instagram:</strong> {coleta_ig_geral}
+            </div>
+            <div class="coleta-item">
+                <strong>📣 Meta Ads:</strong> {coleta_ads_geral}
+            </div>
+            <div class="coleta-item">
+                <strong>🌐 SEO:</strong> {coleta_seo_geral}
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -2952,8 +3022,6 @@ document.addEventListener('click', function(e) {{
 
 function setHeightGeral(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_DD_GERAL.length * 64) + 24, 330) : 0;
-    /* CORRIGIDO: base era 64 e cortava o card (ícone 36px + paddings ~80px reais).
-       Agora a base acompanha a altura real do componentes.html abaixo (88). */
     var h = 88 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
@@ -2984,51 +3052,6 @@ function setHeightGeral(isOpen) {{
 }})();
 </script>
 """, height=88, scrolling=False)
-        # ↑ CORRIGIDO: height era 64 (insuficiente) e cortava o card por baixo. Agora 88.
-
-        # ── NOVO: última coleta por fonte (Instagram, Meta Ads, SEO) ────
-        # Mostra a data da última coleta de cada fonte para a empresa
-        # atualmente selecionada no dropdown acima. Texto simples, sem botão.
-        empresa_sel_geral = todas_empresas_geral[filtro_empresa_ativo] if todas_empresas_geral else None
-        nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
-
-        r_sel_geral   = dados_redes_map.get(nome_sel_geral, {}) or {}
-        ads_sel_geral = ads_cache.get(nome_sel_geral, {}) or {}
-        seo_sel_geral = st.session_state.get("seo_cache", {}).get(nome_sel_geral, {}) or {}
-
-        def _fmt_ultima_coleta(valor):
-            return str(valor) if valor else "Sem coleta"
-
-        # ⚠️ Ajuste os nomes das chaves abaixo se forem diferentes no resto do seu app.
-        # Tenta algumas variações comuns antes de cair em "Sem coleta".
-        coleta_ig_geral = _fmt_ultima_coleta(
-            r_sel_geral.get("atualizado_em")
-            or r_sel_geral.get("coletado_em")
-            or r_sel_geral.get("ultima_coleta")
-            or r_sel_geral.get("timestamp")
-        )
-        coleta_ads_geral = _fmt_ultima_coleta(
-            ads_sel_geral.get("atualizado_em")
-            or ads_sel_geral.get("coletado_em")
-            or ads_sel_geral.get("ultima_coleta")
-            or ads_sel_geral.get("timestamp")
-        )
-        coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
-
-        st.markdown(f"""
-        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; padding:0 6px;
-                    font-family:'DM Sans',sans-serif;">
-            <div style="font-size:11px; color:#6b7280;">
-                <strong style="color:#1a2e4a;">📱 Instagram:</strong> {coleta_ig_geral}
-            </div>
-            <div style="font-size:11px; color:#6b7280;">
-                <strong style="color:#1a2e4a;">📣 Meta Ads:</strong> {coleta_ads_geral}
-            </div>
-            <div style="font-size:11px; color:#6b7280;">
-                <strong style="color:#1a2e4a;">🌐 SEO:</strong> {coleta_seo_geral}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
 

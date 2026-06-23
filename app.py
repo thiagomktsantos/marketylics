@@ -2778,11 +2778,28 @@ elif st.session_state.pagina == "geral":
         or r_sel_geral.get("ultima_coleta")
         or r_sel_geral.get("timestamp")
     )
+    _ads_cache_completo = st.session_state.get("ads_cache", {})
+    if not _ads_cache_completo:
+        try:
+            _res_ads = (
+                supabase.table("ci_dados")
+                .select("ads_cache")
+                .eq("user_id", st.session_state.user.id)
+                .execute()
+            )
+            if _res_ads.data and _res_ads.data[0].get("ads_cache"):
+                _ads_cache_completo = _res_ads.data[0]["ads_cache"]
+                st.session_state.ads_cache = _ads_cache_completo
+        except Exception:
+            pass
+
+    _ads_entry_geral = _ads_cache_completo.get(nome_sel_geral, {}) or {}
     coleta_ads_geral = _fmt_ultima_coleta(
-        ads_sel_geral.get("atualizado_em")
-        or ads_sel_geral.get("coletado_em")
-        or ads_sel_geral.get("ultima_coleta")
-        or ads_sel_geral.get("timestamp")
+        _ads_entry_geral.get("ts")
+        or _ads_entry_geral.get("atualizado_em")
+        or _ads_entry_geral.get("coletado_em")
+        or _ads_entry_geral.get("ultima_coleta")
+        or _ads_entry_geral.get("timestamp")
     )
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 

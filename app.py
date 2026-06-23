@@ -7577,7 +7577,7 @@ Amostra dos anúncios:
                         <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
                         <div style='display:flex;align-items:center;gap:10px;flex-shrink:0'>
                             <a href='javascript:void(0)'
-                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_copys_{sk}'){{b.click();return;}}}}}})()"
+                               onclick="(function(){{var el=window.parent.document.querySelector('.st-key-btn_ia_copys_{sk} button');if(el){{el.click();return;}}var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').replace(/\\s+/g,' ').trim();if(t==='ia_copys_{sk}'){{b.click();return;}}}}}})()"
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
@@ -7590,7 +7590,7 @@ Amostra dos anúncios:
                                 </span>
                             </a>
                             <a href='javascript:void(0)'
-                               onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
+                               onclick="(function(){{var el=window.parent.document.querySelector('.st-key-btn_ia_geral_{sk} button');if(el){{el.click();return;}}var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').replace(/\\s+/g,' ').trim();if(t==='ia_geral_{sk}'){{b.click();return;}}}}}})()"
                                style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">

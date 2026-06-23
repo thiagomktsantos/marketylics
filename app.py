@@ -3705,8 +3705,7 @@ body {{ padding-bottom:8px; }}
     border-top:3px solid var(--cor);
 }}
 .empresa-card {{
-    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:20px; margin-top:10px; overflow:hidden;
+    overflow:hidden;
 }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}

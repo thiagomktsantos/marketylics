@@ -3109,7 +3109,7 @@ function setHeightGeral(isOpen) {{
     # FUNÇÕES DE DONUT
     # ══════════════════════════════════════════════════════════════════
 
-    def make_donut_svg(pct, color, label, count, size=54, stroke=5):
+    def make_donut_svg(pct, color, label, count, size=50, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
         circum = round(2 * _math.pi * r, 2)

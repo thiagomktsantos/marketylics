@@ -5844,6 +5844,12 @@ elif st.session_state.pagina == "ads":
     # CABEÇALHO DA PÁGINA
     # ══════════════════════════════════════════════════════════════════
 
+    _ultima_ts = ""
+        if st.session_state.ads_cache:
+        _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
+        if _tss:
+            _ultima_ts = min(_tss)  
+    
     h1_col, h2_col = st.columns([5, 5])
  
     with h1_col:

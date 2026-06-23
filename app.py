@@ -3698,14 +3698,18 @@ function setHeightGeral(isOpen) {{
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
 body {{ padding-bottom:8px; }}
 {tooltip_css}
+.empresa-header-card {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:14px 20px; margin-top:16px;
+    display:flex; align-items:center; gap:10px;
+    border-top:3px solid var(--cor);
+}}
 .empresa-card {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
-    padding:18px 20px 20px; margin-top:16px; overflow:hidden;
+    padding:20px; margin-top:10px; overflow:hidden;
 }}
-.empresa-card-hdr {{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
-.empresa-card-divider {{ border:none; border-top:1.5px solid #e5e7eb; margin:0 0 16px 0; }}
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
@@ -3892,17 +3896,20 @@ function buildSeoColumn(d,colEl) {{
 function buildCards() {{
     var el=document.getElementById('cards');
     DATA.forEach(function(d) {{
+
+        /* ── CAIXA DO TÍTULO (header separado) ── */
+        var headerCard=document.createElement('div');
+        headerCard.className='empresa-header-card';
+        headerCard.style.borderTopColor=d.cor;
+        headerCard.innerHTML=
+            d.av_html
+            +'<span class="empresa-card-nome">'+esc(d.nome)+'</span>'
+            +'<span class="badge" style="background:'+d.badge_bg+';color:'+d.badge_col+';border:1px solid '+d.badge_brd+'">'+d.badge_lbl+'</span>';
+        el.appendChild(headerCard);
+
+        /* ── CAIXA DO CONTEÚDO (colunas) ── */
         var card=document.createElement('div');
         card.className='empresa-card';
-        card.style.borderTop='3px solid '+d.cor;
-        var hdr=document.createElement('div');
-        hdr.className='empresa-card-hdr';
-        hdr.innerHTML=d.av_html+'<span class="empresa-card-nome">'+esc(d.nome)+'</span>'
-            +'<span class="badge" style="background:'+d.badge_bg+';color:'+d.badge_col+';border:1px solid '+d.badge_brd+'">'+d.badge_lbl+'</span>';
-        card.appendChild(hdr);
-        var divider=document.createElement('hr');
-        divider.className='empresa-card-divider';
-        card.appendChild(divider);
         var cols=document.createElement('div');
         cols.className='cols-wrap';
         var colRedes=document.createElement('div');

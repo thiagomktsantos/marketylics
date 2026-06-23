@@ -2952,13 +2952,41 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <!-- coluna 2: coletas -->
         <div class="col-coletas-geral">
             <div class="coleta-item">
-                <strong>📱 Instagram:</strong> {coleta_ig_geral}
+                <strong>
+                    <svg width="12" height="12" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="ig_grad_coleta" x1="0%" y1="100%" x2="100%" y2="0%">
+                                <stop offset="0%" style="stop-color:#f09433"/>
+                                <stop offset="25%" style="stop-color:#e6683c"/>
+                                <stop offset="50%" style="stop-color:#dc2743"/>
+                                <stop offset="75%" style="stop-color:#cc2366"/>
+                                <stop offset="100%" style="stop-color:#bc1888"/>
+                            </linearGradient>
+                        </defs>
+                        <path fill="url(#ig_grad_coleta)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                    </svg>
+                    Instagram:
+                </strong> {coleta_ig_geral}
             </div>
             <div class="coleta-item">
-                <strong>📣 Meta Ads:</strong> {coleta_ads_geral}
+                <strong>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 11v2a1 1 0 001 1h2l3.5 3.5a1 1 0 001.5-.86V7.36a1 1 0 00-1.5-.86L6 10H4a1 1 0 00-1 1z"/>
+                        <path d="M14.5 8.5a4 4 0 010 7"/>
+                        <path d="M17 6a7 7 0 010 12"/>
+                    </svg>
+                    Meta Ads:
+                </strong> {coleta_ads_geral}
             </div>
             <div class="coleta-item">
-                <strong>🌐 SEO:</strong> {coleta_seo_geral}
+                <strong>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="2" y1="12" x2="22" y2="12"/>
+                        <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                    </svg>
+                    SEO:
+                </strong> {coleta_seo_geral}
             </div>
         </div>
 

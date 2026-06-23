@@ -3537,7 +3537,7 @@ function setHeightGeral(isOpen) {{
                 )
 
                 tipo_donuts = (
-                    '<div style="display:flex;gap:8px;align-items:center;">'
+                    '<div style="display:flex;align-items:center;">'
                     + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
                     + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
                     + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])

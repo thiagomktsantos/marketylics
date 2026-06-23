@@ -6459,7 +6459,7 @@ function triggerTab(label) {{
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
             iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-15px';
+            iframes[i].style.marginTop = '-35px';
             break;
         }} }} catch(e) {{}}
     }}
@@ -7395,7 +7395,7 @@ Amostra dos anúncios:
             ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
 
             st.markdown(f"""
-            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-75px;'>
+            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:-100px;'>
                 <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
                     {avatar_empresa_html}
                     <div style='flex:1;min-width:0'>
@@ -7511,7 +7511,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -16px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -36px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;

@@ -3481,7 +3481,8 @@ function setHeightGeral(isOpen) {{
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">Estatísticas</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Estatísticas</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
                     + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")
@@ -3522,6 +3523,7 @@ function setHeightGeral(isOpen) {{
                     '</div></div></div>'
                     + score_nok_html +
                     '</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
                     f'<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:{m["score_cor"]};">{m["score_val"]}</span>'
@@ -3544,10 +3546,12 @@ function setHeightGeral(isOpen) {{
 
                 tipos_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Tipos de Conteúdo</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {m["n_total_tp"]}</div>'
-                    '</div>' + tipo_donuts + '</div>'
+                    '</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
+                    + tipo_donuts + '</div>'
                 )
 
                 nuvem = m.get("nuvem_palavras", [])
@@ -3570,6 +3574,7 @@ function setHeightGeral(isOpen) {{
                     nuvem_block_html = (
                         '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                         '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
+                        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                         f'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">{nuvem_chips}</div>'
                         '</div>'
                     )
@@ -3610,15 +3615,18 @@ function setHeightGeral(isOpen) {{
                 )
                 ads_formato_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
                     '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {a["total"]}</div>'
-                    '</div>' + formato_donuts + '</div>'
+                    '</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
+                    + formato_donuts + '</div>'
                 )
 
                 ads_tipos_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Tipos de anúncio</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + barra_tipo("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
                     + barra_tipo("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
                     + barra_tipo("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
@@ -3639,7 +3647,8 @@ function setHeightGeral(isOpen) {{
 
                 ads_plat_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Plataformas dos anúncios</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Plataformas dos anúncios</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + plat_donuts + '</div>'
                 )
 
@@ -3664,7 +3673,8 @@ function setHeightGeral(isOpen) {{
 
                 ads_dest_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Destinos dos anúncios</div>'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Destinos dos anúncios</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
                     + ads_dest_content + '</div>'
                 )
 
@@ -3699,7 +3709,7 @@ body {{ padding-bottom:8px; }}
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
-    display:flex; align-items:center; gap:6px; font-size:17px; font-weight:800;
+    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800;
     text-transform:uppercase; letter-spacing:0.5px;
     padding:8px 12px; border-radius:8px; margin-bottom:10px;
 }}
@@ -3834,6 +3844,7 @@ function buildSeoColumn(d,colEl) {{
         +'</div></div>'
         +'</div>'
         +nokHtml+'</div>'
+        +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
         +'<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;"><span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:'+scoreTextColor+';">'+scoreNum+'</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
         +'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;flex-shrink:0;">'+scoreTxt2+'</div></div>'
@@ -3855,7 +3866,7 @@ function buildSeoColumn(d,colEl) {{
     if(algumGrupo){{
         var ctBlock=document.createElement('div');
         ctBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        ctBlock.innerHTML='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>'+gruposHtml;
+        ctBlock.innerHTML='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Canais de Contato</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'+gruposHtml;
         colEl.appendChild(ctBlock);
     }}
     var topWords=calcTopWords(d);
@@ -3871,7 +3882,7 @@ function buildSeoColumn(d,colEl) {{
         var unigramsHtml=unigrams.map(function(item,i){{return makeChip(item,i,false);}}).join('');
         var kwBlock=document.createElement('div');
         kwBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        var innerHtml='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
+        var innerHtml='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Termos mais usados</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>';
         if(bigramsHtml)innerHtml+='<div class="termos-sub">Expressões-chave</div><div class="termos-chips">'+bigramsHtml+'</div>';
         if(unigramsHtml)innerHtml+='<div class="termos-sub">Palavras frequentes</div><div class="termos-chips">'+unigramsHtml+'</div>';
         kwBlock.innerHTML=innerHtml;
@@ -3896,17 +3907,17 @@ function buildCards() {{
         cols.className='cols-wrap';
         var colRedes=document.createElement('div');
         colRedes.className='col col-redes';
-        colRedes.innerHTML='<div class="col-title col-title-redes"><svg width="18" height="18" viewBox="0 0 24 24" fill="#1d4ed8" style="vertical-align:-2px;margin-right:4px;" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>Redes Sociais</div>'+d.redes_block_html;
+        colRedes.innerHTML='<div class="col-title col-title-redes"><svg width="14" height="14" viewBox="0 0 24 24" fill="#1d4ed8" style="vertical-align:-2px;margin-right:4px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>Redes Sociais</div>'+d.redes_block_html;
         var colSite=document.createElement('div');
         colSite.className='col col-site';
         var colSiteTitle=document.createElement('div');
         colSiteTitle.className='col-title col-title-site';
-        colSiteTitle.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Site';
+        colSiteTitle.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;flex-shrink:0;" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>Site';
         colSite.appendChild(colSiteTitle);
         buildSeoColumn(d,colSite);
         var colAds=document.createElement('div');
         colAds.className='col col-ads';
-        colAds.innerHTML='<div class="col-title col-title-ads"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#c2410c" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;"><path fill-rule="evenodd" d="M8.217 5.243C9.145 3.988 10.171 3 11.483 3 13.96 3 16 6.153 16.001 9.907c0 2.29-.986 3.725-2.757 3.725-1.543 0-2.395-.866-3.924-3.424l-.667-1.123-.118-.197a55 55 0 0 0-.53-.877l-1.178 2.08c-1.673 2.925-2.615 3.541-3.923 3.541C1.086 13.632 0 12.217 0 9.973 0 6.388 1.995 3 4.598 3q.477-.001.924.122c.31.086.611.22.913.407.577.359 1.154.915 1.782 1.714m1.516 2.224q-.378-.615-.727-1.133L9 6.326c.845-1.305 1.543-1.954 2.372-1.954 1.723 0 3.102 2.537 3.102 5.653 0 1.188-.39 1.877-1.195 1.877-.773 0-1.142-.51-2.61-2.87zM4.846 4.756c.725.1 1.385.634 2.34 2.001A212 212 0 0 0 5.551 9.3c-1.357 2.126-1.826 2.603-2.581 2.603-.777 0-1.24-.682-1.24-1.9 0-2.602 1.298-5.264 2.846-5.264q.137 0 .27.018"/></svg>Anúncios</div>'+d.ads_block_html;
+        colAds.innerHTML='<div class="col-title col-title-ads"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="#c2410c" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:4px;flex-shrink:0;"><path fill-rule="evenodd" d="M8.217 5.243C9.145 3.988 10.171 3 11.483 3 13.96 3 16 6.153 16.001 9.907c0 2.29-.986 3.725-2.757 3.725-1.543 0-2.395-.866-3.924-3.424l-.667-1.123-.118-.197a55 55 0 0 0-.53-.877l-1.178 2.08c-1.673 2.925-2.615 3.541-3.923 3.541C1.086 13.632 0 12.217 0 9.973 0 6.388 1.995 3 4.598 3q.477-.001.924.122c.31.086.611.22.913.407.577.359 1.154.915 1.782 1.714m1.516 2.224q-.378-.615-.727-1.133L9 6.326c.845-1.305 1.543-1.954 2.372-1.954 1.723 0 3.102 2.537 3.102 5.653 0 1.188-.39 1.877-1.195 1.877-.773 0-1.142-.51-2.61-2.87zM4.846 4.756c.725.1 1.385.634 2.34 2.001A212 212 0 0 0 5.551 9.3c-1.357 2.126-1.826 2.603-2.581 2.603-.777 0-1.24-.682-1.24-1.9 0-2.602 1.298-5.264 2.846-5.264q.137 0 .27.018"/></svg>Anúncios</div>'+d.ads_block_html;
         cols.appendChild(colRedes);
         cols.appendChild(colSite);
         cols.appendChild(colAds);

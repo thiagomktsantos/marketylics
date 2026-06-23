@@ -3109,7 +3109,7 @@ function setHeightGeral(isOpen) {{
     # FUNÇÕES DE DONUT
     # ══════════════════════════════════════════════════════════════════
 
-    def make_donut_svg(pct, color, label, count, size=60, stroke=6):
+    def make_donut_svg(pct, color, label, count, size=54, stroke=5):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
         circum = round(2 * _math.pi * r, 2)
@@ -3117,17 +3117,17 @@ function setHeightGeral(isOpen) {{
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            f'<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">'
+            f'<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
             f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
             f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="middle"'
-            f' font-size="14" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+            f' font-size="12" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
             f'</svg>'
             f'<div style="display:flex;flex-direction:column;min-width:0;">'
-            f'<span style="font-size:16px;font-weight:800;color:{color};line-height:1.2;">{pct}%</span>'
-            f'<span style="font-size:11px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;">{label}</span>'
+            f'<span style="font-size:14px;font-weight:800;color:{color};line-height:1.2;">{pct}%</span>'
+            f'<span style="font-size:10px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;">{label}</span>'
             f'</div></div>'
         )
 

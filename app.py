@@ -7595,7 +7595,7 @@ Amostra dos anúncios:
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
                                 <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#dbeafe;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg></span>
+                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#dbeafe;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/><path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/></svg></span>
                                     <span style='display:flex;flex-direction:column;gap:0px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar estratégia</span>
                                         <span style='font-size:11px;font-weight:400;color:#747a87;'>Formatos, mix de mídia e insights</span>

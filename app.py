@@ -2756,6 +2756,7 @@ elif st.session_state.pagina == "geral":
     def _fmt_ultima_coleta(valor):
         return str(valor) if valor else "Sem coleta"
 
+    _ultima_coleta_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
     coleta_ig_geral = _fmt_ultima_coleta(
         r_sel_geral.get("atualizado_em")
         or r_sel_geral.get("coletado_em")
@@ -2960,9 +2961,12 @@ function renderTriggerGeral() {{
     var e = EMPRESAS_DD_GERAL.find(function(x) {{ return x.i === SELECTED_IDX_GERAL; }}) || EMPRESAS_DD_GERAL[0];
     if (!e) return;
     document.getElementById('dd-trigger-nome-geral').textContent = e.nome;
-    document.getElementById('dd-trigger-handle-geral').textContent = e.handle || '';
     document.getElementById('dd-trigger-badge-geral').innerHTML = badgeHtmlGeral(e.tipo);
-    document.getElementById('dd-trigger-icon-geral').innerHTML = iconSvgGeral();
+    document.getElementById('dd-trigger-icon-geral').innerHTML = iconSvgGeral(e.tipo);
+}}
+
+function iconSvgGeral(tipo) {{
+    return '<span style="font-size:18px;line-height:1;">🏢</span>';
 }}
 
 function renderListGeral() {{
@@ -2972,10 +2976,9 @@ function renderListGeral() {{
         var item = document.createElement('div');
         item.className = 'dd-item-geral' + (e.i === SELECTED_IDX_GERAL ? ' selected' : '');
         item.innerHTML =
-            '<div class="dd-icon-geral">' + iconSvgGeral() + '</div>'
+            '<div class="dd-icon-geral">' + iconSvgGeral(e.tipo) + '</div>'
             + '<div class="dd-info-geral">'
             + '<span class="dd-nome-geral">' + e.nome + '</span>'
-            + '<div class="dd-handle-geral">' + (e.handle || '') + '</div>'
             + '</div>'
             + badgeHtmlGeral(e.tipo);
         item.onclick = function() {{ selectItemGeral(e.i); }};

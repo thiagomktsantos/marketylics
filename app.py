@@ -3705,14 +3705,14 @@ body {{ padding-bottom:8px; }}
     border-top:3px solid var(--cor);
 }}
 .empresa-card {{
-    overflow:hidden; margin-top: 10px;
+    overflow:hidden; margin-top: 10px;padding: 0 12px;
 }}
 .empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
 .badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
-    display:flex; align-items:center; gap:6px; font-size:17px; font-weight:800;
+    display:flex; align-items:center; gap:6px; font-size:16px; font-weight:800;
     text-transform:uppercase; letter-spacing:0.5px;
     padding:8px 12px; border-radius:8px; margin-bottom:10px;
 }}

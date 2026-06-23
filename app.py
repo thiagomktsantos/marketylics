@@ -2920,7 +2920,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .coleta-item {{
     gap:5px;
-    font-size:11px; color:#1a2e4a; white-space:nowrap;
+    font-size:11px; color:#6b7280; white-space:nowrap;
     font-family:'DM Sans',sans-serif;
 }}
 .coleta-item strong {{

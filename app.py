@@ -6291,9 +6291,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">🔍 Buscar / Atualizar Anúncios</button>
+        <button class="ctrl-btn btn-coletar" onclick="triggerBuscar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Buscar / Atualizar Anúncios</button>
         {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()">🕒 Últ. busca: <b>{_ultima_ts}</b></button>
+            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if _ultima_ts else ''}
@@ -7582,7 +7582,7 @@ Amostra dos anúncios:
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
                                 <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='font-size:22px;line-height:1;flex-shrink:0;margin-top:1px;background-color:#f3f4f6;padding:6px 3px;border-radius:5px;'>📢</span>
+                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
                                     <span style='display:flex;flex-direction:column;gap:0px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar anúncios</span>
                                         <span style='font-size:11px;font-weight:400;color:#747a87;'>Copies, CTAs e padrões de texto</span>
@@ -7595,7 +7595,7 @@ Amostra dos anúncios:
                                onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
                                onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
                                 <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='font-size:22px;line-height:1;flex-shrink:0;margin-top:1px;background-color:#f3f4f6;padding:6px 3px;border-radius:5px;'>📊</span>
+                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg></span>
                                     <span style='display:flex;flex-direction:column;gap:0px;'>
                                         <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar estratégia</span>
                                         <span style='font-size:11px;font-weight:400;color:#747a87;'>Formatos, mix de mídia e insights</span>

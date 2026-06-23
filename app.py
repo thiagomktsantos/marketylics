@@ -7288,8 +7288,7 @@ window.addEventListener('load', syncHeight);
                 """)
             st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
 
-            Aqui está o bloco completo para substituir:
-python            if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
+            if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
                 if gemini_model is None:
                     st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
                 else:

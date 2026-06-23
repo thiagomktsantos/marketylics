@@ -2700,8 +2700,9 @@ elif st.session_state.pagina == "geral":
 
     # ── Filtro ────────────────────────────────────────────────────────
     if "geral_empresa_filtro" not in st.session_state:
-        st.session_state.geral_empresa_filtro = 0 if todas_empresas_geral else "todas"
+        st.session_state.geral_empresa_filtro = 0
 
+    # Botões fantasmas para receber clique do JS
     _filtro_ghost_css = []
     for _i in range(len(todas_empresas_geral)):
         _k = f"btn_geral_filtro_{_i}"
@@ -2723,9 +2724,13 @@ elif st.session_state.pagina == "geral":
             st.session_state.geral_empresa_filtro = _i
             st.rerun()
 
-    filtro_empresa_ativo = st.session_state.get("geral_empresa_filtro", 0)
+    # Garante sempre int válido
+    filtro_empresa_ativo = int(st.session_state.get("geral_empresa_filtro", 0))
+    if filtro_empresa_ativo >= len(todas_empresas_geral):
+        filtro_empresa_ativo = 0
+        st.session_state.geral_empresa_filtro = 0
 
-    # ── Cache de redes (precisa vir antes do cabeçalho, que usa handles) ──
+    # ── Cache de redes ─────────────────────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
     for r in cache_redes:
@@ -2740,7 +2745,9 @@ elif st.session_state.pagina == "geral":
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
 
-    # ── Cabeçalho com dropdown de empresas (padrão igual à página Redes) ──
+    # ══════════════════════════════════════════════════════════════════
+    # CABEÇALHO COM DROPDOWN DE EMPRESAS
+    # ══════════════════════════════════════════════════════════════════
     h1, h2 = st.columns([5, 5])
 
     with h1:
@@ -2806,20 +2813,19 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-icon-geral svg {{ width:18px; height:18px; }}
 .dd-icon-geral img {{ width:100%; height:100%; object-fit:cover; border-radius:9px; }}
-.dd-info-geral {{ min-width:0; margin-left:10px; margin-right:10px; }}
+.dd-info-geral {{ min-width:0; margin-left:10px; margin-right:10px; flex:1; }}
 .dd-nome-geral {{
     font-size:14px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle-geral {{ font-size:12px; color:#9ca3af; }}
 .dd-badge-minha-geral, .dd-badge-conc-geral {{
-    margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
+    flex-shrink:0; display:inline-flex; align-items:center;
     gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
     white-space:nowrap;
 }}
 .dd-badge-minha-geral {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc-geral  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-#dd-trigger-badge-geral {{ margin-left:auto; flex-shrink:0; }}
 .dd-arrow-geral {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow-geral.open {{ transform:rotate(180deg); }}
 
@@ -2866,9 +2872,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 <script>
 var EMPRESAS_DD_GERAL = {empresas_dd_str};
-var SELECTED_IDX_GERAL = {filtro_empresa_ativo if isinstance(filtro_empresa_ativo, int) else 0};
-
-var PROFILE_PICS_GERAL = {{}};
+var SELECTED_IDX_GERAL = {filtro_empresa_ativo};
 
 function iconSvgGeral() {{
     return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
@@ -2888,7 +2892,7 @@ function renderTriggerGeral() {{
     var e = EMPRESAS_DD_GERAL.find(function(x) {{ return x.i === SELECTED_IDX_GERAL; }}) || EMPRESAS_DD_GERAL[0];
     if (!e) return;
     document.getElementById('dd-trigger-nome-geral').textContent = e.nome;
-    document.getElementById('dd-trigger-handle-geral').textContent = e.handle;
+    document.getElementById('dd-trigger-handle-geral').textContent = e.handle || '';
     document.getElementById('dd-trigger-badge-geral').innerHTML = badgeHtmlGeral(e.tipo);
     document.getElementById('dd-trigger-icon-geral').innerHTML = iconSvgGeral();
 }}
@@ -2903,7 +2907,7 @@ function renderListGeral() {{
             '<div class="dd-icon-geral">' + iconSvgGeral() + '</div>'
             + '<div class="dd-info-geral">'
             + '<span class="dd-nome-geral">' + e.nome + '</span>'
-            + '<div class="dd-handle-geral">' + e.handle + '</div>'
+            + '<div class="dd-handle-geral">' + (e.handle || '') + '</div>'
             + '</div>'
             + badgeHtmlGeral(e.tipo);
         item.onclick = function() {{ selectItemGeral(e.i); }};
@@ -2918,7 +2922,7 @@ function selectItemGeral(i) {{
     var label = 'geral_filtro_' + i;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -2981,107 +2985,840 @@ function setHeightGeral(isOpen) {{
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
 
-    # ── Cache de redes ─────────────────────────────────────────────────
-    cache_redes = st.session_state.metricas_redes.get("dados", [])
-    dados_redes_map = {}
-    for r in cache_redes:
-        if not r.get("erro") and r.get("nome"):
-            dados_redes_map[r["nome"]] = r
+    # ══════════════════════════════════════════════════════════════════
+    # FUNÇÕES DE DONUT
+    # ══════════════════════════════════════════════════════════════════
 
-    ads_cache = st.session_state.get("ads_cache", {})
+    def make_donut_svg(pct, color, label, count, size=48, stroke=5):
+        r = (size / 2) - stroke - 2
+        cx = cy = size / 2
+        circum = round(2 * _math.pi * r, 2)
+        dash = round(pct / 100 * circum, 2)
+        gap  = round(circum - dash, 2)
+        offset = round(circum * 0.25, 2)
+        return (
+            f'<div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">'
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+            f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="middle"'
+            f' font-size="11" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+            f'</svg>'
+            f'<div style="display:flex;flex-direction:column;min-width:0;">'
+            f'<span style="font-size:13px;font-weight:800;color:{color};line-height:1.2;">{pct}%</span>'
+            f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap;">{label}</span>'
+            f'</div></div>'
+        )
 
-    def fmt_num(n):
-        n = int(n or 0)
-        if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
-        if n >= 1_000:     return f"{n/1_000:.1f}K"
-        return str(n)
+    PLAT_ICONS_SVG = {
+        "facebook": (
+            '#1877f2', 'Facebook',
+            '<path fill="#1877f2" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>'
+        ),
+        "instagram": (
+            '#e1306c', 'Instagram',
+            '<path fill="url(#ig_grad)" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>'
+        ),
+        "messenger": (
+            '#0084ff', 'Messenger',
+            '<path fill="#0084ff" d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111S18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259L10.733 8.4l3.13 3.259L19.752 8.4l-6.559 6.563z"/>'
+        ),
+        "whatsapp": (
+            '#25d366', 'WhatsApp',
+            '<path fill="#25d366" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>'
+        ),
+        "audience_network": (
+            '#3a9fd6', 'Audience',
+            '<circle cx="12" cy="12" r="10" fill="#3a9fd6"/><path fill="#fff" d="M12 6a6 6 0 100 12A6 6 0 0012 6zm0 2a4 4 0 110 8 4 4 0 010-8zm0 1.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"/>'
+        ),
+        "threads": (
+            '#1a2e4a', 'Threads',
+            '<path fill="#1a2e4a" d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.028-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.749-1.752-2.979-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 012.62.144c-.107-.568-.26-1.031-.465-1.38-.363-.622-.937-.955-1.754-.98h-.075c-.544 0-1.478.152-2.02 1.31l-1.877-.867c.853-1.842 2.431-2.308 3.892-2.308h.106c2.854.088 4.192 1.836 4.502 5.388.779.567 1.408 1.233 1.853 1.99.747 1.28 1 2.79.712 4.264-.332 1.69-1.257 3.17-2.692 4.27C17.253 23.266 15.006 24 12.186 24z"/>'
+        ),
+    }
+
+    def make_donut_plat(pct, color, label, count, plat_key, size=52, stroke=5):
+        r = (size / 2) - stroke - 2
+        cx = cy = size / 2
+        circum = round(2 * _math.pi * r, 2)
+        dash = round(pct / 100 * circum, 2)
+        gap  = round(circum - dash, 2)
+        offset = round(circum * 0.25, 2)
+        icon_s = size * 0.36
+        icon_x = cx - icon_s / 2
+        icon_y = cy - icon_s / 2
+        _, _, path_data = PLAT_ICONS_SVG.get(plat_key, ('#64748b', label, '<circle cx="12" cy="12" r="8" fill="#64748b"/>'))
+
+        defs = ""
+        if plat_key == "instagram":
+            defs = (
+                f'<defs>'
+                f'<linearGradient id="ig_grad" x1="0%" y1="100%" x2="100%" y2="0%">'
+                f'<stop offset="0%" style="stop-color:#f09433"/>'
+                f'<stop offset="25%" style="stop-color:#e6683c"/>'
+                f'<stop offset="50%" style="stop-color:#dc2743"/>'
+                f'<stop offset="75%" style="stop-color:#cc2366"/>'
+                f'<stop offset="100%" style="stop-color:#bc1888"/>'
+                f'</linearGradient>'
+                f'</defs>'
+            )
+
+        return (
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">'
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">'
+            f'{defs}'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+            f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
+            f'<g transform="translate({icon_x:.1f},{icon_y:.1f}) scale({icon_s/24:.3f})">'
+            f'{path_data}'
+            f'</g>'
+            f'</svg>'
+            f'<div style="text-align:center;">'
+            f'<div style="font-size:12px;font-weight:700;color:{color};">{count}</div>'
+            f'<div style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;">{label}</div>'
+            f'</div></div>'
+        )
+
+    def calcular_categorias_ads(ads_lista: list) -> dict:
+        palavras_beneficio = [
+            "economiz","aumente","aumenta","melhora","melhore","resultado","resultados",
+            "transforma","conquiste","conquista","garanta","garante","lucro","lucre",
+            "ganhe","ganha","facilita","simplifica","reduza","reduz","alcance",
+        ]
+        palavras_prova_social = [
+            "cliente","clientes","avaliaç","avaliacoes","depoimento","depoimentos",
+            "estrelas","aprovado","milhares","mais de","comprovado","case","satisfeitos","recomendam",
+        ]
+        palavras_urgencia = [
+            "agora","hoje","últim","ultim","corre","corra","acaba em","vagas limitadas",
+            "por tempo limitado","termina","última chance","apenas hoje","não perca","restam","expira",
+        ]
+        palavras_cta_direto = [
+            "clique","saiba mais","compre","compra","agende","agora mesmo","fale com",
+            "chame no whatsapp","acesse","cadastre-se","inscreva-se","garanta já","peça já","solicite",
+        ]
+
+        def texto_do_anuncio(ad):
+            campos = ["body","texto","ad_creative_body","title","headline","description","creative_text"]
+            return " ".join(ad.get(c,"") for c in campos if isinstance(ad.get(c,""),str) and ad.get(c,"").strip()).lower()
+
+        def tipo_midia(ad):
+            if ad.get("is_video") or ad.get("media_type")=="video" or ad.get("video_url") or ad.get("formato")=="Vídeo":
+                return "video"
+            if ad.get("media_type")==8 or ad.get("is_carousel") or ad.get("media_type")=="carousel" or ad.get("formato")=="Carrossel":
+                return "carrossel"
+            return "imagem"
+
+        def extrair_plataformas(ad):
+            plats_raw = ad.get("plataformas") or ad.get("publisher_platform") or ad.get("publisherPlatform") or ad.get("publisher_platforms") or []
+            if isinstance(plats_raw, str): plats_raw = [plats_raw]
+            result = []
+            for p in plats_raw:
+                if isinstance(p, dict):
+                    result.append((p.get("name") or p.get("value") or str(p)).strip().lower())
+                elif isinstance(p, str) and p.strip():
+                    result.append(p.strip().lower())
+            return result
+
+        def extrair_destino(ad):
+            import re as _re
+            snapshot = ad.get("snapshot") or {}
+            candidatos = [ad.get("caption"),ad.get("destination_url"),ad.get("website_url"),ad.get("link_url"),
+                          snapshot.get("caption"),snapshot.get("link_url"),snapshot.get("website_url"),snapshot.get("destination_url")]
+            for url in candidatos:
+                if not url or not isinstance(url, str): continue
+                url = url.strip()
+                dominio = _re.sub(r'^https?://','',url).split('/')[0].split('?')[0].replace('www.','').strip()
+                if dominio and '.' in dominio and 'facebook.com' not in dominio and 'fb.com' not in dominio and 'fbcdn' not in dominio:
+                    return dominio
+            return ""
+
+        contagens = {"beneficio":0,"prova_social":0,"urgencia":0,"cta_direto":0}
+        midia = {"video":0,"imagem":0,"carrossel":0}
+        plat_count = {}
+        dest_count = {}
+
+        for ad in ads_lista:
+            txt = texto_do_anuncio(ad)
+            if any(p in txt for p in palavras_beneficio):    contagens["beneficio"] += 1
+            if any(p in txt for p in palavras_prova_social): contagens["prova_social"] += 1
+            if any(p in txt for p in palavras_urgencia):     contagens["urgencia"] += 1
+            if any(p in txt for p in palavras_cta_direto):   contagens["cta_direto"] += 1
+            midia[tipo_midia(ad)] += 1
+            for p in extrair_plataformas(ad):
+                plat_count[p] = plat_count.get(p,0) + 1
+            dest = extrair_destino(ad)
+            if dest: dest_count[dest] = dest_count.get(dest,0) + 1
+
+        return {
+            "total": len(ads_lista),
+            "beneficio": contagens["beneficio"], "prova_social": contagens["prova_social"],
+            "urgencia": contagens["urgencia"],   "cta_direto": contagens["cta_direto"],
+            "video": midia["video"], "imagem": midia["imagem"], "carrossel": midia["carrossel"],
+            "plataformas": plat_count,
+            "destinos": sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:3],
+        }
+
+    seo_cache = st.session_state.get("seo_cache", {})
+
+    # ── Tooltip CSS ────────────────────────────────────────────────
+    tooltip_css = """
+.oport-wrap {
+    position: relative; display: inline-flex; align-items: center; cursor: default;
+}
+.oport-wrap .oport-tip {
+    display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+    transform: translateX(-50%); background: #1a2e4a; color: #fff;
+    border-radius: 10px; padding: 10px 14px; font-size: 11px; line-height: 1.9;
+    min-width: 190px; max-width: 230px; z-index: 9999; white-space: normal;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.28); pointer-events: none;
+    font-family: 'DM Sans', sans-serif; text-align: left;
+}
+.oport-wrap .oport-tip::after {
+    content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    border: 6px solid transparent; border-top-color: #1a2e4a;
+}
+.oport-wrap:hover .oport-tip { display: block; }
+.score-tooltip-wrap { position:relative; display:inline-flex; align-items:center; }
+.score-tooltip-wrap .tip {
+    display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
+    line-height:1.8; width:200px; z-index:9999; white-space:normal;
+    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
+}
+.score-tooltip-wrap .tip::after {
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#1a2e4a;
+}
+.score-tooltip-wrap:hover .tip { display:block; }
+.q-badge {
+    width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
+    align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
+    cursor:default; flex-shrink:0; margin-left:5px;
+}
+"""
 
     # ══════════════════════════════════════════════════════════════════
-    # CARDS DE NAVEGAÇÃO
+    # MONTA DADOS POR EMPRESA
     # ══════════════════════════════════════════════════════════════════
     if todas_empresas_geral:
 
-        empresas_cards_nav_json = []
+        empresas_cards_data = []
         for i, e in enumerate(todas_empresas_geral):
+            if i != filtro_empresa_ativo:
+                continue
+
             is_minha = e["tipo"] == "minha"
             cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
-            r_nav = dados_redes_map.get(e["nome"], {})
-            profile_pic_nav = r_nav.get("profile_pic", "") if r_nav else ""
-            handle_nav = e.get("instagram", "") or (r_nav.get("handle", "") if r_nav else "")
-            empresas_cards_nav_json.append({
-                "nome": e["nome"], "tipo": e["tipo"], "handle": handle_nav,
-                "is_minha": is_minha,
-                "badge_lbl": "Minha empresa" if is_minha else "Concorrente",
-                "cor": cor, "profile_pic": profile_pic_nav, "i": i,
-                "active": (filtro_empresa_ativo == i),
+            av  = gerar_avatar(e["nome"])
+            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
+            badge_col = "#15803d" if is_minha else "#1d4ed8"
+            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+
+            r = dados_redes_map.get(e["nome"])
+            tem_redes = bool(r)
+            redes_info = None
+
+            if tem_redes:
+                pp = r.get("profile_pic","")
+                if pp and pp.startswith("data:"):
+                    av_html = f'<div style="width:32px;height:32px;border-radius:50%;overflow:hidden;flex-shrink:0;"><img src="{pp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>'
+                else:
+                    av_html = f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>'
+
+                bio_txt_geral = (r.get("bio") or "").replace("<","&lt;").replace(">","&gt;")
+                ext_url_geral = (r.get("external_url") or "").strip()
+                score_geral   = calcular_score_bio(bio_txt_geral, ext_url_geral, r.get("seguidores",0), r.get("eng_pct",0.0))
+
+                posts_lista = r.get("posts",[])
+                n_fotos     = sum(1 for p in posts_lista if not p.get("is_video") and p.get("media_type",1) != 8)
+                n_videos    = sum(1 for p in posts_lista if p.get("is_video"))
+                n_carrossel = sum(1 for p in posts_lista if p.get("media_type") == 8)
+                n_total_tp  = len(posts_lista) or 1
+
+                import re as _re
+                stop_words_bio = {
+                    "de","da","do","das","dos","em","e","a","o","as","os","um","uma","uns","umas",
+                    "para","por","com","que","se","na","no","nas","nos","ao","aos","à","às","mais",
+                    "ou","mas","como","são","sua","seu","suas","seus","esta","este","essa","esse",
+                    "pelo","pela","pelos","pelas","entre","até","já","pra","pro","pros","pras",
+                    "vai","vão","tem","têm","bem","sim","não","sem","só","lá","cá","você","voce",
+                    "além","isso","isto","aquilo","tudo","nada","muito","muita","muitos","muitas",
+                    "pouco","poucos","poucas","dia","ano","mês","vez","aqui","ali","anos","dias",
+                    "meses","vezes","todo","toda","todos","todas","ser","ter","pode","nosso","nossa",
+                    "nossos","nossas","qual","quais","quando","onde","quem","porque","the","and","of",
+                    "to","in","is","it","for","on","with","that","this","are","from","at","an","be",
+                    "by","not","or","was","we","our","your","have","has","will","can","more","also",
+                }
+                texto_nuvem = bio_txt_geral + " "
+                for p in posts_lista[:30]:
+                    texto_nuvem += (p.get("caption") or "") + " "
+                tokens_nuvem = _re.sub(r'[^a-záéíóúàãõâêîôûçñü\s]', ' ', texto_nuvem.lower()).split()
+                freq_nuvem = {}
+                for w in tokens_nuvem:
+                    if len(w) >= 4 and w not in stop_words_bio:
+                        freq_nuvem[w] = freq_nuvem.get(w, 0) + 1
+                nuvem_palavras = sorted(freq_nuvem.items(), key=lambda x: x[1], reverse=True)[:20]
+
+                redes_info = {
+                    "av_html": av_html,
+                    "seg":     fmt_num(r.get("seguidores",0)),
+                    "eng":     f'{r.get("eng_pct",0):.1f}%',
+                    "posts":   fmt_num(r.get("total_posts",0)),
+                    "eng_med": fmt_num(int(r.get("eng_medio",0))),
+                    "score_val":  score_geral["score"],
+                    "score_cor":  score_geral["cor_classe"],
+                    "score_icon": score_geral["classificacao_icon"],
+                    "score_lbl":  score_geral["classificacao"],
+                    "score_criterios":     score_geral["criterios"],
+                    "score_oportunidades": score_geral["oportunidades"],
+                    "score_faltando": [c["label"] for c in score_geral["criterios"] if not c["ok"]],
+                    "pct_foto":    round(n_fotos     / n_total_tp * 100),
+                    "pct_vid":     round(n_videos    / n_total_tp * 100),
+                    "pct_carr":    round(n_carrossel / n_total_tp * 100),
+                    "n_fotos":     n_fotos,
+                    "n_videos":    n_videos,
+                    "n_carrossel": n_carrossel,
+                    "n_total_tp":  len(posts_lista),
+                    "nuvem_palavras": nuvem_palavras,
+                }
+
+            av_html_fallback = (redes_info["av_html"] if tem_redes else
+                f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>')
+
+            site_url = e.get("site","") or ""
+            seo      = seo_cache.get(e["nome"],{})
+            sitemap  = seo.get("sitemap",{})
+
+            seo_status_ok = seo.get("status") == "ok"
+            seo_pontos = sum([bool(seo.get("title")), bool(seo.get("h1")), bool(seo.get("description")),
+                              bool(seo.get("h2s")), sitemap.get("status")=="ok"])
+            seo_score_val = round((seo_pontos / 5) * 100) if seo_status_ok else 0
+
+            if seo_score_val >= 80:   seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente","🏆","#22c55e"
+            elif seo_score_val >= 60: seo_score_lbl, seo_score_icon, seo_score_cor = "Bom","👍","#3b82f6"
+            elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular","⚠️","#f59e0b"
+            else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar","📝","#ef4444"
+
+            seo_items_check = [
+                {"label": "Title",       "ok": bool(seo.get("title"))},
+                {"label": "H1",          "ok": bool(seo.get("h1"))},
+                {"label": "Meta Desc.",  "ok": bool(seo.get("description"))},
+                {"label": "Seções (H2)", "ok": bool(seo.get("h2s"))},
+                {"label": "Sitemap",     "ok": sitemap.get("status") == "ok"},
+            ]
+            seo_faltando = [c["label"] for c in seo_items_check if not c["ok"]]
+
+            ads_entry = ads_cache.get(e["nome"],{})
+            ads_lista = ads_entry.get("data",[]) if ads_entry else []
+            tem_ads   = len(ads_lista) > 0
+            ads_info  = calcular_categorias_ads(ads_lista) if tem_ads else None
+
+            empresas_cards_data.append({
+                "nome": e["nome"], "cor": cor, "av_html": av_html_fallback,
+                "badge_lbl": badge_lbl, "badge_bg": badge_bg, "badge_col": badge_col, "badge_brd": badge_brd,
+                "tem_redes": tem_redes, "redes": redes_info,
+                "site": site_url, "ig": e.get("instagram","") or "",
+                "seo_status_ok": seo_status_ok, "seo_score_val": seo_score_val,
+                "seo_score_lbl": seo_score_lbl, "seo_score_icon": seo_score_icon, "seo_score_cor": seo_score_cor,
+                "seo_faltando": seo_faltando,
+                "seo_title": seo.get("title",""), "seo_desc": seo.get("description",""),
+                "seo_h1": seo.get("h1",""), "seo_h2s": seo.get("h2s",[]),
+                "seo_extraido_em": seo.get("extraido_em",""), "seo_contato": seo.get("contato",{}),
+                "sitemap_urls": sitemap.get("urls",[]), "sitemap_total": sitemap.get("total",0),
+                "sitemap_status": sitemap.get("status",""),
+                "tem_ads": tem_ads, "ads": ads_info,
             })
 
-        empresas_cards_nav_str = _json.dumps(empresas_cards_nav_json, ensure_ascii=False)
+        # ── Monta HTML de cada empresa ─────────────────────────────────
+        for d in empresas_cards_data:
+
+            # ── REDES SOCIAIS ──────────────────────────────────────────
+            if d["tem_redes"]:
+                m = d["redes"]
+
+                def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
+                    return (
+                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">'
+                        f'<div style="width:38px;height:38px;border-radius:50%;background:{icon_bg};'
+                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                        f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
+                        f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
+                        f'</div>'
+                        f'<div style="font-size:16px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
+                        f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                        f'letter-spacing:0.5px;white-space:nowrap;">{label}</div>'
+                        f'</div>'
+                    )
+
+                path_seg  = '<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>'
+                path_eng  = '<path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>'
+                path_post = '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'
+                path_enm  = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
+
+                stats_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">Estatísticas</div>'
+                    '<div style="display:flex;gap:4px;align-items:flex-start;">'
+                    + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
+                    + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")
+                    + stat_item(path_post, "#8b5cf6", "#f5f3ff", m["posts"],   "#374151", "Posts")
+                    + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post")
+                    + '</div></div>'
+                )
+
+                score_nok = m["score_oportunidades"]
+                score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">❌ {f}</div>' for f in m.get("score_faltando", []))
+                if score_nok > 0:
+                    score_nok_html = (
+                        f'<div class="oport-wrap">'
+                        f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
+                        f'color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
+                        f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
+                        f'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'
+                        f'{score_faltando_html}</div>'
+                        f'</div>'
+                    )
+                else:
+                    score_nok_html = ""
+
+                score_chips_html = "".join(
+                    '<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> ' + c["label"] + '</div>'
+                    for c in m["score_criterios"] if c["ok"]
+                )
+
+                score_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
+                    '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
+                    '<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+                    '✅ Tem bio +20<br>✅ Proposta de valor +20<br>✅ Posicionamento +20<br>'
+                    '✅ Link na bio +15<br>✅ CTA na bio +15<br>✅ Engajamento ≥3% +10'
+                    '</div></div></div>'
+                    + score_nok_html +
+                    '</div>'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
+                    f'<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:{m["score_cor"]};">{m["score_val"]}</span>'
+                    '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
+                    f'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;flex-shrink:0;">'
+                    f'{m["score_icon"]} {m["score_lbl"]}</div></div>'
+                    f'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
+                    f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div></div>'
+                    f'<div style="display:flex;flex-wrap:wrap;">{score_chips_html}</div>'
+                    '</div>'
+                )
+
+                tipo_donuts = (
+                    '<div style="display:flex;gap:8px;align-items:center;">'
+                    + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
+                    + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
+                    + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
+                    + '</div>'
+                )
+
+                tipos_block_html = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Tipos de Conteúdo</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {m["n_total_tp"]}</div>'
+                    '</div>' + tipo_donuts + '</div>'
+                )
+
+                nuvem = m.get("nuvem_palavras", [])
+                if nuvem:
+                    COLOR_NUVEM_TXT = [
+                        "#1d4ed8", "#15803d", "#7e22ce", "#c2410c",
+                        "#0f766e", "#b91c1c", "#854d0e", "#334155",
+                    ]
+                    nuvem_chips = ""
+                    for idx, (palavra, freq) in enumerate(nuvem):
+                        txt_c = COLOR_NUVEM_TXT[idx % len(COLOR_NUVEM_TXT)]
+                        nuvem_chips += (
+                            f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;'
+                            f'font-weight:600;background:#f8f8f8;color:{txt_c};padding:3px 10px;'
+                            f'border-radius:20px;line-height:1.3;white-space:nowrap;cursor:default;">'
+                            f'{palavra}'
+                            f'<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">{freq}x</span>'
+                            f'</span>'
+                        )
+                    nuvem_block_html = (
+                        '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
+                        f'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">{nuvem_chips}</div>'
+                        '</div>'
+                    )
+                else:
+                    nuvem_block_html = ""
+
+                redes_block_html = stats_block_html + score_block_html + tipos_block_html + nuvem_block_html
+            else:
+                redes_block_html = (
+                    '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
+                    '<div style="font-size:20px;margin-bottom:6px;">📊</div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados de redes sociais coletados</div></div>'
+                )
+            d["redes_block_html"] = redes_block_html
+
+            # ── ANÚNCIOS ───────────────────────────────────────────────
+            if d["tem_ads"]:
+                a = d["ads"]
+                total_ads = a["total"] or 1
+
+                def barra_tipo(label, valor, total, cor):
+                    pct = round(valor / total * 100) if total else 0
+                    return (
+                        '<div style="margin-bottom:8px;">'
+                        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                        f'<span style="font-size:11px;color:#374151;font-weight:600;">{label}</span>'
+                        f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span></div>'
+                        f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                        f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
+                    )
+
+                formato_donuts = (
+                    '<div style="display:flex;gap:8px;align-items:center;">'
+                    + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
+                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
+                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
+                    + '</div>'
+                )
+                ads_formato_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Formato dos anúncios</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;white-space:nowrap;">Total: {a["total"]}</div>'
+                    '</div>' + formato_donuts + '</div>'
+                )
+
+                ads_tipos_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Tipos de anúncio</div>'
+                    + barra_tipo("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
+                    + barra_tipo("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
+                    + barra_tipo("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
+                    + barra_tipo("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
+                    + '</div>'
+                )
+
+                plat_dict  = a.get("plataformas", {})
+                plat_total = sum(plat_dict.values()) or 1
+                plat_items = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+
+                plat_donuts = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;">'
+                for plat_key, plat_val in plat_items:
+                    cor_plat, label_plat, _ = PLAT_ICONS_SVG.get(plat_key, ("#64748b", plat_key.capitalize(), ""))
+                    pct_plat = round(plat_val / plat_total * 100)
+                    plat_donuts += make_donut_plat(pct_plat, cor_plat, label_plat, plat_val, plat_key, size=52, stroke=5)
+                plat_donuts += '</div>'
+
+                ads_plat_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Plataformas dos anúncios</div>'
+                    + plat_donuts + '</div>'
+                )
+
+                destinos = a.get("destinos", [])
+                if destinos:
+                    dest_max  = max(v for _, v in destinos) or 1
+                    dest_rows = ""
+                    for dom, cnt in destinos:
+                        pct = round(cnt / dest_max * 100)
+                        dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                        dest_rows += (
+                            '<div style="margin-bottom:8px;">'
+                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">🔗 {dom_display}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span></div>'
+                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div></div></div>'
+                        )
+                    ads_dest_content = dest_rows
+                else:
+                    ads_dest_content = '<div style="font-size:11px;color:#d1d5db;font-style:italic;">Sem dados de destino</div>'
+
+                ads_dest_block = (
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Destinos dos anúncios</div>'
+                    + ads_dest_content + '</div>'
+                )
+
+                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block
+            else:
+                ads_block_html = (
+                    '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
+                    '<div style="font-size:20px;margin-bottom:6px;">📣</div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div></div>'
+                )
+            d["ads_block_html"] = ads_block_html
+
+        empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 
         components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!DOCTYPE html><html>
+<head>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
-.main-wrap {{ background:#d2dde9; border-radius:16px; overflow:hidden; }}
-.cards-grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; padding:12px; }}
-.emp-card {{
-    background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:16px;
-    display:flex; align-items:center; gap:12px; cursor:pointer; transition:all 0.15s;
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+body {{ padding-bottom:8px; }}
+{tooltip_css}
+.empresa-card {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:18px 20px 20px; margin-top:16px; overflow:hidden;
 }}
-.emp-card:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
-.emp-card.active {{ background:#fff; border:2px solid #3b82f6; }}
-.emp-icon {{ width:44px; height:44px; border-radius:22px; background:#e9eef5; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }}
-.emp-icon img {{ width:100%; height:100%; object-fit:cover; border-radius:22px; }}
-.emp-nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.badge-minha {{ display:inline-flex; align-items:center; background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}
-.badge-conc  {{ display:inline-flex; align-items:center; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; flex-shrink:0; margin-left:auto; }}
+.empresa-card-hdr {{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }}
+.empresa-card-nome {{ font-size:16px; font-weight:800; color:#1a2e4a; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.badge {{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:10px; font-weight:700; flex-shrink:0; }}
+.empresa-card-divider {{ border:none; border-top:1.5px solid #e5e7eb; margin:0 0 16px 0; }}
+.cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
+.col {{ display:flex; flex-direction:column; min-width:0; }}
+.col-title {{
+    display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800;
+    text-transform:uppercase; letter-spacing:0.5px;
+    padding:8px 12px; border-radius:8px; margin-bottom:10px;
+}}
+.col-title-redes  {{ background:#eff6ff; color:#1d4ed8; border-left:3px solid #3b82f6; }}
+.col-title-site   {{ background:#f0fdf4; color:#15803d; border-left:3px solid #22c55e; }}
+.col-title-ads    {{ background:#fff7ed; color:#c2410c; border-left:3px solid #f97316; }}
+.col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
+.col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
+.col-ads    {{ border-left:2px solid #f9731620; padding-left:8px; margin-left:-8px; }}
+.placeholder-box {{
+    text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
+    border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
+}}
+.contato-grupo-title {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
+.contato-chips {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:4px; }}
+.contato-chip {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#374151; }}
+.contato-divider {{ border:none; border-top:1px solid #f3f4f6; margin:8px 0; }}
+.termos-sub {{ font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.7px; color:#b0b8c4; margin-bottom:7px; }}
+.termos-chips {{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }}
+.termo-chip {{ display:inline-flex; align-items:center; gap:2px; font-size:11px; font-weight:600; background:#f8f8f8; border-radius:20px; padding:3px 10px; cursor:default; line-height:1.3; }}
+.termo-chip-bigram {{ border-radius:10px; padding:4px 11px; }}
+.termo-count {{ font-size:9px; font-weight:700; opacity:0.55; margin-left:2px; }}
+.score-chip-ok {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#15803d; padding:2px 4px; white-space:nowrap; }}
+.score-check {{ border:1px solid #22c45f; border-radius:5px; background:#22c45e; width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }}
+@media (max-width:760px) {{ .cols-wrap {{ grid-template-columns:1fr; }} }}
 </style>
-<div class="main-wrap"><div class="cards-grid" id="cards-grid-geral"></div></div>
+</head>
+<body>
+<div id="cards"></div>
 <script>
-var EMPRESAS = {empresas_cards_nav_str};
-function buildUI() {{
-    var grid = document.getElementById('cards-grid-geral');
-    grid.innerHTML = '';
-    EMPRESAS.forEach(function(e) {{
-        var card = document.createElement('div');
-        card.className = 'emp-card' + (e.active ? ' active' : '');
-        var strokeColor = e.active ? '#3b82f6' : '#64748b';
-        var iconInner = '<svg viewBox="0 0 24 24" fill="none" stroke="' + strokeColor + '" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="' + strokeColor + '"/></svg>';
-        if (e.profile_pic) iconInner = '<img src="' + e.profile_pic + '" />';
-        var badgeHtml = e.is_minha ? '<span class="badge-minha">Minha empresa</span>' : '<span class="badge-conc">Concorrente</span>';
-        card.innerHTML = '<div class="emp-icon">' + iconInner + '</div>'
-            + '<div style="min-width:0;flex:1;">'
-            + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">'
-            + '<div class="emp-nome">' + e.nome + '</div>' + badgeHtml + '</div>'
-            + (e.handle ? '<div style="font-size:12px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + e.handle + '</div>' : '')
-            + '</div>';
-        card.addEventListener('click', function() {{ selectFiltro(e.i); }});
-        grid.appendChild(card);
-    }});
-    syncHeight();
-}}
-function selectFiltro(i) {{
-    var label = 'geral_filtro_' + i;
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        if ((b.textContent||b.innerText||'').trim() === label) {{ b.click(); return; }}
-    }}
-}}
-function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var i=0;i<frames.length;i++) {{
-        try {{ if (frames[i].contentWindow===window) {{ frames[i].style.height=(h+2)+'px'; break; }} }} catch(e) {{}}
-    }}
-}}
-buildUI();
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
-setTimeout(syncHeight,200); setTimeout(syncHeight,600);
-</script>
-""", height=100, scrolling=False)
+var DATA = {empresas_cards_json};
+function esc(s) {{ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+var CONTACT_ICONS = {{
+    whatsapp:'<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
+    telefone:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M6.62 10.79a15.05 15.05 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C9.61 21 3 14.39 3 6a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.58a1 1 0 01-.25 1.01l-2.2 2.2z"/></svg>',
+    email:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4.7l-8 5.334L4 8.7V6.297l8 5.333 8-5.333V8.7z"/></svg>',
+    instagram:'<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>',
+    facebook:'<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>',
+    linkedin:'<svg width="15" height="15" viewBox="0 0 24 24" fill="#3593cf"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>',
+    youtube:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M23.495 6.205a3.007 3.007 0 00-2.088-2.088c-1.87-.501-9.396-.501-9.396-.501s-7.507-.01-9.396.501A3.007 3.007 0 00.527 6.205a31.247 31.247 0 00-.522 5.805 31.247 31.247 0 00.522 5.783 3.007 3.007 0 002.088 2.088c1.868.502 9.396.502 9.396.502s7.506 0 9.396-.502a3.007 3.007 0 002.088-2.088 31.247 31.247 0 00.5-5.783 31.247 31.247 0 00-.5-5.805zM9.609 15.601V8.408l6.264 3.602z"/></svg>',
+    chat_ao_vivo:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M20 2H4a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2zm-2 10H6v-2h12v2zm0-3H6V7h12v2z"/></svg>',
+    formulario:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13zm-5 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>',
+    botao_flutuante:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>',
+    popup_saida:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-3.293 10.293l-1.414 1.414L12 12.414l-2.293 2.293-1.414-1.414L10.586 11 8.293 8.707l1.414-1.414L12 9.586l2.293-2.293 1.414 1.414L13.414 11l2.293 2.293z"/></svg>',
+    popup_rolagem:'<svg width="16" height="16" viewBox="0 0 24 24" fill="#3593cf"><path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-7 13l-5-5 1.41-1.41L12 13.17l7.59-7.59L21 7l-9 9z"/></svg>',
+}};
+var CONTACT_LABEL_MAP = {{
+    whatsapp:'WhatsApp',telefone:'Telefone',email:'E-mail',instagram:'Instagram',
+    facebook:'Facebook',linkedin:'LinkedIn',youtube:'YouTube',chat_ao_vivo:'Chat ao vivo',
+    formulario:'Formulário',botao_flutuante:'Btn. flutuante',popup_saida:'Popup saída',popup_rolagem:'Popup rolagem',
+}};
+var CONTACT_GRUPOS = [
+    {{titulo:'Contato direto',keys:['whatsapp','telefone','email']}},
+    {{titulo:'Redes sociais',keys:['instagram','facebook','linkedin','youtube']}},
+    {{titulo:'Recursos de engajamento',keys:['chat_ao_vivo','formulario','botao_flutuante','popup_saida','popup_rolagem']}},
+];
+var STOP_WORDS = new Set(['de','da','do','das','dos','em','e','a','o','as','os','um','uma','uns','umas','para','por','com','que','se','na','no','nas','nos','ao','aos','à','às','mais','ou','mas','como','são','sua','seu','suas','seus','esta','este','essa','esse','pelo','pela','pelos','pelas','entre','até','já','pra','pro','pros','pras','vai','vão','tem','têm','bem','sim','não','sem','só','lá','cá','você','voce','além','isso','isto','aquilo','tudo','nada','muito','muita','muitos','muitas','pouco','poucos','poucas','dia','ano','mês','vez','aqui','ali','anos','dias','meses','vezes','todo','toda','todos','todas','ser','ter','pode','nosso','nossa','nossos','nossas','qual','quais','quando','onde','quem','porque','clique','clicar','acesse','acessar','saiba','saber','veja','ver','descubra','descobrir','confira','conferir','fale','contate','contatar','receba','receber','envie','enviar','inscrev','inscrever','baixe','baixar','assine','assinar','comece','começar','inicie','iniciar','experimente','testar','teste','ligue','ligar','entrar','entre','sair','voltar','conheça','conhecer','aprenda','aprender','entenda','entender','the','and','of','to','in','is','it','for','on','with','that','this','are','from','at','an','be','by','not','or','was','we','our','your','have','has','will','can','more','also']);
+var COLOR_PALETTE = [
+    {{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'}},{{bg:'#f0fdf4',border:'#6ee7b7',text:'#15803d'}},
+    {{bg:'#fdf4ff',border:'#d8b4fe',text:'#7e22ce'}},{{bg:'#fff7ed',border:'#fdba74',text:'#c2410c'}},
+    {{bg:'#f0fdfa',border:'#5eead4',text:'#0f766e'}},{{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'}},
+];
+function isVerbLike(w) {{ return /^(clica|acessa|saib|vej|descubr|confir|receb|envi|inscrev|baix|assin|comec|inici|experim|lig|entr|conhec|aprend|entend|ofer|garant|cresc|facilit|acab|ajud|transform|impulsion|realiz|promov|permit|ger|apresent|mostr|demonstr|ilustr|explor|desenvolv)/.test(w); }}
+function calcTopWords(d) {{
+    var textoFull = [d.seo_title||'',d.seo_h1||'',d.seo_desc||''].concat(d.seo_h2s||[]).join(' ');
+    var textoNorm = textoFull.toLowerCase().replace(/[^a-záéíóúàãõâêîôûçñü\\s]/gi,' ');
+    var tokens = textoNorm.split(/\\s+/).filter(function(w){{return w.length>=2;}});
+    function bigramKey(w1,w2){{return [w1,w2].sort().join('|');}}
+    var freqBiRaw={{}};
+    for(var bi=0;bi<tokens.length-1;bi++){{
+        var w1=tokens[bi],w2=tokens[bi+1];
+        if(w1.length>=3&&w2.length>=3&&!STOP_WORDS.has(w1)&&!STOP_WORDS.has(w2)&&!isVerbLike(w1)&&!isVerbLike(w2)){{
+            var bk=bigramKey(w1,w2);
+            if(!freqBiRaw[bk])freqBiRaw[bk]={{count:0,displayPair:w1+' '+w2}};
+            freqBiRaw[bk].count++;
+        }}
+    }}
+    var freqUni={{}};
+    tokens.forEach(function(w){{if(w.length>=5&&!STOP_WORDS.has(w)&&!isVerbLike(w))freqUni[w]=(freqUni[w]||0)+1;}});
+    var usedInBigram=new Set(),combined=[];
+    Object.keys(freqBiRaw).forEach(function(bk){{
+        var entry=freqBiRaw[bk];
+        if(entry.count>=2){{var parts=bk.split('|');usedInBigram.add(parts[0]);usedInBigram.add(parts[1]);combined.push({{word:entry.displayPair,count:entry.count}});}}
+    }});
+    Object.keys(freqBiRaw).forEach(function(bk){{
+        var entry=freqBiRaw[bk];
+        if(entry.count===1){{
+            var parts=bk.split('|');
+            if(parts[0].length>=5&&parts[1].length>=5&&!usedInBigram.has(parts[0])&&!usedInBigram.has(parts[1])&&(freqUni[parts[0]]||0)<=1&&(freqUni[parts[1]]||0)<=1&&parts[0].length>=4&&parts[1].length>=4){{
+                usedInBigram.add(parts[0]);usedInBigram.add(parts[1]);combined.push({{word:entry.displayPair,count:1}});
+            }}
+        }}
+    }});
+    Object.keys(freqUni).forEach(function(w){{if(!usedInBigram.has(w))combined.push({{word:w,count:freqUni[w]}});}});
+    return combined.filter(function(item){{return item.word.split(' ').every(function(p){{return p.length>=3;}});}})
+        .sort(function(a,b){{return b.count-a.count;}}).filter(function(item){{return item.count>1;}}).slice(0,14);
+}}
+function buildSeoColumn(d,colEl) {{
+    if(!d.seo_status_ok){{colEl.innerHTML+='<div class="placeholder-box">Extraia o SEO na página de Sites para ver os dados aqui.</div>';return;}}
+    var scoreNum=d.seo_score_val;
+    var scoreTextColor=scoreNum>=80?'#15803d':scoreNum>=40?'#92400e':'#b91c1c';
+    var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
+    var scoreTxt2=scoreNum>=80?'Excelente 🏆':scoreNum>=60?'Bom 👍':scoreNum>=40?'Regular ⚠️':'Precisa melhorar 📝';
+    var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
+    var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);
+    var SEO_ITEMS=[
+        {{label:'Title',ok:!!d.seo_title}},{{label:'H1',ok:!!d.seo_h1}},
+        {{label:'Meta Desc.',ok:!!d.seo_desc}},{{label:'Seções (H2)',ok:d.seo_h2s&&d.seo_h2s.length>0}},
+        {{label:'Sitemap',ok:d.sitemap_status==='ok'}},
+    ];
+    var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
+    var seoFaltandoHtml=(d.seo_faltando||[]).map(function(f){{return '<div style="display:flex;align-items:center;gap:5px;">❌ '+esc(f)+'</div>';}}).join('');
+    var nokHtml='';
+    if(nok>0){{
+        nokHtml='<div class="oport-wrap">'
+            +'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#2563eb;background:#dbeafe;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>'
+            +'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'+seoFaltandoHtml+'</div>'
+            +'</div>';
+    }}
+    var chipsHtml='';
+    SEO_ITEMS.forEach(function(it){{if(it.ok)chipsHtml+='<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> '+it.label+'</div>';}});
+    var scoreBlock=document.createElement('div');
+    scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+    scoreBlock.innerHTML=
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+        +'<div style="display:flex;align-items:center;">'
+        +'<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
+        +'<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
+        +'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+        +'✅ Title +20<br>✅ H1 +20<br>✅ Meta Desc. +20<br>✅ Seções (H2) +20<br>✅ Sitemap +20'
+        +'</div></div>'
+        +'</div>'
+        +nokHtml+'</div>'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
+        +'<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;"><span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:'+scoreTextColor+';">'+scoreNum+'</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
+        +'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;flex-shrink:0;">'+scoreTxt2+'</div></div>'
+        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#22c55e,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
+        +'<div style="display:flex;flex-wrap:wrap;">'+chipsHtml+'</div>';
+    colEl.appendChild(scoreBlock);
+    setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
+    var ct=d.seo_contato||{{}};
+    var gruposHtml='',algumGrupo=false;
+    CONTACT_GRUPOS.forEach(function(g){{
+        var ativos=g.keys.filter(function(k){{return !!ct[k];}});
+        if(!ativos.length)return;
+        algumGrupo=true;
+        if(gruposHtml)gruposHtml+='<hr class="contato-divider"/>';
+        gruposHtml+='<div class="contato-grupo-title">'+g.titulo+'</div><div class="contato-chips">';
+        ativos.forEach(function(k){{gruposHtml+='<div class="contato-chip">'+(CONTACT_ICONS[k]||'')+(CONTACT_LABEL_MAP[k]||k)+'</div>';}});
+        gruposHtml+='</div>';
+    }});
+    if(algumGrupo){{
+        var ctBlock=document.createElement('div');
+        ctBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+        ctBlock.innerHTML='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Canais de Contato</div>'+gruposHtml;
+        colEl.appendChild(ctBlock);
+    }}
+    var topWords=calcTopWords(d);
+    if(topWords.length>0){{
+        var bigrams=topWords.filter(function(w){{return w.word.indexOf(' ')>-1;}});
+        var unigrams=topWords.filter(function(w){{return w.word.indexOf(' ')===-1;}});
+        function makeChip(item,idx,isBigram){{
+            var col=COLOR_PALETTE[idx%COLOR_PALETTE.length];
+            var countBadge=item.count>1?'<span class="termo-count">'+item.count+'x</span>':'';
+            return '<span class="termo-chip'+(isBigram?' termo-chip-bigram':'')+'" style="color:'+col.text+';" title="'+item.count+'x mencionado">'+esc(item.word)+countBadge+'</span>';
+        }}
+        var bigramsHtml=bigrams.map(function(item,i){{return makeChip(item,i,true);}}).join('');
+        var unigramsHtml=unigrams.map(function(item,i){{return makeChip(item,i,false);}}).join('');
+        var kwBlock=document.createElement('div');
+        kwBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
+        var innerHtml='<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">Termos mais usados</div>';
+        if(bigramsHtml)innerHtml+='<div class="termos-sub">Expressões-chave</div><div class="termos-chips">'+bigramsHtml+'</div>';
+        if(unigramsHtml)innerHtml+='<div class="termos-sub">Palavras frequentes</div><div class="termos-chips">'+unigramsHtml+'</div>';
+        kwBlock.innerHTML=innerHtml;
+        colEl.appendChild(kwBlock);
+    }}
+}}
+function buildCards() {{
+    var el=document.getElementById('cards');
+    DATA.forEach(function(d) {{
+        var card=document.createElement('div');
+        card.className='empresa-card';
+        card.style.borderTop='3px solid '+d.cor;
+        var hdr=document.createElement('div');
+        hdr.className='empresa-card-hdr';
+        hdr.innerHTML=d.av_html+'<span class="empresa-card-nome">'+esc(d.nome)+'</span>'
+            +'<span class="badge" style="background:'+d.badge_bg+';color:'+d.badge_col+';border:1px solid '+d.badge_brd+'">'+d.badge_lbl+'</span>';
+        card.appendChild(hdr);
+        var divider=document.createElement('hr');
+        divider.className='empresa-card-divider';
+        card.appendChild(divider);
+        var cols=document.createElement('div');
+        cols.className='cols-wrap';
+        var colRedes=document.createElement('div');
+        colRedes.className='col col-redes';
+        colRedes.innerHTML='<div class="col-title col-title-redes">📱 Redes Sociais</div>'+d.redes_block_html;
+        var colSite=document.createElement('div');
+        colSite.className='col col-site';
+        var colSiteTitle=document.createElement('div');
+        colSiteTitle.className='col-title col-title-site';
+        colSiteTitle.textContent='🌐 Site';
+        colSite.appendChild(colSiteTitle);
+        buildSeoColumn(d,colSite);
+        var colAds=document.createElement('div');
+        colAds.className='col col-ads';
+        colAds.innerHTML='<div class="col-title col-title-ads">📣 Anúncios</div>'+d.ads_block_html;
+        cols.appendChild(colRedes);
+        cols.appendChild(colSite);
+        cols.appendChild(colAds);
+        card.appendChild(cols);
+        el.appendChild(card);
+    }});
+    syncH();
+}}
+function syncH() {{
+    var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+    var iframes=window.parent.document.querySelectorAll('iframe');
+    for(var i=0;i<iframes.length;i++){{
+        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-20px';break;}}}}catch(e){{}}
+    }}
+}}
+buildCards();
+if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH,300);setTimeout(syncH,800);setTimeout(syncH,2000);
+</script>
+</body></html>
+""", height=900, scrolling=False)
+
+    else:
+        st.markdown(
+            "<div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;"
+            "padding:48px 32px;text-align:center;margin-top:16px'>"
+            "<div style='font-size:32px;margin-bottom:12px'>📊</div>"
+            "<div style='font-size:15px;font-weight:600;color:#374151;margin-bottom:6px'>Sem empresas cadastradas</div>"
+            "<div style='font-size:13px;color:#9ca3af'>Cadastre sua empresa e concorrentes para ver o painel.</div>"
+            "</div>",
+            unsafe_allow_html=True
+        )
         
 # ---------------------------------------------------
 # PAGINA - CONFRONTO DE SITES

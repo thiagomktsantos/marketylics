@@ -7306,21 +7306,31 @@ window.addEventListener('load', syncHeight);
                     _ph_ads = st.empty()
                     _render_modal_redes_ia("gerando", f"Anúncios — {nome}", 40, _ph_ads)
                     try:
+                        resumo_completo = "\n".join([
+                            f"- Formato: {a.get('formato','—')} | Plataformas: {', '.join(a.get('plataformas') or [])} | "
+                            f"Tem imagem: {'Sim' if a.get('images') else 'Não'} | Tem vídeo: {'Sim' if a.get('videos') else 'Não'} | "
+                            f"Body: {_truncar(a.get('body','') or '—', 120)} | "
+                            f"CTA: {a.get('cta','') or '—'} | "
+                            f"Dias ativo: {a.get('data_inicio','') or '—'} | "
+                            f"Impressões: {a.get('impressoes','') or '—'}"
+                            for a in ads_list[:20]
+                        ])
                         resp = gemini_model.generate_content(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
-Analise os anúncios de "{nome}" em português, cobrindo tanto os CRIATIVOS quanto as COPIES.
+Analise os anúncios de "{nome}" em português com base nos dados reais abaixo.
 
-Empresa: {nome} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
+Empresa: {nome} | Total: {len(ads_list)} anúncios | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
 
-Criativos:
-{resumo_criativos}
+Dados completos dos anúncios (formato, plataforma, copy, CTA, tempo ativo, impressões):
+{resumo_completo}
 
-Copies:
-{todas_copies}
+IMPORTANTE: Baseie sua análise APENAS nos dados acima. Não infira nem invente informações.
+Se um campo estiver como "—", ignore-o na análise.
 
 ---
-### 🎨 Estilo Visual e Mix de Formatos
+### 🎨 Mix de Formatos e Plataformas
 ### ✍️ Tom de Voz e Principais Mensagens
 ### 📣 Uso de CTAs
+### ⏱️ Tempo de Veiculação e Impressões
 ### ✅ Pontos Fortes (3 pontos)
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Recomendações Práticas (3 ações concretas)""")

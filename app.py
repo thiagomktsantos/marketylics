@@ -7583,56 +7583,78 @@ Amostra dos anúncios:
             ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
 
             components.html(f"""
-            <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-            <div style='background:#fff;border:1px solid #e5e7eb;border-bottom:none;border-radius:12px 12px 0 0;overflow:hidden;margin-top:0px;'>
-                <div style='display:flex;align-items:center;gap:16px;padding:16px 20px'>
-                    {avatar_empresa_html}
-                    <div style='flex:1;min-width:0'>
-                        <div style='font-size:17px;font-weight:700;color:#111827'>{nome}</div>
-                        <div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap;'>
-                            <span style='font-size:13px;color:#6b7280;font-weight:500'>{badge_lbl}</span>
-                            <span style='color:#d1d5db;font-size:12px'>·</span>
-                            <span style='font-size:13px;color:#6b7280'>Página: {page_display}</span>
-                        </div>
-                    </div>
-                    <div style='display:flex;align-items:center;gap:0;flex-shrink:0'>
-                        <div style='width:1px;height:40px;background:#e5e7eb;margin-right:20px'></div>
-                        <div style='text-align:center;min-width:56px'>
-                            <div style='font-size:22px;font-weight:800;color:#111827;line-height:1'>{len(ads_list)}</div>
-                            <div style='font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:3px'>anúncios</div>
-                        </div>
-                        <div style='width:1px;height:40px;background:#e5e7eb;margin:0 20px'></div>
-                        <div style='display:flex;align-items:center;gap:10px;flex-shrink:0'>
-                            <a href='javascript:void(0)'
-                               onclick="triggerIA('btn_ia_copys_{sk}')"
-                               style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
-                               onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
-                               onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
-                                <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg></span>
-                                    <span style='display:flex;flex-direction:column;gap:0px;'>
-                                        <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar anúncios</span>
-                                        <span style='font-size:11px;font-weight:400;color:#747a87;'>Copies, CTAs e padrões de texto</span>
-                                    </span>
-                                </span>
-                            </a>
-                            <a href='javascript:void(0)'
-                               onclick="triggerIA('btn_ia_geral_{sk}')"
-                               style='display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;color:#111827;border:1.5px solid #e5e7eb;padding:10px 18px;border-radius:10px;text-decoration:none;white-space:nowrap;transition:all 0.15s;font-family:DM Sans,sans-serif;min-width:180px;'
-                               onmouseover="this.style.borderColor='#3a9fd6';this.style.background='#f0f9ff'"
-                               onmouseout="this.style.borderColor='#e5e7eb';this.style.background='#fff'">
-                                <span style='display:flex;align-items:center;gap:7px;'>
-                                    <span style='display:flex;align-items:center;justify-content:center;background-color:#f3f4f6;padding:8px;border-radius:5px;flex-shrink:0;'><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/><path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/></svg></span>
-                                    <span style='display:flex;flex-direction:column;gap:0px;'>
-                                        <span style='font-size:13px;font-weight:700;color:#111827;line-height:1.3;'>Analisar estratégia</span>
-                                        <span style='font-size:11px;font-weight:400;color:#747a87;'>Formatos, mix de mídia e insights</span>
-                                    </span>
-                                </span>
-                            </a>
-                        </div>
-                    </div>
-                </div>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.header-box {{
+    background:#fff; border:1px solid #e5e7eb;
+    border-bottom:none; border-radius:12px 12px 0 0;
+    overflow:hidden;
+}}
+.inner {{ display:flex; align-items:center; gap:16px; padding:16px 20px; }}
+.divider {{ width:1px; height:40px; background:#e5e7eb; }}
+.count-box {{ text-align:center; min-width:56px; }}
+.count-num {{ font-size:22px; font-weight:800; color:#111827; line-height:1; }}
+.count-lbl {{ font-size:12px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }}
+.btn-card {{
+    display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
+    background:#fff; color:#111827; border:1.5px solid #e5e7eb;
+    padding:10px 18px; border-radius:10px; text-decoration:none;
+    white-space:nowrap; transition:all 0.15s; font-family:'DM Sans',sans-serif;
+    min-width:180px; cursor:pointer;
+}}
+.btn-card:hover {{ border-color:#3a9fd6; background:#f0f9ff; }}
+.btn-icon {{
+    display:flex; align-items:center; justify-content:center;
+    background-color:#f3f4f6; padding:8px; border-radius:5px; flex-shrink:0;
+}}
+.btn-label {{ font-size:13px; font-weight:700; color:#111827; line-height:1.3; }}
+.btn-sub {{ font-size:11px; font-weight:400; color:#747a87; }}
+</style>
+<div class="header-box">
+    <div class="inner">
+        <div style="flex-shrink:0">{avatar_empresa_html}</div>
+        <div style="flex:1;min-width:0">
+            <div style="font-size:17px;font-weight:700;color:#111827">{nome}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:13px;color:#6b7280;font-weight:500">{badge_lbl}</span>
+                <span style="color:#d1d5db;font-size:12px">·</span>
+                <span style="font-size:13px;color:#6b7280">Página: {page_display}</span>
             </div>
+        </div>
+        <div class="divider" style="margin-right:20px"></div>
+        <div class="count-box">
+            <div class="count-num">{len(ads_list)}</div>
+            <div class="count-lbl">anúncios</div>
+        </div>
+        <div class="divider" style="margin:0 20px"></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_copys_{sk}')">
+                <span style="display:flex;align-items:center;gap:7px;">
+                    <span class="btn-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg>
+                    </span>
+                    <span style="display:flex;flex-direction:column;gap:0px;">
+                        <span class="btn-label">Analisar anúncios</span>
+                        <span class="btn-sub">Copies, CTAs e padrões de texto</span>
+                    </span>
+                </span>
+            </a>
+            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_geral_{sk}')">
+                <span style="display:flex;align-items:center;gap:7px;">
+                    <span class="btn-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/><path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/></svg>
+                    </span>
+                    <span style="display:flex;flex-direction:column;gap:0px;">
+                        <span class="btn-label">Analisar estratégia</span>
+                        <span class="btn-sub">Formatos, mix de mídia e insights</span>
+                    </span>
+                </span>
+            </a>
+        </div>
+    </div>
+</div>
 <script>
 function triggerIA(key) {{
     var levels = [window.parent, window.parent.parent, window.top];
@@ -7650,15 +7672,16 @@ function syncH() {{
     for (var i = 0; i < frames.length; i++) {{
         try {{ if (frames[i].contentWindow === window) {{
             frames[i].style.height = (h + 4) + 'px';
-            frames[i].style.marginTop = '-100px';
+            frames[i].style.marginTop = '0';
             break;
         }} }} catch(e) {{}}
     }}
 }}
 window.addEventListener('load', syncH);
-setTimeout(syncH, 200);
+setTimeout(syncH, 100);
+setTimeout(syncH, 400);
 </script>
-""", height=160, scrolling=False)
+""", height=120, scrolling=False)
 
             for j, ad_ind in enumerate(ads_list):
                 if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):

@@ -7292,48 +7292,90 @@ window.addEventListener('load', syncHeight);
                 if gemini_model is None:
                     st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
                 else:
-                    resumo_criativos = "\n".join([
-                        f"- [{a['formato']}] Plataformas: {', '.join(a.get('plataformas',[]))} | Título: {_truncar(a.get('title',''),60) or '—'}"
-                        for a in ads_list[:15]
-                    ])
-                    todas_copies = "\n".join([
-                        f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
-                        for a in ads_list[:20]
-                    ])
                     n_vid = sum(1 for a in ads_list if "Vídeo" in a["formato"])
                     n_img = sum(1 for a in ads_list if "Imagem" in a["formato"])
                     n_car = sum(1 for a in ads_list if "Carrossel" in a["formato"])
                     _ph_ads = st.empty()
                     _render_modal_redes_ia("gerando", f"Anúncios — {nome}", 40, _ph_ads)
                     try:
+                        import google.generativeai as genai
+                        import requests as _req
+                        import base64 as _b64
+
+                        # Monta partes do prompt: texto + imagens reais
+                        parts = []
+
                         resumo_completo = "\n".join([
-                            f"- Formato: {a.get('formato','—')} | Plataformas: {', '.join(a.get('plataformas') or [])} | "
-                            f"Tem imagem: {'Sim' if a.get('images') else 'Não'} | Tem vídeo: {'Sim' if a.get('videos') else 'Não'} | "
-                            f"Body: {_truncar(a.get('body','') or '—', 120)} | "
-                            f"CTA: {a.get('cta','') or '—'} | "
-                            f"Dias ativo: {a.get('data_inicio','') or '—'} | "
-                            f"Impressões: {a.get('impressoes','') or '—'}"
-                            for a in ads_list[:20]
+                            f"- Anúncio {i+1}: Formato={a.get('formato','—')} | "
+                            f"Plataformas={', '.join(a.get('plataformas') or [])} | "
+                            f"Body={_truncar(a.get('body','') or '—', 120)} | "
+                            f"CTA={a.get('cta','') or '—'} | "
+                            f"Dias ativo={a.get('data_inicio','') or '—'} | "
+                            f"Impressões={a.get('impressoes','') or '—'}"
+                            for i, a in enumerate(ads_list[:15])
                         ])
-                        resp = gemini_model.generate_content(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
-Analise os anúncios de "{nome}" em português com base nos dados reais abaixo.
 
-Empresa: {nome} | Total: {len(ads_list)} anúncios | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
+                        parts.append(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
+Analise os anúncios de "{nome}" em português com base nos dados e imagens reais abaixo.
 
-Dados completos dos anúncios (formato, plataforma, copy, CTA, tempo ativo, impressões):
+Empresa: {nome} | Total: {len(ads_list)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
+
+Dados dos anúncios:
 {resumo_completo}
 
-IMPORTANTE: Baseie sua análise APENAS nos dados acima. Não infira nem invente informações.
-Se um campo estiver como "—", ignore-o na análise.
+Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
 
+                        # Envia até 6 imagens reais para o Gemini
+                        imgs_enviadas = 0
+                        for i, a in enumerate(ads_list[:15]):
+                            if imgs_enviadas >= 6:
+                                break
+                            imgs = a.get("images") or []
+                            if not imgs:
+                                continue
+                            img_url = imgs[0]
+                            try:
+                                headers = {
+                                    "User-Agent": "Mozilla/5.0",
+                                    "Referer": "https://www.facebook.com/",
+                                }
+                                r = _req.get(img_url, headers=headers, timeout=8, stream=True)
+                                if r.status_code == 200:
+                                    ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                                    if not ct.startswith("image/"):
+                                        ct = "image/jpeg"
+                                    img_data = _b64.b64encode(r.content).decode("utf-8")
+                                    parts.append(f"\nAnúncio {i+1} ({a.get('formato','')}):")
+                                    parts.append({
+                                        "inline_data": {
+                                            "mime_type": ct,
+                                            "data": img_data,
+                                        }
+                                    })
+                                    imgs_enviadas += 1
+                            except Exception:
+                                continue
+
+                        parts.append("""
 ---
-### 🎨 Mix de Formatos e Plataformas
+### 🎨 Estilo Visual e Mix de Formatos
 ### ✍️ Tom de Voz e Principais Mensagens
-### 📣 Uso de CTAs
+### 📣 Padrão de CTAs
 ### ⏱️ Tempo de Veiculação e Impressões
 ### ✅ Pontos Fortes (3 pontos)
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Recomendações Práticas (3 ações concretas)""")
+
+                        # Converte parts para formato Gemini multimodal
+                        gemini_parts = []
+                        for p in parts:
+                            if isinstance(p, str):
+                                gemini_parts.append(p)
+                            elif isinstance(p, dict) and "inline_data" in p:
+                                gemini_parts.append(p)
+
+                        resp = gemini_model.generate_content(gemini_parts)
+
                         st.session_state[chave_ia_criativos] = resp.text
                         import datetime as _dt_ads
                         st.session_state.ads_analises_salvas = [

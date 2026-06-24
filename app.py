@@ -7328,13 +7328,13 @@ Copies:
                         import datetime as _dt_ads
                         st.session_state.ads_analises_salvas = [
                             a for a in st.session_state.ads_analises_salvas
-                            if not (a.get("tipo") == "criativos_ads" and a.get("empresa") == nome)
+                            if not (a.get("tipo") == "anuncio_completo" and a.get("empresa") == nome)
                         ]
                         st.session_state.ads_analises_salvas.append({
                             "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
-                            "tipo": "criativos_ads",
+                            "tipo": "anuncio_completo",
                             "empresa": nome,
                         })
                         _render_modal_redes_ia("concluido", f"Anúncios — {nome}", 100, _ph_ads)
@@ -8534,11 +8534,10 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
             st.session_state.ads_analise_subtab = "criativos_ads"
 
         subtabs_ads_def = [
-            ("anuncio_ind",     "📢", "Anúncios"),
-            ("criativos_ads",   "🎨", "Criativos"),
-            ("copys_ads",       "✍️", "Copys"),
-            ("estrategia",      "📊", "Estratégia"),
-            ("comparativo_ads", "🏆", "Comparativo"),
+            ("anuncio_completo", "📢", "Anúncios"),
+            ("anuncio_ind",      "🔍", "Individual"),
+            ("estrategia",       "📊", "Estratégia"),
+            ("comparativo_ads",  "🏆", "Comparativo"),
         ]
 
         # Ghost buttons para subtabs

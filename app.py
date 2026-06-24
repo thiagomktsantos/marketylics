@@ -7273,7 +7273,7 @@ window.addEventListener('load', syncHeight);
 
             # Ghost buttons para análise IA
             ia_analise_ghost_css = []
-            for _gk in [f"btn_ia_criativos_{sk}", f"btn_ia_copys_{sk}", f"btn_ia_geral_{sk}"]:
+            for _gk in [f"btn_ia_anuncios_{sk}", f"btn_ia_geral_{sk}"]:
                 ia_analise_ghost_css.append(f"""
                 .st-key-{_gk} {{
                     position:fixed !important; top:-9999px !important; left:-9999px !important;
@@ -7288,7 +7288,7 @@ window.addEventListener('load', syncHeight);
                 """)
             st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
 
-            if st.button(f"ia_criativos_{sk}", key=f"btn_ia_criativos_{sk}"):
+            if st.button(f"ia_anuncios_{sk}", key=f"btn_ia_anuncios_{sk}"):
                 if gemini_model is None:
                     st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
                 else:
@@ -7296,27 +7296,34 @@ window.addEventListener('load', syncHeight);
                         f"- [{a['formato']}] Plataformas: {', '.join(a.get('plataformas',[]))} | Título: {_truncar(a.get('title',''),60) or '—'}"
                         for a in ads_list[:15]
                     ])
+                    todas_copies = "\n".join([
+                        f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
+                        for a in ads_list[:20]
+                    ])
                     n_vid = sum(1 for a in ads_list if "Vídeo" in a["formato"])
                     n_img = sum(1 for a in ads_list if "Imagem" in a["formato"])
                     n_car = sum(1 for a in ads_list if "Carrossel" in a["formato"])
                     _ph_ads = st.empty()
-                    _render_modal_redes_ia("gerando", f"Criativos — {nome}", 40, _ph_ads)
+                    _render_modal_redes_ia("gerando", f"Anúncios — {nome}", 40, _ph_ads)
                     try:
-                        resp = gemini_model.generate_content(f"""Você é especialista em design e criação de anúncios digitais.
-Analise os CRIATIVOS (formatos visuais) dos anúncios de "{nome}" em português.
+                        resp = gemini_model.generate_content(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
+Analise os anúncios de "{nome}" em português, cobrindo tanto os CRIATIVOS quanto as COPIES.
 
 Empresa: {nome} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
 
-Dados dos criativos:
+Criativos:
 {resumo_criativos}
 
+Copies:
+{todas_copies}
+
 ---
-### 🎨 Estilo Visual Predominante
-### 📱 Mix de Formatos e Plataformas
-### 🏆 Formatos com Melhor Potencial
-### ✅ Pontos Fortes Visuais (3 pontos)
+### 🎨 Estilo Visual e Mix de Formatos
+### ✍️ Tom de Voz e Principais Mensagens
+### 📣 Uso de CTAs
+### ✅ Pontos Fortes (3 pontos)
 ### ⚠️ O que Melhorar (2 pontos)
-### 💡 Recomendações de Criativo (2 ações concretas)""")
+### 💡 Recomendações Práticas (3 ações concretas)""")
                         st.session_state[chave_ia_criativos] = resp.text
                         import datetime as _dt_ads
                         st.session_state.ads_analises_salvas = [
@@ -7324,13 +7331,13 @@ Dados dos criativos:
                             if not (a.get("tipo") == "criativos_ads" and a.get("empresa") == nome)
                         ]
                         st.session_state.ads_analises_salvas.append({
-                            "titulo": f"Criativos — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "criativos_ads",
                             "empresa": nome,
                         })
-                        _render_modal_redes_ia("concluido", f"Criativos — {nome}", 100, _ph_ads)
+                        _render_modal_redes_ia("concluido", f"Anúncios — {nome}", 100, _ph_ads)
                         salvar_dados_usuario(st.session_state.user.id)
                         st.session_state.ads_main_tab = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
@@ -7339,57 +7346,6 @@ Dados dos criativos:
                     except Exception as ex:
                         _ph_ads.empty()
                         st.session_state[chave_ia_criativos] = f"Erro: {ex}"
-                        st.rerun()
-
-            if st.button(f"ia_copys_{sk}", key=f"btn_ia_copys_{sk}"):
-                if gemini_model is None:
-                    st.session_state[chave_ia_copys] = "Configure GEMINI_API_KEY nos secrets."
-                else:
-                    todas_copies = "\n".join([
-                        f"- Título: {_truncar(a.get('title',''),80) or '—'} | Body: {_truncar(a.get('body',''),120) or '—'} | CTA: {a.get('cta','') or '—'}"
-                        for a in ads_list[:20]
-                    ])
-                    _ph_ads = st.empty()
-                    _render_modal_redes_ia("gerando", f"Copys — {nome}", 40, _ph_ads)
-                    try:
-                        resp = gemini_model.generate_content(f"""Você é especialista em copywriting e marketing de resposta direta.
-Analise as COPIES (textos) dos anúncios de "{nome}" em português.
-
-Empresa: {nome} | {len(ads_list)} anúncios analisados
-
-Copies coletadas:
-{todas_copies}
-
----
-### ✍️ Tom de Voz e Personalidade
-### 🎯 Principais Promessas e Argumentos
-### 📣 Uso de CTAs (Call-to-Action)
-### 🔑 Palavras e Frases Recorrentes
-### ✅ Pontos Fortes nas Copies (3 pontos)
-### ⚠️ O que Melhorar (2 pontos)
-### 💡 Sugestões de Copy (2 exemplos concretos)""")
-                        st.session_state[chave_ia_copys] = resp.text
-                        import datetime as _dt_ads
-                        st.session_state.ads_analises_salvas = [
-                            a for a in st.session_state.ads_analises_salvas
-                            if not (a.get("tipo") == "copys_ads" and a.get("empresa") == nome)
-                        ]
-                        st.session_state.ads_analises_salvas.append({
-                            "titulo": f"Copys — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "copys_ads",
-                            "empresa": nome,
-                        })
-                        _render_modal_redes_ia("concluido", f"Copys — {nome}", 100, _ph_ads)
-                        salvar_dados_usuario(st.session_state.user.id)
-                        st.session_state.ads_main_tab = "analise"
-                        import time as _t_ads; _t_ads.sleep(1.2)
-                        _ph_ads.empty()
-                        st.rerun()
-                    except Exception as ex:
-                        _ph_ads.empty()
-                        st.session_state[chave_ia_copys] = f"Erro: {ex}"
                         st.rerun()
 
             if st.button(f"ia_geral_{sk}", key=f"btn_ia_geral_{sk}"):
@@ -7630,7 +7586,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
         <div class="divider" style="margin:0 20px"></div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
-            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_copys_{sk}')">
+            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_anuncios_{sk}')">
                 <span style="display:flex;align-items:center;gap:7px;">
                     <span class="btn-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg>

@@ -7757,7 +7757,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -128px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -138px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -7921,27 +7921,6 @@ CTA: {ad_ind.get('cta','') or '—'}
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_carrossel}</div><div class="stat-lbl">Carrossel</div></div>')
                 if n_dynamic > 0:
                     stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_dynamic}</div><div class="stat-lbl">Dinâmicos</div></div>')
-
-                components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-*{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;font-family:'DM Sans',sans-serif;overflow:hidden;}}
-.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:11px 16px 4px;}}
-.stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
-.stat-lbl-green{{color:#15803d;}}
-.stat-num{{font-size:22px;font-weight:800;}}
-.stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
-</style>
-<div class="stats-row">{"".join(stats_cards)}</div>
-<script>
-function ajustarAltura(){{var h=document.body.scrollHeight;var iframes=window.parent.document.querySelectorAll('iframe');for(var i=0;i<iframes.length;i++){{try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';break;}}}}catch(e){{}}}}}}
-if(window.ResizeObserver)new ResizeObserver(ajustarAltura).observe(document.body);
-setTimeout(ajustarAltura,100);
-</script>
-""", height=80, scrolling=False)
-
-                st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
 
                 cta_labels = {
                     "LEARN_MORE":"Saiba Mais","SIGN_UP":"Cadastre-se","CONTACT_US":"Fale Conosco",
@@ -8352,6 +8331,11 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;overflow:visible;}}
 body{{padding-bottom:4px;min-height:0;}}
+.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:0 0 12px 0;}}
+.stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
+.stat-lbl-green{{color:#15803d;}}
+.stat-num{{font-size:22px;font-weight:800;}}
+.stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
 .ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
 .status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;border-bottom:1px solid #f0f2f5;background:#fafbfc;flex-wrap:wrap;gap:4px;}}
@@ -8399,7 +8383,11 @@ body{{padding-bottom:4px;min-height:0;}}
 </style>
 </head>
 <body>
+
+<div class="stats-row">{"".join(stats_cards)}</div>
+
 <div class="ads-grid">{cards_joined}</div>
+
 <script>
 function openModal(mediaSrc, snapUrl, isVideo) {{
     var doc = window.parent.document;

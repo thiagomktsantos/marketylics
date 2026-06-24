@@ -7680,7 +7680,7 @@ function syncH() {{
     for (var i = 0; i < frames.length; i++) {{
         try {{ if (frames[i].contentWindow === window) {{
             frames[i].style.height = (h + 4) + 'px';
-            frames[i].style.marginTop = '0';
+            frames[i].style.marginTop = '-300px';
             break;
         }} }} catch(e) {{}}
     }}
@@ -7757,7 +7757,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -29px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -128px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;

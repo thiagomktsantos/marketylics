@@ -8331,7 +8331,7 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;overflow:visible;}}
 body{{padding-bottom:4px;min-height:0;}}
-.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:0 0 12px 0;}}
+.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:0 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
 .stat-lbl-green{{color:#15803d;}}
 .stat-num{{font-size:22px;font-weight:800;}}
@@ -8524,6 +8524,7 @@ function syncHeight() {{
         try {{ if (frames[i].contentWindow === window) {{
             frames[i].style.height = (h + 8) + 'px';
             frames[i].style.minHeight = '0';
+            frames[i].style.marginTop = '-50px';
             break;
         }} }} catch(e) {{}}
     }}

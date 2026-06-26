@@ -11668,6 +11668,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     salvar_dados_usuario(st.session_state.user.id)
                     import time as _t_comp; _t_comp.sleep(1.2)
                     _ph_comp.empty()
+                    st.session_state.redes_analise_subtab = "comparativo"
                     st.rerun()
                 except Exception as e:
                     _ph_comp.empty()

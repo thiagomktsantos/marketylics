@@ -11516,14 +11516,16 @@ Seja direto e objetivo.
 
         st.markdown("""
         <style>
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
-            margin-top: 0 !important;
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-of-type {
+            margin-top: -32px !important;
             padding-top: 0 !important;
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) + [data-testid="stElementContainer"]:has(iframe) {
-            margin-top: 0px !important;
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+            padding-top: 0 !important;
         }
         </style>
         """, unsafe_allow_html=True)

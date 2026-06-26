@@ -11484,64 +11484,48 @@ Seguidores: {r.get('seguidores',0)} | Posts: {r.get('total_posts',0)} | Eng. mé
                 import datetime as _dt_redes
                 import time as _t
 
-                _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 30, _ph)
+                _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 50, _ph)
                 try:
-                    resp_cri = gemini_model.generate_content(f"""
+                    resp_post = gemini_model.generate_content(f"""
 {perfil_ctx}
-Analise os CRIATIVOS (imagens/vídeos) deste perfil com base nas legendas e métricas.
+Analise os CRIATIVOS e as LEGENDAS (copy) deste perfil Instagram.
 Responda em português com:
+
 ### Análise de Criativo
 **Estilo visual predominante:** ...
 **Formatos mais usados:** ...
 **Posts com melhor desempenho:** ...
 **Pontos fortes visuais:** (3 pontos)
 **O que melhorar:** (2 pontos)
-Seja direto e objetivo.
-""")
-                    st.session_state[chave_criativo] = resp_cri.text
-                    st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Criativos — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp_cri.text,
-                        "tipo": "criativos",
-                        "perfil": r.get("handle", ""),
-                        "nome": r["nome"],
-                    })
-                except Exception as e:
-                    st.toast(f"Erro nos criativos: {e}", icon="⚠️")
 
-                _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 70, _ph)
-                try:
-                    resp_cop = gemini_model.generate_content(f"""
-{perfil_ctx}
-Analise as LEGENDAS (copy) deste perfil Instagram.
-Responda em português com:
 ### Análise de Copy
 **Tom de voz predominante:** ...
 **Uso de CTAs:** ...
 **Uso de hashtags:** ...
 **Pontos fortes nas legendas:** (3 pontos)
 **O que melhorar:** (2 pontos)
+
 Seja direto e objetivo.
 """)
-                    st.session_state[chave_copy] = resp_cop.text
-                    st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Copy — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                    st.session_state[chave_criativo] = resp_post.text
+                    st.session_state[chave_copy] = resp_post.text
+                    st.session_state.redes_analises_salvas.append({{
+                        "titulo": f"Postagens — {{r['nome']}} ({{r.get('handle','')}}) — {{_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp_cop.text,
-                        "tipo": "copy",
+                        "relatorio": resp_post.text,
+                        "tipo": "postagem",
                         "perfil": r.get("handle", ""),
                         "nome": r["nome"],
-                    })
+                    }})
                 except Exception as e:
-                    st.toast(f"Erro no copy: {e}", icon="⚠️")
+                    st.toast(f"Erro: {{e}}", icon="⚠️")
 
-                _render_modal_redes_ia("concluido", f"Postagens — {r['nome']}", 100, _ph)
+                _render_modal_redes_ia("concluido", f"Postagens — {{r['nome']}}", 100, _ph)
                 salvar_dados_usuario(st.session_state.user.id)
                 _t.sleep(1.2)
                 _ph.empty()
                 st.session_state.redes_main_tab = "analise"
-                st.session_state.redes_analise_subtab = "criativos"
+                st.session_state.redes_analise_subtab = "postagem"
                 st.rerun()
 
         if resultados_ia_btns["geral"]:

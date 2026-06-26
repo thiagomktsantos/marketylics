@@ -12010,7 +12010,7 @@ body { padding-bottom:8px; }
     background-color: #17406a;
     transition: background 0.15s;
 }
-.card-hdr:hover { background-color: #3a9fd6; }
+.card-hdr:hover { background-color: #21719c; }
 
 .card-footer {
     display: flex;

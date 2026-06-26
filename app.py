@@ -11504,6 +11504,10 @@ Seja direto e objetivo.
                     st.session_state[chave_geral] = f"Erro: {e}"
                     st.rerun()
 
+    # ══════════════════════════════════════════════════════════════════
+    # ABA: ANÁLISE DE IA — Comparativo geral
+    # ══════════════════════════════════════════════════════════════════
+
     elif main_tab == "analise":
  
         ok = []

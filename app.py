@@ -11509,21 +11509,19 @@ Seja direto e objetivo.
     # ══════════════════════════════════════════════════════════════════
 
     elif main_tab == "analise":
- 
+
         ok = []
         if cache.get("dados"):
             ok = [r for r in cache["dados"] if not r.get("erro")]
- 
+
         import json as _json_redes
         import datetime as _dt_redes
- 
+
         analises_redes = st.session_state.get("redes_analises_salvas", [])
- 
+
         # Marcar como vistas
         st.session_state.redes_analise_vistas = len(analises_redes)
- 
-        # SVGs outline (estilo lucide) usados no lugar dos emojis — herdam
-        # a cor via CSS (stroke) tanto nas pills quanto nos cards/títulos.
+
         ICON_SVG = {
             "user":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
             "image":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>',
@@ -11531,120 +11529,24 @@ Seja direto e objetivo.
             "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
             "target":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
             "star":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-            "lightbulb":'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
+            "lightbulb": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
             "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
             "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
             "clipboard": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
         }
- 
+
         subtabs_def = [
             ("bio",          ICON_SVG["user"],   "Perfil"),
             ("postagem",     ICON_SVG["image"],  "Postagens"),
             ("geral_perfil", ICON_SVG["chart"],  "Geral"),
             ("comparativo",  ICON_SVG["trophy"], "Comparativo"),
         ]
- 
-        # Ghost button comparativo
-        ghost_comp_key = "btn_redes_comp_geral"
-        st.markdown(f"""
-        <style>
-        .st-key-{ghost_comp_key} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }}
-        .stElementContainer:has(.st-key-{ghost_comp_key}) {{
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
- 
-        if st.button("redes_comparativo", key=ghost_comp_key):
-            if gemini_model is None:
-                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
-            elif not ok:
-                st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
-            else:
-                resumo_perfis = "\n\n".join([
-                    f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
-                    f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
-                    f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
-                    f"Bio: {rr.get('bio','')}\n"
-                    f"Últimos posts:\n" + "\n".join([
-                        f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
-                        f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
-                        for p in rr.get("posts", [])[:6]
-                    ])
-                    for rr in ok
-                ])
-                with st.spinner("Gerando comparativo…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
-Você é especialista em marketing digital e redes sociais.
-Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
- 
-{resumo_perfis}
- 
-Responda com:
-### Visão Geral Comparativa
-Comparação resumida dos perfis em termos de presença e engajamento.
- 
-### Quem se Destaca e Por Quê
-Destaque o perfil com melhor desempenho e explique os motivos.
- 
-### Pontos Fortes de Cada Perfil
-Para cada perfil, 1-2 pontos fortes.
- 
-### Oportunidades Identificadas
-2-3 oportunidades estratégicas para os perfis com menor desempenho.
- 
-### Recomendações Finais
-3 ações concretas para melhorar a presença geral no Instagram.
- 
-Seja direto, objetivo e baseado nos dados fornecidos.
-""")
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if a.get("tipo") != "comparativo"
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "comparativo",
-                            "perfis": [rr.get("handle","") for rr in ok],
-                        })
-                        salvar_dados_usuario(st.session_state.user.id)
-                        st.rerun()
-                    except Exception as e:
-                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
- 
-        # Ghost buttons subtabs
-        ghost_subtabs_css = ", ".join([
-            f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
-            for stk, _, _ in subtabs_def
-        ])
-        st.markdown(f"""
-        <style>
-        {ghost_subtabs_css} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
- 
+
         if "redes_analise_subtab" not in st.session_state:
             st.session_state.redes_analise_subtab = "bio"
- 
-        for stk, _, _ in subtabs_def:
-            if st.button(f"redes_analise_sub_{stk}", key=f"btn_redes_analise_sub_{stk}"):
-                st.session_state.redes_analise_subtab = stk
-                st.rerun()
- 
+
         subtab_analise = st.session_state.redes_analise_subtab
+
         contagens = {}
         for stk, _, _ in subtabs_def:
             if stk == "postagem":
@@ -11654,7 +11556,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 ])
             else:
                 contagens[stk] = len([a for a in analises_redes if a.get("tipo") == stk])
- 
+
         # ── Barra de subtabs
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -11715,7 +11617,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=52, scrolling=False)
- 
+
         # ── Conteúdo da subtab ativa
         if subtab_analise == "postagem":
             lista_ativa = [
@@ -11724,52 +11626,49 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             ]
         else:
             lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
-        icons_map   = {
+
+        icons_map  = {
             "bio": ICON_SVG["user"], "postagem": ICON_SVG["image"], "criativos": ICON_SVG["image"],
             "copy": ICON_SVG["compass"], "geral_perfil": ICON_SVG["chart"], "comparativo": ICON_SVG["trophy"],
         }
-        labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
+        labels_map = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
         icon_ativo  = icons_map.get(subtab_analise, ICON_SVG["clipboard"])
         label_ativo = labels_map.get(subtab_analise, "")
- 
-        # ═════════════════════════════════════════════════════════
-        # [ATUALIZADO — BLOCO 1] nova função de conversão markdown → HTML
-        # agora monta "sec-card" com ícone/cor temática por seção
-        # ═════════════════════════════════════════════════════════
+
         def _md_to_html_redes(txt):
             if not txt: return ""
             import re as _re
- 
+
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
- 
+
             def _apply_inline(s):
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
- 
+
             def _get_ol_match(line):
                 return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
- 
+
             def _get_ul_match(line):
                 return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
- 
+
             lines = txt.split('\n')
             output = []
             list_stack = []
- 
+
             def close_until(target_indent):
                 while list_stack and list_stack[-1][1] >= target_indent:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
- 
+
             def close_all():
                 while list_stack:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
- 
+
             i = 0
             while i < len(lines):
                 line = lines[i]
@@ -11813,12 +11712,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 close_all()
                 output.append(f'<p>{_apply_inline(stripped)}</p>')
                 i += 1
- 
+
             close_all()
             html = '\n'.join(output)
- 
-            # ── Mapeamento de ícone (SVG) + cor por seção — paleta harmônica
-            # (família azul/petróleo/índigo, ancorada no #0e2a47 do header)
+
             def _get_icon_for_title(title_clean):
                 t = title_clean.lower()
                 if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
@@ -11836,7 +11733,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design', 'imagem', 'vídeo', 'reel', 'carrossel']):
                     return ICON_SVG['image'], '#e4e9f0'
                 return ICON_SVG['clipboard'], '#eef1f5'
- 
+
             def _get_title_color(title_clean):
                 t = title_clean.lower()
                 if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
@@ -11854,12 +11751,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design']):
                     return '#1e3a5f'
                 return '#475569'
- 
+
             def _wrap_section(html_str):
                 import re as _r2
- 
                 partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
- 
                 output_parts = []
                 i2 = 0
                 while i2 < len(partes):
@@ -11870,14 +11765,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
- 
                         icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
                         title_color = _get_title_color(hdr_txt_clean)
- 
-                        # Card no estilo do print:
-                        # - ícone circular (SVG outline) à esquerda
-                        # - título em caps com cor temática + divisor
-                        # - conteúdo com listas numeradas estilizadas
                         caixa = (
                             f'<div class="sec-card">'
                             f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
@@ -11892,9 +11781,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     else:
                         output_parts.append(parte)
                     i2 += 1
- 
                 return ''.join(output_parts)
- 
+
             import re as _re_promote
             html = _re_promote.sub(
                 r'<p><strong>([^<]+?):?</strong></p>',
@@ -11903,35 +11791,31 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             )
             html = _wrap_section(html)
             return html
- 
+
         relatorios_redes      = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)
         relatorios_raw        = {str(i): a.get("relatorio","")                     for i, a in enumerate(analises_redes)}
         relatorios_raw_json   = _json_redes.dumps(relatorios_raw, ensure_ascii=False)
- 
+
         if lista_ativa:
-            # ═════════════════════════════════════════════════════════
-            # [ATUALIZADO — BLOCO 3] cards com footer "Baixar .txt" / "Excluir"
-            # usando classes .btn-dl / .btn-del (estilizadas via ANALISES_CSS)
-            # ═════════════════════════════════════════════════════════
             lista_rev      = list(reversed(lista_ativa))
             reversed_first = lista_rev[0] if lista_rev else None
             reversed_last  = lista_rev[-1] if lista_rev else None
- 
+
             cards_redes_html = ""
             for a in lista_rev:
                 idx_real = analises_redes.index(a)
                 icon_a   = icons_map.get(a.get("tipo",""), "📋")
                 titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
- 
+
                 cards_redes_html += f"""
 <div class="card-row" style="border-radius:{'14px 14px 0 0' if a == reversed_first else ('0 0 14px 14px' if a == reversed_last else '0')};overflow:hidden;">
     <div class="card-hdr" data-idx="{idx_real}">
         <span class="card-hdr-icon">{icon_a}</span>
         <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
- 
+
         <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
             style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
                    border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
@@ -11941,7 +11825,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
             </svg>
         </button>
- 
+
         <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
             style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
                    border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
@@ -11952,7 +11836,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <polyline points="8 6 2 12 8 18"/>
             </svg>
         </button>
- 
+
         <span class="btn-chevron" data-idx="{idx_real}"
               style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -11961,7 +11845,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             </svg>
         </span>
     </div>
- 
+
     <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
         <div style="padding:16px 18px;">
             <div id="rr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>
@@ -11986,23 +11870,18 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
 </div>"""
- 
-            # ═════════════════════════════════════════════════════════
-            # [ATUALIZADO — BLOCO 2] CSS global dos cards de análise
-            # ═════════════════════════════════════════════════════════
+
             ANALISES_CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
 body { padding-bottom:8px; }
- 
-/* ── Ícone do header do card (substitui emoji) ── */
+
 .card-hdr-icon {
     display:flex; align-items:center; justify-content:center;
     flex-shrink:0; width:20px; height:20px; color:#cbd5e1;
 }
 .card-hdr-icon svg { width:18px; height:18px; }
- 
-/* ── Card de seção (estilo do print) ── */
+
 .sec-card {
     display: flex;
     align-items: flex-start;
@@ -12023,10 +11902,7 @@ body { padding-bottom:8px; }
     flex-shrink: 0;
 }
 .sec-icon-wrap svg { width: 22px; height: 22px; }
-.sec-body {
-    flex: 1;
-    min-width: 0;
-}
+.sec-body { flex: 1; min-width: 0; }
 .sec-title {
     font-size: 13px;
     font-weight: 800;
@@ -12039,23 +11915,11 @@ body { padding-bottom:8px; }
     border-radius: 2px;
     margin-bottom: 12px;
 }
-.sec-content {
-    font-size: 14px;
-    color: #374151;
-    line-height: 1.75;
-}
-.sec-content p {
-    margin: 0 0 8px;
-}
-.sec-content strong {
-    font-weight: 700;
-    color: #111827;
-}
-.sec-content em {
-    font-style: italic;
-}
- 
-/* Listas ordenadas — círculos numerados coloridos */
+.sec-content { font-size: 14px; color: #374151; line-height: 1.75; }
+.sec-content p { margin: 0 0 8px; }
+.sec-content strong { font-weight: 700; color: #111827; }
+.sec-content em { font-style: italic; }
+
 .sec-content ol {
     list-style: none;
     padding: 0;
@@ -12072,52 +11936,23 @@ body { padding-bottom:8px; }
 .sec-content ol > li::before {
     content: counter(sec-counter);
     position: absolute;
-    left: 0;
-    top: 1px;
-    width: 24px;
-    height: 24px;
+    left: 0; top: 1px;
+    width: 24px; height: 24px;
     border-radius: 50%;
     background: #64748b;
     color: #fff;
-    font-size: 12px;
-    font-weight: 800;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
     line-height: 1;
 }
- 
-/* Sobrescreve a cor do número por seção via herança do title-color */
-/* Posicionamento / geral — azul */
-.sec-card:has(.sec-title[style*="#2563eb"]) .sec-content ol > li::before {
-    background: #2563eb;
-}
-/* Pontos fortes — verde-petróleo */
-.sec-card:has(.sec-title[style*="#0d9488"]) .sec-content ol > li::before {
-    background: #0d9488;
-}
-/* O que melhorar — âmbar */
-.sec-card:has(.sec-title[style*="#b45309"]) .sec-content ol > li::before {
-    background: #b45309;
-}
-/* Sugerida / recomendações — índigo */
-.sec-card:has(.sec-title[style*="#4338ca"]) .sec-content ol > li::before {
-    background: #4338ca;
-}
-/* Oportunidades — azul petróleo */
-.sec-card:has(.sec-title[style*="#0369a1"]) .sec-content ol > li::before {
-    background: #0369a1;
-}
-/* Engajamento — índigo escuro */
-.sec-card:has(.sec-title[style*="#3730a3"]) .sec-content ol > li::before {
-    background: #3730a3;
-}
-/* Criativo — marinho */
-.sec-card:has(.sec-title[style*="#1e3a5f"]) .sec-content ol > li::before {
-    background: #1e3a5f;
-}
- 
-/* Listas não ordenadas */
+.sec-card:has(.sec-title[style*="#2563eb"]) .sec-content ol > li::before { background: #2563eb; }
+.sec-card:has(.sec-title[style*="#0d9488"]) .sec-content ol > li::before { background: #0d9488; }
+.sec-card:has(.sec-title[style*="#b45309"]) .sec-content ol > li::before { background: #b45309; }
+.sec-card:has(.sec-title[style*="#4338ca"]) .sec-content ol > li::before { background: #4338ca; }
+.sec-card:has(.sec-title[style*="#0369a1"]) .sec-content ol > li::before { background: #0369a1; }
+.sec-card:has(.sec-title[style*="#3730a3"]) .sec-content ol > li::before { background: #3730a3; }
+.sec-card:has(.sec-title[style*="#1e3a5f"]) .sec-content ol > li::before { background: #1e3a5f; }
+
 .sec-content ul {
     list-style: none;
     padding: 0;
@@ -12132,15 +11967,12 @@ body { padding-bottom:8px; }
 .sec-content ul > li::before {
     content: '';
     position: absolute;
-    left: 0;
-    top: 8px;
-    width: 7px;
-    height: 7px;
+    left: 0; top: 8px;
+    width: 7px; height: 7px;
     border-radius: 50%;
     background: #9ca3af;
 }
- 
-/* ── Card de análise (accordion) ── */
+
 .card-row {
     border-bottom: 1px solid #f3f4f6;
     background: #dde5ed;
@@ -12155,8 +11987,7 @@ body { padding-bottom:8px; }
     transition: background 0.15s;
 }
 .card-hdr:hover { background-color: #17406a; }
- 
-/* ── Footer dos cards ── */
+
 .card-footer {
     display: flex;
     gap: 10px;
@@ -12167,42 +11998,22 @@ body { padding-bottom:8px; }
 }
 .btn-dl {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 10px 16px;
-    border-radius: 10px;
-    border: 1.5px solid #e5e7eb;
-    background: #fff;
-    font-size: 13px;
-    font-weight: 700;
-    color: #374151;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 16px; border-radius: 10px;
+    border: 1.5px solid #e5e7eb; background: #fff;
+    font-size: 13px; font-weight: 700; color: #374151;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
 }
 .btn-dl:hover { border-color: #3a9fd6; background: #eff6ff; color: #1d4ed8; }
 .btn-del {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 10px 18px;
-    border-radius: 10px;
-    border: 1.5px solid #fecaca;
-    background: #fef2f2;
-    font-size: 13px;
-    font-weight: 700;
-    color: #dc2626;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s;
-    white-space: nowrap;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 18px; border-radius: 10px;
+    border: 1.5px solid #fecaca; background: #fef2f2;
+    font-size: 13px; font-weight: 700; color: #dc2626;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; white-space: nowrap;
 }
 .btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
- 
-/* Modal de análise completa */
+
 #smb_redes h1, #smb_redes h2, #smb_redes h3 {
     font-size: 16px; font-weight: 800; color: #0f1f35;
     margin: 18px 0 8px; padding-bottom: 6px;
@@ -12214,70 +12025,52 @@ body { padding-bottom:8px; }
 #smb_redes li::marker { color: #00c162; }
 #smb_redes hr { display: none; }
 #smb_redes .sec-card { border: 1px solid #e5e7eb; }
- 
-/* Listas numeradas no modal */
+
 #smb_redes ol {
     margin: 5px 0 15px 5px;
     list-style: none;
     counter-reset: meu-contador;
 }
 #smb_redes ol > li {
-    line-height: 1.6;
-    position: relative;
-    padding-left: 35px;
-    margin-bottom: 15px;
+    line-height: 1.6; position: relative;
+    padding-left: 35px; margin-bottom: 15px;
     counter-increment: meu-contador;
 }
 #smb_redes ol > li::before {
     content: counter(meu-contador);
-    position: absolute;
-    left: 0; top: 0;
-    background-color: #64748b;
-    color: #ffffff;
-    border-radius: 50%;
-    width: 25px; height: 25px;
+    position: absolute; left: 0; top: 0;
+    background-color: #64748b; color: #ffffff;
+    border-radius: 50%; width: 25px; height: 25px;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: bold;
 }
-#smb_redes ol > li > ul {
-    margin: 6px 0 0 0;
-    list-style: none;
-    padding-left: 0;
-}
+#smb_redes ol > li > ul { margin: 6px 0 0 0; list-style: none; padding-left: 0; }
 #smb_redes ol > li > ul > li {
-    position: relative;
-    padding-left: 18px;
-    margin-bottom: 8px;
-    line-height: 1.6;
+    position: relative; padding-left: 18px;
+    margin-bottom: 8px; line-height: 1.6;
 }
 #smb_redes ol > li > ul > li::before {
-    content: '◦';
-    position: absolute;
-    left: 0; top: 0;
-    color: #00aae6;
-    font-size: 18px;
-    line-height: 1.3;
-    font-weight: normal;
-    background: none;
-    border-radius: 0;
+    content: '◦'; position: absolute; left: 0; top: 0;
+    color: #00aae6; font-size: 18px; line-height: 1.3;
+    font-weight: normal; background: none; border-radius: 0;
     width: auto; height: auto;
 }
 """
- 
+
             components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 {ANALISES_CSS}
 </style>
- 
+
 <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
     {cards_redes_html}
 </div>
- 
+
 <script>
 var RELS     = {relatorios_redes_json};
 var RELS_RAW = {relatorios_raw_json};
- 
+
 function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var frames = window.parent.document.querySelectorAll('iframe');
@@ -12289,7 +12082,7 @@ function syncH() {{
         }} }} catch(e) {{}}
     }}
 }}
- 
+
 function toggleRedes(idx) {{
     var b = document.getElementById('rb_' + idx);
     var r = document.getElementById('rr_' + idx);
@@ -12304,33 +12097,33 @@ function toggleRedes(idx) {{
     }}
     setTimeout(syncH, 100);
 }}
- 
+
 function abrirModal(idx) {{
     var doc  = window.parent.document;
     var html = RELS[String(idx)] || '';
     var raw  = RELS_RAW[String(idx)] || '';
     var old  = doc.getElementById('redes_analise_modal_overlay');
     if (old) old.remove();
- 
+
     var ov = doc.createElement('div');
     ov.id = 'redes_analise_modal_overlay';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
         + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
     ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
- 
+
     var box = doc.createElement('div');
     box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
         + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
- 
+
     var hdr = doc.createElement('div');
     hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
         + 'background:#0e2a47;flex-shrink:0;gap:12px;';
- 
+
     var titleEl = doc.createElement('div');
     titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
         + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
     titleEl.textContent = 'Análise completa';
- 
+
     var rawBtn = doc.createElement('button');
     rawBtn.id = 'redes_modal_raw_btn';
     rawBtn.textContent = 'Ver texto original';
@@ -12338,35 +12131,35 @@ function abrirModal(idx) {{
         + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
         + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
     rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
- 
+
     var closeBtn = doc.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
         + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
         + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
     closeBtn.addEventListener('click', fecharModal);
- 
+
     hdr.appendChild(titleEl);
     hdr.appendChild(rawBtn);
     hdr.appendChild(closeBtn);
- 
+
     var body = doc.createElement('div');
     body.id = 'smb_redes';
     body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
         + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
     body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
- 
+
     box.appendChild(hdr);
     box.appendChild(body);
     ov.appendChild(box);
     doc.body.appendChild(ov);
- 
+
     window.__redesAnaliseModalShowingRaw = false;
- 
+
     window.parent.__redesAnaliseModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
     doc.addEventListener('keydown', window.parent.__redesAnaliseModalEsc);
 }}
- 
+
 function toggleModalView(html, raw) {{
     var doc  = window.parent.document;
     var body = doc.getElementById('smb_redes');
@@ -12384,7 +12177,7 @@ function toggleModalView(html, raw) {{
         btn.textContent = 'Ver texto original';
     }}
 }}
- 
+
 function fecharModal() {{
     var doc = window.parent.document;
     var ov  = doc.getElementById('redes_analise_modal_overlay');
@@ -12394,34 +12187,34 @@ function fecharModal() {{
         window.parent.__redesAnaliseModalEsc = null;
     }}
 }}
- 
+
 function abrirRaw(idx) {{
     var doc = window.parent.document;
     var raw = RELS_RAW[String(idx)] || '';
     var old = doc.getElementById('redes_raw_overlay');
     if (old) old.remove();
- 
+
     var ov = doc.createElement('div');
     ov.id = 'redes_raw_overlay';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
         + 'display:flex;align-items:center;justify-content:center;padding:24px;';
     ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
- 
+
     var box = doc.createElement('div');
     box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
         + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
- 
+
     var hdr = doc.createElement('div');
     hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
         + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
- 
+
     var info = doc.createElement('div');
     info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
         + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
- 
+
     var btnsWrap = doc.createElement('div');
     btnsWrap.style.cssText = 'display:flex;gap:8px;';
- 
+
     var copyBtn = doc.createElement('button');
     copyBtn.textContent = '📋 Copiar';
     copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
@@ -12436,34 +12229,34 @@ function abrirRaw(idx) {{
         doc.body.removeChild(ta);
         setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
     }});
- 
+
     var closeRaw = doc.createElement('button');
     closeRaw.textContent = '✕';
     closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
         + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
         + 'display:flex;align-items:center;justify-content:center;';
     closeRaw.addEventListener('click', function() {{ ov.remove(); }});
- 
+
     btnsWrap.appendChild(copyBtn);
     btnsWrap.appendChild(closeRaw);
     hdr.appendChild(info);
     hdr.appendChild(btnsWrap);
- 
+
     var pre = doc.createElement('pre');
     pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
         + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
         + 'white-space:pre-wrap;word-break:break-word;';
     pre.textContent = raw;
- 
+
     box.appendChild(hdr);
     box.appendChild(pre);
     ov.appendChild(box);
     doc.body.appendChild(ov);
- 
+
     var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
     doc.addEventListener('keydown', escFn);
 }}
- 
+
 function excluirAnalise(idx) {{
     var label = '_rm_redes_analise_' + idx + '_';
     var btns  = window.parent.document.querySelectorAll('button');
@@ -12472,14 +12265,14 @@ function excluirAnalise(idx) {{
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
- 
+
 document.addEventListener('click', function(e) {{
     var fs = e.target.closest('.btn-fullscreen');
     if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
- 
+
     var rv = e.target.closest('.btn-raw');
     if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
- 
+
     var dl = e.target.closest('.btn-dl');
     if (dl) {{
         e.stopPropagation();
@@ -12490,24 +12283,24 @@ document.addEventListener('click', function(e) {{
         a.click();
         return;
     }}
- 
+
     var ex = e.target.closest('.btn-del');
     if (ex) {{
         e.stopPropagation();
         excluirAnalise(parseInt(ex.dataset.idx));
         return;
     }}
- 
+
     var hdr = e.target.closest('.card-hdr');
     if (hdr && !e.target.closest('button')) {{
         toggleRedes(parseInt(hdr.dataset.idx));
         return;
     }}
- 
+
     var ch = e.target.closest('.btn-chevron');
     if (ch) {{ toggleRedes(parseInt(ch.dataset.idx)); return; }}
 }});
- 
+
 (function() {{
     var cards = document.querySelectorAll('[id^="rb_"]');
     if (cards.length === 1) {{
@@ -12515,12 +12308,13 @@ document.addEventListener('click', function(e) {{
         if (m) setTimeout(function() {{ toggleRedes(parseInt(m[1])); }}, 150);
     }}
 }})();
- 
+
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH, 200);
 setTimeout(syncH, 600);
 </script>
 """, height=100, scrolling=False)
+
         else:
             btn_vazio_html = ""
             if subtab_analise == "comparativo":
@@ -12533,7 +12327,7 @@ setTimeout(syncH, 600);
 </button>"""
             else:
                 btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
- 
+
             st.markdown("""
             <style>
             .analise-vazia-icon { width:40px; height:40px; color:#94a3b8; opacity:0.6;
@@ -12550,3 +12344,104 @@ setTimeout(syncH, 600);
                 {btn_vazio_html}
             </div>
             """, unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════════════
+        # GHOST BUTTONS — ficam no final para não gerar espaço em branco
+        # ══════════════════════════════════════════════════════════════════
+
+        # Ghost button comparativo
+        ghost_comp_key = "btn_redes_comp_geral"
+        st.markdown(f"""
+        <style>
+        .st-key-{ghost_comp_key} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }}
+        .stElementContainer:has(.st-key-{ghost_comp_key}) {{
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        if st.button("redes_comparativo", key=ghost_comp_key):
+            if gemini_model is None:
+                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+            elif not ok:
+                st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
+            else:
+                resumo_perfis = "\n\n".join([
+                    f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
+                    f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
+                    f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
+                    f"Bio: {rr.get('bio','')}\n"
+                    f"Últimos posts:\n" + "\n".join([
+                        f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
+                        f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
+                        for p in rr.get("posts", [])[:6]
+                    ])
+                    for rr in ok
+                ])
+                with st.spinner("Gerando comparativo…"):
+                    try:
+                        resp = gemini_model.generate_content(f"""
+Você é especialista em marketing digital e redes sociais.
+Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
+
+{resumo_perfis}
+
+Responda com:
+### Visão Geral Comparativa
+Comparação resumida dos perfis em termos de presença e engajamento.
+
+### Quem se Destaca e Por Quê
+Destaque o perfil com melhor desempenho e explique os motivos.
+
+### Pontos Fortes de Cada Perfil
+Para cada perfil, 1-2 pontos fortes.
+
+### Oportunidades Identificadas
+2-3 oportunidades estratégicas para os perfis com menor desempenho.
+
+### Recomendações Finais
+3 ações concretas para melhorar a presença geral no Instagram.
+
+Seja direto, objetivo e baseado nos dados fornecidos.
+""")
+                        st.session_state.redes_analises_salvas = [
+                            a for a in st.session_state.redes_analises_salvas
+                            if a.get("tipo") != "comparativo"
+                        ]
+                        st.session_state.redes_analises_salvas.append({
+                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "relatorio": resp.text,
+                            "tipo": "comparativo",
+                            "perfis": [rr.get("handle","") for rr in ok],
+                        })
+                        salvar_dados_usuario(st.session_state.user.id)
+                        st.rerun()
+                    except Exception as e:
+                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
+
+        # Ghost buttons subtabs
+        ghost_subtabs_css = ", ".join([
+            f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
+            for stk, _, _ in subtabs_def
+        ])
+        st.markdown(f"""
+        <style>
+        {ghost_subtabs_css} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        for stk, _, _ in subtabs_def:
+            if st.button(f"redes_analise_sub_{stk}", key=f"btn_redes_analise_sub_{stk}"):
+                st.session_state.redes_analise_subtab = stk
+                st.rerun()

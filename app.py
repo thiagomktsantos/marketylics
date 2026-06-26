@@ -11527,6 +11527,13 @@ Seja direto e objetivo.
             min-height: 0 !important;
             overflow: visible !important;
         }
+        section[data-testid="stMain"] > div > div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+            row-gap: 0 !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 

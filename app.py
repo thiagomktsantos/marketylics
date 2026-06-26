@@ -11514,6 +11514,15 @@ Seja direto e objetivo.
         if cache.get("dados"):
             ok = [r for r in cache["dados"] if not r.get("erro")]
 
+        st.markdown("""
+        <style>
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         import json as _json_redes
         import datetime as _dt_redes
 

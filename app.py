@@ -11527,7 +11527,7 @@ Seja direto e objetivo.
             height: 90px !important;
             overflow: visible !important;
         }
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-child {
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):nth-child(1) {
             position: relative !important;
             z-index: 999 !important;
             margin-top: -38px !important;

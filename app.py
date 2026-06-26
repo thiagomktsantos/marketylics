@@ -10060,6 +10060,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     for i in range(len(analises_redes_para_rm) - 1, -1, -1):
         if acoes_rm_redes.get(f"rm_{i}"):
             st.session_state.redes_analises_salvas.pop(i)
+            salvar_dados_usuario(st.session_state.user.id)
             st.rerun()
 
     main_tab = st.session_state.redes_main_tab
@@ -11484,6 +11485,7 @@ Seguidores: {r.get('seguidores',0)} | Posts: {r.get('total_posts',0)} | Eng. mé
                 import datetime as _dt_redes
                 import time as _t
 
+                _titulo_modal = f"Postagens — {r['nome']}"
                 _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 50, _ph)
                 try:
                     resp_post = gemini_model.generate_content(f"""
@@ -11520,7 +11522,7 @@ Seja direto e objetivo.
                 except Exception as e:
                     st.toast(f"Erro: {e}", icon="⚠️")
 
-                _render_modal_redes_ia("concluido", f"Postagens — {{r['nome']}}", 100, _ph)
+                _render_modal_redes_ia("concluido", _titulo_modal, 100, _ph)
                 salvar_dados_usuario(st.session_state.user.id)
                 _t.sleep(1.2)
                 _ph.empty()

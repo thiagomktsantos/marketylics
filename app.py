@@ -10129,6 +10129,27 @@ function triggerTab(label) {{
 </script>
 """, height=90, scrolling=False)
 
+    st.markdown("""
+    <style>
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-fsrfgf) {
+        height: 5px !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-a6f95b) {
+        gap: 0 !important;
+        margin-bottom: -38px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
     # ══════════════════════════════════════════════════════════════════
     # ABA: PERFIS CONFIGURADOS
     # ══════════════════════════════════════════════════════════════════
@@ -11513,26 +11534,6 @@ Seja direto e objetivo.
         ok = []
         if cache.get("dados"):
             ok = [r for r in cache["dados"] if not r.get("erro")]
-
-        st.markdown("""
-        <style>
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-        }
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-fsrfgf) {
-            height: 5px !important;
-            min-height: 0 !important;
-            overflow: visible !important;
-        }
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-a6f95b) {
-            gap: 0 !important;
-            margin-bottom: -38px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
 
         import json as _json_redes
         import datetime as _dt_redes

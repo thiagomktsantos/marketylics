@@ -11509,16 +11509,16 @@ Seja direto e objetivo.
 """)
                     st.session_state[chave_criativo] = resp_post.text
                     st.session_state[chave_copy] = resp_post.text
-                    st.session_state.redes_analises_salvas.append({{
-                        "titulo": f"Postagens — {{r['nome']}} ({{r.get('handle','')}}) — {{_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}}",
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Postagens — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp_post.text,
                         "tipo": "postagem",
                         "perfil": r.get("handle", ""),
                         "nome": r["nome"],
-                    }})
+                    })
                 except Exception as e:
-                    st.toast(f"Erro: {{e}}", icon="⚠️")
+                    st.toast(f"Erro: {e}", icon="⚠️")
 
                 _render_modal_redes_ia("concluido", f"Postagens — {{r['nome']}}", 100, _ph)
                 salvar_dados_usuario(st.session_state.user.id)

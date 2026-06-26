@@ -9157,11 +9157,74 @@ function triggerComparativo() {{
 }}
 
 function triggerLimpar() {{
-    var btns = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
-        if (txt === 'limpar_cache_redes') {{ b.click(); return; }}
-    }}
+    abrirConfirmacao(
+        '🗑️ Limpar dados coletados',
+        'Tem certeza que deseja limpar todos os dados coletados? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, limpar',
+        function() {{
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+                if (txt === 'limpar_cache_redes') {{ b.click(); return; }}
+            }}
+        }}
+    );
+}}
+
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:all 0.15s;';
+    cancelBtn.onmouseover = function() {{ this.style.borderColor='#3a9fd6'; this.style.color='#fff'; }};
+    cancelBtn.onmouseout  = function() {{ this.style.borderColor='#1e3a5f'; this.style.color='#94a3b8'; }};
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:opacity 0.15s;';
+    confirmBtn.onmouseover = function() {{ this.style.opacity='0.85'; }};
+    confirmBtn.onmouseout  = function() {{ this.style.opacity='1'; }};
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
 }}
 
 function abrirModal() {{
@@ -12282,12 +12345,75 @@ function abrirRaw(idx) {{
 }}
 
 function excluirAnalise(idx) {{
-    var label = '_rm_redes_analise_' + idx + '_';
-    var btns  = window.parent.document.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-        if (txt === label) {{ b.click(); return; }}
-    }}
+    abrirConfirmacao(
+        '🗑️ Excluir análise',
+        'Tem certeza que deseja excluir esta análise? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, excluir',
+        function() {{
+            var label = '_rm_redes_analise_' + idx + '_';
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+                if (txt === label) {{ b.click(); return; }}
+            }}
+        }}
+    );
+}}
+
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:all 0.15s;';
+    cancelBtn.onmouseover = function() {{ this.style.borderColor='#3a9fd6'; this.style.color='#fff'; }};
+    cancelBtn.onmouseout  = function() {{ this.style.borderColor='#1e3a5f'; this.style.color='#94a3b8'; }};
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:opacity 0.15s;';
+    confirmBtn.onmouseover = function() {{ this.style.opacity='0.85'; }};
+    confirmBtn.onmouseout  = function() {{ this.style.opacity='1'; }};
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
 }}
 
 document.addEventListener('click', function(e) {{

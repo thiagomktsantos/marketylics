@@ -4786,9 +4786,21 @@ setTimeout(syncHeight, 3000);
         analises = st.session_state.get("analises_salvas", [])
         st.session_state.sites_analise_vistas = len(analises)
 
+        ICON_SVG = {
+            "building":  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="1"/><line x1="9" y1="6" x2="9" y2="6.01"/><line x1="15" y1="6" x2="15" y2="6.01"/><line x1="9" y1="10" x2="9" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="15" y1="14" x2="15" y2="14.01"/><line x1="9" y1="18" x2="15" y2="18"/></svg>',
+            "clipboard": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+            "chart":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
+            "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
+            "target":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+            "star":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+            "lightbulb": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
+            "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
+            "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+        }
+
         subtabs_sites_def = [
-            ("individual", "🏢", "Individuais"),
-            ("geral",      "📋", "Relatórios Gerais"),
+            ("individual", ICON_SVG["building"],  "Individuais"),
+            ("geral",      ICON_SVG["clipboard"],  "Relatórios Gerais"),
         ]
 
         ghost_subtabs_sites_css = ", ".join([
@@ -4836,8 +4848,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     transition:all 0.15s; white-space:nowrap;
     font-family:'DM Sans',sans-serif; line-height:1; width:100%;
 }}
+.tab-pill svg {{ display:block; width:16px; height:16px; }}
+.tab-icon {{
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:16px; height:16px; color:#6b7280;
+    transition:color 0.15s;
+}}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill:hover .tab-icon {{ color:#1d4ed8; }}
 .tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.tab-pill.active .tab-icon {{ color:#fff; }}
 .tab-badge {{
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
@@ -4851,7 +4871,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     f'''<a class="tab-pill {'active' if subtab_sites == stk else ''}"
         href="javascript:void(0)"
         onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='sites_analise_sub_{stk}'){{b.click();return;}}}}}})()"
-    >{icon} {lbl} <span class="tab-badge {'has' if contagens_sites.get(stk,0) > 0 else ''}">{contagens_sites.get(stk,0)}</span></a>'''
+    ><span class="tab-icon">{icon}</span>{lbl} <span class="tab-badge {'has' if contagens_sites.get(stk,0) > 0 else ''}">{contagens_sites.get(stk,0)}</span></a>'''
     for stk, icon, lbl in subtabs_sites_def
 ])}
 </div>
@@ -4870,9 +4890,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 """, height=52, scrolling=False)
 
         lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
-        icons_sites_map   = {"individual": "🏢", "geral": "📋"}
+        icons_sites_map   = {"individual": ICON_SVG["building"], "geral": ICON_SVG["clipboard"]}
         labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
-        icon_sites_ativo  = icons_sites_map.get(subtab_sites, "📋")
+        icon_sites_ativo  = icons_sites_map.get(subtab_sites, ICON_SVG["clipboard"])
         label_sites_ativo = labels_sites_map.get(subtab_sites, "")
 
         def _md_to_html_sites(txt):
@@ -4954,7 +4974,83 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 i += 1
 
             close_all()
-            return '\n'.join(output)
+            html = '\n'.join(output)
+
+            def _get_icon_for_title(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'visão', 'proposta']):
+                    return ICON_SVG['target'], '#dbeafe'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
+                    return ICON_SVG['star'], '#dcebe7'
+                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
+                    return ICON_SVG['lightbulb'], '#fef3e2'
+                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo']):
+                    return ICON_SVG['compass'], '#e3e8f7'
+                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                    return ICON_SVG['rocket'], '#dceef5'
+                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'mensage']):
+                    return ICON_SVG['chart'], '#e2e9f5'
+                if any(w in t for w in ['destaque', 'comparativo', 'concorrente', 'mercado']):
+                    return ICON_SVG['trophy'], '#fff7e0'
+                return ICON_SVG['clipboard'], '#eef1f5'
+
+            def _get_title_color(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'visão', 'proposta']):
+                    return '#2563eb'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
+                    return '#0d9488'
+                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
+                    return '#b45309'
+                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'sugest', 'exemplo', 'plano']):
+                    return '#4338ca'
+                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento']):
+                    return '#0369a1'
+                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'mensage']):
+                    return '#3730a3'
+                if any(w in t for w in ['destaque', 'comparativo', 'concorrente', 'mercado']):
+                    return '#92400e'
+                return '#475569'
+
+            def _wrap_section(html_str):
+                import re as _r2
+                partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
+                output_parts = []
+                i2 = 0
+                while i2 < len(partes):
+                    parte = partes[i2]
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    if m_hdr:
+                        hdr_txt       = m_hdr.group(2)
+                        hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
+                        conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
+                        i2 += 1
+                        icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                        title_color = _get_title_color(hdr_txt_clean)
+                        caixa = (
+                            f'<div class="sec-card">'
+                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                            f'  <div class="sec-body">'
+                            f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                            f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                            f'    <div class="sec-content">{conteudo}</div>'
+                            f'  </div>'
+                            f'</div>'
+                        )
+                        output_parts.append(caixa)
+                    else:
+                        output_parts.append(parte)
+                    i2 += 1
+                return ''.join(output_parts)
+
+            import re as _re_promote
+            html = _re_promote.sub(
+                r'<p><strong>([^<]+?):?</strong></p>',
+                r'<h3>\1</h3>',
+                html
+            )
+            html = _wrap_section(html)
+            return html
 
         relatorios_sites_html     = {str(i): _md_to_html_sites(a.get("relatorio","")) for i, a in enumerate(analises)}
         relatorios_sites_json     = _json_sites.dumps(relatorios_sites_html, ensure_ascii=False)
@@ -4962,60 +5058,237 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         relatorios_sites_raw_json = _json_sites.dumps(relatorios_sites_raw, ensure_ascii=False)
 
         if lista_sites_ativa:
+            lista_sites_rev = list(reversed(lista_sites_ativa))
+            sites_first = lista_sites_rev[0] if lista_sites_rev else None
+            sites_last  = lista_sites_rev[-1] if lista_sites_rev else None
+
             cards_sites_html = ""
-            for a in reversed(lista_sites_ativa):
+            for a in lista_sites_rev:
                 idx_real = analises.index(a)
-                icon_a   = icons_sites_map.get(a.get("tipo",""), "📋")
+                icon_a   = icons_sites_map.get(a.get("tipo",""), ICON_SVG["clipboard"])
                 titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+
                 cards_sites_html += f"""
-        <div class="card-row" style="border-bottom:1px solid #f3f4f6;background:#fff;">
-            <div class="card-hdr" data-idx="{idx_real}"
-                 style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        cursor:pointer;background-color:#0e2a47;">
-                <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
-                <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
-                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
-                <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
-                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                           justify-content:center;cursor:pointer;transition:background 0.15s;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                    </svg>
-                </button>
-                <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
-                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                           justify-content:center;cursor:pointer;transition:background 0.15s;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="16 18 22 12 16 6"/>
-                        <polyline points="8 6 2 12 8 18"/>
-                    </svg>
-                </button>
-                <span class="btn-chevron" data-idx="{idx_real}"
-                      style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                </span>
-            </div>
-            <div id="sb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
-                <div id="sr_{idx_real}"
-                     style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
-                <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
-                    <button class="btn-download" data-idx="{idx_real}" data-filename="{nome_arq}"
-                        style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
-                               background:#fff;font-size:13px;font-weight:600;color:#374151;
-                               cursor:pointer;font-family:'DM Sans',sans-serif;">
-                        ⬇️ Baixar .txt
-                    </button>
-                </div>
-            </div>
-        </div>"""
+<div class="card-row" style="border-radius:{'14px 14px 0 0' if a == sites_first else ('0 0 14px 14px' if a == sites_last else '0')};overflow:hidden;">
+    <div class="card-hdr" data-idx="{idx_real}">
+        <span class="card-hdr-icon">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+        <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+        </button>
+        <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+            </svg>
+        </button>
+        <span class="btn-chevron" data-idx="{idx_real}"
+              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+    <div id="sb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div style="padding:16px 18px;">
+            <div id="sr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>
+        </div>
+        <div class="card-footer">
+            <button class="btn-dl" data-idx="{idx_real}" data-filename="{nome_arq}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Baixar .txt
+            </button>
+            <button class="btn-del" data-idx="{idx_real}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+                Excluir
+            </button>
+        </div>
+    </div>
+</div>"""
+
+            ANALISES_CSS_SITES = """
+.card-hdr-icon {
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:20px; height:20px; color:#cbd5e1;
+}
+.card-hdr-icon svg { width:18px; height:18px; }
+
+.sec-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin: 0 0 12px 0;
+}
+.sec-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.sec-icon-wrap svg { width: 22px; height: 22px; }
+.sec-body { flex: 1; min-width: 0; }
+.sec-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.sec-divider {
+    height: 1.5px;
+    border-radius: 2px;
+    margin-bottom: 12px;
+}
+.sec-content { font-size: 14px; color: #374151; line-height: 1.75; }
+.sec-content p { margin: 0 0 8px; }
+.sec-content strong { font-weight: 700; color: #111827; }
+.sec-content em { font-style: italic; }
+
+.sec-content ol {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+    counter-reset: sec-counter;
+}
+.sec-content ol > li {
+    position: relative;
+    padding-left: 36px;
+    margin-bottom: 10px;
+    line-height: 1.65;
+    counter-increment: sec-counter;
+}
+.sec-content ol > li::before {
+    content: counter(sec-counter);
+    position: absolute;
+    left: 0; top: 1px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #64748b;
+    color: #fff;
+    font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
+.sec-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+}
+.sec-content ul > li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 8px;
+    line-height: 1.65;
+}
+.sec-content ul > li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
+}
+
+.card-row {
+    border-bottom: 1px solid #f3f4f6;
+    background: #dde5ed;
+}
+.card-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    background-color: #17406a;
+    transition: background 0.15s;
+}
+.card-hdr:hover { background-color: #21719c; }
+
+.card-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 18px;
+    background: #91a49b;
+    border-top: 1px solid #dde5ed;
+    align-items: center;
+}
+.btn-dl {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 16px; border-radius: 10px;
+    border: 1.5px solid #e5e7eb; background: #fff;
+    font-size: 13px; font-weight: 700; color: #374151;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+}
+.btn-dl:hover { border-color: #3a9fd6; background: #eff6ff; color: #1d4ed8; }
+.btn-del {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 18px; border-radius: 10px;
+    border: 1.5px solid #fecaca; background: #fef2f2;
+    font-size: 13px; font-weight: 700; color: #dc2626;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; white-space: nowrap;
+}
+.btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+
+#smb_sites h1, #smb_sites h2, #smb_sites h3 {
+    font-size: 16px; font-weight: 800; color: #0f1f35;
+    margin: 18px 0 8px; padding-bottom: 6px;
+    border-bottom: 2px solid #e5e7eb; text-transform: uppercase;
+}
+#smb_sites p  { margin: 0 0 10px; line-height: 1.75; }
+#smb_sites ul { margin: 6px 0 14px 24px; }
+#smb_sites li { margin: 0 0 4px; line-height: 1.65; }
+#smb_sites li::marker { color: #00c162; }
+#smb_sites hr { display: none; }
+#smb_sites .sec-card { border: 1px solid #e5e7eb; }
+
+#smb_sites ol {
+    margin: 5px 0 15px 5px;
+    list-style: none;
+    counter-reset: meu-contador;
+}
+#smb_sites ol > li {
+    line-height: 1.6; position: relative;
+    padding-left: 35px; margin-bottom: 15px;
+    counter-increment: meu-contador;
+}
+#smb_sites ol > li::before {
+    content: counter(meu-contador);
+    position: absolute; left: 0; top: 0;
+    background-color: #64748b; color: #ffffff;
+    border-radius: 50%; width: 25px; height: 25px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: bold;
+}
+"""
 
             components.html(f"""
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -5023,30 +5296,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         * {{ margin:0; padding:0; box-sizing:border-box; }}
         html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
         body {{ padding-bottom:8px; }}
-        [id^="sr_"] h1,[id^="sr_"] h2,[id^="sr_"] h3 {{ font-size:18px; font-weight:800; color:#2454a3; margin:14px 0 11px; padding-bottom:4px; border-bottom:2px solid #e5e7eb; text-transform:uppercase; }}
-        [id^="sr_"] p  {{ margin:0 0 8px; line-height:1.7; }}
-        [id^="sr_"] ul {{ margin:5px 0 15px 28px; }}
-        [id^="sr_"] li {{ margin:0 0 3px; line-height:1.6; }}
-        [id^="sr_"] li::marker {{ color:#00c162; }}
-        [id^="sr_"] hr {{ display:none; }}
-        [id^="sr_"] ol {{ margin:5px 0 15px 5px; list-style:none; counter-reset:meu-contador; }}
-        [id^="sr_"] ol > li {{ margin:0 0 3px; line-height:1.6; position:relative; padding-left:35px; margin-bottom:15px; }}
-        [id^="sr_"] ol > li::before {{ counter-increment:meu-contador; content:counter(meu-contador); position:absolute; left:0; top:0; background-color:#00aae6; color:#ffffff; border-radius:50%; width:25px; height:25px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:bold; }}
-        [id^="sr_"] ol > li > ul {{ margin:6px 0 0 0; list-style:none; padding-left:0; }}
-        [id^="sr_"] ol > li > ul > li {{ position:relative; padding-left:18px; margin-bottom:8px; line-height:1.6; }}
-        [id^="sr_"] ol > li > ul > li::before {{ content:'◦'; position:absolute; left:0; top:0; color:#00aae6; font-size:18px; line-height:1.3; font-weight:normal; background:none; border-radius:0; width:auto; height:auto; }}
-        #smb h1,#smb h2,#smb h3 {{ font-size:16px; font-weight:800; color:#0f1f35; margin:18px 0 8px; padding-bottom:6px; border-bottom:2px solid #e5e7eb; text-transform:uppercase; }}
-        #smb p  {{ margin:0 0 10px; line-height:1.75; }}
-        #smb ul {{ margin:6px 0 14px 24px; }}
-        #smb li {{ margin:0 0 4px; line-height:1.65; }}
-        #smb li::marker {{ color:#00c162; }}
-        #smb hr {{ display:none; }}
-        #smb ol {{ margin:5px 0 15px 5px; list-style:none; counter-reset:meu-contador; }}
-        #smb ol > li {{ line-height:1.6; position:relative; padding-left:35px; margin-bottom:15px; }}
-        #smb ol > li::before {{ counter-increment:meu-contador; content:counter(meu-contador); position:absolute; left:0; top:0; background-color:#00aae6; color:#ffffff; border-radius:50%; width:25px; height:25px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:bold; }}
-        #smb ol > li > ul {{ margin:6px 0 0 0; list-style:none; padding-left:0; }}
-        #smb ol > li > ul > li {{ position:relative; padding-left:18px; margin-bottom:8px; line-height:1.6; }}
-        #smb ol > li > ul > li::before {{ content:'◦'; position:absolute; left:0; top:0; color:#00aae6; font-size:18px; line-height:1.3; font-weight:normal; background:none; border-radius:0; width:auto; height:auto; }}
+        {ANALISES_CSS_SITES}
         </style>
 
         <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
@@ -5100,7 +5350,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
             var hdr = doc.createElement('div');
             hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
-                + 'background:#24658e;flex-shrink:0;gap:12px;';
+                + 'background:#0e2a47;flex-shrink:0;gap:12px;';
             var titleEl = doc.createElement('div');
             titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
                 + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
@@ -5122,7 +5372,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             hdr.appendChild(rawBtn);
             hdr.appendChild(closeBtn);
             var body = doc.createElement('div');
-            body.id = 'smb';
+            body.id = 'smb_sites';
             body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
                 + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
             body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
@@ -5137,7 +5387,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
         function toggleModalView(html, raw) {{
             var doc  = window.parent.document;
-            var body = doc.getElementById('smb');
+            var body = doc.getElementById('smb_sites');
             var btn  = doc.getElementById('sites_modal_raw_btn');
             if (!body || !btn) return;
             window.__sitesModalShowingRaw = !window.__sitesModalShowingRaw;
@@ -5221,12 +5471,77 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             doc.addEventListener('keydown', escFn);
         }}
 
+        function excluirAnaliseSites(idx) {{
+            var doc = window.parent.document;
+            var old = doc.getElementById('confirm_modal_overlay');
+            if (old) old.remove();
+
+            var ov = doc.createElement('div');
+            ov.id = 'confirm_modal_overlay';
+            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+            ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+            var box = doc.createElement('div');
+            box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+            var icone = doc.createElement('div');
+            icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:#ef444422;border:2px solid #ef4444;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+            icone.textContent = '⚠️';
+
+            var tit = doc.createElement('div');
+            tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+            tit.textContent = '🗑️ Excluir análise';
+
+            var msg = doc.createElement('div');
+            msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+            msg.textContent = 'Tem certeza que deseja excluir esta análise? Esta ação não pode ser desfeita.';
+
+            var btnsRow = doc.createElement('div');
+            btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+            var cancelBtn = doc.createElement('button');
+            cancelBtn.textContent = 'Cancelar';
+            cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+            cancelBtn.onmouseover = function() {{ this.style.borderColor='#3a9fd6'; this.style.color='#fff'; }};
+            cancelBtn.onmouseout  = function() {{ this.style.borderColor='#1e3a5f'; this.style.color='#94a3b8'; }};
+            cancelBtn.onclick = function() {{ ov.remove(); }};
+
+            var confirmBtn = doc.createElement('button');
+            confirmBtn.textContent = 'Sim, excluir';
+            confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:#ef4444;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+            confirmBtn.onmouseover = function() {{ this.style.opacity='0.85'; }};
+            confirmBtn.onmouseout  = function() {{ this.style.opacity='1'; }};
+            confirmBtn.onclick = function() {{
+                ov.remove();
+                var chave = 'btn_rm_analise_' + idx;
+                var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+                if (porClasse) {{ porClasse.click(); return; }}
+                var btns = doc.querySelectorAll('button');
+                for (var b of btns) {{
+                    var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
+                    if (txt === '_rm_analise_' + idx + '_') {{ b.click(); return; }}
+                }}
+            }};
+
+            btnsRow.appendChild(cancelBtn);
+            btnsRow.appendChild(confirmBtn);
+            box.appendChild(icone);
+            box.appendChild(tit);
+            box.appendChild(msg);
+            box.appendChild(btnsRow);
+            ov.appendChild(box);
+            doc.body.appendChild(ov);
+
+            var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+            doc.addEventListener('keydown', escFn);
+        }}
+
         document.addEventListener('click', function(e) {{
             var fs = e.target.closest('.btn-fullscreen');
             if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
             var rv = e.target.closest('.btn-raw');
             if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
-            var dl = e.target.closest('.btn-download');
+            var dl = e.target.closest('.btn-dl');
             if (dl) {{
                 e.stopPropagation();
                 var raw = RELS_RAW[String(dl.dataset.idx)] || '';
@@ -5234,6 +5549,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
                 a.download = dl.dataset.filename + '.txt';
                 a.click();
+                return;
+            }}
+            var ex = e.target.closest('.btn-del');
+            if (ex) {{
+                e.stopPropagation();
+                excluirAnaliseSites(parseInt(ex.dataset.idx));
                 return;
             }}
             var hdr = e.target.closest('.card-hdr');
@@ -5248,7 +5569,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         (function() {{
             var cards = document.querySelectorAll('[id^="sb_"]');
             if (cards.length === 1) {{
-                var m = cards[0].id.match(/sb_(\d+)/);
+                var m = cards[0].id.match(/sb_(\\d+)/);
                 if (m) setTimeout(function() {{ toggleSite(parseInt(m[1])); }}, 150);
             }}
         }})();
@@ -5269,7 +5590,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;
                         display:flex;flex-direction:column;align-items:center;gap:10px;">
-                <div style="font-size:32px;opacity:0.4;">{icon_sites_ativo}</div>
+                <div style="width:40px;height:40px;color:#94a3b8;opacity:0.6;
+                    display:flex;align-items:center;justify-content:center;margin:0 auto;">{icon_sites_ativo}</div>
                 <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_sites_ativo.lower()} ainda.</div>
                 <div style="font-size:13px;color:#9ca3af;">{empty_msg}</div>
             </div>

@@ -12098,14 +12098,6 @@ body { padding-bottom:8px; }
     display: flex; align-items: center; justify-content: center;
     line-height: 1;
 }
-.sec-card:has(.sec-title[style*="#2563eb"]) .sec-content ol > li::before { background: #2563eb; }
-.sec-card:has(.sec-title[style*="#0d9488"]) .sec-content ol > li::before { background: #0d9488; }
-.sec-card:has(.sec-title[style*="#b45309"]) .sec-content ol > li::before { background: #b45309; }
-.sec-card:has(.sec-title[style*="#4338ca"]) .sec-content ol > li::before { background: #4338ca; }
-.sec-card:has(.sec-title[style*="#0369a1"]) .sec-content ol > li::before { background: #0369a1; }
-.sec-card:has(.sec-title[style*="#3730a3"]) .sec-content ol > li::before { background: #3730a3; }
-.sec-card:has(.sec-title[style*="#1e3a5f"]) .sec-content ol > li::before { background: #1e3a5f; }
-
 .sec-content ul {
     list-style: none;
     padding: 0;
@@ -12196,17 +12188,6 @@ body { padding-bottom:8px; }
     border-radius: 50%; width: 25px; height: 25px;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px; font-weight: bold;
-}
-#smb_redes ol > li > ul { margin: 6px 0 0 0; list-style: none; padding-left: 0; }
-#smb_redes ol > li > ul > li {
-    position: relative; padding-left: 18px;
-    margin-bottom: 8px; line-height: 1.6;
-}
-#smb_redes ol > li > ul > li::before {
-    content: '◦'; position: absolute; left: 0; top: 0;
-    color: #00aae6; font-size: 18px; line-height: 1.3;
-    font-weight: normal; background: none; border-radius: 0;
-    width: auto; height: auto;
 }
 """
 
@@ -12417,25 +12398,14 @@ function excluirAnalise(idx) {{
         '#ef4444',
         'Sim, excluir',
         function() {{
-            var label = '_rm_redes_analise_' + idx + '_';
             var chave = 'btn_rm_redes_analise_' + idx;
             var doc = window.parent.document;
-
-            // Tenta pela classe CSS primeiro
             var porClasse = doc.querySelector('.st-key-' + chave + ' button');
             if (porClasse) {{ porClasse.click(); return; }}
-
-            // Fallback: busca pelo texto
             var btns = doc.querySelectorAll('button');
             for (var b of btns) {{
                 var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
-                if (txt === label) {{ b.click(); return; }}
-            }}
-
-            // Fallback 2: busca parcial
-            for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
-                if (txt.indexOf('_rm_redes_analise_' + idx) !== -1) {{ b.click(); return; }}
+                if (txt === '_rm_redes_analise_' + idx + '_') {{ b.click(); return; }}
             }}
         }}
     );
@@ -12471,16 +12441,12 @@ function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
 
     var cancelBtn = doc.createElement('button');
     cancelBtn.textContent = 'Cancelar';
-    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:all 0.15s;';
-    cancelBtn.onmouseover = function() {{ this.style.borderColor='#3a9fd6'; this.style.color='#fff'; }};
-    cancelBtn.onmouseout  = function() {{ this.style.borderColor='#1e3a5f'; this.style.color='#94a3b8'; }};
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
     cancelBtn.onclick = function() {{ ov.remove(); }};
 
     var confirmBtn = doc.createElement('button');
     confirmBtn.textContent = labelBtn;
-    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;transition:opacity 0.15s;';
-    confirmBtn.onmouseover = function() {{ this.style.opacity='0.85'; }};
-    confirmBtn.onmouseout  = function() {{ this.style.opacity='1'; }};
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
     confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
 
     btnsRow.appendChild(cancelBtn);
@@ -12558,104 +12524,18 @@ setTimeout(syncH, 600);
             else:
                 btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
 
-            st.markdown("""
-            <style>
-            .analise-vazia-icon { width:40px; height:40px; color:#94a3b8; opacity:0.6;
-                display:flex; align-items:center; justify-content:center; margin:0 auto; }
-            .analise-vazia-icon svg { width:100%; height:100%; }
-            </style>
-            """, unsafe_allow_html=True)
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;
                         display:flex;flex-direction:column;align-items:center;gap:10px;">
-                <div class="analise-vazia-icon">{icon_ativo}</div>
+                <div style="width:40px;height:40px;color:#94a3b8;opacity:0.6;
+                    display:flex;align-items:center;justify-content:center;margin:0 auto;">{icon_ativo}</div>
                 <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_ativo.lower()} ainda.</div>
                 {btn_vazio_html}
             </div>
             """, unsafe_allow_html=True)
 
-        # ══════════════════════════════════════════════════════════════════
-        # GHOST BUTTONS — ficam no final para não gerar espaço em branco
-        # ══════════════════════════════════════════════════════════════════
-
-        # Ghost button comparativo
-        ghost_comp_key = "btn_redes_comp_geral"
-        st.markdown(f"""
-        <style>
-        .st-key-{ghost_comp_key} {{
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }}
-        .stElementContainer:has(.st-key-{ghost_comp_key}) {{
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
-
-        if st.button("redes_comparativo", key=ghost_comp_key):
-            if gemini_model is None:
-                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
-            elif not ok:
-                st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
-            else:
-                resumo_perfis = "\n\n".join([
-                    f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
-                    f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
-                    f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
-                    f"Bio: {rr.get('bio','')}\n"
-                    f"Últimos posts:\n" + "\n".join([
-                        f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
-                        f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
-                        for p in rr.get("posts", [])[:6]
-                    ])
-                    for rr in ok
-                ])
-                with st.spinner("Gerando comparativo…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
-Você é especialista em marketing digital e redes sociais.
-Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
-
-{resumo_perfis}
-
-Responda com:
-### Visão Geral Comparativa
-Comparação resumida dos perfis em termos de presença e engajamento.
-
-### Quem se Destaca e Por Quê
-Destaque o perfil com melhor desempenho e explique os motivos.
-
-### Pontos Fortes de Cada Perfil
-Para cada perfil, 1-2 pontos fortes.
-
-### Oportunidades Identificadas
-2-3 oportunidades estratégicas para os perfis com menor desempenho.
-
-### Recomendações Finais
-3 ações concretas para melhorar a presença geral no Instagram.
-
-Seja direto, objetivo e baseado nos dados fornecidos.
-""")
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if a.get("tipo") != "comparativo"
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "comparativo",
-                            "perfis": [rr.get("handle","") for rr in ok],
-                        })
-                        salvar_dados_usuario(st.session_state.user.id)
-                        st.rerun()
-                    except Exception as e:
-                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
-
-        # Ghost buttons subtabs
+        # ── Ghost buttons subtabs (SEM duplicar o ghost_comp_key) ──
         ghost_subtabs_css = ", ".join([
             f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
             for stk, _, _ in subtabs_def

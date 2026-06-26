@@ -11516,7 +11516,7 @@ Seja direto e objetivo.
 
         st.markdown("""
         <style>
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-of-type {
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-child {
             margin-top: -32px !important;
             padding-top: 0 !important;
             margin-bottom: 0 !important;

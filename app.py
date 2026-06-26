@@ -9312,12 +9312,7 @@ function setHeight(isOpen) {{
 
 # ── HR separador — fora das colunas, com correção de espaço ────
     st.markdown("""
-        <style>
-        #redes-hr-wrapper {
-            margin-top: -50px !important;
-        }
-        </style>
-        <div id="redes-hr-wrapper">
+        <div style="margin-top: 8px;">
             <hr style='border:none;border-top:1px solid #e5e7eb;margin:0'/>
         </div>
     """, unsafe_allow_html=True)

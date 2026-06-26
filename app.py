@@ -11627,37 +11627,34 @@ Seja direto e objetivo.
                     for rr in ok
                 ])
                 _ph_comp = st.empty()
-                _render_modal_redes_ia("gerando", "Comparativo Geral", 50, _ph_comp)
+                _render_modal_redes_ia("gerando", "Comparativo Geral", 40, _ph_comp)
                 try:
                     resp = gemini_model.generate_content(f"""
 Você é especialista em marketing digital e redes sociais.
 Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
-
+ 
 {resumo_perfis}
-
+ 
 Responda com:
 ### Visão Geral Comparativa
 Comparação resumida dos perfis em termos de presença e engajamento.
-
+ 
 ### Quem se Destaca e Por Quê
 Destaque o perfil com melhor desempenho e explique os motivos.
-
+ 
 ### Pontos Fortes de Cada Perfil
 Para cada perfil, 1-2 pontos fortes.
-
+ 
 ### Oportunidades Identificadas
 2-3 oportunidades estratégicas para os perfis com menor desempenho.
-
+ 
 ### Recomendações Finais
 3 ações concretas para melhorar a presença geral no Instagram.
-
+ 
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
-                    # Remove TODOS os comparativos anteriores antes de salvar
-                    st.session_state.redes_analises_salvas = [
-                        a for a in st.session_state.redes_analises_salvas
-                        if a.get("tipo") != "comparativo"
-                    ]
+                    # Sempre adiciona uma NOVA análise — nunca sobrepõe as anteriores
+                    # (mesmo comportamento de "postagem" e "geral_perfil")
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -11665,8 +11662,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                         "tipo": "comparativo",
                         "perfis": [rr.get("handle","") for rr in ok],
                     })
-                    salvar_dados_usuario(st.session_state.user.id)
+ 
                     _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
+                    salvar_dados_usuario(st.session_state.user.id)
                     import time as _t_comp; _t_comp.sleep(1.2)
                     _ph_comp.empty()
                     st.session_state.redes_main_tab = "analise"

@@ -12352,10 +12352,24 @@ function excluirAnalise(idx) {{
         'Sim, excluir',
         function() {{
             var label = '_rm_redes_analise_' + idx + '_';
-            var btns = window.parent.document.querySelectorAll('button');
+            var chave = 'btn_rm_redes_analise_' + idx;
+            var doc = window.parent.document;
+
+            // Tenta pela classe CSS primeiro
+            var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+            if (porClasse) {{ porClasse.click(); return; }}
+
+            // Fallback: busca pelo texto
+            var btns = doc.querySelectorAll('button');
             for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
                 if (txt === label) {{ b.click(); return; }}
+            }}
+
+            // Fallback 2: busca parcial
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+                if (txt.indexOf('_rm_redes_analise_' + idx) !== -1) {{ b.click(); return; }}
             }}
         }}
     );

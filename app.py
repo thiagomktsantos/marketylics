@@ -11524,8 +11524,13 @@ Seja direto e objetivo.
         }
         .st-emotion-cache-a6f95b.e1rw0b1u1 {
             min-height: 0 !important;
-            height: 52px !important;
-            overflow: hidden !important;
+            height: 90px !important;
+            overflow: visible !important;
+        }
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-child {
+            position: relative !important;
+            z-index: 999 !important;
+            margin-top: -38px !important;
         }
         </style>
         """, unsafe_allow_html=True)

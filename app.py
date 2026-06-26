@@ -11522,11 +11522,26 @@ Seja direto e objetivo.
         # Marcar como vistas
         st.session_state.redes_analise_vistas = len(analises_redes)
  
+        # SVGs outline (estilo lucide) usados no lugar dos emojis — herdam
+        # a cor via CSS (stroke) tanto nas pills quanto nos cards/títulos.
+        ICON_SVG = {
+            "user":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+            "image":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>',
+            "chart":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
+            "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
+            "target":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+            "star":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+            "lightbulb":'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
+            "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
+            "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+            "clipboard": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+        }
+ 
         subtabs_def = [
-            ("bio",          "👤", "Perfil"),
-            ("postagem",     "📸", "Postagens"),
-            ("geral_perfil", "📊", "Geral"),
-            ("comparativo",  "🏆", "Comparativo"),
+            ("bio",          ICON_SVG["user"],   "Perfil"),
+            ("postagem",     ICON_SVG["image"],  "Postagens"),
+            ("geral_perfil", ICON_SVG["chart"],  "Geral"),
+            ("comparativo",  ICON_SVG["trophy"], "Comparativo"),
         ]
  
         # Ghost button comparativo
@@ -11660,8 +11675,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     transition:all 0.15s; white-space:nowrap;
     font-family:'DM Sans',sans-serif; line-height:1; width:100%;
 }}
+.tab-pill svg {{ display:block; width:16px; height:16px; }}
+.tab-icon {{
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:16px; height:16px; color:#6b7280;
+    transition:color 0.15s;
+}}
 .tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill:hover .tab-icon {{ color:#1d4ed8; }}
 .tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.tab-pill.active .tab-icon {{ color:#fff; }}
 .tab-badge {{
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
@@ -11675,7 +11698,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     f'''<a class="tab-pill {'active' if subtab_analise == stk else ''}"
         href="javascript:void(0)"
         onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='redes_analise_sub_{stk}'){{b.click();return;}}}}}})()"
-    >{icon} {lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></a>'''
+    ><span class="tab-icon">{icon}</span>{lbl} <span class="tab-badge {'has' if contagens.get(stk,0) > 0 else ''}">{contagens.get(stk,0)}</span></a>'''
     for stk, icon, lbl in subtabs_def
 ])}
 </div>
@@ -11701,9 +11724,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             ]
         else:
             lista_ativa = [a for a in analises_redes if a.get("tipo") == subtab_analise]
-        icons_map   = {"bio":"👤","postagem":"📸","criativos":"🎨","copy":"✍️","geral_perfil":"📊","comparativo":"🏆"}
+        icons_map   = {
+            "bio": ICON_SVG["user"], "postagem": ICON_SVG["image"], "criativos": ICON_SVG["image"],
+            "copy": ICON_SVG["compass"], "geral_perfil": ICON_SVG["chart"], "comparativo": ICON_SVG["trophy"],
+        }
         labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
-        icon_ativo  = icons_map.get(subtab_analise, "📋")
+        icon_ativo  = icons_map.get(subtab_analise, ICON_SVG["clipboard"])
         label_ativo = labels_map.get(subtab_analise, "")
  
         # ═════════════════════════════════════════════════════════
@@ -11791,86 +11817,42 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             close_all()
             html = '\n'.join(output)
  
-            # ── Regras de seção — (padrão, cor_título, cor_ícone_bg, ícone_emoji, cor_borda)
-            BOX_RULES = [
-                # Posicionamento / identidade
-                (r'(posicionamento|identidade|tom\s+de\s+voz|persona|voz\s+da\s+marca|proposta\s+de\s+valor|diferencial|vis[ãa]o\s+geral|an[aá]lise\s+geral|vis[ãa]o\s+geral\s+comparativa|contexto|panorama|resumo|overview|an[aá]lise\s+d[ao]\s+bio|an[aá]lise\s+d[ao]\s+perfil|sobre\s+o\s+perfil)',
-                 '#2563eb', '#dbeafe', '🎯', '#93c5fd'),
- 
-                # Pontos fortes / positivos
-                (r'(pontos?\s+forte[s]?|positivo[s]?|destaques?|quem\s+se\s+destaca|o\s+que\s+funciona|o\s+que\s+est[aá]\s+funcionando|aspecto[s]?\s+positivo[s]?|qualidade[s]?)',
-                 '#16a34a', '#dcfce7', '⭐', '#86efac'),
- 
-                # O que melhorar / pontos de atenção
-                (r'(o\s+que\s+melhorar|pontos?\s+de\s+aten[çc][ãa]o|fraqueza[s]?|clareza|inconsist[eê]ncia[s]?|o\s+que\s+pode\s+melhorar|limita[çc][õo]e[s]?|gaps?)',
-                 '#d97706', '#fef9c3', '💡', '#fde68a'),
- 
-                # Recomendações / sugestões / bio sugerida
-                (r'(recomenda[çc][õo]e[s]?|a[çc][õo]e[s]?\s+concreta[s]?|pr[oó]ximos?\s+passo[s]?|sugest[õo]e[s]?|como\s+melhorar|plano\s+de\s+a[çc][ãa]o|bio\s+sugerida|caption[s]?\s+sugerido[s]?|legenda[s]?\s+sugerida[s]?|copy\s+sugerido|texto[s]?\s+sugerido[s]?|exemplo[s]?\s+de\s+copy|exemplo[s]?\s+de\s+caption|exemplo[s]?\s+de\s+legenda)',
-                 '#7c3aed', '#ede9fe', '💙', '#c4b5fd'),
- 
-                # Oportunidades / estratégia
-                (r'(oportunidade[s]?|estrat[eé]gia[s]?|crescimento|potencial|expans[ãa]o|tend[eê]ncia[s]?)',
-                 '#0891b2', '#e0f2fe', '🚀', '#7dd3fc'),
- 
-                # Engajamento / métricas
-                (r'(engajamento|m[eé]trica[s]?|desempenho|resultado[s]?|performance|taxa[s]?|alcance|frequ[eê]ncia)',
-                 '#db2777', '#fce7f3', '📈', '#f9a8d4'),
- 
-                # Criativo / visual
-                (r'(criativo[s]?|visual|est[eé]tica|formato[s]?|design|imagens?|v[ií]deos?|reels?|stories?|carrossel[s]?|layout|paleta)',
-                 '#ea580c', '#ffedd5', '🖼️', '#fdba74'),
-            ]
- 
-            FALLBACK_BOX = ('#475569', '#f8fafc', '#📋', '#cbd5e1')
- 
-            # Mapeamento de ícone circular por seção
-            ICON_MAP = {
-                'posicionamento': ('🎯', '#dbeafe'),
-                'forte': ('⭐', '#dcfce7'),
-                'melhorar': ('💡', '#fef9c3'),
-                'sugerida': ('💙', '#ede9fe'),
-                'recomenda': ('💙', '#ede9fe'),
-                'oportunidade': ('🚀', '#e0f2fe'),
-                'engajamento': ('📈', '#fce7f3'),
-                'criativo': ('🖼️', '#ffedd5'),
-                'default': ('📋', '#f1f5f9'),
-            }
- 
+            # ── Mapeamento de ícone (SVG) + cor por seção — paleta harmônica
+            # (família azul/petróleo/índigo, ancorada no #0e2a47 do header)
             def _get_icon_for_title(title_clean):
                 t = title_clean.lower()
                 if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
-                    return '🎯', '#dbeafe'
+                    return ICON_SVG['target'], '#dbeafe'
                 if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
-                    return '⭐', '#dcfce7'
+                    return ICON_SVG['star'], '#dcebe7'
                 if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
-                    return '💡', '#fef9c3'
+                    return ICON_SVG['lightbulb'], '#fef3e2'
                 if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo', 'copy sugerido', 'legenda']):
-                    return '💙', '#ede9fe'
+                    return ICON_SVG['compass'], '#e3e8f7'
                 if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
-                    return '🚀', '#e0f2fe'
+                    return ICON_SVG['rocket'], '#dceef5'
                 if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance']):
-                    return '📈', '#fce7f3'
+                    return ICON_SVG['chart'], '#e2e9f5'
                 if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design', 'imagem', 'vídeo', 'reel', 'carrossel']):
-                    return '🖼️', '#ffedd5'
-                return '📋', '#f1f5f9'
+                    return ICON_SVG['image'], '#e4e9f0'
+                return ICON_SVG['clipboard'], '#eef1f5'
  
             def _get_title_color(title_clean):
                 t = title_clean.lower()
                 if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
                     return '#2563eb'
                 if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
-                    return '#16a34a'
+                    return '#0d9488'
                 if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
-                    return '#d97706'
+                    return '#b45309'
                 if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'sugest', 'exemplo', 'plano']):
-                    return '#7c3aed'
+                    return '#4338ca'
                 if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento']):
-                    return '#0891b2'
+                    return '#0369a1'
                 if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado']):
-                    return '#db2777'
+                    return '#3730a3'
                 if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design']):
-                    return '#ea580c'
+                    return '#1e3a5f'
                 return '#475569'
  
             def _wrap_section(html_str):
@@ -11889,16 +11871,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
  
-                        icon_emoji, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                        icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
                         title_color = _get_title_color(hdr_txt_clean)
  
                         # Card no estilo do print:
-                        # - ícone circular colorido à esquerda
+                        # - ícone circular (SVG outline) à esquerda
                         # - título em caps com cor temática + divisor
                         # - conteúdo com listas numeradas estilizadas
                         caixa = (
                             f'<div class="sec-card">'
-                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};">{icon_emoji}</div>'
+                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
                             f'  <div class="sec-body">'
                             f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
                             f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
@@ -11946,7 +11928,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 cards_redes_html += f"""
 <div class="card-row" style="border-radius:{'14px 14px 0 0' if a == reversed_first else ('0 0 14px 14px' if a == reversed_last else '0')};overflow:hidden;">
     <div class="card-hdr" data-idx="{idx_real}">
-        <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
+        <span class="card-hdr-icon">{icon_a}</span>
         <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
  
@@ -12013,6 +11995,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
 body { padding-bottom:8px; }
  
+/* ── Ícone do header do card (substitui emoji) ── */
+.card-hdr-icon {
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:20px; height:20px; color:#cbd5e1;
+}
+.card-hdr-icon svg { width:18px; height:18px; }
+ 
 /* ── Card de seção (estilo do print) ── */
 .sec-card {
     display: flex;
@@ -12031,9 +12020,9 @@ body { padding-bottom:8px; }
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
     flex-shrink: 0;
 }
+.sec-icon-wrap svg { width: 22px; height: 22px; }
 .sec-body {
     flex: 1;
     min-width: 0;
@@ -12088,7 +12077,7 @@ body { padding-bottom:8px; }
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: #f59e0b;
+    background: #64748b;
     color: #fff;
     font-size: 12px;
     font-weight: 800;
@@ -12099,33 +12088,33 @@ body { padding-bottom:8px; }
 }
  
 /* Sobrescreve a cor do número por seção via herança do title-color */
-/* Pontos fortes — verde */
-.sec-card:has(.sec-title[style*="#16a34a"]) .sec-content ol > li::before {
-    background: #16a34a;
-}
-/* O que melhorar — âmbar */
-.sec-card:has(.sec-title[style*="#d97706"]) .sec-content ol > li::before {
-    background: #d97706;
-}
-/* Sugerida / recomendações — roxo */
-.sec-card:has(.sec-title[style*="#7c3aed"]) .sec-content ol > li::before {
-    background: #7c3aed;
-}
 /* Posicionamento / geral — azul */
 .sec-card:has(.sec-title[style*="#2563eb"]) .sec-content ol > li::before {
     background: #2563eb;
 }
-/* Oportunidades — ciano */
-.sec-card:has(.sec-title[style*="#0891b2"]) .sec-content ol > li::before {
-    background: #0891b2;
+/* Pontos fortes — verde-petróleo */
+.sec-card:has(.sec-title[style*="#0d9488"]) .sec-content ol > li::before {
+    background: #0d9488;
 }
-/* Engajamento — rosa */
-.sec-card:has(.sec-title[style*="#db2777"]) .sec-content ol > li::before {
-    background: #db2777;
+/* O que melhorar — âmbar */
+.sec-card:has(.sec-title[style*="#b45309"]) .sec-content ol > li::before {
+    background: #b45309;
 }
-/* Criativo — laranja */
-.sec-card:has(.sec-title[style*="#ea580c"]) .sec-content ol > li::before {
-    background: #ea580c;
+/* Sugerida / recomendações — índigo */
+.sec-card:has(.sec-title[style*="#4338ca"]) .sec-content ol > li::before {
+    background: #4338ca;
+}
+/* Oportunidades — azul petróleo */
+.sec-card:has(.sec-title[style*="#0369a1"]) .sec-content ol > li::before {
+    background: #0369a1;
+}
+/* Engajamento — índigo escuro */
+.sec-card:has(.sec-title[style*="#3730a3"]) .sec-content ol > li::before {
+    background: #3730a3;
+}
+/* Criativo — marinho */
+.sec-card:has(.sec-title[style*="#1e3a5f"]) .sec-content ol > li::before {
+    background: #1e3a5f;
 }
  
 /* Listas não ordenadas */
@@ -12243,7 +12232,7 @@ body { padding-bottom:8px; }
     content: counter(meu-contador);
     position: absolute;
     left: 0; top: 0;
-    background-color: #f59e0b;
+    background-color: #64748b;
     color: #ffffff;
     border-radius: 50%;
     width: 25px; height: 25px;
@@ -12545,11 +12534,18 @@ setTimeout(syncH, 600);
             else:
                 btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
  
+            st.markdown("""
+            <style>
+            .analise-vazia-icon { width:40px; height:40px; color:#94a3b8; opacity:0.6;
+                display:flex; align-items:center; justify-content:center; margin:0 auto; }
+            .analise-vazia-icon svg { width:100%; height:100%; }
+            </style>
+            """, unsafe_allow_html=True)
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;
                         display:flex;flex-direction:column;align-items:center;gap:10px;">
-                <div style="font-size:32px;opacity:0.4;">{icon_ativo}</div>
+                <div class="analise-vazia-icon">{icon_ativo}</div>
                 <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_ativo.lower()} ainda.</div>
                 {btn_vazio_html}
             </div>

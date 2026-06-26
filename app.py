@@ -11626,9 +11626,10 @@ Seja direto e objetivo.
                     ])
                     for rr in ok
                 ])
-                with st.spinner("Gerando comparativo…"):
-                    try:
-                        resp = gemini_model.generate_content(f"""
+                _ph_comp = st.empty()
+                _render_modal_redes_ia("gerando", "Comparativo Geral", 50, _ph_comp)
+                try:
+                    resp = gemini_model.generate_content(f"""
 Você é especialista em marketing digital e redes sociais.
 Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
 

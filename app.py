@@ -11527,12 +11527,9 @@ Seja direto e objetivo.
             min-height: 0 !important;
             overflow: visible !important;
         }
-        section[data-testid="stMain"] > div > div[data-testid="stVerticalBlock"] {
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-a6f95b) {
             gap: 0 !important;
-        }
-        div[data-testid="stVerticalBlock"] {
-            gap: 0 !important;
-            row-gap: 0 !important;
+            margin-bottom: -38px !important;
         }
         </style>
         """, unsafe_allow_html=True)

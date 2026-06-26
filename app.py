@@ -12007,10 +12007,10 @@ body { padding-bottom:8px; }
     gap: 10px;
     padding: 14px 18px;
     cursor: pointer;
-    background-color: #0e2a47;
+    background-color: #17406a;
     transition: background 0.15s;
 }
-.card-hdr:hover { background-color: #17406a; }
+.card-hdr:hover { background-color: #3a9fd6; }
 
 .card-footer {
     display: flex;

@@ -11653,6 +11653,7 @@ Para cada perfil, 1-2 pontos fortes.
 
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
+                    # Remove TODOS os comparativos anteriores antes de salvar
                     st.session_state.redes_analises_salvas = [
                         a for a in st.session_state.redes_analises_salvas
                         if a.get("tipo") != "comparativo"
@@ -11664,10 +11665,11 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                         "tipo": "comparativo",
                         "perfis": [rr.get("handle","") for rr in ok],
                     })
-                    _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
                     salvar_dados_usuario(st.session_state.user.id)
+                    _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
                     import time as _t_comp; _t_comp.sleep(1.2)
                     _ph_comp.empty()
+                    st.session_state.redes_main_tab = "analise"
                     st.session_state.redes_analise_subtab = "comparativo"
                     st.rerun()
                 except Exception as e:

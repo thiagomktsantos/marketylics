@@ -11653,21 +11653,25 @@ Para cada perfil, 1-2 pontos fortes.
 
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
-                        st.session_state.redes_analises_salvas = [
-                            a for a in st.session_state.redes_analises_salvas
-                            if a.get("tipo") != "comparativo"
-                        ]
-                        st.session_state.redes_analises_salvas.append({
-                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
-                            "tipo": "comparativo",
-                            "perfis": [rr.get("handle","") for rr in ok],
-                        })
-                        salvar_dados_usuario(st.session_state.user.id)
-                        st.rerun()
-                    except Exception as e:
-                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
+                    st.session_state.redes_analises_salvas = [
+                        a for a in st.session_state.redes_analises_salvas
+                        if a.get("tipo") != "comparativo"
+                    ]
+                    st.session_state.redes_analises_salvas.append({
+                        "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "comparativo",
+                        "perfis": [rr.get("handle","") for rr in ok],
+                    })
+                    _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
+                    salvar_dados_usuario(st.session_state.user.id)
+                    import time as _t_comp; _t_comp.sleep(1.2)
+                    _ph_comp.empty()
+                    st.rerun()
+                except Exception as e:
+                    _ph_comp.empty()
+                    st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
 
         analises_redes = st.session_state.get("redes_analises_salvas", [])
 

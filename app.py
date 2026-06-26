@@ -11523,7 +11523,7 @@ Seja direto e objetivo.
             padding-bottom: 0 !important;
         }
         [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) + [data-testid="stElementContainer"]:has(iframe) {
-            margin-top: -48px !important;
+            margin-top: 0px !important;
         }
         </style>
         """, unsafe_allow_html=True)

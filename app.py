@@ -10212,6 +10212,29 @@ setTimeout(syncHeightNav, 800);
     </style>
     """, unsafe_allow_html=True)
 
+
+# ── Ghost button comparativo (sempre renderizado) ───────────────
+    ghost_comp_key = "btn_redes_comp_geral"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_comp_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_comp_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    if st.button("redes_comparativo", key=ghost_comp_key):
+        st.session_state.redes_main_tab = "analise"
+        st.session_state.redes_analise_subtab = "comparativo"
+        st.session_state.redes_gerar_comparativo = True
+        st.rerun()
+
     # ══════════════════════════════════════════════════════════════════
     # ABA: PERFIS CONFIGURADOS
     # ══════════════════════════════════════════════════════════════════
@@ -11575,7 +11598,7 @@ Seja direto e objetivo.
     # ABA: ANÁLISE DE IA — Comparativo geral
     # ══════════════════════════════════════════════════════════════════
 
-    elif main_tab == "analise":
+        elif main_tab == "analise":
 
         ok = []
         if cache.get("dados"):
@@ -11583,6 +11606,67 @@ Seja direto e objetivo.
 
         import json as _json_redes
         import datetime as _dt_redes
+
+        # ── Gerar comparativo se flag ativa ────────────────────────
+        if st.session_state.pop("redes_gerar_comparativo", False):
+            if gemini_model is None:
+                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+            elif not ok:
+                st.toast("Nenhum perfil com dados disponível.", icon="⚠️")
+            else:
+                resumo_perfis = "\n\n".join([
+                    f"Perfil: {rr.get('handle','')} — {rr.get('nome_exibido', rr.get('nome',''))}\n"
+                    f"Seguidores: {rr.get('seguidores',0)} | Posts: {rr.get('total_posts',0)} | "
+                    f"Eng. médio: {rr.get('eng_medio',0)} ({rr.get('eng_pct',0):.2f}%)\n"
+                    f"Bio: {rr.get('bio','')}\n"
+                    f"Últimos posts:\n" + "\n".join([
+                        f"  - {p.get('date','')} | {p.get('likes',0)} curtidas "
+                        f"{p.get('comments',0)} comentários | {p.get('caption','')[:80]}"
+                        for p in rr.get("posts", [])[:6]
+                    ])
+                    for rr in ok
+                ])
+                with st.spinner("Gerando comparativo…"):
+                    try:
+                        resp = gemini_model.generate_content(f"""
+Você é especialista em marketing digital e redes sociais.
+Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
+
+{resumo_perfis}
+
+Responda com:
+### Visão Geral Comparativa
+Comparação resumida dos perfis em termos de presença e engajamento.
+
+### Quem se Destaca e Por Quê
+Destaque o perfil com melhor desempenho e explique os motivos.
+
+### Pontos Fortes de Cada Perfil
+Para cada perfil, 1-2 pontos fortes.
+
+### Oportunidades Identificadas
+2-3 oportunidades estratégicas para os perfis com menor desempenho.
+
+### Recomendações Finais
+3 ações concretas para melhorar a presença geral no Instagram.
+
+Seja direto, objetivo e baseado nos dados fornecidos.
+""")
+                        st.session_state.redes_analises_salvas = [
+                            a for a in st.session_state.redes_analises_salvas
+                            if a.get("tipo") != "comparativo"
+                        ]
+                        st.session_state.redes_analises_salvas.append({
+                            "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "relatorio": resp.text,
+                            "tipo": "comparativo",
+                            "perfis": [rr.get("handle","") for rr in ok],
+                        })
+                        salvar_dados_usuario(st.session_state.user.id)
+                        st.rerun()
+                    except Exception as e:
+                        st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
 
         analises_redes = st.session_state.get("redes_analises_salvas", [])
 
@@ -11888,7 +11972,6 @@ setTimeout(syncHeightTabs, 800);
         <span class="card-hdr-icon">{icon_a}</span>
         <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
-
         <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
             style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
                    border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
@@ -11898,7 +11981,6 @@ setTimeout(syncHeightTabs, 800);
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
             </svg>
         </button>
-
         <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
             style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
                    border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
@@ -11909,7 +11991,6 @@ setTimeout(syncHeightTabs, 800);
                 <polyline points="8 6 2 12 8 18"/>
             </svg>
         </button>
-
         <span class="btn-chevron" data-idx="{idx_real}"
               style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -11918,7 +11999,6 @@ setTimeout(syncHeightTabs, 800);
             </svg>
         </span>
     </div>
-
     <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
         <div style="padding:16px 18px;">
             <div id="rr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>

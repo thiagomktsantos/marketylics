@@ -11516,16 +11516,15 @@ Seja direto e objetivo.
 
         st.markdown("""
         <style>
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe):first-child {
-            margin-top: -32px !important;
+        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+            margin-top: 0 !important;
             padding-top: 0 !important;
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
-        [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-            padding-top: 0 !important;
+        .st-emotion-cache-a6f95b {
+            min-height: 0 !important;
+            height: auto !important;
         }
         </style>
         """, unsafe_allow_html=True)

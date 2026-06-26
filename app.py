@@ -10114,18 +10114,20 @@ function triggerTab(label) {{
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
-(function() {{
+function syncHeightNav() {{
+    var h = document.body.scrollHeight;
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{
           if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '90px';
-            iframes[i].style.marginTop = '-70px';
+            iframes[i].style.height = h + 'px';
             break;
           }}
         }} catch(e) {{}}
     }}
-}})();
+}}
+syncHeightNav();
+if (window.ResizeObserver) new ResizeObserver(syncHeightNav).observe(document.body);
 </script>
 """, height=90, scrolling=False)
 
@@ -10137,18 +10139,8 @@ function triggerTab(label) {{
         margin-bottom: 0 !important;
         padding-bottom: 0 !important;
     }
-    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-fsrfgf) {
-        height: 5px !important;
-        min-height: 0 !important;
-        overflow: visible !important;
-    }
-    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(.st-emotion-cache-a6f95b) {
-        gap: 0 !important;
-        margin-bottom: -38px !important;
-    }
     </style>
     """, unsafe_allow_html=True)
-
 
     # ══════════════════════════════════════════════════════════════════
     # ABA: PERFIS CONFIGURADOS
@@ -11580,7 +11572,6 @@ Seja direto e objetivo.
 
         # ── Barra de subtabs
         components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
@@ -11626,16 +11617,18 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 ])}
 </div>
 <script>
-(function() {{
+function syncHeightTabs() {{
+    var h = document.body.scrollHeight;
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.height = '52px';
-            iframes[i].style.marginTop = '-47px';
+            iframes[i].style.height = h + 'px';
             break;
         }} }} catch(e) {{}}
     }}
-}})();
+}}
+syncHeightTabs();
+if (window.ResizeObserver) new ResizeObserver(syncHeightTabs).observe(document.body);
 </script>
 """, height=52, scrolling=False)
 

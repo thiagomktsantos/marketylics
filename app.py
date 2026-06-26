@@ -10128,6 +10128,11 @@ function syncHeightNav() {{
 }}
 syncHeightNav();
 if (window.ResizeObserver) new ResizeObserver(syncHeightNav).observe(document.body);
+document.addEventListener('DOMContentLoaded', syncHeightNav);
+window.addEventListener('load', syncHeightNav);
+setTimeout(syncHeightNav, 100);
+setTimeout(syncHeightNav, 300);
+setTimeout(syncHeightNav, 800);
 </script>
 """, height=90, scrolling=False)
 
@@ -11629,6 +11634,11 @@ function syncHeightTabs() {{
 }}
 syncHeightTabs();
 if (window.ResizeObserver) new ResizeObserver(syncHeightTabs).observe(document.body);
+document.addEventListener('DOMContentLoaded', syncHeightTabs);
+window.addEventListener('load', syncHeightTabs);
+setTimeout(syncHeightTabs, 100);
+setTimeout(syncHeightTabs, 300);
+setTimeout(syncHeightTabs, 800);
 </script>
 """, height=52, scrolling=False)
 

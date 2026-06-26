@@ -12017,7 +12017,7 @@ body { padding-bottom:8px; }
     gap: 10px;
     padding: 12px 18px;
     background: #91a49b;
-    border-top: 1px solid #f3f4f6;
+    border-top: 1px solid #dde5ed;
     align-items: center;
 }
 .btn-dl {

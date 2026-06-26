@@ -11504,31 +11504,27 @@ Seja direto e objetivo.
                     st.session_state[chave_geral] = f"Erro: {e}"
                     st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: ANÁLISE DE IA — Comparativo geral
-    # ══════════════════════════════════════════════════════════════════
- 
     elif main_tab == "analise":
-
+ 
         ok = []
         if cache.get("dados"):
             ok = [r for r in cache["dados"] if not r.get("erro")]
-
+ 
         import json as _json_redes
         import datetime as _dt_redes
-
+ 
         analises_redes = st.session_state.get("redes_analises_salvas", [])
-
+ 
         # Marcar como vistas
         st.session_state.redes_analise_vistas = len(analises_redes)
-
+ 
         subtabs_def = [
             ("bio",          "👤", "Perfil"),
             ("postagem",     "📸", "Postagens"),
             ("geral_perfil", "📊", "Geral"),
             ("comparativo",  "🏆", "Comparativo"),
         ]
-
+ 
         # Ghost button comparativo
         ghost_comp_key = "btn_redes_comp_geral"
         st.markdown(f"""
@@ -11544,7 +11540,7 @@ Seja direto e objetivo.
         }}
         </style>
         """, unsafe_allow_html=True)
-
+ 
         if st.button("redes_comparativo", key=ghost_comp_key):
             if gemini_model is None:
                 st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
@@ -11568,25 +11564,25 @@ Seja direto e objetivo.
                         resp = gemini_model.generate_content(f"""
 Você é especialista em marketing digital e redes sociais.
 Compare os perfis do Instagram abaixo e faça uma análise comparativa estratégica em português.
-
+ 
 {resumo_perfis}
-
+ 
 Responda com:
 ### Visão Geral Comparativa
 Comparação resumida dos perfis em termos de presença e engajamento.
-
+ 
 ### Quem se Destaca e Por Quê
 Destaque o perfil com melhor desempenho e explique os motivos.
-
+ 
 ### Pontos Fortes de Cada Perfil
 Para cada perfil, 1-2 pontos fortes.
-
+ 
 ### Oportunidades Identificadas
 2-3 oportunidades estratégicas para os perfis com menor desempenho.
-
+ 
 ### Recomendações Finais
 3 ações concretas para melhorar a presença geral no Instagram.
-
+ 
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
                         st.session_state.redes_analises_salvas = [
@@ -11604,7 +11600,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                         st.rerun()
                     except Exception as e:
                         st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
-
+ 
         # Ghost buttons subtabs
         ghost_subtabs_css = ", ".join([
             f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
@@ -11620,15 +11616,15 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         }}
         </style>
         """, unsafe_allow_html=True)
-
+ 
         if "redes_analise_subtab" not in st.session_state:
             st.session_state.redes_analise_subtab = "bio"
-
+ 
         for stk, _, _ in subtabs_def:
             if st.button(f"redes_analise_sub_{stk}", key=f"btn_redes_analise_sub_{stk}"):
                 st.session_state.redes_analise_subtab = stk
                 st.rerun()
-
+ 
         subtab_analise = st.session_state.redes_analise_subtab
         contagens = {}
         for stk, _, _ in subtabs_def:
@@ -11639,7 +11635,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 ])
             else:
                 contagens[stk] = len([a for a in analises_redes if a.get("tipo") == stk])
-
+ 
         # ── Barra de subtabs
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -11692,7 +11688,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }})();
 </script>
 """, height=52, scrolling=False)
-
+ 
         # ── Conteúdo da subtab ativa
         if subtab_analise == "postagem":
             lista_ativa = [
@@ -11705,57 +11701,57 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         labels_map  = {"bio":"Perfil","postagem":"Postagens","criativos":"Criativos","copy":"Copy","geral_perfil":"Geral","comparativo":"Comparativo"}
         icon_ativo  = icons_map.get(subtab_analise, "📋")
         label_ativo = labels_map.get(subtab_analise, "")
-
+ 
+        # ═════════════════════════════════════════════════════════
+        # [ATUALIZADO — BLOCO 1] nova função de conversão markdown → HTML
+        # agora monta "sec-card" com ícone/cor temática por seção
+        # ═════════════════════════════════════════════════════════
         def _md_to_html_redes(txt):
             if not txt: return ""
             import re as _re
-
+ 
             txt = txt.replace("&", "&amp;")
             txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
             txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
-
+ 
             def _apply_inline(s):
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
-
+ 
             def _get_ol_match(line):
                 return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
-
+ 
             def _get_ul_match(line):
                 return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
-
+ 
             lines = txt.split('\n')
             output = []
             list_stack = []
-
+ 
             def close_until(target_indent):
                 while list_stack and list_stack[-1][1] >= target_indent:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
-
+ 
             def close_all():
                 while list_stack:
                     tag, _ = list_stack.pop()
                     output.append(f'</{tag}>')
-
+ 
             i = 0
             while i < len(lines):
                 line = lines[i]
-
                 if not line.strip():
                     i += 1
                     continue
-
                 stripped = line.strip()
-
                 if _re.match(r'^\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
                     continue
-
                 m_ol = _get_ol_match(line)
                 if m_ol:
                     item_indent = len(m_ol.group(1))
@@ -11770,7 +11766,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     output.append(f'<li>{content}</li>')
                     i += 1
                     continue
-
                 m_ul = _get_ul_match(line)
                 if m_ul:
                     item_indent = len(m_ul.group(1))
@@ -11785,47 +11780,100 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     output.append(f'<li>{content}</li>')
                     i += 1
                     continue
-
                 close_all()
                 output.append(f'<p>{_apply_inline(stripped)}</p>')
                 i += 1
-
+ 
             close_all()
             html = '\n'.join(output)
-
-            # ── Pós-processamento: envolve seções em caixas ──
+ 
+            # ── Regras de seção — (padrão, cor_título, cor_ícone_bg, ícone_emoji, cor_borda)
             BOX_RULES = [
-                (r'(pontos?\s+forte[s]?|positivo[s]?|destaques?|quem\s+se\s+destaca|o\s+que\s+funciona|o\s+que\s+est[aá]\s+funcionando|aspectos?\s+positivos?|qualidade[s]?)',
-                 '#16a34a', '#f0fdf4', '#bbf7d0', '✅'),
+                # Posicionamento / identidade
+                (r'(posicionamento|identidade|tom\s+de\s+voz|persona|voz\s+da\s+marca|proposta\s+de\s+valor|diferencial|vis[ãa]o\s+geral|an[aá]lise\s+geral|vis[ãa]o\s+geral\s+comparativa|contexto|panorama|resumo|overview|an[aá]lise\s+d[ao]\s+bio|an[aá]lise\s+d[ao]\s+perfil|sobre\s+o\s+perfil)',
+                 '#2563eb', '#dbeafe', '🎯', '#93c5fd'),
+ 
+                # Pontos fortes / positivos
+                (r'(pontos?\s+forte[s]?|positivo[s]?|destaques?|quem\s+se\s+destaca|o\s+que\s+funciona|o\s+que\s+est[aá]\s+funcionando|aspecto[s]?\s+positivo[s]?|qualidade[s]?)',
+                 '#16a34a', '#dcfce7', '⭐', '#86efac'),
+ 
+                # O que melhorar / pontos de atenção
                 (r'(o\s+que\s+melhorar|pontos?\s+de\s+aten[çc][ãa]o|fraqueza[s]?|clareza|inconsist[eê]ncia[s]?|o\s+que\s+pode\s+melhorar|limita[çc][õo]e[s]?|gaps?)',
-                 '#d97706', '#fffbeb', '#fde68a', '💡'),
+                 '#d97706', '#fef9c3', '💡', '#fde68a'),
+ 
+                # Recomendações / sugestões / bio sugerida
                 (r'(recomenda[çc][õo]e[s]?|a[çc][õo]e[s]?\s+concreta[s]?|pr[oó]ximos?\s+passo[s]?|sugest[õo]e[s]?|como\s+melhorar|plano\s+de\s+a[çc][ãa]o|bio\s+sugerida|caption[s]?\s+sugerido[s]?|legenda[s]?\s+sugerida[s]?|copy\s+sugerido|texto[s]?\s+sugerido[s]?|exemplo[s]?\s+de\s+copy|exemplo[s]?\s+de\s+caption|exemplo[s]?\s+de\s+legenda)',
-                 '#2563eb', '#eff6ff', '#bfdbfe', '🎯'),
-                (r'(oportunidade[s]?|estrat[eé]gia[s]?|crescimento|potencial|expans[ãa]o|nichos?|mercado[s]?|tend[eê]ncia[s]?)',
-                 '#7c3aed', '#f5f3ff', '#ddd6fe', '🚀'),
-                (r'(vis[ãa]o\s+geral|an[aá]lise\s+geral|an[aá]lise\s+comparativa|vis[ãa]o\s+geral\s+comparativa|contexto|panorama|resumo\s+geral|overview)',
-                 '#0891b2', '#ecfeff', '#a5f3fc', '📊'),
-                (r'(posicionamento|identidade|tom\s+de\s+voz|persona|voz\s+da\s+marca|proposta\s+de\s+valor|diferencial)',
-                 '#4f46e5', '#eef2ff', '#c7d2fe', '🎨'),
-                (r'(engajamento|m[eé]trica[s]?|desempenho|resultado[s]?|performance|taxa[s]?|alcance|impress[õo]e[s]?|frequ[eê]ncia|cad[eê]ncia|consist[eê]ncia)',
-                 '#db2777', '#fdf2f8', '#fbcfe8', '📈'),
+                 '#7c3aed', '#ede9fe', '💙', '#c4b5fd'),
+ 
+                # Oportunidades / estratégia
+                (r'(oportunidade[s]?|estrat[eé]gia[s]?|crescimento|potencial|expans[ãa]o|tend[eê]ncia[s]?)',
+                 '#0891b2', '#e0f2fe', '🚀', '#7dd3fc'),
+ 
+                # Engajamento / métricas
+                (r'(engajamento|m[eé]trica[s]?|desempenho|resultado[s]?|performance|taxa[s]?|alcance|frequ[eê]ncia)',
+                 '#db2777', '#fce7f3', '📈', '#f9a8d4'),
+ 
+                # Criativo / visual
                 (r'(criativo[s]?|visual|est[eé]tica|formato[s]?|design|imagens?|v[ií]deos?|reels?|stories?|carrossel[s]?|layout|paleta)',
-                 '#ea580c', '#fff7ed', '#fed7aa', '🖼️'),
-                (r'(hashtag[s]?|seo|descoberta|palavras?\s*[- ]?\s*chave|busca|indexa[çc][ãa]o|alcance\s+org[âa]nico)',
-                 '#059669', '#ecfdf5', '#a7f3d0', '#️⃣'),
-                (r'(an[aá]lise\s+d[ao]\s+bio|an[aá]lise\s+d[ao]\s+perfil|sobre\s+o\s+perfil|apresenta[çc][ãa]o|descri[çc][ãa]o\s+d[ao]\s+perfil|bio\s+atual)',
-                 '#475569', '#f8fafc', '#cbd5e1', '👤'),
-                (r'(p[úu]blico[- ]alvo|audi[êe]ncia|segmento|seguidor[es]?|comunidade|nicho\s+de\s+p[úu]blico)',
-                 '#0d9488', '#f0fdfa', '#99f6e4', '🎯'),
+                 '#ea580c', '#ffedd5', '🖼️', '#fdba74'),
             ]
-
-            FALLBACK_BOX = ('#1e40af', '#f0f9ff', '#bae6fd', '📋')
-
+ 
+            FALLBACK_BOX = ('#475569', '#f8fafc', '#📋', '#cbd5e1')
+ 
+            # Mapeamento de ícone circular por seção
+            ICON_MAP = {
+                'posicionamento': ('🎯', '#dbeafe'),
+                'forte': ('⭐', '#dcfce7'),
+                'melhorar': ('💡', '#fef9c3'),
+                'sugerida': ('💙', '#ede9fe'),
+                'recomenda': ('💙', '#ede9fe'),
+                'oportunidade': ('🚀', '#e0f2fe'),
+                'engajamento': ('📈', '#fce7f3'),
+                'criativo': ('🖼️', '#ffedd5'),
+                'default': ('📋', '#f1f5f9'),
+            }
+ 
+            def _get_icon_for_title(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
+                    return '🎯', '#dbeafe'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
+                    return '⭐', '#dcfce7'
+                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
+                    return '💡', '#fef9c3'
+                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo', 'copy sugerido', 'legenda']):
+                    return '💙', '#ede9fe'
+                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                    return '🚀', '#e0f2fe'
+                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance']):
+                    return '📈', '#fce7f3'
+                if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design', 'imagem', 'vídeo', 'reel', 'carrossel']):
+                    return '🖼️', '#ffedd5'
+                return '📋', '#f1f5f9'
+ 
+            def _get_title_color(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'bio atual']):
+                    return '#2563eb'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
+                    return '#16a34a'
+                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
+                    return '#d97706'
+                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'sugest', 'exemplo', 'plano']):
+                    return '#7c3aed'
+                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento']):
+                    return '#0891b2'
+                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado']):
+                    return '#db2777'
+                if any(w in t for w in ['criativo', 'visual', 'estética', 'formato', 'design']):
+                    return '#ea580c'
+                return '#475569'
+ 
             def _wrap_section(html_str):
                 import re as _r2
-
+ 
                 partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
-
+ 
                 output_parts = []
                 i2 = 0
                 while i2 < len(partes):
@@ -11836,41 +11884,31 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
-
-                        matched_box = False
-                        for pattern, border, bg, border_light, icon in BOX_RULES:
-                            if _r2.search(pattern, hdr_txt_clean, flags=_r2.IGNORECASE):
-                                caixa = (
-                                    f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
-                                    f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
-                                    f'<div style="font-size:13px;font-weight:800;color:{border};border-bottom:2px solid {border};'
-                                    f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                                    f'{icon} {hdr_txt_clean}</div>'
-                                    f'<div>{conteudo}</div>'
-                                    f'</div>'
-                                )
-                                output_parts.append(caixa)
-                                matched_box = True
-                                break
-
-                        if not matched_box:
-                            border, bg, border_light, icon = FALLBACK_BOX
-                            caixa = (
-                                f'<div style="border:2px solid {border_light};border-left:4px solid {border};'
-                                f'border-radius:10px;background:{bg};padding:16px 20px;margin:12px 0;">'
-                                f'<div style="font-size:13px;font-weight:800;color:{border};'
-                                f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                                f'{icon} {hdr_txt_clean}</div>'
-                                f'<div>{conteudo}</div>'
-                                f'</div>'
-                            )
-                            output_parts.append(caixa)
+ 
+                        icon_emoji, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                        title_color = _get_title_color(hdr_txt_clean)
+ 
+                        # Card no estilo do print:
+                        # - ícone circular colorido à esquerda
+                        # - título em caps com cor temática + divisor
+                        # - conteúdo com listas numeradas estilizadas
+                        caixa = (
+                            f'<div class="sec-card">'
+                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};">{icon_emoji}</div>'
+                            f'  <div class="sec-body">'
+                            f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                            f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                            f'    <div class="sec-content">{conteudo}</div>'
+                            f'  </div>'
+                            f'</div>'
+                        )
+                        output_parts.append(caixa)
                     else:
                         output_parts.append(parte)
                     i2 += 1
-
+ 
                 return ''.join(output_parts)
-
+ 
             import re as _re_promote
             html = _re_promote.sub(
                 r'<p><strong>([^<]+?):?</strong></p>',
@@ -11879,451 +11917,617 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             )
             html = _wrap_section(html)
             return html
-
+ 
         relatorios_redes      = {str(i): _md_to_html_redes(a.get("relatorio","")) for i, a in enumerate(analises_redes)}
         relatorios_redes_json = _json_redes.dumps(relatorios_redes, ensure_ascii=False)
         relatorios_raw        = {str(i): a.get("relatorio","")                     for i, a in enumerate(analises_redes)}
         relatorios_raw_json   = _json_redes.dumps(relatorios_raw, ensure_ascii=False)
-
+ 
         if lista_ativa:
+            # ═════════════════════════════════════════════════════════
+            # [ATUALIZADO — BLOCO 3] cards com footer "Baixar .txt" / "Excluir"
+            # usando classes .btn-dl / .btn-del (estilizadas via ANALISES_CSS)
+            # ═════════════════════════════════════════════════════════
+            lista_rev      = list(reversed(lista_ativa))
+            reversed_first = lista_rev[0] if lista_rev else None
+            reversed_last  = lista_rev[-1] if lista_rev else None
+ 
             cards_redes_html = ""
-            for a in reversed(lista_ativa):
+            for a in lista_rev:
                 idx_real = analises_redes.index(a)
                 icon_a   = icons_map.get(a.get("tipo",""), "📋")
                 titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+ 
                 cards_redes_html += f"""
-        <div class="card-row" style="border-bottom:1px solid #f3f4f6;background:#fff;">
-            <div class="card-hdr" data-idx="{idx_real}"
-                 style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        cursor:pointer;background-color:#0e2a47;">
-                <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
-                <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
-                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
-
-                <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
-                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                           justify-content:center;cursor:pointer;transition:background 0.15s;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-                    </svg>
-                </button>
-
-                <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
-                    style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                           border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
-                           justify-content:center;cursor:pointer;transition:background 0.15s;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="16 18 22 12 16 6"/>
-                        <polyline points="8 6 2 12 8 18"/>
-                    </svg>
-                </button>
-
-                <span class="btn-chevron" data-idx="{idx_real}"
-                      style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                </span>
-            </div>
-
-            <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
-                <div id="rr_{idx_real}"
-                     style="font-size:14px;color:#374151;line-height:1.8;padding:14px 16px;word-break:break-word;"></div>
-                <div style="display:flex;gap:8px;padding:10px 16px;background:#f9fafb;border-top:1px solid #f3f4f6;">
-                    <button class="btn-download" data-idx="{idx_real}" data-filename="{nome_arq}"
-                        style="flex:1;padding:9px;border-radius:8px;border:1px solid #e5e7eb;
-                               background:#fff;font-size:13px;font-weight:600;color:#374151;
-                               cursor:pointer;font-family:'DM Sans',sans-serif;">
-                        ⬇️ Baixar .txt
-                    </button>
-                    <button class="btn-excluir" data-idx="{idx_real}"
-                        style="padding:9px 16px;border-radius:8px;border:1px solid #fecaca;
-                               background:#fef2f2;font-size:13px;font-weight:600;color:#dc2626;
-                               cursor:pointer;font-family:'DM Sans',sans-serif;
-                               display:flex;align-items:center;gap:6px;white-space:nowrap;
-                               transition:all 0.15s;"
-                        onmouseover="this.style.background='#dc2626';this.style.color='#fff';this.style.borderColor='#dc2626';"
-                        onmouseout="this.style.background='#fef2f2';this.style.color='#dc2626';this.style.borderColor='#fecaca';">
-                        🗑️ Excluir
-                    </button>
-                </div>
-            </div>
-        </div>"""
-
-            components.html(f"""
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-        <style>
-        * {{ margin:0; padding:0; box-sizing:border-box; }}
-        html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
-        body {{ padding-bottom:8px; }}
-        [id^="rr_"] ol > li > ul > li::before {{
-            content: '◦';
-            position: absolute;
-            left: 0; top: 0;
-            color: #00aae6;
-            font-size: 18px;
-            line-height: 1.3;
-            font-weight: normal;
-            background: none;
-            border-radius: 0;
-            width: auto; height: auto;
-        }}
-        [id^="rr_"] div[style*="border-left"] ul,
-        #smb_redes div[style*="border-left"] ul {{
-            margin: 4px 0 0 18px;
-            list-style: disc;
-        }}
-        [id^="rr_"] div[style*="border-left"] li,
-        #smb_redes div[style*="border-left"] li {{
-            margin-bottom: 6px;
-            line-height: 1.6;
-        }}
-        [id^="rr_"] div[style*="border-left"] ol,
-        #smb_redes div[style*="border-left"] ol {{
-            margin: 4px 0 0 0;
-            list-style: none;
-            counter-reset: meu-contador;
-            padding-left: 0;
-        }}
-        [id^="rr_"] div[style*="border-left"] ol > li,
-        #smb_redes div[style*="border-left"] ol > li {{
-            position: relative;
-            padding-left: 34px;
-            margin-bottom: 10px;
-            line-height: 1.6;
-        }}
-        [id^="rr_"] div[style*="border-left"] ol > li::before,
-        #smb_redes div[style*="border-left"] ol > li::before {{
-            counter-increment: meu-contador;
-            content: counter(meu-contador);
-            position: absolute;
-            left: 0; top: 0;
-            background-color: #00aae6;
-            color: #fff;
-            border-radius: 50%;
-            width: 24px; height: 24px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: bold;
-        }}
-        [id^="rr_"] div[style*="border-left"] p,
-        #smb_redes div[style*="border-left"] p {{
-            margin: 0 0 6px;
-            line-height: 1.7;
-        }}
-        #smb_redes h1,#smb_redes h2,#smb_redes h3 {{
-            font-size:16px; font-weight:800; color:#0f1f35;
-            margin:18px 0 8px; padding-bottom:6px;
-            border-bottom:2px solid #e5e7eb; text-transform:uppercase;
-        }}
-        #smb_redes p  {{ margin:0 0 10px; line-height:1.75; }}
-        #smb_redes ul {{ margin:6px 0 14px 24px; }}
-        #smb_redes li {{ margin:0 0 4px; line-height:1.65; }}
-        #smb_redes li::marker {{ color:#00c162; }}
-        #smb_redes hr {{ display:none; }}
-        #smb_redes ol {{
-            margin: 5px 0 15px 5px;
-            list-style: none;
-            counter-reset: meu-contador;
-        }}
-        #smb_redes ol > li {{
-            line-height: 1.6;
-            position: relative;
-            padding-left: 35px;
-            margin-bottom: 15px;
-        }}
-        #smb_redes ol > li::before {{
-            counter-increment: meu-contador;
-            content: counter(meu-contador);
-            position: absolute;
-            left: 0; top: 0;
-            background-color: #00aae6;
-            color: #ffffff;
-            border-radius: 50%;
-            width: 25px; height: 25px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px; font-weight: bold;
-        }}
-        #smb_redes ol > li > ul {{
-            margin: 6px 0 0 0;
-            list-style: none;
-            padding-left: 0;
-        }}
-        #smb_redes ol > li > ul > li {{
-            position: relative;
-            padding-left: 18px;
-            margin-bottom: 8px;
-            line-height: 1.6;
-        }}
-        #smb_redes ol > li > ul > li::before {{
-            content: '◦';
-            position: absolute;
-            left: 0; top: 0;
-            color: #00aae6;
-            font-size: 18px;
-            line-height: 1.3;
-            font-weight: normal;
-            background: none;
-            border-radius: 0;
-            width: auto; height: auto;
-        }}
-        </style>
-
-        <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
-            {cards_redes_html}
+<div class="card-row" style="border-radius:{'14px 14px 0 0' if a == reversed_first else ('0 0 14px 14px' if a == reversed_last else '0')};overflow:hidden;">
+    <div class="card-hdr" data-idx="{idx_real}">
+        <span style="font-size:18px;flex-shrink:0;">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+ 
+        <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+        </button>
+ 
+        <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+            </svg>
+        </button>
+ 
+        <span class="btn-chevron" data-idx="{idx_real}"
+              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+ 
+    <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div style="padding:16px 18px;">
+            <div id="rr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>
         </div>
-
-        <script>
-        var RELS     = {relatorios_redes_json};
-        var RELS_RAW = {relatorios_raw_json};
-
-        function syncH() {{
-            var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-            var frames = window.parent.document.querySelectorAll('iframe');
-            for (var i = 0; i < frames.length; i++) {{
-                try {{ if (frames[i].contentWindow === window) {{
-                    frames[i].style.height = (h + 8) + 'px';
-                    frames[i].style.marginTop = '-57px';
-                    break;
-                }} }} catch(e) {{}}
-            }}
-        }}
-
-        function toggleRedes(idx) {{
-            var b = document.getElementById('rb_' + idx);
-            var r = document.getElementById('rr_' + idx);
-            var chevrons = document.querySelectorAll('.btn-chevron[data-idx="' + idx + '"]');
-            if (!b) return;
-            var open = b.style.display !== 'none';
-            b.style.display = open ? 'none' : 'block';
-            chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
-            if (!open && r && !r.dataset.loaded) {{
-                r.innerHTML = RELS[String(idx)] || '';
-                r.dataset.loaded = '1';
-            }}
-            setTimeout(syncH, 100);
-        }}
-
-        function abrirModal(idx) {{
-            var doc  = window.parent.document;
-            var html = RELS[String(idx)] || '';
-            var raw  = RELS_RAW[String(idx)] || '';
-            var old  = doc.getElementById('redes_analise_modal_overlay');
-            if (old) old.remove();
-
-            var ov = doc.createElement('div');
-            ov.id = 'redes_analise_modal_overlay';
-            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
-                + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
-            ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
-
-            var box = doc.createElement('div');
-            box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
-                + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
-
-            var hdr = doc.createElement('div');
-            hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
-                + 'background:#0e2a47;flex-shrink:0;gap:12px;';
-
-            var titleEl = doc.createElement('div');
-            titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
-                + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            titleEl.textContent = 'Análise completa';
-
-            var rawBtn = doc.createElement('button');
-            rawBtn.id = 'redes_modal_raw_btn';
-            rawBtn.textContent = 'Ver texto original';
-            rawBtn.style.cssText = 'padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;'
-                + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
-                + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
-            rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
-
-            var closeBtn = doc.createElement('button');
-            closeBtn.textContent = '✕';
-            closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
-                + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
-                + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
-            closeBtn.addEventListener('click', fecharModal);
-
-            hdr.appendChild(titleEl);
-            hdr.appendChild(rawBtn);
-            hdr.appendChild(closeBtn);
-
-            var body = doc.createElement('div');
-            body.id = 'smb_redes';
-            body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
-                + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
-            body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
-
-            box.appendChild(hdr);
-            box.appendChild(body);
-            ov.appendChild(box);
-            doc.body.appendChild(ov);
-
-            window.__redesAnaliseModalShowingRaw = false;
-
-            window.parent.__redesAnaliseModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
-            doc.addEventListener('keydown', window.parent.__redesAnaliseModalEsc);
-        }}
-
-        function toggleModalView(html, raw) {{
-            var doc  = window.parent.document;
-            var body = doc.getElementById('smb_redes');
-            var btn  = doc.getElementById('redes_modal_raw_btn');
-            if (!body || !btn) return;
-            window.__redesAnaliseModalShowingRaw = !window.__redesAnaliseModalShowingRaw;
-            if (window.__redesAnaliseModalShowingRaw) {{
-                body.style.cssText += ';font-family:monospace;white-space:pre-wrap;font-size:12.5px;background:#0d1117;color:#e6edf3;';
-                body.textContent = raw;
-                btn.textContent  = 'Ver formatado';
-            }} else {{
-                body.style.fontFamily = ''; body.style.whiteSpace = '';
-                body.style.fontSize   = '14px'; body.style.background = '#fff'; body.style.color = '#374151';
-                body.innerHTML  = html;
-                btn.textContent = 'Ver texto original';
-            }}
-        }}
-
-        function fecharModal() {{
-            var doc = window.parent.document;
-            var ov  = doc.getElementById('redes_analise_modal_overlay');
-            if (ov) ov.remove();
-            if (window.parent.__redesAnaliseModalEsc) {{
-                doc.removeEventListener('keydown', window.parent.__redesAnaliseModalEsc);
-                window.parent.__redesAnaliseModalEsc = null;
-            }}
-        }}
-
-        function abrirRaw(idx) {{
-            var doc = window.parent.document;
-            var raw = RELS_RAW[String(idx)] || '';
-            var old = doc.getElementById('redes_raw_overlay');
-            if (old) old.remove();
-
-            var ov = doc.createElement('div');
-            ov.id = 'redes_raw_overlay';
-            ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
-                + 'display:flex;align-items:center;justify-content:center;padding:24px;';
-            ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
-
-            var box = doc.createElement('div');
-            box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
-                + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
-
-            var hdr = doc.createElement('div');
-            hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
-                + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
-
-            var info = doc.createElement('div');
-            info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
-                + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
-
-            var btnsWrap = doc.createElement('div');
-            btnsWrap.style.cssText = 'display:flex;gap:8px;';
-
-            var copyBtn = doc.createElement('button');
-            copyBtn.textContent = '📋 Copiar';
-            copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
-                + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;';
-            copyBtn.addEventListener('click', function() {{
-                var ta = doc.createElement('textarea');
-                ta.value = raw;
-                ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-                doc.body.appendChild(ta); ta.focus(); ta.select();
-                try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
-                catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
-                doc.body.removeChild(ta);
-                setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
-            }});
-
-            var closeRaw = doc.createElement('button');
-            closeRaw.textContent = '✕';
-            closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
-                + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
-                + 'display:flex;align-items:center;justify-content:center;';
-            closeRaw.addEventListener('click', function() {{ ov.remove(); }});
-
-            btnsWrap.appendChild(copyBtn);
-            btnsWrap.appendChild(closeRaw);
-            hdr.appendChild(info);
-            hdr.appendChild(btnsWrap);
-
-            var pre = doc.createElement('pre');
-            pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
-                + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
-                + 'white-space:pre-wrap;word-break:break-word;';
-            pre.textContent = raw;
-
-            box.appendChild(hdr);
-            box.appendChild(pre);
-            ov.appendChild(box);
-            doc.body.appendChild(ov);
-
-            var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
-            doc.addEventListener('keydown', escFn);
-        }}
-
-        function excluirAnalise(idx) {{
-            var label = '_rm_redes_analise_' + idx + '_';
-            var btns  = window.parent.document.querySelectorAll('button');
-            for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
-                if (txt === label) {{ b.click(); return; }}
-            }}
-        }}
-
-        document.addEventListener('click', function(e) {{
-            var fs = e.target.closest('.btn-fullscreen');
-            if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
-
-            var rv = e.target.closest('.btn-raw');
-            if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
-
-            var dl = e.target.closest('.btn-download');
-            if (dl) {{
-                e.stopPropagation();
-                var raw = RELS_RAW[String(dl.dataset.idx)] || '';
-                var a = document.createElement('a');
-                a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
-                a.download = dl.dataset.filename + '.txt';
-                a.click();
-                return;
-            }}
-
-            var ex = e.target.closest('.btn-excluir');
-            if (ex) {{
-                e.stopPropagation();
-                excluirAnalise(parseInt(ex.dataset.idx));
-                return;
-            }}
-
-            var hdr = e.target.closest('.card-hdr');
-            if (hdr && !e.target.closest('button')) {{
-                toggleRedes(parseInt(hdr.dataset.idx));
-                return;
-            }}
-
-            var ch = e.target.closest('.btn-chevron');
-            if (ch) {{ toggleRedes(parseInt(ch.dataset.idx)); return; }}
-        }});
-
-        (function() {{
-            var cards = document.querySelectorAll('[id^="rb_"]');
-            if (cards.length === 1) {{
-                var m = cards[0].id.match(/rb_(\d+)/);
-                if (m) setTimeout(function() {{ toggleRedes(parseInt(m[1])); }}, 150);
-            }}
-        }})();
-
-        if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
-        setTimeout(syncH, 200);
-        setTimeout(syncH, 600);
-        </script>
-        """, height=100, scrolling=False)
+        <div class="card-footer">
+            <button class="btn-dl" data-idx="{idx_real}" data-filename="{nome_arq}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Baixar .txt
+            </button>
+            <button class="btn-del" data-idx="{idx_real}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+                Excluir
+            </button>
+        </div>
+    </div>
+</div>"""
+ 
+            # ═════════════════════════════════════════════════════════
+            # [ATUALIZADO — BLOCO 2] CSS global dos cards de análise
+            # ═════════════════════════════════════════════════════════
+            ANALISES_CSS = """
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+body { padding-bottom:8px; }
+ 
+/* ── Card de seção (estilo do print) ── */
+.sec-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin: 0 0 12px 0;
+}
+.sec-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+}
+.sec-body {
+    flex: 1;
+    min-width: 0;
+}
+.sec-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.sec-divider {
+    height: 1.5px;
+    border-radius: 2px;
+    margin-bottom: 12px;
+}
+.sec-content {
+    font-size: 14px;
+    color: #374151;
+    line-height: 1.75;
+}
+.sec-content p {
+    margin: 0 0 8px;
+}
+.sec-content strong {
+    font-weight: 700;
+    color: #111827;
+}
+.sec-content em {
+    font-style: italic;
+}
+ 
+/* Listas ordenadas — círculos numerados coloridos */
+.sec-content ol {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+    counter-reset: sec-counter;
+}
+.sec-content ol > li {
+    position: relative;
+    padding-left: 36px;
+    margin-bottom: 10px;
+    line-height: 1.65;
+    counter-increment: sec-counter;
+}
+.sec-content ol > li::before {
+    content: counter(sec-counter);
+    position: absolute;
+    left: 0;
+    top: 1px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #f59e0b;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+ 
+/* Sobrescreve a cor do número por seção via herança do title-color */
+/* Pontos fortes — verde */
+.sec-card:has(.sec-title[style*="#16a34a"]) .sec-content ol > li::before {
+    background: #16a34a;
+}
+/* O que melhorar — âmbar */
+.sec-card:has(.sec-title[style*="#d97706"]) .sec-content ol > li::before {
+    background: #d97706;
+}
+/* Sugerida / recomendações — roxo */
+.sec-card:has(.sec-title[style*="#7c3aed"]) .sec-content ol > li::before {
+    background: #7c3aed;
+}
+/* Posicionamento / geral — azul */
+.sec-card:has(.sec-title[style*="#2563eb"]) .sec-content ol > li::before {
+    background: #2563eb;
+}
+/* Oportunidades — ciano */
+.sec-card:has(.sec-title[style*="#0891b2"]) .sec-content ol > li::before {
+    background: #0891b2;
+}
+/* Engajamento — rosa */
+.sec-card:has(.sec-title[style*="#db2777"]) .sec-content ol > li::before {
+    background: #db2777;
+}
+/* Criativo — laranja */
+.sec-card:has(.sec-title[style*="#ea580c"]) .sec-content ol > li::before {
+    background: #ea580c;
+}
+ 
+/* Listas não ordenadas */
+.sec-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+}
+.sec-content ul > li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 8px;
+    line-height: 1.65;
+}
+.sec-content ul > li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
+}
+ 
+/* ── Card de análise (accordion) ── */
+.card-row {
+    border-bottom: 1px solid #f3f4f6;
+    background: #fff;
+}
+.card-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    background-color: #0e2a47;
+    transition: background 0.15s;
+}
+.card-hdr:hover { background-color: #17406a; }
+ 
+/* ── Footer dos cards ── */
+.card-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 18px;
+    background: #f9fafb;
+    border-top: 1px solid #f3f4f6;
+    align-items: center;
+}
+.btn-dl {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1.5px solid #e5e7eb;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+}
+.btn-dl:hover { border-color: #3a9fd6; background: #eff6ff; color: #1d4ed8; }
+.btn-del {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    border: 1.5px solid #fecaca;
+    background: #fef2f2;
+    font-size: 13px;
+    font-weight: 700;
+    color: #dc2626;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+ 
+/* Modal de análise completa */
+#smb_redes h1, #smb_redes h2, #smb_redes h3 {
+    font-size: 16px; font-weight: 800; color: #0f1f35;
+    margin: 18px 0 8px; padding-bottom: 6px;
+    border-bottom: 2px solid #e5e7eb; text-transform: uppercase;
+}
+#smb_redes p  { margin: 0 0 10px; line-height: 1.75; }
+#smb_redes ul { margin: 6px 0 14px 24px; }
+#smb_redes li { margin: 0 0 4px; line-height: 1.65; }
+#smb_redes li::marker { color: #00c162; }
+#smb_redes hr { display: none; }
+#smb_redes .sec-card { border: 1px solid #e5e7eb; }
+ 
+/* Listas numeradas no modal */
+#smb_redes ol {
+    margin: 5px 0 15px 5px;
+    list-style: none;
+    counter-reset: meu-contador;
+}
+#smb_redes ol > li {
+    line-height: 1.6;
+    position: relative;
+    padding-left: 35px;
+    margin-bottom: 15px;
+    counter-increment: meu-contador;
+}
+#smb_redes ol > li::before {
+    content: counter(meu-contador);
+    position: absolute;
+    left: 0; top: 0;
+    background-color: #f59e0b;
+    color: #ffffff;
+    border-radius: 50%;
+    width: 25px; height: 25px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: bold;
+}
+#smb_redes ol > li > ul {
+    margin: 6px 0 0 0;
+    list-style: none;
+    padding-left: 0;
+}
+#smb_redes ol > li > ul > li {
+    position: relative;
+    padding-left: 18px;
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+#smb_redes ol > li > ul > li::before {
+    content: '◦';
+    position: absolute;
+    left: 0; top: 0;
+    color: #00aae6;
+    font-size: 18px;
+    line-height: 1.3;
+    font-weight: normal;
+    background: none;
+    border-radius: 0;
+    width: auto; height: auto;
+}
+"""
+ 
+            components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+{ANALISES_CSS}
+</style>
+ 
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_redes_html}
+</div>
+ 
+<script>
+var RELS     = {relatorios_redes_json};
+var RELS_RAW = {relatorios_raw_json};
+ 
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.marginTop = '-57px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+ 
+function toggleRedes(idx) {{
+    var b = document.getElementById('rb_' + idx);
+    var r = document.getElementById('rr_' + idx);
+    var chevrons = document.querySelectorAll('.btn-chevron[data-idx="' + idx + '"]');
+    if (!b) return;
+    var open = b.style.display !== 'none';
+    b.style.display = open ? 'none' : 'block';
+    chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+    if (!open && r && !r.dataset.loaded) {{
+        r.innerHTML = RELS[String(idx)] || '';
+        r.dataset.loaded = '1';
+    }}
+    setTimeout(syncH, 100);
+}}
+ 
+function abrirModal(idx) {{
+    var doc  = window.parent.document;
+    var html = RELS[String(idx)] || '';
+    var raw  = RELS_RAW[String(idx)] || '';
+    var old  = doc.getElementById('redes_analise_modal_overlay');
+    if (old) old.remove();
+ 
+    var ov = doc.createElement('div');
+    ov.id = 'redes_analise_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
+ 
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
+        + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
+ 
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
+        + 'background:#0e2a47;flex-shrink:0;gap:12px;';
+ 
+    var titleEl = doc.createElement('div');
+    titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
+        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    titleEl.textContent = 'Análise completa';
+ 
+    var rawBtn = doc.createElement('button');
+    rawBtn.id = 'redes_modal_raw_btn';
+    rawBtn.textContent = 'Ver texto original';
+    rawBtn.style.cssText = 'padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;'
+        + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
+        + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
+    rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
+ 
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
+        + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+    closeBtn.addEventListener('click', fecharModal);
+ 
+    hdr.appendChild(titleEl);
+    hdr.appendChild(rawBtn);
+    hdr.appendChild(closeBtn);
+ 
+    var body = doc.createElement('div');
+    body.id = 'smb_redes';
+    body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
+        + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
+    body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
+ 
+    box.appendChild(hdr);
+    box.appendChild(body);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+ 
+    window.__redesAnaliseModalShowingRaw = false;
+ 
+    window.parent.__redesAnaliseModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
+    doc.addEventListener('keydown', window.parent.__redesAnaliseModalEsc);
+}}
+ 
+function toggleModalView(html, raw) {{
+    var doc  = window.parent.document;
+    var body = doc.getElementById('smb_redes');
+    var btn  = doc.getElementById('redes_modal_raw_btn');
+    if (!body || !btn) return;
+    window.__redesAnaliseModalShowingRaw = !window.__redesAnaliseModalShowingRaw;
+    if (window.__redesAnaliseModalShowingRaw) {{
+        body.style.cssText += ';font-family:monospace;white-space:pre-wrap;font-size:12.5px;background:#0d1117;color:#e6edf3;';
+        body.textContent = raw;
+        btn.textContent  = 'Ver formatado';
+    }} else {{
+        body.style.fontFamily = ''; body.style.whiteSpace = '';
+        body.style.fontSize   = '14px'; body.style.background = '#fff'; body.style.color = '#374151';
+        body.innerHTML  = html;
+        btn.textContent = 'Ver texto original';
+    }}
+}}
+ 
+function fecharModal() {{
+    var doc = window.parent.document;
+    var ov  = doc.getElementById('redes_analise_modal_overlay');
+    if (ov) ov.remove();
+    if (window.parent.__redesAnaliseModalEsc) {{
+        doc.removeEventListener('keydown', window.parent.__redesAnaliseModalEsc);
+        window.parent.__redesAnaliseModalEsc = null;
+    }}
+}}
+ 
+function abrirRaw(idx) {{
+    var doc = window.parent.document;
+    var raw = RELS_RAW[String(idx)] || '';
+    var old = doc.getElementById('redes_raw_overlay');
+    if (old) old.remove();
+ 
+    var ov = doc.createElement('div');
+    ov.id = 'redes_raw_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+ 
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
+        + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+ 
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
+        + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+ 
+    var info = doc.createElement('div');
+    info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
+        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
+ 
+    var btnsWrap = doc.createElement('div');
+    btnsWrap.style.cssText = 'display:flex;gap:8px;';
+ 
+    var copyBtn = doc.createElement('button');
+    copyBtn.textContent = '📋 Copiar';
+    copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;';
+    copyBtn.addEventListener('click', function() {{
+        var ta = doc.createElement('textarea');
+        ta.value = raw;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        doc.body.appendChild(ta); ta.focus(); ta.select();
+        try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
+        catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
+        doc.body.removeChild(ta);
+        setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
+    }});
+ 
+    var closeRaw = doc.createElement('button');
+    closeRaw.textContent = '✕';
+    closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
+        + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;';
+    closeRaw.addEventListener('click', function() {{ ov.remove(); }});
+ 
+    btnsWrap.appendChild(copyBtn);
+    btnsWrap.appendChild(closeRaw);
+    hdr.appendChild(info);
+    hdr.appendChild(btnsWrap);
+ 
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
+        + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
+        + 'white-space:pre-wrap;word-break:break-word;';
+    pre.textContent = raw;
+ 
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+ 
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+ 
+function excluirAnalise(idx) {{
+    var label = '_rm_redes_analise_' + idx + '_';
+    var btns  = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
+}}
+ 
+document.addEventListener('click', function(e) {{
+    var fs = e.target.closest('.btn-fullscreen');
+    if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
+ 
+    var rv = e.target.closest('.btn-raw');
+    if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
+ 
+    var dl = e.target.closest('.btn-dl');
+    if (dl) {{
+        e.stopPropagation();
+        var raw = RELS_RAW[String(dl.dataset.idx)] || '';
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
+        a.download = dl.dataset.filename + '.txt';
+        a.click();
+        return;
+    }}
+ 
+    var ex = e.target.closest('.btn-del');
+    if (ex) {{
+        e.stopPropagation();
+        excluirAnalise(parseInt(ex.dataset.idx));
+        return;
+    }}
+ 
+    var hdr = e.target.closest('.card-hdr');
+    if (hdr && !e.target.closest('button')) {{
+        toggleRedes(parseInt(hdr.dataset.idx));
+        return;
+    }}
+ 
+    var ch = e.target.closest('.btn-chevron');
+    if (ch) {{ toggleRedes(parseInt(ch.dataset.idx)); return; }}
+}});
+ 
+(function() {{
+    var cards = document.querySelectorAll('[id^="rb_"]');
+    if (cards.length === 1) {{
+        var m = cards[0].id.match(/rb_(\d+)/);
+        if (m) setTimeout(function() {{ toggleRedes(parseInt(m[1])); }}, 150);
+    }}
+}})();
+ 
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 200);
+setTimeout(syncH, 600);
+</script>
+""", height=100, scrolling=False)
         else:
             btn_vazio_html = ""
             if subtab_analise == "comparativo":
@@ -12336,7 +12540,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </button>"""
             else:
                 btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Perfis configurados</b> para gerar.</div>'
-
+ 
             st.markdown(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px;

@@ -12150,7 +12150,7 @@ body { padding-bottom:8px; }
 /* ── Card de análise (accordion) ── */
 .card-row {
     border-bottom: 1px solid #f3f4f6;
-    background: #f9fafb;
+    background: #dde5ed;
 }
 .card-hdr {
     display: flex;

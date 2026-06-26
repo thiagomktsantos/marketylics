@@ -11598,7 +11598,7 @@ Seja direto e objetivo.
     # ABA: ANÁLISE DE IA — Comparativo geral
     # ══════════════════════════════════════════════════════════════════
 
-        elif main_tab == "analise":
+    elif main_tab == "analise":
 
         ok = []
         if cache.get("dados"):

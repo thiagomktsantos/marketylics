@@ -12016,7 +12016,7 @@ body { padding-bottom:8px; }
     display: flex;
     gap: 10px;
     padding: 12px 18px;
-    background: #dcdcdc;
+    background: #91a49b;
     border-top: 1px solid #f3f4f6;
     align-items: center;
 }

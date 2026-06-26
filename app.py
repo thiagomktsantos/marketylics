@@ -11522,9 +11522,10 @@ Seja direto e objetivo.
             margin-bottom: 0 !important;
             padding-bottom: 0 !important;
         }
-        .st-emotion-cache-a6f95b {
+        .st-emotion-cache-a6f95b.e1rw0b1u1 {
             min-height: 0 !important;
-            height: auto !important;
+            height: 52px !important;
+            overflow: hidden !important;
         }
         </style>
         """, unsafe_allow_html=True)

@@ -10358,15 +10358,14 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
 
             st.markdown(f"""
             <style>
-            .st-key-{cols_toggle_key} button {{
-                height: 40px !important;
-                width: 40px !important;
-                min-width: 40px !important;
-                max-width: 40px !important;
-                padding: 4px !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 8px !important;
-                background: #ffffff !important;
+            .st-key-{cols_toggle_key} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{cols_toggle_key}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
             }}
             </style>
             """, unsafe_allow_html=True)

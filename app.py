@@ -288,6 +288,9 @@ for campo, valor in campos_padrao.items():
 # ---------------------------------------------------
 
 def trocar_pagina(destino):
+    # Limpa o flag de acesso manual ao home quando navega para outra página
+    if destino != "home":
+        st.session_state.pop("_home_acesso_manual", None)
     st.session_state.pagina = destino
     st.session_state.mostrar_form_concorrente = False
     st.session_state.editando_concorrente = None
@@ -1306,11 +1309,17 @@ with st.sidebar:
         if st.button(p, key=f"_hidden_{p}"):
             if p == "sair":
                 logout_supabase()
-                for k in ["logado","user","dados","metricas_redes","pagina",
-                          "mostrar_form_concorrente","editando_concorrente",
-                          "editar_empresa","relatorio_sites","relatorio_gemini"]:
+                for k in ["logado", "user", "dados", "metricas_redes", "pagina",
+                          "mostrar_form_concorrente", "editando_concorrente",
+                          "editar_empresa", "relatorio_sites", "relatorio_gemini",
+                          "_home_acesso_manual"]:
                     if k in st.session_state:
                         del st.session_state[k]
+            elif p == "home":
+                # Marca que o usuário navegou para cá intencionalmente —
+                # impede o redirecionamento automático para o Dashboard Geral.
+                st.session_state["_home_acesso_manual"] = True
+                trocar_pagina(p)
             else:
                 trocar_pagina(p)
             st.rerun()
@@ -1655,6 +1664,17 @@ if st.session_state.pagina == "home":
     emp = st.session_state.dados["minha_empresa"]
     tem_dados = empresa_tem_dados(emp)
 
+    # ── Redirecionamento automático ───────────────────────────────
+    # Se a empresa já tem dados E o usuário não clicou explicitamente
+    # em "Minha Empresa" na sidebar, vai direto pro Dashboard Geral.
+    if (
+        tem_dados
+        and not st.session_state.editar_empresa
+        and not st.session_state.get("_home_acesso_manual")
+    ):
+        trocar_pagina("geral")
+        st.rerun()
+
     if not tem_dados and not st.session_state.editar_empresa:
         st.session_state.editar_empresa = True
 
@@ -1951,6 +1971,7 @@ html, body { background: transparent; overflow: hidden; }
 
         with h2:
             st.markdown("<div style='padding-top:6px;'/>", unsafe_allow_html=True)
+            # ── Botão "Editar Empresa" — padrão dark com ícone SVG ──
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -1959,7 +1980,7 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
 .btn {
     width: 100%;
     padding: 10px 16px;
-    background: #0780c0;
+    background: #111827;
     color: #ffffff;
     border: none;
     border-radius: 8px;
@@ -1975,9 +1996,15 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
     min-height: 40px;
     box-sizing: border-box;
 }
-.btn:hover { background: #065f9e; }
+.btn:hover { background: #1f2937; }
 </style>
 <button class="btn" onclick="triggerEditar()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.2"
+         stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
     Editar Empresa
 </button>
 <script>

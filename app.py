@@ -1988,9 +1988,9 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
 .btn svg { flex-shrink: 0; }
 </style>
 <button class="btn" onclick="triggerEditar()">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h9"/>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
     </svg>
     Editar Empresa
 </button>

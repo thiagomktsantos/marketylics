@@ -9079,7 +9079,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
     # ══════════════════════════════════════════════════════════════════
     elif main_tab == "analise":
  
-        if not st.session_state.ads_cache:
+        if not st.session_state.ads_cache and not st.session_state.get("ads_analises_salvas"):
             st.info("Busque anúncios primeiro na aba **Empresas configuradas** para ver análises aqui.")
             st.stop()
  

@@ -4113,44 +4113,7 @@ elif st.session_state.pagina == "sites":
         if chave not in st.session_state:
             st.session_state[chave] = ""
  
-    Substitua apenas o bloco do cabeçalho da página sites — do h1, h2 = st.columns([7, 3]) até o hr:
-De:
-python    # ── Cabeçalho ──────────────────────────────────────────────────
-    h1, h2 = st.columns([7, 3])
-    with h1:
-        components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-@font-face {
-    font-family: 'Animo';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { background: transparent; overflow: hidden; }
-.titulo {
-    font-family: 'Animo', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
-}
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
-</style>
-<div class="titulo">Confronto de Sites</div>
-<div class="sub">Análise comparativa de posicionamento via IA.</div>
-""", height=65)
-
-    with h2:
-        gerar_btn = st.button("Gerar Relatório Geral", type="primary", use_container_width=True)
-        ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
-        if ultimo_relatorio:
-            st.markdown(
-                f"<div style='font-size:13px;color:#6b7280;text-align:center;margin-top:-8px'>"
-                f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
-                unsafe_allow_html=True,
-            )
-
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
-Para:
-python    # ── Cabeçalho ──────────────────────────────────────────────────
+    # ── Cabeçalho ──────────────────────────────────────────────────
     h1, h2 = st.columns([7, 3])
     with h1:
         components.html("""

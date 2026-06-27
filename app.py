@@ -2009,7 +2009,7 @@ html, body { background: transparent; overflow: hidden; }
             if(t==='Editar Empresa'){btns[i].click();return;}
         }
     })()" style='
-        width:100%; padding:10px 16px; background:#111827; color:#fff;
+        width:100%; padding:10px 16px; background:#0e2a47; color:#fff;
         border:none; border-radius:8px; font-size:14px; font-weight:700;
         cursor:pointer; font-family:DM Sans,sans-serif;
         display:flex; align-items:center; justify-content:center; gap:8px;
@@ -2280,7 +2280,7 @@ html, body { background: transparent; overflow: hidden; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
 .btn {
-    width: 100%; padding: 10px 16px; background: #111827; color: #ffffff;
+    width: 100%; padding: 10px 16px; background: #0e2a47; color: #ffffff;
     border: none; border-radius: 8px; font-size: 14px; font-weight: 700;
     cursor: pointer; font-family: 'DM Sans', sans-serif;
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -4177,7 +4177,7 @@ html, body { background: transparent; overflow: hidden; }
             if(t==='Gerar Análise Comparativa'){btns[i].click();return;}
         }
     })()" style='
-        width:100%; padding:10px 16px; background:#111827; color:#fff;
+        width:100%; padding:10px 16px; background:#0e2a47; color:#fff;
         border:none; border-radius:8px; font-size:14px; font-weight:700;
         cursor:pointer; font-family:DM Sans,sans-serif;
         display:flex; align-items:center; justify-content:center; gap:8px;

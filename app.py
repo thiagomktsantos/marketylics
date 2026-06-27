@@ -4943,7 +4943,7 @@ setTimeout(syncHeight, 3000);
  
         components.html(_html_cards, height=1200, scrolling=False)
         
-# ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
@@ -9073,7 +9073,7 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                 st.session_state.ads_empresa_ativa = _emp_render["nome"]
             render_ads_empresa(_emp_render)
 
-# ══════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA (resumo comparativo) — Ads
     # ══════════════════════════════════════════════════════════════════
     elif main_tab == "analise":
@@ -9157,6 +9157,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
             "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
             "clipboard": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+            "clock":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
         }
  
         subtabs_ads_def = [
@@ -9341,72 +9342,104 @@ setTimeout(syncHeightTabs, 800);
             close_all()
             html = '\n'.join(output)
  
+            # ── FIX 1: regex de emoji ampliado ───────────────────────
+            # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
+            # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
+            # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
+            # pois ficava no "buraco" entre \u21FF (fim das setas) e \u2600
+            # (início do bloco de símbolos diversos).
+            _EMOJI_RE_ADS = _re.compile(
+                "["
+                "\U0001F1E6-\U0001FAFF"
+                "\U00002300-\U000023FF"
+                "\U00002600-\U000027BF"
+                "\U00002190-\U000021FF"
+                "\U00002B00-\U00002BFF"
+                "\uFE0F\u200d\u2022"
+                "]+",
+                flags=_re.UNICODE
+            )
+ 
+            def _limpar_titulo_ads(hdr_txt):
+                # remove tags HTML remanescentes
+                limpo = _re.sub(r'<[^>]+>', '', hdr_txt)
+                # remove emojis/pictogramas — o ícone já aparece à esquerda do card
+                limpo = _EMOJI_RE_ADS.sub('', limpo)
+                # remove espaços/pontuação que ficam sobrando após remover o emoji
+                limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
+                return limpo.strip()
+ 
+            # ── FIX 2: matching por palavra inteira (\b...\b) ────────
+            # Antes, o teste era `any(w in t for w in [...])`, ou seja,
+            # substring simples. Isso é arriscado: se uma keyword curta
+            # como "cta" for adicionada a uma lista, ela "casaria" com
+            # qualquer título contendo a palavra "CTAs" (ex.: "Padrão de
+            # CTAs"), mesmo sem nenhuma relação com a categoria pretendida.
+            # Usando \b (word boundary), "cta" só bate com a palavra "cta"
+            # isolada, não com "ctas" no plural.
+            def _match_palavra_ads(texto, palavras):
+                for p in palavras:
+                    if _re.search(r'\b' + _re.escape(p) + r'\b', texto):
+                        return True
+                return False
+ 
             def _get_icon_for_title_ads(title_clean):
                 t = title_clean.lower()
-                if any(w in t for w in ['visão', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
+                if _match_palavra_ads(t, ['visão', 'visao', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
                     return ICON_SVG_ADS['target'], '#dbeafe'
-                if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                if _match_palavra_ads(t, ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
                     return ICON_SVG_ADS['compass'], '#ede9fe'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                if _match_palavra_ads(t, ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferencial', 'diferenciais', 'diferenciação', 'diferenciacao']):
                     return ICON_SVG_ADS['star'], '#ccfbf1'
-                if any(w in t for w in ['melhorar', 'melhoria', 'atenção', 'atencao', 'fraquez', 'gap', 'limita', 'inconsist']):
+                if _match_palavra_ads(t, ['melhorar', 'melhoria', 'melhorias', 'atenção', 'atencao', 'fraqueza', 'fraquezas', 'gap', 'gaps', 'limitação', 'limitacao', 'limitações', 'limitacoes', 'inconsistência', 'inconsistencia']):
                     return ICON_SVG_ADS['lightbulb'], '#fef3c7'
-                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return ICON_SVG_ADS['rocket'], '#e0f2fe'
-                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego']):
+                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
+                if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return ICON_SVG_ADS['chart'], '#e2e8f0'
-                if any(w in t for w in ['criativo', 'visual', 'imagem', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
+                if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return ICON_SVG_ADS['megaphone'], '#fce7f3'
-                if any(w in t for w in ['compara', 'concorrente', 'mercado', 'benchmark']):
+                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
+                if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
+                    return ICON_SVG_ADS['target'], '#fee2e2'
+                if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
                     return ICON_SVG_ADS['trophy'], '#fef9c3'
-                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugest', 'exemplo']):
+                if _match_palavra_ads(t, ['sugerida', 'sugerido', 'recomenda', 'recomendação', 'recomendacao', 'recomendações', 'recomendacoes', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugestão', 'sugestao', 'sugestões', 'sugestoes', 'exemplo']):
                     return ICON_SVG_ADS['clipboard'], '#f1f5f9'
                 return ICON_SVG_ADS['clipboard'], '#f1f5f9'
  
             def _get_title_color_ads(title_clean):
                 t = title_clean.lower()
-                if any(w in t for w in ['visão', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
+                if _match_palavra_ads(t, ['visão', 'visao', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
                     return '#1d4ed8'
-                if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                if _match_palavra_ads(t, ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
                     return '#6d28d9'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                if _match_palavra_ads(t, ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferencial', 'diferenciais', 'diferenciação', 'diferenciacao']):
                     return '#0f766e'
-                if any(w in t for w in ['melhorar', 'melhoria', 'atenção', 'atencao', 'fraquez', 'gap', 'limita', 'inconsist']):
+                if _match_palavra_ads(t, ['melhorar', 'melhoria', 'melhorias', 'atenção', 'atencao', 'fraqueza', 'fraquezas', 'gap', 'gaps', 'limitação', 'limitacao', 'limitações', 'limitacoes', 'inconsistência', 'inconsistencia']):
                     return '#b45309'
-                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return '#0369a1'
-                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego']):
+                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
+                if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return '#334155'
-                if any(w in t for w in ['criativo', 'visual', 'imagem', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
+                if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return '#be185d'
-                if any(w in t for w in ['compara', 'concorrente', 'mercado', 'benchmark']):
+                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
+                if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
+                    return '#b91c1c'
+                if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
                     return '#a16207'
-                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugest', 'exemplo']):
+                if _match_palavra_ads(t, ['sugerida', 'sugerido', 'recomenda', 'recomendação', 'recomendacao', 'recomendações', 'recomendacoes', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugestão', 'sugestao', 'sugestões', 'sugestoes', 'exemplo']):
                     return '#475569'
                 return '#475569'
  
             def _wrap_section_ads(html_str):
                 import re as _r2
  
-                _EMOJI_RE_ADS = _r2.compile(
-                    "["
-                    "\U0001F1E6-\U0001FAFF"
-                    "\U00002600-\U000027BF"
-                    "\U00002190-\U000021FF"
-                    "\U00002B00-\U00002BFF"
-                    "\uFE0F\u200d\u2022"
-                    "]+",
-                    flags=_r2.UNICODE
-                )
- 
-                def _limpar_titulo_ads(hdr_txt):
-                    # remove tags HTML remanescentes
-                    limpo = _r2.sub(r'<[^>]+>', '', hdr_txt)
-                    # remove emojis/pictogramas — o ícone já aparece à esquerda do card
-                    limpo = _EMOJI_RE_ADS.sub('', limpo)
-                    # remove espaços/pontuação que ficam sobrando após remover o emoji
-                    limpo = _r2.sub(r'^[\s:\-–—]+', '', limpo)
-                    return limpo.strip()
+                def _limpar_titulo_ads_local(hdr_txt):
+                    return _limpar_titulo_ads(hdr_txt)
  
                 partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
                 output_parts = []
@@ -9416,7 +9449,7 @@ setTimeout(syncHeightTabs, 800);
                     m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         hdr_txt       = m_hdr.group(2)
-                        hdr_txt_clean = _limpar_titulo_ads(hdr_txt)
+                        hdr_txt_clean = _limpar_titulo_ads_local(hdr_txt)
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
                         icon_svg, icon_bg = _get_icon_for_title_ads(hdr_txt_clean)

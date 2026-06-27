@@ -1660,10 +1660,21 @@ def salvar_cache_ads(dados: dict):
 # ---------------------------------------------------
 
 if st.session_state.pagina == "home":
-
+ 
     emp = st.session_state.dados["minha_empresa"]
     tem_dados = empresa_tem_dados(emp)
-
+ 
+    # ── Redirecionamento automático ───────────────────────────────
+    # Se a empresa já tem dados E o usuário não clicou explicitamente
+    # em "Minha Empresa" na sidebar, vai direto pro Dashboard Geral.
+    if (
+        tem_dados
+        and not st.session_state.editar_empresa
+        and not st.session_state.get("_home_acesso_manual")
+    ):
+        trocar_pagina("geral")
+        st.rerun()
+ 
     if not tem_dados and not st.session_state.editar_empresa:
         st.session_state.editar_empresa = True
 

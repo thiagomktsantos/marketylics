@@ -4113,7 +4113,9 @@ elif st.session_state.pagina == "sites":
         if chave not in st.session_state:
             st.session_state[chave] = ""
  
-    # ── Cabeçalho ──────────────────────────────────────────────────
+    Substitua apenas o bloco do cabeçalho da página sites — do h1, h2 = st.columns([7, 3]) até o hr:
+De:
+python    # ── Cabeçalho ──────────────────────────────────────────────────
     h1, h2 = st.columns([7, 3])
     with h1:
         components.html("""
@@ -4135,7 +4137,7 @@ html, body { background: transparent; overflow: hidden; }
 <div class="titulo">Confronto de Sites</div>
 <div class="sub">Análise comparativa de posicionamento via IA.</div>
 """, height=65)
- 
+
     with h2:
         gerar_btn = st.button("Gerar Relatório Geral", type="primary", use_container_width=True)
         ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
@@ -4145,7 +4147,99 @@ html, body { background: transparent; overflow: hidden; }
                 f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
                 unsafe_allow_html=True,
             )
- 
+
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
+Para:
+python    # ── Cabeçalho ──────────────────────────────────────────────────
+    h1, h2 = st.columns([7, 3])
+    with h1:
+        components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div id="wrap">
+    <div class="titulo">Confronto de Sites</div>
+    <div class="sub">Análise comparativa de posicionamento via IA.</div>
+</div>
+<script>
+(function() {
+    function ajustar() {
+        var h = document.getElementById('wrap').getBoundingClientRect().height;
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                if (iframes[i].contentWindow === window) {
+                    iframes[i].style.height = (h + 4) + 'px'; break;
+                }
+            } catch(e) {}
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ajustar);
+    window.addEventListener('load', ajustar);
+    setTimeout(ajustar, 100);
+    setTimeout(ajustar, 400);
+})();
+</script>
+""", height=65)
+
+    with h2:
+        if st.button("Gerar Análise Comparativa", key="btn_gerar_comparativa_ghost"):
+            st.session_state._gerar_comparativa = True
+        st.markdown("""
+<style>
+.st-key-btn_gerar_comparativa_ghost,
+.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost) {
+    position: fixed !important; top: -9999px !important; left: -9999px !important;
+    width: 1px !important; height: 1px !important; overflow: hidden !important;
+    opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
+}
+</style>
+<div style='padding-top:6px'>
+    <button onclick="(function(){
+        var btns=window.parent.document.querySelectorAll('button');
+        for(var i=0;i<btns.length;i++){
+            var t=(btns[i].textContent||btns[i].innerText||'').trim();
+            if(t==='Gerar Análise Comparativa'){btns[i].click();return;}
+        }
+    })()" style='
+        width:100%; padding:10px 16px; background:#111827; color:#fff;
+        border:none; border-radius:8px; font-size:14px; font-weight:700;
+        cursor:pointer; font-family:DM Sans,sans-serif;
+        display:flex; align-items:center; justify-content:center; gap:8px;
+        min-height:40px; box-sizing:border-box;
+    '>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        Gerar Análise Comparativa
+    </button>
+</div>
+""", unsafe_allow_html=True)
+        ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
+        if ultimo_relatorio:
+            st.markdown(
+                f"<div style='font-size:13px;color:#6b7280;text-align:center;margin-top:6px'>"
+                f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
+                unsafe_allow_html=True,
+            )
+
+    gerar_btn = st.session_state.pop("_gerar_comparativa", False)
+
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
  
     # ══════════════════════════════════════════════════════════════

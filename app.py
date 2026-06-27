@@ -4171,18 +4171,15 @@ html, body { background: transparent; overflow: hidden; }
     position: fixed !important; top: -9999px !important; left: -9999px !important;
     width: 1px !important; height: 1px !important; overflow: hidden !important;
     opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
+    display: none !important;
+}
+.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost) {
+    display: none !important; height: 0 !important; min-height: 0 !important;
+    max-height: 0 !important; padding: 0 !important; margin: 0 !important;
 }
 </style>
 <div style='padding-top:6px'>
-    <button onclick="(function(){
-        var btn = window.parent.document.querySelector('.st-key-btn_gerar_comparativa_ghost button');
-        if (btn) { btn.click(); return; }
-        var btns = window.parent.document.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {
-            var t = (btns[i].textContent || btns[i].innerText || '').replace(/\s+/g, ' ').trim();
-            if (t === 'Gerar Análise Comparativa') { btns[i].click(); return; }
-        }
-    })()" style='
+    <button id="btn_fake_gerar_comparativa" style='
         width:100%; padding:10px 16px; background:#0e2a47; color:#fff;
         border:none; border-radius:8px; font-size:14px; font-weight:700;
         cursor:pointer; font-family:DM Sans,sans-serif;
@@ -4201,6 +4198,26 @@ html, body { background: transparent; overflow: hidden; }
         Gerar Análise Comparativa
     </button>
 </div>
+<script>
+(function() {
+    function attachHandler() {
+        var btn = document.getElementById('btn_fake_gerar_comparativa');
+        if (!btn || btn.dataset.bound) return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', function() {
+            var alvo = window.parent.document.querySelector('.st-key-btn_gerar_comparativa_ghost button');
+            if (alvo) { alvo.click(); return; }
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var i = 0; i < btns.length; i++) {
+                var t = (btns[i].textContent || btns[i].innerText || '').replace(/\\s+/g, ' ').trim();
+                if (t === 'Gerar Análise Comparativa') { btns[i].click(); return; }
+            }
+        });
+    }
+    attachHandler();
+    setTimeout(attachHandler, 200);
+})();
+</script>
 """, unsafe_allow_html=True)
         ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
         if ultimo_relatorio:

@@ -7824,7 +7824,7 @@ window.addEventListener('load', syncHeight);
                             f"Plataformas={', '.join(a.get('plataformas') or [])} | "
                             f"Body={_truncar(a.get('body','') or '—', 120)} | "
                             f"CTA={a.get('cta','') or '—'} | "
-                            f"Dias ativo={a.get('data_inicio','') or '—'} | "
+                            f"Dias ativo={_dias_ativo(a.get('data_raw','')) if a.get('data_raw') else (a.get('data_inicio','') or '—')} | "
                             f"Impressões={a.get('impressoes','') or '—'}"
                             for i, a in enumerate(ads_list[:15])
                         ])
@@ -8460,7 +8460,8 @@ CTA: {ad_ind.get('cta','') or '—'}
                     ad_id_short = ad_id
                     plats       = ad.get("plataformas") or []
                     plat_js     = _json.dumps([p.lower() for p in plats])
-                    data_inicio = ad.get("data_inicio","")
+                    data_raw_ad = ad.get("data_raw","")
+                    data_inicio = _dias_ativo(data_raw_ad) if data_raw_ad else ad.get("data_inicio","")
                     impressoes  = ad.get("impressoes","")
                     body        = ad.get("body") or ""
                     title       = ad.get("title") or ""

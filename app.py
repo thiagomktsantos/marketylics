@@ -2214,6 +2214,19 @@ elif st.session_state.pagina == "cad":
         margin: 0 !important;
         padding: 0 !important;
     }
+    .st-key-btn_add_conc_ghost,
+    .stElementContainer:has(.st-key-btn_add_conc_ghost) {
+        position: fixed !important;
+        top: -9999px !important;
+        left: -9999px !important;
+        width: 1px !important;
+        height: 1px !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        visibility: hidden !important;
+        display: block !important;
+    }
     </style>
     """, unsafe_allow_html=True)
  
@@ -2250,12 +2263,6 @@ html, body { background: transparent; overflow: hidden; }
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
-.st-key-btn_add_conc_ghost,
-.stElementContainer:has(.st-key-btn_add_conc_ghost) {
-    position: fixed !important; top: -9999px !important; left: -9999px !important;
-    width: 1px !important; height: 1px !important; overflow: hidden !important;
-    opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
-}
 .btn {
     width: 100%; padding: 10px 16px; background: #111827; color: #ffffff;
     border: none; border-radius: 8px; font-size: 14px; font-weight: 700;
@@ -2294,7 +2301,7 @@ function triggerAdicionar() {
 })();
 </script>
 """, height=46, scrolling=False)
- 
+
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:4px 0 24px 0'/>", unsafe_allow_html=True)
  
     if st.session_state.mostrar_form_concorrente or st.session_state.editando_concorrente is not None:

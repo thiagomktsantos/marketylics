@@ -1967,12 +1967,12 @@ html, body { background: transparent; overflow: hidden; }
 html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
 .btn {
     width: 100%;
-    padding: 12px 22px;
-    background: #0f1e3a;
+    padding: 10px 16px;
+    background: #0e2a47;
     color: #ffffff;
     border: none;
-    border-radius: 14px;
-    font-size: 15px;
+    border-radius: 8px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
@@ -1981,10 +1981,10 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
     justify-content: center;
     gap: 8px;
     transition: background 0.15s;
-    min-height: 44px;
+    min-height: 40px;
     box-sizing: border-box;
 }
-.btn:hover { background: #0a1729; }
+.btn:hover { background: #0a2038; }
 .btn svg { flex-shrink: 0; }
 </style>
 <button class="btn" onclick="triggerEditar()">

@@ -1664,17 +1664,6 @@ if st.session_state.pagina == "home":
     emp = st.session_state.dados["minha_empresa"]
     tem_dados = empresa_tem_dados(emp)
 
-    # ── Redirecionamento automático ───────────────────────────────
-    # Se a empresa já tem dados E o usuário não clicou explicitamente
-    # em "Minha Empresa" na sidebar, vai direto pro Dashboard Geral.
-    if (
-        tem_dados
-        and not st.session_state.editar_empresa
-        and not st.session_state.get("_home_acesso_manual")
-    ):
-        trocar_pagina("geral")
-        st.rerun()
-
     if not tem_dados and not st.session_state.editar_empresa:
         st.session_state.editar_empresa = True
 
@@ -1800,30 +1789,8 @@ html, body { background: transparent; overflow: hidden; }
 }
 .sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
-<div id="wrap">
-    <div class="titulo">Minha Empresa</div>
-    <div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
-</div>
-<script>
-(function() {
-    function ajustar() {
-        var h = document.getElementById('wrap').getBoundingClientRect().height;
-        var iframes = window.parent.document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-            try {
-                if (iframes[i].contentWindow === window) {
-                    iframes[i].style.height = (h + 4) + 'px';
-                    break;
-                }
-            } catch(e) {}
-        }
-    }
-    document.addEventListener('DOMContentLoaded', ajustar);
-    window.addEventListener('load', ajustar);
-    setTimeout(ajustar, 100);
-    setTimeout(ajustar, 400);
-})();
-</script>
+<div class="titulo">Minha Empresa</div>
+<div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
 """, height=70)
 
         with h2:
@@ -1992,39 +1959,60 @@ html, body { background: transparent; overflow: hidden; }
 """, height=70)
 
         with h2:
-            st.markdown("""
+            st.markdown("<div style='padding-top:6px;'/>", unsafe_allow_html=True)
+            components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-.st-key-btn_home_editar_ghost,
-.stElementContainer:has(.st-key-btn_home_editar_ghost) {
-    position: fixed !important; top: -9999px !important; left: -9999px !important;
-    width: 1px !important; height: 1px !important; overflow: hidden !important;
-    opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
+.btn {
+    width: 100%;
+    padding: 10px 16px;
+    background: #0780c0;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s;
+    min-height: 40px;
+    box-sizing: border-box;
 }
+.btn:hover { background: #065f9e; }
 </style>
-<div style='padding-top:6px'>
-    <button onclick="(function(){
-        var btns=window.parent.document.querySelectorAll('button');
-        for(var i=0;i<btns.length;i++){
-            var t=(btns[i].textContent||btns[i].innerText||'').trim();
-            if(t==='Editar Empresa'){btns[i].click();return;}
+<button class="btn" onclick="triggerEditar()">
+    Editar Empresa
+</button>
+<script>
+function triggerEditar() {
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+        var txt = (btns[i].textContent || btns[i].innerText || '').trim();
+        if (txt === 'Editar Empresa') {
+            btns[i].click();
+            return;
         }
-    })()" style='
-        width:100%; padding:10px 16px; background:#0e2a47; color:#fff;
-        border:none; border-radius:8px; font-size:14px; font-weight:700;
-        cursor:pointer; font-family:DM Sans,sans-serif;
-        display:flex; align-items:center; justify-content:center; gap:8px;
-        min-height:40px; box-sizing:border-box;
-    '>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2.2"
-             stroke-linecap="round" stroke-linejoin="round">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
-        Editar Empresa
-    </button>
-</div>
-""", unsafe_allow_html=True)
+    }
+}
+(function() {
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+        try {
+            if (iframes[i].contentWindow === window) {
+                iframes[i].style.height = '46px';
+                break;
+            }
+        } catch(e) {}
+    }
+})();
+</script>
+""", height=46, scrolling=False)
 
         st.markdown(
             "<hr style='border:none;border-top:1px solid #e5e7eb;margin:4px 0 20px 0'/>",

@@ -4939,10 +4939,12 @@ setTimeout(syncHeight, 3000);
  
         components.html(_html_cards, height=1200, scrolling=False)
         
-    # ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
+
+        import json as _json_sites
 
         analises = st.session_state.get("analises_salvas", [])
         st.session_state.sites_analise_vistas = len(analises)
@@ -5139,42 +5141,67 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def _get_icon_for_title(title_clean):
                 t = title_clean.lower()
-                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'visão', 'proposta']):
+                if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
                     return ICON_SVG['target'], '#dbeafe'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
-                    return ICON_SVG['star'], '#dcebe7'
-                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
-                    return ICON_SVG['lightbulb'], '#fef3e2'
-                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo']):
-                    return ICON_SVG['compass'], '#e3e8f7'
+                if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                    return ICON_SVG['compass'], '#ede9fe'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                    return ICON_SVG['star'], '#ccfbf1'
+                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'gap', 'limita', 'inconsist']):
+                    return ICON_SVG['lightbulb'], '#fef3c7'
                 if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
-                    return ICON_SVG['rocket'], '#dceef5'
-                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'mensage']):
-                    return ICON_SVG['chart'], '#e2e9f5'
-                if any(w in t for w in ['destaque', 'comparativo', 'concorrente', 'mercado']):
-                    return ICON_SVG['trophy'], '#fff7e0'
-                return ICON_SVG['clipboard'], '#eef1f5'
+                    return ICON_SVG['rocket'], '#e0f2fe'
+                if any(w in t for w in ['mensage', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'conteúdo', 'conteudo', 'tom de voz']):
+                    return ICON_SVG['chart'], '#e2e8f0'
+                if any(w in t for w in ['compara', 'concorrente', 'mercado', 'benchmark']):
+                    return ICON_SVG['trophy'], '#fef9c3'
+                if any(w in t for w in ['recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo']):
+                    return ICON_SVG['clipboard'], '#f1f5f9'
+                return ICON_SVG['clipboard'], '#f1f5f9'
 
             def _get_title_color(title_clean):
                 t = title_clean.lower()
-                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'an', 'sobre', 'perfil', 'panorama', 'resumo', 'geral', 'visão', 'proposta']):
-                    return '#2563eb'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade']):
-                    return '#0d9488'
-                if any(w in t for w in ['melhorar', 'aten', 'fraqueza', 'gap', 'limita', 'inconsist']):
+                if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
+                    return '#1d4ed8'
+                if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                    return '#6d28d9'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                    return '#0f766e'
+                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'gap', 'limita', 'inconsist']):
                     return '#b45309'
-                if any(w in t for w in ['sugerida', 'sugerido', 'recomenda', 'sugest', 'exemplo', 'plano']):
-                    return '#4338ca'
-                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento']):
+                if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return '#0369a1'
-                if any(w in t for w in ['engajamento', 'métrica', 'metrica', 'desempenho', 'resultado', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'mensage']):
-                    return '#3730a3'
-                if any(w in t for w in ['destaque', 'comparativo', 'concorrente', 'mercado']):
-                    return '#92400e'
+                if any(w in t for w in ['mensage', 'métrica', 'metrica', 'desempenho', 'resultado', 'performance', 'seo', 'tráfego', 'trafego', 'serviço', 'produto', 'conteúdo', 'conteudo', 'tom de voz']):
+                    return '#334155'
+                if any(w in t for w in ['compara', 'concorrente', 'mercado', 'benchmark']):
+                    return '#a16207'
+                if any(w in t for w in ['recomenda', 'ações', 'próximos', 'plano', 'sugest', 'exemplo']):
+                    return '#475569'
                 return '#475569'
 
             def _wrap_section(html_str):
                 import re as _r2
+
+                _EMOJI_RE = _r2.compile(
+                    "["
+                    "\U0001F1E6-\U0001FAFF"
+                    "\U00002600-\U000027BF"
+                    "\U00002190-\U000021FF"
+                    "\U00002B00-\U00002BFF"
+                    "\uFE0F\u200d\u2022"
+                    "]+",
+                    flags=_r2.UNICODE
+                )
+
+                def _limpar_titulo(hdr_txt):
+                    # remove tags HTML remanescentes
+                    limpo = _r2.sub(r'<[^>]+>', '', hdr_txt)
+                    # remove emojis/pictogramas — o ícone já aparece à esquerda do card
+                    limpo = _EMOJI_RE.sub('', limpo)
+                    # remove espaços/pontuação que ficam sobrando após remover o emoji
+                    limpo = _r2.sub(r'^[\s:\-–—]+', '', limpo)
+                    return limpo.strip()
+
                 partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
                 output_parts = []
                 i2 = 0
@@ -5183,7 +5210,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         hdr_txt       = m_hdr.group(2)
-                        hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
+                        hdr_txt_clean = _limpar_titulo(hdr_txt)
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
                         icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)

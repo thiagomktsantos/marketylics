@@ -2547,6 +2547,7 @@ body {{ padding-bottom: 8px; }}
             try {{
                 if (iframes[i].contentWindow === window) {{
                     iframes[i].style.height = (h + 12) + 'px';
+                    iframes[i].style.marginTop = '-15px';
                     break;
                 }}
             }} catch(e) {{}}

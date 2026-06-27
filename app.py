@@ -1967,12 +1967,12 @@ html, body { background: transparent; overflow: hidden; }
 html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
 .btn {
     width: 100%;
-    padding: 10px 16px;
-    background: #0780c0;
+    padding: 12px 22px;
+    background: #0f1e3a;
     color: #ffffff;
     border: none;
-    border-radius: 8px;
-    font-size: 14px;
+    border-radius: 14px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
@@ -1981,12 +1981,17 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
     justify-content: center;
     gap: 8px;
     transition: background 0.15s;
-    min-height: 40px;
+    min-height: 44px;
     box-sizing: border-box;
 }
-.btn:hover { background: #065f9e; }
+.btn:hover { background: #0a1729; }
+.btn svg { flex-shrink: 0; }
 </style>
 <button class="btn" onclick="triggerEditar()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
     Editar Empresa
 </button>
 <script>

@@ -4186,9 +4186,11 @@ html, body { background: transparent; overflow: hidden; }
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2.2"
              stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="20" x2="18" y2="10"/>
-            <line x1="12" y1="20" x2="12" y2="4"/>
-            <line x1="6" y1="20" x2="6" y2="14"/>
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/>
+            <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/>
+            <path d="M6 3h12v7a6 6 0 0 1-12 0V3z"/>
+            <path d="M12 16v4"/>
+            <path d="M8 20h8"/>
         </svg>
         Gerar Análise Comparativa
     </button>

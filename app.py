@@ -4175,10 +4175,12 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div style='padding-top:6px'>
     <button onclick="(function(){
-        var btns=window.parent.document.querySelectorAll('button');
-        for(var i=0;i<btns.length;i++){
-            var t=(btns[i].textContent||btns[i].innerText||'').trim();
-            if(t==='Gerar Análise Comparativa'){btns[i].click();return;}
+        var btn = window.parent.document.querySelector('.st-key-btn_gerar_comparativa_ghost button');
+        if (btn) { btn.click(); return; }
+        var btns = window.parent.document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+            var t = (btns[i].textContent || btns[i].innerText || '').replace(/\s+/g, ' ').trim();
+            if (t === 'Gerar Análise Comparativa') { btns[i].click(); return; }
         }
     })()" style='
         width:100%; padding:10px 16px; background:#0e2a47; color:#fff;

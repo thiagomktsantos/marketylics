@@ -2294,7 +2294,8 @@ function triggerAdicionar() {
     for (var i = 0; i < iframes.length; i++) {
         try {
             if (iframes[i].contentWindow === window) {
-                iframes[i].style.height = '46px'; break;
+                iframes[i].style.height = '46px';
+                iframes[i].style.marginTop = '0';break;
             }
         } catch(e) {}
     }

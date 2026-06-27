@@ -1800,8 +1800,30 @@ html, body { background: transparent; overflow: hidden; }
 }
 .sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
-<div class="titulo">Minha Empresa</div>
-<div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
+<div id="wrap">
+    <div class="titulo">Minha Empresa</div>
+    <div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
+</div>
+<script>
+(function() {
+    function ajustar() {
+        var h = document.getElementById('wrap').getBoundingClientRect().height;
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                if (iframes[i].contentWindow === window) {
+                    iframes[i].style.height = (h + 4) + 'px';
+                    break;
+                }
+            } catch(e) {}
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ajustar);
+    window.addEventListener('load', ajustar);
+    setTimeout(ajustar, 100);
+    setTimeout(ajustar, 400);
+})();
+</script>
 """, height=70)
 
         with h2:
@@ -2248,8 +2270,30 @@ html, body { background: transparent; overflow: hidden; }
 }
 .sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
-<div class="titulo">Concorrentes</div>
-<div class="sub">Acompanhe e gerencie seus concorrentes para uma análise mais estratégica.</div>
+<div id="wrap">
+    <div class="titulo">Concorrentes</div>
+    <div class="sub">Acompanhe e gerencie seus concorrentes para uma análise mais estratégica.</div>
+</div>
+<script>
+(function() {
+    function ajustar() {
+        var h = document.getElementById('wrap').getBoundingClientRect().height;
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                if (iframes[i].contentWindow === window) {
+                    iframes[i].style.height = (h + 4) + 'px';
+                    break;
+                }
+            } catch(e) {}
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ajustar);
+    window.addEventListener('load', ajustar);
+    setTimeout(ajustar, 100);
+    setTimeout(ajustar, 400);
+})();
+</script>
 """, height=70)
  
     with top2:

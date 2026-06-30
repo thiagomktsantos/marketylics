@@ -5316,10 +5316,20 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                                 output_parts.append(_make_plain_card(conteudo))
                         else:
                             lower_t       = hdr_txt_clean.lower()
+                            is_numbered   = bool(_r2.match(r'^\d+[\.\)]\s', hdr_txt_clean))
                             is_own        = lower_t.startswith('minha empresa')
                             is_competitor = lower_t.startswith('concorrente')
 
-                            if is_own or is_competitor:
+                            if is_numbered:
+                                # título de seção numerada (ex.: "1. Proposta de Valor")
+                                # também vira banner leve, mesmo sendo h3 no markdown.
+                                flush_buffer()
+                                output_parts.append(
+                                    f'<div class="sec-banner"><span class="sec-banner-text">{hdr_txt_clean}</span></div>'
+                                )
+                                if conteudo.strip():
+                                    output_parts.append(_make_plain_card(conteudo))
+                            elif is_own or is_competitor:
                                 # agrupa "Minha Empresa" + "Concorrente — X" lado a lado
                                 if buffer_kind != 'compare':
                                     flush_buffer()

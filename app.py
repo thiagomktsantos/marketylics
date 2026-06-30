@@ -5251,6 +5251,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         f'</div>'
                     )
 
+                def _make_plain_card(conteudo):
+                    # usado para conteúdo solto sob um h2 (ex.: parágrafo de abertura,
+                    # lista de recomendações) — sem repetir o título, que já está no banner.
+                    return (
+                        f'<div class="sec-card sec-plain">'
+                        f'  <div class="sec-content">{conteudo}</div>'
+                        f'</div>'
+                    )
+
                 def _make_compare_card(hdr_txt_clean, conteudo, role):
                     if role == 'own':
                         icon_bg, title_color = '#dbeafe', '#1d4ed8'
@@ -5304,7 +5313,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                             # se vier texto/lista solta direto sob o h2 (ex.: Recomendações),
                             # agora também ganha um card em vez de ficar sem estilo.
                             if conteudo.strip():
-                                output_parts.append(_make_card(hdr_txt_clean, conteudo))
+                                output_parts.append(_make_plain_card(conteudo))
                         else:
                             lower_t       = hdr_txt_clean.lower()
                             is_own        = lower_t.startswith('minha empresa')
@@ -5522,6 +5531,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     width: 7px; height: 7px;
     border-radius: 50%;
     background: #9ca3af;
+}
+
+.sec-card.sec-plain {
+    padding: 18px 22px;
 }
 
 .compare-grid {

@@ -4969,7 +4969,7 @@ setTimeout(syncHeight, 3000);
 
         components.html(_html_cards, height=1200, scrolling=False)
         
-    # ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
@@ -5239,23 +5239,36 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     parte = partes[i2]
                     m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
+                        tag           = m_hdr.group(1)
                         hdr_txt       = m_hdr.group(2)
                         hdr_txt_clean = _limpar_titulo(hdr_txt)
                         conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
-                        icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
-                        title_color = _get_title_color(hdr_txt_clean)
-                        caixa = (
-                            f'<div class="sec-card">'
-                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
-                            f'  <div class="sec-body">'
-                            f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
-                            f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
-                            f'    <div class="sec-content">{conteudo}</div>'
-                            f'  </div>'
-                            f'</div>'
-                        )
-                        output_parts.append(caixa)
+
+                        if tag == 'h2':
+                            # Título de seção numerada (ex.: "1. Proposta de Valor")
+                            # vira um banner leve — NÃO um card, pois não tem conteúdo próprio,
+                            # apenas agrupa os h3 que vêm logo abaixo.
+                            output_parts.append(
+                                f'<div class="sec-banner"><span class="sec-banner-text">{hdr_txt_clean}</span></div>'
+                            )
+                            # se vier algum texto solto direto sob o h2 (raro), preserva fora do card
+                            if conteudo.strip():
+                                output_parts.append(conteudo)
+                        else:
+                            icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                            title_color = _get_title_color(hdr_txt_clean)
+                            caixa = (
+                                f'<div class="sec-card">'
+                                f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                                f'  <div class="sec-body">'
+                                f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                                f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                                f'    <div class="sec-content">{conteudo}</div>'
+                                f'  </div>'
+                                f'</div>'
+                            )
+                            output_parts.append(caixa)
                     else:
                         output_parts.append(parte)
                     i2 += 1
@@ -5352,6 +5365,23 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }
 .card-hdr-icon svg { width:18px; height:18px; }
 
+.sec-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 26px 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #cbd5e1;
+}
+.sec-banner:first-of-type { margin-top: 2px; }
+.sec-banner-text {
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #0f1f35;
+}
+
 .sec-card {
     display: flex;
     align-items: flex-start;
@@ -5359,8 +5389,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background: #ffffff;
     border: 1px solid #e5e7eb;
     border-radius: 14px;
-    padding: 20px 22px;
-    margin: 0 0 12px 0;
+    padding: 22px 24px;
+    margin: 0 0 20px 0;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+}
+.sec-card:last-child {
+    margin-bottom: 0;
 }
 .sec-icon-wrap {
     width: 48px;
@@ -5370,6 +5404,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    margin-top: 2px;
 }
 .sec-icon-wrap svg { width: 22px; height: 22px; }
 .sec-body { flex: 1; min-width: 0; }
@@ -5487,6 +5522,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 #smb_sites li::marker { color: #00c162; }
 #smb_sites hr { display: none; }
 #smb_sites .sec-card { border: 1px solid #e5e7eb; }
+#smb_sites .sec-banner { border-bottom: 2px solid #e5e7eb; }
 
 #smb_sites ol {
     margin: 5px 0 15px 5px;

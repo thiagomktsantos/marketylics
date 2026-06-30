@@ -4989,6 +4989,7 @@ setTimeout(syncHeight, 3000);
             "lightbulb": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
             "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
             "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+            "scale":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M5 7l-3 7a4 4 0 0 0 6 0z"/><path d="M19 7l-3 7a4 4 0 0 0 6 0z"/><line x1="5" y1="7" x2="19" y2="7"/></svg>',
         }
 
         subtabs_sites_def = [
@@ -5171,13 +5172,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def _get_icon_for_title(title_clean):
                 t = title_clean.lower()
+                if _re.search(r'\bvs\.?\b', t):
+                    return ICON_SVG['scale'], '#e0e7ff'
                 if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
                     return ICON_SVG['target'], '#dbeafe'
                 if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
                     return ICON_SVG['compass'], '#ede9fe'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                if any(w in t for w in ['forte', 'força', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
                     return ICON_SVG['star'], '#ccfbf1'
-                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'gap', 'limita', 'inconsist']):
+                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'vulnerab', 'gap', 'limita', 'inconsist']):
                     return ICON_SVG['lightbulb'], '#fef3c7'
                 if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return ICON_SVG['rocket'], '#e0f2fe'
@@ -5191,13 +5194,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def _get_title_color(title_clean):
                 t = title_clean.lower()
+                if _re.search(r'\bvs\.?\b', t):
+                    return '#4338ca'
                 if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
                     return '#1d4ed8'
                 if any(w in t for w in ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
                     return '#6d28d9'
-                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
+                if any(w in t for w in ['forte', 'força', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferenc']):
                     return '#0f766e'
-                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'gap', 'limita', 'inconsist']):
+                if any(w in t for w in ['melhor', 'aten', 'fraquez', 'vulnerab', 'gap', 'limita', 'inconsist']):
                     return '#b45309'
                 if any(w in t for w in ['oportunidade', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return '#0369a1'
@@ -5232,8 +5237,54 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     limpo = _r2.sub(r'^[\s:\-–—]+', '', limpo)
                     return limpo.strip()
 
+                def _make_card(hdr_txt_clean, conteudo):
+                    icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                    title_color = _get_title_color(hdr_txt_clean)
+                    return (
+                        f'<div class="sec-card">'
+                        f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                        f'  <div class="sec-body">'
+                        f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                        f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                        f'    <div class="sec-content">{conteudo}</div>'
+                        f'  </div>'
+                        f'</div>'
+                    )
+
+                def _make_compare_card(hdr_txt_clean, conteudo, role):
+                    badge_text = 'SUA EMPRESA' if role == 'own' else 'CONCORRENTE'
+                    if role == 'own':
+                        icon_bg, title_color = '#dbeafe', '#1d4ed8'
+                    else:
+                        icon_bg, title_color = '#f1f5f9', '#475569'
+                    icon_svg, _ = _get_icon_for_title(hdr_txt_clean)
+                    return (
+                        f'<div class="compare-card {role}">'
+                        f'  <div class="compare-badge {role}">{badge_text}</div>'
+                        f'  <div class="compare-hdr">'
+                        f'    <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                        f'    <div class="compare-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                        f'  </div>'
+                        f'  <div class="sec-divider" style="background:{title_color}33;"></div>'
+                        f'  <div class="sec-content">{conteudo}</div>'
+                        f'</div>'
+                    )
+
                 partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
                 output_parts = []
+                buffer = []
+                buffer_kind = None
+
+                def flush_buffer():
+                    nonlocal buffer, buffer_kind
+                    if buffer:
+                        if buffer_kind == 'compare':
+                            output_parts.append('<div class="compare-grid">' + ''.join(buffer) + '</div>')
+                        else:
+                            output_parts.extend(buffer)
+                    buffer = []
+                    buffer_kind = None
+
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
@@ -5247,31 +5298,36 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                         if tag == 'h2':
                             # Título de seção numerada (ex.: "1. Proposta de Valor")
-                            # vira um banner leve — NÃO um card, pois não tem conteúdo próprio,
-                            # apenas agrupa os h3 que vêm logo abaixo.
+                            # vira um banner leve.
+                            flush_buffer()
                             output_parts.append(
                                 f'<div class="sec-banner"><span class="sec-banner-text">{hdr_txt_clean}</span></div>'
                             )
-                            # se vier algum texto solto direto sob o h2 (raro), preserva fora do card
+                            # se vier texto/lista solta direto sob o h2 (ex.: Recomendações),
+                            # agora também ganha um card em vez de ficar sem estilo.
                             if conteudo.strip():
-                                output_parts.append(conteudo)
+                                output_parts.append(_make_card(hdr_txt_clean, conteudo))
                         else:
-                            icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
-                            title_color = _get_title_color(hdr_txt_clean)
-                            caixa = (
-                                f'<div class="sec-card">'
-                                f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
-                                f'  <div class="sec-body">'
-                                f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
-                                f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
-                                f'    <div class="sec-content">{conteudo}</div>'
-                                f'  </div>'
-                                f'</div>'
-                            )
-                            output_parts.append(caixa)
+                            lower_t       = hdr_txt_clean.lower()
+                            is_own        = lower_t.startswith('minha empresa')
+                            is_competitor = lower_t.startswith('concorrente')
+
+                            if is_own or is_competitor:
+                                # agrupa "Minha Empresa" + "Concorrente — X" lado a lado
+                                if buffer_kind != 'compare':
+                                    flush_buffer()
+                                    buffer_kind = 'compare'
+                                role = 'own' if is_own else 'competitor'
+                                buffer.append(_make_compare_card(hdr_txt_clean, conteudo, role))
+                            else:
+                                flush_buffer()
+                                output_parts.append(_make_card(hdr_txt_clean, conteudo))
                     else:
+                        flush_buffer()
                         output_parts.append(parte)
                     i2 += 1
+
+                flush_buffer()
                 return ''.join(output_parts)
 
             import re as _re_promote
@@ -5470,6 +5526,54 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background: #9ca3af;
 }
 
+.compare-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
+    margin: 0 0 20px 0;
+}
+.compare-card {
+    position: relative;
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 22px 18px 18px;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
+}
+.compare-card.own {
+    border: 2px solid #3a9fd6;
+    background: #f4faff;
+}
+.compare-card.competitor {
+    border: 1px solid #e5e7eb;
+}
+.compare-badge {
+    position: absolute;
+    top: -10px;
+    right: 16px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+}
+.compare-badge.own { background: #3a9fd6; color: #fff; }
+.compare-badge.competitor { background: #94a3b8; color: #fff; }
+.compare-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.compare-card .sec-icon-wrap { width: 36px; height: 36px; margin-top: 0; }
+.compare-card .sec-icon-wrap svg { width: 17px; height: 17px; }
+.compare-title {
+    font-size: 12.5px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+}
+.compare-card .sec-content { font-size: 13.5px; }
+
 .card-row {
     border-bottom: 1px solid #f3f4f6;
     background: #dde5ed;
@@ -5523,6 +5627,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 #smb_sites hr { display: none; }
 #smb_sites .sec-card { border: 1px solid #e5e7eb; }
 #smb_sites .sec-banner { border-bottom: 2px solid #e5e7eb; }
+#smb_sites .compare-card { border: 1px solid #e5e7eb; }
 
 #smb_sites ol {
     margin: 5px 0 15px 5px;

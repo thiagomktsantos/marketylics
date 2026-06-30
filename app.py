@@ -5217,6 +5217,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             def _wrap_section(html_str):
                 import re as _r2
 
+                # remove <hr> isolados (vêm dos "---" do markdown entre seções) —
+                # a separação visual já é feita pelos cards/banners.
+                html_str = _r2.sub(r'<hr\s*/?>', '', html_str)
+
                 _EMOJI_RE = _r2.compile(
                     "["
                     "\U0001F1E6-\U0001FAFF"
@@ -5248,6 +5252,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
                         f'    <div class="sec-content">{conteudo}</div>'
                         f'  </div>'
+                        f'</div>'
+                    )
+
+                def _make_banner(hdr_txt_clean):
+                    icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                    title_color = _get_title_color(hdr_txt_clean)
+                    return (
+                        f'<div class="sec-banner">'
+                        f'  <div class="sec-banner-icon" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                        f'  <span class="sec-banner-text">{hdr_txt_clean}</span>'
                         f'</div>'
                     )
 
@@ -5307,9 +5321,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                             # Título de seção numerada (ex.: "1. Proposta de Valor")
                             # vira um banner leve.
                             flush_buffer()
-                            output_parts.append(
-                                f'<div class="sec-banner"><span class="sec-banner-text">{hdr_txt_clean}</span></div>'
-                            )
+                            output_parts.append(_make_banner(hdr_txt_clean))
                             # se vier texto/lista solta direto sob o h2 (ex.: Recomendações),
                             # agora também ganha um card em vez de ficar sem estilo.
                             if conteudo.strip():
@@ -5324,9 +5336,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                                 # título de seção numerada (ex.: "1. Proposta de Valor")
                                 # também vira banner leve, mesmo sendo h3 no markdown.
                                 flush_buffer()
-                                output_parts.append(
-                                    f'<div class="sec-banner"><span class="sec-banner-text">{hdr_txt_clean}</span></div>'
-                                )
+                                output_parts.append(_make_banner(hdr_txt_clean))
                                 if conteudo.strip():
                                     output_parts.append(_make_plain_card(conteudo))
                             elif is_own or is_competitor:
@@ -5447,6 +5457,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border-bottom: 2px solid #cbd5e1;
 }
 .sec-banner:first-of-type { margin-top: 2px; }
+.sec-banner-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.sec-banner-icon svg { width: 13px; height: 13px; }
 .sec-banner-text {
     font-size: 14px;
     font-weight: 800;

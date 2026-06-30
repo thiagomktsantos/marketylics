@@ -4969,7 +4969,7 @@ setTimeout(syncHeight, 3000);
 
         components.html(_html_cards, height=1200, scrolling=False)
         
-# ══════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
     # ABA: ANÁLISE DE IA
     # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
@@ -5252,7 +5252,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     )
 
                 def _make_compare_card(hdr_txt_clean, conteudo, role):
-                    badge_text = 'SUA EMPRESA' if role == 'own' else 'CONCORRENTE'
                     if role == 'own':
                         icon_bg, title_color = '#dbeafe', '#1d4ed8'
                     else:
@@ -5260,7 +5259,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     icon_svg, _ = _get_icon_for_title(hdr_txt_clean)
                     return (
                         f'<div class="compare-card {role}">'
-                        f'  <div class="compare-badge {role}">{badge_text}</div>'
                         f'  <div class="compare-hdr">'
                         f'    <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
                         f'    <div class="compare-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
@@ -5536,7 +5534,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     position: relative;
     background: #ffffff;
     border-radius: 14px;
-    padding: 22px 18px 18px;
+    padding: 20px 18px 18px;
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.07);
 }
 .compare-card.own {
@@ -5546,19 +5544,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .compare-card.competitor {
     border: 1px solid #e5e7eb;
 }
-.compare-badge {
-    position: absolute;
-    top: -10px;
-    right: 16px;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    padding: 3px 10px;
-    border-radius: 20px;
-    text-transform: uppercase;
-}
-.compare-badge.own { background: #3a9fd6; color: #fff; }
-.compare-badge.competitor { background: #94a3b8; color: #fff; }
 .compare-hdr {
     display: flex;
     align-items: center;

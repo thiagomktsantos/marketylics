@@ -5527,14 +5527,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .sec-content ol > li {
     position: relative;
     padding-left: 36px;
-    margin-bottom: 10px;
+    padding-top: 1px;
+    margin: 0 0 8px 0;
     line-height: 1.65;
     counter-increment: sec-counter;
 }
 .sec-content ol > li::before {
     content: counter(sec-counter);
     position: absolute;
-    left: 0; top: 1px;
+    left: 0; top: 0;
     width: 24px; height: 24px;
     border-radius: 50%;
     background: #64748b;
@@ -5542,6 +5543,28 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size: 12px; font-weight: 800;
     display: flex; align-items: center; justify-content: center;
     line-height: 1;
+}
+/* sub-itens (Ação / Justificativa) aninhados sob um item numerado —
+   o parser de markdown gera o <ul> como irmão do <li>, então alinhamos
+   manualmente o recuo com a largura do círculo numerado (24px + gap). */
+.sec-content ol > ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 22px 36px;
+}
+.sec-content ol > ul > li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 10px;
+    line-height: 1.7;
+}
+.sec-content ol > ul > li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 9px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
 }
 .sec-content ul {
     list-style: none;
@@ -5564,7 +5587,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }
 
 .sec-card.sec-plain {
-    padding: 18px 22px;
+    padding: 22px 26px;
 }
 
 .compare-grid {

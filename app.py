@@ -9423,6 +9423,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
  
         analises_ads_para_rm = st.session_state.get("ads_analises_salvas", [])
+        analises_ads = analises_ads_para_rm
         acoes_rm_ads = {}
         for i in range(len(analises_ads_para_rm)):
             acoes_rm_ads[f"rm_{i}"] = st.button(f"_rm_ads_analise_{i}_", key=f"btn_rm_ads_analise_{i}")

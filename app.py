@@ -7420,6 +7420,24 @@ function triggerTab(label) {{
 </script>
 """, height=90, scrolling=False)
 
+    # ── Correção de gap entre iframes (mesma técnica da página Redes) ──
+    st.markdown("""
+    <style>
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) + [data-testid="stElementContainer"]:has(iframe) {
+        margin-top: 0 !important;
+    }
+    [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] iframe) {
+        gap: 0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     if not todas_empresas:
         st.info("Cadastre sua empresa e concorrentes para usar esta funcionalidade.")
         st.stop()

@@ -7059,7 +7059,66 @@ function triggerGhost(label){{
     for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
 }}
 function triggerBuscar(){{ triggerGhost('ads_buscar_header_trigger'); }}
-function triggerLimpar(){{ triggerGhost('ads_limpar_cache'); }}
+function triggerLimpar() {{
+    abrirConfirmacao(
+        '🗑️ Limpar cache de anúncios',
+        'Tem certeza que deseja limpar todos os anúncios coletados? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, limpar',
+        function() {{ triggerGhost('ads_limpar_cache'); }}
+    );
+}}
+
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
  
 function abrirModal() {{
     window.fechar = function() {{
@@ -9363,7 +9422,23 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     _ph_comp_ads.empty()
                     st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
  
-        analises_ads = st.session_state.get("ads_analises_salvas", [])
+        analises_ads_para_rm = st.session_state.get("ads_analises_salvas", [])
+        acoes_rm_ads = {}
+        for i in range(len(analises_ads_para_rm)):
+            acoes_rm_ads[f"rm_{i}"] = st.button(f"_rm_ads_analise_{i}_", key=f"btn_rm_ads_analise_{i}")
+
+        rm_css_ads = "\n".join([
+            f".st-key-btn_rm_ads_analise_{i} {{ display: none !important; }}"
+            f".stElementContainer:has(.st-key-btn_rm_ads_analise_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+            for i in range(len(analises_ads_para_rm))
+        ])
+        st.markdown(f"<style>{rm_css_ads}</style>", unsafe_allow_html=True)
+
+        for i in range(len(analises_ads_para_rm) - 1, -1, -1):
+            if acoes_rm_ads.get(f"rm_{i}"):
+                st.session_state.ads_analises_salvas.pop(i)
+                salvar_dados_usuario(st.session_state.user.id)
+                st.rerun()
  
         ICON_SVG_ADS = {
             "megaphone": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',

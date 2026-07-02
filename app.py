@@ -344,6 +344,90 @@ Instagram: {emp['instagram']}
     except Exception as e:
         return f"Erro: {str(e)}"
 
+def montar_contexto_concorrente(nome: str) -> str:
+    """Monta um resumo em texto dos dados REAIS já coletados sobre um
+    concorrente (ads, redes sociais, SEO), para alimentar o prompt da IA."""
+    partes = [f"Concorrente: {nome}"]
+
+    # ── Ads Library ──────────────────────────────────────────────
+    ads_entry = st.session_state.get("ads_cache", {}).get(nome)
+    if ads_entry and ads_entry.get("data"):
+        ads = ads_entry["data"]
+        contagem_formato = {}
+        for a in ads:
+            fmt = a.get("formato", "Desconhecido")
+            contagem_formato[fmt] = contagem_formato.get(fmt, 0) + 1
+        resumo_formatos = ", ".join(f"{v} {k}" for k, v in contagem_formato.items())
+        partes.append(
+            f"Anúncios ativos coletados: {len(ads)} (por formato: {resumo_formatos}). "
+            f"Última coleta: {ads_entry.get('ts', 'não informada')}."
+        )
+    else:
+        partes.append("Anúncios: nenhum dado coletado ainda na Biblioteca de Ads.")
+
+    # ── Redes sociais ────────────────────────────────────────────
+    dados_redes = st.session_state.get("metricas_redes", {}).get("dados", [])
+    perfil_redes = next((r for r in dados_redes if r.get("nome") == nome), None)
+    if perfil_redes:
+        partes.append(
+            f"Instagram ({perfil_redes.get('handle', '')}): "
+            f"{perfil_redes.get('seguidores', 0)} seguidores, "
+            f"engajamento de {perfil_redes.get('eng_pct', 0)}%."
+        )
+    else:
+        partes.append("Redes sociais: nenhum dado coletado ainda.")
+
+    # ── SEO / site ───────────────────────────────────────────────
+    seo_entry = st.session_state.get("seo_cache", {}).get(nome)
+    if seo_entry and seo_entry.get("status") == "ok":
+        contato = seo_entry.get("contato", {})
+        canais_contato = [k for k, v in contato.items() if v]
+        partes.append(
+            f"Site — título: \"{seo_entry.get('title', '')}\". "
+            f"Descrição: \"{seo_entry.get('description', '')}\". "
+            f"Canais de contato detectados: {', '.join(canais_contato) if canais_contato else 'nenhum'}."
+        )
+    else:
+        partes.append("Site: nenhum dado de SEO coletado ainda.")
+
+    return "\n".join(partes)
+
+def gerar_insight_concorrente(nome_concorrente: str, periodo: str) -> str:
+    """Gera um battle card usando os dados REAIS já coletados (ads, redes,
+    SEO) sobre a empresa do usuário e o concorrente selecionado."""
+    if gemini_model is None:
+        return "Erro: Chave API Gemini não configurada."
+    try:
+        emp = st.session_state.dados["minha_empresa"]
+        contexto_minha_empresa = (
+            f"Minha empresa: {emp.get('nome', '')}\n"
+            f"Setor: {emp.get('setor', '')}\n"
+            f"{montar_contexto_concorrente(emp.get('nome', ''))}"
+        )
+        contexto_concorrente = montar_contexto_concorrente(nome_concorrente)
+
+        prompt = f"""
+Você é um analista de inteligência competitiva. Com base SOMENTE nos dados
+reais abaixo (não invente números que não foram fornecidos), gere um battle
+card objetivo para ajudar "{emp.get('nome', 'minha empresa')}" a competir
+com "{nome_concorrente}" no período de {periodo}.
+
+=== DADOS DA MINHA EMPRESA ===
+{contexto_minha_empresa}
+
+=== DADOS DO CONCORRENTE ===
+{contexto_concorrente}
+
+Estruture a resposta em: (1) Onde o concorrente está mais forte agora,
+(2) Onde há espaço para minha empresa se diferenciar, (3) 3 ações
+práticas recomendadas para esse período. Se algum dado não foi coletado,
+diga isso explicitamente em vez de supor um valor.
+"""
+        resposta = gemini_model.generate_content(prompt)
+        return resposta.text
+    except Exception as e:
+        return f"Erro: {str(e)}"
+
 # ---------------------------------------------------
 # TRAFILATURA — EXTRAÇÃO DE CONTEÚDO
 # ---------------------------------------------------
@@ -10421,6 +10505,7 @@ setTimeout(syncH, 600);
 
 elif st.session_state.pagina == "insights":
 
+    import datetime
     periodo, data_inicio = cabecalho_analise("✨ Insights", "Estratégias geradas por IA para vencer a concorrência")
     concorrentes = st.session_state.dados["concorrentes"]
 
@@ -10436,9 +10521,32 @@ elif st.session_state.pagina == "insights":
             gerar = st.button("⚡ Gerar Insight", type="primary", use_container_width=True)
 
         if gerar:
-            with st.spinner("Gerando insight..."):
-                resposta = consultar_ia(f"Gere um battle card focado em vencer o concorrente {target} considerando o período: {periodo}.")
+            with st.spinner("Gerando insight com os dados coletados..."):
+                resposta = gerar_insight_concorrente(target, periodo)
                 st.markdown(resposta)
+
+                if not resposta.startswith("Erro:"):
+                    st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
+                    st.session_state.analises_salvas.append({
+                        "titulo": f"Insight — {target} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resposta,
+                        "tipo": "insight_concorrente",
+                        "empresa": target,
+                    })
+                    salvar_analises()
+                    st.toast("Insight salvo!", icon="✅")
+
+        # ── Histórico de insights já gerados ────────────────────────
+        historico = [
+            a for a in st.session_state.get("analises_salvas", [])
+            if a.get("tipo") == "insight_concorrente"
+        ]
+        if historico:
+            st.markdown("<div style='margin-top:28px;font-size:16px;font-weight:700;color:#111827;'>Histórico de insights</div>", unsafe_allow_html=True)
+            for i, item in enumerate(reversed(historico)):
+                with st.expander(f"{item.get('titulo', 'Insight')}"):
+                    st.markdown(item.get("relatorio", ""))
     else:
         st.info("Adicione concorrentes para gerar insights estratégicos.")
 

@@ -174,9 +174,34 @@ def login_supabase(email: str, senha: str):
 def cadastro_supabase(email: str, senha: str):
     try:
         res = supabase.auth.sign_up({"email": email, "password": senha})
+        if res.user:
+            garantir_linha_usuario(res.user.id)
         return res.user, None
     except Exception as e:
         return None, str(e)
+
+def garantir_linha_usuario(user_id: str):
+    try:
+        existe = (
+            supabase.table("ci_dados")
+            .select("user_id")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if not existe.data:
+            supabase.table("ci_dados").insert({
+                "user_id": user_id,
+                "minha_empresa": {},
+                "concorrentes": [],
+                "metricas_redes": {},
+                "ads_cache": {},
+                "analises_salvas": [],
+                "redes_analises_salvas": [],
+                "ads_analises_salvas": [],
+                "seo_cache": {},
+            }).execute()
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao inicializar dados: {e}", icon="⚠️")
 
 def logout_supabase():
     try:
@@ -220,20 +245,24 @@ def carregar_dados_usuario(user_id: str) -> dict:
         "ads_analises_salvas": [],
     }
 
-def salvar_dados_usuario(user_id: str):
+def salvar_empresa_e_concorrentes():
     try:
-        payload = {
-            "user_id": user_id,
+        supabase.table("ci_dados").update({
             "minha_empresa": st.session_state.dados["minha_empresa"],
             "concorrentes": st.session_state.dados["concorrentes"],
-            "metricas_redes": st.session_state.metricas_redes,
+        }).eq("user_id", st.session_state.user.id).execute()
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao salvar: {e}", icon="⚠️")
+
+def salvar_analises():
+    try:
+        supabase.table("ci_dados").update({
             "analises_salvas": st.session_state.get("analises_salvas", []),
             "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
             "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
-        }
-        supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
+        }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar: {e}", icon="⚠️")
+        st.toast(f"⚠️ Erro ao salvar análises: {e}", icon="⚠️")
 
 # ---------------------------------------------------
 # ESTADO DA SESSÃO
@@ -660,21 +689,13 @@ def extrair_sitemap(url: str) -> dict:
 
 # SALVAR — SEO CACHE  -------------
 def salvar_seo_cache():
-    """Persiste st.session_state.seo_cache no Supabase."""
+    """Persiste st.session_state.seo_cache no Supabase (update parcial)."""
     try:
         user_id = st.session_state.user.id
         seo_cache = st.session_state.get("seo_cache", {})
-        payload = {
-            "user_id": user_id,
-            "minha_empresa":  st.session_state.dados["minha_empresa"],
-            "concorrentes":   st.session_state.dados["concorrentes"],
-            "metricas_redes": st.session_state.get("metricas_redes", {}),
-            "analises_salvas":       st.session_state.get("analises_salvas", []),
-            "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
-            "ads_analises_salvas":   st.session_state.get("ads_analises_salvas", []),
-            "seo_cache": seo_cache,        # ← campo novo
-        }
-        supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
+        supabase.table("ci_dados").update({
+            "seo_cache": seo_cache,
+        }).eq("user_id", user_id).execute()
     except Exception as e:
         st.toast(f"⚠️ Erro ao salvar SEO: {e}", icon="⚠️")
 
@@ -1631,7 +1652,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 def salvar_cache_ads(dados: dict):
     try:
         user_id = st.session_state.user.id
- 
+
         dados_limpos = {}
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
@@ -1643,15 +1664,10 @@ def salvar_cache_ads(dados: dict):
                 ads_limpos.append(ad_limpo)
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
- 
-        payload = {
-            "user_id": user_id,
-            "minha_empresa": st.session_state.dados.get("minha_empresa", {}),
-            "concorrentes": st.session_state.dados.get("concorrentes", []),
-            "metricas_redes": st.session_state.get("metricas_redes", {}),
+
+        supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,
-        }
-        supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
+        }).eq("user_id", user_id).execute()
     except Exception as e:
         st.toast(f"⚠️ Erro ao salvar cache de ads: {e}", icon="⚠️")
 

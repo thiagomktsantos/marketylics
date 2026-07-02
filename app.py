@@ -10506,49 +10506,1070 @@ setTimeout(syncH, 600);
 elif st.session_state.pagina == "insights":
 
     import datetime
-    periodo, data_inicio = cabecalho_analise("✨ Insights", "Estratégias geradas por IA para vencer a concorrência")
+    import json as _json_ins
+    import re as _re_ins
+
     concorrentes = st.session_state.dados["concorrentes"]
 
-    if concorrentes:
-        col_sel, col_btn = st.columns([4, 2])
-        with col_sel:
-            target = st.selectbox(
-                "Gerar estratégia contra:",
-                [c["nome"] for c in concorrentes],
-                label_visibility="collapsed"
-            )
-        with col_btn:
-            gerar = st.button("⚡ Gerar Insight", type="primary", use_container_width=True)
+    # ── Cabeçalho (mesmo padrão das outras páginas) ─────────────────
+    components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div class="titulo">✨ Insights</div>
+<div class="sub">Estratégias geradas por IA para vencer a concorrência.</div>
+""", height=65)
 
-        if gerar:
-            with st.spinner("Gerando insight com os dados coletados..."):
-                resposta = gerar_insight_concorrente(target, periodo)
-                st.markdown(resposta)
+    st.markdown("""
+        <div style="margin-top: 5px;">
+            <hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 24px 0'/>
+        </div>
+    """, unsafe_allow_html=True)
 
-                if not resposta.startswith("Erro:"):
-                    st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
-                    st.session_state.analises_salvas.append({
-                        "titulo": f"Insight — {target} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resposta,
-                        "tipo": "insight_concorrente",
-                        "empresa": target,
-                    })
-                    salvar_analises()
-                    st.toast("Insight salvo!", icon="✅")
+    if not concorrentes:
+        st.markdown("""
+        <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;
+                    padding:48px 32px;text-align:center;margin-top:8px'>
+            <div style='font-size:32px;margin-bottom:12px'>✨</div>
+            <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum concorrente cadastrado</div>
+            <div style='font-size:14px;color:#9ca3af'>Adicione concorrentes para gerar insights estratégicos.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.stop()
 
-        # ── Histórico de insights já gerados ────────────────────────
-        historico = [
-            a for a in st.session_state.get("analises_salvas", [])
-            if a.get("tipo") == "insight_concorrente"
-        ]
-        if historico:
-            st.markdown("<div style='margin-top:28px;font-size:16px;font-weight:700;color:#111827;'>Histórico de insights</div>", unsafe_allow_html=True)
-            for i, item in enumerate(reversed(historico)):
-                with st.expander(f"{item.get('titulo', 'Insight')}"):
-                    st.markdown(item.get("relatorio", ""))
+    # ── Estado ────────────────────────────────────────────────────
+    if "insights_target_idx" not in st.session_state:
+        st.session_state.insights_target_idx = 0
+    st.session_state.insights_target_idx = min(
+        st.session_state.insights_target_idx, len(concorrentes) - 1
+    )
+
+    concorrentes_ctrl_json = _json_ins.dumps(
+        [{"nome": c["nome"]} for c in concorrentes], ensure_ascii=False
+    )
+
+    # ── Ghost button: selecionar concorrente ────────────────────────
+    ghost_sel_key = "btn_insights_sel_target"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_sel_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_sel_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    _sel_clicked = False
+    _sel_idx_recebido = st.text_input("_ins_sel_hidden", value="", label_visibility="collapsed", key="_ins_sel_hidden_input")
+    if st.button("insights_sel_target", key=ghost_sel_key):
+        try:
+            novo_idx = int(st.session_state.get("_ins_sel_hidden_input", "0") or 0)
+            st.session_state.insights_target_idx = max(0, min(novo_idx, len(concorrentes) - 1))
+        except Exception:
+            pass
+        st.rerun()
+
+    st.markdown("""
+    <style>
+    .st-key-_ins_sel_hidden_input {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+    }
+    .stElementContainer:has(.st-key-_ins_sel_hidden_input) {
+        display:none !important; height:0 !important; margin:0 !important; padding:0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Ghost button: gerar insight ──────────────────────────────
+    ghost_gerar_key = "btn_insights_gerar"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_gerar_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_gerar_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    gerar = st.button("insights_gerar", key=ghost_gerar_key)
+
+    # ── Painel de controle (dropdown estilizado + botão) ────────────
+    target_atual = concorrentes[st.session_state.insights_target_idx]["nome"]
+
+    components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+
+.ctrl-box {{
+    background:#d2dde9; border-radius:14px;
+    padding:14px 16px; display:flex;
+    gap:12px; align-items:center; position:relative; overflow:visible;
+    width:100%; box-sizing:border-box;
+}}
+.col-select {{ position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:visible; }}
+
+.dd-wrap {{ position:relative; width:100%; }}
+.dd-trigger {{
+    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    padding:8px 12px; display:flex; align-items:center;
+    cursor:pointer; transition:box-shadow 0.15s;
+    width:100%;
+}}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-icon {{
+    width:36px; height:36px; border-radius:9px; background:#dbeafe;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}}
+.dd-icon svg {{ width:18px; height:18px; }}
+.dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
+.dd-nome {{
+    font-size:14px; font-weight:700; color:#1a2e4a;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
+}}
+.dd-handle {{ font-size:12px; color:#9ca3af; }}
+.dd-badge-conc {{
+    margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
+    gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    white-space:nowrap; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
+}}
+.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
+.dd-arrow.open {{ transform:rotate(180deg); }}
+
+.dd-list {{
+    position:absolute; top:calc(100% + 6px); left:0;
+    width:100%;
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
+    max-height:320px; overflow-y:auto; display:none; padding:6px;
+    box-sizing:border-box;
+}}
+.dd-list.open {{ display:block; }}
+.dd-item {{
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:all 0.15s; margin-bottom:6px;
+}}
+.dd-item:last-child {{ margin-bottom:0; }}
+.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
+.dd-item .dd-icon {{ background:#e9eef5; }}
+.dd-item.selected .dd-icon {{ background:#dbeafe; }}
+
+.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
+.ctrl-btn {{
+    width:100%; height:44px; border-radius:10px; border:none;
+    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    transition:all 0.15s; white-space:nowrap; padding:0 14px;
+}}
+.btn-gerar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:200px; }}
+.btn-gerar:hover {{ background:#1a3f6a; }}
+.btn-gerar:disabled {{ opacity:0.6; cursor:not-allowed; }}
+</style>
+
+<div class="ctrl-box">
+    <div class="col-select">
+        <div class="dd-wrap" id="dd-wrap">
+            <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
+                <div class="dd-icon" id="dd-trigger-icon"></div>
+                <div class="dd-info">
+                    <span class="dd-nome" id="dd-trigger-nome"></span>
+                    <div class="dd-handle">Gerar estratégia contra este concorrente</div>
+                </div>
+                <span class="dd-badge-conc">Concorrente</span>
+                <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </div>
+            <div class="dd-list" id="dd-list"></div>
+        </div>
+    </div>
+    <div class="col-btns">
+        <button class="ctrl-btn btn-gerar" id="btn-gerar" onclick="triggerGerar()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            Gerar Insight
+        </button>
+    </div>
+</div>
+
+<script>
+var EMPRESAS_CTRL = {concorrentes_ctrl_json};
+var SELECTED_IDX = {st.session_state.insights_target_idx};
+
+function iconSvg() {{
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+         + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
+         + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
+         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#3b82f6"/>'
+         + '</svg>';
+}}
+
+function renderTrigger() {{
+    var e = EMPRESAS_CTRL[SELECTED_IDX];
+    if (!e) return;
+    document.getElementById('dd-trigger-nome').textContent = e.nome;
+    document.getElementById('dd-trigger-icon').innerHTML = iconSvg();
+}}
+
+function renderList() {{
+    var list = document.getElementById('dd-list');
+    list.innerHTML = '';
+    EMPRESAS_CTRL.forEach(function(e, i) {{
+        var item = document.createElement('div');
+        item.className = 'dd-item' + (i === SELECTED_IDX ? ' selected' : '');
+        item.innerHTML =
+            '<div class="dd-icon">' + iconSvg() + '</div>'
+            + '<div class="dd-info">'
+            + '<span class="dd-nome">' + e.nome + '</span>'
+            + '</div>'
+            + '<span class="dd-badge-conc">Concorrente</span>';
+        item.onclick = function() {{ selectItem(i); }};
+        list.appendChild(item);
+    }});
+}}
+
+function selectItem(i) {{
+    SELECTED_IDX = i;
+    renderTrigger();
+    closeDropdown();
+    var hiddenInputs = window.parent.document.querySelectorAll('.st-key-_ins_sel_hidden_input input');
+    if (hiddenInputs.length) {{
+        var inp = hiddenInputs[0];
+        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, String(i));
+        inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        setTimeout(function() {{
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+                if (txt === 'insights_sel_target') {{ b.click(); return; }}
+            }}
+        }}, 60);
+    }}
+}}
+
+function toggleDropdown() {{
+    var isOpen = document.getElementById('dd-list').classList.contains('open');
+    if (isOpen) closeDropdown(); else openDropdown();
+}}
+
+function openDropdown() {{
+    renderList();
+    document.getElementById('dd-list').classList.add('open');
+    document.getElementById('dd-arrow').classList.add('open');
+    setHeight(true);
+}}
+
+function closeDropdown() {{
+    document.getElementById('dd-list').classList.remove('open');
+    document.getElementById('dd-arrow').classList.remove('open');
+    setHeight(false);
+}}
+
+document.addEventListener('click', function(e) {{
+    var wrap = document.getElementById('dd-wrap');
+    if (wrap && !wrap.contains(e.target)) closeDropdown();
+}});
+
+function triggerGerar() {{
+    var btn = document.getElementById('btn-gerar');
+    btn.disabled = true;
+    btn.innerHTML = 'Gerando...';
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
+        if (txt === 'insights_gerar') {{ b.click(); return; }}
+    }}
+}}
+
+function setHeight(isOpen) {{
+    var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 60) + 20, 300) : 0;
+    var h = 86 + (isOpen ? listH + 10 : 0);
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = h + 'px';
+            iframes[i].style.zIndex = isOpen ? '9999' : '1';
+            iframes[i].style.overflow = 'visible';
+            var parent = iframes[i].parentElement;
+            var depth = 0;
+            while (parent && depth < 8) {{
+                parent.style.overflow = isOpen ? 'visible' : '';
+                parent.style.zIndex  = isOpen ? '9999' : '';
+                var isBlockContainer = parent.getAttribute &&
+                    (parent.getAttribute('data-testid') === 'stVerticalBlock' ||
+                     parent.getAttribute('data-testid') === 'stHorizontalBlock');
+                parent = parent.parentElement;
+                depth++;
+                if (isBlockContainer) break;
+            }}
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+
+renderTrigger();
+setHeight(false);
+</script>
+""", height=86, scrolling=False)
+
+    st.markdown("""
+        <div style="margin-top: 5px;">
+            <hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # ── Geração do insight ───────────────────────────────────────
+    if gerar:
+        target_gerar = concorrentes[st.session_state.insights_target_idx]["nome"]
+        _ph = st.empty()
+        with _ph.container():
+            components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
+.overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.card {
+    background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,460px);
+    box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f;
+    display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.spin {
+    width:40px; height:40px; border:3px solid rgba(255,255,255,0.15);
+    border-top-color:#3a9fd6; border-radius:50%; animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.txt { font-size:15px; font-weight:700; color:#f1f5f9; text-align:center; }
+.sub { font-size:13px; color:#94a3b8; text-align:center; }
+</style>
+<div class="overlay"><div class="card">
+    <div class="spin"></div>
+    <div class="txt">Gerando insight estratégico...</div>
+    <div class="sub">Analisando dados coletados do concorrente</div>
+</div></div>
+<script>
+(function() {
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+        try { if (iframes[i].contentWindow === window) {
+            iframes[i].style.position='fixed'; iframes[i].style.inset='0';
+            iframes[i].style.width='100vw'; iframes[i].style.height='100vh';
+            iframes[i].style.zIndex='999998'; iframes[i].style.border='none';
+            break;
+        } } catch(e) {}
+    }
+})();
+</script>
+""", height=10, scrolling=False)
+
+            resposta = gerar_insight_concorrente(target_gerar, periodo if "periodo" in dir() else None)
+
+        _ph.empty()
+
+        if not resposta.startswith("Erro:"):
+            st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
+            st.session_state.analises_salvas.append({
+                "titulo": f"Insight — {target_gerar} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "relatorio": resposta,
+                "tipo": "insight_concorrente",
+                "empresa": target_gerar,
+            })
+            salvar_analises()
+            st.toast("✅ Insight gerado e salvo!", icon="✅")
+        else:
+            st.toast(f"⚠️ {resposta}", icon="⚠️")
+        st.rerun()
+
+    # ── Histórico de insights (cards no padrão das outras páginas) ─
+    historico = [
+        a for a in st.session_state.get("analises_salvas", [])
+        if a.get("tipo") == "insight_concorrente"
+    ]
+
+    st.markdown("""
+    <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:10px;">
+        Histórico de insights
+    </div>
+    """, unsafe_allow_html=True)
+
+    ICON_RAIO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
+
+    if not historico:
+        st.markdown("""
+        <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                    text-align:center;background:#fff;
+                    display:flex;flex-direction:column;align-items:center;gap:10px;">
+            <div style="font-size:28px;">✨</div>
+            <div style="font-size:14px;color:#9ca3af;">Nenhum insight gerado ainda.</div>
+            <div style="font-size:13px;color:#9ca3af;">Selecione um concorrente acima e clique em <b>Gerar Insight</b>.</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.info("Adicione concorrentes para gerar insights estratégicos.")
+        def _md_to_html_insights(txt):
+            if not txt:
+                return ""
+            txt = txt.replace("&", "&amp;")
+            txt = _re_ins.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+            txt = _re_ins.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re_ins.MULTILINE)
+            txt = _re_ins.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re_ins.MULTILINE)
+            txt = _re_ins.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re_ins.MULTILINE)
+            txt = _re_ins.sub(r'^---+$', '<hr>', txt, flags=_re_ins.MULTILINE)
+
+            def _apply_inline(s):
+                return _re_ins.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
+
+            def _get_ol_match(line):
+                return _re_ins.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+
+            def _get_ul_match(line):
+                return _re_ins.match(r'^(\s*)[\*\-]\s+(.*)', line)
+
+            lines = txt.split('\n')
+            output = []
+            list_stack = []
+
+            def close_until(target_indent):
+                while list_stack and list_stack[-1][1] >= target_indent:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
+
+            def close_all():
+                while list_stack:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
+
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                if not line.strip():
+                    i += 1
+                    continue
+                stripped = line.strip()
+                if _re_ins.match(r'^\s*<(h[123]|hr)', line):
+                    close_all()
+                    output.append(stripped)
+                    i += 1
+                    continue
+                m_ol = _get_ol_match(line)
+                if m_ol:
+                    item_indent = len(m_ol.group(1))
+                    content = _apply_inline(m_ol.group(3))
+                    close_until(item_indent + 1)
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ol':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ol':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
+                        output.append('<ol>')
+                        list_stack.append(('ol', item_indent))
+                    output.append(f'<li>{content}</li>')
+                    i += 1
+                    continue
+                m_ul = _get_ul_match(line)
+                if m_ul:
+                    item_indent = len(m_ul.group(1))
+                    content = _apply_inline(m_ul.group(2))
+                    close_until(item_indent + 1)
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ul':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ul':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
+                        output.append('<ul>')
+                        list_stack.append(('ul', item_indent))
+                    output.append(f'<li>{content}</li>')
+                    i += 1
+                    continue
+                close_all()
+                output.append(f'<p>{_apply_inline(stripped)}</p>')
+                i += 1
+
+            close_all()
+            html = '\n'.join(output)
+
+            def _get_icon_for_title(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'panorama', 'resumo', 'geral', 'sobre']):
+                    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>', '#dbeafe'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'vantagem']):
+                    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>', '#dcebe7'
+                if any(w in t for w in ['fraqueza', 'atenção', 'aten', 'risco', 'ameaça', 'limita']):
+                    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>', '#fef3e2'
+                if any(w in t for w in ['ação', 'ações', 'recomenda', 'plano', 'estratégia', 'estrategia', 'sugest']):
+                    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>', '#dceef5'
+                if any(w in t for w in ['oportunidade', 'crescimento', 'potencial']):
+                    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>', '#e3e8f7'
+                return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>', '#eef1f5'
+
+            def _get_title_color(title_clean):
+                t = title_clean.lower()
+                if any(w in t for w in ['posicionamento', 'identidade', 'vis', 'panorama', 'resumo', 'geral', 'sobre']):
+                    return '#2563eb'
+                if any(w in t for w in ['forte', 'positivo', 'destaque', 'funciona', 'vantagem']):
+                    return '#0d9488'
+                if any(w in t for w in ['fraqueza', 'atenção', 'aten', 'risco', 'ameaça', 'limita']):
+                    return '#b45309'
+                if any(w in t for w in ['ação', 'ações', 'recomenda', 'plano', 'estratégia', 'estrategia', 'sugest']):
+                    return '#4338ca'
+                if any(w in t for w in ['oportunidade', 'crescimento', 'potencial']):
+                    return '#0369a1'
+                return '#475569'
+
+            def _wrap_section(html_str):
+                partes = _re_ins.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_re_ins.DOTALL)
+                output_parts = []
+                i2 = 0
+                while i2 < len(partes):
+                    parte = partes[i2]
+                    m_hdr = _re_ins.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_re_ins.DOTALL)
+                    if m_hdr:
+                        hdr_txt = m_hdr.group(2)
+                        hdr_txt_clean = _re_ins.sub(r'<[^>]+>', '', hdr_txt)
+                        conteudo = partes[i2 + 1] if i2 + 1 < len(partes) else ""
+                        i2 += 1
+                        icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
+                        title_color = _get_title_color(hdr_txt_clean)
+                        caixa = (
+                            f'<div class="sec-card">'
+                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                            f'  <div class="sec-body">'
+                            f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                            f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                            f'    <div class="sec-content">{conteudo}</div>'
+                            f'  </div>'
+                            f'</div>'
+                        )
+                        output_parts.append(caixa)
+                    else:
+                        output_parts.append(parte)
+                    i2 += 1
+                return ''.join(output_parts)
+
+            html = _re_ins.sub(r'<p><strong>([^<]+?):?</strong></p>', r'<h3>\1</h3>', html)
+            html = _wrap_section(html)
+            return html
+
+        historico_rev = list(reversed(historico))
+        relatorios_ins = {str(i): _md_to_html_insights(a.get("relatorio", "")) for i, a in enumerate(historico)}
+        relatorios_ins_json = _json_ins.dumps(relatorios_ins, ensure_ascii=False)
+        relatorios_raw_ins = {str(i): a.get("relatorio", "") for i, a in enumerate(historico)}
+        relatorios_raw_ins_json = _json_ins.dumps(relatorios_raw_ins, ensure_ascii=False)
+
+        # ── Ghost buttons de exclusão ────────────────────────────
+        acoes_rm_ins = {}
+        for i in range(len(historico)):
+            ghost_rm_k = f"btn_rm_insight_{i}"
+            st.markdown(f"""
+            <style>
+            .st-key-{ghost_rm_k} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{ghost_rm_k}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            acoes_rm_ins[i] = st.button(f"_rm_insight_{i}_", key=ghost_rm_k)
+
+        for i in range(len(historico) - 1, -1, -1):
+            if acoes_rm_ins.get(i):
+                idx_global = st.session_state.analises_salvas.index(historico[i])
+                st.session_state.analises_salvas.pop(idx_global)
+                salvar_analises()
+                st.rerun()
+
+        cards_ins_html = ""
+        first_item = historico_rev[0] if historico_rev else None
+        last_item = historico_rev[-1] if historico_rev else None
+        for a in historico_rev:
+            idx_real = historico.index(a)
+            titulo_a = a.get("titulo", "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            nome_arq = titulo_a.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "").replace(".", "")
+
+            cards_ins_html += f"""
+<div class="card-row" style="border-radius:{'14px 14px 0 0' if a == first_item else ('0 0 14px 14px' if a == last_item else '0')};overflow:hidden;">
+    <div class="card-hdr" data-idx="{idx_real}">
+        <span class="card-hdr-icon">{ICON_RAIO}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+        <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+        </button>
+        <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+            </svg>
+        </button>
+        <span class="btn-chevron" data-idx="{idx_real}"
+              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+    <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div style="padding:16px 18px;">
+            <div id="rr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>
+        </div>
+        <div class="card-footer">
+            <button class="btn-dl" data-idx="{idx_real}" data-filename="{nome_arq}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Baixar .txt
+            </button>
+            <button class="btn-del" data-idx="{idx_real}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+                Excluir
+            </button>
+        </div>
+    </div>
+</div>"""
+
+        CSS_INS = """
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+body { padding-bottom:8px; }
+
+.card-hdr-icon {
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:20px; height:20px; color:#cbd5e1;
+}
+.card-hdr-icon svg { width:18px; height:18px; }
+
+.sec-card {
+    display: flex; align-items: flex-start; gap: 18px;
+    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px;
+    padding: 20px 22px; margin: 0 0 12px 0;
+}
+.sec-icon-wrap {
+    width: 48px; height: 48px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.sec-icon-wrap svg { width: 22px; height: 22px; }
+.sec-body { flex: 1; min-width: 0; }
+.sec-title { font-size: 13px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 8px; }
+.sec-divider { height: 1.5px; border-radius: 2px; margin-bottom: 12px; }
+.sec-content { font-size: 14px; color: #374151; line-height: 1.75; }
+.sec-content p { margin: 0 0 8px; }
+.sec-content strong { font-weight: 700; color: #111827; }
+.sec-content em { font-style: italic; }
+
+.sec-content ol { list-style: none; padding: 0; margin: 6px 0 0 0; counter-reset: sec-counter; }
+.sec-content ol > li { position: relative; padding-left: 36px; margin-bottom: 10px; line-height: 1.65; counter-increment: sec-counter; }
+.sec-content ol > li::before {
+    content: counter(sec-counter); position: absolute; left: 0; top: 1px;
+    width: 24px; height: 24px; border-radius: 50%; background: #64748b; color: #fff;
+    font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; line-height: 1;
+}
+.sec-content ul { list-style: none; padding: 0; margin: 6px 0 0 0; }
+.sec-content ul > li { position: relative; padding-left: 20px; margin-bottom: 8px; line-height: 1.65; }
+.sec-content ul > li::before {
+    content: ''; position: absolute; left: 0; top: 8px;
+    width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
+}
+
+.card-row { border-bottom: 1px solid #f3f4f6; background: #dde5ed; }
+.card-hdr {
+    display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer;
+    background-color: #17406a; transition: background 0.15s;
+}
+.card-hdr:hover { background-color: #21719c; }
+
+.card-footer {
+    display: flex; gap: 10px; padding: 12px 18px; background: #91a49b;
+    border-top: 1px solid #dde5ed; align-items: center;
+}
+.btn-dl {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 16px; border-radius: 10px; border: 1.5px solid #e5e7eb; background: #fff;
+    font-size: 13px; font-weight: 700; color: #374151; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+}
+.btn-dl:hover { border-color: #3a9fd6; background: #eff6ff; color: #1d4ed8; }
+.btn-del {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 18px; border-radius: 10px; border: 1.5px solid #fecaca; background: #fef2f2;
+    font-size: 13px; font-weight: 700; color: #dc2626; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.15s; white-space: nowrap;
+}
+.btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+
+#smb_ins h1, #smb_ins h2, #smb_ins h3 {
+    font-size: 16px; font-weight: 800; color: #0f1f35;
+    margin: 18px 0 8px; padding-bottom: 6px; border-bottom: 2px solid #e5e7eb; text-transform: uppercase;
+}
+#smb_ins p  { margin: 0 0 10px; line-height: 1.75; }
+#smb_ins ul { margin: 6px 0 14px 24px; }
+#smb_ins li { margin: 0 0 4px; line-height: 1.65; }
+#smb_ins li::marker { color: #00c162; }
+#smb_ins hr { display: none; }
+#smb_ins .sec-card { border: 1px solid #e5e7eb; }
+"""
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+{CSS_INS}
+</style>
+
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_ins_html}
+</div>
+
+<script>
+var RELS     = {relatorios_ins_json};
+var RELS_RAW = {relatorios_raw_ins_json};
+
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.marginTop = '0';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+
+function toggleIns(idx) {{
+    var b = document.getElementById('rb_' + idx);
+    var r = document.getElementById('rr_' + idx);
+    var chevrons = document.querySelectorAll('.btn-chevron[data-idx="' + idx + '"]');
+    if (!b) return;
+    var open = b.style.display !== 'none';
+    b.style.display = open ? 'none' : 'block';
+    chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+    if (!open && r && !r.dataset.loaded) {{
+        r.innerHTML = RELS[String(idx)] || '';
+        r.dataset.loaded = '1';
+    }}
+    setTimeout(syncH, 100);
+}}
+
+function abrirModal(idx) {{
+    var doc  = window.parent.document;
+    var html = RELS[String(idx)] || '';
+    var raw  = RELS_RAW[String(idx)] || '';
+    var old  = doc.getElementById('insights_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'insights_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
+        + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
+
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
+        + 'background:#0e2a47;flex-shrink:0;gap:12px;';
+
+    var titleEl = doc.createElement('div');
+    titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
+        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    titleEl.textContent = 'Insight completo';
+
+    var rawBtn = doc.createElement('button');
+    rawBtn.id = 'insights_modal_raw_btn';
+    rawBtn.textContent = 'Ver texto original';
+    rawBtn.style.cssText = 'padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;'
+        + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
+        + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
+    rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
+        + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+    closeBtn.addEventListener('click', fecharModal);
+
+    hdr.appendChild(titleEl);
+    hdr.appendChild(rawBtn);
+    hdr.appendChild(closeBtn);
+
+    var body = doc.createElement('div');
+    body.id = 'smb_ins';
+    body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
+        + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
+    body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
+
+    box.appendChild(hdr);
+    box.appendChild(body);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    window.__insightsModalShowingRaw = false;
+    window.parent.__insightsModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
+    doc.addEventListener('keydown', window.parent.__insightsModalEsc);
+}}
+
+function toggleModalView(html, raw) {{
+    var doc  = window.parent.document;
+    var body = doc.getElementById('smb_ins');
+    var btn  = doc.getElementById('insights_modal_raw_btn');
+    if (!body || !btn) return;
+    window.__insightsModalShowingRaw = !window.__insightsModalShowingRaw;
+    if (window.__insightsModalShowingRaw) {{
+        body.style.cssText += ';font-family:monospace;white-space:pre-wrap;font-size:12.5px;background:#0d1117;color:#e6edf3;';
+        body.textContent = raw;
+        btn.textContent  = 'Ver formatado';
+    }} else {{
+        body.style.fontFamily = ''; body.style.whiteSpace = '';
+        body.style.fontSize   = '14px'; body.style.background = '#fff'; body.style.color = '#374151';
+        body.innerHTML  = html;
+        btn.textContent = 'Ver texto original';
+    }}
+}}
+
+function fecharModal() {{
+    var doc = window.parent.document;
+    var ov  = doc.getElementById('insights_modal_overlay');
+    if (ov) ov.remove();
+    if (window.parent.__insightsModalEsc) {{
+        doc.removeEventListener('keydown', window.parent.__insightsModalEsc);
+        window.parent.__insightsModalEsc = null;
+    }}
+}}
+
+function abrirRaw(idx) {{
+    var doc = window.parent.document;
+    var raw = RELS_RAW[String(idx)] || '';
+    var old = doc.getElementById('insights_raw_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'insights_raw_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
+        + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
+        + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+
+    var info = doc.createElement('div');
+    info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
+        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
+
+    var btnsWrap = doc.createElement('div');
+    btnsWrap.style.cssText = 'display:flex;gap:8px;';
+
+    var copyBtn = doc.createElement('button');
+    copyBtn.textContent = '📋 Copiar';
+    copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;';
+    copyBtn.addEventListener('click', function() {{
+        var ta = doc.createElement('textarea');
+        ta.value = raw;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        doc.body.appendChild(ta); ta.focus(); ta.select();
+        try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
+        catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
+        doc.body.removeChild(ta);
+        setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
+    }});
+
+    var closeRaw = doc.createElement('button');
+    closeRaw.textContent = '✕';
+    closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
+        + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;';
+    closeRaw.addEventListener('click', function() {{ ov.remove(); }});
+
+    btnsWrap.appendChild(copyBtn);
+    btnsWrap.appendChild(closeRaw);
+    hdr.appendChild(info);
+    hdr.appendChild(btnsWrap);
+
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
+        + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
+        + 'white-space:pre-wrap;word-break:break-word;';
+    pre.textContent = raw;
+
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+
+function excluirInsight(idx) {{
+    abrirConfirmacao(
+        '🗑️ Excluir insight',
+        'Tem certeza que deseja excluir este insight? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, excluir',
+        function() {{
+            var chave = 'btn_rm_insight_' + idx;
+            var doc = window.parent.document;
+            var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+            if (porClasse) {{ porClasse.click(); return; }}
+            var btns = doc.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
+                if (txt === '_rm_insight_' + idx + '_') {{ b.click(); return; }}
+            }}
+        }}
+    );
+}}
+
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+
+document.addEventListener('click', function(e) {{
+    var fs = e.target.closest('.btn-fullscreen');
+    if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
+
+    var rv = e.target.closest('.btn-raw');
+    if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
+
+    var dl = e.target.closest('.btn-dl');
+    if (dl) {{
+        e.stopPropagation();
+        var raw = RELS_RAW[String(dl.dataset.idx)] || '';
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
+        a.download = dl.dataset.filename + '.txt';
+        a.click();
+        return;
+    }}
+
+    var ex = e.target.closest('.btn-del');
+    if (ex) {{ e.stopPropagation(); excluirInsight(parseInt(ex.dataset.idx)); return; }}
+
+    var hdr = e.target.closest('.card-hdr');
+    if (hdr && !e.target.closest('button')) {{ toggleIns(parseInt(hdr.dataset.idx)); return; }}
+
+    var ch = e.target.closest('.btn-chevron');
+    if (ch) {{ toggleIns(parseInt(ch.dataset.idx)); return; }}
+}});
+
+(function() {{
+    var cards = document.querySelectorAll('[id^="rb_"]');
+    if (cards.length === 1) {{
+        var m = cards[0].id.match(/rb_(\\d+)/);
+        if (m) setTimeout(function() {{ toggleIns(parseInt(m[1])); }}, 150);
+    }}
+}})();
+
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 200);
+setTimeout(syncH, 600);
+</script>
+""", height=100, scrolling=False)
 
 # ---------------------------------------------------
 # PAGINA - REDES SOCIAIS

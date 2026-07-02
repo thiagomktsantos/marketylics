@@ -10542,95 +10542,6 @@ elif st.session_state.pagina == "insights":
         {"value": "90", "label": "Últimos 90 dias"},
     ]
 
-    # ── Ghost button: selecionar concorrente ────────────────────────
-    ghost_sel_key = "btn_insights_sel_target"
-    st.markdown(f"""
-    <style>
-    .st-key-{ghost_sel_key} {{
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-        opacity:0 !important; pointer-events:none !important; display:none !important;
-    }}
-    .stElementContainer:has(.st-key-{ghost_sel_key}) {{
-        display:none !important; height:0 !important; min-height:0 !important;
-        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    _sel_idx_recebido = st.text_input("_ins_sel_hidden", value="", label_visibility="collapsed", key="_ins_sel_hidden_input")
-    if st.button("insights_sel_target", key=ghost_sel_key):
-        try:
-            novo_idx = int(st.session_state.get("_ins_sel_hidden_input", "0") or 0)
-            st.session_state.insights_target_idx = max(0, min(novo_idx, len(concorrentes) - 1))
-        except Exception:
-            pass
-        st.rerun()
-
-    st.markdown("""
-    <style>
-    .st-key-_ins_sel_hidden_input {
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-    }
-    .stElementContainer:has(.st-key-_ins_sel_hidden_input) {
-        display:none !important; height:0 !important; margin:0 !important; padding:0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # ── Ghost button: selecionar período ────────────────────────────
-    ghost_periodo_key = "btn_insights_sel_periodo"
-    st.markdown(f"""
-    <style>
-    .st-key-{ghost_periodo_key} {{
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-        opacity:0 !important; pointer-events:none !important; display:none !important;
-    }}
-    .stElementContainer:has(.st-key-{ghost_periodo_key}) {{
-        display:none !important; height:0 !important; min-height:0 !important;
-        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    _periodo_recebido = st.text_input("_ins_periodo_hidden", value="", label_visibility="collapsed", key="_ins_periodo_hidden_input")
-    if st.button("insights_sel_periodo", key=ghost_periodo_key):
-        novo_periodo = st.session_state.get("_ins_periodo_hidden_input", "") or "30"
-        st.session_state.insights_periodo = novo_periodo
-        st.rerun()
-
-    st.markdown("""
-    <style>
-    .st-key-_ins_periodo_hidden_input {
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-    }
-    .stElementContainer:has(.st-key-_ins_periodo_hidden_input) {
-        display:none !important; height:0 !important; margin:0 !important; padding:0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # ── Ghost button: gerar insight ──────────────────────────────
-    ghost_gerar_key = "btn_insights_gerar"
-    st.markdown(f"""
-    <style>
-    .st-key-{ghost_gerar_key} {{
-        position:fixed !important; top:-9999px !important; left:-9999px !important;
-        width:0 !important; height:0 !important; overflow:hidden !important;
-        opacity:0 !important; pointer-events:none !important; display:none !important;
-    }}
-    .stElementContainer:has(.st-key-{ghost_gerar_key}) {{
-        display:none !important; height:0 !important; min-height:0 !important;
-        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-    }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    gerar = st.button("insights_gerar", key=ghost_gerar_key)
-
     # ── Cabeçalho com painel de controle (2 colunas, igual a Redes) ─
     target_atual = concorrentes[st.session_state.insights_target_idx]["nome"]
     periodo_atual = st.session_state.insights_periodo
@@ -10917,73 +10828,6 @@ setHeight(false);
         </div>
     """, unsafe_allow_html=True)
 
-    # ── Geração do insight ───────────────────────────────────────
-    if gerar:
-        target_gerar = concorrentes[st.session_state.insights_target_idx]["nome"]
-        periodo_gerar = st.session_state.get("insights_periodo", "30")
-        _ph = st.empty()
-        with _ph.container():
-            components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
-.overlay {
-    position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999;
-    display:flex; align-items:center; justify-content:center; padding:24px;
-}
-.card {
-    background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,460px);
-    box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f;
-    display:flex; flex-direction:column; align-items:center; gap:16px;
-}
-.spin {
-    width:40px; height:40px; border:3px solid rgba(255,255,255,0.15);
-    border-top-color:#3a9fd6; border-radius:50%; animation:spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.txt { font-size:15px; font-weight:700; color:#f1f5f9; text-align:center; }
-.sub { font-size:13px; color:#94a3b8; text-align:center; }
-</style>
-<div class="overlay"><div class="card">
-    <div class="spin"></div>
-    <div class="txt">Gerando insight estratégico...</div>
-    <div class="sub">Analisando dados coletados do concorrente</div>
-</div></div>
-<script>
-(function() {
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try { if (iframes[i].contentWindow === window) {
-            iframes[i].style.position='fixed'; iframes[i].style.inset='0';
-            iframes[i].style.width='100vw'; iframes[i].style.height='100vh';
-            iframes[i].style.zIndex='999998'; iframes[i].style.border='none';
-            break;
-        } } catch(e) {}
-    }
-})();
-</script>
-""", height=10, scrolling=False)
-
-            resposta = gerar_insight_concorrente(target_gerar, periodo_gerar)
-
-        _ph.empty()
-
-        if not resposta.startswith("Erro:"):
-            st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
-            st.session_state.analises_salvas.append({
-                "titulo": f"Insight — {target_gerar} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "relatorio": resposta,
-                "tipo": "insight_concorrente",
-                "empresa": target_gerar,
-            })
-            salvar_analises()
-            st.toast("✅ Insight gerado e salvo!", icon="✅")
-        else:
-            st.toast(f"⚠️ {resposta}", icon="⚠️")
-        st.rerun()
-
    # ── Histórico de insights (cards no padrão das outras páginas) ─
     historico = [
         a for a in st.session_state.get("analises_salvas", [])
@@ -11156,32 +11000,6 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
         relatorios_ins_json = _json_ins.dumps(relatorios_ins, ensure_ascii=False)
         relatorios_raw_ins = {str(i): a.get("relatorio", "") for i, a in enumerate(historico)}
         relatorios_raw_ins_json = _json_ins.dumps(relatorios_raw_ins, ensure_ascii=False)
-
-        # ── Ghost buttons de exclusão ────────────────────────────
-        acoes_rm_ins = {}
-        for i in range(len(historico)):
-            ghost_rm_k = f"btn_rm_insight_{i}"
-            st.markdown(f"""
-            <style>
-            .st-key-{ghost_rm_k} {{
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:0 !important; height:0 !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; display:none !important;
-            }}
-            .stElementContainer:has(.st-key-{ghost_rm_k}) {{
-                display:none !important; height:0 !important; min-height:0 !important;
-                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-            }}
-            </style>
-            """, unsafe_allow_html=True)
-            acoes_rm_ins[i] = st.button(f"_rm_insight_{i}_", key=ghost_rm_k)
-
-        for i in range(len(historico) - 1, -1, -1):
-            if acoes_rm_ins.get(i):
-                idx_global = st.session_state.analises_salvas.index(historico[i])
-                st.session_state.analises_salvas.pop(idx_global)
-                salvar_analises()
-                st.rerun()
 
         cards_ins_html = ""
         first_item = historico_rev[0] if historico_rev else None
@@ -11641,6 +11459,195 @@ setTimeout(syncH, 200);
 setTimeout(syncH, 600);
 </script>
 """, height=100, scrolling=False)
+
+    # ══════════════════════════════════════════════════════════════
+    # 👻 CONTROLES OCULTOS (ghost) — ficam no final da página de
+    # propósito, para que o espaçamento extra que o Streamlit deixa
+    # entre eles não empurre o título/conteúdo para baixo.
+    # ══════════════════════════════════════════════════════════════
+
+    # ── Ghost button: selecionar concorrente ────────────────────────
+    ghost_sel_key = "btn_insights_sel_target"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_sel_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_sel_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    _sel_idx_recebido = st.text_input("_ins_sel_hidden", value="", label_visibility="collapsed", key="_ins_sel_hidden_input")
+    if st.button("insights_sel_target", key=ghost_sel_key):
+        try:
+            novo_idx = int(st.session_state.get("_ins_sel_hidden_input", "0") or 0)
+            st.session_state.insights_target_idx = max(0, min(novo_idx, len(concorrentes) - 1))
+        except Exception:
+            pass
+        st.rerun()
+
+    st.markdown("""
+    <style>
+    .st-key-_ins_sel_hidden_input {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+    }
+    .stElementContainer:has(.st-key-_ins_sel_hidden_input) {
+        display:none !important; height:0 !important; margin:0 !important; padding:0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Ghost button: selecionar período ────────────────────────────
+    ghost_periodo_key = "btn_insights_sel_periodo"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_periodo_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_periodo_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    _periodo_recebido = st.text_input("_ins_periodo_hidden", value="", label_visibility="collapsed", key="_ins_periodo_hidden_input")
+    if st.button("insights_sel_periodo", key=ghost_periodo_key):
+        novo_periodo = st.session_state.get("_ins_periodo_hidden_input", "") or "30"
+        st.session_state.insights_periodo = novo_periodo
+        st.rerun()
+
+    st.markdown("""
+    <style>
+    .st-key-_ins_periodo_hidden_input {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+    }
+    .stElementContainer:has(.st-key-_ins_periodo_hidden_input) {
+        display:none !important; height:0 !important; margin:0 !important; padding:0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Ghost button: gerar insight ──────────────────────────────
+    ghost_gerar_key = "btn_insights_gerar"
+    st.markdown(f"""
+    <style>
+    .st-key-{ghost_gerar_key} {{
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }}
+    .stElementContainer:has(.st-key-{ghost_gerar_key}) {{
+        display:none !important; height:0 !important; min-height:0 !important;
+        max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+    gerar = st.button("insights_gerar", key=ghost_gerar_key)
+
+    # ── Ghost buttons de exclusão (um por item do histórico) ───────
+    if historico:
+        acoes_rm_ins = {}
+        for i in range(len(historico)):
+            ghost_rm_k = f"btn_rm_insight_{i}"
+            st.markdown(f"""
+            <style>
+            .st-key-{ghost_rm_k} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{ghost_rm_k}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+            acoes_rm_ins[i] = st.button(f"_rm_insight_{i}_", key=ghost_rm_k)
+
+        for i in range(len(historico) - 1, -1, -1):
+            if acoes_rm_ins.get(i):
+                idx_global = st.session_state.analises_salvas.index(historico[i])
+                st.session_state.analises_salvas.pop(idx_global)
+                salvar_analises()
+                st.rerun()
+
+    # ── Geração do insight (processa o clique do botão Gerar) ──────
+    if gerar:
+        target_gerar = concorrentes[st.session_state.insights_target_idx]["nome"]
+        periodo_gerar = st.session_state.get("insights_periodo", "30")
+        _ph = st.empty()
+        with _ph.container():
+            components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
+.overlay {
+    position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.card {
+    background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,460px);
+    box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f;
+    display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+.spin {
+    width:40px; height:40px; border:3px solid rgba(255,255,255,0.15);
+    border-top-color:#3a9fd6; border-radius:50%; animation:spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.txt { font-size:15px; font-weight:700; color:#f1f5f9; text-align:center; }
+.sub { font-size:13px; color:#94a3b8; text-align:center; }
+</style>
+<div class="overlay"><div class="card">
+    <div class="spin"></div>
+    <div class="txt">Gerando insight estratégico...</div>
+    <div class="sub">Analisando dados coletados do concorrente</div>
+</div></div>
+<script>
+(function() {
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+        try { if (iframes[i].contentWindow === window) {
+            iframes[i].style.position='fixed'; iframes[i].style.inset='0';
+            iframes[i].style.width='100vw'; iframes[i].style.height='100vh';
+            iframes[i].style.zIndex='999998'; iframes[i].style.border='none';
+            break;
+        } } catch(e) {}
+    }
+})();
+</script>
+""", height=10, scrolling=False)
+
+            resposta = gerar_insight_concorrente(target_gerar, periodo_gerar)
+
+        _ph.empty()
+
+        if not resposta.startswith("Erro:"):
+            st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
+            st.session_state.analises_salvas.append({
+                "titulo": f"Insight — {target_gerar} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "relatorio": resposta,
+                "tipo": "insight_concorrente",
+                "empresa": target_gerar,
+            })
+            salvar_analises()
+            st.toast("✅ Insight gerado e salvo!", icon="✅")
+        else:
+            st.toast(f"⚠️ {resposta}", icon="⚠️")
+        st.rerun()
 
 # ---------------------------------------------------
 # PAGINA - REDES SOCIAIS

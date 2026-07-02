@@ -1949,7 +1949,7 @@ html, body { background: transparent; overflow: hidden; }
                         st.session_state.editar_empresa = False
                         if emp.get("site"):
                             extrair_e_salvar_seo(emp["site"], emp["nome"])
-                        salvar_dados_usuario(st.session_state.user.id)
+                        salvar_empresa_e_concorrentes()
                         st.success("Empresa salva com sucesso!")
                         st.rerun()
                     else:
@@ -2400,7 +2400,7 @@ function triggerAdicionar() {
                 st.session_state.editando_concorrente = None
                 if site_clean and n:
                     extrair_e_salvar_seo(site_clean, n)
-                salvar_dados_usuario(st.session_state.user.id)
+                salvar_empresa_e_concorrentes()
                 st.rerun()
  
     concorrentes = st.session_state.dados["concorrentes"]
@@ -2666,7 +2666,7 @@ body {{ padding-bottom: 8px; }}
                     if nome_removido and nome_removido in st.session_state.get("ads_cache", {}):
                         del st.session_state.ads_cache[nome_removido]
                         salvar_cache_ads(st.session_state.ads_cache)
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_empresa_e_concorrentes()
                     st.rerun()
 
         # ── Banner "Mantenha seus concorrentes atualizados" ──────
@@ -4319,7 +4319,7 @@ html, body { background: transparent; overflow: hidden; }
     for i in range(len(analises_para_rm) - 1, -1, -1):
         if acoes_rm.get(f"rm_{i}"):
             st.session_state.analises_salvas.pop(i)
-            salvar_dados_usuario(st.session_state.user.id)
+            salvar_analises()
             st.rerun()
 
     # ══════════════════════════════════════════════════════════════
@@ -4460,7 +4460,7 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         "url": s["url"],
                     })
 
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_analises()
 
                     _render_modal_site("concluido", s["nome"], 100)
                     import time as _time; _time.sleep(1.5)
@@ -4591,7 +4591,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             "tipo": "geral",
         })
 
-        salvar_dados_usuario(st.session_state.user.id)
+        salvar_analises()
 
         _render_modal_geral("concluido", "Relatório geral pronto!", 100)
         import time as _time; _time.sleep(1.5)
@@ -6735,7 +6735,7 @@ elif st.session_state.pagina == "ads":
             st.session_state.dados["concorrentes"][e["idx"]]["ads_id"] = ads_id
             if page_pic:
                 st.session_state.dados["concorrentes"][e["idx"]]["ads_page_pic"] = page_pic
-        salvar_dados_usuario(st.session_state.user.id)
+        salvar_empresa_e_concorrentes()
 
     def buscar_paginas_facebook(termo: str) -> list:
         ads, _, erro = _apify_run_sync(termo, limit=20)
@@ -8215,7 +8215,7 @@ Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
                             "empresa": nome,
                         })
                         _render_modal_redes_ia("concluido", f"Anúncios — {nome}", 100, _ph_ads)
-                        salvar_dados_usuario(st.session_state.user.id)
+                        salvar_analises()
                         st.session_state.ads_main_tab = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
@@ -8269,7 +8269,7 @@ Amostra dos anúncios:
                             "empresa": nome,
                         })
                         _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
-                        salvar_dados_usuario(st.session_state.user.id)
+                        salvar_analises()
                         st.session_state.ads_main_tab = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
@@ -8556,7 +8556,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                                 "ad_idx": j,
                             })
                             _render_modal_redes_ia("concluido", f"Anúncio {j+1} — {nome}", 100, _ph_ind)
-                            salvar_dados_usuario(st.session_state.user.id)
+                            salvar_analises()
                             st.session_state.ads_main_tab = "analise"
                             st.session_state.ads_analise_subtab = "anuncio_ind"
                             import time as _t_ads; _t_ads.sleep(1.2)
@@ -9447,7 +9447,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.ads_cache.keys()),
                     })
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_analises()
                     import time as _t_comp_ads; _t_comp_ads.sleep(1.0)
                     _ph_comp_ads.empty()
                     st.session_state.ads_analise_subtab = "comparativo_ads"
@@ -9472,7 +9472,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         for i in range(len(analises_ads_para_rm) - 1, -1, -1):
             if acoes_rm_ads.get(f"rm_{i}"):
                 st.session_state.ads_analises_salvas.pop(i)
-                salvar_dados_usuario(st.session_state.user.id)
+                salvar_analises()
                 st.rerun()
  
         ICON_SVG_ADS = {
@@ -11000,16 +11000,12 @@ function setHeight(isOpen) {{
 
     def salvar_cache_redes(dados: list):
         try:
-            payload = {
-                "user_id": st.session_state.user.id,
-                "minha_empresa": st.session_state.dados["minha_empresa"],
-                "concorrentes": st.session_state.dados["concorrentes"],
+            supabase.table("ci_dados").update({
                 "metricas_redes": {
                     "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "dados": dados,
                 },
-            }
-            supabase.table("ci_dados").upsert(payload, on_conflict="user_id").execute()
+            }).eq("user_id", st.session_state.user.id).execute()
         except Exception as e:
             st.toast(f"⚠️ Erro ao salvar cache: {e}", icon="⚠️")
 
@@ -11671,7 +11667,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     for i in range(len(analises_redes_para_rm) - 1, -1, -1):
         if acoes_rm_redes.get(f"rm_{i}"):
             st.session_state.redes_analises_salvas.pop(i)
-            salvar_dados_usuario(st.session_state.user.id)
+            salvar_analises()
             st.rerun()
 
     main_tab = st.session_state.redes_main_tab
@@ -12020,7 +12016,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                     })
 
                     _render_modal_redes_ia("concluido", f"Análise de Perfil — {r['nome']}", 100, _ph)
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_analises()
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.session_state[chave_bio_ia] = ""
@@ -12155,7 +12151,7 @@ Como interpretar as métricas desta postagem?
                                     "nome": r["nome"],
                                     "post_idx": jp,
                                 })
-                                salvar_dados_usuario(st.session_state.user.id)
+                                salvar_analises()
                                 st.rerun()
                             except Exception as e_post:
                                 st.session_state[chave_post_ia] = f"Erro: {e_post}"
@@ -13157,7 +13153,7 @@ Seja direto e objetivo.
                     st.toast(f"Erro: {e}", icon="⚠️")
 
                 _render_modal_redes_ia("concluido", _titulo_modal, 100, _ph)
-                salvar_dados_usuario(st.session_state.user.id)
+                salvar_analises()
                 _t.sleep(1.2)
                 _ph.empty()
                 st.session_state.redes_main_tab = "analise"
@@ -13194,7 +13190,7 @@ Seja direto e objetivo.
                         "nome": r["nome"],
                     })
                     _render_modal_redes_ia("concluido", f"Estratégia — {r['nome']}", 100, _ph)
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_analises()
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.session_state.redes_main_tab = "analise"
@@ -13275,7 +13271,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     })
  
                     _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
-                    salvar_dados_usuario(st.session_state.user.id)
+                    salvar_analises()
                     import time as _t_comp; _t_comp.sleep(1.2)
                     _ph_comp.empty()
                     st.session_state.redes_main_tab = "analise"

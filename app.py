@@ -254,7 +254,37 @@ def salvar_empresa_e_concorrentes():
     except Exception as e:
         st.toast(f"⚠️ Erro ao salvar: {e}", icon="⚠️")
 
+def salvar_analises_padrao():
+    """Persiste apenas analises_salvas (update parcial — não reenvia as outras 2 listas)."""
+    try:
+        supabase.table("ci_dados").update({
+            "analises_salvas": st.session_state.get("analises_salvas", []),
+        }).eq("user_id", st.session_state.user.id).execute()
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao salvar análises: {e}", icon="⚠️")
+
+def salvar_redes_analises():
+    """Persiste apenas redes_analises_salvas (update parcial)."""
+    try:
+        supabase.table("ci_dados").update({
+            "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
+        }).eq("user_id", st.session_state.user.id).execute()
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao salvar análises de redes: {e}", icon="⚠️")
+
+def salvar_ads_analises():
+    """Persiste apenas ads_analises_salvas (update parcial)."""
+    try:
+        supabase.table("ci_dados").update({
+            "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
+        }).eq("user_id", st.session_state.user.id).execute()
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao salvar análises de ads: {e}", icon="⚠️")
+
 def salvar_analises():
+    """DEPRECATED: mantido só por compatibilidade — regrava as 3 listas inteiras.
+    Prefira salvar_analises_padrao() / salvar_redes_analises() / salvar_ads_analises(),
+    que fazem update parcial (só a coluna que de fato mudou)."""
     try:
         supabase.table("ci_dados").update({
             "analises_salvas": st.session_state.get("analises_salvas", []),
@@ -4403,7 +4433,7 @@ html, body { background: transparent; overflow: hidden; }
     for i in range(len(analises_para_rm) - 1, -1, -1):
         if acoes_rm.get(f"rm_{i}"):
             st.session_state.analises_salvas.pop(i)
-            salvar_analises()
+            salvar_analises_padrao()
             st.rerun()
 
     # ══════════════════════════════════════════════════════════════
@@ -4544,7 +4574,7 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         "url": s["url"],
                     })
 
-                    salvar_analises()
+                    salvar_analises_padrao()
 
                     _render_modal_site("concluido", s["nome"], 100)
                     import time as _time; _time.sleep(1.5)
@@ -4675,7 +4705,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             "tipo": "geral",
         })
 
-        salvar_analises()
+        salvar_analises_padrao()
 
         _render_modal_geral("concluido", "Relatório geral pronto!", 100)
         import time as _time; _time.sleep(1.5)
@@ -8299,7 +8329,7 @@ Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
                             "empresa": nome,
                         })
                         _render_modal_redes_ia("concluido", f"Anúncios — {nome}", 100, _ph_ads)
-                        salvar_analises()
+                        salvar_ads_analises()
                         st.session_state.ads_main_tab = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
@@ -8353,7 +8383,7 @@ Amostra dos anúncios:
                             "empresa": nome,
                         })
                         _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
-                        salvar_analises()
+                        salvar_ads_analises()
                         st.session_state.ads_main_tab = "analise"
                         import time as _t_ads; _t_ads.sleep(1.2)
                         _ph_ads.empty()
@@ -8640,7 +8670,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                                 "ad_idx": j,
                             })
                             _render_modal_redes_ia("concluido", f"Anúncio {j+1} — {nome}", 100, _ph_ind)
-                            salvar_analises()
+                            salvar_ads_analises()
                             st.session_state.ads_main_tab = "analise"
                             st.session_state.ads_analise_subtab = "anuncio_ind"
                             import time as _t_ads; _t_ads.sleep(1.2)
@@ -9531,7 +9561,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.ads_cache.keys()),
                     })
-                    salvar_analises()
+                    salvar_ads_analises()
                     import time as _t_comp_ads; _t_comp_ads.sleep(1.0)
                     _ph_comp_ads.empty()
                     st.session_state.ads_analise_subtab = "comparativo_ads"
@@ -9556,7 +9586,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         for i in range(len(analises_ads_para_rm) - 1, -1, -1):
             if acoes_rm_ads.get(f"rm_{i}"):
                 st.session_state.ads_analises_salvas.pop(i)
-                salvar_analises()
+                salvar_ads_analises()
                 st.rerun()
  
         ICON_SVG_ADS = {
@@ -11579,7 +11609,7 @@ setTimeout(syncH, 600);
             if acoes_rm_ins.get(i):
                 idx_global = st.session_state.analises_salvas.index(historico[i])
                 st.session_state.analises_salvas.pop(idx_global)
-                salvar_analises()
+                salvar_analises_padrao()
                 st.rerun()
 
     # ── Geração do insight (processa o clique do botão Gerar) ──────
@@ -11643,7 +11673,7 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
                 "tipo": "insight_concorrente",
                 "empresa": target_gerar,
             })
-            salvar_analises()
+            salvar_analises_padrao()
             st.toast("✅ Insight gerado e salvo!", icon="✅")
         else:
             st.toast(f"⚠️ {resposta}", icon="⚠️")
@@ -12874,7 +12904,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     for i in range(len(analises_redes_para_rm) - 1, -1, -1):
         if acoes_rm_redes.get(f"rm_{i}"):
             st.session_state.redes_analises_salvas.pop(i)
-            salvar_analises()
+            salvar_redes_analises()
             st.rerun()
 
     main_tab = st.session_state.redes_main_tab
@@ -13223,7 +13253,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
                     })
 
                     _render_modal_redes_ia("concluido", f"Análise de Perfil — {r['nome']}", 100, _ph)
-                    salvar_analises()
+                    salvar_redes_analises()
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.session_state[chave_bio_ia] = ""
@@ -13358,7 +13388,7 @@ Como interpretar as métricas desta postagem?
                                     "nome": r["nome"],
                                     "post_idx": jp,
                                 })
-                                salvar_analises()
+                                salvar_redes_analises()
                                 st.rerun()
                             except Exception as e_post:
                                 st.session_state[chave_post_ia] = f"Erro: {e_post}"
@@ -14360,7 +14390,7 @@ Seja direto e objetivo.
                     st.toast(f"Erro: {e}", icon="⚠️")
 
                 _render_modal_redes_ia("concluido", _titulo_modal, 100, _ph)
-                salvar_analises()
+                salvar_redes_analises()
                 _t.sleep(1.2)
                 _ph.empty()
                 st.session_state.redes_main_tab = "analise"
@@ -14397,7 +14427,7 @@ Seja direto e objetivo.
                         "nome": r["nome"],
                     })
                     _render_modal_redes_ia("concluido", f"Estratégia — {r['nome']}", 100, _ph)
-                    salvar_analises()
+                    salvar_redes_analises()
                     import time as _t; _t.sleep(1.2)
                     _ph.empty()
                     st.session_state.redes_main_tab = "analise"
@@ -14478,7 +14508,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     })
  
                     _render_modal_redes_ia("concluido", "Comparativo Geral", 100, _ph_comp)
-                    salvar_analises()
+                    salvar_redes_analises()
                     import time as _t_comp; _t_comp.sleep(1.2)
                     _ph_comp.empty()
                     st.session_state.redes_main_tab = "analise"

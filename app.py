@@ -32,6 +32,191 @@ def get_supabase() -> Client:
 supabase = get_supabase()
 
 # ---------------------------------------------------
+#  CLOUDFLARE R2 (armazenamento permanente de mídias)
+# ---------------------------------------------------
+# R2 é compatível com a API S3, então usamos boto3 apontando pro
+# endpoint da Cloudflare. Credenciais e nomes de bucket vêm dos
+# secrets do Streamlit (ver instruções de configuração no final
+# deste bloco / no README de deploy).
+
+import boto3
+from botocore.config import Config as _BotoConfig
+import hashlib
+import mimetypes
+
+R2_BUCKET      = st.secrets.get("R2_BUCKET_NAME", "")
+R2_PUBLIC_BASE = st.secrets.get("R2_PUBLIC_BASE_URL", "").rstrip("/")
+
+@st.cache_resource
+def get_r2_client():
+    """Cliente S3-compatível apontando pro Cloudflare R2.
+    Retorna None se as credenciais não estiverem configuradas —
+    nesse caso o pipeline de mídia cai de volta pro link original."""
+    account_id = st.secrets.get("R2_ACCOUNT_ID", "")
+    access_key = st.secrets.get("R2_ACCESS_KEY_ID", "")
+    secret_key = st.secrets.get("R2_SECRET_ACCESS_KEY", "")
+    if not (account_id and access_key and secret_key and R2_BUCKET and R2_PUBLIC_BASE):
+        return None
+    return boto3.client(
+        "s3",
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=_BotoConfig(signature_version="s3v4"),
+        region_name="auto",
+    )
+
+r2_client = get_r2_client()
+
+# ---------------------------------------------------
+#  PLANOS — cota de mídias baixadas/armazenadas por mês
+# ---------------------------------------------------
+# Placeholder simples até o item 4 do roadmap (tabela uso_organizacao
+# + billing de verdade) existir. O único ponto que precisa mudar
+# quando o billing estiver pronto é obter_plano_usuario().
+
+PLANOS_QUOTA_MIDIAS = {
+    "free":    0,     # não baixa mídia — mantém o link original do Facebook (pode expirar)
+    "starter": 50,    # até 50 mídias baixadas/armazenadas por mês
+    "pro":     500,
+    "agencia": None,  # ilimitado
+}
+
+def obter_plano_usuario() -> str:
+    # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
+    # Padrão temporário "pro" enquanto não existe billing — evita travar
+    # todo mundo na cota 0 do plano free antes do sistema de planos existir.
+    # Trocar pra "free" (ou remover o default) assim que o billing entrar.
+    return st.session_state.get("plano_usuario", "pro")
+
+def _contar_midias_do_mes(user_id: str) -> int:
+    try:
+        import datetime as _dt
+        inicio_mes = _dt.datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        res = (
+            supabase.table("midias")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .gte("criado_em", inicio_mes)
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
+def pode_baixar_midia(user_id: str) -> bool:
+    limite = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario(), 0)
+    if limite is None:
+        return True
+    if limite == 0:
+        return False
+    return _contar_midias_do_mes(user_id) < limite
+
+def _slug_empresa(nome: str) -> str:
+    nome = remover_acentos((nome or "").strip().lower())
+    nome = re.sub(r"[^a-z0-9]+", "-", nome).strip("-")
+    return nome or "sem-nome"
+
+def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
+                              tipo: str = "imagem", ad_id: str = None) -> str:
+    """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
+    e sobe pro Cloudflare R2. Retorna a URL permanente pra usar no lugar
+    da original. Se o R2 não estiver configurado, o plano não permitir,
+    ou o download falhar por qualquer motivo, devolve a própria
+    url_origem — nunca quebra o fluxo existente."""
+    if not url_origem or not url_origem.startswith("http"):
+        return url_origem
+    if r2_client is None:
+        return url_origem
+    if not pode_baixar_midia(user_id):
+        return url_origem
+
+    try:
+        resp = requests.get(url_origem, timeout=15, stream=True)
+        resp.raise_for_status()
+        conteudo = resp.content
+        content_type = (
+            resp.headers.get("content-type", "")
+            or mimetypes.guess_type(url_origem)[0]
+            or "application/octet-stream"
+        )
+        hash_conteudo = hashlib.sha256(conteudo).hexdigest()
+
+        # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita
+        existente = (
+            supabase.table("midias")
+            .select("url_cdn")
+            .eq("user_id", user_id)
+            .eq("hash_conteudo", hash_conteudo)
+            .execute()
+        )
+        if existente.data:
+            return existente.data[0]["url_cdn"]
+
+        ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
+        storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
+
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=storage_key,
+            Body=conteudo,
+            ContentType=content_type,
+        )
+        url_cdn = f"{R2_PUBLIC_BASE}/{storage_key}"
+
+        supabase.table("midias").insert({
+            "user_id":       user_id,
+            "empresa":       empresa,
+            "ad_id":         ad_id,
+            "tipo":          tipo,
+            "url_origem":    url_origem,
+            "storage_key":   storage_key,
+            "url_cdn":       url_cdn,
+            "mime_type":     content_type,
+            "tamanho_bytes": len(conteudo),
+            "hash_conteudo": hash_conteudo,
+        }).execute()
+
+        return url_cdn
+    except Exception:
+        return url_origem
+
+def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
+    """Percorre um dict no formato do ads_cache e substitui as URLs de
+    imagens/vídeos por versões permanentes no R2, quando possível.
+    Usado logo antes de salvar no Supabase, pra nunca persistir um link
+    do Facebook que vai expirar."""
+    if r2_client is None:
+        return dados  # R2 não configurado — mantém comportamento atual
+
+    resultado = {}
+    for empresa, entry in dados.items():
+        entry_nova = dict(entry)
+        ads_novos = []
+        for ad in entry.get("data", []):
+            ad_novo = dict(ad)
+            ad_id = ad_novo.get("id")
+
+            imagens_orig = ad_novo.get("images") or []
+            ad_novo["images"] = [
+                baixar_e_persistir_midia(u, user_id, empresa, "imagem", ad_id)
+                for u in imagens_orig
+            ]
+
+            videos_orig = ad_novo.get("videos") or []
+            ad_novo["videos"] = [
+                baixar_e_persistir_midia(u, user_id, empresa, "video", ad_id)
+                for u in videos_orig
+            ]
+
+            ads_novos.append(ad_novo)
+        entry_nova["data"] = ads_novos
+        resultado[empresa] = entry_nova
+    return resultado
+
+# ---------------------------------------------------
 # CONFIGURAÇÃO GEMINI
 # ---------------------------------------------------
 
@@ -1778,6 +1963,10 @@ def salvar_cache_ads(dados: dict):
                 ads_limpos.append(ad_limpo)
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
+
+        # Antes de persistir: troca os links do Facebook (que expiram) por
+        # URLs permanentes no Cloudflare R2, respeitando a cota do plano.
+        dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
 
         supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,

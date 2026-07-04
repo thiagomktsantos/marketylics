@@ -16108,10 +16108,69 @@ html, body { background: transparent; overflow: hidden; }
             unsafe_allow_html=True,
         )
 
+        # ── Ícones SVG por tipo de recurso (estilo Feather/Lucide, stroke-based) ──
+        _ICONE_CHECK  = '<path d="M20 6 9 17l-5-5"/>'
+        _ICONE_MINUS  = '<line x1="5" y1="12" x2="19" y2="12"/>'
+        _ICONE_ADS    = '<path d="M17 3H7a2 2 0 0 0-2 2v13l4-2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><line x1="7" y1="8" x2="15" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/>'
+        _ICONE_GLOBE  = '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+        _ICONE_IA     = '<path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="4"/>'
+        _ICONE_LINK   = '<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5"/>'
+        _ICONE_DB     = '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>'
+        _ICONE_CLOCK  = '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+        _ICONE_IMG    = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'
+        _ICONE_CHART  = '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'
+        _ICONE_ROCKET = '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>'
+        _ICONE_USERS  = '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+        _ICONE_HEADSET= '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>'
+        _ICONE_INFIN  = '<path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"/>'
+
+        def _icone_item_plano(texto: str):
+            """Escolhe ícone + cor de acordo com o tipo de recurso descrito no item."""
+            t = texto.lower()
+            restritivo = t.startswith(("sem ", "não ", "limite"))
+            if restritivo:
+                return _ICONE_MINUS, "#b0b7c3"
+            if "ilimitad" in t:
+                return _ICONE_INFIN, "#22c55e"
+            if "análise" in t or " ia " in f" {t} " or t.startswith("análises") or "ia (" in t:
+                return _ICONE_IA, "#8b5cf6"
+            if "mídia" in t or "imagens" in t or "vídeos" in t or "baixad" in t:
+                return _ICONE_IMG, "#3a9fd6"
+            if "cache" in t:
+                return _ICONE_DB, "#3a9fd6"
+            if "histórico" in t:
+                return _ICONE_CLOCK, "#3a9fd6"
+            if "confronto de sites" in t:
+                return _ICONE_CHART, "#1e9e63"
+            if "coleta de anúncios" in t or "redes sociais" in t:
+                return _ICONE_ADS, "#3a9fd6"
+            if "prioridade" in t and "migra" in t:
+                return _ICONE_ROCKET, "#1e9e63"
+            if "suporte" in t:
+                return _ICONE_HEADSET, "#8b4fc9"
+            if "gestão" in t or "contas de cliente" in t:
+                return _ICONE_USERS, "#8b4fc9"
+            if "link" in t:
+                return _ICONE_LINK, "#9ca3af"
+            return _ICONE_CHECK, "#22c55e"
+
+        def _linha_item_plano(texto: str) -> str:
+            icone, cor = _icone_item_plano(texto)
+            cor_texto = "#9ca3af" if icone == _ICONE_MINUS else "#374151"
+            return (
+                '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;">'
+                f'<span style="width:18px;height:18px;flex-shrink:0;margin-top:1px;">'
+                f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icone}</svg></span>'
+                f'<span style="font-size:12.5px;color:{cor_texto};line-height:1.4;">{texto}</span>'
+                '</div>'
+            )
+
         _PLANOS_INFO = [
             {
                 "id": "free", "nome": "FREE", "cor": "#8a97ab", "fundo": "#f3f4f6",
                 "descricao": "Ideal pra testar a plataforma.",
+                "herda_de": None,
                 "itens": [
                     "Coleta de anúncios e redes sociais",
                     "Confronto de sites (visão básica)",
@@ -16124,8 +16183,8 @@ html, body { background: transparent; overflow: hidden; }
             {
                 "id": "starter", "nome": "STARTER", "cor": "#2f8fd1", "fundo": "#eaf4fb",
                 "descricao": "Pra quem acompanha alguns concorrentes de perto.",
+                "herda_de": "Free",
                 "itens": [
-                    "Tudo do Free",
                     "Análises de IA (limitadas por mês)",
                     "Cache de coleta salvo entre sessões",
                     "Até 50 mídias baixadas e armazenadas/mês",
@@ -16135,8 +16194,8 @@ html, body { background: transparent; overflow: hidden; }
             {
                 "id": "pro", "nome": "PRO", "cor": "#1e9e63", "fundo": "#e9f7f0",
                 "descricao": "Pra times de marketing com monitoramento contínuo.",
+                "herda_de": "Starter",
                 "itens": [
-                    "Tudo do Starter",
                     "Análises de IA ilimitadas",
                     "Confronto de sites completo (todas as métricas)",
                     "Até 500 mídias baixadas e armazenadas/mês",
@@ -16146,8 +16205,8 @@ html, body { background: transparent; overflow: hidden; }
             {
                 "id": "agencia", "nome": "BUSINESS", "cor": "#8b4fc9", "fundo": "#f4ecfb",
                 "descricao": "Pra agências gerenciando várias contas de clientes.",
+                "herda_de": "Pro",
                 "itens": [
-                    "Tudo do Pro",
                     "Mídias baixadas e armazenadas ilimitadas",
                     "Gestão de múltiplas contas de clientes",
                     "Suporte prioritário",
@@ -16160,24 +16219,35 @@ html, body { background: transparent; overflow: hidden; }
             with col_plano:
                 _ativo = info["id"] == _plano_atual_perfil
                 _borda = f"border:2px solid {info['cor']}" if _ativo else "border:1px solid #e5e7eb"
-                _itens_html = "".join(f"<li style='margin-bottom:4px'>{it}</li>" for it in info["itens"])
+
+                _itens_html = "".join(_linha_item_plano(it) for it in info["itens"])
+
+                _herda_html = ""
+                if info["herda_de"]:
+                    _herda_html = (
+                        '<div style="border-top:1px solid #f3f4f6;margin:6px 0 10px 0;"></div>'
+                        f'<div style="font-size:11px;font-weight:700;color:#9ca3af;'
+                        f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                        f'Tudo o que o plano {info["herda_de"]} oferece, e mais:</div>'
+                    )
+
                 st.markdown(_html(f"""
                 <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
-                            min-height:320px;display:flex;flex-direction:column;
+                            min-height:340px;display:flex;flex-direction:column;
                             box-shadow:0 1px 4px rgba(0,0,0,0.05)">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                         <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;
                                      padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
                         {"<span style='font-size:11px;color:" + info['cor'] + ";font-weight:700'>✓ ATUAL</span>" if _ativo else ""}
                     </div>
-                    <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">{info['descricao']}</div>
-                    <ul style="font-size:12px;color:#374151;padding-left:18px;margin:0">
+                    <div style="font-size:12.5px;color:#6b7280;margin-bottom:14px">{info['descricao']}</div>
+                    {_herda_html}
+                    <div>
                         {_itens_html}
-                    </ul>
+                    </div>
                 </div>
                 """), unsafe_allow_html=True)
 
-        st.markdown("<hr style='margin-top:24px;border-color:#e5e7eb'>", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------

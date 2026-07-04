@@ -1966,7 +1966,13 @@ def salvar_cache_ads(dados: dict):
 
         # Antes de persistir: troca os links do Facebook (que expiram) por
         # URLs permanentes no Cloudflare R2, respeitando a cota do plano.
-        dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
+        # Isolado em try/except próprio: se o pipeline de mídia falhar por
+        # qualquer motivo, o save do ads_cache tem que acontecer do mesmo
+        # jeito (com os links originais), nunca pode travar o essencial.
+        try:
+            dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
+        except Exception as e_midia:
+            st.toast(f"⚠️ Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
 
         supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,

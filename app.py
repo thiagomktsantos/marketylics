@@ -16222,14 +16222,15 @@ html, body { background: transparent; overflow: hidden; }
 
                 _itens_html = "".join(_linha_item_plano(it) for it in info["itens"])
 
-                _herda_html = ""
+                _divisor_html = '<div style="border-top:1px solid #f3f4f6;margin:6px 0 10px 0;"></div>'
+                _label_html = ""
                 if info["herda_de"]:
-                    _herda_html = (
-                        '<div style="border-top:1px solid #f3f4f6;margin:6px 0 10px 0;"></div>'
+                    _label_html = (
                         f'<div style="font-size:11px;font-weight:700;color:#9ca3af;'
                         f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
                         f'Tudo o que o plano {info["herda_de"]} oferece, e mais:</div>'
                     )
+                _herda_html = _divisor_html + _label_html
 
                 st.markdown(_html(f"""
                 <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
@@ -16240,7 +16241,7 @@ html, body { background: transparent; overflow: hidden; }
                                      padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
                         {"<span style='font-size:11px;color:" + info['cor'] + ";font-weight:700'>✓ ATUAL</span>" if _ativo else ""}
                     </div>
-                    <div style="font-size:12.5px;color:#6b7280;margin-bottom:14px">{info['descricao']}</div>
+                    <div style="font-size:12.5px;line-height:1.45;color:#6b7280;margin-bottom:0;min-height:38px">{info['descricao']}</div>
                     {_herda_html}
                     <div>
                         {_itens_html}

@@ -488,6 +488,15 @@ def atualizar_nome_usuario(novo_nome: str) -> bool:
         st.toast(f"⚠️ Erro ao atualizar nome: {e}", icon="⚠️")
         return False
 
+def atualizar_senha_usuario(nova_senha: str) -> bool:
+    """Atualiza a senha do usuário logado no Supabase Auth."""
+    try:
+        supabase.auth.update_user({"password": nova_senha})
+        return True
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao atualizar senha: {e}", icon="⚠️")
+        return False
+
 def garantir_linha_usuario(user_id: str):
     try:
         existe = (
@@ -1381,7 +1390,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 .sb-logo { padding:22px 18px 16px; border-bottom:1px solid #1e2530; margin-bottom:8px; }
 .sb-logo-sub { font-size:8.4px; color:#3a9fd6; font-weight:600; letter-spacing:2px; text-transform:uppercase; text-align:center; font-family:'DM Sans',sans-serif; }
 
-[data-testid="stSidebar"] div.stButton > button {
+[data-testid="stSidebar"] [class*="st-key-_hidden_"] button {
     position: fixed !important;
     top: -9999px !important;
     left: -9999px !important;
@@ -1392,7 +1401,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     pointer-events: none !important;
     visibility: hidden !important;
 }
-[data-testid="stSidebar"] .stElementContainer:has(div.stButton) {
+[data-testid="stSidebar"] .stElementContainer:has([class*="st-key-_hidden_"] button) {
     margin: 0 !important;
     padding: 0 !important;
     height: 0 !important;
@@ -15926,26 +15935,69 @@ setTimeout(syncH, 600);
 # PERFIL — Editar dados do usuário
 # ---------------------------------------------------
 elif st.session_state.pagina == "perfil":
-    st.markdown("## 👤 Editar dados")
-    st.caption("Suas informações pessoais de acesso à plataforma.")
 
-    with st.container(border=True):
+    st.markdown("""
+    <style>
+    div[data-testid="stForm"] {
+        background: #ffffff !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 14px !important;
+        padding: 28px 32px !important;
+        margin-bottom: 28px !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="margin-bottom:20px">
+        <div style="font-family:'DM Sans',sans-serif;font-size:28px;font-weight:700;
+                    color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px 0">
+            Meus dados
+        </div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:14px;color:#6b7280">
+            Suas informações pessoais de acesso à plataforma.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _plano_atual_perfil = obter_plano_usuario()
+    _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
+
+    with st.form("form_perfil_dados"):
+        st.markdown("**Dados da conta**")
         col_a, col_b = st.columns(2)
         with col_a:
-            st.text_input("E-mail", value=st.session_state.user.email if st.session_state.user else "", disabled=True)
+            novo_nome = st.text_input("Nome", value=obter_nome_usuario(), placeholder="Como você quer ser chamado(a)?")
         with col_b:
-            _plano_atual_perfil = obter_plano_usuario()
-            _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
-            st.text_input("Plano atual", value=_PLANO_LABELS_PERFIL.get(_plano_atual_perfil, _plano_atual_perfil.upper()), disabled=True)
+            st.text_input("E-mail", value=st.session_state.user.email if st.session_state.user else "", disabled=True)
+        st.text_input("Plano atual", value=_PLANO_LABELS_PERFIL.get(_plano_atual_perfil, _plano_atual_perfil.upper()), disabled=True)
 
-        novo_nome = st.text_input("Nome", value=obter_nome_usuario(), placeholder="Como você quer ser chamado(a)?")
-
-        if st.button("Salvar alterações", type="primary"):
+        if st.form_submit_button("Salvar dados", type="primary"):
             if novo_nome.strip():
                 if atualizar_nome_usuario(novo_nome):
                     st.toast("✅ Nome atualizado!", icon="✅")
                     st.rerun()
             else:
                 st.warning("O nome não pode ficar em branco.")
+
+    with st.form("form_perfil_senha"):
+        st.markdown("**Alterar senha**")
+        col_c, col_d = st.columns(2)
+        with col_c:
+            nova_senha = st.text_input("Nova senha", type="password", placeholder="Mínimo 6 caracteres")
+        with col_d:
+            nova_senha2 = st.text_input("Confirmar nova senha", type="password", placeholder="Repita a senha")
+
+        if st.form_submit_button("Alterar senha", type="primary"):
+            if not nova_senha or not nova_senha2:
+                st.warning("Preencha os dois campos de senha.")
+            elif nova_senha != nova_senha2:
+                st.error("As senhas não coincidem.")
+            elif len(nova_senha) < 6:
+                st.error("A senha deve ter pelo menos 6 caracteres.")
+            else:
+                if atualizar_senha_usuario(nova_senha):
+                    st.toast("✅ Senha alterada!", icon="✅")
 
     st.caption("Precisa trocar de plano ou cancelar a assinatura? Fale com o suporte.")

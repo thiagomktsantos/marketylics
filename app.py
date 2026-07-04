@@ -1637,7 +1637,7 @@ with st.sidebar:
     logo_white_b64 = get_logo_white_base64()
     logo_white_src = f"data:image/png;base64,{logo_white_b64}" if logo_white_b64 else ""
 
-    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "insights", "sair"]
+    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "insights", "sair", "notificacoes"]
     for p in paginas:
         if st.button(p, key=f"_hidden_{p}"):
             if p == "sair":
@@ -1648,6 +1648,8 @@ with st.sidebar:
                           "_home_acesso_manual"]:
                     if k in st.session_state:
                         del st.session_state[k]
+            elif p == "notificacoes":
+                st.session_state.mostrar_notificacoes = not st.session_state.get("mostrar_notificacoes", False)
             elif p == "home":
                 # Marca que o usuário navegou para cá intencionalmente —
                 # impede o redirecionamento automático para o Dashboard Geral.
@@ -1659,6 +1661,8 @@ with st.sidebar:
 
     pagina_atual = st.session_state.pagina
     user_email = st.session_state.user.email if st.session_state.user else ""
+    _qtd_atividades_pendentes = contar_atividades_pendentes(st.session_state.user.id) if st.session_state.user else 0
+    _badge_html = f'<span class="badge">{_qtd_atividades_pendentes}</span>' if _qtd_atividades_pendentes else ""
 
     menu_html = f"""
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -1742,14 +1746,37 @@ body {{
     margin-top: auto;
 }}
 .footer-email {{
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
     margin-bottom: 12px;
 }}
-.footer-email i {{ font-size: 22px; color: #3a9fd6; }}
+.footer-email-left {{
+    display: flex; align-items: center; gap: 10px;
+    min-width: 0;
+}}
+.footer-email i {{ font-size: 22px; color: #3a9fd6; flex-shrink: 0; }}
 .footer-email span {{
     font-size: 13px; color: #5a7090;
     word-break: break-all;
     font-family: 'DM Sans', sans-serif;
+}}
+.btn-sino {{
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; flex-shrink: 0;
+    border: 1px solid #1e2a3a; border-radius: 8px;
+    background: transparent; cursor: pointer;
+    color: #5a7090; transition: all 0.15s;
+}}
+.btn-sino:hover {{ background: #1a2535; color: #e2eaf5; border-color: #3a9fd6; }}
+.btn-sino i {{ font-size: 14px; }}
+.btn-sino .badge {{
+    position: absolute; top: -5px; right: -5px;
+    background: #e05252; color: #fff;
+    font-size: 9px; font-weight: 700;
+    min-width: 15px; height: 15px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 3px; font-family: 'DM Sans', sans-serif;
 }}
 .btn-sair {{
     display: flex; align-items: center; justify-content: center;
@@ -1821,8 +1848,14 @@ body {{
 </div>
 <div class="footer">
     <div class="footer-email">
-        <i class="fa-solid fa-circle-user"></i>
-        <span>{user_email}</span>
+        <div class="footer-email-left">
+            <i class="fa-solid fa-circle-user"></i>
+            <span>{user_email}</span>
+        </div>
+        <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
+            <i class="fa-solid fa-bell"></i>
+            {_badge_html}
+        </button>
     </div>
     <button class="btn-sair" onclick="nav('sair')">
         <i class="fa-solid fa-right-from-bracket"></i>
@@ -1845,6 +1878,34 @@ function nav(page) {{
 """
 
     components.html(menu_html, height=620, scrolling=False)
+
+    if st.session_state.get("mostrar_notificacoes"):
+        with st.container(border=True):
+            col_t, col_x = st.columns([5, 1])
+            with col_t:
+                st.markdown("**🔔 Atividades**")
+            with col_x:
+                if st.button("✕", key="_fechar_notificacoes"):
+                    st.session_state.mostrar_notificacoes = False
+                    st.rerun()
+
+            _ativ = listar_atividades_recentes(st.session_state.user.id) if st.session_state.user else []
+            if not _ativ:
+                st.caption("Nenhuma atividade registrada ainda.")
+            else:
+                for _a in _ativ:
+                    _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
+                    st.markdown(
+                        f"""<div style="padding:8px 0;border-bottom:1px solid #eef1f5">
+                            <div style="font-size:13px;color:#111827;font-weight:600">
+                                {_ui['icone']} {_a.get('titulo', '')}
+                            </div>
+                            <div style="font-size:11px;color:{_ui['cor']}">
+                                {_ui['label']} · {_tempo_relativo(_a.get('criado_em', ''))}
+                            </div>
+                        </div>""",
+                        unsafe_allow_html=True,
+                    )
 
 # ---------------------------------------------------
 # HELPER — CABEÇALHO COM PERÍODO
@@ -2032,9 +2093,10 @@ def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> 
     except Exception:
         return True  # checagem é só economia — em dúvida, não bloqueia
 
-def _migrar_midia_background(user_id: str, empresa: str, entry: dict):
+def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
+            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
             return
 
         migrado = persistir_midias_de_ads({empresa: entry}, user_id)
@@ -2050,18 +2112,110 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict):
             supabase.table("ci_dados").update({
                 "ads_cache": cache_atual,
             }).eq("user_id", user_id).execute()
-    except Exception:
-        pass  # migração em background nunca pode derrubar o app
+            atualizar_atividade(atividade_id, "concluido")
+        else:
+            atualizar_atividade(atividade_id, "erro", {"motivo": "coleta mais nova sobrescreveu antes da migração terminar"})
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
     """Dispara uma thread por empresa recém-coletada pra migrar as mídias
     pro R2 sem travar a página."""
     for empresa, entry in novos.items():
+        atividade_id = criar_atividade(
+            user_id, "migracao_midia", f"Migração de mídia pro R2: {empresa}", {"empresa": empresa}
+        )
         threading.Thread(
             target=_migrar_midia_background,
-            args=(user_id, empresa, entry),
+            args=(user_id, empresa, entry, atividade_id),
             daemon=True,
         ).start()
+
+# ---------------------------------------------------
+#  LOG DE ATIVIDADES (sino de notificações)
+# ---------------------------------------------------
+# Registra ações de longa duração (coletas, migrações) com status
+# pendente → em_andamento → concluido/erro, pra exibir no sino da
+# sidebar e, mais pra frente, servir de base pro item 3 (jobs).
+
+def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None) -> str:
+    """Cria um registro de atividade e devolve o id (pra depois atualizar)."""
+    try:
+        res = supabase.table("atividades").insert({
+            "user_id": user_id,
+            "tipo": tipo,
+            "titulo": titulo,
+            "status": "em_andamento",
+            "detalhes": detalhes or {},
+        }).execute()
+        return res.data[0]["id"] if res.data else None
+    except Exception:
+        return None
+
+def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
+    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
+    if not atividade_id:
+        return
+    try:
+        payload = {"status": status}
+        if detalhes is not None:
+            payload["detalhes"] = detalhes
+        supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
+    except Exception:
+        pass
+
+def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("criado_em", desc=True)
+            .limit(limite)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+def contar_atividades_pendentes(user_id: str) -> int:
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .in_("status", ["pendente", "em_andamento"])
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
+_ATIVIDADE_STATUS_UI = {
+    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
+    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
+    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
+    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
+}
+
+def _tempo_relativo(iso_str: str) -> str:
+    try:
+        import datetime as _dt
+        dt = _dt.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        agora = _dt.datetime.now(_dt.timezone.utc)
+        delta = agora - dt
+        seg = delta.total_seconds()
+        if seg < 60:
+            return "agora mesmo"
+        if seg < 3600:
+            return f"há {int(seg // 60)} min"
+        if seg < 86400:
+            return f"há {int(seg // 3600)} h"
+        return f"há {int(seg // 86400)} d"
+    except Exception:
+        return ""
+
+
 
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa
@@ -7010,6 +7164,14 @@ elif st.session_state.pagina == "ads":
         total = len(empresas)
         progresso = []
 
+        _nomes_empresas = ", ".join(e["nome"] for e in empresas)
+        _atividade_id = criar_atividade(
+            st.session_state.user.id,
+            "coleta_ads",
+            f"Coleta de anúncios: {_nomes_empresas}",
+            {"empresas": [e["nome"] for e in empresas]},
+        )
+
         for idx_e, e in enumerate(empresas):
             ck = e["nome"]
             entrada_cache = cache_atual.get(ck, {})
@@ -7074,6 +7236,13 @@ elif st.session_state.pagina == "ads":
         salvar_cache_ads(cache_mergeado, migrar_midia=False)
         if novos:
             iniciar_migracao_midia_background(st.session_state.user.id, novos)
+
+        _status_final = "erro" if (erros and not novos) else "concluido"
+        atualizar_atividade(_atividade_id, _status_final, {
+            "coletadas": list(novos.keys()),
+            "com_erro": erros,
+        })
+
         st.rerun()
 
     if "ads_cache" not in st.session_state or not st.session_state.ads_cache:

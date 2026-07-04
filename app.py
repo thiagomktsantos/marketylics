@@ -1744,7 +1744,7 @@ with st.sidebar:
     logo_white_b64 = get_logo_white_base64()
     logo_white_src = f"data:image/png;base64,{logo_white_b64}" if logo_white_b64 else ""
 
-    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "insights", "sair", "notificacoes"]
+    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "insights", "sair", "notificacoes", "perfil_menu", "perfil"]
     for p in paginas:
         if st.button(p, key=f"_hidden_{p}"):
             if p == "sair":
@@ -1757,6 +1757,8 @@ with st.sidebar:
                         del st.session_state[k]
             elif p == "notificacoes":
                 st.session_state.mostrar_notificacoes = not st.session_state.get("mostrar_notificacoes", False)
+            elif p == "perfil_menu":
+                st.session_state.mostrar_perfil_menu = not st.session_state.get("mostrar_perfil_menu", False)
             elif p == "home":
                 # Marca que o usuário navegou para cá intencionalmente —
                 # impede o redirecionamento automático para o Dashboard Geral.
@@ -1770,6 +1772,12 @@ with st.sidebar:
     user_email = st.session_state.user.email if st.session_state.user else ""
     _qtd_atividades_pendentes = contar_atividades_pendentes(st.session_state.user.id) if st.session_state.user else 0
     _badge_html = f'<span class="badge">{_qtd_atividades_pendentes}</span>' if _qtd_atividades_pendentes else ""
+
+    _nome_exibido = obter_nome_usuario()
+    _plano_atual = obter_plano_usuario()
+    _PLANO_LABELS = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUS"}
+    _plano_label = _PLANO_LABELS.get(_plano_atual, _plano_atual.upper())
+    _plano_css = _plano_atual if _plano_atual in ("free", "starter", "pro", "agencia") else "free"
 
     menu_html = f"""
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
@@ -1854,31 +1862,45 @@ body {{
 }}
 .footer-email {{
     display: flex; align-items: center; justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 12px;
 }}
-.footer-email-left {{
-    display: flex; align-items: center; gap: 10px;
-    min-width: 0;
+.footer-perfil {{
+    display: flex; align-items: center; gap: 8px;
+    min-width: 0; cursor: pointer;
+    padding: 4px 6px; border-radius: 8px;
+    transition: background 0.15s;
 }}
-.footer-email i {{ font-size: 22px; color: #3a9fd6; flex-shrink: 0; }}
-.footer-email span {{
-    font-size: 13px; color: #5a7090;
-    word-break: break-all;
+.footer-perfil:hover {{ background: #1a2535; }}
+.plano-badge {{
+    flex-shrink: 0;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 8px; border-radius: 20px;
     font-family: 'DM Sans', sans-serif;
 }}
+.plano-badge.free {{ background: #2a3547; color: #8a9bb0; }}
+.plano-badge.starter {{ background: #1d3a52; color: #5ab3ec; }}
+.plano-badge.pro {{ background: #1d4a3a; color: #4fd694; }}
+.plano-badge.agencia {{ background: #4a2f5c; color: #c98fed; }}
+.footer-perfil-nome {{
+    font-size: 13px; font-weight: 600; color: #c5d2e5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-family: 'DM Sans', sans-serif;
+}}
+.footer-perfil i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; }}
 .btn-sino {{
     position: relative;
     display: flex; align-items: center; justify-content: center;
-    width: 30px; height: 30px; flex-shrink: 0;
-    border: 1px solid #1e2a3a; border-radius: 8px;
+    width: 28px; height: 28px; flex-shrink: 0;
+    border: none; border-radius: 8px;
     background: transparent; cursor: pointer;
-    color: #5a7090; transition: all 0.15s;
+    color: #5a7090; transition: color 0.15s;
 }}
-.btn-sino:hover {{ background: #1a2535; color: #e2eaf5; border-color: #3a9fd6; }}
-.btn-sino i {{ font-size: 14px; }}
+.btn-sino:hover {{ color: #e2eaf5; }}
+.btn-sino i {{ font-size: 16px; }}
 .btn-sino .badge {{
-    position: absolute; top: -5px; right: -5px;
+    position: absolute; top: -3px; right: -3px;
     background: #e05252; color: #fff;
     font-size: 9px; font-weight: 700;
     min-width: 15px; height: 15px; border-radius: 8px;
@@ -1955,19 +1977,16 @@ body {{
 </div>
 <div class="footer">
     <div class="footer-email">
-        <div class="footer-email-left">
-            <i class="fa-solid fa-circle-user"></i>
-            <span>{user_email}</span>
+        <div class="footer-perfil" onclick="nav('perfil_menu')">
+            <span class="plano-badge {_plano_css}">{_plano_label}</span>
+            <span class="footer-perfil-nome">{_nome_exibido}</span>
+            <i class="fa-solid fa-chevron-down chevron"></i>
         </div>
         <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
             <i class="fa-solid fa-bell"></i>
             {_badge_html}
         </button>
     </div>
-    <button class="btn-sair" onclick="nav('sair')">
-        <i class="fa-solid fa-right-from-bracket"></i>
-        Sair
-    </button>
 </div>
 </body>
 <script>
@@ -1985,6 +2004,23 @@ function nav(page) {{
 """
 
     components.html(menu_html, height=620, scrolling=False)
+
+    if st.session_state.get("mostrar_perfil_menu"):
+        with st.container(border=True):
+            st.caption(f"{_nome_exibido} · {user_email}")
+            if st.button("✏️ Editar dados", key="_perfil_menu_editar", use_container_width=True):
+                st.session_state.mostrar_perfil_menu = False
+                trocar_pagina("perfil")
+                st.rerun()
+            if st.button("🚪 Sair", key="_perfil_menu_sair", use_container_width=True):
+                logout_supabase()
+                for k in ["logado", "user", "dados", "metricas_redes", "pagina",
+                          "mostrar_form_concorrente", "editando_concorrente",
+                          "editar_empresa", "relatorio_sites", "relatorio_gemini",
+                          "_home_acesso_manual", "mostrar_perfil_menu"]:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                st.rerun()
 
     if st.session_state.get("mostrar_notificacoes"):
         with st.container(border=True):
@@ -15881,3 +15917,31 @@ setTimeout(syncH, 600);
             if st.button(f"redes_analise_sub_{stk}", key=f"btn_redes_analise_sub_{stk}"):
                 st.session_state.redes_analise_subtab = stk
                 st.rerun()
+
+# ---------------------------------------------------
+# PERFIL — Editar dados do usuário
+# ---------------------------------------------------
+elif st.session_state.pagina == "perfil":
+    st.markdown("## 👤 Editar dados")
+    st.caption("Suas informações pessoais de acesso à plataforma.")
+
+    with st.container(border=True):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.text_input("E-mail", value=st.session_state.user.email if st.session_state.user else "", disabled=True)
+        with col_b:
+            _plano_atual_perfil = obter_plano_usuario()
+            _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
+            st.text_input("Plano atual", value=_PLANO_LABELS_PERFIL.get(_plano_atual_perfil, _plano_atual_perfil.upper()), disabled=True)
+
+        novo_nome = st.text_input("Nome", value=obter_nome_usuario(), placeholder="Como você quer ser chamado(a)?")
+
+        if st.button("Salvar alterações", type="primary"):
+            if novo_nome.strip():
+                if atualizar_nome_usuario(novo_nome):
+                    st.toast("✅ Nome atualizado!", icon="✅")
+                    st.rerun()
+            else:
+                st.warning("O nome não pode ficar em branco.")
+
+    st.caption("Precisa trocar de plano ou cancelar a assinatura? Fale com o suporte.")

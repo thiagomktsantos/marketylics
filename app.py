@@ -16171,18 +16171,62 @@ html, body { background: transparent; overflow: hidden; }
                 '</div>'
             )
 
+        _CATEGORIAS_ITEM_PLANO = [
+            ("coletas",      "Coletas"),
+            ("concorrentes", "Concorrentes"),
+            ("analises",     "Análises"),
+            ("automacoes",   "Automações"),
+        ]
+
+        def _cabecalho_categoria(label: str, cor: str, primeiro: bool) -> str:
+            margem_topo = "2px" if primeiro else "14px"
+            return (
+                f'<div style="font-size:10.5px;font-weight:700;color:{cor};'
+                f'text-transform:uppercase;letter-spacing:0.6px;'
+                f'margin:{margem_topo} 0 6px 0;">{label}</div>'
+            )
+
+        def _itens_agrupados_html(itens: list, cor: str) -> str:
+            """Recebe itens como (categoria, texto) e monta a lista agrupada,
+            com um cabeçalho por categoria — categorias sem itens nesse plano
+            simplesmente não aparecem. Itens sem categoria reconhecida (ex.:
+            suporte, gestão de contas) são exibidos soltos, sem cabeçalho,
+            ao final da lista."""
+            por_categoria = {}
+            for cat, texto in itens:
+                por_categoria.setdefault(cat, []).append(texto)
+
+            partes = []
+            primeiro = True
+            for cat_key, cat_label in _CATEGORIAS_ITEM_PLANO:
+                lista = por_categoria.get(cat_key)
+                if not lista:
+                    continue
+                partes.append(_cabecalho_categoria(cat_label, cor, primeiro))
+                partes.extend(_linha_item_plano(it) for it in lista)
+                primeiro = False
+
+            soltos = por_categoria.get("outros")
+            if soltos:
+                partes.extend(_linha_item_plano(it) for it in soltos)
+
+            return "".join(partes)
+
         _PLANOS_INFO = [
             {
                 "id": "free", "nome": "FREE", "cor": "#8a97ab", "fundo": "#f3f4f6",
                 "descricao": "Ideal pra testar a plataforma.",
                 "herda_de": None,
                 "itens": [
-                    "Coleta de anúncios e redes sociais",
-                    "Confronto de sites (visão básica)",
-                    "Sem análises de IA",
-                    "Não salva mídias — usa o link original (pode expirar)",
-                    "Sem cache de coleta salvo entre sessões",
-                    "Limite de coletas por mês",
+                    ("coletas",      "Coleta de anúncios e redes sociais"),
+                    ("coletas",      "Não salva mídias — usa o link original (pode expirar)"),
+                    ("coletas",      "Sem cache de coleta salvo entre sessões"),
+                    ("coletas",      "Limite de coletas por mês"),
+                    ("concorrentes", "Apenas 1 concorrente monitorado"),
+                    ("analises",     "Confronto de sites (visão básica)"),
+                    ("analises",     "Sem análises de IA"),
+                    ("analises",     "Até 15 posts analisados/mês"),
+                    ("analises",     "Até 10 anúncios analisados/mês"),
                 ],
             },
             {
@@ -16190,10 +16234,13 @@ html, body { background: transparent; overflow: hidden; }
                 "descricao": "Pra quem acompanha alguns concorrentes de perto.",
                 "herda_de": "Free",
                 "itens": [
-                    "Análises de IA (limitadas por mês)",
-                    "Cache de coleta salvo entre sessões",
-                    "Até 50 mídias baixadas e armazenadas/mês",
-                    "Histórico de anúncios preservado (sem links expirando)",
+                    ("coletas",      "Cache de coleta salvo entre sessões"),
+                    ("coletas",      "Até 50 mídias baixadas e armazenadas/mês"),
+                    ("coletas",      "Histórico de anúncios preservado (sem links expirando)"),
+                    ("concorrentes", "Até 5 concorrentes monitorados"),
+                    ("analises",     "Análises de IA (limitadas por mês)"),
+                    ("analises",     "Até 100 posts analisados/mês"),
+                    ("analises",     "Até 50 anúncios analisados/mês"),
                 ],
             },
             {
@@ -16201,10 +16248,13 @@ html, body { background: transparent; overflow: hidden; }
                 "descricao": "Pra times de marketing com monitoramento contínuo.",
                 "herda_de": "Starter",
                 "itens": [
-                    "Análises de IA ilimitadas",
-                    "Confronto de sites completo (todas as métricas)",
-                    "Até 500 mídias baixadas e armazenadas/mês",
-                    "Prioridade na migração de mídia",
+                    ("coletas",      "Até 500 mídias baixadas e armazenadas/mês"),
+                    ("coletas",      "Prioridade na migração de mídia"),
+                    ("concorrentes", "Até 20 concorrentes monitorados"),
+                    ("analises",     "Análises de IA ilimitadas"),
+                    ("analises",     "Confronto de sites completo (todas as métricas)"),
+                    ("analises",     "Até 500 posts analisados/mês"),
+                    ("analises",     "Até 300 anúncios analisados/mês"),
                 ],
             },
             {
@@ -16212,9 +16262,12 @@ html, body { background: transparent; overflow: hidden; }
                 "descricao": "Pra agências gerenciando várias contas de clientes.",
                 "herda_de": "Pro",
                 "itens": [
-                    "Mídias baixadas e armazenadas ilimitadas",
-                    "Gestão de múltiplas contas de clientes",
-                    "Suporte prioritário",
+                    ("coletas",      "Mídias baixadas e armazenadas ilimitadas"),
+                    ("concorrentes", "Concorrentes monitorados ilimitados"),
+                    ("analises",     "Posts analisados ilimitados"),
+                    ("analises",     "Anúncios analisados ilimitados"),
+                    ("outros",       "Gestão de múltiplas contas de clientes"),
+                    ("outros",       "Suporte prioritário"),
                 ],
             },
         ]
@@ -16225,7 +16278,7 @@ html, body { background: transparent; overflow: hidden; }
                 _ativo = info["id"] == _plano_atual_perfil
                 _borda = f"border:2px solid {info['cor']}" if _ativo else "border:1px solid #e5e7eb"
 
-                _itens_html = "".join(_linha_item_plano(it) for it in info["itens"])
+                _itens_html = _itens_agrupados_html(info["itens"], info["cor"])
 
                 _divisor_html = '<div style="position:relative;z-index:5;height:1px;min-height:1px;flex-shrink:0;background:#e5e7eb;margin:6px 0 10px 0;"></div>'
                 _label_html = ""

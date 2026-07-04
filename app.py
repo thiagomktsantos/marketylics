@@ -463,6 +463,28 @@ def cadastro_supabase(email: str, senha: str):
     except Exception as e:
         return None, str(e)
 
+def obter_nome_usuario() -> str:
+    """Nome de exibição do usuário logado. Cai pro prefixo do e-mail
+    se ele ainda não tiver preenchido o nome."""
+    u = st.session_state.get("user")
+    if not u:
+        return ""
+    nome = (getattr(u, "user_metadata", None) or {}).get("full_name", "").strip()
+    if nome:
+        return nome
+    return (u.email or "").split("@")[0]
+
+def atualizar_nome_usuario(novo_nome: str) -> bool:
+    """Atualiza o nome nos metadados do usuário no Supabase Auth."""
+    try:
+        res = supabase.auth.update_user({"data": {"full_name": novo_nome.strip()}})
+        if res.user:
+            st.session_state.user = res.user
+        return True
+    except Exception as e:
+        st.toast(f"⚠️ Erro ao atualizar nome: {e}", icon="⚠️")
+        return False
+
 def garantir_linha_usuario(user_id: str):
     try:
         existe = (

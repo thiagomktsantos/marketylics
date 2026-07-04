@@ -1406,6 +1406,9 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     overflow: hidden !important;
 }
 
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: 0rem !important;
+}
 [data-testid="stSidebar"] .st-key-_perfil_menu_editar,
 [data-testid="stSidebar"] .st-key-_perfil_menu_sair,
 [data-testid="stSidebar"] .stElementContainer:has(.st-key-_perfil_menu_editar),
@@ -1423,10 +1426,12 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     padding: 0 !important;
     visibility: hidden !important;
 }
+[data-testid="stSidebar"] .stElementContainer:has(div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar)) {
+    margin-top: -10px !important;
+}
 [data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) {
     background: #101825 !important;
     border: 1px solid #1e2a3a !important;
-    margin-top: -14px !important;
     padding: 8px !important;
 }
 [data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) [data-testid="stVerticalBlock"] {
@@ -1903,11 +1908,15 @@ body {{
     min-width: 0; flex: 1; cursor: pointer;
     padding: 4px 6px; border-radius: 8px;
     transition: background 0.15s;
+    justify-content: space-between;
 }}
 .footer-perfil:hover {{ background: #1a2535; }}
+.footer-perfil-info {{
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+}}
 .footer-right-group {{
     display: flex; align-items: center; gap: 6px;
-    flex-shrink: 0; cursor: pointer;
+    flex-shrink: 0;
 }}
 .plano-badge {{
     flex-shrink: 0;
@@ -1925,8 +1934,8 @@ body {{
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     font-family: 'DM Sans', sans-serif;
 }}
-.footer-right-group i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; cursor: pointer; }}
-.footer-right-group i.chevron:hover {{ color: #e2eaf5; }}
+.footer-perfil i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; }}
+.footer-perfil:hover i.chevron {{ color: #e2eaf5; }}
 .btn-sino {{
     position: relative;
     display: flex; align-items: center; justify-content: center;
@@ -2016,11 +2025,13 @@ body {{
 <div class="footer">
     <div class="footer-email">
         <div class="footer-perfil" onclick="nav('perfil_menu')">
-            <span class="plano-badge {_plano_css}">{_plano_label}</span>
-            <span class="footer-perfil-nome">{_nome_exibido}</span>
+            <div class="footer-perfil-info">
+                <span class="plano-badge {_plano_css}">{_plano_label}</span>
+                <span class="footer-perfil-nome">{_nome_exibido}</span>
+            </div>
+            <i class="fa-solid fa-chevron-down chevron"></i>
         </div>
         <div class="footer-right-group">
-            <i class="fa-solid fa-chevron-down chevron" onclick="nav('perfil_menu')"></i>
             <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
                 <i class="fa-solid fa-bell"></i>
                 {_badge_html}
@@ -2068,14 +2079,14 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
 .menu-btn svg { flex-shrink: 0; }
 </style>
 <button class="menu-btn" onclick="triggerPerfilBtn('Editar dados')">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 20h9"/>
         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
     </svg>
     Editar dados
 </button>
 <button class="menu-btn danger" onclick="triggerPerfilBtn('Sair')">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e05252" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
         <polyline points="16 17 21 12 16 7"/>
         <line x1="21" y1="12" x2="9" y2="12"/>

@@ -466,6 +466,13 @@ def cadastro_supabase(email: str, senha: str, nome: str = ""):
     except Exception as e:
         return None, str(e)
 
+def _html(bloco: str) -> str:
+    """Remove a indentação de cada linha antes de mandar pro st.markdown.
+    Sem isso, HTML com 4+ espaços de indentação (comum em f-strings
+    dentro de loops/with aninhados) é interpretado pelo parser de
+    Markdown como bloco de código, e aparece como texto cru na tela."""
+    return "\n".join(l.strip() for l in bloco.strip().split("\n"))
+
 def obter_nome_usuario() -> str:
     """Nome de exibição do usuário logado. Cai pro prefixo do e-mail
     se ele ainda não tiver preenchido o nome."""
@@ -1756,8 +1763,6 @@ with st.sidebar:
                           "_home_acesso_manual"]:
                     if k in st.session_state:
                         del st.session_state[k]
-            elif p == "notificacoes":
-                st.session_state.mostrar_notificacoes = not st.session_state.get("mostrar_notificacoes", False)
             elif p == "perfil_menu":
                 st.session_state.mostrar_perfil_menu = not st.session_state.get("mostrar_perfil_menu", False)
             elif p == "home":
@@ -2008,7 +2013,6 @@ function nav(page) {{
 
     if st.session_state.get("mostrar_perfil_menu"):
         with st.container(border=True):
-            st.caption(f"{_nome_exibido} · {user_email}")
             if st.button("✏️ Editar dados", key="_perfil_menu_editar", use_container_width=True):
                 st.session_state.mostrar_perfil_menu = False
                 trocar_pagina("perfil")
@@ -2022,34 +2026,6 @@ function nav(page) {{
                     if k in st.session_state:
                         del st.session_state[k]
                 st.rerun()
-
-    if st.session_state.get("mostrar_notificacoes"):
-        with st.container(border=True):
-            col_t, col_x = st.columns([5, 1])
-            with col_t:
-                st.markdown("**🔔 Atividades**")
-            with col_x:
-                if st.button("✕", key="_fechar_notificacoes"):
-                    st.session_state.mostrar_notificacoes = False
-                    st.rerun()
-
-            _ativ = listar_atividades_recentes(st.session_state.user.id) if st.session_state.user else []
-            if not _ativ:
-                st.caption("Nenhuma atividade registrada ainda.")
-            else:
-                for _a in _ativ:
-                    _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
-                    st.markdown(
-                        f"""<div style="padding:8px 0;border-bottom:1px solid #eef1f5">
-                            <div style="font-size:13px;color:#111827;font-weight:600">
-                                {_ui['icone']} {_a.get('titulo', '')}
-                            </div>
-                            <div style="font-size:11px;color:{_ui['cor']}">
-                                {_ui['label']} · {_tempo_relativo(_a.get('criado_em', ''))}
-                            </div>
-                        </div>""",
-                        unsafe_allow_html=True,
-                    )
 
 # ---------------------------------------------------
 # HELPER — CABEÇALHO COM PERÍODO
@@ -15937,17 +15913,47 @@ elif st.session_state.pagina == "perfil":
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="margin-bottom:20px">
-        <div style="font-family:'DM Sans',sans-serif;font-size:28px;font-weight:700;
-                    color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px 0">
-            Meus dados
-        </div>
-        <div style="font-family:'DM Sans',sans-serif;font-size:14px;color:#6b7280">
-            Suas informações pessoais e o plano da sua conta.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div id="wrap">
+    <div class="titulo">Meu Perfil</div>
+    <div class="sub">Suas informações pessoais e o plano da sua conta.</div>
+</div>
+<script>
+(function() {
+    function ajustar() {
+        var h = document.getElementById('wrap').getBoundingClientRect().height;
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                if (iframes[i].contentWindow === window) {
+                    iframes[i].style.height = (h + 4) + 'px';
+                    break;
+                }
+            } catch(e) {}
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ajustar);
+    window.addEventListener('load', ajustar);
+    setTimeout(ajustar, 100);
+    setTimeout(ajustar, 400);
+})();
+</script>
+""", height=70)
 
     _plano_atual_perfil = obter_plano_usuario()
     _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
@@ -16028,7 +16034,7 @@ elif st.session_state.pagina == "perfil":
                 _ativo = info["id"] == _plano_atual_perfil
                 _borda = f"border:2px solid {info['cor']}" if _ativo else "border:1px solid #e5e7eb"
                 _itens_html = "".join(f"<li style='margin-bottom:4px'>{it}</li>" for it in info["itens"])
-                st.markdown(f"""
+                st.markdown(_html(f"""
                 <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
                             height:100%;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -16041,4 +16047,84 @@ elif st.session_state.pagina == "perfil":
                         {_itens_html}
                     </ul>
                 </div>
-                """, unsafe_allow_html=True)
+                """), unsafe_allow_html=True)
+
+
+# ---------------------------------------------------
+# NOTIFICAÇÕES — histórico de atividades
+# ---------------------------------------------------
+elif st.session_state.pagina == "notificacoes":
+
+    components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: transparent; overflow: hidden; }
+.titulo {
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}
+.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+</style>
+<div id="wrap">
+    <div class="titulo">Notificações</div>
+    <div class="sub">Acompanhe o andamento das suas coletas e atualizações.</div>
+</div>
+<script>
+(function() {
+    function ajustar() {
+        var h = document.getElementById('wrap').getBoundingClientRect().height;
+        var iframes = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                if (iframes[i].contentWindow === window) {
+                    iframes[i].style.height = (h + 4) + 'px';
+                    break;
+                }
+            } catch(e) {}
+        }
+    }
+    document.addEventListener('DOMContentLoaded', ajustar);
+    window.addEventListener('load', ajustar);
+    setTimeout(ajustar, 100);
+    setTimeout(ajustar, 400);
+})();
+</script>
+""", height=70)
+
+    _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
+
+    if not _todas_atividades:
+        st.markdown(_html("""
+        <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                    text-align:center;background:#fff;margin-top:8px">
+            <div style="font-size:32px;margin-bottom:8px">🔔</div>
+            <div style="font-size:14px;color:#9ca3af">Nenhuma atividade registrada ainda.</div>
+        </div>
+        """), unsafe_allow_html=True)
+    else:
+        for _a in _todas_atividades:
+            _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
+            st.markdown(_html(f"""
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;
+                        padding:14px 18px;margin-bottom:10px;
+                        display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div>
+                    <div style="font-size:14px;color:#111827;font-weight:600">
+                        {_ui['icone']} {_a.get('titulo', '')}
+                    </div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:2px">
+                        {_tempo_relativo(_a.get('criado_em', ''))}
+                    </div>
+                </div>
+                <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
+                             padding:4px 12px;border-radius:20px;white-space:nowrap">
+                    {_ui['label']}
+                </span>
+            </div>
+            """), unsafe_allow_html=True)

@@ -1406,26 +1406,31 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     overflow: hidden !important;
 }
 
-[data-testid="stSidebar"] .st-key-_perfil_menu_editar button,
-[data-testid="stSidebar"] .st-key-_perfil_menu_sair button {
-    background: transparent !important;
-    border: 1px solid #1e2a3a !important;
-    border-radius: 10px !important;
-    color: #c5d2e5 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
-    transition: all 0.15s !important;
-}
-[data-testid="stSidebar"] .st-key-_perfil_menu_editar button:hover,
-[data-testid="stSidebar"] .st-key-_perfil_menu_sair button:hover {
-    background: #1a2535 !important;
-    color: #e2eaf5 !important;
-    border-color: #3a9fd6 !important;
+[data-testid="stSidebar"] .st-key-_perfil_menu_editar,
+[data-testid="stSidebar"] .st-key-_perfil_menu_sair,
+[data-testid="stSidebar"] .stElementContainer:has(.st-key-_perfil_menu_editar),
+[data-testid="stSidebar"] .stElementContainer:has(.st-key-_perfil_menu_sair) {
+    position: fixed !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
 }
 [data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) {
     background: #101825 !important;
     border: 1px solid #1e2a3a !important;
+    margin-top: -14px !important;
+    padding: 8px !important;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -1895,11 +1900,15 @@ body {{
 }}
 .footer-perfil {{
     display: flex; align-items: center; gap: 8px;
-    min-width: 0; cursor: pointer;
+    min-width: 0; flex: 1; cursor: pointer;
     padding: 4px 6px; border-radius: 8px;
     transition: background 0.15s;
 }}
 .footer-perfil:hover {{ background: #1a2535; }}
+.footer-right-group {{
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0; cursor: pointer;
+}}
 .plano-badge {{
     flex-shrink: 0;
     font-size: 10px; font-weight: 700;
@@ -1916,7 +1925,8 @@ body {{
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     font-family: 'DM Sans', sans-serif;
 }}
-.footer-perfil i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; }}
+.footer-right-group i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; cursor: pointer; }}
+.footer-right-group i.chevron:hover {{ color: #e2eaf5; }}
 .btn-sino {{
     position: relative;
     display: flex; align-items: center; justify-content: center;
@@ -2008,12 +2018,14 @@ body {{
         <div class="footer-perfil" onclick="nav('perfil_menu')">
             <span class="plano-badge {_plano_css}">{_plano_label}</span>
             <span class="footer-perfil-nome">{_nome_exibido}</span>
-            <i class="fa-solid fa-chevron-down chevron"></i>
         </div>
-        <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
-            <i class="fa-solid fa-bell"></i>
-            {_badge_html}
-        </button>
+        <div class="footer-right-group">
+            <i class="fa-solid fa-chevron-down chevron" onclick="nav('perfil_menu')"></i>
+            <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
+                <i class="fa-solid fa-bell"></i>
+                {_badge_html}
+            </button>
+        </div>
     </div>
 </div>
 </body>
@@ -2035,11 +2047,68 @@ function nav(page) {{
 
     if st.session_state.get("mostrar_perfil_menu"):
         with st.container(border=True):
-            if st.button("✏️ Editar dados", key="_perfil_menu_editar", use_container_width=True):
+            editar_clicado = st.button("Editar dados", key="_perfil_menu_editar", use_container_width=True)
+            sair_clicado = st.button("Sair", key="_perfil_menu_sair", use_container_width=True)
+
+            components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
+.menu-btn {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; margin-bottom: 6px;
+    background: transparent; border: 1px solid #1e2a3a; border-radius: 10px;
+    color: #c5d2e5; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: all 0.15s;
+}
+.menu-btn:last-child { margin-bottom: 0; }
+.menu-btn:hover { background: #1a2535; color: #e2eaf5; border-color: #3a9fd6; }
+.menu-btn.danger:hover { border-color: #e05252; }
+.menu-btn svg { flex-shrink: 0; }
+</style>
+<button class="menu-btn" onclick="triggerPerfilBtn('Editar dados')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h9"/>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
+    Editar dados
+</button>
+<button class="menu-btn danger" onclick="triggerPerfilBtn('Sair')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e05252" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Sair
+</button>
+<script>
+function triggerPerfilBtn(label) {
+    var btns = window.parent.document.querySelectorAll('[data-testid="stSidebar"] button');
+    for (var i = 0; i < btns.length; i++) {
+        var t = (btns[i].innerText || btns[i].textContent || '').trim();
+        if (t === label) { btns[i].click(); return; }
+    }
+}
+(function() {
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+        try {
+            if (iframes[i].contentWindow === window) {
+                iframes[i].style.height = '92px';
+                break;
+            }
+        } catch(e) {}
+    }
+})();
+</script>
+""", height=92, scrolling=False)
+
+            if editar_clicado:
                 st.session_state.mostrar_perfil_menu = False
                 trocar_pagina("perfil")
                 st.rerun()
-            if st.button("🚪 Sair", key="_perfil_menu_sair", use_container_width=True):
+            if sair_clicado:
                 logout_supabase()
                 for k in ["logado", "user", "dados", "metricas_redes", "pagina",
                           "mostrar_form_concorrente", "editando_concorrente",

@@ -189,33 +189,44 @@ def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
     """Percorre um dict no formato do ads_cache e substitui as URLs de
     imagens/vídeos por versões permanentes no R2, quando possível.
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
-    do Facebook que vai expirar."""
+    do Facebook que vai expirar.
+
+    Os downloads são I/O-bound (rede), então rodam em paralelo com um
+    thread pool — sequencial ficava lento demais quando várias empresas
+    com muitos anúncios eram coletadas juntas."""
     if r2_client is None:
         return dados  # R2 não configurado — mantém comportamento atual
 
+    from concurrent.futures import ThreadPoolExecutor
+
     resultado = {}
+    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id)
+
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
-        ads_novos = []
-        for ad in entry.get("data", []):
-            ad_novo = dict(ad)
-            ad_id = ad_novo.get("id")
-
-            imagens_orig = ad_novo.get("images") or []
-            ad_novo["images"] = [
-                baixar_e_persistir_midia(u, user_id, empresa, "imagem", ad_id)
-                for u in imagens_orig
-            ]
-
-            videos_orig = ad_novo.get("videos") or []
-            ad_novo["videos"] = [
-                baixar_e_persistir_midia(u, user_id, empresa, "video", ad_id)
-                for u in videos_orig
-            ]
-
-            ads_novos.append(ad_novo)
+        ads_novos = [dict(ad) for ad in entry.get("data", [])]
         entry_nova["data"] = ads_novos
         resultado[empresa] = entry_nova
+
+        for ad_idx, ad in enumerate(ads_novos):
+            ad_id = ad.get("id")
+            for url_idx, u in enumerate(ad.get("images") or []):
+                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id))
+            for url_idx, u in enumerate(ad.get("videos") or []):
+                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id))
+
+    if not tarefas:
+        return resultado
+
+    def _processar(t):
+        empresa, ad_idx, campo, url_idx, u, tipo, ad_id = t
+        nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
+        return (empresa, ad_idx, campo, url_idx, nova_url)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for empresa, ad_idx, campo, url_idx, nova_url in executor.map(_processar, tarefas):
+            resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
+
     return resultado
 
 # ---------------------------------------------------
@@ -1950,7 +1961,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 # FUNÇÃO salvar_cache_ads 
 # ---------------------------------------------------
  
-def salvar_cache_ads(dados: dict):
+def salvar_cache_ads(dados: dict, migrar_midia: bool = True):
     try:
         user_id = st.session_state.user.id
 
@@ -1971,16 +1982,86 @@ def salvar_cache_ads(dados: dict):
         # Isolado em try/except próprio: se o pipeline de mídia falhar por
         # qualquer motivo, o save do ads_cache tem que acontecer do mesmo
         # jeito (com os links originais), nunca pode travar o essencial.
-        try:
-            dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
-        except Exception as e_midia:
-            st.toast(f"⚠️ Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+        # migrar_midia=False pula essa etapa (usado no save "rápido" logo
+        # após a coleta — a migração real roda depois, em background).
+        if migrar_midia:
+            try:
+                dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
+            except Exception as e_midia:
+                st.toast(f"⚠️ Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
 
         supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,
         }).eq("user_id", user_id).execute()
     except Exception as e:
         st.toast(f"⚠️ Erro ao salvar cache de ads: {e}", icon="⚠️")
+
+# ---------------------------------------------------
+#  MIGRAÇÃO DE MÍDIA EM BACKGROUND
+# ---------------------------------------------------
+# A página abre rápido com os links originais do Facebook (que ainda
+# duram bem mais que 1 dia). Em paralelo, uma thread baixa e sobe as
+# mídias pro R2 e atualiza o ads_cache — sem bloquear a navegação.
+
+import threading
+
+def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> bool:
+    """Confere, direto no banco, se a empresa ainda está configurada com
+    a mesma query/ads_id usada nessa coleta. Evita gastar banda e cota
+    de mídia processando uma empresa que o usuário já corrigiu ou
+    removeu logo depois de pedir a busca por engano."""
+    try:
+        res = (
+            supabase.table("ci_dados")
+            .select("minha_empresa, concorrentes")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if not res.data:
+            return False
+        row = res.data[0]
+        candidatos = [row.get("minha_empresa") or {}] + (row.get("concorrentes") or [])
+        for c in candidatos:
+            if c.get("nome") != empresa_nome:
+                continue
+            ads_id_atual = (c.get("ads_id") or "").strip()
+            # nome bate; se não há ads_id configurado ou ele continua
+            # igual ao usado na coleta, a empresa segue válida
+            return (not ads_id_atual) or (ads_id_atual == query_usada)
+        return False  # nome não existe mais na configuração do usuário
+    except Exception:
+        return True  # checagem é só economia — em dúvida, não bloqueia
+
+def _migrar_midia_background(user_id: str, empresa: str, entry: dict):
+    try:
+        if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
+            return
+
+        migrado = persistir_midias_de_ads({empresa: entry}, user_id)
+
+        # Merge seguro: relê o ads_cache atual e só sobrescreve a entrada
+        # dessa empresa se ninguém salvou uma coleta mais nova dela nesse
+        # meio-tempo (compara pelo timestamp "ts" da coleta original).
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        entrada_atual = cache_atual.get(empresa, {})
+        if entrada_atual.get("ts") == entry.get("ts"):
+            cache_atual[empresa] = migrado[empresa]
+            supabase.table("ci_dados").update({
+                "ads_cache": cache_atual,
+            }).eq("user_id", user_id).execute()
+    except Exception:
+        pass  # migração em background nunca pode derrubar o app
+
+def iniciar_migracao_midia_background(user_id: str, novos: dict):
+    """Dispara uma thread por empresa recém-coletada pra migrar as mídias
+    pro R2 sem travar a página."""
+    for empresa, entry in novos.items():
+        threading.Thread(
+            target=_migrar_midia_background,
+            args=(user_id, empresa, entry),
+            daemon=True,
+        ).start()
 
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa
@@ -6986,7 +7067,13 @@ elif st.session_state.pagina == "ads":
         cache_mergeado = merge_ads(cache_atual, novos)
         st.session_state.ads_cache = cache_mergeado
         st.session_state.ads_erro  = erros
-        salvar_cache_ads(cache_mergeado)
+
+        # Save rápido: mantém os links originais do Facebook (ainda válidos
+        # por bem mais que 1 dia), então a página abre na hora. A troca
+        # pelos links permanentes do R2 acontece depois, em background.
+        salvar_cache_ads(cache_mergeado, migrar_midia=False)
+        if novos:
+            iniciar_migracao_midia_background(st.session_state.user.id, novos)
         st.rerun()
 
     if "ads_cache" not in st.session_state or not st.session_state.ads_cache:

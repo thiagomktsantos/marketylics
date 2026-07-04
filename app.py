@@ -454,9 +454,12 @@ def login_supabase(email: str, senha: str):
     except Exception as e:
         return None, str(e)
 
-def cadastro_supabase(email: str, senha: str):
+def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:
-        res = supabase.auth.sign_up({"email": email, "password": senha})
+        payload = {"email": email, "password": senha}
+        if nome.strip():
+            payload["options"] = {"data": {"full_name": nome.strip()}}
+        res = supabase.auth.sign_up(payload)
         if res.user:
             garantir_linha_usuario(res.user.id)
         return res.user, None
@@ -1705,13 +1708,14 @@ if not st.session_state.logado:
 
         with aba[1]:
             with st.form("form_cadastro"):
+                nome_cad   = st.text_input("Nome", placeholder="Como você quer ser chamado(a)?", key="cad_nome")
                 email_cad  = st.text_input("E-mail", placeholder="seu@email.com", key="cad_email")
                 senha_cad  = st.text_input("Senha", type="password", placeholder="Mínimo 6 caracteres", key="cad_senha")
                 senha_cad2 = st.text_input("Confirmar senha", type="password", placeholder="Repita a senha", key="cad_senha2")
                 submit_cad = st.form_submit_button("Criar conta", use_container_width=True)
 
             if submit_cad:
-                if not email_cad or not senha_cad:
+                if not nome_cad or not email_cad or not senha_cad:
                     st.warning("Preencha todos os campos.")
                 elif senha_cad != senha_cad2:
                     st.error("As senhas não coincidem.")
@@ -1719,7 +1723,7 @@ if not st.session_state.logado:
                     st.error("A senha deve ter pelo menos 6 caracteres.")
                 else:
                     with st.spinner("Criando conta..."):
-                        user, err = cadastro_supabase(email_cad, senha_cad)
+                        user, err = cadastro_supabase(email_cad, senha_cad, nome_cad)
                     if user:
                         st.success("Conta criada! Verifique seu e-mail para confirmar, depois faça login.")
                     else:

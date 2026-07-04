@@ -16219,7 +16219,7 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": None,
                 "itens": [
                     ("coletas",      "Coleta de anúncios e redes sociais"),
-                    ("coletas",      "Não salva mídias — usa o link original (pode expirar)"),
+                    ("coletas",      "Não salva mídias dos anúncios — usa o link original (pode expirar)"),
                     ("coletas",      "Sem cache de coleta salvo entre sessões"),
                     ("coletas",      "Limite de coletas por mês"),
                     ("concorrentes", "Apenas 1 concorrente monitorado"),
@@ -16235,7 +16235,7 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": "Free",
                 "itens": [
                     ("coletas",      "Cache de coleta salvo entre sessões"),
-                    ("coletas",      "Até 50 mídias baixadas e armazenadas/mês"),
+                    ("coletas",      "Até 50 mídias de anúncios baixadas e armazenadas/mês"),
                     ("coletas",      "Histórico de anúncios preservado (sem links expirando)"),
                     ("concorrentes", "Até 5 concorrentes monitorados"),
                     ("analises",     "Análises de IA (limitadas por mês)"),
@@ -16248,7 +16248,7 @@ html, body { background: transparent; overflow: hidden; }
                 "descricao": "Pra times de marketing com monitoramento contínuo.",
                 "herda_de": "Starter",
                 "itens": [
-                    ("coletas",      "Até 500 mídias baixadas e armazenadas/mês"),
+                    ("coletas",      "Até 500 mídias de anúncios baixadas e armazenadas/mês"),
                     ("coletas",      "Prioridade na migração de mídia"),
                     ("concorrentes", "Até 20 concorrentes monitorados"),
                     ("analises",     "Análises de IA ilimitadas"),
@@ -16262,7 +16262,7 @@ html, body { background: transparent; overflow: hidden; }
                 "descricao": "Pra agências gerenciando várias contas de clientes.",
                 "herda_de": "Pro",
                 "itens": [
-                    ("coletas",      "Mídias baixadas e armazenadas ilimitadas"),
+                    ("coletas",      "Mídias de anúncios baixadas e armazenadas ilimitadas"),
                     ("concorrentes", "Concorrentes monitorados ilimitados"),
                     ("analises",     "Posts analisados ilimitados"),
                     ("analises",     "Anúncios analisados ilimitados"),

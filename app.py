@@ -128,6 +128,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     url_origem — nunca quebra o fluxo existente."""
     if not url_origem or not url_origem.startswith("http"):
         return url_origem
+    if R2_PUBLIC_BASE and url_origem.startswith(R2_PUBLIC_BASE):
+        return url_origem  # já é uma mídia nossa no R2 — nada a fazer
     if r2_client is None:
         return url_origem
     if not pode_baixar_midia(user_id):

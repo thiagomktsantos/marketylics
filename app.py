@@ -16125,42 +16125,47 @@ html, body { background: transparent; overflow: hidden; }
         _ICONE_INFIN  = '<path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"/>'
 
         def _icone_item_plano(texto: str):
-            """Escolhe ícone + cor de acordo com o tipo de recurso descrito no item."""
+            """Escolhe o ícone de acordo com o tipo de recurso descrito no item.
+            A cor é definida à parte (mesma cor do plano), então aqui só retornamos o path."""
             t = texto.lower()
             restritivo = t.startswith(("sem ", "não ", "limite"))
             if restritivo:
-                return _ICONE_MINUS, "#b0b7c3"
+                return _ICONE_MINUS, True
             if "ilimitad" in t:
-                return _ICONE_INFIN, "#22c55e"
+                return _ICONE_INFIN, False
             if "análise" in t or " ia " in f" {t} " or t.startswith("análises") or "ia (" in t:
-                return _ICONE_IA, "#8b5cf6"
+                return _ICONE_IA, False
             if "mídia" in t or "imagens" in t or "vídeos" in t or "baixad" in t:
-                return _ICONE_IMG, "#3a9fd6"
+                return _ICONE_IMG, False
             if "cache" in t:
-                return _ICONE_DB, "#3a9fd6"
+                return _ICONE_DB, False
             if "histórico" in t:
-                return _ICONE_CLOCK, "#3a9fd6"
+                return _ICONE_CLOCK, False
             if "confronto de sites" in t:
-                return _ICONE_CHART, "#1e9e63"
+                return _ICONE_CHART, False
             if "coleta de anúncios" in t or "redes sociais" in t:
-                return _ICONE_ADS, "#3a9fd6"
+                return _ICONE_ADS, False
             if "prioridade" in t and "migra" in t:
-                return _ICONE_ROCKET, "#1e9e63"
+                return _ICONE_ROCKET, False
             if "suporte" in t:
-                return _ICONE_HEADSET, "#8b4fc9"
+                return _ICONE_HEADSET, False
             if "gestão" in t or "contas de cliente" in t:
-                return _ICONE_USERS, "#8b4fc9"
+                return _ICONE_USERS, False
             if "link" in t:
-                return _ICONE_LINK, "#9ca3af"
-            return _ICONE_CHECK, "#22c55e"
+                return _ICONE_LINK, False
+            return _ICONE_CHECK, False
+
+        _COR_ICONE_ITEM = "#3a9fd6"  # cor única pra todos os ícones de recurso disponível
 
         def _linha_item_plano(texto: str) -> str:
-            icone, cor = _icone_item_plano(texto)
-            cor_texto = "#9ca3af" if icone == _ICONE_MINUS else "#374151"
+            icone, restritivo = _icone_item_plano(texto)
+            cor_icone = "#b0b7c3" if restritivo else _COR_ICONE_ITEM
+            cor_texto = "#9ca3af" if restritivo else "#374151"
             return (
-                '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:9px;">'
-                f'<span style="width:18px;height:18px;flex-shrink:0;margin-top:1px;">'
-                f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">'
+                f'<span style="width:18px;height:18px;flex-shrink:0;display:flex;'
+                f'align-items:center;justify-content:center;">'
+                f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{cor_icone}" '
                 f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icone}</svg></span>'
                 f'<span style="font-size:12.5px;color:{cor_texto};line-height:1.4;">{texto}</span>'
                 '</div>'
@@ -16222,7 +16227,7 @@ html, body { background: transparent; overflow: hidden; }
 
                 _itens_html = "".join(_linha_item_plano(it) for it in info["itens"])
 
-                _divisor_html = '<div style="border-top:1px solid #f3f4f6;margin:6px 0 10px 0;"></div>'
+                _divisor_html = '<div style="position:relative;z-index:5;height:1px;min-height:1px;flex-shrink:0;background:#e5e7eb;margin:6px 0 10px 0;"></div>'
                 _label_html = ""
                 if info["herda_de"]:
                     _label_html = (
@@ -16234,7 +16239,7 @@ html, body { background: transparent; overflow: hidden; }
 
                 st.markdown(_html(f"""
                 <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
-                            min-height:340px;display:flex;flex-direction:column;
+                            min-height:340px;display:flex;flex-direction:column;position:relative;z-index:0;
                             box-shadow:0 1px 4px rgba(0,0,0,0.05)">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                         <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;

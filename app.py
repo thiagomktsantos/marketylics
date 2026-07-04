@@ -16242,10 +16242,12 @@ html, body { background: transparent; overflow: hidden; }
                     ("coletas",      "Cache de coleta salvo entre sessões"),
                     ("coletas",      "Até 50 mídias de anúncios baixadas e armazenadas/mês"),
                     ("coletas",      "Histórico de anúncios preservado (sem links expirando)"),
+                    ("coletas",      "Exportação das coletas em CSV"),
                     ("concorrentes", "Até 5 concorrentes monitorados"),
                     ("analises",     "Análises de IA (limitadas por mês)"),
                     ("analises",     "Até 100 posts analisados/mês"),
                     ("analises",     "Até 50 anúncios analisados/mês"),
+                    ("analises",     "Exportação dos relatórios de análise (PDF)"),
                 ],
             },
             {
@@ -16255,6 +16257,8 @@ html, body { background: transparent; overflow: hidden; }
                 "itens": [
                     ("coletas",      "Até 500 mídias de anúncios baixadas e armazenadas/mês"),
                     ("coletas",      "Prioridade na migração de mídia"),
+                    ("coletas",      "Coleta automática agendada (diária)"),
+                    ("coletas",      "Modelos de coleta salvos"),
                     ("concorrentes", "Até 20 concorrentes monitorados"),
                     ("analises",     "Análises de IA ilimitadas"),
                     ("analises",     "Confronto de sites completo (todas as métricas)"),
@@ -16268,14 +16272,21 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": "Pro",
                 "itens": [
                     ("coletas",      "Mídias de anúncios baixadas e armazenadas ilimitadas"),
+                    ("coletas",      "Coleta simultânea de múltiplas contas"),
+                    ("coletas",      "Exportação avançada dos dados (API)"),
+                    ("coletas",      "Prioridade máxima no processamento das coletas"),
                     ("concorrentes", "Concorrentes monitorados ilimitados"),
                     ("analises",     "Posts analisados ilimitados"),
                     ("analises",     "Anúncios analisados ilimitados"),
+                    ("analises",     "Relatórios de análise em white-label"),
+                    ("analises",     "Insights comparativos entre contas de clientes"),
                     ("outros",       "Gestão de múltiplas contas de clientes"),
                     ("outros",       "Suporte prioritário"),
                 ],
             },
         ]
+
+        _CORES_POR_NOME_PLANO = {p["nome"].capitalize(): p["cor"] for p in _PLANOS_INFO}
 
         cols_planos = st.columns(len(_PLANOS_INFO))
         for col_plano, info in zip(cols_planos, _PLANOS_INFO):
@@ -16288,10 +16299,11 @@ html, body { background: transparent; overflow: hidden; }
                 _divisor_html = '<div style="position:relative;z-index:5;height:1px;min-height:1px;flex-shrink:0;background:#e5e7eb;margin:6px 0 10px 0;"></div>'
                 _label_html = ""
                 if info["herda_de"]:
+                    _cor_herdado = _CORES_POR_NOME_PLANO.get(info["herda_de"], "#9ca3af")
                     _label_html = (
                         f'<div style="font-size:11px;font-weight:700;color:#9ca3af;'
                         f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
-                        f'Tudo o que o plano {info["herda_de"]} oferece, e mais:</div>'
+                        f'Tudo o que o plano <span style="color:{_cor_herdado};font-weight:800">{info["herda_de"]}</span> oferece, e mais:</div>'
                     )
                 _herda_html = _divisor_html + _label_html
 
@@ -16315,6 +16327,13 @@ html, body { background: transparent; overflow: hidden; }
         components.html("""
 <script>
 (function() {
+    if (window.frameElement) {
+        window.frameElement.style.setProperty('border', 'none', 'important');
+        window.frameElement.style.setProperty('height', '0px', 'important');
+        window.frameElement.style.setProperty('min-height', '0px', 'important');
+        window.frameElement.style.setProperty('display', 'none', 'important');
+    }
+
     function sincronizarAlturasPlanos() {
         var cards = window.parent.document.querySelectorAll('.plano-card');
         if (!cards.length) return;

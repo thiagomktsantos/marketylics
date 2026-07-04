@@ -230,6 +230,91 @@ def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
     return resultado
 
 # ---------------------------------------------------
+#  LOG DE ATIVIDADES (sino de notificações)
+# ---------------------------------------------------
+# Registra ações de longa duração (coletas, migrações) com status
+# pendente → em_andamento → concluido/erro, pra exibir no sino da
+# sidebar e, mais pra frente, servir de base pro item 3 (jobs).
+
+def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None) -> str:
+    """Cria um registro de atividade e devolve o id (pra depois atualizar)."""
+    try:
+        res = supabase.table("atividades").insert({
+            "user_id": user_id,
+            "tipo": tipo,
+            "titulo": titulo,
+            "status": "em_andamento",
+            "detalhes": detalhes or {},
+        }).execute()
+        return res.data[0]["id"] if res.data else None
+    except Exception:
+        return None
+
+def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
+    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
+    if not atividade_id:
+        return
+    try:
+        payload = {"status": status}
+        if detalhes is not None:
+            payload["detalhes"] = detalhes
+        supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
+    except Exception:
+        pass
+
+def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("criado_em", desc=True)
+            .limit(limite)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+def contar_atividades_pendentes(user_id: str) -> int:
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .in_("status", ["pendente", "em_andamento"])
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
+_ATIVIDADE_STATUS_UI = {
+    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
+    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
+    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
+    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
+}
+
+def _tempo_relativo(iso_str: str) -> str:
+    try:
+        import datetime as _dt
+        dt = _dt.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        agora = _dt.datetime.now(_dt.timezone.utc)
+        delta = agora - dt
+        seg = delta.total_seconds()
+        if seg < 60:
+            return "agora mesmo"
+        if seg < 3600:
+            return f"há {int(seg // 60)} min"
+        if seg < 86400:
+            return f"há {int(seg // 3600)} h"
+        return f"há {int(seg // 86400)} d"
+    except Exception:
+        return ""
+
+
+# ---------------------------------------------------
 # CONFIGURAÇÃO GEMINI
 # ---------------------------------------------------
 
@@ -2130,90 +2215,6 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             args=(user_id, empresa, entry, atividade_id),
             daemon=True,
         ).start()
-
-# ---------------------------------------------------
-#  LOG DE ATIVIDADES (sino de notificações)
-# ---------------------------------------------------
-# Registra ações de longa duração (coletas, migrações) com status
-# pendente → em_andamento → concluido/erro, pra exibir no sino da
-# sidebar e, mais pra frente, servir de base pro item 3 (jobs).
-
-def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None) -> str:
-    """Cria um registro de atividade e devolve o id (pra depois atualizar)."""
-    try:
-        res = supabase.table("atividades").insert({
-            "user_id": user_id,
-            "tipo": tipo,
-            "titulo": titulo,
-            "status": "em_andamento",
-            "detalhes": detalhes or {},
-        }).execute()
-        return res.data[0]["id"] if res.data else None
-    except Exception:
-        return None
-
-def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
-    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
-    if not atividade_id:
-        return
-    try:
-        payload = {"status": status}
-        if detalhes is not None:
-            payload["detalhes"] = detalhes
-        supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
-    except Exception:
-        pass
-
-def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
-    try:
-        res = (
-            supabase.table("atividades")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("criado_em", desc=True)
-            .limit(limite)
-            .execute()
-        )
-        return res.data or []
-    except Exception:
-        return []
-
-def contar_atividades_pendentes(user_id: str) -> int:
-    try:
-        res = (
-            supabase.table("atividades")
-            .select("id", count="exact")
-            .eq("user_id", user_id)
-            .in_("status", ["pendente", "em_andamento"])
-            .execute()
-        )
-        return res.count or 0
-    except Exception:
-        return 0
-
-_ATIVIDADE_STATUS_UI = {
-    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
-    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
-    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
-    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
-}
-
-def _tempo_relativo(iso_str: str) -> str:
-    try:
-        import datetime as _dt
-        dt = _dt.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        agora = _dt.datetime.now(_dt.timezone.utc)
-        delta = agora - dt
-        seg = delta.total_seconds()
-        if seg < 60:
-            return "agora mesmo"
-        if seg < 3600:
-            return f"há {int(seg // 60)} min"
-        if seg < 86400:
-            return f"há {int(seg // 3600)} h"
-        return f"há {int(seg // 86400)} d"
-    except Exception:
-        return ""
 
 
 

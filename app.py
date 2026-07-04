@@ -16189,9 +16189,12 @@ html, body { background: transparent; overflow: hidden; }
         def _itens_agrupados_html(itens: list, cor: str) -> str:
             """Recebe itens como (categoria, texto) e monta a lista agrupada,
             com um cabeçalho por categoria — categorias sem itens nesse plano
-            simplesmente não aparecem. Itens sem categoria reconhecida (ex.:
-            suporte, gestão de contas) são exibidos soltos, sem cabeçalho,
-            ao final da lista."""
+            simplesmente não aparecem. Cada grupo de categoria fica envolto
+            num <div data-sec="cat-{categoria}"> pra permitir sincronizar a
+            altura entre os 4 cards via JS (ver script de alinhamento logo
+            após o loop de renderização). Itens sem categoria reconhecida
+            (ex.: suporte, gestão de contas) são exibidos soltos, ao final,
+            dentro de um grupo próprio (data-sec="cat-outros")."""
             por_categoria = {}
             for cat, texto in itens:
                 por_categoria.setdefault(cat, []).append(texto)
@@ -16202,13 +16205,15 @@ html, body { background: transparent; overflow: hidden; }
                 lista = por_categoria.get(cat_key)
                 if not lista:
                     continue
-                partes.append(_cabecalho_categoria(cat_label, cor, primeiro))
-                partes.extend(_linha_item_plano(it) for it in lista)
+                bloco = _cabecalho_categoria(cat_label, cor, primeiro)
+                bloco += "".join(_linha_item_plano(it) for it in lista)
+                partes.append(f'<div data-sec="cat-{cat_key}">{bloco}</div>')
                 primeiro = False
 
             soltos = por_categoria.get("outros")
             if soltos:
-                partes.extend(_linha_item_plano(it) for it in soltos)
+                bloco = "".join(_linha_item_plano(it) for it in soltos)
+                partes.append(f'<div data-sec="cat-outros">{bloco}</div>')
 
             return "".join(partes)
 
@@ -16291,21 +16296,73 @@ html, body { background: transparent; overflow: hidden; }
                 _herda_html = _divisor_html + _label_html
 
                 st.markdown(_html(f"""
-                <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
+                <div class="plano-card" style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
                             min-height:340px;display:flex;flex-direction:column;position:relative;z-index:0;
                             box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <div data-sec="row-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                         <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;
                                      padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
                         {"<span style='font-size:11px;color:" + info['cor'] + ";font-weight:700'>✓ ATUAL</span>" if _ativo else ""}
                     </div>
-                    <div style="font-size:12.5px;line-height:1.45;color:#6b7280;margin-bottom:0;min-height:38px">{info['descricao']}</div>
-                    {_herda_html}
+                    <div data-sec="row-desc" style="font-size:12.5px;line-height:1.45;color:#6b7280;margin-bottom:0;min-height:38px">{info['descricao']}</div>
+                    <div data-sec="row-herda">{_herda_html}</div>
                     <div>
                         {_itens_html}
                     </div>
                 </div>
                 """), unsafe_allow_html=True)
+
+        components.html("""
+<script>
+(function() {
+    function sincronizarAlturasPlanos() {
+        var cards = window.parent.document.querySelectorAll('.plano-card');
+        if (!cards.length) return;
+
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                el.style.minHeight = '0px';
+            });
+        });
+
+        var maiores = {};
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                var chave = el.getAttribute('data-sec');
+                var altura = el.getBoundingClientRect().height;
+                if (!maiores[chave] || altura > maiores[chave]) {
+                    maiores[chave] = altura;
+                }
+            });
+        });
+
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                var chave = el.getAttribute('data-sec');
+                if (maiores[chave]) {
+                    el.style.minHeight = maiores[chave] + 'px';
+                }
+            });
+        });
+    }
+
+    sincronizarAlturasPlanos();
+    setTimeout(sincronizarAlturasPlanos, 150);
+    setTimeout(sincronizarAlturasPlanos, 400);
+    setTimeout(sincronizarAlturasPlanos, 900);
+
+    var observer = new MutationObserver(function() {
+        sincronizarAlturasPlanos();
+    });
+    observer.observe(window.parent.document.body, { childList: true, subtree: true });
+})();
+</script>
+""", height=0)
+
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #e5e7eb;margin:28px 0 0 0;' />",
+            unsafe_allow_html=True,
+        )
 
 
 

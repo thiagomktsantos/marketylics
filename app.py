@@ -1390,25 +1390,13 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
 .sb-logo { padding:22px 18px 16px; border-bottom:1px solid #1e2530; margin-bottom:8px; }
 .sb-logo-sub { font-size:8.4px; color:#3a9fd6; font-weight:600; letter-spacing:2px; text-transform:uppercase; text-align:center; font-family:'DM Sans',sans-serif; }
 
-[data-testid="stSidebar"] [class*="st-key-_hidden_"] button {
-    position: fixed !important;
-    top: -9999px !important;
-    left: -9999px !important;
-    width: 1px !important;
-    height: 1px !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
-}
-[data-testid="stSidebar"] .stElementContainer:has([class*="st-key-_hidden_"] button) {
-    margin: 0 !important;
-    padding: 0 !important;
+[data-testid="stSidebar"] [class*="st-key-_hidden_"] {
+    display: none !important;
     height: 0 !important;
     min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: hidden !important;
-    line-height: 0 !important;
-    display: none !important;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -15956,7 +15944,7 @@ elif st.session_state.pagina == "perfil":
             Meus dados
         </div>
         <div style="font-family:'DM Sans',sans-serif;font-size:14px;color:#6b7280">
-            Suas informações pessoais de acesso à plataforma.
+            Suas informações pessoais e o plano da sua conta.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -15964,40 +15952,93 @@ elif st.session_state.pagina == "perfil":
     _plano_atual_perfil = obter_plano_usuario()
     _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
 
-    with st.form("form_perfil_dados"):
-        st.markdown("**Dados da conta**")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            novo_nome = st.text_input("Nome", value=obter_nome_usuario(), placeholder="Como você quer ser chamado(a)?")
-        with col_b:
-            st.text_input("E-mail", value=st.session_state.user.email if st.session_state.user else "", disabled=True)
-        st.text_input("Plano atual", value=_PLANO_LABELS_PERFIL.get(_plano_atual_perfil, _plano_atual_perfil.upper()), disabled=True)
+    aba_perfil_dados, aba_perfil_plano = st.tabs(["Meus dados", "Plano"])
 
-        if st.form_submit_button("Salvar dados", type="primary"):
-            if novo_nome.strip():
-                if atualizar_nome_usuario(novo_nome):
-                    st.toast("✅ Nome atualizado!", icon="✅")
-                    st.rerun()
-            else:
-                st.warning("O nome não pode ficar em branco.")
+    with aba_perfil_dados:
+        with st.form("form_perfil_dados"):
+            st.markdown("**Dados da conta**")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                novo_nome = st.text_input("Nome", value=obter_nome_usuario(), placeholder="Como você quer ser chamado(a)?")
+            with col_b:
+                st.text_input("E-mail", value=st.session_state.user.email if st.session_state.user else "", disabled=True)
 
-    with st.form("form_perfil_senha"):
-        st.markdown("**Alterar senha**")
-        col_c, col_d = st.columns(2)
-        with col_c:
-            nova_senha = st.text_input("Nova senha", type="password", placeholder="Mínimo 6 caracteres")
-        with col_d:
-            nova_senha2 = st.text_input("Confirmar nova senha", type="password", placeholder="Repita a senha")
+            if st.form_submit_button("Salvar dados", type="primary"):
+                if novo_nome.strip():
+                    if atualizar_nome_usuario(novo_nome):
+                        st.toast("✅ Nome atualizado!", icon="✅")
+                        st.rerun()
+                else:
+                    st.warning("O nome não pode ficar em branco.")
 
-        if st.form_submit_button("Alterar senha", type="primary"):
-            if not nova_senha or not nova_senha2:
-                st.warning("Preencha os dois campos de senha.")
-            elif nova_senha != nova_senha2:
-                st.error("As senhas não coincidem.")
-            elif len(nova_senha) < 6:
-                st.error("A senha deve ter pelo menos 6 caracteres.")
-            else:
-                if atualizar_senha_usuario(nova_senha):
-                    st.toast("✅ Senha alterada!", icon="✅")
+        with st.form("form_perfil_senha"):
+            st.markdown("**Alterar senha**")
+            col_c, col_d = st.columns(2)
+            with col_c:
+                nova_senha = st.text_input("Nova senha", type="password", placeholder="Mínimo 6 caracteres")
+            with col_d:
+                nova_senha2 = st.text_input("Confirmar nova senha", type="password", placeholder="Repita a senha")
 
-    st.caption("Precisa trocar de plano ou cancelar a assinatura? Fale com o suporte.")
+            if st.form_submit_button("Alterar senha", type="primary"):
+                if not nova_senha or not nova_senha2:
+                    st.warning("Preencha os dois campos de senha.")
+                elif nova_senha != nova_senha2:
+                    st.error("As senhas não coincidem.")
+                elif len(nova_senha) < 6:
+                    st.error("A senha deve ter pelo menos 6 caracteres.")
+                else:
+                    if atualizar_senha_usuario(nova_senha):
+                        st.toast("✅ Senha alterada!", icon="✅")
+
+    with aba_perfil_plano:
+        st.markdown(
+            "<div style='font-size:13px;color:#6b7280;margin:14px 0 18px 0'>"
+            "Cada plano define quantas mídias de anúncios (imagens/vídeos) ficam "
+            "armazenadas de forma permanente por mês. Pra trocar de plano, fale com o suporte."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        _PLANOS_INFO = [
+            {
+                "id": "free", "nome": "FREE", "cor": "#8a97ab", "fundo": "#f3f4f6",
+                "descricao": "Ideal pra testar a plataforma.",
+                "itens": ["Coleta de anúncios e redes sociais", "Links de mídia originais (sem armazenamento permanente)", "0 mídias baixadas/mês"],
+            },
+            {
+                "id": "starter", "nome": "STARTER", "cor": "#2f8fd1", "fundo": "#eaf4fb",
+                "descricao": "Pra quem acompanha alguns concorrentes de perto.",
+                "itens": ["Tudo do Free", "Até 50 mídias baixadas e armazenadas/mês", "Histórico de anúncios preservado (sem links expirando)"],
+            },
+            {
+                "id": "pro", "nome": "PRO", "cor": "#1e9e63", "fundo": "#e9f7f0",
+                "descricao": "Pra times de marketing com monitoramento contínuo.",
+                "itens": ["Tudo do Starter", "Até 500 mídias baixadas e armazenadas/mês", "Prioridade na migração de mídia"],
+            },
+            {
+                "id": "agencia", "nome": "BUSINESS", "cor": "#8b4fc9", "fundo": "#f4ecfb",
+                "descricao": "Pra agências gerenciando várias contas de clientes.",
+                "itens": ["Tudo do Pro", "Mídias baixadas e armazenadas ilimitadas", "Suporte prioritário"],
+            },
+        ]
+
+        cols_planos = st.columns(len(_PLANOS_INFO))
+        for col_plano, info in zip(cols_planos, _PLANOS_INFO):
+            with col_plano:
+                _ativo = info["id"] == _plano_atual_perfil
+                _borda = f"border:2px solid {info['cor']}" if _ativo else "border:1px solid #e5e7eb"
+                _itens_html = "".join(f"<li style='margin-bottom:4px'>{it}</li>" for it in info["itens"])
+                st.markdown(f"""
+                <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
+                            height:100%;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                        <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;
+                                     padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
+                        {"<span style='font-size:11px;color:" + info['cor'] + ";font-weight:700'>✓ ATUAL</span>" if _ativo else ""}
+                    </div>
+                    <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">{info['descricao']}</div>
+                    <ul style="font-size:12px;color:#374151;padding-left:18px;margin:0">
+                        {_itens_html}
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)

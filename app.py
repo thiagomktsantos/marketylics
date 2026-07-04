@@ -1406,6 +1406,28 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     overflow: hidden !important;
 }
 
+[data-testid="stSidebar"] .st-key-_perfil_menu_editar button,
+[data-testid="stSidebar"] .st-key-_perfil_menu_sair button {
+    background: transparent !important;
+    border: 1px solid #1e2a3a !important;
+    border-radius: 10px !important;
+    color: #c5d2e5 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    transition: all 0.15s !important;
+}
+[data-testid="stSidebar"] .st-key-_perfil_menu_editar button:hover,
+[data-testid="stSidebar"] .st-key-_perfil_menu_sair button:hover {
+    background: #1a2535 !important;
+    color: #e2eaf5 !important;
+    border-color: #3a9fd6 !important;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) {
+    background: #101825 !important;
+    border: 1px solid #1e2a3a !important;
+}
+
 /* ─────────────────────────────────────────────────────
    CONTAINERS COM BORDA — fundo branco FORÇADO
    ───────────────────────────────────────────────────── */
@@ -16009,22 +16031,46 @@ html, body { background: transparent; overflow: hidden; }
             {
                 "id": "free", "nome": "FREE", "cor": "#8a97ab", "fundo": "#f3f4f6",
                 "descricao": "Ideal pra testar a plataforma.",
-                "itens": ["Coleta de anúncios e redes sociais", "Links de mídia originais (sem armazenamento permanente)", "0 mídias baixadas/mês"],
+                "itens": [
+                    "Coleta de anúncios e redes sociais",
+                    "Confronto de sites (visão básica)",
+                    "Sem análises de IA",
+                    "Não salva mídias — usa o link original (pode expirar)",
+                    "Sem cache de coleta salvo entre sessões",
+                    "Limite de coletas por mês",
+                ],
             },
             {
                 "id": "starter", "nome": "STARTER", "cor": "#2f8fd1", "fundo": "#eaf4fb",
                 "descricao": "Pra quem acompanha alguns concorrentes de perto.",
-                "itens": ["Tudo do Free", "Até 50 mídias baixadas e armazenadas/mês", "Histórico de anúncios preservado (sem links expirando)"],
+                "itens": [
+                    "Tudo do Free",
+                    "Análises de IA (limitadas por mês)",
+                    "Cache de coleta salvo entre sessões",
+                    "Até 50 mídias baixadas e armazenadas/mês",
+                    "Histórico de anúncios preservado (sem links expirando)",
+                ],
             },
             {
                 "id": "pro", "nome": "PRO", "cor": "#1e9e63", "fundo": "#e9f7f0",
                 "descricao": "Pra times de marketing com monitoramento contínuo.",
-                "itens": ["Tudo do Starter", "Até 500 mídias baixadas e armazenadas/mês", "Prioridade na migração de mídia"],
+                "itens": [
+                    "Tudo do Starter",
+                    "Análises de IA ilimitadas",
+                    "Confronto de sites completo (todas as métricas)",
+                    "Até 500 mídias baixadas e armazenadas/mês",
+                    "Prioridade na migração de mídia",
+                ],
             },
             {
                 "id": "agencia", "nome": "BUSINESS", "cor": "#8b4fc9", "fundo": "#f4ecfb",
                 "descricao": "Pra agências gerenciando várias contas de clientes.",
-                "itens": ["Tudo do Pro", "Mídias baixadas e armazenadas ilimitadas", "Suporte prioritário"],
+                "itens": [
+                    "Tudo do Pro",
+                    "Mídias baixadas e armazenadas ilimitadas",
+                    "Gestão de múltiplas contas de clientes",
+                    "Suporte prioritário",
+                ],
             },
         ]
 
@@ -16036,7 +16082,8 @@ html, body { background: transparent; overflow: hidden; }
                 _itens_html = "".join(f"<li style='margin-bottom:4px'>{it}</li>" for it in info["itens"])
                 st.markdown(_html(f"""
                 <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
-                            height:100%;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+                            min-height:320px;display:flex;flex-direction:column;
+                            box-shadow:0 1px 4px rgba(0,0,0,0.05)">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                         <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;
                                      padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
@@ -16048,6 +16095,8 @@ html, body { background: transparent; overflow: hidden; }
                     </ul>
                 </div>
                 """), unsafe_allow_html=True)
+
+        st.markdown("<hr style='margin-top:24px;border-color:#e5e7eb'>", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------

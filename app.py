@@ -2068,8 +2068,8 @@ function nav(page) {{
 html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
 .menu-btn {
     width: 100%; display: flex; align-items: center; gap: 10px;
-    padding: 9px 12px; margin-bottom: 6px;
-    background: transparent; border: 1px solid #1e2a3a; border-radius: 10px;
+    padding: 9px 12px; border: none;
+    background: transparent; border-top: 2px solid #1e2a3a;
     color: #c5d2e5; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px;
     cursor: pointer; transition: all 0.15s;
 }
@@ -2107,6 +2107,7 @@ function triggerPerfilBtn(label) {
         try {
             if (iframes[i].contentWindow === window) {
                 iframes[i].style.height = '92px';
+                iframes[i].style.marginTop = '-29px';
                 break;
             }
         } catch(e) {}

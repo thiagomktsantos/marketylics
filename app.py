@@ -2763,20 +2763,28 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
 
         migrado = persistir_midias_de_ads({empresa: entry}, user_id)
 
-        # Merge seguro: relê o ads_cache atual e só sobrescreve a entrada
-        # dessa empresa se ninguém salvou uma coleta mais nova dela nesse
-        # meio-tempo (compara pelo timestamp "ts" da coleta original).
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
-        entrada_atual = cache_atual.get(empresa, {})
-        if entrada_atual.get("ts") == entry.get("ts"):
-            cache_atual[empresa] = migrado[empresa]
-            supabase.table("ci_dados").update({
-                "ads_cache": cache_atual,
-            }).eq("user_id", user_id).execute()
+        # Atualização atômica: troca só os anúncios migrados (por id),
+        # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
+        # Python. Isso evita a corrida entre migrações concorrentes de
+        # empresas diferentes e nunca perde anúncios históricos que não
+        # vieram nessa coleta específica.
+        atualizacoes = {
+            str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
+        }
+        if not atualizacoes:
+            atualizar_atividade(atividade_id, "concluido", {"motivo": "nenhum anúncio com id pra atualizar"})
+            return
+
+        res = supabase.rpc("atualizar_ads_no_cache", {
+            "p_user_id": user_id,
+            "p_empresa": empresa,
+            "p_atualizacoes": atualizacoes,
+        }).execute()
+
+        if res.data:
             atualizar_atividade(atividade_id, "concluido")
         else:
-            atualizar_atividade(atividade_id, "erro", {"motivo": "coleta mais nova sobrescreveu antes da migração terminar"})
+            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
@@ -2887,12 +2895,16 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
                     except Exception:
                         pass
 
-                # atualiza as referências no ads_cache (relê a cada item pra
-                # não perder coletas novas que aconteçam durante o processo)
-                res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-                cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
-                cache_atualizado = _substituir_url_em_ads_cache(cache_atual, url_antiga, url_nova)
-                supabase.table("ci_dados").update({"ads_cache": cache_atualizado}).eq("user_id", user_id).execute()
+                # atualiza as referências no ads_cache — troca atômica
+                # via RPC no Postgres, sem ler-e-regravar o blob inteiro
+                # em Python (evita corrida com outras migrações/coletas
+                # rodando ao mesmo tempo, mesmo com o reprocessamento
+                # levando bastante tempo pra terminar todos os itens).
+                supabase.rpc("substituir_url_no_ads_cache", {
+                    "p_user_id": user_id,
+                    "p_url_antiga": url_antiga,
+                    "p_url_nova": url_nova,
+                }).execute()
 
                 processadas += 1
                 economizado_bytes += (tamanho_original - len(conteudo_novo))

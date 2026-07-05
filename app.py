@@ -119,6 +119,26 @@ def _slug_empresa(nome: str) -> str:
     nome = re.sub(r"[^a-z0-9]+", "-", nome).strip("-")
     return nome or "sem-nome"
 
+def _comprimir_imagem(conteudo: bytes, content_type: str):
+    """Reduz o tamanho de imagens antes de subir pro R2: redimensiona se
+    for muito larga e reencoda em WebP (ótima compressão, com suporte a
+    transparência). Se algo der errado ou a Pillow não estiver disponível,
+    devolve o conteúdo original sem comprimir — nunca quebra o upload."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(conteudo))
+        LARGURA_MAX = 1280
+        if img.width > LARGURA_MAX:
+            nova_altura = int(img.height * (LARGURA_MAX / img.width))
+            img = img.resize((LARGURA_MAX, nova_altura), Image.LANCZOS)
+        buffer = io.BytesIO()
+        # RGBA preserva transparência; RGB pra imagens sem canal alfa
+        img.save(buffer, format="WEBP", quality=80, method=6)
+        return buffer.getvalue(), "image/webp", ".webp"
+    except Exception:
+        return conteudo, content_type, None
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None) -> str:
     """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
@@ -158,13 +178,20 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             return existente.data[0]["url_cdn"]
 
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
+        conteudo_upload, content_type_upload = conteudo, content_type
+
+        if tipo == "imagem":
+            conteudo_upload, content_type_upload, ext_comprimida = _comprimir_imagem(conteudo, content_type)
+            if ext_comprimida:
+                ext = ext_comprimida
+
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
         r2_client.put_object(
             Bucket=R2_BUCKET,
             Key=storage_key,
-            Body=conteudo,
-            ContentType=content_type,
+            Body=conteudo_upload,
+            ContentType=content_type_upload,
         )
         url_cdn = f"{R2_PUBLIC_BASE}/{storage_key}"
 
@@ -176,8 +203,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             "url_origem":    url_origem,
             "storage_key":   storage_key,
             "url_cdn":       url_cdn,
-            "mime_type":     content_type,
-            "tamanho_bytes": len(conteudo),
+            "mime_type":     content_type_upload,
+            "tamanho_bytes": len(conteudo_upload),
             "hash_conteudo": hash_conteudo,
         }).execute()
 

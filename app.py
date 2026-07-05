@@ -69,6 +69,34 @@ def get_r2_client():
 r2_client = get_r2_client()
 
 # ---------------------------------------------------
+#  WHISPER LOCAL (transcrição de áudio dos vídeos, sem custo de API)
+# ---------------------------------------------------
+# Usado pra transcrever o áudio dos vídeos de anúncios, assim as análises
+# de IA recebem o texto falado no vídeo em vez do vídeo em si (a IA de
+# análise, Gemini, não recebe mais o arquivo de vídeo — só a transcrição).
+# Roda o modelo Whisper open-source localmente (via faster-whisper), na
+# CPU do próprio servidor — sem chamar API paga nenhuma. O "custo" aqui é
+# tempo de processamento, não dinheiro.
+
+@st.cache_resource
+def get_whisper_model():
+    """Carrega o modelo Whisper local uma única vez e mantém em cache
+    pelo resto do processo. Modelo "base": bom equilíbrio entre
+    qualidade e velocidade/RAM em CPU. Retorna None se o pacote
+    faster-whisper não estiver instalado ou o carregamento falhar —
+    nesse caso os vídeos seguem sem transcrição, sem quebrar o resto
+    do app."""
+    try:
+        from faster_whisper import WhisperModel
+        tamanho_modelo = st.secrets.get("WHISPER_MODEL_SIZE", "base")
+        return WhisperModel(tamanho_modelo, device="cpu", compute_type="int8")
+    except Exception:
+        return None
+
+whisper_model = get_whisper_model()
+
+
+# ---------------------------------------------------
 #  PLANOS — cota de mídias baixadas/armazenadas por mês
 # ---------------------------------------------------
 # Placeholder simples até o item 4 do roadmap (tabela uso_organizacao
@@ -183,6 +211,84 @@ def _comprimir_video(conteudo: bytes, content_type: str):
     except Exception:
         return conteudo, content_type, None
 
+def _transcrever_video_whisper(conteudo: bytes) -> str:
+    """Extrai o áudio do vídeo (via ffmpeg) e transcreve localmente com o
+    Whisper open-source (faster-whisper) — roda na CPU do próprio
+    servidor, sem custo de API. Devolve string vazia se o modelo não
+    tiver carregado, o ffmpeg não estiver disponível, o vídeo não tiver
+    áudio, ou qualquer etapa falhar — nunca quebra o fluxo de
+    coleta/análise."""
+    if whisper_model is None:
+        return ""
+
+    import subprocess
+    import tempfile
+    import os
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        return ""
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            entrada = os.path.join(tmp, "entrada")
+            audio = os.path.join(tmp, "audio.wav")
+            with open(entrada, "wb") as f:
+                f.write(conteudo)
+
+            # extrai só o áudio (mono, 16kHz) — bem menor que o vídeo
+            # original e já na taxa de amostragem que o Whisper espera
+            cmd = [
+                "ffmpeg", "-y", "-i", entrada,
+                "-vn", "-ac", "1", "-ar", "16000",
+                audio,
+            ]
+            resultado = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180
+            )
+            if resultado.returncode != 0 or not os.path.exists(audio) or os.path.getsize(audio) == 0:
+                return ""  # sem faixa de áudio, ou falha ao extrair
+
+            segmentos, _info = whisper_model.transcribe(audio, language="pt", vad_filter=True)
+            texto = " ".join(s.text.strip() for s in segmentos).strip()
+            return texto
+    except Exception:
+        return ""
+
+def obter_transcricao_video(url_video: str, user_id: str = None) -> str:
+    """Devolve a transcrição do vídeo (texto falado, via Whisper), pra
+    usar nas análises de IA no lugar de mandar o vídeo em si.
+
+    Prioriza a transcrição já salva na tabela `midias` (feita no momento
+    do upload pro R2, ou no reprocessamento). Se não achar nada salvo —
+    vídeo ainda não migrado pro R2, por exemplo — transcreve na hora como
+    fallback, mas sem persistir (evita segurar a UI esperando salvar)."""
+    if not url_video:
+        return ""
+
+    cache = st.session_state.setdefault("_cache_transcricoes_video", {})
+    if url_video in cache:
+        return cache[url_video]
+
+    texto = ""
+    try:
+        res = supabase.table("midias").select("transcricao").eq("url_cdn", url_video).execute()
+        if res.data and (res.data[0].get("transcricao") or "").strip():
+            texto = res.data[0]["transcricao"].strip()
+    except Exception:
+        pass
+
+    if not texto and whisper_model is not None:
+        try:
+            resp = requests.get(url_video, timeout=30)
+            resp.raise_for_status()
+            texto = _transcrever_video_whisper(resp.content)
+        except Exception:
+            texto = ""
+
+    cache[url_video] = texto
+    return texto
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None) -> str:
     """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
@@ -223,6 +329,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
 
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
         conteudo_upload, content_type_upload = conteudo, content_type
+        transcricao_video = ""
 
         if tipo == "imagem":
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_imagem(conteudo, content_type)
@@ -232,6 +339,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
+            transcricao_video = _transcrever_video_whisper(conteudo_upload)
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
@@ -254,6 +362,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             "mime_type":     content_type_upload,
             "tamanho_bytes": len(conteudo_upload),
             "hash_conteudo": hash_conteudo,
+            "transcricao":   transcricao_video or None,
         }).execute()
 
         return url_cdn
@@ -2592,6 +2701,7 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
         midias = res.data or []
 
         processadas = 0
+        transcritas = 0
         economizado_bytes = 0
 
         for m in midias:
@@ -2604,6 +2714,16 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
                 resp.raise_for_status()
                 conteudo_original = resp.content
                 tamanho_original = len(conteudo_original)
+
+                # transcreve vídeos que ainda não têm transcrição salva —
+                # roda mesmo que a recompressão abaixo não ajude em nada
+                if m.get("tipo") == "video" and not (m.get("transcricao") or "").strip():
+                    transcricao_nova = _transcrever_video_whisper(conteudo_original)
+                    if transcricao_nova:
+                        supabase.table("midias").update(
+                            {"transcricao": transcricao_nova}
+                        ).eq("id", m["id"]).execute()
+                        transcritas += 1
 
                 conteudo_novo, content_type_novo, ext_novo = _comprimir_midia_existente(
                     m.get("tipo"), conteudo_original, m.get("mime_type")
@@ -2645,6 +2765,7 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
         economizado_mb = round(economizado_bytes / (1024 * 1024), 1)
         atualizar_atividade(atividade_id, "concluido", {
             "processadas": processadas,
+            "transcritas": transcritas,
             "total": len(midias),
             "economizado_mb": economizado_mb,
         })
@@ -9161,14 +9282,14 @@ window.addEventListener('load', syncHeight);
                         ])
 
                         parts.append(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
-Analise os anúncios de "{nome}" em português com base nos dados e imagens reais abaixo.
+Analise os anúncios de "{nome}" em português com base nos dados, imagens reais e transcrições de vídeo abaixo.
 
 Empresa: {nome} | Total: {len(ads_list)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
 
 Dados dos anúncios:
 {resumo_completo}
 
-Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
+Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (quando disponíveis):""")
 
                         # Envia até 6 imagens reais para o Gemini
                         imgs_enviadas = 0
@@ -9201,6 +9322,24 @@ Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
                             except Exception:
                                 continue
 
+                        # Vídeos não são enviados pro Gemini — em vez disso, manda a
+                        # transcrição do áudio (via Whisper) como texto de até 4 deles
+                        vids_transcritos = 0
+                        _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
+                        for i, a in enumerate(ads_list[:15]):
+                            if vids_transcritos >= 4:
+                                break
+                            vids = a.get("videos") or []
+                            if not vids:
+                                continue
+                            transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
+                            if transcricao_vid:
+                                parts.append(
+                                    f"\nTranscrição do áudio do vídeo do Anúncio {i+1}: "
+                                    f"{_truncar(transcricao_vid, 600)}"
+                                )
+                                vids_transcritos += 1
+
                         parts.append("""
 ---
 ### 🎨 Estilo Visual e Mix de Formatos
@@ -9221,7 +9360,15 @@ Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
 
                         resp = gerar_com_ia(gemini_parts)
 
-                        st.session_state[chave_ia_criativos] = resp.text
+                        _total_ads_considerados = len(ads_list[:15])
+                        _nota_escopo = (
+                            f"\n\n---\n_📊 Base da análise: {_total_ads_considerados} de {len(ads_list)} "
+                            f"anúncios (os primeiros da lista) · {imgs_enviadas} imagem(ns) analisada(s) "
+                            f"visualmente · {vids_transcritos} vídeo(s) transcrito(s) por áudio (Whisper)._"
+                        )
+                        texto_relatorio = resp.text + _nota_escopo
+
+                        st.session_state[chave_ia_criativos] = texto_relatorio
                         import datetime as _dt_ads
                         st.session_state.ads_analises_salvas = [
                             a for a in st.session_state.ads_analises_salvas
@@ -9230,7 +9377,7 @@ Abaixo estão as imagens reais dos criativos (quando disponíveis):""")
                         st.session_state.ads_analises_salvas.append({
                             "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "relatorio": resp.text,
+                            "relatorio": texto_relatorio,
                             "tipo": "anuncio_completo",
                             "empresa": nome,
                         })
@@ -9546,6 +9693,14 @@ setTimeout(syncH, 400);
                         _render_modal_redes_ia("gerando", f"Anúncio {j+1} — {nome}", 40, _ph_ind)
                         try:
                             import datetime as _dt_ads
+                            _vids_ind = ad_ind.get("videos") or []
+                            _transcricao_ind = (
+                                obter_transcricao_video(
+                                    _vids_ind[0],
+                                    st.session_state.user.id if st.session_state.get("user") else None,
+                                )
+                                if _vids_ind else ""
+                            )
                             resp_ind = gerar_com_ia(f"""Você é especialista em mídia paga e copywriting.
 Analise este anúncio de "{nome}" e dê feedback estratégico em português.
 
@@ -9556,13 +9711,22 @@ Impressões: {ad_ind.get('impressoes','')}
 Body: {ad_ind.get('body','') or '—'}
 Título: {ad_ind.get('title','') or '—'}
 CTA: {ad_ind.get('cta','') or '—'}
+Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_transcricao_ind, 800) if _transcricao_ind else '—'}
 
 ### 🎯 Objetivo do Anúncio
 ### ✍️ Análise do Copy
 ### 🎨 Análise do Criativo
 ### 📊 Desempenho Estimado
 ### 💡 Sugestões de Melhoria (2 ações concretas)""")
-                            st.session_state[chave_ind] = resp_ind.text
+                            texto_relatorio_ind = resp_ind.text
+                            if _vids_ind and not _transcricao_ind:
+                                texto_relatorio_ind += (
+                                    "\n\n---\n_⚠️ Este anúncio tem vídeo, mas não foi possível "
+                                    "transcrever o áudio (vídeo sem áudio, link indisponível, ou "
+                                    "modelo Whisper não carregado) — a análise do criativo se baseou "
+                                    "só nos dados de texto._"
+                                )
+                            st.session_state[chave_ind] = texto_relatorio_ind
                             st.session_state.ads_analises_salvas = [
                                 a for a in st.session_state.ads_analises_salvas
                                 if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
@@ -9570,7 +9734,7 @@ CTA: {ad_ind.get('cta','') or '—'}
                             st.session_state.ads_analises_salvas.append({
                                 "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                                 "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                "relatorio": resp_ind.text,
+                                "relatorio": texto_relatorio_ind,
                                 "tipo": "anuncio_ind",
                                 "empresa": nome,
                                 "ad_idx": j,

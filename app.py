@@ -16783,7 +16783,7 @@ html, body { background: transparent; overflow: hidden; }
 
         st.markdown(
             _html(f"""
-            <div style='font-size:13px;color:#6b7280;margin:14px 0 20px 0'>
+            <div style='font-size:16px;color:#4b5563;margin:14px 0 22px 0'>
                 Acompanhe quanto você já usou da cota do seu plano
                 <span style='color:{_cor_uso};font-weight:700'>{_label_uso}</span> neste mês.
             </div>
@@ -16815,12 +16815,13 @@ html, body { background: transparent; overflow: hidden; }
         _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
 
-        def _donut_uso_svg(svg_inner: str, cor: str, label: str, usado: int, limite,
-                           size: int = 108, stroke: int = 9) -> str:
-            """Anel de progresso com o ícone da métrica no centro (mesmo
-            estilo do card 'Plataformas dos anúncios'), e embaixo o número
-            exato e a % usada da cota do plano. limite=None → cota
-            ilimitada: anel fica cheio na cor do plano e não mostra %."""
+        def _card_uso_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite,
+                          size: int = 108, stroke: int = 9) -> str:
+            """Card individual de uso: header com o nome da métrica, divisor,
+            e o anel de progresso com o ícone no centro (mesmo estilo do
+            card 'Plataformas dos anúncios'), com % e número exato embaixo.
+            limite=None → cota ilimitada: anel fica cheio na cor da métrica
+            e não mostra %."""
             r = (size / 2) - stroke - 2
             cx = cy = size / 2
             circum = round(2 * _math_uso.pi * r, 2)
@@ -16848,7 +16849,12 @@ html, body { background: transparent; overflow: hidden; }
             icon_pos = round((size - icon_s) / 2, 1)
 
             return _html(f"""
-            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;min-width:150px;flex:1">
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                        padding:20px 18px 26px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
+                        display:flex;flex-direction:column;align-items:center">
+                <div style="width:100%;font-size:12.5px;font-weight:700;text-transform:uppercase;
+                            letter-spacing:0.6px;color:#1a2e4a;margin-bottom:14px">{titulo}</div>
+                <hr style="width:100%;border:none;border-top:1px solid #e5e7eb;margin:0 0 22px 0"/>
                 <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
                     <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cor}" stroke-width="{stroke}"
@@ -16858,37 +16864,29 @@ html, body { background: transparent; overflow: hidden; }
                         {svg_inner}
                     </g>
                 </svg>
-                <div style="text-align:center">
+                <div style="text-align:center;margin-top:10px">
                     {texto_pct_html}
                     <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
-                    <div style="font-size:11px;color:#9ca3af;font-weight:700;text-transform:uppercase;
-                                letter-spacing:0.3px;white-space:nowrap">{label}</div>
                 </div>
             </div>
             """)
 
-        _donuts_uso_html = (
-            '<div style="display:flex;flex-wrap:wrap;gap:32px;justify-content:flex-start">'
-            + _donut_uso_svg(_SVG_FILM, get_avatar_color(0), "Mídias armazenadas", _midias_usadas, _midias_limite)
-            + _donut_uso_svg(_SVG_TARGET, get_avatar_color(1), "Concorrentes", _concorrentes_usados, _concorrentes_limite)
-            + _donut_uso_svg(_SVG_DOWNLOAD, get_avatar_color(3), "Coletas de anúncios", _coleta_ads_usadas, _coleta_ads_limite)
-            + _donut_uso_svg(_SVG_SHARE, get_avatar_color(4), "Coletas de redes", _coleta_redes_usadas, _coleta_redes_limite)
-            + _donut_uso_svg(_SVG_ZAP, get_avatar_color(2), "Análises de IA", _analises_ia_usadas, _analises_ia_limite)
-            + '</div>'
-        )
-
-        st.markdown(
-            _html(f"""
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                        padding:28px 30px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;
-                            color:#1a2e4a;margin-bottom:16px">Uso do plano {_label_uso}</div>
-                <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 26px 0"/>
-                {_donuts_uso_html}
-            </div>
-            """),
-            unsafe_allow_html=True,
-        )
+        _col_u1, _col_u2, _col_u3, _col_u4, _col_u5 = st.columns(5)
+        with _col_u1:
+            st.markdown(_card_uso_svg("Mídias armazenadas", _SVG_FILM, get_avatar_color(0),
+                                       _midias_usadas, _midias_limite), unsafe_allow_html=True)
+        with _col_u2:
+            st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
+                                       _concorrentes_usados, _concorrentes_limite), unsafe_allow_html=True)
+        with _col_u3:
+            st.markdown(_card_uso_svg("Coletas de anúncios", _SVG_DOWNLOAD, get_avatar_color(3),
+                                       _coleta_ads_usadas, _coleta_ads_limite), unsafe_allow_html=True)
+        with _col_u4:
+            st.markdown(_card_uso_svg("Coletas de redes", _SVG_SHARE, get_avatar_color(4),
+                                       _coleta_redes_usadas, _coleta_redes_limite), unsafe_allow_html=True)
+        with _col_u5:
+            st.markdown(_card_uso_svg("Análises de IA", _SVG_ZAP, get_avatar_color(2),
+                                       _analises_ia_usadas, _analises_ia_limite), unsafe_allow_html=True)
 
         st.caption(
             "As cotas de coletas e análises de IA resetam no início de cada mês. "

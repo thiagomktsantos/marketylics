@@ -16773,6 +16773,8 @@ html, body { background: transparent; overflow: hidden; }
                 st.toast("🗜️ Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
 
     with aba_perfil_uso:
+        import math as _math_uso
+
         _CORES_PLANO_USO = {
             "free": "#8a97ab", "starter": "#2f8fd1", "pro": "#1e9e63", "agencia": "#8b4fc9",
         }
@@ -16806,76 +16808,87 @@ html, body { background: transparent; overflow: hidden; }
         _analises_ia_usadas  = _contar_execucoes_mes(_user_id_uso, "analise_ia")   if _user_id_uso else 0
         _analises_ia_limite  = PLANOS_COTA_MENSAL.get("analise_ia", {}).get(_plano_atual_perfil)
 
-        # Ícones grandes (24x24, estilo outline) — um por métrica.
+        # Ícones (viewBox 0 0 24 24, estilo outline) — um por métrica.
         _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
         _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
         _SVG_DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
         _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
 
-        def _card_uso_svg(svg_inner: str, label: str, usado: int, limite, cor: str) -> str:
-            """Card de uso com ícone SVG grande num círculo colorido à
-            esquerda, contagem em destaque à direita e barra de progresso
-            embaixo. limite=None → cota ilimitada nessa métrica no plano."""
+        def _donut_uso_svg(svg_inner: str, cor: str, label: str, usado: int, limite,
+                           size: int = 68, stroke: int = 6) -> str:
+            """Anel de progresso com o ícone da métrica no centro (mesmo
+            estilo do card 'Plataformas dos anúncios'), e embaixo o número
+            exato e a % usada da cota do plano. limite=None → cota
+            ilimitada: anel fica cheio na cor do plano e não mostra %."""
+            r = (size / 2) - stroke - 2
+            cx = cy = size / 2
+            circum = round(2 * _math_uso.pi * r, 2)
+
             if limite is None:
-                texto_qtd = f"{usado}"
-                texto_sub = "usado(s) este mês · ilimitado no seu plano"
-                cor_texto = cor
-                barra_html = ""
+                pct = 100
+                cor_num = cor
+                texto_pct_html = ""
+                texto_fracao = f"{usado} · ilimitado"
             else:
                 limite_seguro = max(limite, 0)
                 pct = 100 if limite_seguro == 0 else max(0, min(100, round(usado / limite_seguro * 100)))
-                cor_texto = cor
+                cor_num = cor
                 if pct >= 100:
-                    cor_texto = "#e05252"
+                    cor_num = "#e05252"
                 elif pct >= 80:
-                    cor_texto = "#e2a63a"
-                texto_qtd = f"{usado}"
-                texto_sub = (
-                    f"de {limite_seguro} usados este mês" if limite_seguro > 0
-                    else "não disponível no seu plano"
-                )
-                barra_html = (
-                    f'<div style="width:100%;height:9px;border-radius:6px;background:#f3f4f6;'
-                    f'overflow:hidden;margin-top:14px">'
-                    f'<div style="width:{pct}%;height:100%;background:{cor_texto};border-radius:6px;'
-                    f'transition:width .3s"></div>'
-                    f'</div>'
-                )
+                    cor_num = "#e2a63a"
+                texto_pct_html = f'<div style="font-size:15px;font-weight:800;color:{cor_num};line-height:1.2">{pct}%</div>'
+                texto_fracao = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0"
+
+            dash   = round(pct / 100 * circum, 2)
+            gap    = round(circum - dash, 2)
+            offset = round(circum * 0.25, 2)
+            icon_s = size * 0.36
+            icon_pos = round((size - icon_s) / 2, 1)
 
             return _html(f"""
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;
-                        padding:20px 22px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
-                        display:flex;align-items:center;gap:18px">
-                <div style="flex-shrink:0;width:56px;height:56px;border-radius:14px;
-                            background:{cor}1a;display:flex;align-items:center;justify-content:center">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{cor}"
-                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{svg_inner}</svg>
-                </div>
-                <div style="flex:1;min-width:0">
-                    <div style="font-size:13.5px;font-weight:700;color:#111827;margin-bottom:2px">{label}</div>
-                    <div style="font-size:12px;color:#9ca3af">
-                        <span style="font-size:20px;font-weight:800;color:{cor_texto}">{texto_qtd}</span>
-                        &nbsp;{texto_sub}
-                    </div>
-                    {barra_html}
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:118px;flex:1">
+                <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
+                    <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cor}" stroke-width="{stroke}"
+                        stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>
+                    <g transform="translate({icon_pos},{icon_pos}) scale({icon_s/24:.3f})"
+                       fill="none" stroke="{cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        {svg_inner}
+                    </g>
+                </svg>
+                <div style="text-align:center">
+                    {texto_pct_html}
+                    <div style="font-size:12.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
+                    <div style="font-size:9.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;
+                                letter-spacing:0.3px;white-space:nowrap">{label}</div>
                 </div>
             </div>
             """)
 
-        col_uso_1, col_uso_2 = st.columns(2)
-        with col_uso_1:
-            st.markdown(_card_uso_svg(_SVG_FILM, "Mídias de anúncios baixadas e armazenadas",
-                                       _midias_usadas, _midias_limite, _cor_uso), unsafe_allow_html=True)
-            st.markdown(_card_uso_svg(_SVG_DOWNLOAD, "Coletas de anúncios",
-                                       _coleta_ads_usadas, _coleta_ads_limite, _cor_uso), unsafe_allow_html=True)
-            st.markdown(_card_uso_svg(_SVG_ZAP, "Análises de IA",
-                                       _analises_ia_usadas, _analises_ia_limite, _cor_uso), unsafe_allow_html=True)
-        with col_uso_2:
-            st.markdown(_card_uso_svg(_SVG_TARGET, "Concorrentes monitorados",
-                                       _concorrentes_usados, _concorrentes_limite, _cor_uso), unsafe_allow_html=True)
-            st.markdown(_card_uso_svg(_SVG_SHARE, "Coletas de redes sociais",
-                                       _coleta_redes_usadas, _coleta_redes_limite, _cor_uso), unsafe_allow_html=True)
+        _donuts_uso_html = (
+            '<div style="display:flex;flex-wrap:wrap;gap:22px;justify-content:flex-start">'
+            + _donut_uso_svg(_SVG_FILM, _cor_uso, "Mídias armazenadas", _midias_usadas, _midias_limite)
+            + _donut_uso_svg(_SVG_TARGET, _cor_uso, "Concorrentes", _concorrentes_usados, _concorrentes_limite)
+            + _donut_uso_svg(_SVG_DOWNLOAD, _cor_uso, "Coletas de anúncios", _coleta_ads_usadas, _coleta_ads_limite)
+            + _donut_uso_svg(_SVG_SHARE, _cor_uso, "Coletas de redes", _coleta_redes_usadas, _coleta_redes_limite)
+            + _donut_uso_svg(_SVG_ZAP, _cor_uso, "Análises de IA", _analises_ia_usadas, _analises_ia_limite)
+            + '</div>'
+        )
+
+        st.markdown(
+            _html(f"""
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                        padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+                <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;
+                            color:#1a2e4a;margin-bottom:14px">Uso do plano {_label_uso}</div>
+                <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px 0"/>
+                {_donuts_uso_html}
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
 
         st.caption(
             "As cotas de coletas e análises de IA resetam no início de cada mês. "

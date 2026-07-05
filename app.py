@@ -2499,6 +2499,112 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             daemon=True,
         ).start()
 
+# ---------------------------------------------------
+#  REPROCESSAMENTO — comprimir mídias já salvas no R2
+# ---------------------------------------------------
+# Diferente da migração inicial, aqui NÃO precisamos do link original do
+# Facebook (que pode já ter expirado) — a mídia já está no nosso próprio
+# bucket, então baixamos da nossa cópia, comprimimos, subimos a versão
+# nova, e atualizamos as referências (tabela midias + ads_cache).
+
+def _substituir_url_em_ads_cache(ads_cache: dict, url_antiga: str, url_nova: str) -> dict:
+    """Troca uma URL de mídia pela nova em todas as listas images/videos
+    do ads_cache, em qualquer empresa/anúncio onde ela apareça."""
+    novo = {}
+    for empresa, entry in ads_cache.items():
+        entry_novo = dict(entry)
+        ads_novos = []
+        for ad in entry.get("data", []):
+            ad_novo = dict(ad)
+            if url_antiga in (ad_novo.get("images") or []):
+                ad_novo["images"] = [url_nova if u == url_antiga else u for u in ad_novo["images"]]
+            if url_antiga in (ad_novo.get("videos") or []):
+                ad_novo["videos"] = [url_nova if u == url_antiga else u for u in ad_novo["videos"]]
+            ads_novos.append(ad_novo)
+        entry_novo["data"] = ads_novos
+        novo[empresa] = entry_novo
+    return novo
+
+def _reprocessar_midias_background(user_id: str, atividade_id: str):
+    try:
+        res = (
+            supabase.table("midias")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .execute()
+        )
+        midias = res.data or []
+
+        processadas = 0
+        economizado_bytes = 0
+
+        for m in midias:
+            try:
+                url_antiga = m["url_cdn"]
+                resp = requests.get(url_antiga, timeout=20)
+                resp.raise_for_status()
+                conteudo_original = resp.content
+                tamanho_original = len(conteudo_original)
+
+                conteudo_novo, content_type_novo, ext_novo = _comprimir_imagem(
+                    conteudo_original, m.get("mime_type", "image/jpeg")
+                )
+                if not ext_novo or len(conteudo_novo) >= tamanho_original:
+                    continue  # já era webp, ou comprimir não ajudou nesse caso
+
+                nova_key = m["storage_key"].rsplit(".", 1)[0] + ext_novo
+                r2_client.put_object(
+                    Bucket=R2_BUCKET, Key=nova_key, Body=conteudo_novo, ContentType=content_type_novo,
+                )
+                url_nova = f"{R2_PUBLIC_BASE}/{nova_key}"
+
+                supabase.table("midias").update({
+                    "storage_key":   nova_key,
+                    "url_cdn":       url_nova,
+                    "mime_type":     content_type_novo,
+                    "tamanho_bytes": len(conteudo_novo),
+                }).eq("id", m["id"]).execute()
+
+                if nova_key != m["storage_key"]:
+                    try:
+                        r2_client.delete_object(Bucket=R2_BUCKET, Key=m["storage_key"])
+                    except Exception:
+                        pass
+
+                # atualiza as referências no ads_cache (relê a cada item pra
+                # não perder coletas novas que aconteçam durante o processo)
+                res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+                cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
+                cache_atualizado = _substituir_url_em_ads_cache(cache_atual, url_antiga, url_nova)
+                supabase.table("ci_dados").update({"ads_cache": cache_atualizado}).eq("user_id", user_id).execute()
+
+                processadas += 1
+                economizado_bytes += (tamanho_original - len(conteudo_novo))
+            except Exception:
+                continue
+
+        economizado_mb = round(economizado_bytes / (1024 * 1024), 1)
+        atualizar_atividade(atividade_id, "concluido", {
+            "processadas": processadas,
+            "total": len(midias),
+            "economizado_mb": economizado_mb,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_reprocessamento_midia_background(user_id: str):
+    """Roda o reprocessamento de todas as mídias já salvas do usuário,
+    sem travar a página. Acompanhe o resultado no sino de notificações."""
+    atividade_id = criar_atividade(
+        user_id, "reprocessamento_midia", "Reprocessamento de mídias antigas (compressão)", {}
+    )
+    threading.Thread(
+        target=_reprocessar_midias_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
 
 
 # ---------------------------------------------------
@@ -16256,6 +16362,16 @@ html, body { background: transparent; overflow: hidden; }
                 else:
                     if atualizar_senha_usuario(nova_senha):
                         st.toast("✅ Senha alterada!", icon="✅")
+
+        with st.container(border=True):
+            st.markdown("**Manutenção de mídia**")
+            st.caption(
+                "Recomprime as imagens de anúncios já salvas no armazenamento pra ocupar menos "
+                "espaço. Roda em background — acompanhe o resultado no sino de notificações."
+            )
+            if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
+                iniciar_reprocessamento_midia_background(st.session_state.user.id)
+                st.toast("🗜️ Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
 
     with aba_perfil_plano:
         st.markdown(

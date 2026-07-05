@@ -144,6 +144,31 @@ def _contar_midias_do_mes(user_id: str) -> int:
     except Exception:
         return 0
 
+def _contar_midias_do_mes_por_tipo(user_id: str) -> dict:
+    """Detalha a contagem de mídias do mês por tipo (imagem/vídeo) — usado
+    na aba 'Uso do plano' pra mostrar o que compõe o total armazenado."""
+    resultado = {"imagem": 0, "video": 0}
+    if not user_id:
+        return resultado
+    try:
+        import datetime as _dt
+        inicio_mes = _dt.datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        for tipo in resultado:
+            res = (
+                supabase.table("midias")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("tipo", tipo)
+                .gte("criado_em", inicio_mes)
+                .execute()
+            )
+            resultado[tipo] = res.count or 0
+        return resultado
+    except Exception:
+        return resultado
+
 def pode_baixar_midia(user_id: str) -> bool:
     limite = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario(), 0)
     if limite is None:
@@ -16795,9 +16820,17 @@ html, body { background: transparent; overflow: hidden; }
 
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
+        _midias_por_tipo = _contar_midias_do_mes_por_tipo(_user_id_uso)
+        _detalhe_midias = f"{_midias_por_tipo['imagem']} imagens · {_midias_por_tipo['video']} vídeos"
 
-        _concorrentes_usados = len((st.session_state.get("dados") or {}).get("concorrentes", []))
+        _concorrentes_lista = (st.session_state.get("dados") or {}).get("concorrentes", [])
+        _concorrentes_usados = len(_concorrentes_lista)
         _concorrentes_limite = PLANOS_QUOTA_CONCORRENTES.get(_plano_atual_perfil)
+        _concorrentes_com_ads = sum(1 for c in _concorrentes_lista if (c.get("ads_id") or "").strip())
+        _detalhe_concorrentes = (
+            f"{_concorrentes_com_ads} com Ads Library configurada"
+            if _concorrentes_lista else "nenhum concorrente cadastrado"
+        )
 
         # Estas três já têm contador real no sistema de cooldown/cota
         # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
@@ -16808,6 +16841,16 @@ html, body { background: transparent; overflow: hidden; }
         _analises_ia_usadas  = _contar_execucoes_mes(_user_id_uso, "analise_ia")   if _user_id_uso else 0
         _analises_ia_limite  = PLANOS_COTA_MENSAL.get("analise_ia", {}).get(_plano_atual_perfil)
 
+        def _detalhe_ultima_execucao(tipo_acao: str) -> str:
+            if not _user_id_uso:
+                return "nenhuma execução este mês"
+            ultima = _ultima_execucao_acao(_user_id_uso, tipo_acao)
+            return f"última execução {_tempo_relativo(ultima)}" if ultima else "nenhuma execução este mês"
+
+        _detalhe_coleta_ads   = _detalhe_ultima_execucao("coleta_ads")
+        _detalhe_coleta_redes = _detalhe_ultima_execucao("coleta_redes")
+        _detalhe_analises_ia  = _detalhe_ultima_execucao("analise_ia")
+
         # Ícones (viewBox 0 0 24 24, estilo outline) — um por métrica.
         _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
         _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
@@ -16815,11 +16858,12 @@ html, body { background: transparent; overflow: hidden; }
         _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
 
-        def _card_uso_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite,
+        def _card_uso_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str = "",
                           size: int = 108, stroke: int = 9) -> str:
             """Card individual de uso: header com o nome da métrica, divisor,
             e o anel de progresso com o ícone no centro (mesmo estilo do
-            card 'Plataformas dos anúncios'), com % e número exato embaixo.
+            card 'Plataformas dos anúncios'), com % e número exato embaixo,
+            além de uma linha de detalhamento (breakdown real da métrica).
             limite=None → cota ilimitada: anel fica cheio na cor da métrica
             e não mostra %."""
             r = (size / 2) - stroke - 2
@@ -16848,6 +16892,11 @@ html, body { background: transparent; overflow: hidden; }
             icon_s = size * 0.34
             icon_pos = round((size - icon_s) / 2, 1)
 
+            detalhe_html = (
+                f'<div style="font-size:11.5px;color:#9ca3af;margin-top:6px;white-space:nowrap">{detalhe}</div>'
+                if detalhe else ""
+            )
+
             return _html(f"""
             <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
                         padding:20px 18px 26px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
@@ -16867,6 +16916,7 @@ html, body { background: transparent; overflow: hidden; }
                 <div style="text-align:center;margin-top:10px">
                     {texto_pct_html}
                     <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
+                    {detalhe_html}
                 </div>
             </div>
             """)
@@ -16874,19 +16924,19 @@ html, body { background: transparent; overflow: hidden; }
         _col_u1, _col_u2, _col_u3, _col_u4, _col_u5 = st.columns(5)
         with _col_u1:
             st.markdown(_card_uso_svg("Mídias armazenadas", _SVG_FILM, get_avatar_color(0),
-                                       _midias_usadas, _midias_limite), unsafe_allow_html=True)
+                                       _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
         with _col_u2:
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
-                                       _concorrentes_usados, _concorrentes_limite), unsafe_allow_html=True)
+                                       _concorrentes_usados, _concorrentes_limite, _detalhe_concorrentes), unsafe_allow_html=True)
         with _col_u3:
             st.markdown(_card_uso_svg("Coletas de anúncios", _SVG_DOWNLOAD, get_avatar_color(3),
-                                       _coleta_ads_usadas, _coleta_ads_limite), unsafe_allow_html=True)
+                                       _coleta_ads_usadas, _coleta_ads_limite, _detalhe_coleta_ads), unsafe_allow_html=True)
         with _col_u4:
             st.markdown(_card_uso_svg("Coletas de redes", _SVG_SHARE, get_avatar_color(4),
-                                       _coleta_redes_usadas, _coleta_redes_limite), unsafe_allow_html=True)
+                                       _coleta_redes_usadas, _coleta_redes_limite, _detalhe_coleta_redes), unsafe_allow_html=True)
         with _col_u5:
             st.markdown(_card_uso_svg("Análises de IA", _SVG_ZAP, get_avatar_color(2),
-                                       _analises_ia_usadas, _analises_ia_limite), unsafe_allow_html=True)
+                                       _analises_ia_usadas, _analises_ia_limite, _detalhe_analises_ia), unsafe_allow_html=True)
 
         st.caption(
             "As cotas de coletas e análises de IA resetam no início de cada mês. "

@@ -289,6 +289,67 @@ def obter_transcricao_video(url_video: str, user_id: str = None) -> str:
     cache[url_video] = texto
     return texto
 
+def _extrair_thumbnail_video(conteudo: bytes):
+    """Extrai um frame do vídeo (via ffmpeg) pra usar como imagem de capa —
+    permite que a IA "veja" o criativo de anúncios em vídeo, já que o
+    Gemini não recebe mais o vídeo em si. Pega o frame em ~1s (evita o
+    1º frame, que às vezes é preto/em branco); se o vídeo for mais curto
+    que isso, cai pro frame 0. Devolve os bytes em JPEG, ou None se
+    algo falhar — nunca quebra o upload."""
+    import subprocess
+    import tempfile
+    import os
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        return None
+
+    for _offset in ("00:00:01", "00:00:00"):
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                entrada = os.path.join(tmp, "entrada")
+                saida = os.path.join(tmp, "capa.jpg")
+                with open(entrada, "wb") as f:
+                    f.write(conteudo)
+
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-ss", _offset, "-i", entrada,
+                    "-frames:v", "1", "-q:v", "3",
+                    saida,
+                ]
+                resultado = subprocess.run(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60
+                )
+                if resultado.returncode == 0 and os.path.exists(saida) and os.path.getsize(saida) > 0:
+                    with open(saida, "rb") as f:
+                        return f.read()
+        except Exception:
+            continue
+    return None
+
+def obter_thumbnail_video(url_video: str) -> str:
+    """Devolve a URL permanente (R2) da imagem de capa do vídeo — o frame
+    extraído e salvo no momento do upload/reprocessamento. Usada nas
+    análises de IA no lugar de mandar o vídeo em si."""
+    if not url_video:
+        return ""
+
+    cache = st.session_state.setdefault("_cache_thumbs_video", {})
+    if url_video in cache:
+        return cache[url_video]
+
+    url_thumb = ""
+    try:
+        res = supabase.table("midias").select("thumbnail_url").eq("url_cdn", url_video).execute()
+        if res.data and (res.data[0].get("thumbnail_url") or "").strip():
+            url_thumb = res.data[0]["thumbnail_url"].strip()
+    except Exception:
+        pass
+
+    cache[url_video] = url_thumb
+    return url_thumb
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None) -> str:
     """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
@@ -330,6 +391,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
         conteudo_upload, content_type_upload = conteudo, content_type
         transcricao_video = ""
+        thumbnail_url = ""
 
         if tipo == "imagem":
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_imagem(conteudo, content_type)
@@ -351,6 +413,21 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         )
         url_cdn = f"{R2_PUBLIC_BASE}/{storage_key}"
 
+        if tipo == "video":
+            frame_capa = _extrair_thumbnail_video(conteudo_upload)
+            if frame_capa:
+                storage_key_thumb = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}_capa.jpg"
+                try:
+                    r2_client.put_object(
+                        Bucket=R2_BUCKET,
+                        Key=storage_key_thumb,
+                        Body=frame_capa,
+                        ContentType="image/jpeg",
+                    )
+                    thumbnail_url = f"{R2_PUBLIC_BASE}/{storage_key_thumb}"
+                except Exception:
+                    thumbnail_url = ""
+
         supabase.table("midias").insert({
             "user_id":       user_id,
             "empresa":       empresa,
@@ -363,6 +440,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             "tamanho_bytes": len(conteudo_upload),
             "hash_conteudo": hash_conteudo,
             "transcricao":   transcricao_video or None,
+            "thumbnail_url": thumbnail_url or None,
         }).execute()
 
         return url_cdn
@@ -479,6 +557,30 @@ _ATIVIDADE_STATUS_UI = {
     "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
     "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
 }
+
+def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
+    """Confere se ainda existe uma migração de mídia (download+compressão+
+    transcrição) rodando em background pra essa empresa específica —
+    usado pra avisar o usuário que uma análise de IA feita agora pode não
+    pegar todos os vídeos ainda (alguns podem não ter transcrição pronta
+    até a migração terminar)."""
+    if not user_id:
+        return False
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "migracao_midia")
+            .in_("status", ["pendente", "em_andamento"])
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return True
+        return False
+    except Exception:
+        return False
 
 def _tempo_relativo(iso_str: str) -> str:
     try:
@@ -9258,6 +9360,18 @@ window.addEventListener('load', syncHeight);
                 if gemini_model is None:
                     st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
                 else:
+                    _migracao_em_andamento = migracao_midia_em_andamento(
+                        st.session_state.user.id if st.session_state.get("user") else None, nome
+                    )
+                    if _migracao_em_andamento:
+                        st.toast(
+                            "⏳ Os vídeos dessa coleta ainda estão sendo processados em segundo "
+                            "plano (compressão/transcrição). A análise vai rodar mesmo assim, mas "
+                            "alguns vídeos podem ficar de fora ou ser transcritos mais devagar. "
+                            "Acompanhe no sino de notificações e, se puder, espere terminar pra "
+                            "uma análise mais completa.",
+                            icon="⏳",
+                        )
                     n_vid = sum(1 for a in ads_list if "Vídeo" in a["formato"])
                     n_img = sum(1 for a in ads_list if "Imagem" in a["formato"])
                     n_car = sum(1 for a in ads_list if "Carrossel" in a["formato"])
@@ -9323,12 +9437,15 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                                 continue
 
                         # Vídeos não são enviados pro Gemini — em vez disso, manda a
-                        # transcrição do áudio (via Whisper) como texto de até 4 deles
+                        # transcrição do áudio (via Whisper) como texto. Diferente das
+                        # imagens (que custam tokens multimodais e por isso têm teto
+                        # baixo), transcrição é só texto — então cobre todos os vídeos
+                        # dentro dos mesmos 15 anúncios já usados no resumo, e não um
+                        # número fixo pequeno (senão empresas só-de-vídeo, como uma que
+                        # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
                         vids_transcritos = 0
                         _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
                         for i, a in enumerate(ads_list[:15]):
-                            if vids_transcritos >= 4:
-                                break
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
@@ -9366,6 +9483,13 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             f"anúncios (os primeiros da lista) · {imgs_enviadas} imagem(ns) analisada(s) "
                             f"visualmente · {vids_transcritos} vídeo(s) transcrito(s) por áudio (Whisper)._"
                         )
+                        if _migracao_em_andamento:
+                            _nota_escopo += (
+                                "\n_⏳ Atenção: a migração de mídia dessa empresa ainda estava em "
+                                "andamento quando essa análise rodou — alguns vídeos podem não ter "
+                                "entrado ou ter uma transcrição parcial. Recomendamos gerar de novo "
+                                "depois que a migração terminar (veja o sino de notificações)._"
+                            )
                         texto_relatorio = resp.text + _nota_escopo
 
                         st.session_state[chave_ia_criativos] = texto_relatorio
@@ -9694,6 +9818,9 @@ setTimeout(syncH, 400);
                         try:
                             import datetime as _dt_ads
                             _vids_ind = ad_ind.get("videos") or []
+                            _migracao_em_andamento_ind = migracao_midia_em_andamento(
+                                st.session_state.user.id if st.session_state.get("user") else None, nome
+                            ) if _vids_ind else False
                             _transcricao_ind = (
                                 obter_transcricao_video(
                                     _vids_ind[0],
@@ -9720,12 +9847,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 ### 💡 Sugestões de Melhoria (2 ações concretas)""")
                             texto_relatorio_ind = resp_ind.text
                             if _vids_ind and not _transcricao_ind:
-                                texto_relatorio_ind += (
-                                    "\n\n---\n_⚠️ Este anúncio tem vídeo, mas não foi possível "
-                                    "transcrever o áudio (vídeo sem áudio, link indisponível, ou "
-                                    "modelo Whisper não carregado) — a análise do criativo se baseou "
-                                    "só nos dados de texto._"
-                                )
+                                if _migracao_em_andamento_ind:
+                                    texto_relatorio_ind += (
+                                        "\n\n---\n_⏳ Este anúncio tem vídeo, mas a migração de mídia "
+                                        "dessa empresa ainda está em andamento em segundo plano — a "
+                                        "transcrição ainda não ficou pronta. Tente analisar de novo "
+                                        "depois que ela terminar (veja o sino de notificações)._"
+                                    )
+                                else:
+                                    texto_relatorio_ind += (
+                                        "\n\n---\n_⚠️ Este anúncio tem vídeo, mas não foi possível "
+                                        "transcrever o áudio (vídeo sem áudio, link indisponível, ou "
+                                        "modelo Whisper não carregado) — a análise do criativo se baseou "
+                                        "só nos dados de texto._"
+                                    )
                             st.session_state[chave_ind] = texto_relatorio_ind
                             st.session_state.ads_analises_salvas = [
                                 a for a in st.session_state.ads_analises_salvas

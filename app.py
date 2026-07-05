@@ -110,6 +110,16 @@ PLANOS_QUOTA_MIDIAS = {
     "agencia": None,  # ilimitado
 }
 
+# Cota de concorrentes monitorados por plano — usada na aba "Uso do plano"
+# do perfil, pra mostrar quanto da cota já foi usado. Precisa ficar em
+# sincronia com o texto exibido nos cards de planos (aba "Plano").
+PLANOS_QUOTA_CONCORRENTES = {
+    "free":    1,
+    "starter": 5,
+    "pro":     20,
+    "agencia": None,  # ilimitado
+}
+
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
     # Padrão temporário "pro" enquanto não existe billing — evita travar
@@ -16714,7 +16724,7 @@ html, body { background: transparent; overflow: hidden; }
     _plano_atual_perfil = obter_plano_usuario()
     _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
 
-    aba_perfil_dados, aba_perfil_plano = st.tabs(["Meus dados", "Plano"])
+    aba_perfil_dados, aba_perfil_uso, aba_perfil_plano = st.tabs(["Meus dados", "Uso do plano", "Plano"])
 
     with aba_perfil_dados:
         with st.form("form_perfil_dados"):
@@ -16761,6 +16771,85 @@ html, body { background: transparent; overflow: hidden; }
             if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)
                 st.toast("🗜️ Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
+
+    with aba_perfil_uso:
+        _CORES_PLANO_USO = {
+            "free": "#8a97ab", "starter": "#2f8fd1", "pro": "#1e9e63", "agencia": "#8b4fc9",
+        }
+        _cor_uso = _CORES_PLANO_USO.get(_plano_atual_perfil, "#2f8fd1")
+        _label_uso = _PLANO_LABELS_PERFIL.get(_plano_atual_perfil, _plano_atual_perfil.upper())
+
+        st.markdown(
+            _html(f"""
+            <div style='font-size:13px;color:#6b7280;margin:14px 0 18px 0'>
+                Acompanhe quanto você já usou da cota do seu plano
+                <span style='color:{_cor_uso};font-weight:700'>{_label_uso}</span> neste mês.
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
+
+        _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
+        _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
+        _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
+
+        _concorrentes_usados = len((st.session_state.get("dados") or {}).get("concorrentes", []))
+        _concorrentes_limite = PLANOS_QUOTA_CONCORRENTES.get(_plano_atual_perfil)
+
+        def _barra_uso_html(label: str, emoji: str, usado: int, limite, cor: str) -> str:
+            """Monta um card com barra de progresso pra uma métrica de uso.
+            limite=None → plano com cota ilimitada nessa métrica (sem barra,
+            só mostra a contagem)."""
+            if limite is None:
+                texto_qtd = f"{usado} usado(s) · ilimitado no seu plano"
+                barra_html = ""
+                cor_texto = cor
+            else:
+                limite_seguro = max(limite, 0)
+                pct = 100 if limite_seguro == 0 else max(0, min(100, round(usado / limite_seguro * 100)))
+                cor_texto = cor
+                if pct >= 100:
+                    cor_texto = "#e05252"
+                elif pct >= 80:
+                    cor_texto = "#e2a63a"
+                texto_qtd = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0 (não disponível no seu plano)"
+                barra_html = (
+                    f'<div style="width:100%;height:8px;border-radius:6px;background:#f3f4f6;'
+                    f'overflow:hidden;margin-top:10px">'
+                    f'<div style="width:{pct}%;height:100%;background:{cor_texto};border-radius:6px"></div>'
+                    f'</div>'
+                )
+
+            return _html(f"""
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;
+                        padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <span style="font-size:13px;font-weight:700;color:#111827">{emoji} {label}</span>
+                    <span style="font-size:13px;font-weight:700;color:{cor_texto}">{texto_qtd}</span>
+                </div>
+                {barra_html}
+            </div>
+            """)
+
+        st.markdown(
+            _barra_uso_html(
+                "Mídias de anúncios baixadas e armazenadas", "🎬",
+                _midias_usadas, _midias_limite, _cor_uso,
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            _barra_uso_html(
+                "Concorrentes monitorados", "🎯",
+                _concorrentes_usados, _concorrentes_limite, _cor_uso,
+            ),
+            unsafe_allow_html=True,
+        )
+
+        st.caption(
+            "As demais métricas do plano (posts e anúncios analisados por IA, por exemplo) "
+            "ainda não têm contador de uso implementado nesta versão."
+        )
 
     with aba_perfil_plano:
         st.markdown(

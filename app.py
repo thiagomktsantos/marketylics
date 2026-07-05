@@ -16816,7 +16816,7 @@ html, body { background: transparent; overflow: hidden; }
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
 
         def _donut_uso_svg(svg_inner: str, cor: str, label: str, usado: int, limite,
-                           size: int = 68, stroke: int = 6) -> str:
+                           size: int = 108, stroke: int = 9) -> str:
             """Anel de progresso com o ícone da métrica no centro (mesmo
             estilo do card 'Plataformas dos anúncios'), e embaixo o número
             exato e a % usada da cota do plano. limite=None → cota
@@ -16838,17 +16838,17 @@ html, body { background: transparent; overflow: hidden; }
                     cor_num = "#e05252"
                 elif pct >= 80:
                     cor_num = "#e2a63a"
-                texto_pct_html = f'<div style="font-size:15px;font-weight:800;color:{cor_num};line-height:1.2">{pct}%</div>'
+                texto_pct_html = f'<div style="font-size:22px;font-weight:800;color:{cor_num};line-height:1.2">{pct}%</div>'
                 texto_fracao = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0"
 
             dash   = round(pct / 100 * circum, 2)
             gap    = round(circum - dash, 2)
             offset = round(circum * 0.25, 2)
-            icon_s = size * 0.36
+            icon_s = size * 0.34
             icon_pos = round((size - icon_s) / 2, 1)
 
             return _html(f"""
-            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;min-width:118px;flex:1">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;min-width:150px;flex:1">
                 <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
                     <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cor}" stroke-width="{stroke}"
@@ -16860,30 +16860,30 @@ html, body { background: transparent; overflow: hidden; }
                 </svg>
                 <div style="text-align:center">
                     {texto_pct_html}
-                    <div style="font-size:12.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
-                    <div style="font-size:9.5px;color:#9ca3af;font-weight:700;text-transform:uppercase;
+                    <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
+                    <div style="font-size:11px;color:#9ca3af;font-weight:700;text-transform:uppercase;
                                 letter-spacing:0.3px;white-space:nowrap">{label}</div>
                 </div>
             </div>
             """)
 
         _donuts_uso_html = (
-            '<div style="display:flex;flex-wrap:wrap;gap:22px;justify-content:flex-start">'
-            + _donut_uso_svg(_SVG_FILM, _cor_uso, "Mídias armazenadas", _midias_usadas, _midias_limite)
-            + _donut_uso_svg(_SVG_TARGET, _cor_uso, "Concorrentes", _concorrentes_usados, _concorrentes_limite)
-            + _donut_uso_svg(_SVG_DOWNLOAD, _cor_uso, "Coletas de anúncios", _coleta_ads_usadas, _coleta_ads_limite)
-            + _donut_uso_svg(_SVG_SHARE, _cor_uso, "Coletas de redes", _coleta_redes_usadas, _coleta_redes_limite)
-            + _donut_uso_svg(_SVG_ZAP, _cor_uso, "Análises de IA", _analises_ia_usadas, _analises_ia_limite)
+            '<div style="display:flex;flex-wrap:wrap;gap:32px;justify-content:flex-start">'
+            + _donut_uso_svg(_SVG_FILM, get_avatar_color(0), "Mídias armazenadas", _midias_usadas, _midias_limite)
+            + _donut_uso_svg(_SVG_TARGET, get_avatar_color(1), "Concorrentes", _concorrentes_usados, _concorrentes_limite)
+            + _donut_uso_svg(_SVG_DOWNLOAD, get_avatar_color(3), "Coletas de anúncios", _coleta_ads_usadas, _coleta_ads_limite)
+            + _donut_uso_svg(_SVG_SHARE, get_avatar_color(4), "Coletas de redes", _coleta_redes_usadas, _coleta_redes_limite)
+            + _donut_uso_svg(_SVG_ZAP, get_avatar_color(2), "Análises de IA", _analises_ia_usadas, _analises_ia_limite)
             + '</div>'
         )
 
         st.markdown(
             _html(f"""
             <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                        padding:22px 24px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
+                        padding:28px 30px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
                 <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;
-                            color:#1a2e4a;margin-bottom:14px">Uso do plano {_label_uso}</div>
-                <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px 0"/>
+                            color:#1a2e4a;margin-bottom:16px">Uso do plano {_label_uso}</div>
+                <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 26px 0"/>
                 {_donuts_uso_html}
             </div>
             """),

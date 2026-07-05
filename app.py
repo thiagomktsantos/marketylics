@@ -10209,6 +10209,37 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         vid_fallback_modal_esc = vid_fallback_modal.replace("'","").replace('"',"") if vid_fallback_modal else ""
                         snap_url_safe_vid      = snap_url_safe
 
+                        # Badge de origem da mídia: se já foi migrada pro nosso
+                        # R2 mostra um ícone de "armazenado" (permanente); senão
+                        # mostra um relógio avisando que é o link original da
+                        # Meta e pode expirar a qualquer momento.
+                        _vid_e_do_r2 = bool(R2_PUBLIC_BASE) and vid_modal.startswith(R2_PUBLIC_BASE)
+                        if _vid_e_do_r2:
+                            origem_badge_html = """
+    <div title="Vídeo armazenado permanentemente — não expira"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+        </svg>
+    </div>"""
+                        else:
+                            origem_badge_html = """
+    <div title="Vídeo original da Meta — pode expirar a qualquer momento"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v5l3 3"/>
+        </svg>
+    </div>"""
+
                         media_block = f"""
 <div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
      id="vwrap_{uid}"
@@ -10233,6 +10264,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
             </svg>
         </div>
     </div>
+    {origem_badge_html}
     <div style="position:absolute;bottom:7px;right:7px;background:#ffffff;
                 color:#000000;font-size:10px;font-weight:700;padding:2px 7px;
                 border-radius:4px;pointer-events:none">▶ VER VÍDEO</div>

@@ -7,3 +7,4 @@ requests
 playwright>=1.44
 boto3
 Pillow
+openai>=1.0.0

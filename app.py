@@ -16781,7 +16781,7 @@ html, body { background: transparent; overflow: hidden; }
 
         st.markdown(
             _html(f"""
-            <div style='font-size:13px;color:#6b7280;margin:14px 0 18px 0'>
+            <div style='font-size:13px;color:#6b7280;margin:14px 0 20px 0'>
                 Acompanhe quanto você já usou da cota do seu plano
                 <span style='color:{_cor_uso};font-weight:700'>{_label_uso}</span> neste mês.
             </div>
@@ -16790,20 +16790,38 @@ html, body { background: transparent; overflow: hidden; }
         )
 
         _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
+
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
 
         _concorrentes_usados = len((st.session_state.get("dados") or {}).get("concorrentes", []))
         _concorrentes_limite = PLANOS_QUOTA_CONCORRENTES.get(_plano_atual_perfil)
 
-        def _barra_uso_html(label: str, emoji: str, usado: int, limite, cor: str) -> str:
-            """Monta um card com barra de progresso pra uma métrica de uso.
-            limite=None → plano com cota ilimitada nessa métrica (sem barra,
-            só mostra a contagem)."""
+        # Estas três já têm contador real no sistema de cooldown/cota
+        # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
+        _coleta_ads_usadas   = _contar_execucoes_mes(_user_id_uso, "coleta_ads")   if _user_id_uso else 0
+        _coleta_ads_limite   = PLANOS_COTA_MENSAL.get("coleta_ads", {}).get(_plano_atual_perfil)
+        _coleta_redes_usadas = _contar_execucoes_mes(_user_id_uso, "coleta_redes") if _user_id_uso else 0
+        _coleta_redes_limite = PLANOS_COTA_MENSAL.get("coleta_redes", {}).get(_plano_atual_perfil)
+        _analises_ia_usadas  = _contar_execucoes_mes(_user_id_uso, "analise_ia")   if _user_id_uso else 0
+        _analises_ia_limite  = PLANOS_COTA_MENSAL.get("analise_ia", {}).get(_plano_atual_perfil)
+
+        # Ícones grandes (24x24, estilo outline) — um por métrica.
+        _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
+        _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
+        _SVG_DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
+        _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
+        _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+
+        def _card_uso_svg(svg_inner: str, label: str, usado: int, limite, cor: str) -> str:
+            """Card de uso com ícone SVG grande num círculo colorido à
+            esquerda, contagem em destaque à direita e barra de progresso
+            embaixo. limite=None → cota ilimitada nessa métrica no plano."""
             if limite is None:
-                texto_qtd = f"{usado} usado(s) · ilimitado no seu plano"
-                barra_html = ""
+                texto_qtd = f"{usado}"
+                texto_sub = "usado(s) este mês · ilimitado no seu plano"
                 cor_texto = cor
+                barra_html = ""
             else:
                 limite_seguro = max(limite, 0)
                 pct = 100 if limite_seguro == 0 else max(0, min(100, round(usado / limite_seguro * 100)))
@@ -16812,43 +16830,56 @@ html, body { background: transparent; overflow: hidden; }
                     cor_texto = "#e05252"
                 elif pct >= 80:
                     cor_texto = "#e2a63a"
-                texto_qtd = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0 (não disponível no seu plano)"
+                texto_qtd = f"{usado}"
+                texto_sub = (
+                    f"de {limite_seguro} usados este mês" if limite_seguro > 0
+                    else "não disponível no seu plano"
+                )
                 barra_html = (
-                    f'<div style="width:100%;height:8px;border-radius:6px;background:#f3f4f6;'
-                    f'overflow:hidden;margin-top:10px">'
-                    f'<div style="width:{pct}%;height:100%;background:{cor_texto};border-radius:6px"></div>'
+                    f'<div style="width:100%;height:9px;border-radius:6px;background:#f3f4f6;'
+                    f'overflow:hidden;margin-top:14px">'
+                    f'<div style="width:{pct}%;height:100%;background:{cor_texto};border-radius:6px;'
+                    f'transition:width .3s"></div>'
                     f'</div>'
                 )
 
             return _html(f"""
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;
-                        padding:16px 18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-                <div style="display:flex;align-items:center;justify-content:space-between">
-                    <span style="font-size:13px;font-weight:700;color:#111827">{emoji} {label}</span>
-                    <span style="font-size:13px;font-weight:700;color:{cor_texto}">{texto_qtd}</span>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:16px;
+                        padding:20px 22px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
+                        display:flex;align-items:center;gap:18px">
+                <div style="flex-shrink:0;width:56px;height:56px;border-radius:14px;
+                            background:{cor}1a;display:flex;align-items:center;justify-content:center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="{cor}"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{svg_inner}</svg>
                 </div>
-                {barra_html}
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13.5px;font-weight:700;color:#111827;margin-bottom:2px">{label}</div>
+                    <div style="font-size:12px;color:#9ca3af">
+                        <span style="font-size:20px;font-weight:800;color:{cor_texto}">{texto_qtd}</span>
+                        &nbsp;{texto_sub}
+                    </div>
+                    {barra_html}
+                </div>
             </div>
             """)
 
-        st.markdown(
-            _barra_uso_html(
-                "Mídias de anúncios baixadas e armazenadas", "🎬",
-                _midias_usadas, _midias_limite, _cor_uso,
-            ),
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            _barra_uso_html(
-                "Concorrentes monitorados", "🎯",
-                _concorrentes_usados, _concorrentes_limite, _cor_uso,
-            ),
-            unsafe_allow_html=True,
-        )
+        col_uso_1, col_uso_2 = st.columns(2)
+        with col_uso_1:
+            st.markdown(_card_uso_svg(_SVG_FILM, "Mídias de anúncios baixadas e armazenadas",
+                                       _midias_usadas, _midias_limite, _cor_uso), unsafe_allow_html=True)
+            st.markdown(_card_uso_svg(_SVG_DOWNLOAD, "Coletas de anúncios",
+                                       _coleta_ads_usadas, _coleta_ads_limite, _cor_uso), unsafe_allow_html=True)
+            st.markdown(_card_uso_svg(_SVG_ZAP, "Análises de IA",
+                                       _analises_ia_usadas, _analises_ia_limite, _cor_uso), unsafe_allow_html=True)
+        with col_uso_2:
+            st.markdown(_card_uso_svg(_SVG_TARGET, "Concorrentes monitorados",
+                                       _concorrentes_usados, _concorrentes_limite, _cor_uso), unsafe_allow_html=True)
+            st.markdown(_card_uso_svg(_SVG_SHARE, "Coletas de redes sociais",
+                                       _coleta_redes_usadas, _coleta_redes_limite, _cor_uso), unsafe_allow_html=True)
 
         st.caption(
-            "As demais métricas do plano (posts e anúncios analisados por IA, por exemplo) "
-            "ainda não têm contador de uso implementado nesta versão."
+            "As cotas de coletas e análises de IA resetam no início de cada mês. "
+            "Precisa de mais? Fale com o suporte pra aumentar seu plano."
         )
 
     with aba_perfil_plano:

@@ -139,6 +139,50 @@ def _comprimir_imagem(conteudo: bytes, content_type: str):
     except Exception:
         return conteudo, content_type, None
 
+def _comprimir_video(conteudo: bytes, content_type: str):
+    """Reduz o tamanho de vídeos antes de subir pro R2: reencoda em H.264
+    com CRF mais agressivo e limita a altura a 720p, usando o ffmpeg via
+    subprocess (precisa estar instalado no sistema — ver packages.txt).
+    Se algo der errado ou o ffmpeg não estiver disponível, devolve o
+    conteúdo original sem comprimir — nunca quebra o upload."""
+    import subprocess
+    import tempfile
+    import os
+    import shutil
+
+    if shutil.which("ffmpeg") is None:
+        return conteudo, content_type, None
+
+    ALTURA_MAX = 720
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            entrada = os.path.join(tmp, "entrada")
+            saida = os.path.join(tmp, "saida.mp4")
+            with open(entrada, "wb") as f:
+                f.write(conteudo)
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", entrada,
+                "-vf", f"scale=-2:'min({ALTURA_MAX},ih)'",
+                "-c:v", "libx264", "-crf", "28", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "96k",
+                "-movflags", "+faststart",
+                saida,
+            ]
+            resultado = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300
+            )
+            if resultado.returncode != 0 or not os.path.exists(saida):
+                return conteudo, content_type, None
+
+            with open(saida, "rb") as f:
+                conteudo_novo = f.read()
+            return conteudo_novo, "video/mp4", ".mp4"
+    except Exception:
+        return conteudo, content_type, None
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None) -> str:
     """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
@@ -182,6 +226,10 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
 
         if tipo == "imagem":
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_imagem(conteudo, content_type)
+            if ext_comprimida:
+                ext = ext_comprimida
+        elif tipo == "video":
+            conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
 
@@ -2525,13 +2573,20 @@ def _substituir_url_em_ads_cache(ads_cache: dict, url_antiga: str, url_nova: str
         novo[empresa] = entry_novo
     return novo
 
+def _comprimir_midia_existente(tipo: str, conteudo: bytes, mime_type: str):
+    """Roteia pra função de compressão certa (imagem ou vídeo) de acordo
+    com o tipo da mídia já salva."""
+    if tipo == "video":
+        return _comprimir_video(conteudo, mime_type or "video/mp4")
+    return _comprimir_imagem(conteudo, mime_type or "image/jpeg")
+
 def _reprocessar_midias_background(user_id: str, atividade_id: str):
     try:
         res = (
             supabase.table("midias")
             .select("*")
             .eq("user_id", user_id)
-            .eq("tipo", "imagem")
+            .in_("tipo", ["imagem", "video"])
             .execute()
         )
         midias = res.data or []
@@ -2542,16 +2597,19 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
         for m in midias:
             try:
                 url_antiga = m["url_cdn"]
-                resp = requests.get(url_antiga, timeout=20)
+                # vídeos são maiores e demoram mais pra baixar/reencodar
+                # que imagens, então usamos um timeout maior pra eles.
+                timeout_download = 120 if m.get("tipo") == "video" else 20
+                resp = requests.get(url_antiga, timeout=timeout_download)
                 resp.raise_for_status()
                 conteudo_original = resp.content
                 tamanho_original = len(conteudo_original)
 
-                conteudo_novo, content_type_novo, ext_novo = _comprimir_imagem(
-                    conteudo_original, m.get("mime_type", "image/jpeg")
+                conteudo_novo, content_type_novo, ext_novo = _comprimir_midia_existente(
+                    m.get("tipo"), conteudo_original, m.get("mime_type")
                 )
                 if not ext_novo or len(conteudo_novo) >= tamanho_original:
-                    continue  # já era webp, ou comprimir não ajudou nesse caso
+                    continue  # já estava no formato/tamanho ótimo, ou comprimir não ajudou nesse caso
 
                 nova_key = m["storage_key"].rsplit(".", 1)[0] + ext_novo
                 r2_client.put_object(
@@ -2597,7 +2655,7 @@ def iniciar_reprocessamento_midia_background(user_id: str):
     """Roda o reprocessamento de todas as mídias já salvas do usuário,
     sem travar a página. Acompanhe o resultado no sino de notificações."""
     atividade_id = criar_atividade(
-        user_id, "reprocessamento_midia", "Reprocessamento de mídias antigas (compressão)", {}
+        user_id, "reprocessamento_midia", "Reprocessamento de mídias antigas (compressão de imagens e vídeos)", {}
     )
     threading.Thread(
         target=_reprocessar_midias_background,
@@ -16366,8 +16424,8 @@ html, body { background: transparent; overflow: hidden; }
         with st.container(border=True):
             st.markdown("**Manutenção de mídia**")
             st.caption(
-                "Recomprime as imagens de anúncios já salvas no armazenamento pra ocupar menos "
-                "espaço. Roda em background — acompanhe o resultado no sino de notificações."
+                "Recomprime as imagens e vídeos de anúncios já salvos no armazenamento pra ocupar "
+                "menos espaço. Roda em background — acompanhe o resultado no sino de notificações."
             )
             if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)

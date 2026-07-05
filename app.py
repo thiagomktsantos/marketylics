@@ -313,6 +313,7 @@ def _tempo_relativo(iso_str: str) -> str:
     except Exception:
         return ""
 
+
 # ---------------------------------------------------
 #  COOLDOWN + COTA MENSAL (anti-abuso + controle de custo)
 # ---------------------------------------------------
@@ -1523,26 +1524,36 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     overflow: hidden !important;
 }
 
-[data-testid="stSidebar"] .st-key-_perfil_menu_editar button,
-[data-testid="stSidebar"] .st-key-_perfil_menu_sair button {
-    background: transparent !important;
-    border: 1px solid #1e2a3a !important;
-    border-radius: 10px !important;
-    color: #c5d2e5 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
-    transition: all 0.15s !important;
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: 0rem !important;
 }
-[data-testid="stSidebar"] .st-key-_perfil_menu_editar button:hover,
-[data-testid="stSidebar"] .st-key-_perfil_menu_sair button:hover {
-    background: #1a2535 !important;
-    color: #e2eaf5 !important;
-    border-color: #3a9fd6 !important;
+[data-testid="stSidebar"] .st-key-_perfil_menu_editar,
+[data-testid="stSidebar"] .st-key-_perfil_menu_sair,
+[data-testid="stSidebar"] .stElementContainer:has(.st-key-_perfil_menu_editar),
+[data-testid="stSidebar"] .stElementContainer:has(.st-key-_perfil_menu_sair) {
+    position: fixed !important;
+    top: -9999px !important;
+    left: -9999px !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
+}
+[data-testid="stSidebar"] .stElementContainer:has(div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar)) {
+    margin-top: -10px !important;
 }
 [data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) {
     background: #101825 !important;
     border: 1px solid #1e2a3a !important;
+    padding: 8px !important;
+}
+[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.st-key-_perfil_menu_editar) [data-testid="stVerticalBlock"] {
+    gap: 0 !important;
 }
 
 /* ─────────────────────────────────────────────────────
@@ -2012,11 +2023,19 @@ body {{
 }}
 .footer-perfil {{
     display: flex; align-items: center; gap: 8px;
-    min-width: 0; cursor: pointer;
+    min-width: 0; flex: 1; cursor: pointer;
     padding: 4px 6px; border-radius: 8px;
     transition: background 0.15s;
+    justify-content: space-between;
 }}
 .footer-perfil:hover {{ background: #1a2535; }}
+.footer-perfil-info {{
+    display: flex; align-items: center; gap: 8px; min-width: 0;
+}}
+.footer-right-group {{
+    display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
+}}
 .plano-badge {{
     flex-shrink: 0;
     font-size: 10px; font-weight: 700;
@@ -2034,6 +2053,7 @@ body {{
     font-family: 'DM Sans', sans-serif;
 }}
 .footer-perfil i.chevron {{ font-size: 10px; color: #5a7090; flex-shrink: 0; }}
+.footer-perfil:hover i.chevron {{ color: #e2eaf5; }}
 .btn-sino {{
     position: relative;
     display: flex; align-items: center; justify-content: center;
@@ -2123,14 +2143,18 @@ body {{
 <div class="footer">
     <div class="footer-email">
         <div class="footer-perfil" onclick="nav('perfil_menu')">
-            <span class="plano-badge {_plano_css}">{_plano_label}</span>
-            <span class="footer-perfil-nome">{_nome_exibido}</span>
+            <div class="footer-perfil-info">
+                <span class="plano-badge {_plano_css}">{_plano_label}</span>
+                <span class="footer-perfil-nome">{_nome_exibido}</span>
+            </div>
             <i class="fa-solid fa-chevron-down chevron"></i>
         </div>
-        <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
-            <i class="fa-solid fa-bell"></i>
-            {_badge_html}
-        </button>
+        <div class="footer-right-group">
+            <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
+                <i class="fa-solid fa-bell"></i>
+                {_badge_html}
+            </button>
+        </div>
     </div>
 </div>
 </body>
@@ -2145,36 +2169,76 @@ function nav(page) {{
         }}
     }}
 }}
-(function() {{
-    function ajustarAltura() {{
-        var h = document.body.scrollHeight;
-        var iframes = window.parent.document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {{
-            try {{
-                if (iframes[i].contentWindow === window) {{
-                    iframes[i].style.height = h + 'px';
-                    break;
-                }}
-            }} catch(e) {{}}
-        }}
-    }}
-    document.addEventListener('DOMContentLoaded', ajustarAltura);
-    window.addEventListener('load', ajustarAltura);
-    setTimeout(ajustarAltura, 100);
-    setTimeout(ajustarAltura, 400);
-}})();
 </script>
 """
 
-    components.html(menu_html, height=560, scrolling=False)
+    components.html(menu_html, height=620, scrolling=False)
 
     if st.session_state.get("mostrar_perfil_menu"):
         with st.container(border=True):
-            if st.button("Editar dados", icon=":material/edit:", key="_perfil_menu_editar", use_container_width=True):
+            editar_clicado = st.button("Editar dados", key="_perfil_menu_editar", use_container_width=True)
+            sair_clicado = st.button("Sair", key="_perfil_menu_sair", use_container_width=True)
+
+            components.html("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', sans-serif; }
+.menu-btn {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border: none;
+    background: transparent; border-top: 2px solid #1e2a3a;
+    color: #c5d2e5; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: all 0.15s;
+}
+.menu-btn:last-child { margin-bottom: 0; }
+.menu-btn:hover { background: #1a2535; color: #e2eaf5; border-color: #3a9fd6; }
+.menu-btn.danger:hover { border-color: #e05252; }
+.menu-btn svg { flex-shrink: 0; }
+</style>
+<button class="menu-btn" onclick="triggerPerfilBtn('Editar dados')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h9"/>
+        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
+    Editar dados
+</button>
+<button class="menu-btn danger" onclick="triggerPerfilBtn('Sair')">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Sair
+</button>
+<script>
+function triggerPerfilBtn(label) {
+    var btns = window.parent.document.querySelectorAll('[data-testid="stSidebar"] button');
+    for (var i = 0; i < btns.length; i++) {
+        var t = (btns[i].innerText || btns[i].textContent || '').trim();
+        if (t === label) { btns[i].click(); return; }
+    }
+}
+(function() {
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+        try {
+            if (iframes[i].contentWindow === window) {
+                iframes[i].style.height = '92px';
+                iframes[i].style.marginTop = '-29px';
+                break;
+            }
+        } catch(e) {}
+    }
+})();
+</script>
+""", height=92, scrolling=False)
+
+            if editar_clicado:
                 st.session_state.mostrar_perfil_menu = False
                 trocar_pagina("perfil")
                 st.rerun()
-            if st.button("Sair", icon=":material/logout:", key="_perfil_menu_sair", use_container_width=True):
+            if sair_clicado:
                 logout_supabase()
                 for k in ["logado", "user", "dados", "metricas_redes", "pagina",
                           "mostrar_form_concorrente", "editando_concorrente",
@@ -16175,76 +16239,281 @@ html, body { background: transparent; overflow: hidden; }
             unsafe_allow_html=True,
         )
 
+        # ── Ícones SVG por tipo de recurso (estilo Feather/Lucide, stroke-based) ──
+        _ICONE_CHECK  = '<path d="M20 6 9 17l-5-5"/>'
+        _ICONE_MINUS  = '<line x1="5" y1="12" x2="19" y2="12"/>'
+        _ICONE_ADS    = '<path d="M17 3H7a2 2 0 0 0-2 2v13l4-2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><line x1="7" y1="8" x2="15" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/>'
+        _ICONE_GLOBE  = '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+        _ICONE_IA     = '<path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="4"/>'
+        _ICONE_LINK   = '<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5"/>'
+        _ICONE_DB     = '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>'
+        _ICONE_CLOCK  = '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+        _ICONE_IMG    = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>'
+        _ICONE_CHART  = '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>'
+        _ICONE_ROCKET = '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>'
+        _ICONE_USERS  = '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+        _ICONE_HEADSET= '<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>'
+        _ICONE_INFIN  = '<path d="M18.178 8c5.096 0 5.096 8 0 8-5.095 0-7.133-8-12.739-8-4.585 0-4.585 8 0 8 5.606 0 7.644-8 12.74-8z"/>'
+
+        def _icone_item_plano(texto: str):
+            """Escolhe o ícone de acordo com o tipo de recurso descrito no item.
+            A cor é definida à parte (mesma cor do plano), então aqui só retornamos o path."""
+            t = texto.lower()
+            restritivo = t.startswith(("sem ", "não ", "limite"))
+            if restritivo:
+                return _ICONE_MINUS, True
+            if "ilimitad" in t:
+                return _ICONE_INFIN, False
+            if "análise" in t or " ia " in f" {t} " or t.startswith("análises") or "ia (" in t:
+                return _ICONE_IA, False
+            if "mídia" in t or "imagens" in t or "vídeos" in t or "baixad" in t:
+                return _ICONE_IMG, False
+            if "cache" in t:
+                return _ICONE_DB, False
+            if "histórico" in t:
+                return _ICONE_CLOCK, False
+            if "confronto de sites" in t:
+                return _ICONE_CHART, False
+            if "coleta de anúncios" in t or "redes sociais" in t:
+                return _ICONE_ADS, False
+            if "prioridade" in t and "migra" in t:
+                return _ICONE_ROCKET, False
+            if "suporte" in t:
+                return _ICONE_HEADSET, False
+            if "gestão" in t or "contas de cliente" in t:
+                return _ICONE_USERS, False
+            if "link" in t:
+                return _ICONE_LINK, False
+            return _ICONE_CHECK, False
+
+        _COR_ICONE_ITEM = "#3a9fd6"  # cor única pra todos os ícones de recurso disponível
+
+        def _linha_item_plano(texto: str) -> str:
+            icone, restritivo = _icone_item_plano(texto)
+            cor_icone = "#b0b7c3" if restritivo else _COR_ICONE_ITEM
+            cor_texto = "#9ca3af" if restritivo else "#374151"
+            return (
+                '<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;">'
+                f'<span style="width:18px;height:18px;flex-shrink:0;display:flex;'
+                f'align-items:center;justify-content:center;">'
+                f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{cor_icone}" '
+                f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icone}</svg></span>'
+                f'<span style="font-size:12.5px;color:{cor_texto};line-height:1.4;">{texto}</span>'
+                '</div>'
+            )
+
+        _CATEGORIAS_ITEM_PLANO = [
+            ("coletas",      "Coletas"),
+            ("concorrentes", "Concorrentes"),
+            ("analises",     "Análises"),
+            ("automacoes",   "Automações"),
+        ]
+
+        def _cabecalho_categoria(label: str, cor: str, primeiro: bool) -> str:
+            margem_topo = "2px" if primeiro else "14px"
+            return (
+                f'<div style="font-size:10.5px;font-weight:700;color:{cor};'
+                f'text-transform:uppercase;letter-spacing:0.6px;'
+                f'margin:{margem_topo} 0 6px 0;">{label}</div>'
+            )
+
+        def _itens_agrupados_html(itens: list, cor: str) -> str:
+            """Recebe itens como (categoria, texto) e monta a lista agrupada,
+            com um cabeçalho por categoria — categorias sem itens nesse plano
+            simplesmente não aparecem. Cada grupo de categoria fica envolto
+            num <div data-sec="cat-{categoria}"> pra permitir sincronizar a
+            altura entre os 4 cards via JS (ver script de alinhamento logo
+            após o loop de renderização). Itens sem categoria reconhecida
+            (ex.: suporte, gestão de contas) são exibidos soltos, ao final,
+            dentro de um grupo próprio (data-sec="cat-outros")."""
+            por_categoria = {}
+            for cat, texto in itens:
+                por_categoria.setdefault(cat, []).append(texto)
+
+            partes = []
+            primeiro = True
+            for cat_key, cat_label in _CATEGORIAS_ITEM_PLANO:
+                lista = por_categoria.get(cat_key)
+                if not lista:
+                    continue
+                bloco = _cabecalho_categoria(cat_label, cor, primeiro)
+                bloco += "".join(_linha_item_plano(it) for it in lista)
+                partes.append(f'<div data-sec="cat-{cat_key}">{bloco}</div>')
+                primeiro = False
+
+            soltos = por_categoria.get("outros")
+            if soltos:
+                bloco = "".join(_linha_item_plano(it) for it in soltos)
+                partes.append(f'<div data-sec="cat-outros">{bloco}</div>')
+
+            return "".join(partes)
+
         _PLANOS_INFO = [
             {
                 "id": "free", "nome": "FREE", "cor": "#8a97ab", "fundo": "#f3f4f6",
                 "descricao": "Ideal pra testar a plataforma.",
+                "herda_de": None,
                 "itens": [
-                    "Coleta de anúncios e redes sociais",
-                    "Confronto de sites (visão básica)",
-                    "Sem análises de IA",
-                    "Não salva mídias — usa o link original (pode expirar)",
-                    "Sem cache de coleta salvo entre sessões",
-                    "Limite de coletas por mês",
+                    ("coletas",      "Coleta de anúncios e redes sociais"),
+                    ("coletas",      "Não salva mídias dos anúncios — usa o link original (pode expirar)"),
+                    ("coletas",      "Sem cache de coleta salvo entre sessões"),
+                    ("coletas",      "Limite de coletas por mês"),
+                    ("concorrentes", "Apenas 1 concorrente monitorado"),
+                    ("analises",     "Confronto de sites (visão básica)"),
+                    ("analises",     "Sem análises de IA"),
+                    ("analises",     "Até 15 posts analisados/mês"),
+                    ("analises",     "Até 10 anúncios analisados/mês"),
                 ],
             },
             {
                 "id": "starter", "nome": "STARTER", "cor": "#2f8fd1", "fundo": "#eaf4fb",
                 "descricao": "Pra quem acompanha alguns concorrentes de perto.",
+                "herda_de": "Free",
                 "itens": [
-                    "Tudo do Free",
-                    "Análises de IA (limitadas por mês)",
-                    "Cache de coleta salvo entre sessões",
-                    "Até 50 mídias baixadas e armazenadas/mês",
-                    "Histórico de anúncios preservado (sem links expirando)",
+                    ("coletas",      "Cache de coleta salvo entre sessões"),
+                    ("coletas",      "Até 50 mídias de anúncios baixadas e armazenadas/mês"),
+                    ("coletas",      "Histórico de anúncios preservado (sem links expirando)"),
+                    ("coletas",      "Exportação das coletas em CSV"),
+                    ("concorrentes", "Até 5 concorrentes monitorados"),
+                    ("analises",     "Análises de IA (limitadas por mês)"),
+                    ("analises",     "Até 100 posts analisados/mês"),
+                    ("analises",     "Até 50 anúncios analisados/mês"),
+                    ("analises",     "Exportação dos relatórios de análise (PDF)"),
                 ],
             },
             {
                 "id": "pro", "nome": "PRO", "cor": "#1e9e63", "fundo": "#e9f7f0",
                 "descricao": "Pra times de marketing com monitoramento contínuo.",
+                "herda_de": "Starter",
                 "itens": [
-                    "Tudo do Starter",
-                    "Análises de IA ilimitadas",
-                    "Confronto de sites completo (todas as métricas)",
-                    "Até 500 mídias baixadas e armazenadas/mês",
-                    "Prioridade na migração de mídia",
+                    ("coletas",      "Até 500 mídias de anúncios baixadas e armazenadas/mês"),
+                    ("coletas",      "Prioridade na migração de mídia"),
+                    ("coletas",      "Coleta automática agendada (diária)"),
+                    ("coletas",      "Modelos de coleta salvos"),
+                    ("concorrentes", "Até 20 concorrentes monitorados"),
+                    ("analises",     "Análises de IA ilimitadas"),
+                    ("analises",     "Confronto de sites completo (todas as métricas)"),
+                    ("analises",     "Até 500 posts analisados/mês"),
+                    ("analises",     "Até 300 anúncios analisados/mês"),
                 ],
             },
             {
                 "id": "agencia", "nome": "BUSINESS", "cor": "#8b4fc9", "fundo": "#f4ecfb",
                 "descricao": "Pra agências gerenciando várias contas de clientes.",
+                "herda_de": "Pro",
                 "itens": [
-                    "Tudo do Pro",
-                    "Mídias baixadas e armazenadas ilimitadas",
-                    "Gestão de múltiplas contas de clientes",
-                    "Suporte prioritário",
+                    ("coletas",      "Mídias de anúncios baixadas e armazenadas ilimitadas"),
+                    ("coletas",      "Coleta simultânea de múltiplas contas"),
+                    ("coletas",      "Exportação avançada dos dados (API)"),
+                    ("coletas",      "Prioridade máxima no processamento das coletas"),
+                    ("concorrentes", "Concorrentes monitorados ilimitados"),
+                    ("analises",     "Posts analisados ilimitados"),
+                    ("analises",     "Anúncios analisados ilimitados"),
+                    ("analises",     "Relatórios de análise em white-label"),
+                    ("analises",     "Insights comparativos entre contas de clientes"),
+                    ("outros",       "Gestão de múltiplas contas de clientes"),
+                    ("outros",       "Suporte prioritário"),
                 ],
             },
         ]
+
+        _CORES_POR_NOME_PLANO = {p["nome"].capitalize(): p["cor"] for p in _PLANOS_INFO}
 
         cols_planos = st.columns(len(_PLANOS_INFO))
         for col_plano, info in zip(cols_planos, _PLANOS_INFO):
             with col_plano:
                 _ativo = info["id"] == _plano_atual_perfil
                 _borda = f"border:2px solid {info['cor']}" if _ativo else "border:1px solid #e5e7eb"
-                _itens_html = "".join(f"<li style='margin-bottom:4px'>{it}</li>" for it in info["itens"])
+
+                _itens_html = _itens_agrupados_html(info["itens"], info["cor"])
+
+                _divisor_html = '<div style="position:relative;z-index:5;height:1px;min-height:1px;flex-shrink:0;background:#e5e7eb;margin:6px 0 10px 0;"></div>'
+                _label_html = ""
+                if info["herda_de"]:
+                    _cor_herdado = _CORES_POR_NOME_PLANO.get(info["herda_de"], "#9ca3af")
+                    _label_html = (
+                        f'<div style="font-size:11px;font-weight:700;color:#9ca3af;'
+                        f'text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">'
+                        f'Tudo o que o plano <span style="color:{_cor_herdado};font-weight:800">{info["herda_de"]}</span> oferece, e mais:</div>'
+                    )
+                _herda_html = _divisor_html + _label_html
+
                 st.markdown(_html(f"""
-                <div style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
-                            min-height:320px;display:flex;flex-direction:column;
+                <div class="plano-card" style="background:#fff;{_borda};border-radius:14px;padding:18px 16px;
+                            min-height:340px;display:flex;flex-direction:column;position:relative;z-index:0;
                             box-shadow:0 1px 4px rgba(0,0,0,0.05)">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <div data-sec="row-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                         <span style="background:{info['fundo']};color:{info['cor']};font-size:12px;font-weight:700;
                                      padding:3px 10px;border-radius:20px;letter-spacing:0.5px">{info['nome']}</span>
                         {"<span style='font-size:11px;color:" + info['cor'] + ";font-weight:700'>✓ ATUAL</span>" if _ativo else ""}
                     </div>
-                    <div style="font-size:12.5px;color:#6b7280;margin-bottom:10px">{info['descricao']}</div>
-                    <ul style="font-size:12px;color:#374151;padding-left:18px;margin:0">
+                    <div data-sec="row-desc" style="font-size:12.5px;line-height:1.45;color:#6b7280;margin-bottom:0;min-height:38px">{info['descricao']}</div>
+                    <div data-sec="row-herda">{_herda_html}</div>
+                    <div>
                         {_itens_html}
-                    </ul>
+                    </div>
                 </div>
                 """), unsafe_allow_html=True)
 
-        st.markdown("<hr style='margin-top:24px;border-color:#e5e7eb'>", unsafe_allow_html=True)
+        components.html("""
+<script>
+(function() {
+    if (window.frameElement) {
+        window.frameElement.style.setProperty('border', 'none', 'important');
+        window.frameElement.style.setProperty('height', '0px', 'important');
+        window.frameElement.style.setProperty('min-height', '0px', 'important');
+        window.frameElement.style.setProperty('display', 'none', 'important');
+    }
+
+    function sincronizarAlturasPlanos() {
+        var cards = window.parent.document.querySelectorAll('.plano-card');
+        if (!cards.length) return;
+
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                el.style.minHeight = '0px';
+            });
+        });
+
+        var maiores = {};
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                var chave = el.getAttribute('data-sec');
+                var altura = el.getBoundingClientRect().height;
+                if (!maiores[chave] || altura > maiores[chave]) {
+                    maiores[chave] = altura;
+                }
+            });
+        });
+
+        cards.forEach(function(card) {
+            card.querySelectorAll('[data-sec]').forEach(function(el) {
+                var chave = el.getAttribute('data-sec');
+                if (maiores[chave]) {
+                    el.style.minHeight = maiores[chave] + 'px';
+                }
+            });
+        });
+    }
+
+    sincronizarAlturasPlanos();
+    setTimeout(sincronizarAlturasPlanos, 150);
+    setTimeout(sincronizarAlturasPlanos, 400);
+    setTimeout(sincronizarAlturasPlanos, 900);
+
+    var observer = new MutationObserver(function() {
+        sincronizarAlturasPlanos();
+    });
+    observer.observe(window.parent.document.body, { childList: true, subtree: true });
+})();
+</script>
+""", height=0)
+
+        st.markdown(
+            "<hr style='border:none;border-top:1px solid #e5e7eb;margin:28px 0 0 0;' />",
+            unsafe_allow_html=True,
+        )
+
 
 
 # ---------------------------------------------------

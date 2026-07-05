@@ -1,12 +1,9 @@
 streamlit
-google.generativeai
+google-generativeai
 trafilatura
-duckduckgo_search
 pandas
-streamlit-option-menu
 supabase
 requests
-instaloader>=4.10
 playwright>=1.44
-plotly>=5.22
 boto3
+Pillow

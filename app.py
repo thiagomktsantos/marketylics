@@ -2912,10 +2912,13 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             daemon=True,
         ).start()
 
-def refazer_migracao_midia(user_id: str, empresa: str) -> bool:
+def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
     anúncios que já estão salvos no ads_cache (não precisa recoletar).
-    Usado pelo botão "Refazer" quando uma migração falha ou trava."""
+    Reaproveita a MESMA atividade em vez de criar uma nova a cada
+    tentativa — senão cada "Refazer" clicado acumula um registro de
+    "erro" (a tentativa anterior, substituída) que não é uma falha de
+    verdade, só polui a contagem do resumo."""
     try:
         res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
         cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
@@ -2923,9 +2926,7 @@ def refazer_migracao_midia(user_id: str, empresa: str) -> bool:
         if not entry:
             return False
 
-        atividade_id = criar_atividade(
-            user_id, "migracao_midia", f"Migração de mídia pro R2: {empresa} (refazendo)", {"empresa": empresa}
-        )
+        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
         threading.Thread(
             target=_migrar_midia_background,
             args=(user_id, empresa, entry, atividade_id),
@@ -17588,8 +17589,7 @@ html, body { background: transparent; overflow: hidden; }
                 if _pode_refazer:
                     _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
                     if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_a['id']}"):
-                        atualizar_atividade(_a["id"], "erro", {"motivo": "substituída por uma nova tentativa (Refazer)"})
-                        if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ):
+                        if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _a["id"]):
                             st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
                         else:
                             st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")

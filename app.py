@@ -778,45 +778,64 @@ def _formatar_detalhes_atividade(atividade: dict):
     Retorna (icone_svg_html, texto) — o texto vem sem prefixo de emoji
     porque quem renderiza escapa esse texto (segurança contra HTML/JS
     vindo do banco); o ícone já é SVG seguro (paths fixos) e é inserido
-    separadamente, sem passar pelo escape."""
+    separadamente, sem passar pelo escape. O ícone usa fill="currentColor"
+    de propósito — ele deve ter a mesma cor do texto ao lado (herdada do
+    elemento pai), não uma cor semântica própria."""
     d = atividade.get("detalhes") or {}
     tipo = atividade.get("tipo", "")
 
     if d.get("aviso"):
-        path, cor = _ICONE_AVISO
-        return _svg_icone(path, cor, 14), d["aviso"]
+        path, _cor = _ICONE_AVISO
+        return _svg_icone(path, "currentColor", 14), d["aviso"]
     if d.get("motivo"):
-        path, cor = _ICONE_INFO
-        return _svg_icone(path, cor, 14), d["motivo"]
+        path, _cor = _ICONE_INFO
+        return _svg_icone(path, "currentColor", 14), d["motivo"]
 
     if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
-        path, cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
         texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} mídias reconectadas."
-        return _svg_icone(path, cor, 14), texto
+        return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "reprocessamento_midia" and "processadas" in d:
         economia = d.get("economizado_mb", 0)
-        path, cor, _ = _TIPO_ATIVIDADE_LABELS["reprocessamento_midia"]
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reprocessamento_midia"]
         texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} mídias comprimidas — {economia}MB economizados."
-        return _svg_icone(path, cor, 14), texto
+        return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
         texto = f"Coletadas: {', '.join(d.get('coletadas', [])) or '—'}."
         if erros_d:
             texto += f" Com erro: {', '.join(erros_d.keys())}."
-            path, cor = _ICONE_AVISO
+            path, _cor = _ICONE_AVISO
         else:
-            path, cor = _ICONE_OK
-        return _svg_icone(path, cor, 14), texto
+            path, _cor = _ICONE_OK
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "coleta_redes" and ("coletados" in d or "com_erro" in d):
+        erros_d = d.get("com_erro") or {}
+        total_posts = d.get("total_posts", 0)
+        nomes_ok = d.get("coletados", [])
+        texto = f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
+        if erros_d:
+            texto += f" Com erro: {', '.join(erros_d.keys())}."
+            path, _cor = _ICONE_AVISO
+        else:
+            path, _cor = _ICONE_OK
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "migracao_midia" and "migradas" in d:
+        path, _cor = _ICONE_OK
+        texto = f"{d['migradas']} de {d.get('total', d['migradas'])} mídias migradas pro R2."
+        return _svg_icone(path, "currentColor", 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
     # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
     # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
     # ver por trás da setinha em vez de deixar a atividade sem detalhe.
     if tipo in _TIPO_ATIVIDADE_LABELS:
-        path, cor, texto = _TIPO_ATIVIDADE_LABELS[tipo]
-        return _svg_icone(path, cor, 14), texto
+        path, _cor, texto = _TIPO_ATIVIDADE_LABELS[tipo]
+        return _svg_icone(path, "currentColor", 14), texto
 
     return "", ""
 
@@ -2976,13 +2995,21 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         if res.data:
             # "concluído" não significa "tudo migrado" — se algum item
             # falhou (rede, ffmpeg, cota), isso agora fica visível aqui
-            # em vez de escondido dentro de um sucesso geral.
-            detalhes_finais = {}
+            # em vez de escondido dentro de um sucesso geral. E quando dá
+            # tudo certo, grava quantas mídias foram migradas em vez de
+            # deixar "detalhes" vazio (senão o sino só repete o título).
             if stats_midia.get("nao_migrados"):
                 detalhes_finais = {
                     "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram (ficaram com o link original)",
                     "amostra": stats_midia.get("amostra_nao_migrados", []),
                 }
+            elif stats_midia.get("total"):
+                detalhes_finais = {
+                    "migradas": stats_midia["total"],
+                    "total": stats_midia["total"],
+                }
+            else:
+                detalhes_finais = {}
             atualizar_atividade(atividade_id, "concluido", detalhes_finais)
         else:
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
@@ -14484,7 +14511,9 @@ function setHeight(isOpen) {{
             st.warning(f"🚫 {_motivo_bloqueio_redes}")
 
     if coletar and _permitido_redes:
-        registrar_execucao_acao(st.session_state.user.id, "coleta_redes", "Coleta de redes sociais")
+        _id_ativ_coleta_redes = criar_atividade(
+            st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"
+        )
 
         coletar_rapidapi.clear()
         resultados_lista = []
@@ -14614,6 +14643,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         }
         st.session_state.metricas_redes = cache
         st.toast("Dados coletados e salvos!", icon="✅")
+
+        # Grava o resultado de verdade na atividade (em vez de deixar
+        # "detalhes" vazio) — assim o sino mostra quais perfis foram
+        # coletados, quantos posts no total e quem deu erro, ao invés de
+        # só repetir o título genérico "Coleta de redes sociais".
+        _nomes_ok_redes = [r["nome"] for r in resultados_lista if not r.get("erro")]
+        _com_erro_redes = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}
+        _total_posts_redes = sum(
+            len(r.get("posts", [])) for r in resultados_lista if not r.get("erro")
+        )
+        _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
+        atualizar_atividade(_id_ativ_coleta_redes, _status_final_redes, {
+            "coletados": _nomes_ok_redes,
+            "com_erro": _com_erro_redes,
+            "total_posts": _total_posts_redes,
+        })
 
     ok = []
     if cache.get("dados"):

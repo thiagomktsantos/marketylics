@@ -2912,6 +2912,29 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             daemon=True,
         ).start()
 
+def refazer_migracao_midia(user_id: str, empresa: str) -> bool:
+    """Tenta a migração de novo pra uma empresa específica, usando os
+    anúncios que já estão salvos no ads_cache (não precisa recoletar).
+    Usado pelo botão "Refazer" quando uma migração falha ou trava."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        entry = cache_atual.get(empresa)
+        if not entry:
+            return False
+
+        atividade_id = criar_atividade(
+            user_id, "migracao_midia", f"Migração de mídia pro R2: {empresa} (refazendo)", {"empresa": empresa}
+        )
+        threading.Thread(
+            target=_migrar_midia_background,
+            args=(user_id, empresa, entry, atividade_id),
+            daemon=True,
+        ).start()
+        return True
+    except Exception:
+        return False
+
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
 # ---------------------------------------------------
@@ -17538,31 +17561,36 @@ html, body { background: transparent; overflow: hidden; }
     else:
         for _a in _todas_atividades:
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
-            st.markdown(_html(f"""
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;
-                        padding:14px 18px;margin-bottom:10px;
-                        display:flex;align-items:center;justify-content:space-between;gap:12px">
-                <div>
-                    <div style="font-size:14px;color:#111827;font-weight:600">
-                        {_ui['icone']} {_a.get('titulo', '')}
-                    </div>
-                    <div style="font-size:12px;color:#9ca3af;margin-top:2px">
-                        {_tempo_relativo(_a.get('criado_em', ''))}
-                    </div>
-                </div>
-                <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
-                             padding:4px 12px;border-radius:20px;white-space:nowrap">
-                    {_ui['label']}
-                </span>
-            </div>
-            """), unsafe_allow_html=True)
-            _detalhe_ativ = _formatar_detalhes_atividade(_a)
-            if _detalhe_ativ:
-                st.caption(_detalhe_ativ)
+            _pode_refazer = _a.get("status") in ("erro", "em_andamento") and _a.get("tipo") == "migracao_midia"
 
-            if _a.get("status") == "em_andamento":
-                col_espaco, col_botao = st.columns([5, 2])
-                with col_botao:
-                    if st.button("Marcar como finalizada", key=f"_finalizar_ativ_{_a['id']}", use_container_width=True):
-                        atualizar_atividade(_a["id"], "erro", {"motivo": "finalizada manualmente pelo usuário — travada em andamento"})
+            with st.container(border=True):
+                st.markdown(_html(f"""
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div>
+                        <div style="font-size:14px;color:#111827;font-weight:600">
+                            {_ui['icone']} {_a.get('titulo', '')}
+                        </div>
+                        <div style="font-size:12px;color:#9ca3af;margin-top:2px">
+                            {_tempo_relativo(_a.get('criado_em', ''))}
+                        </div>
+                    </div>
+                    <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
+                                 padding:4px 12px;border-radius:20px;white-space:nowrap">
+                        {_ui['label']}
+                    </span>
+                </div>
+                """), unsafe_allow_html=True)
+
+                _detalhe_ativ = _formatar_detalhes_atividade(_a)
+                if _detalhe_ativ:
+                    st.caption(_detalhe_ativ)
+
+                if _pode_refazer:
+                    _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+                    if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_a['id']}"):
+                        atualizar_atividade(_a["id"], "erro", {"motivo": "substituída por uma nova tentativa (Refazer)"})
+                        if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ):
+                            st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                        else:
+                            st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
                         st.rerun()

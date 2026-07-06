@@ -17475,24 +17475,39 @@ html, body { background: transparent; overflow: hidden; }
             _t = _a.get("tipo", "outro")
             _por_tipo.setdefault(_t, []).append(_a)
 
+        def _nome_curto_atividade(a: dict) -> str:
+            """Prefere o nome da empresa (se salvo em detalhes) — mais
+            curto e direto que repetir o título inteiro da atividade."""
+            empresa_d = (a.get("detalhes") or {}).get("empresa")
+            if empresa_d:
+                return empresa_d
+            titulo = a.get("titulo", "")
+            return titulo.split(":")[-1].strip() if ":" in titulo else titulo
+
         linhas_resumo = []
         for _tipo_key, _lista_tipo in _por_tipo.items():
             _total_tipo = len(_lista_tipo)
-            _contagem_status = {}
+            _por_status_nomes = {}
             for _a in _lista_tipo:
                 _s = _a.get("status", "pendente")
-                _contagem_status[_s] = _contagem_status.get(_s, 0) + 1
+                _por_status_nomes.setdefault(_s, []).append(_nome_curto_atividade(_a))
 
             _pills = ""
             for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
-                _qtd = _contagem_status.get(_status_key, 0)
-                if _qtd == 0:
+                _nomes = _por_status_nomes.get(_status_key, [])
+                if not _nomes:
                     continue
-                _pct = round(100 * _qtd / _total_tipo)
                 _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
+                # com poucos itens, mostra os nomes; com muitos, cai pra
+                # contagem (senão a linha fica enorme e ilegível)
+                if len(_nomes) <= 5:
+                    _texto = ", ".join(_nomes)
+                else:
+                    _pct = round(100 * len(_nomes) / _total_tipo)
+                    _texto = f"{len(_nomes)} ({_pct}%)"
                 _pills += (
                     f'<span style="color:{_ui_r["cor"]};font-weight:600;margin-right:16px;white-space:nowrap">'
-                    f'{_ui_r["icone"]} {_qtd} ({_pct}%)</span>'
+                    f'{_ui_r["icone"]} {_texto}</span>'
                 )
             _label_tipo = _TIPO_ATIVIDADE_LABELS.get(_tipo_key, _tipo_key)
             linhas_resumo.append(f"""

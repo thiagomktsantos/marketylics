@@ -2934,6 +2934,57 @@ def iniciar_reprocessamento_midia_background(user_id: str):
     ).start()
 
 
+# ---------------------------------------------------
+#  RECONCILIAÇÃO — reconecta mídias já migradas que ficaram órfãs
+# ---------------------------------------------------
+# Corrige retroativamente o caso de mídias que já foram baixadas pro R2
+# (existem na tabela `midias`, com url_origem -> url_cdn mapeados) mas
+# cujo ads_cache ainda aponta pro link original — por causa da corrida
+# de concorrência que existia antes da correção via RPC atômica. Não
+# precisa coletar de novo: só usa o mapeamento que já está salvo.
+
+def _reconciliar_midia_background(user_id: str, atividade_id: str):
+    try:
+        res = supabase.table("midias").select("url_origem, url_cdn").eq("user_id", user_id).execute()
+        mapeamento = res.data or []
+
+        corrigidos = 0
+        for m in mapeamento:
+            url_origem = m.get("url_origem")
+            url_cdn = m.get("url_cdn")
+            if not url_origem or not url_cdn or url_origem == url_cdn:
+                continue
+            try:
+                resultado = supabase.rpc("substituir_url_no_ads_cache", {
+                    "p_user_id": user_id,
+                    "p_url_antiga": url_origem,
+                    "p_url_nova": url_cdn,
+                }).execute()
+                if resultado.data:
+                    corrigidos += 1
+            except Exception:
+                continue
+
+        atualizar_atividade(atividade_id, "concluido", {
+            "verificados": len(mapeamento),
+            "corrigidos": corrigidos,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_reconciliacao_midia_background(user_id: str):
+    """Reconecta mídias já migradas pro R2 que ficaram com a referência
+    antiga no ads_cache. Roda em background — acompanhe no sino."""
+    atividade_id = criar_atividade(
+        user_id, "reconciliacao_midia", "Reconciliação de mídias já migradas", {}
+    )
+    threading.Thread(
+        target=_reconciliar_midia_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+
 
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa
@@ -16808,6 +16859,14 @@ html, body { background: transparent; overflow: hidden; }
             if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)
                 st.toast("🗜️ Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
+
+            st.caption(
+                "Se algum anúncio ainda estiver mostrando o link original do Facebook mesmo depois "
+                "de a mídia já ter sido migrada pro R2, use o botão abaixo pra reconectar."
+            )
+            if st.button("🔗 Reconectar mídias já migradas", key="_btn_reconciliar_midia"):
+                iniciar_reconciliacao_midia_background(st.session_state.user.id)
+                st.toast("🔗 Reconciliação iniciada — acompanhe no sino de notificações.", icon="🔗")
 
     with aba_perfil_uso:
         import math as _math_uso

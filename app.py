@@ -17767,88 +17767,11 @@ html, body { background: transparent; overflow: hidden; }
         </div>
         """), unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <style>
-        [class*="st-key-_notif_card_"] {
-            background: #ffffff !important;
-            border-radius: 10px !important;
-        }
-        [class*="st-key-_notif_card_"] > div {
-            background: #ffffff !important;
-        }
-        /* A linha inteira vira um único container relative; o conteúdo visual
-           (texto + badge) é UM único bloco flex (.notif-row-content) — assim
-           não dependemos do alinhamento das colunas nativas do Streamlit,
-           que é o que causava o desalinhamento vertical entre o lado
-           esquerdo (título/tempo) e o direito (seta/status). */
-        [class*="st-key-_notif_row_"] {
-            position: relative !important;
-            border-radius: 8px !important;
-            transition: background 0.15s !important;
-            padding: 6px 4px !important;
-        }
-        [class*="st-key-_notif_row_"]:hover {
-            background: #f9fafb !important;
-        }
-        .notif-row-content {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            gap: 12px;
-            min-height: 36px;
-        }
-        .notif-left {
-            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-        }
-        .notif-title { font-size: 14px; color: #111827; font-weight: 600; }
-        .notif-time { font-size: 12px; color: #9ca3af; }
-        .notif-right {
-            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
-        }
-        .notif-badge {
-            font-size: 11px; font-weight: 700; padding: 4px 12px;
-            border-radius: 20px; white-space: nowrap;
-        }
-        /* Mesma setinha (chevron) usada nos cabeçalhos das Análises,
-           sempre posicionada à direita, ao lado do status. */
-        .notif-chevron {
-            display: flex; align-items: center; flex-shrink: 0;
-            color: #6b7280; transition: transform 0.2s;
-        }
-        /* Botão invisível que cobre a linha inteira pra tornar o clique
-           possível em qualquer parte (não só na setinha). Ele é o ÚNICO
-           elemento clicável da linha — precisa ficar por cima
-           (z-index) e ocupar 100% da área (inset:0) do container relative
-           acima, que agora só tem esse bloco de conteúdo como referência
-           de tamanho, então a área clicável casa exatamente com o
-           conteúdo visível. */
-        [class*="st-key-_notif_toggle_"] {
-            position: absolute !important;
-            inset: 0 !important;
-            z-index: 3 !important;
-            display: block !important;
-        }
-        [class*="st-key-_notif_toggle_"] > div {
-            height: 100% !important;
-        }
-        [class*="st-key-_notif_toggle_"] button {
-            width: 100% !important;
-            height: 100% !important;
-            min-height: 0 !important;
-            border: none !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            cursor: pointer !important;
-        }
-        [class*="st-key-_notif_toggle_"] button p { display: none !important; }
-        </style>
-        """, unsafe_allow_html=True)
+        _n_ativ = len(_todas_atividades)
+        _refazer_ids = []
+        _cards_notif_html = ""
 
-        def _alternar_notif(_chave):
-            st.session_state[_chave] = not st.session_state.get(_chave, False)
-
-        for _a in _todas_atividades:
+        for _pos, _a in enumerate(_todas_atividades):
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
             _id_ativ = _a["id"]
             _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
@@ -17862,68 +17785,164 @@ html, body { background: transparent; overflow: hidden; }
             )
             _detalhe_ativ = _formatar_detalhes_atividade(_a)
             _tem_detalhe = bool(_detalhe_ativ) or _pode_refazer
-            _chave_aberto = f"_notif_open_{_id_ativ}"
-            _aberto = st.session_state.get(_chave_aberto, False)
+            if _pode_refazer:
+                _refazer_ids.append(_id_ativ)
 
-            with st.container(border=True, key=f"_notif_card_{_id_ativ}"):
-                with st.container(key=f"_notif_row_{_id_ativ}"):
-                    # Mesma setinha (chevron) usada nos cabeçalhos das Análises,
-                    # sempre posicionada à direita, ao lado do status.
-                    _chevron_html = (
-                        f"""<span class="notif-chevron" style="transform:rotate({'180deg' if _aberto else '0deg'})">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <polyline points="6 9 12 15 18 9"/>
-                            </svg>
-                        </span>"""
-                        if _tem_detalhe else ""
-                    )
-                    # Título/tempo (esquerda) e seta/status (direita) num único
-                    # bloco flex — garante que os dois lados fiquem centralizados
-                    # na mesma linha de base, em vez de depender do alinhamento
-                    # (nem sempre igual) das colunas nativas do Streamlit.
-                    st.markdown(_html(f"""
-                    <div class="notif-row-content">
-                        <div class="notif-left">
-                            <span class="notif-title">{_ui['icone']} {_a.get('titulo', '')}</span>
-                            <span class="notif-time">· {_tempo_relativo(_a.get('criado_em', ''))}</span>
-                        </div>
-                        <div class="notif-right">
-                            <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">
-                                {_ui['label']}
-                            </span>
-                            {_chevron_html}
-                        </div>
-                    </div>
-                    """), unsafe_allow_html=True)
+            _titulo_safe = (_a.get("titulo") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _detalhe_safe = (_detalhe_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
 
-                    if _tem_detalhe:
-                        # Botão invisível que cobre a linha inteira (via CSS) —
-                        # clicar em qualquer parte da caixa (título, tempo,
-                        # status) alterna o detalhe, não só a setinha.
-                        # on_click alterna o estado direto no callback, então
-                        # o rerun automático do Streamlit já reflete o novo
-                        # valor de _aberto no mesmo clique (sem depender de um
-                        # st.rerun() manual disparado condicionalmente).
-                        st.button(
-                            "",
-                            key=f"_notif_toggle_{_id_ativ}",
-                            on_click=_alternar_notif,
-                            args=(_chave_aberto,),
-                        )
+            _chevron_svg = f"""
+                <span class="notif-chevron" data-idx="{_id_ativ}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </span>
+            """ if _tem_detalhe else ""
 
-                if _aberto and _tem_detalhe:
-                    st.markdown(
-                        "<div style='border-top:1px solid #eef0f3;margin:6px 0 10px 0'></div>",
-                        unsafe_allow_html=True,
-                    )
-                    if _detalhe_ativ:
-                        st.caption(_detalhe_ativ)
+            _corpo_html = ""
+            if _tem_detalhe:
+                _corpo_html += "<div class=\"notif-body-inner\">"
+                if _detalhe_safe:
+                    _corpo_html += f"<div class=\"notif-detail\">{_detalhe_safe}</div>"
+                if _pode_refazer:
+                    _corpo_html += f"<button class=\"btn-refazer\" data-idx=\"{_id_ativ}\">🔄 Refazer</button>"
+                _corpo_html += "</div>"
 
-                    if _pode_refazer:
-                        if st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
-                            if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
-                                st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon="🔄")
-                            else:
-                                st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
-                            st.rerun()
+            _is_first = _pos == 0
+            _is_last  = _pos == _n_ativ - 1
+            _radius = "14px 14px 0 0" if _is_first else ("0 0 14px 14px" if _is_last else "0")
+
+            _body_bloco = (
+                f'<div class="notif-body" id="nb_{_id_ativ}">{_corpo_html}</div>'
+                if _tem_detalhe else ""
+            )
+
+            _cards_notif_html += f"""
+<div class="notif-card" style="border-radius:{_radius};overflow:hidden;">
+    <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
+        <span class="notif-hdr-icon">{_ui['icone']}</span>
+        <div class="notif-title-wrap">
+            <span class="notif-title">{_titulo_safe}</span>
+            <span class="notif-time">· {_tempo_safe}</span>
+        </div>
+        <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">{_ui['label']}</span>
+        {_chevron_svg}
+    </div>
+    {_body_bloco}
+</div>"""
+
+        NOTIF_CSS = """
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+.notif-card { background:#ffffff; border-bottom:1px solid #f3f4f6; }
+.notif-card:last-child { border-bottom:none; }
+.notif-hdr {
+    display:flex; align-items:center; gap:10px; padding:14px 18px;
+    transition:background 0.15s;
+}
+.notif-hdr.has-detail { cursor:pointer; }
+.notif-hdr:hover { background:#f9fafb; }
+.notif-hdr-icon { font-size:16px; flex-shrink:0; }
+.notif-title-wrap {
+    flex:1; min-width:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+}
+.notif-title {
+    font-size:14px; font-weight:600; color:#111827;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.notif-time { font-size:12px; color:#9ca3af; white-space:nowrap; }
+.notif-badge {
+    font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px;
+    white-space:nowrap; flex-shrink:0;
+}
+.notif-chevron {
+    display:flex; align-items:center; flex-shrink:0; color:#6b7280; transition:transform 0.2s;
+}
+.notif-body { display:none; border-top:1px solid #f3f4f6; }
+.notif-body-inner { padding:14px 18px 16px; }
+.notif-detail { font-size:13px; color:#4b5563; line-height:1.6; }
+.btn-refazer {
+    margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
+    background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;
+    font-family:'DM Sans',sans-serif; transition:all 0.15s;
+}
+.btn-refazer:hover { border-color:#3a9fd6; background:#eff6ff; color:#1d4ed8; }
+"""
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+{NOTIF_CSS}
+</style>
+<div style="border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+{_cards_notif_html}
+</div>
+<script>
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+
+function toggleNotif(idx) {{
+    var b = document.getElementById('nb_' + idx);
+    if (!b) return;
+    var open = b.style.display !== 'none';
+    b.style.display = open ? 'none' : 'block';
+    var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
+    chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+    setTimeout(syncH, 100);
+}}
+
+function refazerNotif(idx) {{
+    var doc = window.parent.document;
+    var el = doc.querySelector('.st-key-btn_refazer_ativ_' + idx + ' button');
+    if (el) el.click();
+}}
+
+document.addEventListener('click', function(e) {{
+    var rf = e.target.closest('.btn-refazer');
+    if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
+
+    var hdr = e.target.closest('.notif-hdr.has-detail');
+    if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
+}});
+
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 150);
+setTimeout(syncH, 500);
+</script>
+""", height=100, scrolling=False)
+
+        # Botões nativos ocultos (um por atividade que pode ser "refeita") —
+        # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse
+        # botão via JS (mesmo truque usado pra excluir análises), já que o
+        # conteúdo do iframe não consegue rodar código Python diretamente.
+        _acoes_refazer = {}
+        for _rid in _refazer_ids:
+            _acoes_refazer[_rid] = st.button(f"_refazer_ativ_{_rid}_", key=f"btn_refazer_ativ_{_rid}")
+
+        if _refazer_ids:
+            _refazer_hide_css = "\n".join([
+                f'.st-key-btn_refazer_ativ_{_rid} {{ display: none !important; }}'
+                f'.stElementContainer:has(.st-key-btn_refazer_ativ_{_rid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
+                for _rid in _refazer_ids
+            ])
+            st.markdown(f"<style>{_refazer_hide_css}</style>", unsafe_allow_html=True)
+
+        for _rid in _refazer_ids:
+            if _acoes_refazer.get(_rid):
+                _atividade_ref = next((x for x in _todas_atividades if x["id"] == _rid), None)
+                _empresa_ref = (_atividade_ref.get("detalhes") or {}).get("empresa") if _atividade_ref else None
+                if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
+                    st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
+                else:
+                    st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
+                st.rerun()

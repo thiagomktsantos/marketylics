@@ -654,10 +654,10 @@ def contar_atividades_pendentes(user_id: str) -> int:
         return 0
 
 _ATIVIDADE_STATUS_UI = {
-    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
-    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
-    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
-    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
+    "pendente":     {"icone": "🕓", "material": ":material/schedule:",     "cor": "#8a97ab", "label": "Pendente"},
+    "em_andamento": {"icone": "🔵", "material": ":material/sync:",        "cor": "#3a9fd6", "label": "Em andamento"},
+    "concluido":    {"icone": "✅", "material": ":material/check_circle:", "cor": "#2ecc71", "label": "Concluído"},
+    "erro":         {"icone": "⚠️", "material": ":material/error:",       "cor": "#e05252", "label": "Erro"},
 }
 
 # Label genérico por tipo de atividade — usado como fallback em
@@ -17756,6 +17756,16 @@ elif st.session_state.pagina == "notificacoes":
     [data-testid="stExpanderDetails"] {
         background: #ffffff !important;
     }
+    /* Move a seta de abrir/fechar da esquerda pra direita. É só visual —
+       o clique continua funcionando em qualquer parte do cabeçalho,
+       porque isso não toca na área clicável (<summary> nativo), só na
+       ordem de exibição dos elementos dentro dele. */
+    [data-testid="stExpander"] summary {
+        display: flex !important;
+        flex-direction: row-reverse !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -17826,16 +17836,16 @@ html, body { background: transparent; overflow: hidden; }
             _detalhe_ativ = _formatar_detalhes_atividade(_a)
 
             _rotulo = (
-                f"{_ui['icone']} {_a.get('titulo', '')}  ·  "
+                f"{_a.get('titulo', '')}  ·  "
                 f"{_tempo_relativo(_a.get('criado_em', ''))}  ·  {_ui['label']}"
             )
-            with st.expander(_rotulo):
+            with st.expander(_rotulo, icon=_ui["material"]):
                 st.caption(_detalhe_ativ if _detalhe_ativ else "Sem detalhes adicionais.")
 
                 if _pode_refazer:
-                    if st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
+                    if st.button("Refazer", icon=":material/refresh:", key=f"_refazer_ativ_{_id_ativ}"):
                         if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
-                            st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                            st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon=":material/refresh:")
                         else:
-                            st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
+                            st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon=":material/warning:")
                         st.rerun()

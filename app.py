@@ -17776,18 +17776,57 @@ html, body { background: transparent; overflow: hidden; }
         [class*="st-key-_notif_card_"] > div {
             background: #ffffff !important;
         }
+        /* A linha inteira vira um único container relative; o conteúdo visual
+           (texto + badge) é UM único bloco flex (.notif-row-content) — assim
+           não dependemos do alinhamento das colunas nativas do Streamlit,
+           que é o que causava o desalinhamento vertical entre o lado
+           esquerdo (título/tempo) e o direito (seta/status). */
         [class*="st-key-_notif_row_"] {
             position: relative !important;
             border-radius: 8px !important;
             transition: background 0.15s !important;
+            padding: 6px 4px !important;
         }
-        [class*="st-key-_notif_row_"]:has([class*="st-key-_notif_toggle_"]):hover {
+        [class*="st-key-_notif_row_"]:hover {
             background: #f9fafb !important;
         }
+        .notif-row-content {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px;
+            min-height: 36px;
+        }
+        .notif-left {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        }
+        .notif-title { font-size: 14px; color: #111827; font-weight: 600; }
+        .notif-time { font-size: 12px; color: #9ca3af; }
+        .notif-right {
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+        }
+        .notif-badge {
+            font-size: 11px; font-weight: 700; padding: 4px 12px;
+            border-radius: 20px; white-space: nowrap;
+        }
+        .notif-chevron {
+            font-size: 12px; color: #6b7280;
+        }
+        /* Botão invisível que cobre a linha inteira pra tornar o clique
+           possível em qualquer parte (não só na setinha). Ele é o ÚNICO
+           elemento clicável da linha — precisa ficar por cima
+           (z-index) e ocupar 100% da área (inset:0) do container relative
+           acima, que agora só tem esse bloco de conteúdo como referência
+           de tamanho, então a área clicável casa exatamente com o
+           conteúdo visível. */
         [class*="st-key-_notif_toggle_"] {
             position: absolute !important;
             inset: 0 !important;
             z-index: 3 !important;
+            display: block !important;
+        }
+        [class*="st-key-_notif_toggle_"] > div {
+            height: 100% !important;
         }
         [class*="st-key-_notif_toggle_"] button {
             width: 100% !important;
@@ -17800,11 +17839,11 @@ html, body { background: transparent; overflow: hidden; }
             cursor: pointer !important;
         }
         [class*="st-key-_notif_toggle_"] button p { display: none !important; }
-        .notif-chevron {
-            font-size: 12px; color: #6b7280;
-        }
         </style>
         """, unsafe_allow_html=True)
+
+        def _alternar_notif(_chave):
+            st.session_state[_chave] = not st.session_state.get(_chave, False)
 
         for _a in _todas_atividades:
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
@@ -17825,42 +17864,43 @@ html, body { background: transparent; overflow: hidden; }
 
             with st.container(border=True, key=f"_notif_card_{_id_ativ}"):
                 with st.container(key=f"_notif_row_{_id_ativ}"):
-                    _col_titulo, _col_direita = st.columns([10, 3])
-
-                    with _col_titulo:
-                        st.markdown(_html(f"""
-                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:36px">
-                            <span style="font-size:14px;color:#111827;font-weight:600">
-                                {_ui['icone']} {_a.get('titulo', '')}
-                            </span>
-                            <span style="font-size:12px;color:#9ca3af">
-                                · {_tempo_relativo(_a.get('criado_em', ''))}
-                            </span>
+                    _chevron_html = (
+                        f"""<i class="fa-solid {'fa-chevron-up' if _aberto else 'fa-chevron-down'} notif-chevron"></i>"""
+                        if _tem_detalhe else ""
+                    )
+                    # Título/tempo (esquerda) e seta/status (direita) num único
+                    # bloco flex — garante que os dois lados fiquem centralizados
+                    # na mesma linha de base, em vez de depender do alinhamento
+                    # (nem sempre igual) das colunas nativas do Streamlit.
+                    st.markdown(_html(f"""
+                    <div class="notif-row-content">
+                        <div class="notif-left">
+                            <span class="notif-title">{_ui['icone']} {_a.get('titulo', '')}</span>
+                            <span class="notif-time">· {_tempo_relativo(_a.get('criado_em', ''))}</span>
                         </div>
-                        """), unsafe_allow_html=True)
-
-                    with _col_direita:
-                        _chevron_html = (
-                            f"""<i class="fa-solid {'fa-chevron-up' if _aberto else 'fa-chevron-down'} notif-chevron"></i>"""
-                            if _tem_detalhe else ""
-                        )
-                        st.markdown(_html(f"""
-                        <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;min-height:36px">
+                        <div class="notif-right">
                             {_chevron_html}
-                            <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
-                                         padding:4px 12px;border-radius:20px;white-space:nowrap">
+                            <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">
                                 {_ui['label']}
                             </span>
                         </div>
-                        """), unsafe_allow_html=True)
+                    </div>
+                    """), unsafe_allow_html=True)
 
                     if _tem_detalhe:
                         # Botão invisível que cobre a linha inteira (via CSS) —
                         # clicar em qualquer parte da caixa (título, tempo,
                         # status) alterna o detalhe, não só a setinha.
-                        if st.button("", key=f"_notif_toggle_{_id_ativ}"):
-                            st.session_state[_chave_aberto] = not _aberto
-                            st.rerun()
+                        # on_click alterna o estado direto no callback, então
+                        # o rerun automático do Streamlit já reflete o novo
+                        # valor de _aberto no mesmo clique (sem depender de um
+                        # st.rerun() manual disparado condicionalmente).
+                        st.button(
+                            "",
+                            key=f"_notif_toggle_{_id_ativ}",
+                            on_click=_alternar_notif,
+                            args=(_chave_aberto,),
+                        )
 
                 if _aberto and _tem_detalhe:
                     st.markdown(

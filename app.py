@@ -17475,6 +17475,7 @@ html, body { background: transparent; overflow: hidden; }
             _t = _a.get("tipo", "outro")
             _por_tipo.setdefault(_t, []).append(_a)
 
+        linhas_resumo = []
         for _tipo_key, _lista_tipo in _por_tipo.items():
             _total_tipo = len(_lista_tipo)
             _contagem_status = {}
@@ -17482,29 +17483,31 @@ html, body { background: transparent; overflow: hidden; }
                 _s = _a.get("status", "pendente")
                 _contagem_status[_s] = _contagem_status.get(_s, 0) + 1
 
-            _cards_resumo = ""
+            _pills = ""
             for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
                 _qtd = _contagem_status.get(_status_key, 0)
                 if _qtd == 0:
                     continue
                 _pct = round(100 * _qtd / _total_tipo)
                 _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
-                _cards_resumo += f"""
-                <div style="flex:1;min-width:100px;background:#fff;border:1px solid #e5e7eb;
-                            border-radius:10px;padding:10px 12px;text-align:center">
-                    <div style="font-size:17px;font-weight:700;color:{_ui_r['cor']}">{_qtd} · {_pct}%</div>
-                    <div style="font-size:10.5px;color:#9ca3af;margin-top:2px">{_ui_r['icone']} {_ui_r['label']}</div>
-                </div>
-                """
+                _pills += (
+                    f'<span style="color:{_ui_r["cor"]};font-weight:600;margin-right:16px;white-space:nowrap">'
+                    f'{_ui_r["icone"]} {_qtd} ({_pct}%)</span>'
+                )
             _label_tipo = _TIPO_ATIVIDADE_LABELS.get(_tipo_key, _tipo_key)
-            st.markdown(_html(f"""
-            <div style="font-size:12.5px;font-weight:600;color:#374151;margin-bottom:6px">
-                {_label_tipo} <span style="color:#9ca3af;font-weight:400">({_total_tipo})</span>
+            linhas_resumo.append(f"""
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;
+                        background:#fff;border:1px solid #e5e7eb;border-radius:10px;
+                        padding:10px 14px;margin-bottom:6px;font-size:13px">
+                <span style="color:#374151;font-weight:600">{_label_tipo} <span style="color:#9ca3af;font-weight:400">({_total_tipo})</span></span>
+                <span>{_pills}</span>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-                {_cards_resumo}
-            </div>
-            """), unsafe_allow_html=True)
+            """)
+        st.markdown(_html(f"""
+        <div style="margin-bottom:16px">
+            {"".join(linhas_resumo)}
+        </div>
+        """), unsafe_allow_html=True)
 
     if not _todas_atividades:
         st.markdown(_html("""

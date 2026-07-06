@@ -17771,9 +17771,7 @@ html, body { background: transparent; overflow: hidden; }
         <style>
         [class*="st-key-_notif_card_"] {
             background: #ffffff !important;
-            border-radius: 12px !important;
-            overflow: hidden !important;
-            padding: 0 !important;
+            border-radius: 10px !important;
         }
         [class*="st-key-_notif_card_"] > div {
             background: #ffffff !important;
@@ -17782,43 +17780,40 @@ html, body { background: transparent; overflow: hidden; }
            (texto + badge) é UM único bloco flex (.notif-row-content) — assim
            não dependemos do alinhamento das colunas nativas do Streamlit,
            que é o que causava o desalinhamento vertical entre o lado
-           esquerdo (título/tempo) e o direito (seta/status).
-           Cabeçalho no mesmo visual das Análises: barra azul escura, ícone
-           + título à esquerda, seta (chevron) à direita. */
+           esquerdo (título/tempo) e o direito (seta/status). */
         [class*="st-key-_notif_row_"] {
             position: relative !important;
-            background-color: #17406a !important;
+            border-radius: 8px !important;
             transition: background 0.15s !important;
-            padding: 14px 18px !important;
+            padding: 6px 4px !important;
         }
         [class*="st-key-_notif_row_"]:hover {
-            background-color: #21719c !important;
+            background: #f9fafb !important;
         }
         .notif-row-content {
             display: flex !important;
             align-items: center !important;
             justify-content: space-between !important;
             gap: 12px;
-            min-height: 20px;
+            min-height: 36px;
         }
         .notif-left {
-            display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0;
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
         }
-        .notif-title {
-            font-size: 14px; color: #ffffff; font-weight: 600;
-            overflow: hidden; text-overflow: ellipsis;
-        }
-        .notif-time { font-size: 12px; color: #a9c1d9; white-space: nowrap; }
+        .notif-title { font-size: 14px; color: #111827; font-weight: 600; }
+        .notif-time { font-size: 12px; color: #9ca3af; }
         .notif-right {
-            display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
         }
         .notif-badge {
             font-size: 11px; font-weight: 700; padding: 4px 12px;
-            border-radius: 20px; white-space: nowrap; color: #ffffff;
+            border-radius: 20px; white-space: nowrap;
         }
+        /* Mesma setinha (chevron) usada nos cabeçalhos das Análises,
+           sempre posicionada à direita, ao lado do status. */
         .notif-chevron {
             display: flex; align-items: center; flex-shrink: 0;
-            color: #d7e3ef; transition: transform 0.2s;
+            color: #6b7280; transition: transform 0.2s;
         }
         /* Botão invisível que cobre a linha inteira pra tornar o clique
            possível em qualquer parte (não só na setinha). Ele é o ÚNICO
@@ -17847,7 +17842,6 @@ html, body { background: transparent; overflow: hidden; }
             cursor: pointer !important;
         }
         [class*="st-key-_notif_toggle_"] button p { display: none !important; }
-        .notif-body-inner { padding: 16px 18px; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -17895,7 +17889,7 @@ html, body { background: transparent; overflow: hidden; }
                             <span class="notif-time">· {_tempo_relativo(_a.get('criado_em', ''))}</span>
                         </div>
                         <div class="notif-right">
-                            <span class="notif-badge" style="background:{_ui['cor']}">
+                            <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">
                                 {_ui['label']}
                             </span>
                             {_chevron_html}

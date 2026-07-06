@@ -17801,11 +17801,29 @@ html, body { background: transparent; overflow: hidden; }
                 </span>
             """ if _tem_detalhe else ""
 
+            # Separa o emoji inicial (já presente em _formatar_detalhes_atividade)
+            # do texto, pra desenhar um "bubble" de ícone à parte — deixa bem
+            # mais fácil bater o olho e entender do que se trata cada detalhe,
+            # em vez de um parágrafo corrido cinza igual pra tudo.
+            _detalhe_partes = _detalhe_safe.split(" ", 1) if _detalhe_safe else ["", ""]
+            if len(_detalhe_partes) == 2 and _detalhe_partes[0]:
+                _detalhe_icone, _detalhe_texto = _detalhe_partes
+            else:
+                _detalhe_icone, _detalhe_texto = "📄", _detalhe_safe
+
             _corpo_html = ""
             if _tem_detalhe:
                 _corpo_html += "<div class=\"notif-body-inner\">"
                 if _detalhe_safe:
-                    _corpo_html += f"<div class=\"notif-detail\">{_detalhe_safe}</div>"
+                    _corpo_html += f"""
+                    <div class="notif-detail" style="border-left-color:{_ui['cor']}">
+                        <span class="notif-detail-icon" style="background:{_ui['cor']}1a">{_detalhe_icone}</span>
+                        <div>
+                            <div class="notif-detail-label">O que aconteceu</div>
+                            <div class="notif-detail-text">{_detalhe_texto}</div>
+                        </div>
+                    </div>
+                    """
                 if _pode_refazer:
                     _corpo_html += f"<button class=\"btn-refazer\" data-idx=\"{_id_ativ}\">🔄 Refazer</button>"
                 _corpo_html += "</div>"
@@ -17862,7 +17880,20 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }
 .notif-body { display:none; border-top:1px solid #f3f4f6; }
 .notif-body-inner { padding:14px 18px 16px; }
-.notif-detail { font-size:13px; color:#4b5563; line-height:1.6; }
+.notif-detail {
+    display:flex; align-items:flex-start; gap:12px;
+    background:#f8fafc; border:1px solid #eef2f6; border-left:3px solid #cbd5e1;
+    border-radius:10px; padding:12px 14px;
+}
+.notif-detail-icon {
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    width:28px; height:28px; border-radius:50%; font-size:14px;
+}
+.notif-detail-label {
+    font-size:10px; font-weight:800; letter-spacing:0.6px; text-transform:uppercase;
+    color:#9ca3af; margin-bottom:3px;
+}
+.notif-detail-text { font-size:13px; color:#374151; line-height:1.6; }
 .btn-refazer {
     margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;

@@ -17750,39 +17750,83 @@ html, body { background: transparent; overflow: hidden; }
         </div>
         """), unsafe_allow_html=True)
     else:
+        st.markdown("""
+        <style>
+        [class*="st-key-_notif_arrow_"] button {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            min-height: 0 !important;
+            height: 28px !important;
+            width: 28px !important;
+            padding: 0 !important;
+            font-size: 13px !important;
+            line-height: 1 !important;
+            color: #6b7280 !important;
+            border-radius: 6px !important;
+        }
+        [class*="st-key-_notif_arrow_"] button:hover {
+            background: #f3f4f6 !important;
+            color: #111827 !important;
+            border-color: transparent !important;
+        }
+        [class*="st-key-_notif_arrow_"] { display: flex !important; justify-content: center !important; }
+        </style>
+        """, unsafe_allow_html=True)
+
         for _a in _todas_atividades:
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
             _pode_refazer = _a.get("status") in ("erro", "em_andamento") and _a.get("tipo") == "migracao_midia"
+            _id_ativ = _a["id"]
+            _detalhe_ativ = _formatar_detalhes_atividade(_a)
+            _tem_detalhe = bool(_detalhe_ativ) or _pode_refazer
+            _chave_aberto = f"_notif_open_{_id_ativ}"
+            _aberto = st.session_state.get(_chave_aberto, False)
 
             with st.container(border=True):
-                st.markdown(_html(f"""
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-                    <div>
-                        <div style="font-size:14px;color:#111827;font-weight:600">
+                _col_titulo, _col_seta, _col_status = st.columns([10, 1, 2])
+
+                with _col_titulo:
+                    st.markdown(_html(f"""
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:36px">
+                        <span style="font-size:14px;color:#111827;font-weight:600">
                             {_ui['icone']} {_a.get('titulo', '')}
-                        </div>
-                        <div style="font-size:12px;color:#9ca3af;margin-top:2px">
-                            {_tempo_relativo(_a.get('criado_em', ''))}
-                        </div>
+                        </span>
+                        <span style="font-size:12px;color:#9ca3af">
+                            · {_tempo_relativo(_a.get('criado_em', ''))}
+                        </span>
                     </div>
-                    <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
-                                 padding:4px 12px;border-radius:20px;white-space:nowrap">
-                        {_ui['label']}
-                    </span>
-                </div>
-                """), unsafe_allow_html=True)
+                    """), unsafe_allow_html=True)
 
-                _detalhe_ativ = _formatar_detalhes_atividade(_a)
-                if _detalhe_ativ or _pode_refazer:
-                    with st.expander("Ver detalhes", expanded=False):
-                        if _detalhe_ativ:
-                            st.caption(_detalhe_ativ)
+                with _col_seta:
+                    if _tem_detalhe:
+                        if st.button("▾" if not _aberto else "▴", key=f"_notif_arrow_{_id_ativ}"):
+                            st.session_state[_chave_aberto] = not _aberto
+                            st.rerun()
 
-                        if _pode_refazer:
-                            _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
-                            if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_a['id']}"):
-                                if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _a["id"]):
-                                    st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
-                                else:
-                                    st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
-                                st.rerun()
+                with _col_status:
+                    st.markdown(_html(f"""
+                    <div style="display:flex;justify-content:flex-end;align-items:center;min-height:36px">
+                        <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
+                                     padding:4px 12px;border-radius:20px;white-space:nowrap">
+                            {_ui['label']}
+                        </span>
+                    </div>
+                    """), unsafe_allow_html=True)
+
+                if _aberto and _tem_detalhe:
+                    st.markdown(
+                        "<div style='border-top:1px solid #eef0f3;margin:6px 0 10px 0'></div>",
+                        unsafe_allow_html=True,
+                    )
+                    if _detalhe_ativ:
+                        st.caption(_detalhe_ativ)
+
+                    if _pode_refazer:
+                        _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+                        if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
+                            if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
+                                st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                            else:
+                                st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
+                            st.rerun()

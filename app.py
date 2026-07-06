@@ -615,24 +615,13 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None)
         return None
 
 def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
-    """Atualiza o status de uma atividade (concluido/erro/em_andamento).
-    Mescla `detalhes` com o que já estava salvo em vez de substituir —
-    senão a atualização final (que só manda os campos novos, tipo
-    "processadas") apaga informação gravada na criação, como o nome da
-    empresa, e a página de notificações não tem mais como mostrá-la."""
+    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
     if not atividade_id:
         return
     try:
         payload = {"status": status}
         if detalhes is not None:
-            detalhes_atuais = {}
-            try:
-                res = supabase.table("atividades").select("detalhes").eq("id", atividade_id).execute()
-                if res.data:
-                    detalhes_atuais = res.data[0].get("detalhes") or {}
-            except Exception:
-                pass
-            payload["detalhes"] = {**detalhes_atuais, **detalhes}
+            payload["detalhes"] = detalhes
         supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
     except Exception:
         pass
@@ -669,6 +658,21 @@ _ATIVIDADE_STATUS_UI = {
     "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
     "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
     "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
+}
+
+# Label genérico por tipo de atividade — usado como fallback em
+# _formatar_detalhes_atividade() pros tipos que não têm um formatador
+# específico (ex: coleta_redes, migracao_midia, retentativa_midia,
+# analise_ia), assim toda atividade mostra pelo menos uma linha de
+# detalhe (e a setinha de expandir aparece) na página de notificações.
+_TIPO_ATIVIDADE_LABELS = {
+    "coleta_ads":            "📢 Coleta de anúncios",
+    "coleta_redes":          "📱 Coleta de redes sociais",
+    "migracao_midia":        "☁️ Migração de mídia pro R2",
+    "reprocessamento_midia": "🗜️ Reprocessamento de mídia",
+    "reconciliacao_midia":   "🔗 Reconciliação de mídia",
+    "retentativa_midia":     "🔁 Retentativa de mídia com falha",
+    "analise_ia":            "🧠 Análises de IA",
 }
 
 def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
@@ -738,6 +742,13 @@ def _formatar_detalhes_atividade(atividade: dict) -> str:
         if erros_d:
             txt += f" ⚠️ Com erro: {', '.join(erros_d.keys())}."
         return txt
+
+    # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
+    # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
+    # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
+    # ver por trás da setinha em vez de deixar a atividade sem detalhe.
+    if tipo in _TIPO_ATIVIDADE_LABELS:
+        return _TIPO_ATIVIDADE_LABELS[tipo]
 
     return ""
 
@@ -17746,16 +17757,6 @@ html, body { background: transparent; overflow: hidden; }
 """, height=70)
 
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
-
-    _TIPO_ATIVIDADE_LABELS = {
-        "coleta_ads":            "📢 Coleta de anúncios",
-        "coleta_redes":          "📱 Coleta de redes sociais",
-        "migracao_midia":        "☁️ Migração de mídia pro R2",
-        "reprocessamento_midia": "🗜️ Reprocessamento de mídia",
-        "reconciliacao_midia":   "🔗 Reconciliação de mídia",
-        "retentativa_midia":     "🔁 Retentativa de mídia com falha",
-        "analise_ia":            "🧠 Análises de IA",
-    }
 
     if not _todas_atividades:
         st.markdown(_html("""

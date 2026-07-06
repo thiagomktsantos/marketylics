@@ -482,7 +482,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     except Exception:
         return url_origem
 
-def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
+def persistir_midias_de_ads(dados: dict, user_id: str):
     """Percorre um dict no formato do ads_cache e substitui as URLs de
     imagens/vídeos por versões permanentes no R2, quando possível.
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
@@ -490,9 +490,13 @@ def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
 
     Os downloads são I/O-bound (rede), então rodam em paralelo com um
     thread pool — sequencial ficava lento demais quando várias empresas
-    com muitos anúncios eram coletadas juntas."""
+    com muitos anúncios eram coletadas juntas.
+
+    Devolve (resultado, stats) — stats traz quantos itens não foram
+    migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
+    pra isso nunca mais ficar escondido dentro de um "Concluído"."""
     if r2_client is None:
-        return dados  # R2 não configurado — mantém comportamento atual
+        return dados, {"total": 0, "nao_migrados": 0}
 
     from concurrent.futures import ThreadPoolExecutor
 
@@ -513,18 +517,26 @@ def persistir_midias_de_ads(dados: dict, user_id: str) -> dict:
                 tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id))
 
     if not tarefas:
-        return resultado
+        return resultado, {"total": 0, "nao_migrados": 0}
 
     def _processar(t):
         empresa, ad_idx, campo, url_idx, u, tipo, ad_id = t
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
-        return (empresa, ad_idx, campo, url_idx, nova_url)
+        # "não migrado" = a URL não mudou E não é porque já era do R2
+        # (nesse caso o não-mudou é intencional, não uma falha)
+        ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
+        nao_migrado = (nova_url == u) and not ja_era_r2
+        return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
+    nao_migrados = []
     with ThreadPoolExecutor(max_workers=8) as executor:
-        for empresa, ad_idx, campo, url_idx, nova_url in executor.map(_processar, tarefas):
+        for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
             resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
+            if nao_migrado:
+                nao_migrados.append(url_original)
 
-    return resultado
+    stats = {"total": len(tarefas), "nao_migrados": len(nao_migrados), "amostra_nao_migrados": nao_migrados[:5]}
+    return resultado, stats
 
 # ---------------------------------------------------
 #  LOG DE ATIVIDADES (sino de notificações)
@@ -633,6 +645,35 @@ def _tempo_relativo(iso_str: str) -> str:
         return f"há {int(seg // 86400)} d"
     except Exception:
         return ""
+
+def _formatar_detalhes_atividade(atividade: dict) -> str:
+    """Traduz o campo `detalhes` (livre, varia por tipo de atividade) em
+    uma linha legível pra mostrar no sino/página de notificações. Sem
+    isso, informações como 'quantos itens falharam' ou 'quanto espaço
+    foi economizado' ficam presas no banco, invisíveis pro usuário."""
+    d = atividade.get("detalhes") or {}
+    tipo = atividade.get("tipo", "")
+
+    if d.get("aviso"):
+        return f"⚠️ {d['aviso']}"
+    if d.get("motivo"):
+        return f"ℹ️ {d['motivo']}"
+
+    if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
+        return f"🔗 {d.get('corrigidos', 0)} de {d.get('verificados', 0)} mídias reconectadas."
+
+    if tipo == "reprocessamento_midia" and "processadas" in d:
+        economia = d.get("economizado_mb", 0)
+        return f"🗜️ {d.get('processadas', 0)} de {d.get('total', 0)} mídias comprimidas — {economia}MB economizados."
+
+    if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
+        erros_d = d.get("com_erro") or {}
+        txt = f"✅ Coletadas: {', '.join(d.get('coletadas', [])) or '—'}."
+        if erros_d:
+            txt += f" ⚠️ Com erro: {', '.join(erros_d.keys())}."
+        return txt
+
+    return ""
 
 
 # ---------------------------------------------------
@@ -2709,7 +2750,13 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True):
         # após a coleta — a migração real roda depois, em background).
         if migrar_midia:
             try:
-                dados_limpos = persistir_midias_de_ads(dados_limpos, user_id)
+                dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
+                if _stats_midia.get("nao_migrados"):
+                    st.toast(
+                        f"⚠️ {_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
+                        f"foram migradas pro R2 (ficaram com o link original).",
+                        icon="⚠️",
+                    )
             except Exception as e_midia:
                 st.toast(f"⚠️ Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
 
@@ -2761,7 +2808,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
             return
 
-        migrado = persistir_midias_de_ads({empresa: entry}, user_id)
+        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id)
 
         # Atualização atômica: troca só os anúncios migrados (por id),
         # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
@@ -2782,7 +2829,16 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         }).execute()
 
         if res.data:
-            atualizar_atividade(atividade_id, "concluido")
+            # "concluído" não significa "tudo migrado" — se algum item
+            # falhou (rede, ffmpeg, cota), isso agora fica visível aqui
+            # em vez de escondido dentro de um sucesso geral.
+            detalhes_finais = {}
+            if stats_midia.get("nao_migrados"):
+                detalhes_finais = {
+                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram (ficaram com o link original)",
+                    "amostra": stats_midia.get("amostra_nao_migrados", []),
+                }
+            atualizar_atividade(atividade_id, "concluido", detalhes_finais)
         else:
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
@@ -17378,3 +17434,6 @@ html, body { background: transparent; overflow: hidden; }
                 </span>
             </div>
             """), unsafe_allow_html=True)
+            _detalhe_ativ = _formatar_detalhes_atividade(_a)
+            if _detalhe_ativ:
+                st.caption(_detalhe_ativ)

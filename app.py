@@ -488,9 +488,13 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
     do Facebook que vai expirar.
 
-    Os downloads são I/O-bound (rede), então rodam em paralelo com um
-    thread pool — sequencial ficava lento demais quando várias empresas
-    com muitos anúncios eram coletadas juntas.
+    Os downloads de imagem são I/O-bound (rede), mas os de vídeo agora
+    também rodam ffmpeg (compressão + thumbnail) e Whisper (transcrição)
+    — trabalho pesado de CPU/processo. Por isso o pool é bem menor do
+    que seria ideal só pra rede: com muitos vídeos e várias empresas
+    migrando ao mesmo tempo, workers demais já causaram erro de SO
+    ("Resource temporarily unavailable", Errno 11) por esgotar o limite
+    de processos/threads do sistema.
 
     Devolve (resultado, stats) — stats traz quantos itens não foram
     migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
@@ -529,7 +533,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
     nao_migrados = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
             resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
             if nao_migrado:
@@ -2844,16 +2848,67 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
+def _estimar_timeout_migracao(entry: dict) -> int:
+    """Calcula um limite de tempo proporcional à quantidade de mídia
+    dessa empresa, em vez de um número fixo — uma empresa com poucas
+    imagens não devia ganhar 20 minutos de crédito de dúvida, e uma com
+    muitos vídeos pode legitimamente precisar de mais que isso."""
+    ads = entry.get("data", [])
+    n_imagens = sum(len(a.get("images") or []) for a in ads)
+    n_videos = sum(len(a.get("videos") or []) for a in ads)
+
+    # tetos generosos por item (pior caso: rede lenta, ffmpeg, whisper)
+    SEGUNDOS_POR_IMAGEM = 20
+    SEGUNDOS_POR_VIDEO = 180
+    PARALELISMO = 3  # bate com o max_workers do ThreadPoolExecutor
+
+    tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
+    return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
+
+def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
+    """Roda a migração de cada empresa uma depois da outra (não em
+    paralelo). Antes, cada empresa disparava sua própria thread ao
+    mesmo tempo — com vídeo, isso significava várias empresas rodando
+    ffmpeg/Whisper simultaneamente e esgotando o limite de processos do
+    sistema (Errno 11, "Resource temporarily unavailable"), o que
+    inclusive deixava outras migrações travadas em "Em andamento" pra
+    sempre. Rodar em sequência é mais lento no total, mas nunca trava.
+
+    Cada empresa tem um limite de tempo proporcional à sua própria
+    quantidade de mídia (ver _estimar_timeout_migracao) — se travar, a
+    fila segue pras próximas em vez de ficar parada pra sempre."""
+    from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
+
+    for empresa, entry, atividade_id in tarefas:
+        limite_segundos = _estimar_timeout_migracao(entry)
+        with _TPE(max_workers=1) as executor:
+            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
+            try:
+                future.result(timeout=limite_segundos)
+            except _TimeoutErr:
+                atualizar_atividade(atividade_id, "erro", {
+                    "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
+                })
+                # a thread interna pode continuar rodando sozinha em segundo
+                # plano (Python não mata thread à força), mas a fila segue.
+            except Exception as e:
+                atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
-    """Dispara uma thread por empresa recém-coletada pra migrar as mídias
-    pro R2 sem travar a página."""
+    """Migra as mídias das empresas recém-coletadas pro R2, sem travar
+    a página. As empresas são processadas uma de cada vez (não em
+    paralelo) — ver _migrar_todas_empresas_sequencial."""
+    tarefas = []
     for empresa, entry in novos.items():
         atividade_id = criar_atividade(
             user_id, "migracao_midia", f"Migração de mídia pro R2: {empresa}", {"empresa": empresa}
         )
+        tarefas.append((empresa, entry, atividade_id))
+
+    if tarefas:
         threading.Thread(
-            target=_migrar_midia_background,
-            args=(user_id, empresa, entry, atividade_id),
+            target=_migrar_todas_empresas_sequencial,
+            args=(user_id, tarefas),
             daemon=True,
         ).start()
 
@@ -17404,6 +17459,38 @@ html, body { background: transparent; overflow: hidden; }
 """, height=70)
 
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
+
+    if _todas_atividades:
+        _total_ativ = len(_todas_atividades)
+        _contagem_status = {}
+        for _a in _todas_atividades:
+            _s = _a.get("status", "pendente")
+            _contagem_status[_s] = _contagem_status.get(_s, 0) + 1
+
+        _cards_resumo = ""
+        for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
+            _qtd = _contagem_status.get(_status_key, 0)
+            if _qtd == 0:
+                continue
+            _pct = round(100 * _qtd / _total_ativ)
+            _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
+            _cards_resumo += f"""
+            <div style="flex:1;min-width:110px;background:#fff;border:1px solid #e5e7eb;
+                        border-radius:12px;padding:12px 14px;text-align:center">
+                <div style="font-size:20px;font-weight:700;color:{_ui_r['cor']}">{_qtd} · {_pct}%</div>
+                <div style="font-size:11px;color:#9ca3af;margin-top:2px">{_ui_r['icone']} {_ui_r['label']}</div>
+            </div>
+            """
+        st.markdown(_html(f"""
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+            <div style="flex:1;min-width:110px;background:#fff;border:1px solid #e5e7eb;
+                        border-radius:12px;padding:12px 14px;text-align:center">
+                <div style="font-size:20px;font-weight:700;color:#111827">{_total_ativ}</div>
+                <div style="font-size:11px;color:#9ca3af;margin-top:2px">Total (últimas 50)</div>
+            </div>
+            {_cards_resumo}
+        </div>
+        """), unsafe_allow_html=True)
 
     if not _todas_atividades:
         st.markdown(_html("""

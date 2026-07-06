@@ -654,10 +654,10 @@ def contar_atividades_pendentes(user_id: str) -> int:
         return 0
 
 _ATIVIDADE_STATUS_UI = {
-    "pendente":     {"icone": "🕓", "material": ":material/schedule:",     "cor": "#8a97ab", "label": "Pendente"},
-    "em_andamento": {"icone": "🔵", "material": ":material/sync:",        "cor": "#3a9fd6", "label": "Em andamento"},
-    "concluido":    {"icone": "✅", "material": ":material/check_circle:", "cor": "#2ecc71", "label": "Concluído"},
-    "erro":         {"icone": "⚠️", "material": ":material/error:",       "cor": "#e05252", "label": "Erro"},
+    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
+    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
+    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
+    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
 }
 
 # Label genérico por tipo de atividade — usado como fallback em
@@ -743,22 +743,10 @@ def _formatar_detalhes_atividade(atividade: dict) -> str:
             txt += f" ⚠️ Com erro: {', '.join(erros_d.keys())}."
         return txt
 
-    if tipo == "coleta_redes" and ("perfis_ok" in d or "perfis_erro" in d):
-        txt = f"📱 {len(d.get('perfis_ok', []))} perfis coletados ({d.get('total_posts', 0)} posts no total)."
-        if d.get("perfis_erro"):
-            txt += f" ⚠️ Com erro: {', '.join(d['perfis_erro'])}."
-        return txt
-
-    if tipo == "retentativa_midia" and "verificadas" in d:
-        return f"🔁 {d.get('recuperadas', 0)} de {d.get('verificadas', 0)} mídias recuperadas na retentativa."
-
-    if tipo == "migracao_midia" and "total" in d:
-        return f"☁️ {d.get('total', 0)} mídias migradas pro R2 ({d.get('empresa', '')})."
-
-    # Fallback: nenhum formatador específico bateu (ex: migracao_midia
-    # bem-sucedida sem aviso, analise_ia) — mostra ao menos o label
-    # genérico do tipo, pra sempre ter algo pra ver por trás da setinha
-    # em vez de deixar a atividade sem detalhe.
+    # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
+    # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
+    # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
+    # ver por trás da setinha em vez de deixar a atividade sem detalhe.
     if tipo in _TIPO_ATIVIDADE_LABELS:
         return _TIPO_ATIVIDADE_LABELS[tipo]
 
@@ -2921,13 +2909,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             # "concluído" não significa "tudo migrado" — se algum item
             # falhou (rede, ffmpeg, cota), isso agora fica visível aqui
             # em vez de escondido dentro de um sucesso geral.
-            detalhes_finais = {"empresa": empresa, "total": stats_midia.get("total", 0)}
+            detalhes_finais = {}
             if stats_midia.get("nao_migrados"):
-                detalhes_finais["aviso"] = (
-                    f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram "
-                    f"(ficaram com o link original)"
-                )
-                detalhes_finais["amostra"] = stats_midia.get("amostra_nao_migrados", [])
+                detalhes_finais = {
+                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram (ficaram com o link original)",
+                    "amostra": stats_midia.get("amostra_nao_migrados", []),
+                }
             atualizar_atividade(atividade_id, "concluido", detalhes_finais)
         else:
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
@@ -14429,11 +14416,7 @@ function setHeight(isOpen) {{
             st.warning(f"🚫 {_motivo_bloqueio_redes}")
 
     if coletar and _permitido_redes:
-        _atividade_redes_id = criar_atividade(
-            st.session_state.user.id, "coleta_redes",
-            f"Coleta de redes sociais: {', '.join(e['nome'] for e in todas)}",
-            {},
-        )
+        registrar_execucao_acao(st.session_state.user.id, "coleta_redes", "Coleta de redes sociais")
 
         coletar_rapidapi.clear()
         resultados_lista = []
@@ -14563,15 +14546,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         }
         st.session_state.metricas_redes = cache
         st.toast("Dados coletados e salvos!", icon="✅")
-
-        _perfis_ok = [item["nome"] for item in resultados_lista if not item.get("erro")]
-        _perfis_erro = [item["nome"] for item in resultados_lista if item.get("erro")]
-        _total_posts = sum(len(item.get("posts", []) or []) for item in resultados_lista if not item.get("erro"))
-        atualizar_atividade(_atividade_redes_id, "concluido", {
-            "perfis_ok": _perfis_ok,
-            "perfis_erro": _perfis_erro,
-            "total_posts": _total_posts,
-        })
 
     ok = []
     if cache.get("dados"):
@@ -17740,35 +17714,6 @@ elif st.session_state.pagina == "notificacoes":
         unsafe_allow_html=True,
     )
 
-    st.markdown("""
-    <style>
-    [data-testid="stExpander"] {
-        background: #ffffff !important;
-        border: 1px solid #e5e7eb !important;
-        border-radius: 10px !important;
-    }
-    [data-testid="stExpander"] summary {
-        background: #ffffff !important;
-    }
-    [data-testid="stExpander"] details {
-        background: #ffffff !important;
-    }
-    [data-testid="stExpanderDetails"] {
-        background: #ffffff !important;
-    }
-    /* Move a seta de abrir/fechar da esquerda pra direita. É só visual —
-       o clique continua funcionando em qualquer parte do cabeçalho,
-       porque isso não toca na área clicável (<summary> nativo), só na
-       ordem de exibição dos elementos dentro dele. */
-    [data-testid="stExpander"] summary {
-        display: flex !important;
-        flex-direction: row-reverse !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -17822,30 +17767,169 @@ html, body { background: transparent; overflow: hidden; }
         </div>
         """), unsafe_allow_html=True)
     else:
+        st.markdown("""
+        <style>
+        [class*="st-key-_notif_card_"] {
+            background: #ffffff !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
+            padding: 0 !important;
+        }
+        [class*="st-key-_notif_card_"] > div {
+            background: #ffffff !important;
+        }
+        /* A linha inteira vira um único container relative; o conteúdo visual
+           (texto + badge) é UM único bloco flex (.notif-row-content) — assim
+           não dependemos do alinhamento das colunas nativas do Streamlit,
+           que é o que causava o desalinhamento vertical entre o lado
+           esquerdo (título/tempo) e o direito (seta/status).
+           Cabeçalho no mesmo visual das Análises: barra azul escura, ícone
+           + título à esquerda, seta (chevron) à direita. */
+        [class*="st-key-_notif_row_"] {
+            position: relative !important;
+            background-color: #17406a !important;
+            transition: background 0.15s !important;
+            padding: 14px 18px !important;
+        }
+        [class*="st-key-_notif_row_"]:hover {
+            background-color: #21719c !important;
+        }
+        .notif-row-content {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 12px;
+            min-height: 20px;
+        }
+        .notif-left {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0;
+        }
+        .notif-title {
+            font-size: 14px; color: #ffffff; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .notif-time { font-size: 12px; color: #a9c1d9; white-space: nowrap; }
+        .notif-right {
+            display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+        }
+        .notif-badge {
+            font-size: 11px; font-weight: 700; padding: 4px 12px;
+            border-radius: 20px; white-space: nowrap; color: #ffffff;
+        }
+        .notif-chevron {
+            display: flex; align-items: center; flex-shrink: 0;
+            color: #d7e3ef; transition: transform 0.2s;
+        }
+        /* Botão invisível que cobre a linha inteira pra tornar o clique
+           possível em qualquer parte (não só na setinha). Ele é o ÚNICO
+           elemento clicável da linha — precisa ficar por cima
+           (z-index) e ocupar 100% da área (inset:0) do container relative
+           acima, que agora só tem esse bloco de conteúdo como referência
+           de tamanho, então a área clicável casa exatamente com o
+           conteúdo visível. */
+        [class*="st-key-_notif_toggle_"] {
+            position: absolute !important;
+            inset: 0 !important;
+            z-index: 3 !important;
+            display: block !important;
+        }
+        [class*="st-key-_notif_toggle_"] > div {
+            height: 100% !important;
+        }
+        [class*="st-key-_notif_toggle_"] button {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            cursor: pointer !important;
+        }
+        [class*="st-key-_notif_toggle_"] button p { display: none !important; }
+        .notif-body-inner { padding: 16px 18px; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        def _alternar_notif(_chave):
+            st.session_state[_chave] = not st.session_state.get(_chave, False)
+
         for _a in _todas_atividades:
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
             _id_ativ = _a["id"]
             _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
             # Só oferece "Refazer" quando dá pra saber qual empresa refazer —
-            # sem isso o painel expandido abriria vazio, uma UX capenga.
+            # sem isso o painel expandido abriria vazio (só a setinha, sem
+            # texto e sem botão), uma UX capenga.
             _pode_refazer = (
                 _a.get("status") in ("erro", "em_andamento")
                 and _a.get("tipo") == "migracao_midia"
                 and bool(_empresa_ativ)
             )
             _detalhe_ativ = _formatar_detalhes_atividade(_a)
+            _tem_detalhe = bool(_detalhe_ativ) or _pode_refazer
+            _chave_aberto = f"_notif_open_{_id_ativ}"
+            _aberto = st.session_state.get(_chave_aberto, False)
 
-            _rotulo = (
-                f"{_a.get('titulo', '')}  ·  "
-                f"{_tempo_relativo(_a.get('criado_em', ''))}  ·  {_ui['label']}"
-            )
-            with st.expander(_rotulo, icon=_ui["material"]):
-                st.caption(_detalhe_ativ if _detalhe_ativ else "Sem detalhes adicionais.")
+            with st.container(border=True, key=f"_notif_card_{_id_ativ}"):
+                with st.container(key=f"_notif_row_{_id_ativ}"):
+                    # Mesma setinha (chevron) usada nos cabeçalhos das Análises,
+                    # sempre posicionada à direita, ao lado do status.
+                    _chevron_html = (
+                        f"""<span class="notif-chevron" style="transform:rotate({'180deg' if _aberto else '0deg'})">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="6 9 12 15 18 9"/>
+                            </svg>
+                        </span>"""
+                        if _tem_detalhe else ""
+                    )
+                    # Título/tempo (esquerda) e seta/status (direita) num único
+                    # bloco flex — garante que os dois lados fiquem centralizados
+                    # na mesma linha de base, em vez de depender do alinhamento
+                    # (nem sempre igual) das colunas nativas do Streamlit.
+                    st.markdown(_html(f"""
+                    <div class="notif-row-content">
+                        <div class="notif-left">
+                            <span class="notif-title">{_ui['icone']} {_a.get('titulo', '')}</span>
+                            <span class="notif-time">· {_tempo_relativo(_a.get('criado_em', ''))}</span>
+                        </div>
+                        <div class="notif-right">
+                            <span class="notif-badge" style="background:{_ui['cor']}">
+                                {_ui['label']}
+                            </span>
+                            {_chevron_html}
+                        </div>
+                    </div>
+                    """), unsafe_allow_html=True)
 
-                if _pode_refazer:
-                    if st.button("Refazer", icon=":material/refresh:", key=f"_refazer_ativ_{_id_ativ}"):
-                        if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
-                            st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon=":material/refresh:")
-                        else:
-                            st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon=":material/warning:")
-                        st.rerun()
+                    if _tem_detalhe:
+                        # Botão invisível que cobre a linha inteira (via CSS) —
+                        # clicar em qualquer parte da caixa (título, tempo,
+                        # status) alterna o detalhe, não só a setinha.
+                        # on_click alterna o estado direto no callback, então
+                        # o rerun automático do Streamlit já reflete o novo
+                        # valor de _aberto no mesmo clique (sem depender de um
+                        # st.rerun() manual disparado condicionalmente).
+                        st.button(
+                            "",
+                            key=f"_notif_toggle_{_id_ativ}",
+                            on_click=_alternar_notif,
+                            args=(_chave_aberto,),
+                        )
+
+                if _aberto and _tem_detalhe:
+                    st.markdown(
+                        "<div style='border-top:1px solid #eef0f3;margin:6px 0 10px 0'></div>",
+                        unsafe_allow_html=True,
+                    )
+                    if _detalhe_ativ:
+                        st.caption(_detalhe_ativ)
+
+                    if _pode_refazer:
+                        if st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
+                            if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
+                                st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                            else:
+                                st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
+                            st.rerun()

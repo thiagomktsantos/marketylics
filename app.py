@@ -17460,37 +17460,51 @@ html, body { background: transparent; overflow: hidden; }
 
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
 
-    if _todas_atividades:
-        _total_ativ = len(_todas_atividades)
-        _contagem_status = {}
-        for _a in _todas_atividades:
-            _s = _a.get("status", "pendente")
-            _contagem_status[_s] = _contagem_status.get(_s, 0) + 1
+    _TIPO_ATIVIDADE_LABELS = {
+        "coleta_ads":            "📢 Coleta de anúncios",
+        "coleta_redes":          "📱 Coleta de redes sociais",
+        "migracao_midia":        "☁️ Migração de mídia pro R2",
+        "reprocessamento_midia": "🗜️ Reprocessamento de mídia",
+        "reconciliacao_midia":   "🔗 Reconciliação de mídia",
+        "analise_ia":            "🧠 Análises de IA",
+    }
 
-        _cards_resumo = ""
-        for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
-            _qtd = _contagem_status.get(_status_key, 0)
-            if _qtd == 0:
-                continue
-            _pct = round(100 * _qtd / _total_ativ)
-            _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
-            _cards_resumo += f"""
-            <div style="flex:1;min-width:110px;background:#fff;border:1px solid #e5e7eb;
-                        border-radius:12px;padding:12px 14px;text-align:center">
-                <div style="font-size:20px;font-weight:700;color:{_ui_r['cor']}">{_qtd} · {_pct}%</div>
-                <div style="font-size:11px;color:#9ca3af;margin-top:2px">{_ui_r['icone']} {_ui_r['label']}</div>
+    if _todas_atividades:
+        _por_tipo = {}
+        for _a in _todas_atividades:
+            _t = _a.get("tipo", "outro")
+            _por_tipo.setdefault(_t, []).append(_a)
+
+        for _tipo_key, _lista_tipo in _por_tipo.items():
+            _total_tipo = len(_lista_tipo)
+            _contagem_status = {}
+            for _a in _lista_tipo:
+                _s = _a.get("status", "pendente")
+                _contagem_status[_s] = _contagem_status.get(_s, 0) + 1
+
+            _cards_resumo = ""
+            for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
+                _qtd = _contagem_status.get(_status_key, 0)
+                if _qtd == 0:
+                    continue
+                _pct = round(100 * _qtd / _total_tipo)
+                _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
+                _cards_resumo += f"""
+                <div style="flex:1;min-width:100px;background:#fff;border:1px solid #e5e7eb;
+                            border-radius:10px;padding:10px 12px;text-align:center">
+                    <div style="font-size:17px;font-weight:700;color:{_ui_r['cor']}">{_qtd} · {_pct}%</div>
+                    <div style="font-size:10.5px;color:#9ca3af;margin-top:2px">{_ui_r['icone']} {_ui_r['label']}</div>
+                </div>
+                """
+            _label_tipo = _TIPO_ATIVIDADE_LABELS.get(_tipo_key, _tipo_key)
+            st.markdown(_html(f"""
+            <div style="font-size:12.5px;font-weight:600;color:#374151;margin-bottom:6px">
+                {_label_tipo} <span style="color:#9ca3af;font-weight:400">({_total_tipo})</span>
             </div>
-            """
-        st.markdown(_html(f"""
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-            <div style="flex:1;min-width:110px;background:#fff;border:1px solid #e5e7eb;
-                        border-radius:12px;padding:12px 14px;text-align:center">
-                <div style="font-size:20px;font-weight:700;color:#111827">{_total_ativ}</div>
-                <div style="font-size:11px;color:#9ca3af;margin-top:2px">Total (últimas 50)</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+                {_cards_resumo}
             </div>
-            {_cards_resumo}
-        </div>
-        """), unsafe_allow_html=True)
+            """), unsafe_allow_html=True)
 
     if not _todas_atividades:
         st.markdown(_html("""

@@ -17769,6 +17769,13 @@ html, body { background: transparent; overflow: hidden; }
     else:
         st.markdown("""
         <style>
+        [class*="st-key-_notif_card_"] {
+            background: #ffffff !important;
+            border-radius: 10px !important;
+        }
+        [class*="st-key-_notif_card_"] > div {
+            background: #ffffff !important;
+        }
         [class*="st-key-_notif_row_"] {
             position: relative !important;
             border-radius: 8px !important;
@@ -17794,24 +17801,31 @@ html, body { background: transparent; overflow: hidden; }
         }
         [class*="st-key-_notif_toggle_"] button p { display: none !important; }
         .notif-chevron {
-            display: flex; align-items: center; justify-content: center;
-            min-height: 36px; font-size: 12px; color: #6b7280;
+            font-size: 12px; color: #6b7280;
         }
         </style>
         """, unsafe_allow_html=True)
 
         for _a in _todas_atividades:
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
-            _pode_refazer = _a.get("status") in ("erro", "em_andamento") and _a.get("tipo") == "migracao_midia"
             _id_ativ = _a["id"]
+            _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+            # Só oferece "Refazer" quando dá pra saber qual empresa refazer —
+            # sem isso o painel expandido abriria vazio (só a setinha, sem
+            # texto e sem botão), uma UX capenga.
+            _pode_refazer = (
+                _a.get("status") in ("erro", "em_andamento")
+                and _a.get("tipo") == "migracao_midia"
+                and bool(_empresa_ativ)
+            )
             _detalhe_ativ = _formatar_detalhes_atividade(_a)
             _tem_detalhe = bool(_detalhe_ativ) or _pode_refazer
             _chave_aberto = f"_notif_open_{_id_ativ}"
             _aberto = st.session_state.get(_chave_aberto, False)
 
-            with st.container(border=True):
+            with st.container(border=True, key=f"_notif_card_{_id_ativ}"):
                 with st.container(key=f"_notif_row_{_id_ativ}"):
-                    _col_titulo, _col_seta, _col_status = st.columns([10, 1, 2])
+                    _col_titulo, _col_direita = st.columns([10, 3])
 
                     with _col_titulo:
                         st.markdown(_html(f"""
@@ -17825,17 +17839,14 @@ html, body { background: transparent; overflow: hidden; }
                         </div>
                         """), unsafe_allow_html=True)
 
-                    with _col_seta:
-                        if _tem_detalhe:
-                            st.markdown(_html(f"""
-                            <div class="notif-chevron">
-                                <i class="fa-solid {'fa-chevron-up' if _aberto else 'fa-chevron-down'}"></i>
-                            </div>
-                            """), unsafe_allow_html=True)
-
-                    with _col_status:
+                    with _col_direita:
+                        _chevron_html = (
+                            f"""<i class="fa-solid {'fa-chevron-up' if _aberto else 'fa-chevron-down'} notif-chevron"></i>"""
+                            if _tem_detalhe else ""
+                        )
                         st.markdown(_html(f"""
-                        <div style="display:flex;justify-content:flex-end;align-items:center;min-height:36px">
+                        <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;min-height:36px">
+                            {_chevron_html}
                             <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
                                          padding:4px 12px;border-radius:20px;white-space:nowrap">
                                 {_ui['label']}
@@ -17860,8 +17871,7 @@ html, body { background: transparent; overflow: hidden; }
                         st.caption(_detalhe_ativ)
 
                     if _pode_refazer:
-                        _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
-                        if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
+                        if st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
                             if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
                                 st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon="🔄")
                             else:

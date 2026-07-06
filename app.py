@@ -691,14 +691,41 @@ def _svg_icone(path: str, cor: str, tamanho: int = 16) -> str:
 # analise_ia), assim toda atividade mostra pelo menos uma linha de
 # detalhe (e a setinha de expandir aparece) na página de notificações.
 _TIPO_ATIVIDADE_LABELS = {
-    "coleta_ads":            "📢 Coleta de anúncios",
-    "coleta_redes":          "📱 Coleta de redes sociais",
-    "migracao_midia":        "☁️ Migração de mídia pro R2",
-    "reprocessamento_midia": "🗜️ Reprocessamento de mídia",
-    "reconciliacao_midia":   "🔗 Reconciliação de mídia",
-    "retentativa_midia":     "🔁 Retentativa de mídia com falha",
-    "analise_ia":            "🧠 Análises de IA",
+    "coleta_ads": (
+        "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
+        "#f5a623", "Coleta de anúncios",
+    ),
+    "coleta_redes": (
+        "M17,19H7V5H17M17,1H7C5.89,1 5,1.89 5,3V21A2,2 0 0,0 7,23H17A2,2 0 0,0 19,21V3C19,1.89 18.1,1 17,1Z",
+        "#3a9fd6", "Coleta de redes sociais",
+    ),
+    "migracao_midia": (
+        "M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14A6,6 0 0,0 6,20H19A5,5 0 0,0 24,15C24,12.36 21.95,10.22 19.35,10.04Z",
+        "#3a9fd6", "Migração de mídia pro R2",
+    ),
+    "reprocessamento_midia": (
+        "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
+        "#8a97ab", "Reprocessamento de mídia",
+    ),
+    "reconciliacao_midia": (
+        "M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z",
+        "#3a9fd6", "Reconciliação de mídia",
+    ),
+    "retentativa_midia": (
+        "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
+        "#f59e0b", "Retentativa de mídia com falha",
+    ),
+    "analise_ia": (
+        "M12,2L14.5,9H22L16,13.5L18,21L12,17L6,21L8,13.5L2,9H9.5L12,2Z",
+        "#8b5cf6", "Análises de IA",
+    ),
 }
+
+# Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
+# reaproveita os mesmos paths dos status pra manter consistência visual.
+_ICONE_AVISO  = ("M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z", "#e05252")
+_ICONE_INFO   = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M13,17H11V11H13V17M13,9H11V7H13V9Z", "#3a9fd6")
+_ICONE_OK     = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z", "#2ecc71")
 
 def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
     """Confere se ainda existe uma migração de mídia (download+compressão+
@@ -741,41 +768,57 @@ def _tempo_relativo(iso_str: str) -> str:
     except Exception:
         return ""
 
-def _formatar_detalhes_atividade(atividade: dict) -> str:
+def _formatar_detalhes_atividade(atividade: dict):
     """Traduz o campo `detalhes` (livre, varia por tipo de atividade) em
-    uma linha legível pra mostrar no sino/página de notificações. Sem
-    isso, informações como 'quantos itens falharam' ou 'quanto espaço
-    foi economizado' ficam presas no banco, invisíveis pro usuário."""
+    um ícone + uma linha de texto legível pra mostrar no sino/página de
+    notificações. Sem isso, informações como 'quantos itens falharam' ou
+    'quanto espaço foi economizado' ficam presas no banco, invisíveis
+    pro usuário.
+
+    Retorna (icone_svg_html, texto) — o texto vem sem prefixo de emoji
+    porque quem renderiza escapa esse texto (segurança contra HTML/JS
+    vindo do banco); o ícone já é SVG seguro (paths fixos) e é inserido
+    separadamente, sem passar pelo escape."""
     d = atividade.get("detalhes") or {}
     tipo = atividade.get("tipo", "")
 
     if d.get("aviso"):
-        return f"⚠️ {d['aviso']}"
+        path, cor = _ICONE_AVISO
+        return _svg_icone(path, cor, 14), d["aviso"]
     if d.get("motivo"):
-        return f"ℹ️ {d['motivo']}"
+        path, cor = _ICONE_INFO
+        return _svg_icone(path, cor, 14), d["motivo"]
 
     if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
-        return f"🔗 {d.get('corrigidos', 0)} de {d.get('verificados', 0)} mídias reconectadas."
+        path, cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
+        texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} mídias reconectadas."
+        return _svg_icone(path, cor, 14), texto
 
     if tipo == "reprocessamento_midia" and "processadas" in d:
         economia = d.get("economizado_mb", 0)
-        return f"🗜️ {d.get('processadas', 0)} de {d.get('total', 0)} mídias comprimidas — {economia}MB economizados."
+        path, cor, _ = _TIPO_ATIVIDADE_LABELS["reprocessamento_midia"]
+        texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} mídias comprimidas — {economia}MB economizados."
+        return _svg_icone(path, cor, 14), texto
 
     if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
-        txt = f"✅ Coletadas: {', '.join(d.get('coletadas', [])) or '—'}."
+        texto = f"Coletadas: {', '.join(d.get('coletadas', [])) or '—'}."
         if erros_d:
-            txt += f" ⚠️ Com erro: {', '.join(erros_d.keys())}."
-        return txt
+            texto += f" Com erro: {', '.join(erros_d.keys())}."
+            path, cor = _ICONE_AVISO
+        else:
+            path, cor = _ICONE_OK
+        return _svg_icone(path, cor, 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
     # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
     # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
     # ver por trás da setinha em vez de deixar a atividade sem detalhe.
     if tipo in _TIPO_ATIVIDADE_LABELS:
-        return _TIPO_ATIVIDADE_LABELS[tipo]
+        path, cor, texto = _TIPO_ATIVIDADE_LABELS[tipo]
+        return _svg_icone(path, cor, 14), texto
 
-    return ""
+    return "", ""
 
 
 # ---------------------------------------------------
@@ -17812,13 +17855,13 @@ html, body { background: transparent; overflow: hidden; }
                 and _a.get("tipo") == "migracao_midia"
                 and bool(_empresa_ativ)
             )
-            _detalhe_ativ = _formatar_detalhes_atividade(_a)
-            _tem_detalhe = bool(_detalhe_ativ) or _pode_refazer
+            _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
+            _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer
             if _pode_refazer:
                 _refazer_ids.append(_id_ativ)
 
             _titulo_safe = (_a.get("titulo") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            _detalhe_safe = (_detalhe_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
 
             _chevron_svg = f"""
@@ -17834,7 +17877,11 @@ html, body { background: transparent; overflow: hidden; }
             if _tem_detalhe:
                 _corpo_html += "<div class=\"notif-body-inner\">"
                 if _detalhe_safe:
-                    _corpo_html += f"<div class=\"notif-detail\">{_detalhe_safe}</div>"
+                    _corpo_html += (
+                        f'<div class="notif-detail">'
+                        f'<span class="notif-detail-icon">{_detalhe_icone_ativ}</span>'
+                        f'{_detalhe_safe}</div>'
+                    )
                 if _pode_refazer:
                     _refazer_svg = _svg_icone(
                         "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
@@ -17898,7 +17945,13 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }
 .notif-body { display:none; border-top:1px solid #f3f4f6; }
 .notif-body-inner { padding:14px 18px 16px; }
-.notif-detail { font-size:13px; color:#4b5563; line-height:1.6; }
+.notif-detail {
+    font-size:13px; color:#4b5563; line-height:1.6;
+    display:flex; align-items:flex-start; gap:8px;
+}
+.notif-detail-icon { display:flex; align-items:center; flex-shrink:0; margin-top:2px; }
+.notif-detail-icon svg { display:block; }
+.notif-detail-icon:empty { display:none; }
 .btn-refazer {
     margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;

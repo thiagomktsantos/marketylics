@@ -3256,6 +3256,103 @@ def contar_midias_pendentes_retentativa(user_id: str) -> int:
         return 0
 
 
+# ---------------------------------------------------
+#  VARREDURA GERAL — migra mídia pendente em TODOS os anúncios salvos
+# ---------------------------------------------------
+# A retentativa acima só age sobre mídia que já passou por uma tentativa
+# registrada em `midias_falhas`. Isso deixa de fora anúncios antigos,
+# coletados antes desse sistema existir (ou numa época em que a cota do
+# plano ou o R2 não permitiam o download) — a mídia nunca chegou a
+# "falhar" de um jeito que gerasse registro, só nunca foi tentada. Essa
+# varredura resolve esse caso: relê o ads_cache inteiro do banco e tenta
+# migrar qualquer imagem/vídeo que ainda esteja com o link original,
+# empresa por empresa (mesmo padrão sequencial da migração normal, pra
+# não esgotar processos do SO com vários vídeos ao mesmo tempo).
+
+def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        if not res.data:
+            atualizar_atividade(atividade_id, "erro", {"motivo": "ci_dados não encontrado"})
+            return
+        ads_cache = res.data[0].get("ads_cache") or {}
+
+        def _e_r2(u):
+            return bool(u) and bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
+
+        pendentes_antes = sum(
+            1
+            for entry in ads_cache.values()
+            for ad in entry.get("data", [])
+            for u in (ad.get("images") or []) + (ad.get("videos") or [])
+            if u and not _e_r2(u)
+        )
+        if pendentes_antes == 0:
+            atualizar_atividade(atividade_id, "concluido", {"motivo": "todos os anúncios já estão com mídia migrada"})
+            return
+
+        from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
+
+        verificadas_total, ainda_pendentes_total = 0, 0
+        for empresa, entry in ads_cache.items():
+            n_pendentes_empresa = sum(
+                1 for ad in entry.get("data", []) for u in (ad.get("images") or []) + (ad.get("videos") or [])
+                if u and not _e_r2(u)
+            )
+            if n_pendentes_empresa == 0:
+                continue  # essa empresa já está tudo migrado — pula sem gastar tempo
+
+            limite_segundos = _estimar_timeout_migracao(entry)
+            with _TPE(max_workers=1) as executor:
+                future = executor.submit(persistir_midias_de_ads, {empresa: entry}, user_id)
+                try:
+                    migrado, stats = future.result(timeout=limite_segundos)
+                except _TimeoutErr:
+                    ainda_pendentes_total += n_pendentes_empresa
+                    continue
+                except Exception:
+                    ainda_pendentes_total += n_pendentes_empresa
+                    continue
+
+            atualizacoes = {
+                str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
+            }
+            if atualizacoes:
+                try:
+                    supabase.rpc("atualizar_ads_no_cache", {
+                        "p_user_id": user_id,
+                        "p_empresa": empresa,
+                        "p_atualizacoes": atualizacoes,
+                    }).execute()
+                except Exception:
+                    pass
+
+            verificadas_total += stats.get("total", 0)
+            ainda_pendentes_total += stats.get("nao_migrados", 0)
+
+        atualizar_atividade(atividade_id, "concluido", {
+            "pendentes_antes": pendentes_antes,
+            "verificadas": verificadas_total,
+            "ainda_pendentes_depois": ainda_pendentes_total,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_migracao_pendente_geral_background(user_id: str):
+    """Varre todos os anúncios já salvos (de todas as empresas) e migra
+    pro R2 qualquer mídia que ainda esteja com o link original da Meta —
+    inclusive anúncios antigos que nunca chegaram a ter uma tentativa
+    registrada. Roda em background — acompanhe no sino de notificações."""
+    atividade_id = criar_atividade(
+        user_id, "migracao_midia", "Varredura geral: migrar mídias pendentes de todos os anúncios", {}
+    )
+    threading.Thread(
+        target=_migrar_pendentes_geral_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+
 
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa

@@ -17506,7 +17506,10 @@ html, body { background: transparent; overflow: hidden; }
                     _pct = round(100 * len(_nomes) / _total_tipo)
                     _texto = f"{len(_nomes)} ({_pct}%)"
                 _pills += (
-                    f'<span style="color:{_ui_r["cor"]};font-weight:600;margin-right:16px;white-space:nowrap">'
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;'
+                    f'background:{_ui_r["cor"]}1a;color:{_ui_r["cor"]};font-weight:600;'
+                    f'padding:4px 10px;border-radius:20px;margin:2px 6px 2px 0;'
+                    f'font-size:12px;white-space:nowrap">'
                     f'{_ui_r["icone"]} {_texto}</span>'
                 )
             _label_tipo = _TIPO_ATIVIDADE_LABELS.get(_tipo_key, _tipo_key)
@@ -17556,3 +17559,10 @@ html, body { background: transparent; overflow: hidden; }
             _detalhe_ativ = _formatar_detalhes_atividade(_a)
             if _detalhe_ativ:
                 st.caption(_detalhe_ativ)
+
+            if _a.get("status") == "em_andamento":
+                col_espaco, col_botao = st.columns([5, 2])
+                with col_botao:
+                    if st.button("Marcar como finalizada", key=f"_finalizar_ativ_{_a['id']}", use_container_width=True):
+                        atualizar_atividade(_a["id"], "erro", {"motivo": "finalizada manualmente pelo usuário — travada em andamento"})
+                        st.rerun()

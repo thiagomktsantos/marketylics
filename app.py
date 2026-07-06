@@ -743,10 +743,22 @@ def _formatar_detalhes_atividade(atividade: dict) -> str:
             txt += f" ⚠️ Com erro: {', '.join(erros_d.keys())}."
         return txt
 
-    # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
-    # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
-    # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
-    # ver por trás da setinha em vez de deixar a atividade sem detalhe.
+    if tipo == "coleta_redes" and ("perfis_ok" in d or "perfis_erro" in d):
+        txt = f"📱 {len(d.get('perfis_ok', []))} perfis coletados ({d.get('total_posts', 0)} posts no total)."
+        if d.get("perfis_erro"):
+            txt += f" ⚠️ Com erro: {', '.join(d['perfis_erro'])}."
+        return txt
+
+    if tipo == "retentativa_midia" and "verificadas" in d:
+        return f"🔁 {d.get('recuperadas', 0)} de {d.get('verificadas', 0)} mídias recuperadas na retentativa."
+
+    if tipo == "migracao_midia" and "total" in d:
+        return f"☁️ {d.get('total', 0)} mídias migradas pro R2 ({d.get('empresa', '')})."
+
+    # Fallback: nenhum formatador específico bateu (ex: migracao_midia
+    # bem-sucedida sem aviso, analise_ia) — mostra ao menos o label
+    # genérico do tipo, pra sempre ter algo pra ver por trás da setinha
+    # em vez de deixar a atividade sem detalhe.
     if tipo in _TIPO_ATIVIDADE_LABELS:
         return _TIPO_ATIVIDADE_LABELS[tipo]
 
@@ -2909,12 +2921,13 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             # "concluído" não significa "tudo migrado" — se algum item
             # falhou (rede, ffmpeg, cota), isso agora fica visível aqui
             # em vez de escondido dentro de um sucesso geral.
-            detalhes_finais = {}
+            detalhes_finais = {"empresa": empresa, "total": stats_midia.get("total", 0)}
             if stats_midia.get("nao_migrados"):
-                detalhes_finais = {
-                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram (ficaram com o link original)",
-                    "amostra": stats_midia.get("amostra_nao_migrados", []),
-                }
+                detalhes_finais["aviso"] = (
+                    f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram "
+                    f"(ficaram com o link original)"
+                )
+                detalhes_finais["amostra"] = stats_midia.get("amostra_nao_migrados", [])
             atualizar_atividade(atividade_id, "concluido", detalhes_finais)
         else:
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
@@ -14416,7 +14429,11 @@ function setHeight(isOpen) {{
             st.warning(f"🚫 {_motivo_bloqueio_redes}")
 
     if coletar and _permitido_redes:
-        registrar_execucao_acao(st.session_state.user.id, "coleta_redes", "Coleta de redes sociais")
+        _atividade_redes_id = criar_atividade(
+            st.session_state.user.id, "coleta_redes",
+            f"Coleta de redes sociais: {', '.join(e['nome'] for e in todas)}",
+            {},
+        )
 
         coletar_rapidapi.clear()
         resultados_lista = []
@@ -14546,6 +14563,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         }
         st.session_state.metricas_redes = cache
         st.toast("Dados coletados e salvos!", icon="✅")
+
+        _perfis_ok = [item["nome"] for item in resultados_lista if not item.get("erro")]
+        _perfis_erro = [item["nome"] for item in resultados_lista if item.get("erro")]
+        _total_posts = sum(len(item.get("posts", []) or []) for item in resultados_lista if not item.get("erro"))
+        atualizar_atividade(_atividade_redes_id, "concluido", {
+            "perfis_ok": _perfis_ok,
+            "perfis_erro": _perfis_erro,
+            "total_posts": _total_posts,
+        })
 
     ok = []
     if cache.get("dados"):
@@ -17713,6 +17739,25 @@ elif st.session_state.pagina == "notificacoes":
         '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">',
         unsafe_allow_html=True,
     )
+
+    st.markdown("""
+    <style>
+    [data-testid="stExpander"] {
+        background: #ffffff !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 10px !important;
+    }
+    [data-testid="stExpander"] summary {
+        background: #ffffff !important;
+    }
+    [data-testid="stExpander"] details {
+        background: #ffffff !important;
+    }
+    [data-testid="stExpanderDetails"] {
+        background: #ffffff !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
     components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">

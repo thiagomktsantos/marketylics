@@ -17741,64 +17741,6 @@ html, body { background: transparent; overflow: hidden; }
         "analise_ia":            "🧠 Análises de IA",
     }
 
-    if _todas_atividades:
-        _por_tipo = {}
-        for _a in _todas_atividades:
-            _t = _a.get("tipo", "outro")
-            _por_tipo.setdefault(_t, []).append(_a)
-
-        def _nome_curto_atividade(a: dict) -> str:
-            """Prefere o nome da empresa (se salvo em detalhes) — mais
-            curto e direto que repetir o título inteiro da atividade."""
-            empresa_d = (a.get("detalhes") or {}).get("empresa")
-            if empresa_d:
-                return empresa_d
-            titulo = a.get("titulo", "")
-            return titulo.split(":")[-1].strip() if ":" in titulo else titulo
-
-        linhas_resumo = []
-        for _tipo_key, _lista_tipo in _por_tipo.items():
-            _total_tipo = len(_lista_tipo)
-            _por_status_nomes = {}
-            for _a in _lista_tipo:
-                _s = _a.get("status", "pendente")
-                _por_status_nomes.setdefault(_s, []).append(_nome_curto_atividade(_a))
-
-            _pills = ""
-            for _status_key in ("concluido", "em_andamento", "erro", "pendente"):
-                _nomes = _por_status_nomes.get(_status_key, [])
-                if not _nomes:
-                    continue
-                _ui_r = _ATIVIDADE_STATUS_UI[_status_key]
-                # com poucos itens, mostra os nomes; com muitos, cai pra
-                # contagem (senão a linha fica enorme e ilegível)
-                if len(_nomes) <= 5:
-                    _texto = ", ".join(_nomes)
-                else:
-                    _pct = round(100 * len(_nomes) / _total_tipo)
-                    _texto = f"{len(_nomes)} ({_pct}%)"
-                _pills += (
-                    f'<span style="display:inline-flex;align-items:center;gap:4px;'
-                    f'background:{_ui_r["cor"]}1a;color:{_ui_r["cor"]};font-weight:600;'
-                    f'padding:4px 10px;border-radius:20px;margin:2px 6px 2px 0;'
-                    f'font-size:12px;white-space:nowrap">'
-                    f'{_ui_r["icone"]} {_texto}</span>'
-                )
-            _label_tipo = _TIPO_ATIVIDADE_LABELS.get(_tipo_key, _tipo_key)
-            linhas_resumo.append(f"""
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;
-                        background:#fff;border:1px solid #e5e7eb;border-radius:10px;
-                        padding:10px 14px;margin-bottom:6px;font-size:13px">
-                <span style="color:#374151;font-weight:600">{_label_tipo} <span style="color:#9ca3af;font-weight:400">({_total_tipo})</span></span>
-                <span>{_pills}</span>
-            </div>
-            """)
-        st.markdown(_html(f"""
-        <div style="margin-bottom:16px">
-            {"".join(linhas_resumo)}
-        </div>
-        """), unsafe_allow_html=True)
-
     if not _todas_atividades:
         st.markdown(_html("""
         <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
@@ -17831,14 +17773,16 @@ html, body { background: transparent; overflow: hidden; }
                 """), unsafe_allow_html=True)
 
                 _detalhe_ativ = _formatar_detalhes_atividade(_a)
-                if _detalhe_ativ:
-                    st.caption(_detalhe_ativ)
+                if _detalhe_ativ or _pode_refazer:
+                    with st.expander("Ver detalhes", expanded=False):
+                        if _detalhe_ativ:
+                            st.caption(_detalhe_ativ)
 
-                if _pode_refazer:
-                    _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
-                    if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_a['id']}"):
-                        if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _a["id"]):
-                            st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
-                        else:
-                            st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
-                        st.rerun()
+                        if _pode_refazer:
+                            _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+                            if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_a['id']}"):
+                                if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _a["id"]):
+                                    st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                                else:
+                                    st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
+                                st.rerun()

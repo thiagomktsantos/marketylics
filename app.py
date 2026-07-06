@@ -843,7 +843,7 @@ def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia"):
     if user_id:
         permitido, motivo = verificar_pode_executar_acao(user_id, tipo_acao)
         if not permitido:
-            st.toast(f"⏳ {motivo}", icon="⏳")
+            st.toast(f"{motivo}", icon="⏳")
             return _RespostaBloqueada(f"⏳ {motivo}")
         registrar_execucao_acao(user_id, tipo_acao, "Análise de IA")
     return gemini_model.generate_content(prompt_ou_parts)
@@ -1027,7 +1027,7 @@ def atualizar_nome_usuario(novo_nome: str) -> bool:
             st.session_state.user = res.user
         return True
     except Exception as e:
-        st.toast(f"⚠️ Erro ao atualizar nome: {e}", icon="⚠️")
+        st.toast(f"Erro ao atualizar nome: {e}", icon="⚠️")
         return False
 
 def atualizar_senha_usuario(nova_senha: str) -> bool:
@@ -1036,7 +1036,7 @@ def atualizar_senha_usuario(nova_senha: str) -> bool:
         supabase.auth.update_user({"password": nova_senha})
         return True
     except Exception as e:
-        st.toast(f"⚠️ Erro ao atualizar senha: {e}", icon="⚠️")
+        st.toast(f"Erro ao atualizar senha: {e}", icon="⚠️")
         return False
 
 def garantir_linha_usuario(user_id: str):
@@ -1060,7 +1060,7 @@ def garantir_linha_usuario(user_id: str):
                 "seo_cache": {},
             }).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao inicializar dados: {e}", icon="⚠️")
+        st.toast(f"Erro ao inicializar dados: {e}", icon="⚠️")
 
 def logout_supabase():
     try:
@@ -1111,7 +1111,7 @@ def salvar_empresa_e_concorrentes():
             "concorrentes": st.session_state.dados["concorrentes"],
         }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar: {e}", icon="⚠️")
 
 def salvar_analises_padrao():
     """Persiste apenas analises_salvas (update parcial — não reenvia as outras 2 listas)."""
@@ -1120,7 +1120,7 @@ def salvar_analises_padrao():
             "analises_salvas": st.session_state.get("analises_salvas", []),
         }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar análises: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar análises: {e}", icon="⚠️")
 
 def salvar_redes_analises():
     """Persiste apenas redes_analises_salvas (update parcial)."""
@@ -1129,7 +1129,7 @@ def salvar_redes_analises():
             "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
         }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar análises de redes: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar análises de redes: {e}", icon="⚠️")
 
 def salvar_ads_analises():
     """Persiste apenas ads_analises_salvas (update parcial)."""
@@ -1138,7 +1138,7 @@ def salvar_ads_analises():
             "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
         }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar análises de ads: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar análises de ads: {e}", icon="⚠️")
 
 def salvar_analises():
     """DEPRECATED: mantido só por compatibilidade — regrava as 3 listas inteiras.
@@ -1151,7 +1151,7 @@ def salvar_analises():
             "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
         }).eq("user_id", st.session_state.user.id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar análises: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar análises: {e}", icon="⚠️")
 
 # ---------------------------------------------------
 # ESTADO DA SESSÃO
@@ -1670,7 +1670,7 @@ def salvar_seo_cache():
             "seo_cache": seo_cache,
         }).eq("user_id", user_id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar SEO: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar SEO: {e}", icon="⚠️")
 
 # ---------------------------------------------------
 # GEMINI — RELATÓRIO DE POSICIONAMENTO
@@ -2808,18 +2808,18 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True):
                 dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
                 if _stats_midia.get("nao_migrados"):
                     st.toast(
-                        f"⚠️ {_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
+                        f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
                         f"foram migradas pro R2 (ficaram com o link original).",
                         icon="⚠️",
                     )
             except Exception as e_midia:
-                st.toast(f"⚠️ Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+                st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
 
         supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,
         }).eq("user_id", user_id).execute()
     except Exception as e:
-        st.toast(f"⚠️ Erro ao salvar cache de ads: {e}", icon="⚠️")
+        st.toast(f"Erro ao salvar cache de ads: {e}", icon="⚠️")
 
 # ---------------------------------------------------
 #  MIGRAÇÃO DE MÍDIA EM BACKGROUND
@@ -9288,7 +9288,7 @@ function triggerTab(label) {{
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
-                    st.toast(f"✅ {e['nome']} salvo!", icon="✅")
+                    st.toast(f"{e['nome']} salvo!", icon="✅")
                     st.rerun()
 
             # Processar "Usar página" da lista de resultados
@@ -9304,7 +9304,7 @@ function triggerTab(label) {{
                         st.session_state.ads_editando_empresa   = None
                         st.session_state.ads_onboarding_empresa = None
                         st.session_state.ads_onboarding_paginas = []
-                        st.toast(f"✅ {pg.get('nome', '')} selecionado!", icon="✅")
+                        st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 
         # ── INFO BOX
@@ -9834,7 +9834,7 @@ window.addEventListener('load', syncHeight);
                     )
                     if _migracao_em_andamento:
                         st.toast(
-                            "⏳ Os vídeos dessa coleta ainda estão sendo processados em segundo "
+                            "Os vídeos dessa coleta ainda estão sendo processados em segundo "
                             "plano (compressão/transcrição). A análise vai rodar mesmo assim, mas "
                             "alguns vídeos podem ficar de fora ou ser transcritos mais devagar. "
                             "Acompanhe no sino de notificações e, se puder, espere terminar pra "
@@ -13380,9 +13380,9 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
                 "empresa": target_gerar,
             })
             salvar_analises_padrao()
-            st.toast("✅ Insight gerado e salvo!", icon="✅")
+            st.toast("Insight gerado e salvo!", icon="✅")
         else:
-            st.toast(f"⚠️ {resposta}", icon="⚠️")
+            st.toast(f"{resposta}", icon="⚠️")
         st.rerun()
 
 # ---------------------------------------------------
@@ -13950,7 +13950,7 @@ function setHeight(isOpen) {{
                 },
             }).eq("user_id", st.session_state.user.id).execute()
         except Exception as e:
-            st.toast(f"⚠️ Erro ao salvar cache: {e}", icon="⚠️")
+            st.toast(f"Erro ao salvar cache: {e}", icon="⚠️")
 
     def carregar_cache_redes() -> dict:
         try:
@@ -14523,7 +14523,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             "dados": resultados_lista,
         }
         st.session_state.metricas_redes = cache
-        st.toast("✅ Dados coletados e salvos!", icon="✅")
+        st.toast("Dados coletados e salvos!", icon="✅")
 
     ok = []
     if cache.get("dados"):
@@ -17197,7 +17197,7 @@ html, body { background: transparent; overflow: hidden; }
             if st.form_submit_button("Salvar dados", type="primary"):
                 if novo_nome.strip():
                     if atualizar_nome_usuario(novo_nome):
-                        st.toast("✅ Nome atualizado!", icon="✅")
+                        st.toast("Nome atualizado!", icon="✅")
                         st.rerun()
                 else:
                     st.warning("O nome não pode ficar em branco.")
@@ -17219,7 +17219,7 @@ html, body { background: transparent; overflow: hidden; }
                     st.error("A senha deve ter pelo menos 6 caracteres.")
                 else:
                     if atualizar_senha_usuario(nova_senha):
-                        st.toast("✅ Senha alterada!", icon="✅")
+                        st.toast("Senha alterada!", icon="✅")
 
         with st.container(border=True):
             st.markdown("**Manutenção de mídia**")
@@ -17229,7 +17229,7 @@ html, body { background: transparent; overflow: hidden; }
             )
             if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)
-                st.toast("🗜️ Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
+                st.toast("Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
 
             st.caption(
                 "Se algum anúncio ainda estiver mostrando o link original do Facebook mesmo depois "
@@ -17237,7 +17237,7 @@ html, body { background: transparent; overflow: hidden; }
             )
             if st.button("🔗 Reconectar mídias já migradas", key="_btn_reconciliar_midia"):
                 iniciar_reconciliacao_midia_background(st.session_state.user.id)
-                st.toast("🔗 Reconciliação iniciada — acompanhe no sino de notificações.", icon="🔗")
+                st.toast("Reconciliação iniciada — acompanhe no sino de notificações.", icon="🔗")
 
             _n_pendentes_retry = contar_midias_pendentes_retentativa(st.session_state.user.id) if st.session_state.user else 0
             st.caption(
@@ -17248,7 +17248,7 @@ html, body { background: transparent; overflow: hidden; }
             )
             if st.button("🔁 Tentar novamente mídias com falha", key="_btn_retentar_midia"):
                 iniciar_retentativa_midias_background(st.session_state.user.id)
-                st.toast("🔁 Retentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
+                st.toast("Retentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
 
     with aba_perfil_uso:
         import math as _math_uso
@@ -17687,6 +17687,11 @@ html, body { background: transparent; overflow: hidden; }
 # ---------------------------------------------------
 elif st.session_state.pagina == "notificacoes":
 
+    st.markdown(
+        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">',
+        unsafe_allow_html=True,
+    )
+
     components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -17752,25 +17757,34 @@ html, body { background: transparent; overflow: hidden; }
     else:
         st.markdown("""
         <style>
-        [class*="st-key-_notif_arrow_"] button {
+        [class*="st-key-_notif_row_"] {
+            position: relative !important;
+            border-radius: 8px !important;
+            transition: background 0.15s !important;
+        }
+        [class*="st-key-_notif_row_"]:has([class*="st-key-_notif_toggle_"]):hover {
+            background: #f9fafb !important;
+        }
+        [class*="st-key-_notif_toggle_"] {
+            position: absolute !important;
+            inset: 0 !important;
+            z-index: 3 !important;
+        }
+        [class*="st-key-_notif_toggle_"] button {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
             border: none !important;
             background: transparent !important;
             box-shadow: none !important;
-            min-height: 0 !important;
-            height: 28px !important;
-            width: 28px !important;
             padding: 0 !important;
-            font-size: 13px !important;
-            line-height: 1 !important;
-            color: #6b7280 !important;
-            border-radius: 6px !important;
+            cursor: pointer !important;
         }
-        [class*="st-key-_notif_arrow_"] button:hover {
-            background: #f3f4f6 !important;
-            color: #111827 !important;
-            border-color: transparent !important;
+        [class*="st-key-_notif_toggle_"] button p { display: none !important; }
+        .notif-chevron {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 36px; font-size: 12px; color: #6b7280;
         }
-        [class*="st-key-_notif_arrow_"] { display: flex !important; justify-content: center !important; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -17784,35 +17798,46 @@ html, body { background: transparent; overflow: hidden; }
             _aberto = st.session_state.get(_chave_aberto, False)
 
             with st.container(border=True):
-                _col_titulo, _col_seta, _col_status = st.columns([10, 1, 2])
+                with st.container(key=f"_notif_row_{_id_ativ}"):
+                    _col_titulo, _col_seta, _col_status = st.columns([10, 1, 2])
 
-                with _col_titulo:
-                    st.markdown(_html(f"""
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:36px">
-                        <span style="font-size:14px;color:#111827;font-weight:600">
-                            {_ui['icone']} {_a.get('titulo', '')}
-                        </span>
-                        <span style="font-size:12px;color:#9ca3af">
-                            · {_tempo_relativo(_a.get('criado_em', ''))}
-                        </span>
-                    </div>
-                    """), unsafe_allow_html=True)
+                    with _col_titulo:
+                        st.markdown(_html(f"""
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:36px">
+                            <span style="font-size:14px;color:#111827;font-weight:600">
+                                {_ui['icone']} {_a.get('titulo', '')}
+                            </span>
+                            <span style="font-size:12px;color:#9ca3af">
+                                · {_tempo_relativo(_a.get('criado_em', ''))}
+                            </span>
+                        </div>
+                        """), unsafe_allow_html=True)
 
-                with _col_seta:
+                    with _col_seta:
+                        if _tem_detalhe:
+                            st.markdown(_html(f"""
+                            <div class="notif-chevron">
+                                <i class="fa-solid {'fa-chevron-up' if _aberto else 'fa-chevron-down'}"></i>
+                            </div>
+                            """), unsafe_allow_html=True)
+
+                    with _col_status:
+                        st.markdown(_html(f"""
+                        <div style="display:flex;justify-content:flex-end;align-items:center;min-height:36px">
+                            <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
+                                         padding:4px 12px;border-radius:20px;white-space:nowrap">
+                                {_ui['label']}
+                            </span>
+                        </div>
+                        """), unsafe_allow_html=True)
+
                     if _tem_detalhe:
-                        if st.button("▾" if not _aberto else "▴", key=f"_notif_arrow_{_id_ativ}"):
+                        # Botão invisível que cobre a linha inteira (via CSS) —
+                        # clicar em qualquer parte da caixa (título, tempo,
+                        # status) alterna o detalhe, não só a setinha.
+                        if st.button("", key=f"_notif_toggle_{_id_ativ}"):
                             st.session_state[_chave_aberto] = not _aberto
                             st.rerun()
-
-                with _col_status:
-                    st.markdown(_html(f"""
-                    <div style="display:flex;justify-content:flex-end;align-items:center;min-height:36px">
-                        <span style="background:{_ui['cor']}1a;color:{_ui['cor']};font-size:11px;font-weight:700;
-                                     padding:4px 12px;border-radius:20px;white-space:nowrap">
-                            {_ui['label']}
-                        </span>
-                    </div>
-                    """), unsafe_allow_html=True)
 
                 if _aberto and _tem_detalhe:
                     st.markdown(
@@ -17826,7 +17851,7 @@ html, body { background: transparent; overflow: hidden; }
                         _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
                         if _empresa_ativ and st.button("🔄 Refazer", key=f"_refazer_ativ_{_id_ativ}"):
                             if refazer_migracao_midia(st.session_state.user.id, _empresa_ativ, _id_ativ):
-                                st.toast(f"🔄 Refazendo a migração de {_empresa_ativ}...", icon="🔄")
+                                st.toast(f"Refazendo a migração de {_empresa_ativ}...", icon="🔄")
                             else:
-                                st.toast(f"⚠️ Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
+                                st.toast(f"Não achei {_empresa_ativ} no ads_cache pra refazer.", icon="⚠️")
                             st.rerun()

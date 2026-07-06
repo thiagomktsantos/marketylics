@@ -120,6 +120,11 @@ PLANOS_QUOTA_CONCORRENTES = {
     "agencia": None,  # ilimitado
 }
 
+# Quantas vezes tentamos baixar a mesma mídia antes de desistir de vez.
+# Sem esse teto, um link permanentemente quebrado (ex: anúncio removido
+# no Facebook) ficaria sendo tentado pra sempre a cada coleta.
+MAX_TENTATIVAS_MIDIA = 5
+
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
     # Padrão temporário "pro" enquanto não existe billing — evita travar
@@ -385,6 +390,49 @@ def obter_thumbnail_video(url_video: str) -> str:
     cache[url_video] = url_thumb
     return url_thumb
 
+def _registrar_falha_midia(user_id: str, empresa: str, ad_id: str, tipo: str,
+                            url_origem: str, erro) -> None:
+    """Registra (ou incrementa) uma falha de download de mídia — guardando
+    o número do anúncio (ad_id) — pra dar pra tentar de novo depois em vez
+    de o anúncio ficar pra sempre com o link original do Facebook (que
+    expira e é isso que aparece pro usuário como "link" no card)."""
+    try:
+        import datetime as _dt
+        existente = (
+            supabase.table("midias_falhas")
+            .select("id, tentativas")
+            .eq("user_id", user_id)
+            .eq("url_origem", url_origem)
+            .execute()
+        )
+        if existente.data:
+            reg = existente.data[0]
+            supabase.table("midias_falhas").update({
+                "tentativas":   reg["tentativas"] + 1,
+                "ultimo_erro":  str(erro)[:500],
+                "atualizado_em": _dt.datetime.now().isoformat(),
+            }).eq("id", reg["id"]).execute()
+        else:
+            supabase.table("midias_falhas").insert({
+                "user_id":     user_id,
+                "empresa":     empresa,
+                "ad_id":       ad_id,
+                "tipo":        tipo,
+                "url_origem":  url_origem,
+                "tentativas":  1,
+                "ultimo_erro": str(erro)[:500],
+            }).execute()
+    except Exception:
+        pass  # o log de falha nunca pode derrubar o fluxo principal
+
+def _limpar_falha_midia(user_id: str, url_origem: str) -> None:
+    """Remove o registro de falha depois que a mídia finalmente baixou
+    com sucesso (seja na primeira tentativa, seja numa retentativa)."""
+    try:
+        supabase.table("midias_falhas").delete().eq("user_id", user_id).eq("url_origem", url_origem).execute()
+    except Exception:
+        pass
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None) -> str:
     """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
@@ -421,6 +469,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             .execute()
         )
         if existente.data:
+            _limpar_falha_midia(user_id, url_origem)
             return existente.data[0]["url_cdn"]
 
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
@@ -478,8 +527,10 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             "thumbnail_url": thumbnail_url or None,
         }).execute()
 
+        _limpar_falha_midia(user_id, url_origem)
         return url_cdn
-    except Exception:
+    except Exception as e:
+        _registrar_falha_midia(user_id, empresa, ad_id, tipo, url_origem, e)
         return url_origem
 
 def persistir_midias_de_ads(dados: dict, user_id: str):
@@ -3118,6 +3169,91 @@ def iniciar_reconciliacao_midia_background(user_id: str):
         args=(user_id, atividade_id),
         daemon=True,
     ).start()
+
+
+# ---------------------------------------------------
+#  RETENTATIVA — mídias que falharam no download (registradas por ad_id)
+# ---------------------------------------------------
+# Toda vez que baixar_e_persistir_midia falha (rede instável, Facebook
+# derrubando a conexão, etc.) o anúncio fica registrado em
+# `midias_falhas` com o ad_id, a empresa e quantas vezes já tentamos.
+# Essa rotina varre esses registros e tenta baixar de novo — só os que
+# ainda não bateram no teto de MAX_TENTATIVAS_MIDIA. É isso que garante
+# que "sempre tem a opção de baixar o vídeo": em vez do card ficar pra
+# sempre com o link original do Facebook na primeira falha, ele volta a
+# ser tentado nas próximas coletas até dar certo ou esgotar o limite.
+
+def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
+    try:
+        res = (
+            supabase.table("midias_falhas")
+            .select("*")
+            .eq("user_id", user_id)
+            .lt("tentativas", MAX_TENTATIVAS_MIDIA)
+            .execute()
+        )
+        pendentes = res.data or []
+        if not pendentes:
+            atualizar_atividade(atividade_id, "concluido", {"motivo": "nenhuma mídia pendente de retentativa"})
+            return
+
+        recuperadas = 0
+        for f in pendentes:
+            url_antiga = f["url_origem"]
+            nova_url = baixar_e_persistir_midia(
+                url_antiga, user_id, f["empresa"], f.get("tipo", "imagem"), f.get("ad_id")
+            )
+            if nova_url == url_antiga:
+                continue  # continua falhando — baixar_e_persistir_midia já incrementou a tentativa
+
+            # sucesso: baixar_e_persistir_midia já limpou o registro de
+            # falha; falta só apontar o ads_cache pra URL nova no R2.
+            try:
+                supabase.rpc("substituir_url_no_ads_cache", {
+                    "p_user_id": user_id,
+                    "p_url_antiga": url_antiga,
+                    "p_url_nova": nova_url,
+                }).execute()
+                recuperadas += 1
+            except Exception:
+                pass
+
+        atualizar_atividade(atividade_id, "concluido", {
+            "verificadas": len(pendentes),
+            "recuperadas": recuperadas,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_retentativa_midias_background(user_id: str):
+    """Tenta baixar de novo as mídias que falharam antes (respeitando o
+    teto de MAX_TENTATIVAS_MIDIA por mídia). Roda em background —
+    acompanhe o resultado no sino de notificações. Chamado tanto
+    automaticamente (a cada nova coleta) quanto manualmente pelo botão
+    na aba de perfil."""
+    atividade_id = criar_atividade(
+        user_id, "retentativa_midia", "Retentativa de mídias com falha de download", {}
+    )
+    threading.Thread(
+        target=_tentar_novamente_midias_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+def contar_midias_pendentes_retentativa(user_id: str) -> int:
+    """Quantas mídias ainda têm chance de retentativa (não esgotaram o
+    teto) — usado pra mostrar no botão da aba de perfil."""
+    try:
+        res = (
+            supabase.table("midias_falhas")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .lt("tentativas", MAX_TENTATIVAS_MIDIA)
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
 
 
 
@@ -8145,6 +8281,9 @@ elif st.session_state.pagina == "ads":
         salvar_cache_ads(cache_mergeado, migrar_midia=False)
         if novos:
             iniciar_migracao_midia_background(st.session_state.user.id, novos)
+        # Toda nova coleta também é uma chance de recuperar mídias que
+        # tinham falhado em coletas anteriores (até o teto de tentativas).
+        iniciar_retentativa_midias_background(st.session_state.user.id)
 
         _status_final = "erro" if (erros and not novos) else "concluido"
         atualizar_atividade(_atividade_id, _status_final, {
@@ -17003,6 +17142,17 @@ html, body { background: transparent; overflow: hidden; }
                 iniciar_reconciliacao_midia_background(st.session_state.user.id)
                 st.toast("🔗 Reconciliação iniciada — acompanhe no sino de notificações.", icon="🔗")
 
+            _n_pendentes_retry = contar_midias_pendentes_retentativa(st.session_state.user.id) if st.session_state.user else 0
+            st.caption(
+                f"Mídias (imagens/vídeos) que falharam ao baixar ficam registradas pelo número do "
+                f"anúncio e são tentadas de novo automaticamente a cada coleta, até um teto de "
+                f"{MAX_TENTATIVAS_MIDIA} tentativas. Você também pode forçar uma retentativa agora"
+                + (f" ({_n_pendentes_retry} pendente{'s' if _n_pendentes_retry != 1 else ''})." if _n_pendentes_retry else ".")
+            )
+            if st.button("🔁 Tentar novamente mídias com falha", key="_btn_retentar_midia"):
+                iniciar_retentativa_midias_background(st.session_state.user.id)
+                st.toast("🔁 Retentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
+
     with aba_perfil_uso:
         import math as _math_uso
 
@@ -17490,6 +17640,7 @@ html, body { background: transparent; overflow: hidden; }
         "migracao_midia":        "☁️ Migração de mídia pro R2",
         "reprocessamento_midia": "🗜️ Reprocessamento de mídia",
         "reconciliacao_midia":   "🔗 Reconciliação de mídia",
+        "retentativa_midia":     "🔁 Retentativa de mídia com falha",
         "analise_ia":            "🧠 Análises de IA",
     }
 

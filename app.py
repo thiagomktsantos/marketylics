@@ -653,12 +653,37 @@ def contar_atividades_pendentes(user_id: str) -> int:
     except Exception:
         return 0
 
+# Ícones em SVG cheio (preenchido) por status — substituem os emojis
+# antigos (🕓 🔵 ✅ ⚠️) pra ter um visual consistente e nítido em
+# qualquer SO/navegador. "path" é o path data de um ícone sólido
+# (estilo Material Symbols "Filled"), renderizado via _svg_icone().
 _ATIVIDADE_STATUS_UI = {
-    "pendente":     {"icone": "🕓", "cor": "#8a97ab", "label": "Pendente"},
-    "em_andamento": {"icone": "🔵", "cor": "#3a9fd6", "label": "Em andamento"},
-    "concluido":    {"icone": "✅", "cor": "#2ecc71", "label": "Concluído"},
-    "erro":         {"icone": "⚠️", "cor": "#e05252", "label": "Erro"},
+    "pendente": {
+        "path": "M12,20a8,8 0 1,1 0,-16a8,8 0 0,1 0,16M12,2a10,10 0 1,0 0,20a10,10 0 0,0 0,-20M12.5,7h-1.5v6l5.2,3.1 0.75,-1.23 -4.45,-2.64Z",
+        "cor": "#8a97ab", "label": "Pendente",
+    },
+    "em_andamento": {
+        "path": "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4M12,4A8,8 0 0,1 20,12H22A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12H2A10,10 0 0,0 12,22A10,10 0 0,0 22,12H20A8,8 0 0,1 12,20",
+        "cor": "#3a9fd6", "label": "Em andamento",
+    },
+    "concluido": {
+        "path": "M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z",
+        "cor": "#2ecc71", "label": "Concluído",
+    },
+    "erro": {
+        "path": "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
+        "cor": "#e05252", "label": "Erro",
+    },
 }
+
+def _svg_icone(path: str, cor: str, tamanho: int = 16) -> str:
+    """Monta um <svg> cheio (fill sólido) a partir de um path e uma cor —
+    usado pra trocar emojis por ícones vetoriais consistentes."""
+    return (
+        f'<svg width="{tamanho}" height="{tamanho}" viewBox="0 0 24 24" '
+        f'fill="{cor}" xmlns="http://www.w3.org/2000/svg">'
+        f'<path d="{path}"/></svg>'
+    )
 
 # Label genérico por tipo de atividade — usado como fallback em
 # _formatar_detalhes_atividade() pros tipos que não têm um formatador
@@ -17759,10 +17784,14 @@ html, body { background: transparent; overflow: hidden; }
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
 
     if not _todas_atividades:
-        st.markdown(_html("""
+        _bell_svg = _svg_icone(
+            "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
+            "#c7cdd6", 32,
+        )
+        st.markdown(_html(f"""
         <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                     text-align:center;background:#fff;margin-top:8px">
-            <div style="font-size:32px;margin-bottom:8px">🔔</div>
+            <div style="margin-bottom:8px;display:flex;justify-content:center">{_bell_svg}</div>
             <div style="font-size:14px;color:#9ca3af">Nenhuma atividade registrada ainda.</div>
         </div>
         """), unsafe_allow_html=True)
@@ -17807,7 +17836,14 @@ html, body { background: transparent; overflow: hidden; }
                 if _detalhe_safe:
                     _corpo_html += f"<div class=\"notif-detail\">{_detalhe_safe}</div>"
                 if _pode_refazer:
-                    _corpo_html += f"<button class=\"btn-refazer\" data-idx=\"{_id_ativ}\">🔄 Refazer</button>"
+                    _refazer_svg = _svg_icone(
+                        "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
+                        "#374151", 14,
+                    )
+                    _corpo_html += (
+                        f'<button class="btn-refazer" data-idx="{_id_ativ}">'
+                        f'<span class="btn-refazer-icon">{_refazer_svg}</span>Refazer</button>'
+                    )
                 _corpo_html += "</div>"
 
             _body_bloco = (
@@ -17818,7 +17854,7 @@ html, body { background: transparent; overflow: hidden; }
             _cards_notif_html += f"""
 <div class="notif-card">
     <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
-        <span class="notif-hdr-icon">{_ui['icone']}</span>
+        <span class="notif-hdr-icon">{_svg_icone(_ui['path'], _ui['cor'])}</span>
         <div class="notif-title-wrap">
             <span class="notif-title">{_titulo_safe}</span>
             <span class="notif-time">· {_tempo_safe}</span>
@@ -17843,7 +17879,8 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }
 .notif-hdr.has-detail { cursor:pointer; }
 .notif-hdr:hover { background:#f9fafb; }
-.notif-hdr-icon { font-size:16px; flex-shrink:0; }
+.notif-hdr-icon { display:flex; align-items:center; flex-shrink:0; }
+.notif-hdr-icon svg { display:block; }
 .notif-title-wrap {
     flex:1; min-width:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
 }
@@ -17866,8 +17903,12 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
     margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
     background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;
     font-family:'DM Sans',sans-serif; transition:all 0.15s;
+    display:inline-flex; align-items:center; gap:6px;
 }
 .btn-refazer:hover { border-color:#3a9fd6; background:#eff6ff; color:#1d4ed8; }
+.btn-refazer-icon { display:flex; align-items:center; }
+.btn-refazer-icon svg { display:block; }
+.btn-refazer:hover .btn-refazer-icon svg { fill:#1d4ed8; }
 """
 
         components.html(f"""

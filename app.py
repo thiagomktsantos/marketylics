@@ -615,13 +615,24 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None)
         return None
 
 def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
-    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
+    """Atualiza o status de uma atividade (concluido/erro/em_andamento).
+    Mescla `detalhes` com o que já estava salvo em vez de substituir —
+    senão a atualização final (que só manda os campos novos, tipo
+    "processadas") apaga informação gravada na criação, como o nome da
+    empresa, e a página de notificações não tem mais como mostrá-la."""
     if not atividade_id:
         return
     try:
         payload = {"status": status}
         if detalhes is not None:
-            payload["detalhes"] = detalhes
+            detalhes_atuais = {}
+            try:
+                res = supabase.table("atividades").select("detalhes").eq("id", atividade_id).execute()
+                if res.data:
+                    detalhes_atuais = res.data[0].get("detalhes") or {}
+            except Exception:
+                pass
+            payload["detalhes"] = {**detalhes_atuais, **detalhes}
         supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
     except Exception:
         pass

@@ -8410,18 +8410,69 @@ elif st.session_state.pagina == "ads":
 <script>{fechar_js}</script>
 """, unsafe_allow_html=True)
 
+    def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
+        """Roda a coleta de verdade (chamadas à Apify) numa thread — não
+        pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
+        thread principal do Streamlit. Por isso não usa `_render_loader`
+        nem lê `st.session_state` pro cache atual — busca direto do
+        Supabase, que é seguro de qualquer thread."""
+        try:
+            res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+            cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+
+            erros = {}
+            novos = {}
+
+            for e in empresas:
+                ck = e["nome"]
+                entrada_cache = cache_atual.get(ck, {})
+                if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
+                    continue
+
+                if e["tipo"] == "minha":
+                    ads_id_salvo = st.session_state.dados["minha_empresa"].get("ads_id", "").strip()
+                else:
+                    ads_id_salvo = st.session_state.dados["concorrentes"][e["idx"]].get("ads_id", "").strip()
+
+                query = ads_id_salvo or query_values.get(ck, "").strip()
+                if not query:
+                    continue
+
+                ads, raw, erro = buscar_ads_apify(query)
+                if erro:
+                    erros[ck] = erro
+                else:
+                    novos[ck] = {
+                        "data":  ads,
+                        "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "nome":  ck,
+                        "query": query,
+                        "_raw":  raw,
+                    }
+
+            cache_mergeado = merge_ads(cache_atual, novos)
+
+            # Save rápido: mantém os links originais do Facebook (ainda
+            # válidos por bem mais que 1 dia). A troca pelos links
+            # permanentes do R2 acontece depois, em background também.
+            salvar_cache_ads(cache_mergeado, migrar_midia=False)
+            if novos:
+                iniciar_migracao_midia_background(user_id, novos)
+            iniciar_retentativa_midias_background(user_id)
+
+            _status_final = "erro" if (erros and not novos) else "concluido"
+            atualizar_atividade(atividade_id, _status_final, {
+                "coletadas": list(novos.keys()),
+                "com_erro": erros,
+            })
+        except Exception as e:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
     def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
         _permitido, _motivo_bloqueio = verificar_pode_executar_acao(st.session_state.user.id, "coleta_ads")
         if not _permitido:
             st.warning(f"🚫 {_motivo_bloqueio}")
             return
-
-        erros  = {}
-        novos  = {}
-        cache_atual = dict(st.session_state.ads_cache or {})
-        loader_placeholder = st.empty()
-        total = len(empresas)
-        progresso = []
 
         _nomes_empresas = ", ".join(e["nome"] for e in empresas)
         _atividade_id = criar_atividade(
@@ -8431,86 +8482,56 @@ elif st.session_state.pagina == "ads":
             {"empresas": [e["nome"] for e in empresas]},
         )
 
-        for idx_e, e in enumerate(empresas):
-            ck = e["nome"]
-            entrada_cache = cache_atual.get(ck, {})
-            if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
-                total_ads = len(entrada_cache.get("data", []))
-                ativos = sum(1 for a in entrada_cache.get("data", []) if a.get("ativo", True))
-                inativos = total_ads - ativos
-                progresso.append({
-                    "nome": ck, "status": "cache",
-                    "msg": f"Cache válido ({entrada_cache.get('ts','')})",
-                    "count": ativos, "inativos": inativos,
-                })
-                _render_loader(loader_placeholder, progresso, total, idx_e + 1)
-                continue
+        threading.Thread(
+            target=_executar_busca_background,
+            args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
+            daemon=True,
+        ).start()
 
-            if e["tipo"] == "minha":
-                ads_id_salvo = st.session_state.dados["minha_empresa"].get("ads_id", "").strip()
-            else:
-                ads_id_salvo = st.session_state.dados["concorrentes"][e["idx"]].get("ads_id", "").strip()
-
-            query = ads_id_salvo or query_values.get(ck, "").strip()
-            if not query:
-                continue
-
-            label = f"page_id: {query}" if query.isdigit() else f"keyword: {query}"
-            progresso.append({
-                "nome": ck, "status": "loading",
-                "msg": f"Buscando ({label})...", "count": None, "inativos": 0,
-            })
-            _render_loader(loader_placeholder, progresso, total, idx_e + 1)
-
-            ads, raw, erro = buscar_ads_apify(query)
-
-            if erro:
-                erros[ck] = erro
-                progresso[-1] = {"nome": ck, "status": "error", "msg": erro[:80], "count": 0, "inativos": 0}
-            else:
-                novos[ck] = {
-                    "data":  ads,
-                    "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "nome":  ck,
-                    "query": query,
-                    "_raw":  raw,
-                }
-                progresso[-1] = {
-                    "nome": ck, "status": "done",
-                    "msg": f"{len(ads)} anúncios encontrados", "count": len(ads), "inativos": 0,
-                }
-            _render_loader(loader_placeholder, progresso, total, idx_e + 1)
-
-        _render_loader(loader_placeholder, progresso, total, total, finalizado=True)
-        import time as _ttt; _ttt.sleep(3)
-        loader_placeholder.empty()
-
-        cache_mergeado = merge_ads(cache_atual, novos)
-        st.session_state.ads_cache = cache_mergeado
-        st.session_state.ads_erro  = erros
-
-        # Save rápido: mantém os links originais do Facebook (ainda válidos
-        # por bem mais que 1 dia), então a página abre na hora. A troca
-        # pelos links permanentes do R2 acontece depois, em background.
-        salvar_cache_ads(cache_mergeado, migrar_midia=False)
-        if novos:
-            iniciar_migracao_midia_background(st.session_state.user.id, novos)
-        # Toda nova coleta também é uma chance de recuperar mídias que
-        # tinham falhado em coletas anteriores (até o teto de tentativas).
-        iniciar_retentativa_midias_background(st.session_state.user.id)
-
-        _status_final = "erro" if (erros and not novos) else "concluido"
-        atualizar_atividade(_atividade_id, _status_final, {
-            "coletadas": list(novos.keys()),
-            "com_erro": erros,
-        })
-
+        # Marca que tem uma coleta rodando — a página usa isso pra mostrar
+        # um aviso em vez de fingir que os dados já estão atualizados.
+        st.session_state["_coleta_ads_em_andamento"] = True
         st.rerun()
 
     if "ads_cache" not in st.session_state or not st.session_state.ads_cache:
         st.session_state.ads_cache = carregar_cache_ads()
     if "ads_erro" not in st.session_state:
         st.session_state.ads_erro = {}
+
+    if st.session_state.get("_coleta_ads_em_andamento"):
+        _ultima_coleta_ativ = None
+        try:
+            _res_ativ = (
+                supabase.table("atividades")
+                .select("status, detalhes")
+                .eq("user_id", st.session_state.user.id)
+                .eq("tipo", "coleta_ads")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if _res_ativ.data:
+                _ultima_coleta_ativ = _res_ativ.data[0]
+        except Exception:
+            pass
+
+        if _ultima_coleta_ativ and _ultima_coleta_ativ.get("status") in ("concluido", "erro"):
+            # A coleta em background já terminou — busca os dados novos
+            # do Supabase (session_state ainda tinha a versão antiga) e
+            # limpa o aviso.
+            st.session_state.ads_cache = {}
+            st.session_state.ads_cache = carregar_cache_ads()
+            st.session_state["_coleta_ads_em_andamento"] = False
+            st.rerun()
+        else:
+            st.info(
+                "🔵 Coleta de anúncios rodando em background — a página já pode ser usada "
+                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
+                "atualizar abaixo pra ver os dados novos.",
+                icon="🔵",
+            )
+            if st.button("🔄 Verificar se a coleta terminou", key="_btn_verificar_coleta_ads"):
+                st.rerun()
 
     def empresa_tem_ads_id(e: dict) -> bool:
         if e["tipo"] == "minha":

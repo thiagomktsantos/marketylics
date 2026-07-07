@@ -10973,6 +10973,35 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             ] if img],
                             ensure_ascii=True
                         )
+                        # Mesmo selo de origem que o card de vídeo já tem —
+                        # antes só existia lá, então cards de imagem (como os
+                        # de anúncio "Dinâmico") ficavam sem indicar se o link
+                        # é permanente (R2) ou o original da Meta.
+                        _img_e_do_r2 = bool(R2_PUBLIC_BASE) and img_thumb_url.startswith(R2_PUBLIC_BASE)
+                        if _img_e_do_r2:
+                            origem_badge_img_html = """
+    <div title="Imagem armazenada permanentemente — não expira"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+        </svg>
+    </div>"""
+                        else:
+                            origem_badge_img_html = """
+    <div title="Imagem original da Meta — pode expirar a qualquer momento"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/>
+        </svg>
+    </div>"""
                         media_block = f"""
 <div class="media-block img-block" id="mwrap_{uid}" style="position:relative;cursor:pointer">
     <img id="mimg_{uid}" src="{img_primary}" loading="lazy"
@@ -10982,6 +11011,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
     <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;">🔍 VER CRIATIVOS</div>
+    {origem_badge_img_html}
 </div>
 <script>
 (function(){{
@@ -11077,6 +11107,11 @@ function imgFallback_{uid}(img){{
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_ads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
+    <details style="margin:6px 10px 10px 10px;font-size:11px">
+        <summary style="cursor:pointer;color:#9ca3af;user-select:none">🐛 Dados brutos (debug)</summary>
+        <pre style="max-height:260px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;
+                    border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all">{debug_json_html}</pre>
+    </details>
 </div>
 <script>
 window.__PLATS_{uid}__ = {plat_js};

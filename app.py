@@ -3103,6 +3103,32 @@ def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
             pendentes[empresa] = {**entry, "data": ads_pendentes}
     return pendentes
 
+def contar_ads_com_link_direto(ads_cache: dict) -> tuple:
+    """Conta, em todo o ads_cache do usuário (todas as empresas), quantos
+    anúncios têm ao menos uma mídia ainda com o link direto/original (não
+    migrada pro R2) vs. o total de anúncios coletados. Devolve
+    (total_ads, ads_com_link_direto).
+
+    Esse número é o principal indicador de controle do plano free: como
+    PLANOS_QUOTA_MIDIAS['free'] = 0, nenhuma mídia é baixada nesse plano,
+    então praticamente 100% dos anúncios ficam dependendo do link
+    original do Facebook — que pode expirar a qualquer momento. Em
+    planos pagos, esse número deveria cair conforme a migração roda."""
+    total = 0
+    com_link_direto = 0
+    for entry in (ads_cache or {}).values():
+        for ad in entry.get("data", []) or []:
+            total += 1
+            imagens = ad.get("images") or []
+            videos = ad.get("videos") or []
+            tem_link_original = any(
+                u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
+                for u in (imagens + videos)
+            )
+            if tem_link_original:
+                com_link_direto += 1
+    return total, com_link_direto
+
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
     estiver com link original. Devolve quantos anúncios foram
@@ -17513,12 +17539,25 @@ html, body { background: transparent; overflow: hidden; }
         _detalhe_coleta_redes = _detalhe_ultima_execucao("coleta_redes")
         _detalhe_analises_ia  = _detalhe_ultima_execucao("analise_ia")
 
+        # Anúncios ainda com link direto (não migrado pro R2) vs. total —
+        # no plano free (cota de mídia = 0) isso tende a ficar em ~100%,
+        # já que nenhuma mídia é baixada; é o principal ponto de controle
+        # /risco do plano, pois o link original do Facebook pode expirar.
+        _ads_cache_uso = st.session_state.get("ads_cache", {})
+        _total_ads_uso, _ads_link_direto_uso = contar_ads_com_link_direto(_ads_cache_uso)
+        _ads_migrados_uso = _total_ads_uso - _ads_link_direto_uso
+        _detalhe_link_direto = (
+            f"{_ads_migrados_uso} já migrados pro armazenamento permanente"
+            if _total_ads_uso else "nenhum anúncio coletado ainda"
+        )
+
         # Ícones (viewBox 0 0 24 24, estilo outline) — um por métrica.
         _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
         _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
         _SVG_DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
         _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+        _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5"/>'
 
         def _card_uso_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str = "",
                           size: int = 108, stroke: int = 9) -> str:
@@ -17583,7 +17622,7 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        _col_u1, _col_u2, _col_u3, _col_u4, _col_u5 = st.columns(5)
+        _col_u1, _col_u2, _col_u3, _col_u4, _col_u5, _col_u6 = st.columns(6)
         with _col_u1:
             st.markdown(_card_uso_svg("Mídias armazenadas", _SVG_FILM, get_avatar_color(0),
                                        _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
@@ -17599,11 +17638,20 @@ html, body { background: transparent; overflow: hidden; }
         with _col_u5:
             st.markdown(_card_uso_svg("Análises de IA", _SVG_ZAP, get_avatar_color(2),
                                        _analises_ia_usadas, _analises_ia_limite, _detalhe_analises_ia), unsafe_allow_html=True)
+        with _col_u6:
+            st.markdown(_card_uso_svg("Anúncios com link direto", _SVG_LINK, get_avatar_color(5),
+                                       _ads_link_direto_uso, _total_ads_uso, _detalhe_link_direto), unsafe_allow_html=True)
 
         st.caption(
             "As cotas de coletas e análises de IA resetam no início de cada mês. "
             "Precisa de mais? Fale com o suporte pra aumentar seu plano."
         )
+        if _plano_atual_perfil == "free" and _total_ads_uso and _ads_link_direto_uso == _total_ads_uso:
+            st.caption(
+                "⚠️ No plano free nenhuma mídia é baixada, então 100% dos seus anúncios "
+                "dependem do link original do Facebook — que pode expirar a qualquer momento. "
+                "Faça upgrade pra migrar as mídias pro armazenamento permanente."
+            )
 
     with aba_perfil_plano:
         st.markdown(

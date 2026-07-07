@@ -701,19 +701,19 @@ _TIPO_ATIVIDADE_LABELS = {
     ),
     "migracao_midia": (
         "M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14A6,6 0 0,0 6,20H19A5,5 0 0,0 24,15C24,12.36 21.95,10.22 19.35,10.04Z",
-        "#3a9fd6", "Migração de mídia pro R2",
+        "#3a9fd6", "Salvando anúncios na Biblioteca",
     ),
     "reprocessamento_midia": (
         "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
-        "#8a97ab", "Reprocessamento de mídia",
+        "#8a97ab", "Otimizando espaço da Biblioteca",
     ),
     "reconciliacao_midia": (
         "M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z",
-        "#3a9fd6", "Reconciliação de mídia",
+        "#3a9fd6", "Reconectando anúncios salvos",
     ),
     "retentativa_midia": (
         "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
-        "#f59e0b", "Retentativa de mídia com falha",
+        "#f59e0b", "Tentando salvar anúncios pendentes",
     ),
     "analise_ia": (
         "M12,2L14.5,9H22L16,13.5L18,21L12,17L6,21L8,13.5L2,9H9.5L12,2Z",
@@ -793,13 +793,13 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
-        texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} mídias reconectadas."
+        texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} anúncios reconectados na Biblioteca."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "reprocessamento_midia" and "processadas" in d:
         economia = d.get("economizado_mb", 0)
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reprocessamento_midia"]
-        texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} mídias comprimidas — {economia}MB economizados."
+        texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} anúncios otimizados — {economia}MB economizados."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
@@ -826,7 +826,7 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "migracao_midia" and "migradas" in d:
         path, _cor = _ICONE_OK
-        texto = f"{d['migradas']} de {d.get('total', d['migradas'])} mídias migradas pro R2."
+        texto = f"{d['migradas']} de {d.get('total', d['migradas'])} anúncios salvos permanentemente na Biblioteca."
         return _svg_icone(path, "currentColor", 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
@@ -3000,7 +3000,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             # deixar "detalhes" vazio (senão o sino só repete o título).
             if stats_midia.get("nao_migrados"):
                 detalhes_finais = {
-                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} mídias não migraram (ficaram com o link original)",
+                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} anúncios ainda não foram salvos na Biblioteca (link original expira)",
                     "amostra": stats_midia.get("amostra_nao_migrados", []),
                 }
             elif stats_midia.get("total"):
@@ -3069,7 +3069,7 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
     tarefas = []
     for empresa, entry in novos.items():
         atividade_id = criar_atividade(
-            user_id, "migracao_midia", f"Migração de mídia pro R2: {empresa}", {"empresa": empresa}
+            user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca", {"empresa": empresa}
         )
         tarefas.append((empresa, entry, atividade_id))
 
@@ -3102,32 +3102,6 @@ def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
         if ads_pendentes:
             pendentes[empresa] = {**entry, "data": ads_pendentes}
     return pendentes
-
-def contar_ads_com_link_direto(ads_cache: dict) -> tuple:
-    """Conta, em todo o ads_cache do usuário (todas as empresas), quantos
-    anúncios têm ao menos uma mídia ainda com o link direto/original (não
-    migrada pro R2) vs. o total de anúncios coletados. Devolve
-    (total_ads, ads_com_link_direto).
-
-    Esse número é o principal indicador de controle do plano free: como
-    PLANOS_QUOTA_MIDIAS['free'] = 0, nenhuma mídia é baixada nesse plano,
-    então praticamente 100% dos anúncios ficam dependendo do link
-    original do Facebook — que pode expirar a qualquer momento. Em
-    planos pagos, esse número deveria cair conforme a migração roda."""
-    total = 0
-    com_link_direto = 0
-    for entry in (ads_cache or {}).values():
-        for ad in entry.get("data", []) or []:
-            total += 1
-            imagens = ad.get("images") or []
-            videos = ad.get("videos") or []
-            tem_link_original = any(
-                u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
-                for u in (imagens + videos)
-            )
-            if tem_link_original:
-                com_link_direto += 1
-    return total, com_link_direto
 
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
@@ -3292,7 +3266,7 @@ def iniciar_reprocessamento_midia_background(user_id: str):
     """Roda o reprocessamento de todas as mídias já salvas do usuário,
     sem travar a página. Acompanhe o resultado no sino de notificações."""
     atividade_id = criar_atividade(
-        user_id, "reprocessamento_midia", "Reprocessamento de mídias antigas (compressão de imagens e vídeos)", {}
+        user_id, "reprocessamento_midia", "Otimizando espaço da Biblioteca de Anúncios", {}
     )
     threading.Thread(
         target=_reprocessar_midias_background,
@@ -3343,7 +3317,7 @@ def iniciar_reconciliacao_midia_background(user_id: str):
     """Reconecta mídias já migradas pro R2 que ficaram com a referência
     antiga no ads_cache. Roda em background — acompanhe no sino."""
     atividade_id = criar_atividade(
-        user_id, "reconciliacao_midia", "Reconciliação de mídias já migradas", {}
+        user_id, "reconciliacao_midia", "Reconectando anúncios já salvos na Biblioteca", {}
     )
     threading.Thread(
         target=_reconciliar_midia_background,
@@ -3413,7 +3387,7 @@ def iniciar_retentativa_midias_background(user_id: str):
     automaticamente (a cada nova coleta) quanto manualmente pelo botão
     na aba de perfil."""
     atividade_id = criar_atividade(
-        user_id, "retentativa_midia", "Retentativa de mídias com falha de download", {}
+        user_id, "retentativa_midia", "Tentando salvar anúncios pendentes na Biblioteca", {}
     )
     threading.Thread(
         target=_tentar_novamente_midias_background,
@@ -8275,9 +8249,9 @@ elif st.session_state.pagina == "ads":
 
         images_b64 = []
         if images:
-            for img_url in images[:3]:
-                b64 = _url_para_base64(img_url)
-                images_b64.append(b64 if b64 else img_url)
+            b64 = _url_para_base64(images[0])
+            images_b64.append(b64 if b64 else images[0])
+            images_b64.extend(images[1:3])
 
         return {
             "id":                   ad_id,
@@ -10875,11 +10849,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
 
                     img_fallbacks = []
-                    for u in images_b64:
-                        if u and u not in img_fallbacks:
-                            img_fallbacks.append(u)
                     if img_thumb_url and img_thumb_url not in img_fallbacks:
                         img_fallbacks.append(img_thumb_url)
+                    if images_b64 and images_b64[0] not in img_fallbacks:
+                        img_fallbacks.append(images_b64[0])
                     img_fallbacks.extend([u for u in images if u not in img_fallbacks])
                     srcs_js = _json.dumps(img_fallbacks)
 
@@ -17457,33 +17430,34 @@ html, body { background: transparent; overflow: hidden; }
                         st.toast("Senha alterada!", icon="✅")
 
         with st.container(border=True):
-            st.markdown("**Manutenção de mídia**")
+            st.markdown("**Biblioteca de Anúncios**")
             st.caption(
-                "Recomprime as imagens e vídeos de anúncios já salvos no armazenamento pra ocupar "
-                "menos espaço. Roda em background — acompanhe o resultado no sino de notificações."
+                "Anúncios salvos aqui continuam acessíveis mesmo depois que o link original do "
+                "Facebook expira. Essas ações rodam em background — acompanhe o resultado no sino "
+                "de notificações."
             )
-            if st.button("🗜️ Reprocessar mídias antigas", key="_btn_reprocessar_midia"):
+            if st.button("🗜️ Otimizar espaço da Biblioteca", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)
-                st.toast("Reprocessamento iniciado — acompanhe no sino de notificações.", icon="🗜️")
+                st.toast("Otimização iniciada — acompanhe no sino de notificações.", icon="🗜️")
 
             st.caption(
                 "Se algum anúncio ainda estiver mostrando o link original do Facebook mesmo depois "
-                "de a mídia já ter sido migrada pro R2, use o botão abaixo pra reconectar."
+                "de já ter sido salvo na Biblioteca, use o botão abaixo pra reconectar."
             )
-            if st.button("🔗 Reconectar mídias já migradas", key="_btn_reconciliar_midia"):
+            if st.button("🔗 Reconectar anúncios já salvos", key="_btn_reconciliar_midia"):
                 iniciar_reconciliacao_midia_background(st.session_state.user.id)
-                st.toast("Reconciliação iniciada — acompanhe no sino de notificações.", icon="🔗")
+                st.toast("Reconexão iniciada — acompanhe no sino de notificações.", icon="🔗")
 
             _n_pendentes_retry = contar_midias_pendentes_retentativa(st.session_state.user.id) if st.session_state.user else 0
             st.caption(
-                f"Mídias (imagens/vídeos) que falharam ao baixar ficam registradas pelo número do "
-                f"anúncio e são tentadas de novo automaticamente a cada coleta, até um teto de "
-                f"{MAX_TENTATIVAS_MIDIA} tentativas. Você também pode forçar uma retentativa agora"
+                f"Anúncios (imagens/vídeos) que falharam ao salvar ficam registrados e são "
+                f"tentados de novo automaticamente a cada coleta, até um teto de "
+                f"{MAX_TENTATIVAS_MIDIA} tentativas. Você também pode forçar uma nova tentativa agora"
                 + (f" ({_n_pendentes_retry} pendente{'s' if _n_pendentes_retry != 1 else ''})." if _n_pendentes_retry else ".")
             )
-            if st.button("🔁 Tentar novamente mídias com falha", key="_btn_retentar_midia"):
+            if st.button("🔁 Tentar salvar anúncios pendentes", key="_btn_retentar_midia"):
                 iniciar_retentativa_midias_background(st.session_state.user.id)
-                st.toast("Retentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
+                st.toast("Nova tentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
 
     with aba_perfil_uso:
         import math as _math_uso
@@ -17539,25 +17513,12 @@ html, body { background: transparent; overflow: hidden; }
         _detalhe_coleta_redes = _detalhe_ultima_execucao("coleta_redes")
         _detalhe_analises_ia  = _detalhe_ultima_execucao("analise_ia")
 
-        # Anúncios ainda com link direto (não migrado pro R2) vs. total —
-        # no plano free (cota de mídia = 0) isso tende a ficar em ~100%,
-        # já que nenhuma mídia é baixada; é o principal ponto de controle
-        # /risco do plano, pois o link original do Facebook pode expirar.
-        _ads_cache_uso = st.session_state.get("ads_cache", {})
-        _total_ads_uso, _ads_link_direto_uso = contar_ads_com_link_direto(_ads_cache_uso)
-        _ads_migrados_uso = _total_ads_uso - _ads_link_direto_uso
-        _detalhe_link_direto = (
-            f"{_ads_migrados_uso} já migrados pro armazenamento permanente"
-            if _total_ads_uso else "nenhum anúncio coletado ainda"
-        )
-
         # Ícones (viewBox 0 0 24 24, estilo outline) — um por métrica.
         _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
         _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
         _SVG_DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
         _SVG_SHARE = '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>'
         _SVG_ZAP = '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
-        _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5"/>'
 
         def _card_uso_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str = "",
                           size: int = 108, stroke: int = 9) -> str:
@@ -17622,7 +17583,29 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        _col_u1, _col_u2, _col_u3, _col_u4, _col_u5, _col_u6 = st.columns(6)
+        # Anúncios ainda com link original do Facebook em vez do link
+        # permanente da Biblioteca — ao contrário das outras métricas,
+        # aqui "alto %" é ruim (quer dizer que muita coisa ainda depende
+        # de um link que pode expirar), então o card já nasce priorizado
+        # em primeiro, com uma ação direta pra corrigir.
+        _ads_cache_uso = st.session_state.get("ads_cache") or {}
+        _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
+        _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
+        _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
+        _ja_na_biblioteca = _total_ads_geral - _total_pendentes_link
+        _detalhe_link = (
+            f"{_ja_na_biblioteca} já salvos na Biblioteca de Anúncios"
+            if _total_ads_geral else "nenhum anúncio coletado ainda"
+        )
+        _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+
+        _col_u0, _col_u1, _col_u2, _col_u3, _col_u4, _col_u5 = st.columns(6)
+        with _col_u0:
+            st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
+                                       _total_pendentes_link, _total_ads_geral or 1, _detalhe_link), unsafe_allow_html=True)
+            if _total_pendentes_link > 0 and st.button("🔧 Corrigir agora", key="_btn_corrigir_links_pendentes", use_container_width=True):
+                verificar_e_migrar_pendentes(_user_id_uso)
+                st.toast("Correção iniciada — acompanhe no sino de notificações.", icon="🔧")
         with _col_u1:
             st.markdown(_card_uso_svg("Mídias armazenadas", _SVG_FILM, get_avatar_color(0),
                                        _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
@@ -17638,20 +17621,11 @@ html, body { background: transparent; overflow: hidden; }
         with _col_u5:
             st.markdown(_card_uso_svg("Análises de IA", _SVG_ZAP, get_avatar_color(2),
                                        _analises_ia_usadas, _analises_ia_limite, _detalhe_analises_ia), unsafe_allow_html=True)
-        with _col_u6:
-            st.markdown(_card_uso_svg("Anúncios com link direto", _SVG_LINK, get_avatar_color(5),
-                                       _ads_link_direto_uso, _total_ads_uso, _detalhe_link_direto), unsafe_allow_html=True)
 
         st.caption(
             "As cotas de coletas e análises de IA resetam no início de cada mês. "
             "Precisa de mais? Fale com o suporte pra aumentar seu plano."
         )
-        if _plano_atual_perfil == "free" and _total_ads_uso and _ads_link_direto_uso == _total_ads_uso:
-            st.caption(
-                "⚠️ No plano free nenhuma mídia é baixada, então 100% dos seus anúncios "
-                "dependem do link original do Facebook — que pode expirar a qualquer momento. "
-                "Faça upgrade pra migrar as mídias pro armazenamento permanente."
-            )
 
     with aba_perfil_plano:
         st.markdown(

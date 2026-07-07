@@ -3080,6 +3080,44 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             daemon=True,
         ).start()
 
+def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
+    """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
+    procurando qualquer imagem/vídeo que ainda aponte pro link original
+    (não migrado pro R2) — não importa se é recente, antigo, se a
+    migração nunca rodou, ou se rodou e falhou silenciosamente. Devolve
+    só os anúncios pendentes, no mesmo formato que iniciar_migracao_
+    midia_background espera (pra reaproveitar o mesmo pipeline)."""
+    pendentes = {}
+    for empresa, entry in (ads_cache or {}).items():
+        ads_pendentes = []
+        for ad in entry.get("data", []) or []:
+            imagens = ad.get("images") or []
+            videos = ad.get("videos") or []
+            tem_link_original = any(
+                u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
+                for u in (imagens + videos)
+            )
+            if tem_link_original:
+                ads_pendentes.append(ad)
+        if ads_pendentes:
+            pendentes[empresa] = {**entry, "data": ads_pendentes}
+    return pendentes
+
+def verificar_e_migrar_pendentes(user_id: str) -> int:
+    """Roda a varredura completa e dispara a migração pra tudo que ainda
+    estiver com link original. Devolve quantos anúncios foram
+    encontrados pendentes (0 = nada a fazer)."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        pendentes = encontrar_ads_com_link_original(ads_cache)
+        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
+        if pendentes:
+            iniciar_migracao_midia_background(user_id, pendentes)
+        return total_ads_pendentes
+    except Exception:
+        return 0
+
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
     anúncios que já estão salvos no ads_cache (não precisa recoletar).
@@ -8497,6 +8535,20 @@ elif st.session_state.pagina == "ads":
         st.session_state.ads_cache = carregar_cache_ads()
     if "ads_erro" not in st.session_state:
         st.session_state.ads_erro = {}
+
+    # Verificação de segurança: roda uma vez por sessão (não a cada
+    # rerun) procurando qualquer anúncio — de qualquer coleta, antiga ou
+    # recente — que ainda esteja com o link original do Facebook em vez
+    # do R2. Cobre casos que a migração pontual de uma coleta específica
+    # não pega (falha silenciosa antiga, mídia coletada antes desse
+    # pipeline existir, etc.).
+    if not st.session_state.get("_verificacao_pendentes_feita") and st.session_state.get("user"):
+        threading.Thread(
+            target=verificar_e_migrar_pendentes,
+            args=(st.session_state.user.id,),
+            daemon=True,
+        ).start()
+        st.session_state["_verificacao_pendentes_feita"] = True
 
     if st.session_state.get("_coleta_ads_em_andamento"):
         _ultima_coleta_ativ = None

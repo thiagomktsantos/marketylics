@@ -8249,9 +8249,9 @@ elif st.session_state.pagina == "ads":
 
         images_b64 = []
         if images:
-            b64 = _url_para_base64(images[0])
-            images_b64.append(b64 if b64 else images[0])
-            images_b64.extend(images[1:3])
+            for img_url in images[:3]:
+                b64 = _url_para_base64(img_url)
+                images_b64.append(b64 if b64 else img_url)
 
         return {
             "id":                   ad_id,
@@ -10849,10 +10849,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
 
                     img_fallbacks = []
+                    for u in images_b64:
+                        if u and u not in img_fallbacks:
+                            img_fallbacks.append(u)
                     if img_thumb_url and img_thumb_url not in img_fallbacks:
                         img_fallbacks.append(img_thumb_url)
-                    if images_b64 and images_b64[0] not in img_fallbacks:
-                        img_fallbacks.append(images_b64[0])
                     img_fallbacks.extend([u for u in images if u not in img_fallbacks])
                     srcs_js = _json.dumps(img_fallbacks)
 

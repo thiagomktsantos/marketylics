@@ -449,8 +449,33 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     if not pode_baixar_midia(user_id):
         return url_origem
 
+    # Teto de tentativas — sem isso, QUALQUER chamador (a varredura
+    # automática inclusive) tentava de novo pra sempre, mesmo pra uma
+    # URL que já provou repetidamente que não vai baixar (ex: 403 do
+    # CDN de vídeo do Facebook, que não é falha passageira).
     try:
-        resp = requests.get(url_origem, timeout=15, stream=True)
+        _falha_existente = (
+            supabase.table("midias_falhas")
+            .select("tentativas")
+            .eq("user_id", user_id)
+            .eq("url_origem", url_origem)
+            .execute()
+        )
+        if _falha_existente.data and _falha_existente.data[0]["tentativas"] >= MAX_TENTATIVAS_MIDIA:
+            return url_origem
+    except Exception:
+        pass  # se a checagem falhar, segue tentando normalmente
+
+    try:
+        _headers_download = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Referer": "https://www.facebook.com/",
+            "Accept": "*/*",
+        }
+        resp = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
         resp.raise_for_status()
         conteudo = resp.content
         content_type = (

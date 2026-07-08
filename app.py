@@ -11040,6 +11040,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 </div>
 <script>
 (function(){{
+    var _srcs = {srcs_js};
+    var _idx  = 0;
     var IMGS_{uid} = {all_imgs_js};
     var MAIN_IMGS_{uid} = {main_modal_imgs_js};
     var SNAP_{uid} = '{snap_url.replace("'","").replace('"',"")}';
@@ -11049,14 +11051,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
             openModalHQ(MAIN_IMGS_{uid}, IMGS_{uid}, SNAP_{uid});
         }});
     }}
-    var _srcs_{uid} = {srcs_js};
-    var _idx_{uid} = 0;
+
+    function imgFallback_{uid}(img){{
+        _idx++;
+        if(_idx < _srcs.length){{ img.src = _srcs[_idx]; }}
+        else{{ img.style.display='none'; var e=document.getElementById('merr_{uid}'); if(e) e.style.display='flex'; }}
+    }}
+
+    window['imgFallback_{uid}'] = imgFallback_{uid};
 }})();
-function imgFallback_{uid}(img){{
-    _idx_{uid}++;
-    if(_idx_{uid} < _srcs_{uid}.length){{ img.src = _srcs_{uid}[_idx_{uid}]; }}
-    else{{ img.style.display='none'; var e=document.getElementById('merr_{uid}'); if(e) e.style.display='flex'; }}
-}}
 </script>"""
 
                     else:

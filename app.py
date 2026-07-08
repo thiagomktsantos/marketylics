@@ -17494,6 +17494,30 @@ html, body { background: transparent; overflow: hidden; }
                 iniciar_retentativa_midias_background(st.session_state.user.id)
                 st.toast("Nova tentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
 
+            with st.expander("Ver por que alguns anúncios não foram salvos"):
+                try:
+                    _res_falhas = (
+                        supabase.table("midias_falhas")
+                        .select("empresa, tipo, tentativas, ultimo_erro, atualizado_em")
+                        .eq("user_id", st.session_state.user.id)
+                        .order("tentativas", desc=True)
+                        .limit(30)
+                        .execute()
+                    )
+                    _falhas_lista = _res_falhas.data or []
+                except Exception:
+                    _falhas_lista = []
+
+                if not _falhas_lista:
+                    st.caption("Nenhuma falha registrada no momento.")
+                else:
+                    for _f in _falhas_lista:
+                        st.caption(
+                            f"**{_f.get('empresa','')}** ({_f.get('tipo','')}) — "
+                            f"{_f.get('tentativas',0)}x tentativas — "
+                            f"_{_f.get('ultimo_erro','') or 'sem detalhe'}_"
+                        )
+
     with aba_perfil_uso:
         import math as _math_uso
 

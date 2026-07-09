@@ -8592,12 +8592,11 @@ elif st.session_state.pagina == "ads":
                 if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
                     continue
 
-                if e["tipo"] == "minha":
-                    ads_id_salvo = st.session_state.dados["minha_empresa"].get("ads_id", "").strip()
-                else:
-                    ads_id_salvo = st.session_state.dados["concorrentes"][e["idx"]].get("ads_id", "").strip()
-
-                query = ads_id_salvo or query_values.get(ck, "").strip()
+                # O ads_id (quando a empresa já tem um configurado) vem pronto
+                # dentro de query_values, montado na thread principal antes de
+                # chamar executar_busca — não dá pra ler st.session_state aqui
+                # dentro, já que essa função roda numa thread separada.
+                query = query_values.get(ck, "").strip()
                 if not query:
                     continue
 
@@ -8702,12 +8701,10 @@ elif st.session_state.pagina == "ads":
             st.rerun()
         else:
             st.info(
-                "🔵 Coleta de anúncios rodando em background — a página já pode ser usada "
-                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
-                "atualizar abaixo pra ver os dados novos.",
+                "🔵 Buscando novos anúncios... você já pode usar a página normalmente.",
                 icon="🔵",
             )
-            if st.button("🔄 Verificar se a coleta terminou", key="_btn_verificar_coleta_ads"):
+            if st.button("🔄 Atualizar", key="_btn_verificar_coleta_ads"):
                 st.rerun()
 
     def empresa_tem_ads_id(e: dict) -> bool:

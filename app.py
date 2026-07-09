@@ -485,7 +485,13 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         )
         hash_conteudo = hashlib.sha256(conteudo).hexdigest()
 
-        # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita
+        # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita,
+        # MAS só depois de confirmar que o arquivo ainda existe de verdade no
+        # bucket. Sem essa checagem, se um arquivo for removido por qualquer
+        # motivo (ex: uma corrida durante o reprocessamento), o dedupe ficava
+        # devolvendo esse link morto pra sempre, pra qualquer anúncio novo
+        # que reusasse a mesma imagem (comum em anúncios "Dinâmicos", que
+        # repetem o mesmo criativo em vários cards).
         existente = (
             supabase.table("midias")
             .select("url_cdn")
@@ -494,8 +500,22 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             .execute()
         )
         if existente.data:
-            _limpar_falha_midia(user_id, url_origem)
-            return existente.data[0]["url_cdn"]
+            _url_dedupe = existente.data[0]["url_cdn"]
+            try:
+                _check = requests.head(_url_dedupe, timeout=5)
+                _arquivo_existe = _check.status_code == 200
+            except Exception:
+                _arquivo_existe = False
+            if _arquivo_existe:
+                _limpar_falha_midia(user_id, url_origem)
+                return _url_dedupe
+            # arquivo sumiu do bucket apesar do registro no banco — remove
+            # a linha órfã e segue pro upload normal abaixo, como se não
+            # tivesse achado dedupe nenhum.
+            try:
+                supabase.table("midias").delete().eq("user_id", user_id).eq("hash_conteudo", hash_conteudo).execute()
+            except Exception:
+                pass
 
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
         conteudo_upload, content_type_upload = conteudo, content_type
@@ -744,6 +764,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M12,2L14.5,9H22L16,13.5L18,21L12,17L6,21L8,13.5L2,9H9.5L12,2Z",
         "#8b5cf6", "Análises de IA",
     ),
+    "reparo_links": (
+        "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z",
+        "#e05252", "Verificando links salvos",
+    ),
 }
 
 # Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
@@ -819,6 +843,14 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
         texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} anúncios reconectados na Biblioteca."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "reparo_links" and "verificados" in d:
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reparo_links"]
+        if d.get("quebrados"):
+            texto = f"{d['quebrados']} de {d['verificados']} links quebrados encontrados e enviados pra nova tentativa."
+        else:
+            texto = f"{d['verificados']} links verificados — nenhum quebrado."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "reprocessamento_midia" and "processadas" in d:
@@ -3142,6 +3174,74 @@ def verificar_e_migrar_pendentes(user_id: str) -> int:
         return total_ads_pendentes
     except Exception:
         return 0
+
+def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
+    """As varreduras normais só olham se a URL É do R2 (pelo prefixo) —
+    não confirmam se o arquivo realmente existe lá. Se um objeto sumir
+    do bucket por qualquer motivo (ex: uma corrida durante o
+    reprocessamento), essas varreduras nunca detectam, porque pra elas
+    já "está tudo certo". Essa função verifica de verdade (HEAD request)
+    e, pro que estiver quebrado, busca o link original em `midias.
+    url_origem` pra tentar migrar de novo."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+
+        res_midias = supabase.table("midias").select("url_cdn, url_origem").eq("user_id", user_id).execute()
+        mapa_origem = {m["url_cdn"]: m["url_origem"] for m in (res_midias.data or []) if m.get("url_cdn")}
+
+        verificados = 0
+        quebrados = 0
+        reparar = {}
+
+        for empresa, entry in ads_cache.items():
+            ads_para_reparar = []
+            for ad in entry.get("data", []) or []:
+                precisa_reparar = False
+                ad_copia = dict(ad)
+                for campo in ("images", "videos"):
+                    urls = list(ad.get(campo) or [])
+                    for i, u in enumerate(urls):
+                        if not (u and R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
+                            continue
+                        verificados += 1
+                        try:
+                            ok = requests.head(u, timeout=5).status_code == 200
+                        except Exception:
+                            ok = False
+                        if not ok:
+                            quebrados += 1
+                            origem = mapa_origem.get(u)
+                            if origem:
+                                urls[i] = origem  # volta pro link original, pra tentar migrar de novo
+                                precisa_reparar = True
+                    ad_copia[campo] = urls
+                if precisa_reparar:
+                    ads_para_reparar.append(ad_copia)
+            if ads_para_reparar:
+                reparar[empresa] = {**entry, "data": ads_para_reparar}
+
+        if reparar:
+            iniciar_migracao_midia_background(user_id, reparar)
+
+        atualizar_atividade(atividade_id, "concluido", {
+            "verificados": verificados,
+            "quebrados": quebrados,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_reparo_links_quebrados(user_id: str):
+    """Confirma de verdade (não só pelo prefixo da URL) se as mídias já
+    marcadas como salvas no R2 ainda existem, e repara o que sumiu."""
+    atividade_id = criar_atividade(
+        user_id, "reparo_links", "Verificando se os anúncios salvos ainda estão acessíveis", {}
+    )
+    threading.Thread(
+        target=_reparar_links_quebrados_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
 
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
@@ -17518,6 +17618,15 @@ html, body { background: transparent; overflow: hidden; }
             if st.button("🔁 Tentar salvar anúncios pendentes", key="_btn_retentar_midia"):
                 iniciar_retentativa_midias_background(st.session_state.user.id)
                 st.toast("Nova tentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
+
+            st.caption(
+                "As verificações acima só olham se o link **já é** da Biblioteca — não confirmam "
+                "se o arquivo continua acessível lá. Use o botão abaixo pra checar de verdade e "
+                "reparar links que quebraram depois de já terem sido salvos."
+            )
+            if st.button("🩺 Verificar se os links salvos ainda funcionam", key="_btn_reparar_links"):
+                iniciar_reparo_links_quebrados(st.session_state.user.id)
+                st.toast("Verificação iniciada — acompanhe no sino de notificações.", icon="🩺")
 
             with st.expander("Ver por que alguns anúncios não foram salvos"):
                 try:

@@ -671,15 +671,20 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     except Exception:
         pass
 
-def excluir_atividade(atividade_id: str) -> bool:
+def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
     """Remove uma atividade do sino de notificações. Usado pelo botão de
     excluir na página de notificações — principalmente pra limpar
     atividades com erro que, sem essa opção, ficavam acumulando na lista
-    pra sempre (como se ainda estivessem "ativas")."""
+    pra sempre (como se ainda estivessem "ativas"). Filtra por user_id
+    também (mesmo padrão das outras exclusões no app) — evita depender
+    só da policy de RLS pra não apagar registro de outra conta."""
     if not atividade_id:
         return False
     try:
-        supabase.table("atividades").delete().eq("id", atividade_id).execute()
+        q = supabase.table("atividades").delete().eq("id", atividade_id)
+        if user_id:
+            q = q.eq("user_id", user_id)
+        q.execute()
         return True
     except Exception:
         return False
@@ -2581,6 +2586,12 @@ with st.sidebar:
         if _qtd_atividades_pendentes else ""
     )
 
+    # Botão-fantasma só pra forçar um rerun (recalcula _resumo_sino do
+    # banco) sem trocar de página — usado pelo polling em JS abaixo, que
+    # só liga enquanto houver algo "em andamento", pra não ficar
+    # recarregando a tela à toa quando não tem nada rodando.
+    st.button("_sino_refresh_ghost_", key="_hidden_sino_refresh")
+
     _nome_exibido = obter_nome_usuario()
     _plano_atual = obter_plano_usuario()
     _PLANO_LABELS = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUS"}
@@ -2821,6 +2832,20 @@ function nav(page) {{
         }}
     }}
 }}
+{f'''
+// Só liga o polling enquanto houver atividade em andamento — assim o
+// sino se atualiza sozinho (sem precisar de F5) exatamente durante
+// migrações/coletas rodando, mas não fica recarregando a página à toa
+// quando não há nada pendente. Não precisa de flag "já agendado": a
+// cada rerun este iframe inteiro é recriado do zero (o anterior, com
+// seu setInterval, é destruído junto), então só existe um timer ativo
+// por vez.
+setInterval(function() {{
+    var doc = window.parent.document;
+    var el = doc.querySelector('.st-key-_hidden_sino_refresh button');
+    if (el) el.click();
+}}, 12000);
+''' if _resumo_sino['andamento'] > 0 else ''}
 </script>
 """
 
@@ -18716,10 +18741,60 @@ function refazerNotif(idx) {{
 }}
 
 function excluirNotif(idx) {{
-    if (!window.confirm('Excluir esta notificação? Essa ação não pode ser desfeita.')) return;
+    // window.confirm() não funciona aqui: o components.html roda num
+    // iframe "sandboxed" sem allow-modals, então confirm()/alert() ficam
+    // bloqueados silenciosamente pelo navegador (a função só volta
+    // undefined/false na hora, sem nunca pausar ou mostrar nada) — por
+    // isso o clique parecia "não fazer nada". Usa um modal próprio,
+    // desenhado direto no documento pai, igual o resto do app já faz
+    // pra outras confirmações de exclusão.
     var doc = window.parent.document;
-    var el = doc.querySelector('.st-key-btn_excluir_ativ_' + idx + ' button');
-    if (el) el.click();
+    var old = doc.getElementById('confirm_excluir_notif_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_excluir_notif_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;padding:28px;width:min(92vw,380px);box-shadow:0 20px 60px rgba(0,0,0,0.35);font-family:DM Sans,sans-serif;';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:16px;font-weight:800;color:#111827;text-align:center;margin-bottom:8px;';
+    tit.textContent = 'Excluir notificação';
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:13.5px;color:#6b7280;text-align:center;line-height:1.6;margin-bottom:22px;';
+    msg.textContent = 'Essa ação não pode ser desfeita.';
+
+    var row = doc.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:11px;border-radius:9px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = 'Sim, excluir';
+    confirmBtn.style.cssText = 'padding:11px;border-radius:9px;border:none;background:#e05252;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{
+        ov.remove();
+        var el = doc.querySelector('.st-key-btn_excluir_ativ_' + idx + ' button');
+        if (el) el.click();
+    }};
+
+    row.appendChild(cancelBtn);
+    row.appendChild(confirmBtn);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(row);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
 }}
 
 document.addEventListener('click', function(e) {{
@@ -18781,6 +18856,8 @@ setTimeout(syncH, 500);
 
         for _eid in _excluir_ids:
             if _acoes_excluir.get(_eid):
-                if excluir_atividade(_eid):
+                if excluir_atividade(_eid, st.session_state.user.id):
                     st.toast("Notificação excluída.", icon="🗑️")
+                else:
+                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
                 st.rerun()

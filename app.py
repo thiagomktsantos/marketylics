@@ -8704,7 +8704,12 @@ elif st.session_state.pagina == "ads":
         ).start()
         st.session_state["_verificacao_pendentes_feita"] = True
 
-    if st.session_state.get("_coleta_ads_em_andamento"):
+    # Guarda se há uma coleta rodando em background pra essa sessão — usado
+    # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
+    # (sem clique) enquanto o processo não termina.
+    _coleta_em_andamento = bool(st.session_state.get("_coleta_ads_em_andamento"))
+
+    if _coleta_em_andamento:
         _ultima_coleta_ativ = None
         try:
             _res_ativ = (
@@ -8723,19 +8728,44 @@ elif st.session_state.pagina == "ads":
 
         if _ultima_coleta_ativ and _ultima_coleta_ativ.get("status") in ("concluido", "erro"):
             # A coleta em background já terminou — busca os dados novos
-            # do Supabase (session_state ainda tinha a versão antiga) e
-            # limpa o aviso.
+            # do Supabase (session_state ainda tinha a versão antiga),
+            # libera o botão de novo e atualiza o conteúdo da página
+            # automaticamente (sem precisar de clique do usuário).
             st.session_state.ads_cache = {}
             st.session_state.ads_cache = carregar_cache_ads()
             st.session_state["_coleta_ads_em_andamento"] = False
+            _coleta_em_andamento = False
             st.rerun()
         else:
-            st.info(
-                "🔵 Buscando novos anúncios... você já pode usar a página normalmente.",
-                icon="🔵",
-            )
-            if st.button("🔄 Atualizar", key="_btn_verificar_coleta_ads"):
-                st.rerun()
+            # Botão-fantasma (oculto): usado só pra receber o clique disparado
+            # automaticamente pelo timer em JS logo abaixo, que verifica de
+            # tempos em tempos se a coleta já terminou — sem exigir nenhuma
+            # ação do usuário nem mostrar avisos na tela.
+            st.button("_ads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
+            st.markdown("""
+            <style>
+            .st-key-_btn_verificar_coleta_ads {
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }
+            .stElementContainer:has(.st-key-_btn_verificar_coleta_ads) {
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            components.html("""
+            <script>
+            setTimeout(function() {
+                var btns = window.parent.document.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {
+                    var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                    if (txt === '_ads_verificar_coleta_trigger_') { btns[i].click(); return; }
+                }
+            }, 4000);
+            </script>
+            """, height=0)
 
     def empresa_tem_ads_id(e: dict) -> bool:
         if e["tipo"] == "minha":
@@ -9014,6 +9044,21 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
             </div>
         </div>"""
  
+        if _coleta_em_andamento:
+            _btn_coletar_html = (
+                '<button class="ctrl-btn btn-coletar btn-coletar-loading" disabled>'
+                '<span class="btn-coletar-spinner"></span> Buscando anúncios...</button>'
+            )
+        else:
+            _btn_coletar_html = (
+                '<button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">'
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+                'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
+                '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
+                'Buscar / Atualizar Anúncios</button>'
+            )
+
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -9070,6 +9115,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .btn-coletar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:240px; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
+.btn-coletar-loading {{ background:#3a5170; cursor:not-allowed; opacity:0.85; }}
+.btn-coletar-loading:hover {{ background:#3a5170; }}
+.btn-coletar-spinner {{
+    width:14px; height:14px; border-radius:50%; flex-shrink:0;
+    border:2px solid rgba(255,255,255,0.35); border-top-color:#fff;
+    animation:btnColetarSpin 0.8s linear infinite;
+}}
+@keyframes btnColetarSpin {{ to {{ transform:rotate(360deg); }} }}
  
 .row-coleta {{
     gap:6px; font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
@@ -9093,7 +9146,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerBuscar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Buscar / Atualizar Anúncios</button>
+        {_btn_coletar_html}
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>

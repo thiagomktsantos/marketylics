@@ -819,29 +819,38 @@ _ICONE_AVISO  = ("M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z", "#e0
 _ICONE_INFO   = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M13,17H11V11H13V17M13,9H11V7H13V9Z", "#3a9fd6")
 _ICONE_OK     = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z", "#2ecc71")
 
+def _atividade_migracao_aberta_id(user_id: str, empresa: str):
+    """Acha o id de uma atividade migracao_midia ainda aberta (pendente/
+    em_andamento) pra essa empresa específica, se existir. Devolve None
+    se não tem nenhuma. Serve de base tanto pra migracao_midia_em_
+    andamento() (só quer saber se existe) quanto pra iniciar_migracao_
+    midia_background() (quer reaproveitar o id em vez de duplicar)."""
+    if not user_id:
+        return None
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "migracao_midia")
+            .in_("status", ["pendente", "em_andamento"])
+            .order("criado_em", desc=True)
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return a["id"]
+        return None
+    except Exception:
+        return None
+
 def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
     """Confere se ainda existe uma migração de mídia (download+compressão+
     transcrição) rodando em background pra essa empresa específica —
     usado pra avisar o usuário que uma análise de IA feita agora pode não
     pegar todos os vídeos ainda (alguns podem não ter transcrição pronta
     até a migração terminar)."""
-    if not user_id:
-        return False
-    try:
-        res = (
-            supabase.table("atividades")
-            .select("detalhes")
-            .eq("user_id", user_id)
-            .eq("tipo", "migracao_midia")
-            .in_("status", ["pendente", "em_andamento"])
-            .execute()
-        )
-        for a in (res.data or []):
-            if (a.get("detalhes") or {}).get("empresa") == empresa:
-                return True
-        return False
-    except Exception:
-        return False
+    return _atividade_migracao_aberta_id(user_id, empresa) is not None
 
 def _tempo_relativo(iso_str: str) -> str:
     try:
@@ -3237,12 +3246,24 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
     a página. As empresas são processadas uma de cada vez (não em
-    paralelo) — ver _migrar_todas_empresas_sequencial."""
+    paralelo) — ver _migrar_todas_empresas_sequencial.
+
+    Antes de criar uma atividade nova, verifica se já existe uma aberta
+    (pendente/em_andamento) pra essa mesma empresa e reaproveita o id —
+    senão, toda vez que essa função roda de novo pra uma empresa que
+    ainda está com mídia pendente (ex: a verificação automática de
+    início de sessão encontrando de novo o que a migração anterior não
+    terminou), o sino ganhava mais um card duplicado pra sempre "em
+    andamento" em vez de continuar atualizando o mesmo."""
     tarefas = []
     for empresa, entry in novos.items():
-        atividade_id = criar_atividade(
-            user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
-        )
+        atividade_id = _atividade_migracao_aberta_id(user_id, empresa)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
+        else:
+            atividade_id = criar_atividade(
+                user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
+            )
         tarefas.append((empresa, entry, atividade_id))
 
     if tarefas:

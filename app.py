@@ -2946,9 +2946,18 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 # FUNÇÃO salvar_cache_ads 
 # ---------------------------------------------------
  
-def salvar_cache_ads(dados: dict, migrar_midia: bool = True):
+def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None):
     try:
-        user_id = st.session_state.user.id
+        # `user_id` deve ser passado explicitamente quando essa função é
+        # chamada de uma thread em background (ex: dentro da coleta de
+        # anúncios) — `st.session_state` não tem contexto válido fora da
+        # thread principal do Streamlit, e ler `st.session_state.user.id`
+        # nesse caso falha silenciosamente (cai no except abaixo), fazendo
+        # o save nunca acontecer de verdade, mesmo com a atividade sendo
+        # marcada como "concluído" logo em seguida. Só cai no fallback de
+        # `st.session_state` quando chamado do próprio script principal
+        # (onde o contexto existe e é seguro).
+        user_id = user_id or st.session_state.user.id
 
         dados_limpos = {}
         for empresa, entry in dados.items():
@@ -8647,7 +8656,7 @@ elif st.session_state.pagina == "ads":
             # Save rápido: mantém os links originais do Facebook (ainda
             # válidos por bem mais que 1 dia). A troca pelos links
             # permanentes do R2 acontece depois, em background também.
-            salvar_cache_ads(cache_mergeado, migrar_midia=False)
+            salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

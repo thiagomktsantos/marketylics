@@ -852,6 +852,27 @@ def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
     até a migração terminar)."""
     return _atividade_migracao_aberta_id(user_id, empresa) is not None
 
+def _agora_iso() -> str:
+    """ISO 8601 em UTC — usado pra carimbar quando uma atividade foi
+    tocada por último, sem depender de coluna própria no banco."""
+    import datetime as _dt
+    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+
+def _segundos_desde(iso_str: str) -> float:
+    """Quantos segundos se passaram desde um timestamp ISO salvo em
+    `detalhes`. Devolve infinito se o timestamp não existir ou não der
+    pra ler — assim, atividades antigas (de antes desse campo existir)
+    contam como "muito paradas" em vez de nunca serem retentadas."""
+    if not iso_str:
+        return float("inf")
+    try:
+        import datetime as _dt
+        dt = _dt.datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        agora = _dt.datetime.now(_dt.timezone.utc)
+        return (agora - dt).total_seconds()
+    except Exception:
+        return float("inf")
+
 def _tempo_relativo(iso_str: str) -> str:
     try:
         import datetime as _dt
@@ -3181,6 +3202,14 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                         f"vamos tentar de novo automaticamente)"
                     ),
                     "amostra": stats_midia.get("amostra_nao_migrados", []),
+                    # Carimba quando essa passada terminou — é o que permite
+                    # diferenciar "ainda processando agora" de "já terminou
+                    # e está só esperando a próxima tentativa" sem precisar
+                    # de coluna nova no banco. O retry automático (ver
+                    # retentar_migracoes_travadas_automaticamente) usa esse
+                    # campo pra saber há quanto tempo essa atividade está
+                    # parada antes de decidir refazer sozinho.
+                    "ultima_tentativa_em": _agora_iso(),
                 }
             elif total:
                 status_final = "concluido"
@@ -3402,6 +3431,72 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> boo
         return True
     except Exception:
         return False
+
+# ---------------------------------------------------
+#  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
+# ---------------------------------------------------
+# Antes disso, uma migração que terminava uma passada com itens pendentes
+# ficava "em_andamento" pra sempre, esperando um gatilho que só vinha
+# manual (botão "Refazer"/"Corrigir agora") ou na próxima coleta — podia
+# passar horas/dias sem ninguém perceber. Aqui a gente detecta esse
+# estado ("aviso" presente = já terminou uma passada e está esperando) e
+# refaz sozinho depois de um tempo parado, reaproveitando o mesmo
+# refazer_migracao_midia que o botão já usa — sem criar um caminho novo.
+#
+# Só retenta UMA empresa por vez (a mais parada), mesmo se várias
+# estiverem travadas ao mesmo tempo: migrações concorrentes de vídeo já
+# causaram esgotamento de processos do SO antes (ver comentário em
+# _migrar_todas_empresas_sequencial), então manter o retry automático
+# sequencial também evita repetir esse problema.
+
+LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS = 90
+
+def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS) -> bool:
+    """True quando uma atividade de migracao_midia já terminou uma
+    passada com pendências (tem 'aviso' nos detalhes) e faz mais que
+    `limiar_segundos` desde essa passada — ou seja, não tem nenhuma
+    thread rodando nela agora, só está esperando."""
+    if atividade.get("tipo") != "migracao_midia" or atividade.get("status") != "em_andamento":
+        return False
+    d = atividade.get("detalhes") or {}
+    if not d.get("aviso"):
+        # Sem 'aviso' = ou nunca rodou uma passada ainda (recém-criada),
+        # ou é uma migração antiga sem esse campo — nesses casos não dá
+        # pra saber com segurança se tem thread ativa, então não mexe.
+        return False
+    return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
+
+def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
+    """Varre as migrações de mídia em aberto do usuário e refaz
+    automaticamente a mais antiga que estiver travada (ver
+    _migracao_travada). Devolve True se disparou algum retry (útil pra
+    decidir se vale a pena um st.rerun() logo em seguida)."""
+    if not user_id:
+        return False
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes, criado_em")
+            .eq("user_id", user_id)
+            .eq("tipo", "migracao_midia")
+            .eq("status", "em_andamento")
+            .order("criado_em")
+            .execute()
+        )
+    except Exception:
+        return False
+
+    candidatas = [a for a in (res.data or []) if _migracao_travada(a)]
+    if not candidatas:
+        return False
+
+    # A mais antiga primeiro — respeita a mesma ordem que a fila
+    # sequencial original teria seguido.
+    alvo = candidatas[0]
+    empresa = (alvo.get("detalhes") or {}).get("empresa")
+    if not empresa:
+        return False
+    return bool(refazer_migracao_midia(user_id, empresa, alvo["id"]))
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
@@ -18542,6 +18637,55 @@ html, body { background: transparent; overflow: hidden; }
 """, height=70)
 
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
+
+    # ── Retry automático de migração travada ──
+    # Verifica no banco só de tempos em tempos (não a cada rerun da
+    # página) pra não martelar o Supabase toda vez que qualquer widget
+    # aqui mudar. Se achar e disparar um retry, recarrega a lista pra já
+    # refletir o novo "em_andamento" na tela.
+    if st.session_state.user:
+        import time as _time_retry
+        _agora_check_retry = _time_retry.time()
+        _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
+        if _agora_check_retry - _ultimo_check_retry >= 20:
+            st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
+            if retentar_migracoes_travadas_automaticamente(st.session_state.user.id):
+                _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50)
+
+    # Mantém a página verificando sozinha enquanto sobrar migração de
+    # mídia pendente/em andamento — sem isso o retry automático acima só
+    # rodaria quando o usuário clicasse em algo. Mesmo padrão de
+    # botão-fantasma + timer JS já usado no polling da aba de Anúncios.
+    _tem_migracao_pendente_notif = any(
+        a.get("tipo") == "migracao_midia" and a.get("status") in ("pendente", "em_andamento")
+        for a in _todas_atividades
+    )
+    if _tem_migracao_pendente_notif:
+        st.button("_notif_retry_migracao_trigger_", key="_btn_notif_retry_migracao_trigger")
+        st.markdown("""
+        <style>
+        .st-key-_btn_notif_retry_migracao_trigger {
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }
+        .stElementContainer:has(.st-key-_btn_notif_retry_migracao_trigger) {
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        components.html("""
+        <script>
+        setTimeout(function() {
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var i = 0; i < btns.length; i++) {
+                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                if (txt === '_notif_retry_migracao_trigger_') { btns[i].click(); return; }
+            }
+        }, 20000);
+        </script>
+        """, height=0)
 
     if not _todas_atividades:
         _bell_svg = _svg_icone(

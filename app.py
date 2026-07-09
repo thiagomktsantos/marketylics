@@ -823,8 +823,8 @@ def _atividade_migracao_aberta_id(user_id: str, empresa: str):
     """Acha o id de uma atividade migracao_midia ainda aberta (pendente/
     em_andamento) pra essa empresa específica, se existir. Devolve None
     se não tem nenhuma. Serve de base tanto pra migracao_midia_em_
-    andamento() (só quer saber se existe) quanto pra iniciar_migracao_
-    midia_background() (quer reaproveitar o id em vez de duplicar)."""
+    andamento() (só quer saber se existe uma rodando agora) quanto pra
+    quem precisa saber especificamente se há algo em aberto."""
     if not user_id:
         return None
     try:
@@ -835,6 +835,37 @@ def _atividade_migracao_aberta_id(user_id: str, empresa: str):
             .eq("tipo", "migracao_midia")
             .in_("status", ["pendente", "em_andamento"])
             .order("criado_em", desc=True)
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return a["id"]
+        return None
+    except Exception:
+        return None
+
+def _atividade_migracao_mais_recente_id(user_id: str, empresa: str):
+    """Acha a atividade migracao_midia mais recente dessa empresa,
+    NÃO importa o status (concluído, erro, em andamento...). Usada na
+    hora de decidir se cria uma atividade nova ou se reaproveita uma
+    existente: reaproveitar mesmo uma já 'concluída' evita duplicar o
+    card quando a mesma empresa volta a ter pendência depois (nova
+    coleta trazendo anúncios novos, ou uma varredura achando itens
+    antigos que na época não estavam ali) — antes, só reaproveitava
+    atividades em 'pendente'/'em_andamento', então qualquer empresa que
+    já tivesse fechado como 'concluído' uma vez ganhava um card NOVO na
+    próxima vez que precisasse migrar mais alguma coisa, em vez de só
+    'empurrar' a mesma pra frente de novo."""
+    if not user_id:
+        return None
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "migracao_midia")
+            .order("criado_em", desc=True)
+            .limit(50)
             .execute()
         )
         for a in (res.data or []):
@@ -2607,6 +2638,24 @@ with st.sidebar:
     pagina_atual = st.session_state.pagina
     user_email = st.session_state.user.email if st.session_state.user else ""
     _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
+
+    # ── Retry automático de migração travada ──
+    # Roda aqui (sino, que é renderizado em toda página) em vez de num
+    # timer JS próprio: assim ele só verifica quando a página já ia
+    # rerodar por qualquer outro motivo (navegação, clique em qualquer
+    # botão, etc.), sem forçar nenhum rerun extra. Forçar rerun por conta
+    # própria nessa parte do app colidia com fluxos de dois cliques com
+    # modal de confirmação (ex: excluir notificação) — o rerun artificial
+    # podia cair bem no meio da confirmação e "engolir" o clique real.
+    # Cooldown de 20s pra não bater no Supabase a cada rerun natural.
+    if st.session_state.user:
+        import time as _time_retry
+        _agora_check_retry = _time_retry.time()
+        _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
+        if _agora_check_retry - _ultimo_check_retry >= 20:
+            st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
+            retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
+
     _qtd_atividades_pendentes = _resumo_sino["total"]
     # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/
     # incompleta; sem selo = nada pendente. Antes era sempre vermelho.
@@ -3277,16 +3326,18 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
     a página. As empresas são processadas uma de cada vez (não em
     paralelo) — ver _migrar_todas_empresas_sequencial.
 
-    Antes de criar uma atividade nova, verifica se já existe uma aberta
-    (pendente/em_andamento) pra essa mesma empresa e reaproveita o id —
-    senão, toda vez que essa função roda de novo pra uma empresa que
-    ainda está com mídia pendente (ex: a verificação automática de
-    início de sessão encontrando de novo o que a migração anterior não
-    terminou), o sino ganhava mais um card duplicado pra sempre "em
-    andamento" em vez de continuar atualizando o mesmo."""
+    Antes de criar uma atividade nova, verifica se já existe QUALQUER
+    atividade migracao_midia pra essa mesma empresa (não importa o
+    status) e reaproveita o id — assim ela vira só um "empurrão" na
+    mesma notificação em vez de um card novo. Antes disso só reaproveitava
+    quando a atividade estava pendente/em_andamento; se ela já tivesse
+    fechado como 'concluído' e a empresa voltasse a ter mídia pendente
+    depois (nova coleta, ou uma varredura achando itens antigos), o sino
+    ganhava um card duplicado pra sempre 'em andamento' em vez de
+    continuar atualizando o mesmo."""
     tarefas = []
     for empresa, entry in novos.items():
-        atividade_id = _atividade_migracao_aberta_id(user_id, empresa)
+        atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa)
         if atividade_id:
             atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
         else:
@@ -18637,55 +18688,6 @@ html, body { background: transparent; overflow: hidden; }
 """, height=70)
 
     _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
-
-    # ── Retry automático de migração travada ──
-    # Verifica no banco só de tempos em tempos (não a cada rerun da
-    # página) pra não martelar o Supabase toda vez que qualquer widget
-    # aqui mudar. Se achar e disparar um retry, recarrega a lista pra já
-    # refletir o novo "em_andamento" na tela.
-    if st.session_state.user:
-        import time as _time_retry
-        _agora_check_retry = _time_retry.time()
-        _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
-        if _agora_check_retry - _ultimo_check_retry >= 20:
-            st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
-            if retentar_migracoes_travadas_automaticamente(st.session_state.user.id):
-                _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50)
-
-    # Mantém a página verificando sozinha enquanto sobrar migração de
-    # mídia pendente/em andamento — sem isso o retry automático acima só
-    # rodaria quando o usuário clicasse em algo. Mesmo padrão de
-    # botão-fantasma + timer JS já usado no polling da aba de Anúncios.
-    _tem_migracao_pendente_notif = any(
-        a.get("tipo") == "migracao_midia" and a.get("status") in ("pendente", "em_andamento")
-        for a in _todas_atividades
-    )
-    if _tem_migracao_pendente_notif:
-        st.button("_notif_retry_migracao_trigger_", key="_btn_notif_retry_migracao_trigger")
-        st.markdown("""
-        <style>
-        .st-key-_btn_notif_retry_migracao_trigger {
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }
-        .stElementContainer:has(.st-key-_btn_notif_retry_migracao_trigger) {
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        components.html("""
-        <script>
-        setTimeout(function() {
-            var btns = window.parent.document.querySelectorAll('button');
-            for (var i = 0; i < btns.length; i++) {
-                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
-                if (txt === '_notif_retry_migracao_trigger_') { btns[i].click(); return; }
-            }
-        }, 20000);
-        </script>
-        """, height=0)
 
     if not _todas_atividades:
         _bell_svg = _svg_icone(

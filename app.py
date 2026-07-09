@@ -11171,11 +11171,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                     elif img_primary:
                         all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)
+                        # Usa images_b64 (versão permanente/migrada) em vez de
+                        # `images` cru: a URL original da Meta expira, então o
+                        # modal (que antes usava `images`) parava de carregar
+                        # mesmo quando o thumb (que já usava images_b64) ainda
+                        # aparecia normalmente — mesma imagem, fonte diferente.
+                        _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
+                        _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
                         main_modal_imgs_js = _json.dumps(
-                            [img for img in [
-                                images[0] if len(images) > 0 else "",
-                                images[2] if len(images) > 2 else "",
-                            ] if img],
+                            [img for img in [_modal_src_0, _modal_src_2] if img],
                             ensure_ascii=True
                         )
                         # Mesmo selo de origem que o card de vídeo já tem —

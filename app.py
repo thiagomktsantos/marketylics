@@ -8023,23 +8023,53 @@ elif st.session_state.pagina == "ads":
         resultado = dict(cache_existente)
         for nome_empresa, novo_entry in novos.items():
             novos_ads = novo_entry.get("data", [])
-            novos_ids = {str(a.get("id", "")) for a in novos_ads if a.get("id")}
+            # Mapa id -> anúncio novo. Cada coleta nova é tratada como a
+            # fonte da verdade pra qualquer anúncio que já existia: o
+            # anunciante pode ter editado o texto, trocado a mídia (imagem
+            # ou vídeo) ou mudado o status sem trocar o código do anúncio,
+            # e a coleta antiga não pode "vencer" a coleta atual. Por isso
+            # o anúncio é substituído por completo — não só o campo
+            # "ativo" — sempre que o mesmo id volta a aparecer.
+            novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
+            novos_sem_id = [a for a in novos_ads if not a.get("id")]
+
             entry_existente = resultado.get(nome_empresa, {})
             ads_anteriores = entry_existente.get("data", [])
-            ads_anteriores_atualizados = []
+
+            ads_atualizados = []
+            ids_processados = set()
             for ad in ads_anteriores:
                 ad_id = str(ad.get("id", ""))
-                ad["ativo"] = (ad_id in novos_ids) if ad_id else ad.get("ativo", True)
-                ads_anteriores_atualizados.append(ad)
-            ids_existentes = {str(a.get("id", "")) for a in ads_anteriores_atualizados if a.get("id")}
-            for ad in novos_ads:
-                ad_id = str(ad.get("id", ""))
-                if not ad_id or ad_id not in ids_existentes:
-                    ad["ativo"] = True
-                    ads_anteriores_atualizados.append(ad)
+                if ad_id and ad_id in novos_por_id:
+                    # já existia e voltou nessa coleta -> substitui pelos
+                    # dados frescos (texto, mídia, status etc.)
+                    ad_atualizado = dict(novos_por_id[ad_id])
+                    ad_atualizado["ativo"] = True
+                    ads_atualizados.append(ad_atualizado)
+                    ids_processados.add(ad_id)
+                else:
+                    # não apareceu nessa coleta -> mantém o histórico, mas
+                    # marca como inativo quando dava pra saber (tinha id
+                    # pra comparar contra a coleta nova)
+                    ad["ativo"] = False if ad_id else ad.get("ativo", True)
+                    ads_atualizados.append(ad)
+
+            # anúncios com id que não existiam antes -> entram como novos
+            for ad_id, ad in novos_por_id.items():
+                if ad_id not in ids_processados:
+                    ad_novo = dict(ad)
+                    ad_novo["ativo"] = True
+                    ads_atualizados.append(ad_novo)
+
+            # anúncios sem id (raro) -> não dá pra comparar, sempre entram
+            for ad in novos_sem_id:
+                ad_novo = dict(ad)
+                ad_novo["ativo"] = True
+                ads_atualizados.append(ad_novo)
+
             resultado[nome_empresa] = {
                 **novo_entry,
-                "data": ads_anteriores_atualizados,
+                "data": ads_atualizados,
                 "ts": novo_entry.get("ts", entry_existente.get("ts", "")),
                 "ts_historico": entry_existente.get("ts", ""),
             }

@@ -586,16 +586,11 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
 
     Os downloads de imagem são I/O-bound (rede), mas os de vídeo agora
     também rodam ffmpeg (compressão + thumbnail) e Whisper (transcrição)
-    — trabalho pesado de CPU/processo. Por isso o processamento aqui é
-    1 anúncio por vez (max_workers=1): com muitos vídeos e várias
-    empresas migrando ao mesmo tempo, workers demais já causaram erro
-    de SO ("Resource temporarily unavailable", Errno 11) e até timeout
-    de statement no Postgres, por esgotar o limite de processos/threads
-    do sistema. Some-se a isso o _LOCK_MIGRACAO_MIDIA (ver mais abaixo),
-    que garante que só uma empresa por vez é processada em todo o
-    sistema, não só dentro de uma mesma chamada — sem esse lock, uma
-    coleta nova, uma varredura geral e um reprocessamento manual podiam
-    rodar ao mesmo tempo e multiplicar a concorrência real.
+    — trabalho pesado de CPU/processo. Por isso o pool é bem menor do
+    que seria ideal só pra rede: com muitos vídeos e várias empresas
+    migrando ao mesmo tempo, workers demais já causaram erro de SO
+    ("Resource temporarily unavailable", Errno 11) por esgotar o limite
+    de processos/threads do sistema.
 
     Devolve (resultado, stats) — stats traz quantos itens não foram
     migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
@@ -634,7 +629,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
     nao_migrados = []
-    with ThreadPoolExecutor(max_workers=1) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
             resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
             if nao_migrado:
@@ -751,11 +746,11 @@ _TIPO_ATIVIDADE_LABELS = {
     ),
     "migracao_midia": (
         "M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14A6,6 0 0,0 6,20H19A5,5 0 0,0 24,15C24,12.36 21.95,10.22 19.35,10.04Z",
-        "#3a9fd6", "Salvando anúncios na Biblioteca",
+        "#3a9fd6", "Salvando anúncios na Biblioteca de Arquivos Permanente",
     ),
     "reprocessamento_midia": (
         "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
-        "#8a97ab", "Otimizando espaço da Biblioteca",
+        "#8a97ab", "Otimizando espaço da Biblioteca de Arquivos Permanente",
     ),
     "reconciliacao_midia": (
         "M3.9,12C3.9,10.29 5.29,8.9 7,8.9H11V7H7A5,5 0 0,0 2,12A5,5 0 0,0 7,17H11V15.1H7C5.29,15.1 3.9,13.71 3.9,12M8,13H16V11H8V13M17,7H13V8.9H17C18.71,8.9 20.1,10.29 20.1,12C20.1,13.71 18.71,15.1 17,15.1H13V17H17A5,5 0 0,0 22,12A5,5 0 0,0 17,7Z",
@@ -847,7 +842,7 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "reconciliacao_midia" and ("verificados" in d or "corrigidos" in d):
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reconciliacao_midia"]
-        texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} anúncios reconectados na Biblioteca."
+        texto = f"{d.get('corrigidos', 0)} de {d.get('verificados', 0)} anúncios reconectados na Biblioteca de Arquivos Permanente."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "reparo_links" and "verificados" in d:
@@ -888,7 +883,7 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "migracao_midia" and "migradas" in d:
         path, _cor = _ICONE_OK
-        texto = f"{d['migradas']} de {d.get('total', d['migradas'])} anúncios salvos permanentemente na Biblioteca."
+        texto = f"{d['migradas']} de {d.get('total', d['migradas'])} anúncios salvos na Biblioteca de Arquivos Permanente."
         return _svg_icone(path, "currentColor", 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
@@ -3010,14 +3005,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
 
 import threading
 
-# Lock global: garante que só existe UM processamento pesado de mídia
-# (ffmpeg/Whisper) rodando por vez, não importa qual gatilho disparou
-# (coleta nova, varredura geral, retentativa, reprocessamento). Sem isso,
-# dois desses rodando ao mesmo tempo multiplicam o paralelismo interno de
-# cada um e esgotam processos/threads do SO (Errno 11) ou derrubam
-# queries por timeout no Postgres.
-_LOCK_MIGRACAO_MIDIA = threading.Lock()
-
 def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> bool:
     """Confere, direto no banco, se a empresa ainda está configurada com
     a mesma query/ads_id usada nessa coleta. Evita gastar banda e cota
@@ -3072,24 +3059,36 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         }).execute()
 
         if res.data:
-            # "concluído" não significa "tudo migrado" — se algum item
-            # falhou (rede, ffmpeg, cota), isso agora fica visível aqui
-            # em vez de escondido dentro de um sucesso geral. E quando dá
-            # tudo certo, grava quantas mídias foram migradas em vez de
-            # deixar "detalhes" vazio (senão o sino só repete o título).
-            if stats_midia.get("nao_migrados"):
+            # "concluído" só pode significar "tudo migrado". Enquanto sobrar
+            # item com link original, a atividade fica "em_andamento" (não
+            # "concluido") — assim o sino mostra quantos já foram e quantos
+            # faltam em vez de um selo verde escondendo o que não terminou,
+            # e a tela libera o botão "Refazer" pra essa mesma atividade.
+            total = stats_midia.get("total", 0)
+            nao_migrados = stats_midia.get("nao_migrados", 0)
+            migradas = total - nao_migrados
+            if nao_migrados:
+                status_final = "em_andamento"
                 detalhes_finais = {
-                    "aviso": f"{stats_midia['nao_migrados']} de {stats_midia['total']} anúncios ainda não foram salvos na Biblioteca (link original expira)",
+                    "migradas": migradas,
+                    "total": total,
+                    "aviso": (
+                        f"{migradas} de {total} anúncios salvos na Biblioteca de Arquivos "
+                        f"Permanente — {nao_migrados} ainda pendentes (link original expira; "
+                        f"vamos tentar de novo automaticamente)"
+                    ),
                     "amostra": stats_midia.get("amostra_nao_migrados", []),
                 }
-            elif stats_midia.get("total"):
+            elif total:
+                status_final = "concluido"
                 detalhes_finais = {
-                    "migradas": stats_midia["total"],
-                    "total": stats_midia["total"],
+                    "migradas": total,
+                    "total": total,
                 }
             else:
+                status_final = "concluido"
                 detalhes_finais = {}
-            atualizar_atividade(atividade_id, "concluido", detalhes_finais)
+            atualizar_atividade(atividade_id, status_final, detalhes_finais)
         else:
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
@@ -3123,30 +3122,23 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
 
     Cada empresa tem um limite de tempo proporcional à sua própria
     quantidade de mídia (ver _estimar_timeout_migracao) — se travar, a
-    fila segue pras próximas em vez de ficar parada pra sempre.
-
-    Usa _LOCK_MIGRACAO_MIDIA pra também ficar em fila com qualquer OUTRO
-    gatilho de migração pesada rodando ao mesmo tempo (varredura geral,
-    retentativa, reprocessamento) — sem isso, uma coleta nova podia
-    rodar em paralelo com uma dessas outras rotinas e voltar a somar a
-    concorrência real de processos do sistema."""
+    fila segue pras próximas em vez de ficar parada pra sempre."""
     from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
-    with _LOCK_MIGRACAO_MIDIA:
-        for empresa, entry, atividade_id in tarefas:
-            limite_segundos = _estimar_timeout_migracao(entry)
-            with _TPE(max_workers=1) as executor:
-                future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
-                try:
-                    future.result(timeout=limite_segundos)
-                except _TimeoutErr:
-                    atualizar_atividade(atividade_id, "erro", {
-                        "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
-                    })
-                    # a thread interna pode continuar rodando sozinha em segundo
-                    # plano (Python não mata thread à força), mas a fila segue.
-                except Exception as e:
-                    atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+    for empresa, entry, atividade_id in tarefas:
+        limite_segundos = _estimar_timeout_migracao(entry)
+        with _TPE(max_workers=1) as executor:
+            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
+            try:
+                future.result(timeout=limite_segundos)
+            except _TimeoutErr:
+                atualizar_atividade(atividade_id, "erro", {
+                    "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
+                })
+                # a thread interna pode continuar rodando sozinha em segundo
+                # plano (Python não mata thread à força), mas a fila segue.
+            except Exception as e:
+                atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
@@ -3155,7 +3147,7 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
     tarefas = []
     for empresa, entry in novos.items():
         atividade_id = criar_atividade(
-            user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca", {"empresa": empresa}
+            user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
         )
         tarefas.append((empresa, entry, atividade_id))
 
@@ -3344,73 +3336,67 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
         transcritas = 0
         economizado_bytes = 0
 
-        # Mesmo lock global da migração — o reprocessamento também roda
-        # ffmpeg/Whisper, então precisa ficar em fila com qualquer outra
-        # migração/varredura/retentativa rodando ao mesmo tempo, senão
-        # volta a esgotar processos do SO (Errno 11) ou estourar timeout
-        # de statement no Postgres.
-        with _LOCK_MIGRACAO_MIDIA:
-            for m in midias:
-                try:
-                    url_antiga = m["url_cdn"]
-                    # vídeos são maiores e demoram mais pra baixar/reencodar
-                    # que imagens, então usamos um timeout maior pra eles.
-                    timeout_download = 120 if m.get("tipo") == "video" else 20
-                    resp = requests.get(url_antiga, timeout=timeout_download)
-                    resp.raise_for_status()
-                    conteudo_original = resp.content
-                    tamanho_original = len(conteudo_original)
+        for m in midias:
+            try:
+                url_antiga = m["url_cdn"]
+                # vídeos são maiores e demoram mais pra baixar/reencodar
+                # que imagens, então usamos um timeout maior pra eles.
+                timeout_download = 120 if m.get("tipo") == "video" else 20
+                resp = requests.get(url_antiga, timeout=timeout_download)
+                resp.raise_for_status()
+                conteudo_original = resp.content
+                tamanho_original = len(conteudo_original)
 
-                    # transcreve vídeos que ainda não têm transcrição salva —
-                    # roda mesmo que a recompressão abaixo não ajude em nada
-                    if m.get("tipo") == "video" and not (m.get("transcricao") or "").strip():
-                        transcricao_nova = _transcrever_video_whisper(conteudo_original)
-                        if transcricao_nova:
-                            supabase.table("midias").update(
-                                {"transcricao": transcricao_nova}
-                            ).eq("id", m["id"]).execute()
-                            transcritas += 1
+                # transcreve vídeos que ainda não têm transcrição salva —
+                # roda mesmo que a recompressão abaixo não ajude em nada
+                if m.get("tipo") == "video" and not (m.get("transcricao") or "").strip():
+                    transcricao_nova = _transcrever_video_whisper(conteudo_original)
+                    if transcricao_nova:
+                        supabase.table("midias").update(
+                            {"transcricao": transcricao_nova}
+                        ).eq("id", m["id"]).execute()
+                        transcritas += 1
 
-                    conteudo_novo, content_type_novo, ext_novo = _comprimir_midia_existente(
-                        m.get("tipo"), conteudo_original, m.get("mime_type")
-                    )
-                    if not ext_novo or len(conteudo_novo) >= tamanho_original:
-                        continue  # já estava no formato/tamanho ótimo, ou comprimir não ajudou nesse caso
+                conteudo_novo, content_type_novo, ext_novo = _comprimir_midia_existente(
+                    m.get("tipo"), conteudo_original, m.get("mime_type")
+                )
+                if not ext_novo or len(conteudo_novo) >= tamanho_original:
+                    continue  # já estava no formato/tamanho ótimo, ou comprimir não ajudou nesse caso
 
-                    nova_key = m["storage_key"].rsplit(".", 1)[0] + ext_novo
-                    r2_client.put_object(
-                        Bucket=R2_BUCKET, Key=nova_key, Body=conteudo_novo, ContentType=content_type_novo,
-                    )
-                    url_nova = f"{R2_PUBLIC_BASE}/{nova_key}"
+                nova_key = m["storage_key"].rsplit(".", 1)[0] + ext_novo
+                r2_client.put_object(
+                    Bucket=R2_BUCKET, Key=nova_key, Body=conteudo_novo, ContentType=content_type_novo,
+                )
+                url_nova = f"{R2_PUBLIC_BASE}/{nova_key}"
 
-                    supabase.table("midias").update({
-                        "storage_key":   nova_key,
-                        "url_cdn":       url_nova,
-                        "mime_type":     content_type_novo,
-                        "tamanho_bytes": len(conteudo_novo),
-                    }).eq("id", m["id"]).execute()
+                supabase.table("midias").update({
+                    "storage_key":   nova_key,
+                    "url_cdn":       url_nova,
+                    "mime_type":     content_type_novo,
+                    "tamanho_bytes": len(conteudo_novo),
+                }).eq("id", m["id"]).execute()
 
-                    if nova_key != m["storage_key"]:
-                        try:
-                            r2_client.delete_object(Bucket=R2_BUCKET, Key=m["storage_key"])
-                        except Exception:
-                            pass
+                if nova_key != m["storage_key"]:
+                    try:
+                        r2_client.delete_object(Bucket=R2_BUCKET, Key=m["storage_key"])
+                    except Exception:
+                        pass
 
-                    # atualiza as referências no ads_cache — troca atômica
-                    # via RPC no Postgres, sem ler-e-regravar o blob inteiro
-                    # em Python (evita corrida com outras migrações/coletas
-                    # rodando ao mesmo tempo, mesmo com o reprocessamento
-                    # levando bastante tempo pra terminar todos os itens).
-                    supabase.rpc("substituir_url_no_ads_cache", {
-                        "p_user_id": user_id,
-                        "p_url_antiga": url_antiga,
-                        "p_url_nova": url_nova,
-                    }).execute()
+                # atualiza as referências no ads_cache — troca atômica
+                # via RPC no Postgres, sem ler-e-regravar o blob inteiro
+                # em Python (evita corrida com outras migrações/coletas
+                # rodando ao mesmo tempo, mesmo com o reprocessamento
+                # levando bastante tempo pra terminar todos os itens).
+                supabase.rpc("substituir_url_no_ads_cache", {
+                    "p_user_id": user_id,
+                    "p_url_antiga": url_antiga,
+                    "p_url_nova": url_nova,
+                }).execute()
 
-                    processadas += 1
-                    economizado_bytes += (tamanho_original - len(conteudo_novo))
-                except Exception:
-                    continue
+                processadas += 1
+                economizado_bytes += (tamanho_original - len(conteudo_novo))
+            except Exception:
+                continue
 
         economizado_mb = round(economizado_bytes / (1024 * 1024), 1)
         atualizar_atividade(atividade_id, "concluido", {
@@ -3426,7 +3412,7 @@ def iniciar_reprocessamento_midia_background(user_id: str):
     """Roda o reprocessamento de todas as mídias já salvas do usuário,
     sem travar a página. Acompanhe o resultado no sino de notificações."""
     atividade_id = criar_atividade(
-        user_id, "reprocessamento_midia", "Otimizando espaço da Biblioteca de Anúncios", {}
+        user_id, "reprocessamento_midia", "Otimizando espaço da Biblioteca de Arquivos Permanente", {}
     )
     threading.Thread(
         target=_reprocessar_midias_background,
@@ -3477,7 +3463,7 @@ def iniciar_reconciliacao_midia_background(user_id: str):
     """Reconecta mídias já migradas pro R2 que ficaram com a referência
     antiga no ads_cache. Roda em background — acompanhe no sino."""
     atividade_id = criar_atividade(
-        user_id, "reconciliacao_midia", "Reconectando anúncios já salvos na Biblioteca", {}
+        user_id, "reconciliacao_midia", "Reconectando anúncios já salvos na Biblioteca de Arquivos Permanente", {}
     )
     threading.Thread(
         target=_reconciliar_midia_background,
@@ -3513,29 +3499,25 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
             return
 
         recuperadas = 0
-        # Mesmo lock global — a retentativa também baixa/comprime/transcreve
-        # mídia (via baixar_e_persistir_midia), então precisa ficar em fila
-        # com qualquer outra migração/varredura/reprocessamento em curso.
-        with _LOCK_MIGRACAO_MIDIA:
-            for f in pendentes:
-                url_antiga = f["url_origem"]
-                nova_url = baixar_e_persistir_midia(
-                    url_antiga, user_id, f["empresa"], f.get("tipo", "imagem"), f.get("ad_id")
-                )
-                if nova_url == url_antiga:
-                    continue  # continua falhando — baixar_e_persistir_midia já incrementou a tentativa
+        for f in pendentes:
+            url_antiga = f["url_origem"]
+            nova_url = baixar_e_persistir_midia(
+                url_antiga, user_id, f["empresa"], f.get("tipo", "imagem"), f.get("ad_id")
+            )
+            if nova_url == url_antiga:
+                continue  # continua falhando — baixar_e_persistir_midia já incrementou a tentativa
 
-                # sucesso: baixar_e_persistir_midia já limpou o registro de
-                # falha; falta só apontar o ads_cache pra URL nova no R2.
-                try:
-                    supabase.rpc("substituir_url_no_ads_cache", {
-                        "p_user_id": user_id,
-                        "p_url_antiga": url_antiga,
-                        "p_url_nova": nova_url,
-                    }).execute()
-                    recuperadas += 1
-                except Exception:
-                    pass
+            # sucesso: baixar_e_persistir_midia já limpou o registro de
+            # falha; falta só apontar o ads_cache pra URL nova no R2.
+            try:
+                supabase.rpc("substituir_url_no_ads_cache", {
+                    "p_user_id": user_id,
+                    "p_url_antiga": url_antiga,
+                    "p_url_nova": nova_url,
+                }).execute()
+                recuperadas += 1
+            except Exception:
+                pass
 
         atualizar_atividade(atividade_id, "concluido", {
             "verificadas": len(pendentes),
@@ -3551,7 +3533,7 @@ def iniciar_retentativa_midias_background(user_id: str):
     automaticamente (a cada nova coleta) quanto manualmente pelo botão
     na aba de perfil."""
     atividade_id = criar_atividade(
-        user_id, "retentativa_midia", "Tentando salvar anúncios pendentes na Biblioteca", {}
+        user_id, "retentativa_midia", "Tentando salvar anúncios pendentes na Biblioteca de Arquivos Permanente", {}
     )
     threading.Thread(
         target=_tentar_novamente_midias_background,
@@ -3612,52 +3594,63 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
 
         from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
-        # Mesmo lock usado pela migração normal — a varredura geral não
-        # pode rodar ffmpeg/Whisper ao mesmo tempo que uma migração
-        # disparada por uma coleta nova, retentativa ou reprocessamento.
         verificadas_total, ainda_pendentes_total = 0, 0
-        with _LOCK_MIGRACAO_MIDIA:
-            for empresa, entry in ads_cache.items():
-                n_pendentes_empresa = sum(
-                    1 for ad in entry.get("data", []) for u in (ad.get("images") or []) + (ad.get("videos") or [])
-                    if u and not _e_r2(u)
-                )
-                if n_pendentes_empresa == 0:
-                    continue  # essa empresa já está tudo migrado — pula sem gastar tempo
+        for empresa, entry in ads_cache.items():
+            n_pendentes_empresa = sum(
+                1 for ad in entry.get("data", []) for u in (ad.get("images") or []) + (ad.get("videos") or [])
+                if u and not _e_r2(u)
+            )
+            if n_pendentes_empresa == 0:
+                continue  # essa empresa já está tudo migrado — pula sem gastar tempo
 
-                limite_segundos = _estimar_timeout_migracao(entry)
-                with _TPE(max_workers=1) as executor:
-                    future = executor.submit(persistir_midias_de_ads, {empresa: entry}, user_id)
-                    try:
-                        migrado, stats = future.result(timeout=limite_segundos)
-                    except _TimeoutErr:
-                        ainda_pendentes_total += n_pendentes_empresa
-                        continue
-                    except Exception:
-                        ainda_pendentes_total += n_pendentes_empresa
-                        continue
+            limite_segundos = _estimar_timeout_migracao(entry)
+            with _TPE(max_workers=1) as executor:
+                future = executor.submit(persistir_midias_de_ads, {empresa: entry}, user_id)
+                try:
+                    migrado, stats = future.result(timeout=limite_segundos)
+                except _TimeoutErr:
+                    ainda_pendentes_total += n_pendentes_empresa
+                    continue
+                except Exception:
+                    ainda_pendentes_total += n_pendentes_empresa
+                    continue
 
-                atualizacoes = {
-                    str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
-                }
-                if atualizacoes:
-                    try:
-                        supabase.rpc("atualizar_ads_no_cache", {
-                            "p_user_id": user_id,
-                            "p_empresa": empresa,
-                            "p_atualizacoes": atualizacoes,
-                        }).execute()
-                    except Exception:
-                        pass
+            atualizacoes = {
+                str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
+            }
+            if atualizacoes:
+                try:
+                    supabase.rpc("atualizar_ads_no_cache", {
+                        "p_user_id": user_id,
+                        "p_empresa": empresa,
+                        "p_atualizacoes": atualizacoes,
+                    }).execute()
+                except Exception:
+                    pass
 
-                verificadas_total += stats.get("total", 0)
-                ainda_pendentes_total += stats.get("nao_migrados", 0)
+            verificadas_total += stats.get("total", 0)
+            ainda_pendentes_total += stats.get("nao_migrados", 0)
 
-        atualizar_atividade(atividade_id, "concluido", {
-            "pendentes_antes": pendentes_antes,
-            "verificadas": verificadas_total,
-            "ainda_pendentes_depois": ainda_pendentes_total,
-        })
+        # Mesma regra da migração pontual: só é "concluido" se não sobrou
+        # nenhum anúncio pendente. Sobrando algum, fica "em_andamento" com
+        # o progresso visível, em vez de fechar como sucesso escondendo o
+        # que ainda falta migrar.
+        if ainda_pendentes_total:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "migradas": verificadas_total - ainda_pendentes_total,
+                "total": verificadas_total,
+                "aviso": (
+                    f"{verificadas_total - ainda_pendentes_total} de {verificadas_total} salvos na "
+                    f"Biblioteca de Arquivos Permanente — {ainda_pendentes_total} ainda pendentes "
+                    f"(vamos tentar de novo automaticamente)"
+                ),
+            })
+        else:
+            atualizar_atividade(atividade_id, "concluido", {
+                "pendentes_antes": pendentes_antes,
+                "verificadas": verificadas_total,
+                "ainda_pendentes_depois": 0,
+            })
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
@@ -17865,19 +17858,19 @@ html, body { background: transparent; overflow: hidden; }
                         st.toast("Senha alterada!", icon="✅")
 
         with st.container(border=True):
-            st.markdown("**Biblioteca de Anúncios**")
+            st.markdown("**Biblioteca de Arquivos Permanente**")
             st.caption(
                 "Anúncios salvos aqui continuam acessíveis mesmo depois que o link original do "
                 "Facebook expira. Essas ações rodam em background — acompanhe o resultado no sino "
                 "de notificações."
             )
-            if st.button("🗜️ Otimizar espaço da Biblioteca", key="_btn_reprocessar_midia"):
+            if st.button("🗜️ Otimizar espaço da Biblioteca de Arquivos Permanente", key="_btn_reprocessar_midia"):
                 iniciar_reprocessamento_midia_background(st.session_state.user.id)
                 st.toast("Otimização iniciada — acompanhe no sino de notificações.", icon="🗜️")
 
             st.caption(
                 "Se algum anúncio ainda estiver mostrando o link original do Facebook mesmo depois "
-                "de já ter sido salvo na Biblioteca, use o botão abaixo pra reconectar."
+                "de já ter sido salvo na Biblioteca de Arquivos Permanente, use o botão abaixo pra reconectar."
             )
             if st.button("🔗 Reconectar anúncios já salvos", key="_btn_reconciliar_midia"):
                 iniciar_reconciliacao_midia_background(st.session_state.user.id)
@@ -17895,9 +17888,9 @@ html, body { background: transparent; overflow: hidden; }
                 st.toast("Nova tentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
 
             st.caption(
-                "As verificações acima só olham se o link **já é** da Biblioteca — não confirmam "
-                "se o arquivo continua acessível lá. Use o botão abaixo pra checar de verdade e "
-                "reparar links que quebraram depois de já terem sido salvos."
+                "As verificações acima só olham se o link **já é** da Biblioteca de Arquivos "
+                "Permanente — não confirmam se o arquivo continua acessível lá. Use o botão abaixo "
+                "pra checar de verdade e reparar links que quebraram depois de já terem sido salvos."
             )
             if st.button("🩺 Verificar se os links salvos ainda funcionam", key="_btn_reparar_links"):
                 iniciar_reparo_links_quebrados(st.session_state.user.id)
@@ -18062,7 +18055,7 @@ html, body { background: transparent; overflow: hidden; }
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
         _ja_na_biblioteca = _total_ads_geral - _total_pendentes_link
         _detalhe_link = (
-            f"{_ja_na_biblioteca} já salvos na Biblioteca de Anúncios"
+            f"{_ja_na_biblioteca} já salvos na Biblioteca de Arquivos Permanente"
             if _total_ads_geral else "nenhum anúncio coletado ainda"
         )
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'

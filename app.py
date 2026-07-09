@@ -8003,8 +8003,8 @@ elif st.session_state.pagina == "ads":
     CACHE_TTL_HORAS = 24
     APIFY_ACTOR_ID  = "curious_coder~facebook-ads-library-scraper"
 
-    def carregar_cache_ads() -> dict:
-        if st.session_state.get("ads_cache"):
+    def carregar_cache_ads(forcar: bool = False) -> dict:
+        if not forcar and st.session_state.get("ads_cache"):
             return st.session_state.ads_cache
         try:
             res = (
@@ -8685,6 +8685,26 @@ elif st.session_state.pagina == "ads":
         st.session_state["_coleta_ads_em_andamento"] = True
         st.rerun()
 
+    def _ultima_atividade_coleta_ads(user_id: str):
+        """Busca a atividade `coleta_ads` mais recente direto no banco.
+        Serve de fonte da verdade pra sincronizar a tela, em vez de
+        depender só da flag de sessão `_coleta_ads_em_andamento` — que se
+        perde se o usuário sair da aba Ads, recarregar a página, ou o
+        polling em JS falhar por qualquer motivo."""
+        try:
+            res = (
+                supabase.table("atividades")
+                .select("id, status, criado_em")
+                .eq("user_id", user_id)
+                .eq("tipo", "coleta_ads")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception:
+            return None
+
     if "ads_cache" not in st.session_state or not st.session_state.ads_cache:
         st.session_state.ads_cache = carregar_cache_ads()
     if "ads_erro" not in st.session_state:
@@ -8704,35 +8724,65 @@ elif st.session_state.pagina == "ads":
         ).start()
         st.session_state["_verificacao_pendentes_feita"] = True
 
+    # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
+    # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
+    # `_coleta_ads_em_andamento` estivesse True — e essa flag só existia
+    # porque um botão-fantasma era clicado via JS a cada ~4s enquanto a
+    # aba Ads ficasse montada. Se o usuário saísse da aba, recarregasse a
+    # página, ou o rerun automático falhasse por qualquer motivo enquanto
+    # a coleta ainda rodava em background, a flag se perdia (ou nunca era
+    # setada de novo) e `ads_cache` ficava travado pra sempre na versão
+    # antiga — mesmo com o merge/migração já concluído certinho no banco
+    # (é isso que fazia "Baixar JSON" e "Últ. busca" mostrarem dado velho).
+    #
+    # Agora essa checagem roda em TODO render da página, comparando o id
+    # da atividade mais recente com o último id que a sessão já processou
+    # — independente do valor da flag. Isso garante que, assim que a
+    # página é renderizada de novo (mesmo que só porque o usuário voltou
+    # pra aba ou recarregou), o cache é ressincronizado com o Supabase.
+    _ultima_atividade_ads = None
+    if st.session_state.get("user"):
+        _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
+
+    if "_ads_ultima_atividade_id_vista" not in st.session_state:
+        # Primeira renderização dessa sessão: `ads_cache` acabou de ser
+        # carregado fresco do banco (bloco acima), então já está em dia
+        # com essa atividade — só marca a "baseline", sem forçar reload.
+        st.session_state["_ads_ultima_atividade_id_vista"] = (
+            _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
+        )
+        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "em_andamento"):
+            # Chegou na página com uma coleta já rodando (ex: iniciada
+            # antes de um refresh) — garante que o polling seja retomado.
+            st.session_state["_coleta_ads_em_andamento"] = True
+    elif _ultima_atividade_ads and _ultima_atividade_ads.get("id") != st.session_state["_ads_ultima_atividade_id_vista"]:
+        if _ultima_atividade_ads.get("status") in ("concluido", "erro"):
+            # Atividade nova (que a sessão ainda não tinha visto) já
+            # terminou — busca os dados direto do Supabase, ignorando
+            # qualquer coisa que já estivesse em `ads_cache`, libera o
+            # botão de novo e atualiza a tela automaticamente.
+            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads["id"]
+            st.session_state["_coleta_ads_em_andamento"] = False
+            st.rerun()
+        else:
+            # Nova coleta detectada e ainda rodando — mantém o polling
+            # ativo mesmo que a flag local tivesse se perdido.
+            st.session_state["_coleta_ads_em_andamento"] = True
+
     # Guarda se há uma coleta rodando em background pra essa sessão — usado
     # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
     # (sem clique) enquanto o processo não termina.
     _coleta_em_andamento = bool(st.session_state.get("_coleta_ads_em_andamento"))
 
     if _coleta_em_andamento:
-        _ultima_coleta_ativ = None
-        try:
-            _res_ativ = (
-                supabase.table("atividades")
-                .select("status, detalhes")
-                .eq("user_id", st.session_state.user.id)
-                .eq("tipo", "coleta_ads")
-                .order("criado_em", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if _res_ativ.data:
-                _ultima_coleta_ativ = _res_ativ.data[0]
-        except Exception:
-            pass
-
-        if _ultima_coleta_ativ and _ultima_coleta_ativ.get("status") in ("concluido", "erro"):
-            # A coleta em background já terminou — busca os dados novos
-            # do Supabase (session_state ainda tinha a versão antiga),
-            # libera o botão de novo e atualiza o conteúdo da página
-            # automaticamente (sem precisar de clique do usuário).
-            st.session_state.ads_cache = {}
-            st.session_state.ads_cache = carregar_cache_ads()
+        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
+            # Cobre o caso em que a atividade mais recente já era a mesma
+            # id vista antes (ex: sessão nova mas ficou marcada como em
+            # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
+            # sem um id novo pra comparar.
+            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
             st.session_state["_coleta_ads_em_andamento"] = False
             _coleta_em_andamento = False
             st.rerun()
@@ -8918,14 +8968,16 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         _emp_dd_ghost_css_parts.append(f"""
         .st-key-{_k_comp_h},
         .st-key-ads_buscar_header_btn,
-        .st-key-ads_limpar_cache_btn {{
+        .st-key-ads_limpar_cache_btn,
+        .st-key-ads_forcar_atualizacao_btn {{
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
             opacity:0 !important; pointer-events:none !important; display:none !important;
         }}
         .stElementContainer:has(.st-key-{_k_comp_h}),
         .stElementContainer:has(.st-key-ads_buscar_header_btn),
-        .stElementContainer:has(.st-key-ads_limpar_cache_btn) {{
+        .stElementContainer:has(.st-key-ads_limpar_cache_btn),
+        .stElementContainer:has(.st-key-ads_forcar_atualizacao_btn) {{
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
         }}
@@ -8969,6 +9021,18 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                     pass
                 st.toast("Cache limpo!", icon="🗑️")
                 st.rerun()
+
+        # Ghost: forçar atualização — ignora tudo que já está em
+        # `session_state` e busca o cache direto do Supabase. Serve de
+        # via de escape manual pra qualquer cenário em que a sincronização
+        # automática (acima) ainda não tenha rodado nesse render.
+        if st.button("ads_forcar_atualizacao", key="ads_forcar_atualizacao_btn"):
+            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_ads_ultima_atividade_id_vista"] = (
+                _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
+            )
+            st.toast("Anúncios atualizados!", icon="🔄")
+            st.rerun()
  
         # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
         _djs = "[]"
@@ -9170,6 +9234,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
+            <button class="link-btn" onclick="triggerForcar()" title="Rebusca o cache mais recente do servidor, ignorando o que já foi carregado nesta sessão"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Atualizar</button>
+            <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if _ultima_ts else ''}
     </div>
@@ -9202,6 +9268,7 @@ function triggerGhost(label){{
     for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
 }}
 function triggerBuscar(){{ triggerGhost('ads_buscar_header_trigger'); }}
+function triggerForcar(){{ triggerGhost('ads_forcar_atualizacao'); }}
 function triggerLimpar() {{
     abrirConfirmacao(
         '🗑️ Limpar cache de anúncios',

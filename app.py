@@ -8843,10 +8843,30 @@ elif st.session_state.pagina == "ads":
     # ══════════════════════════════════════════════════════════════════
 
     _ultima_ts = ""
+    _emp_ativa_ts_ref = st.session_state.get("ads_empresa_ativa", "")
     if st.session_state.ads_cache:
-        _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
-        if _tss:
-            _ultima_ts = min(_tss)
+        # Prioridade 1: timestamp da própria empresa selecionada — é o que
+        # o usuário espera ver ao lado do botão "Buscar / Atualizar" dela.
+        # Antes o código pegava o MIN (mais antigo) entre TODAS as empresas
+        # do cache, sem filtrar pela selecionada: se qualquer outra empresa
+        # monitorada estivesse desatualizada há dias, "Últ. busca" ficava
+        # preso nela mesmo depois de rodar uma coleta nova pra empresa atual.
+        _entry_ativa = st.session_state.ads_cache.get(_emp_ativa_ts_ref, {}) if _emp_ativa_ts_ref else {}
+        _ultima_ts = _entry_ativa.get("ts", "")
+
+        if not _ultima_ts:
+            # Fallback: nenhuma coleta registrada pra empresa ativa ainda —
+            # mostra a coleta mais recente do cache geral. Usa parsing de
+            # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
+            # não ordena corretamente como texto.
+            def _parse_ts_ads(s):
+                try:
+                    return _dt.datetime.strptime(s, "%d/%m/%Y %H:%M")
+                except Exception:
+                    return _dt.datetime.min
+            _tss = [v.get("ts", "") for v in st.session_state.ads_cache.values() if v.get("ts")]
+            if _tss:
+                _ultima_ts = max(_tss, key=_parse_ts_ads)
 
     h1_col, h2_col = st.columns([5, 5])
 

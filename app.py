@@ -671,6 +671,19 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     except Exception:
         pass
 
+def excluir_atividade(atividade_id: str) -> bool:
+    """Remove uma atividade do sino de notificações. Usado pelo botão de
+    excluir na página de notificações — principalmente pra limpar
+    atividades com erro que, sem essa opção, ficavam acumulando na lista
+    pra sempre (como se ainda estivessem "ativas")."""
+    if not atividade_id:
+        return False
+    try:
+        supabase.table("atividades").delete().eq("id", atividade_id).execute()
+        return True
+    except Exception:
+        return False
+
 def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     try:
         res = (
@@ -698,6 +711,29 @@ def contar_atividades_pendentes(user_id: str) -> int:
     except Exception:
         return 0
 
+def resumo_sino_atividades(user_id: str) -> dict:
+    """Conta atividades que ainda pedem atenção, separando por urgência —
+    usado só pra colorir o selo do sino: vermelho quando tem "erro" (o
+    usuário precisa agir, ex: clicar Refazer), amarelo quando só tem
+    coisa em andamento/incompleta (ex: migração que ainda não terminou
+    de salvar tudo), e nenhum selo quando não há nada pendente. Antes o
+    selo era sempre vermelho, então erro e "só rodando" pareciam a
+    mesma coisa."""
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("status")
+            .eq("user_id", user_id)
+            .in_("status", ["pendente", "em_andamento", "erro"])
+            .execute()
+        )
+        linhas = res.data or []
+        n_erro = sum(1 for r in linhas if r.get("status") == "erro")
+        n_andamento = len(linhas) - n_erro
+        return {"total": len(linhas), "erro": n_erro, "andamento": n_andamento}
+    except Exception:
+        return {"total": 0, "erro": 0, "andamento": 0}
+
 # Ícones em SVG cheio (preenchido) por status — substituem os emojis
 # antigos (🕓 🔵 ✅ ⚠️) pra ter um visual consistente e nítido em
 # qualquer SO/navegador. "path" é o path data de um ícone sólido
@@ -709,7 +745,9 @@ _ATIVIDADE_STATUS_UI = {
     },
     "em_andamento": {
         "path": "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4M12,4A8,8 0 0,1 20,12H22A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12H2A10,10 0 0,0 12,22A10,10 0 0,0 22,12H20A8,8 0 0,1 12,20",
-        "cor": "#3a9fd6", "label": "Em andamento",
+        # âmbar (em vez do azul antigo) — cor consistente com o sino, onde
+        # amarelo agora sinaliza "algo em andamento/incompleto".
+        "cor": "#f59e0b", "label": "Em andamento",
     },
     "concluido": {
         "path": "M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z",
@@ -816,6 +854,30 @@ def _tempo_relativo(iso_str: str) -> str:
         return f"há {int(seg // 86400)} d"
     except Exception:
         return ""
+
+_PARES_PROGRESSO_POR_TIPO = {
+    # tipo: (chave_feitos, chave_total) — usado só pra desenhar a barra
+    # de progresso com %; cobre os tipos cujos detalhes trazem uma
+    # contagem "x de y" pareada.
+    "migracao_midia":        ("migradas", "total"),
+    "reprocessamento_midia": ("processadas", "total"),
+    "reconciliacao_midia":   ("corrigidos", "verificados"),
+    "retentativa_midia":     ("recuperadas", "verificadas"),
+}
+
+def _progresso_atividade(atividade: dict):
+    """Devolve (feitos, total) pra desenhar a barra de progresso, ou
+    None quando essa atividade não tem uma contagem pareada nos
+    detalhes (ex: erro sem dados, ou tipo sem noção de progresso)."""
+    d = atividade.get("detalhes") or {}
+    par = _PARES_PROGRESSO_POR_TIPO.get(atividade.get("tipo", ""))
+    if not par:
+        return None
+    chave_feitos, chave_total = par
+    total = d.get(chave_total)
+    if chave_feitos not in d or not total:
+        return None
+    return (d[chave_feitos], total)
 
 def _formatar_detalhes_atividade(atividade: dict):
     """Traduz o campo `detalhes` (livre, varia por tipo de atividade) em
@@ -2509,8 +2571,15 @@ with st.sidebar:
 
     pagina_atual = st.session_state.pagina
     user_email = st.session_state.user.email if st.session_state.user else ""
-    _qtd_atividades_pendentes = contar_atividades_pendentes(st.session_state.user.id) if st.session_state.user else 0
-    _badge_html = f'<span class="badge">{_qtd_atividades_pendentes}</span>' if _qtd_atividades_pendentes else ""
+    _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
+    _qtd_atividades_pendentes = _resumo_sino["total"]
+    # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/
+    # incompleta; sem selo = nada pendente. Antes era sempre vermelho.
+    _cor_badge_sino = "#e05252" if _resumo_sino["erro"] else "#f59e0b"
+    _badge_html = (
+        f'<span class="badge" style="background:{_cor_badge_sino}">{_qtd_atividades_pendentes}</span>'
+        if _qtd_atividades_pendentes else ""
+    )
 
     _nome_exibido = obter_nome_usuario()
     _plano_atual = obter_plano_usuario()
@@ -2733,7 +2802,7 @@ body {{
             <i class="fa-solid fa-chevron-down chevron"></i>
         </div>
         <div class="footer-right-group">
-            <button class="btn-sino" onclick="nav('notificacoes')" title="Atividades">
+            <button class="btn-sino" onclick="nav('notificacoes')" title="{('Tem atividade com erro — clique para ver' if _resumo_sino['erro'] else ('Atividades em andamento' if _resumo_sino['andamento'] else 'Atividades'))}">
                 <i class="fa-solid fa-bell"></i>
                 {_badge_html}
             </button>
@@ -18443,6 +18512,7 @@ html, body { background: transparent; overflow: hidden; }
     else:
         _n_ativ = len(_todas_atividades)
         _refazer_ids = []
+        _excluir_ids = []
         _cards_notif_html = ""
 
         for _pos, _a in enumerate(_todas_atividades):
@@ -18458,9 +18528,11 @@ html, body { background: transparent; overflow: hidden; }
                 and bool(_empresa_ativ)
             )
             _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
-            _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer
+            _progresso_ativ = _progresso_atividade(_a)
+            _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
             if _pode_refazer:
                 _refazer_ids.append(_id_ativ)
+            _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
             _titulo_safe = (_a.get("titulo") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -18475,6 +18547,29 @@ html, body { background: transparent; overflow: hidden; }
                 </span>
             """ if _tem_detalhe else ""
 
+            _excluir_svg = _svg_icone(
+                "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
+                "currentColor", 14,
+            )
+            _excluir_btn_html = f'<button class="btn-excluir" data-idx="{_id_ativ}" title="Excluir">{_excluir_svg}</button>'
+
+            _progresso_html = ""
+            if _progresso_ativ:
+                _feitos_p, _total_p = _progresso_ativ
+                _pct_p = max(0, min(100, round((_feitos_p / _total_p) * 100))) if _total_p else 0
+                _cor_barra = _ui["cor"]  # acompanha o status: âmbar em andamento, verde quando concluído
+                _progresso_html = f"""
+                    <div class="notif-progress-wrap">
+                        <div class="notif-progress-track">
+                            <div class="notif-progress-fill" style="width:{_pct_p}%;background:{_cor_barra}"></div>
+                        </div>
+                        <div class="notif-progress-label">
+                            <span>{_feitos_p} de {_total_p}</span>
+                            <span>{_pct_p}%</span>
+                        </div>
+                    </div>
+                """
+
             _corpo_html = ""
             if _tem_detalhe:
                 _corpo_html += "<div class=\"notif-body-inner\">"
@@ -18484,6 +18579,7 @@ html, body { background: transparent; overflow: hidden; }
                         f'<span class="notif-detail-icon">{_detalhe_icone_ativ}</span>'
                         f'{_detalhe_safe}</div>'
                     )
+                _corpo_html += _progresso_html
                 if _pode_refazer:
                     _refazer_svg = _svg_icone(
                         "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
@@ -18509,6 +18605,7 @@ html, body { background: transparent; overflow: hidden; }
             <span class="notif-time">· {_tempo_safe}</span>
         </div>
         <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">{_ui['label']}</span>
+        {_excluir_btn_html}
         {_chevron_svg}
     </div>
     {_body_bloco}
@@ -18564,6 +18661,22 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .btn-refazer-icon { display:flex; align-items:center; }
 .btn-refazer-icon svg { display:block; }
 .btn-refazer:hover .btn-refazer-icon svg { fill:#1d4ed8; }
+.notif-progress-wrap { margin-top:10px; }
+.notif-progress-track {
+    width:100%; height:7px; border-radius:5px; background:#eef1f5; overflow:hidden;
+}
+.notif-progress-fill { height:100%; border-radius:5px; transition:width 0.3s ease; }
+.notif-progress-label {
+    display:flex; justify-content:space-between; margin-top:5px;
+    font-size:11.5px; color:#6b7280; font-weight:600;
+}
+.btn-excluir {
+    display:flex; align-items:center; justify-content:center;
+    width:26px; height:26px; flex-shrink:0; border:none; border-radius:7px;
+    background:transparent; color:#b0b8c4; cursor:pointer; transition:all 0.15s;
+}
+.btn-excluir svg { display:block; }
+.btn-excluir:hover { background:#fee2e2; color:#e05252; }
 """
 
         components.html(f"""
@@ -18602,9 +18715,19 @@ function refazerNotif(idx) {{
     if (el) el.click();
 }}
 
+function excluirNotif(idx) {{
+    if (!window.confirm('Excluir esta notificação? Essa ação não pode ser desfeita.')) return;
+    var doc = window.parent.document;
+    var el = doc.querySelector('.st-key-btn_excluir_ativ_' + idx + ' button');
+    if (el) el.click();
+}}
+
 document.addEventListener('click', function(e) {{
     var rf = e.target.closest('.btn-refazer');
     if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
+
+    var ex = e.target.closest('.btn-excluir');
+    if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
 
     var hdr = e.target.closest('.notif-hdr.has-detail');
     if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
@@ -18640,4 +18763,24 @@ setTimeout(syncH, 500);
                     st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                 else:
                     st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
+                st.rerun()
+
+        # Mesmo truque pro botão de excluir — disponível em toda atividade,
+        # não só nas com erro, pra dar liberdade de limpar a lista.
+        _acoes_excluir = {}
+        for _eid in _excluir_ids:
+            _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
+
+        if _excluir_ids:
+            _excluir_hide_css = "\n".join([
+                f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
+                f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
+                for _eid in _excluir_ids
+            ])
+            st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
+
+        for _eid in _excluir_ids:
+            if _acoes_excluir.get(_eid):
+                if excluir_atividade(_eid):
+                    st.toast("Notificação excluída.", icon="🗑️")
                 st.rerun()

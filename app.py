@@ -2605,6 +2605,387 @@ if not st.session_state.logado:
     st.stop()
 
 # ---------------------------------------------------
+#  MIGRAÇÃO DE MÍDIA EM BACKGROUND
+# ---------------------------------------------------
+# A página abre rápido com os links originais do Facebook (que ainda
+# duram bem mais que 1 dia). Em paralelo, uma thread baixa e sobe as
+# mídias pro R2 e atualiza o ads_cache — sem bloquear a navegação.
+
+import threading
+
+def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> bool:
+    """Confere, direto no banco, se a empresa ainda está configurada com
+    a mesma query/ads_id usada nessa coleta. Evita gastar banda e cota
+    de mídia processando uma empresa que o usuário já corrigiu ou
+    removeu logo depois de pedir a busca por engano."""
+    try:
+        res = (
+            supabase.table("ci_dados")
+            .select("minha_empresa, concorrentes")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        if not res.data:
+            return False
+        row = res.data[0]
+        candidatos = [row.get("minha_empresa") or {}] + (row.get("concorrentes") or [])
+        for c in candidatos:
+            if c.get("nome") != empresa_nome:
+                continue
+            ads_id_atual = (c.get("ads_id") or "").strip()
+            # nome bate; se não há ads_id configurado ou ele continua
+            # igual ao usado na coleta, a empresa segue válida
+            return (not ads_id_atual) or (ads_id_atual == query_usada)
+        return False  # nome não existe mais na configuração do usuário
+    except Exception:
+        return True  # checagem é só economia — em dúvida, não bloqueia
+
+def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
+    try:
+        if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
+            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
+            return
+
+        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id)
+
+        # Atualização atômica: troca só os anúncios migrados (por id),
+        # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
+        # Python. Isso evita a corrida entre migrações concorrentes de
+        # empresas diferentes e nunca perde anúncios históricos que não
+        # vieram nessa coleta específica.
+        atualizacoes = {
+            str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
+        }
+        if not atualizacoes:
+            atualizar_atividade(atividade_id, "concluido", {"motivo": "nenhum anúncio com id pra atualizar"})
+            return
+
+        res = supabase.rpc("atualizar_ads_no_cache", {
+            "p_user_id": user_id,
+            "p_empresa": empresa,
+            "p_atualizacoes": atualizacoes,
+        }).execute()
+
+        if res.data:
+            # "concluído" só pode significar "tudo migrado". Enquanto sobrar
+            # item com link original, a atividade fica "em_andamento" (não
+            # "concluido") — assim o sino mostra quantos já foram e quantos
+            # faltam em vez de um selo verde escondendo o que não terminou,
+            # e a tela libera o botão "Refazer" pra essa mesma atividade.
+            total = stats_midia.get("total", 0)
+            nao_migrados = stats_midia.get("nao_migrados", 0)
+            migradas = total - nao_migrados
+            if nao_migrados:
+                status_final = "em_andamento"
+                detalhes_finais = {
+                    "migradas": migradas,
+                    "total": total,
+                    "aviso": (
+                        f"{migradas} de {total} anúncios salvos na Biblioteca de Arquivos "
+                        f"Permanente — {nao_migrados} ainda pendentes (link original expira; "
+                        f"vamos tentar de novo automaticamente)"
+                    ),
+                    "amostra": stats_midia.get("amostra_nao_migrados", []),
+                    # Carimba quando essa passada terminou — é o que permite
+                    # diferenciar "ainda processando agora" de "já terminou
+                    # e está só esperando a próxima tentativa" sem precisar
+                    # de coluna nova no banco. O retry automático (ver
+                    # retentar_migracoes_travadas_automaticamente) usa esse
+                    # campo pra saber há quanto tempo essa atividade está
+                    # parada antes de decidir refazer sozinho.
+                    "ultima_tentativa_em": _agora_iso(),
+                }
+            elif total:
+                status_final = "concluido"
+                detalhes_finais = {
+                    "migradas": total,
+                    "total": total,
+                }
+            else:
+                status_final = "concluido"
+                detalhes_finais = {}
+            atualizar_atividade(atividade_id, status_final, detalhes_finais)
+        else:
+            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def _estimar_timeout_migracao(entry: dict) -> int:
+    """Calcula um limite de tempo proporcional à quantidade de mídia
+    dessa empresa, em vez de um número fixo — uma empresa com poucas
+    imagens não devia ganhar 20 minutos de crédito de dúvida, e uma com
+    muitos vídeos pode legitimamente precisar de mais que isso."""
+    ads = entry.get("data", [])
+    n_imagens = sum(len(a.get("images") or []) for a in ads)
+    n_videos = sum(len(a.get("videos") or []) for a in ads)
+
+    # tetos generosos por item (pior caso: rede lenta, ffmpeg, whisper)
+    SEGUNDOS_POR_IMAGEM = 20
+    SEGUNDOS_POR_VIDEO = 180
+    PARALELISMO = 3  # bate com o max_workers do ThreadPoolExecutor
+
+    tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
+    return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
+
+def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
+    """Roda a migração de cada empresa uma depois da outra (não em
+    paralelo). Antes, cada empresa disparava sua própria thread ao
+    mesmo tempo — com vídeo, isso significava várias empresas rodando
+    ffmpeg/Whisper simultaneamente e esgotando o limite de processos do
+    sistema (Errno 11, "Resource temporarily unavailable"), o que
+    inclusive deixava outras migrações travadas em "Em andamento" pra
+    sempre. Rodar em sequência é mais lento no total, mas nunca trava.
+
+    Cada empresa tem um limite de tempo proporcional à sua própria
+    quantidade de mídia (ver _estimar_timeout_migracao) — se travar, a
+    fila segue pras próximas em vez de ficar parada pra sempre."""
+    from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
+
+    for empresa, entry, atividade_id in tarefas:
+        limite_segundos = _estimar_timeout_migracao(entry)
+        with _TPE(max_workers=1) as executor:
+            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
+            try:
+                future.result(timeout=limite_segundos)
+            except _TimeoutErr:
+                atualizar_atividade(atividade_id, "erro", {
+                    "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
+                })
+                # a thread interna pode continuar rodando sozinha em segundo
+                # plano (Python não mata thread à força), mas a fila segue.
+            except Exception as e:
+                atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_migracao_midia_background(user_id: str, novos: dict):
+    """Migra as mídias das empresas recém-coletadas pro R2, sem travar
+    a página. As empresas são processadas uma de cada vez (não em
+    paralelo) — ver _migrar_todas_empresas_sequencial.
+
+    Antes de criar uma atividade nova, verifica se já existe QUALQUER
+    atividade migracao_midia pra essa mesma empresa (não importa o
+    status) e reaproveita o id — assim ela vira só um "empurrão" na
+    mesma notificação em vez de um card novo. Antes disso só reaproveitava
+    quando a atividade estava pendente/em_andamento; se ela já tivesse
+    fechado como 'concluído' e a empresa voltasse a ter mídia pendente
+    depois (nova coleta, ou uma varredura achando itens antigos), o sino
+    ganhava um card duplicado pra sempre 'em andamento' em vez de
+    continuar atualizando o mesmo."""
+    tarefas = []
+    for empresa, entry in novos.items():
+        atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
+        else:
+            atividade_id = criar_atividade(
+                user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
+            )
+        tarefas.append((empresa, entry, atividade_id))
+
+    if tarefas:
+        threading.Thread(
+            target=_migrar_todas_empresas_sequencial,
+            args=(user_id, tarefas),
+            daemon=True,
+        ).start()
+
+def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
+    """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
+    procurando qualquer imagem/vídeo que ainda aponte pro link original
+    (não migrado pro R2) — não importa se é recente, antigo, se a
+    migração nunca rodou, ou se rodou e falhou silenciosamente. Devolve
+    só os anúncios pendentes, no mesmo formato que iniciar_migracao_
+    midia_background espera (pra reaproveitar o mesmo pipeline)."""
+    pendentes = {}
+    for empresa, entry in (ads_cache or {}).items():
+        ads_pendentes = []
+        for ad in entry.get("data", []) or []:
+            imagens = ad.get("images") or []
+            videos = ad.get("videos") or []
+            tem_link_original = any(
+                u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
+                for u in (imagens + videos)
+            )
+            if tem_link_original:
+                ads_pendentes.append(ad)
+        if ads_pendentes:
+            pendentes[empresa] = {**entry, "data": ads_pendentes}
+    return pendentes
+
+def verificar_e_migrar_pendentes(user_id: str) -> int:
+    """Roda a varredura completa e dispara a migração pra tudo que ainda
+    estiver com link original. Devolve quantos anúncios foram
+    encontrados pendentes (0 = nada a fazer)."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        pendentes = encontrar_ads_com_link_original(ads_cache)
+        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
+        if pendentes:
+            iniciar_migracao_midia_background(user_id, pendentes)
+        return total_ads_pendentes
+    except Exception:
+        return 0
+
+def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
+    """As varreduras normais só olham se a URL É do R2 (pelo prefixo) —
+    não confirmam se o arquivo realmente existe lá. Se um objeto sumir
+    do bucket por qualquer motivo (ex: uma corrida durante o
+    reprocessamento), essas varreduras nunca detectam, porque pra elas
+    já "está tudo certo". Essa função verifica de verdade (HEAD request)
+    e, pro que estiver quebrado, busca o link original em `midias.
+    url_origem` pra tentar migrar de novo."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+
+        res_midias = supabase.table("midias").select("url_cdn, url_origem").eq("user_id", user_id).execute()
+        mapa_origem = {m["url_cdn"]: m["url_origem"] for m in (res_midias.data or []) if m.get("url_cdn")}
+
+        verificados = 0
+        quebrados = 0
+        reparar = {}
+
+        for empresa, entry in ads_cache.items():
+            ads_para_reparar = []
+            for ad in entry.get("data", []) or []:
+                precisa_reparar = False
+                ad_copia = dict(ad)
+                for campo in ("images", "videos"):
+                    urls = list(ad.get(campo) or [])
+                    for i, u in enumerate(urls):
+                        if not (u and R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
+                            continue
+                        verificados += 1
+                        try:
+                            ok = requests.head(u, timeout=5).status_code == 200
+                        except Exception:
+                            ok = False
+                        if not ok:
+                            quebrados += 1
+                            origem = mapa_origem.get(u)
+                            if origem:
+                                urls[i] = origem  # volta pro link original, pra tentar migrar de novo
+                                precisa_reparar = True
+                    ad_copia[campo] = urls
+                if precisa_reparar:
+                    ads_para_reparar.append(ad_copia)
+            if ads_para_reparar:
+                reparar[empresa] = {**entry, "data": ads_para_reparar}
+
+        if reparar:
+            iniciar_migracao_midia_background(user_id, reparar)
+
+        atualizar_atividade(atividade_id, "concluido", {
+            "verificados": verificados,
+            "quebrados": quebrados,
+        })
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def iniciar_reparo_links_quebrados(user_id: str):
+    """Confirma de verdade (não só pelo prefixo da URL) se as mídias já
+    marcadas como salvas no R2 ainda existem, e repara o que sumiu."""
+    atividade_id = criar_atividade(
+        user_id, "reparo_links", "Verificando se os anúncios salvos ainda estão acessíveis", {}
+    )
+    threading.Thread(
+        target=_reparar_links_quebrados_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
+    """Tenta a migração de novo pra uma empresa específica, usando os
+    anúncios que já estão salvos no ads_cache (não precisa recoletar).
+    Reaproveita a MESMA atividade em vez de criar uma nova a cada
+    tentativa — senão cada "Refazer" clicado acumula um registro de
+    "erro" (a tentativa anterior, substituída) que não é uma falha de
+    verdade, só polui a contagem do resumo."""
+    try:
+        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        entry = cache_atual.get(empresa)
+        if not entry:
+            return False
+
+        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
+        threading.Thread(
+            target=_migrar_midia_background,
+            args=(user_id, empresa, entry, atividade_id),
+            daemon=True,
+        ).start()
+        return True
+    except Exception:
+        return False
+
+# ---------------------------------------------------
+#  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
+# ---------------------------------------------------
+# Antes disso, uma migração que terminava uma passada com itens pendentes
+# ficava "em_andamento" pra sempre, esperando um gatilho que só vinha
+# manual (botão "Refazer"/"Corrigir agora") ou na próxima coleta — podia
+# passar horas/dias sem ninguém perceber. Aqui a gente detecta esse
+# estado ("aviso" presente = já terminou uma passada e está esperando) e
+# refaz sozinho depois de um tempo parado, reaproveitando o mesmo
+# refazer_migracao_midia que o botão já usa — sem criar um caminho novo.
+#
+# Só retenta UMA empresa por vez (a mais parada), mesmo se várias
+# estiverem travadas ao mesmo tempo: migrações concorrentes de vídeo já
+# causaram esgotamento de processos do SO antes (ver comentário em
+# _migrar_todas_empresas_sequencial), então manter o retry automático
+# sequencial também evita repetir esse problema.
+
+LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS = 90
+
+def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS) -> bool:
+    """True quando uma atividade de migracao_midia já terminou uma
+    passada com pendências (tem 'aviso' nos detalhes) e faz mais que
+    `limiar_segundos` desde essa passada — ou seja, não tem nenhuma
+    thread rodando nela agora, só está esperando."""
+    if atividade.get("tipo") != "migracao_midia" or atividade.get("status") != "em_andamento":
+        return False
+    d = atividade.get("detalhes") or {}
+    if not d.get("aviso"):
+        # Sem 'aviso' = ou nunca rodou uma passada ainda (recém-criada),
+        # ou é uma migração antiga sem esse campo — nesses casos não dá
+        # pra saber com segurança se tem thread ativa, então não mexe.
+        return False
+    return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
+
+def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
+    """Varre as migrações de mídia em aberto do usuário e refaz
+    automaticamente a mais antiga que estiver travada (ver
+    _migracao_travada). Devolve True se disparou algum retry (útil pra
+    decidir se vale a pena um st.rerun() logo em seguida)."""
+    if not user_id:
+        return False
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes, criado_em")
+            .eq("user_id", user_id)
+            .eq("tipo", "migracao_midia")
+            .eq("status", "em_andamento")
+            .order("criado_em")
+            .execute()
+        )
+    except Exception:
+        return False
+
+    candidatas = [a for a in (res.data or []) if _migracao_travada(a)]
+    if not candidatas:
+        return False
+
+    # A mais antiga primeiro — respeita a mesma ordem que a fila
+    # sequencial original teria seguido.
+    alvo = candidatas[0]
+    empresa = (alvo.get("detalhes") or {}).get("empresa")
+    if not empresa:
+        return False
+    return bool(refazer_migracao_midia(user_id, empresa, alvo["id"]))
+
+
+# ---------------------------------------------------
 # SIDEBAR (apenas quando logado)
 # ---------------------------------------------------
 
@@ -3168,386 +3549,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         }).eq("user_id", user_id).execute()
     except Exception as e:
         st.toast(f"Erro ao salvar cache de ads: {e}", icon="⚠️")
-
-# ---------------------------------------------------
-#  MIGRAÇÃO DE MÍDIA EM BACKGROUND
-# ---------------------------------------------------
-# A página abre rápido com os links originais do Facebook (que ainda
-# duram bem mais que 1 dia). Em paralelo, uma thread baixa e sobe as
-# mídias pro R2 e atualiza o ads_cache — sem bloquear a navegação.
-
-import threading
-
-def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> bool:
-    """Confere, direto no banco, se a empresa ainda está configurada com
-    a mesma query/ads_id usada nessa coleta. Evita gastar banda e cota
-    de mídia processando uma empresa que o usuário já corrigiu ou
-    removeu logo depois de pedir a busca por engano."""
-    try:
-        res = (
-            supabase.table("ci_dados")
-            .select("minha_empresa, concorrentes")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        if not res.data:
-            return False
-        row = res.data[0]
-        candidatos = [row.get("minha_empresa") or {}] + (row.get("concorrentes") or [])
-        for c in candidatos:
-            if c.get("nome") != empresa_nome:
-                continue
-            ads_id_atual = (c.get("ads_id") or "").strip()
-            # nome bate; se não há ads_id configurado ou ele continua
-            # igual ao usado na coleta, a empresa segue válida
-            return (not ads_id_atual) or (ads_id_atual == query_usada)
-        return False  # nome não existe mais na configuração do usuário
-    except Exception:
-        return True  # checagem é só economia — em dúvida, não bloqueia
-
-def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
-    try:
-        if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
-            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
-            return
-
-        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id)
-
-        # Atualização atômica: troca só os anúncios migrados (por id),
-        # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
-        # Python. Isso evita a corrida entre migrações concorrentes de
-        # empresas diferentes e nunca perde anúncios históricos que não
-        # vieram nessa coleta específica.
-        atualizacoes = {
-            str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
-        }
-        if not atualizacoes:
-            atualizar_atividade(atividade_id, "concluido", {"motivo": "nenhum anúncio com id pra atualizar"})
-            return
-
-        res = supabase.rpc("atualizar_ads_no_cache", {
-            "p_user_id": user_id,
-            "p_empresa": empresa,
-            "p_atualizacoes": atualizacoes,
-        }).execute()
-
-        if res.data:
-            # "concluído" só pode significar "tudo migrado". Enquanto sobrar
-            # item com link original, a atividade fica "em_andamento" (não
-            # "concluido") — assim o sino mostra quantos já foram e quantos
-            # faltam em vez de um selo verde escondendo o que não terminou,
-            # e a tela libera o botão "Refazer" pra essa mesma atividade.
-            total = stats_midia.get("total", 0)
-            nao_migrados = stats_midia.get("nao_migrados", 0)
-            migradas = total - nao_migrados
-            if nao_migrados:
-                status_final = "em_andamento"
-                detalhes_finais = {
-                    "migradas": migradas,
-                    "total": total,
-                    "aviso": (
-                        f"{migradas} de {total} anúncios salvos na Biblioteca de Arquivos "
-                        f"Permanente — {nao_migrados} ainda pendentes (link original expira; "
-                        f"vamos tentar de novo automaticamente)"
-                    ),
-                    "amostra": stats_midia.get("amostra_nao_migrados", []),
-                    # Carimba quando essa passada terminou — é o que permite
-                    # diferenciar "ainda processando agora" de "já terminou
-                    # e está só esperando a próxima tentativa" sem precisar
-                    # de coluna nova no banco. O retry automático (ver
-                    # retentar_migracoes_travadas_automaticamente) usa esse
-                    # campo pra saber há quanto tempo essa atividade está
-                    # parada antes de decidir refazer sozinho.
-                    "ultima_tentativa_em": _agora_iso(),
-                }
-            elif total:
-                status_final = "concluido"
-                detalhes_finais = {
-                    "migradas": total,
-                    "total": total,
-                }
-            else:
-                status_final = "concluido"
-                detalhes_finais = {}
-            atualizar_atividade(atividade_id, status_final, detalhes_finais)
-        else:
-            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
-    except Exception as e:
-        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
-
-def _estimar_timeout_migracao(entry: dict) -> int:
-    """Calcula um limite de tempo proporcional à quantidade de mídia
-    dessa empresa, em vez de um número fixo — uma empresa com poucas
-    imagens não devia ganhar 20 minutos de crédito de dúvida, e uma com
-    muitos vídeos pode legitimamente precisar de mais que isso."""
-    ads = entry.get("data", [])
-    n_imagens = sum(len(a.get("images") or []) for a in ads)
-    n_videos = sum(len(a.get("videos") or []) for a in ads)
-
-    # tetos generosos por item (pior caso: rede lenta, ffmpeg, whisper)
-    SEGUNDOS_POR_IMAGEM = 20
-    SEGUNDOS_POR_VIDEO = 180
-    PARALELISMO = 3  # bate com o max_workers do ThreadPoolExecutor
-
-    tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
-    return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
-
-def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
-    """Roda a migração de cada empresa uma depois da outra (não em
-    paralelo). Antes, cada empresa disparava sua própria thread ao
-    mesmo tempo — com vídeo, isso significava várias empresas rodando
-    ffmpeg/Whisper simultaneamente e esgotando o limite de processos do
-    sistema (Errno 11, "Resource temporarily unavailable"), o que
-    inclusive deixava outras migrações travadas em "Em andamento" pra
-    sempre. Rodar em sequência é mais lento no total, mas nunca trava.
-
-    Cada empresa tem um limite de tempo proporcional à sua própria
-    quantidade de mídia (ver _estimar_timeout_migracao) — se travar, a
-    fila segue pras próximas em vez de ficar parada pra sempre."""
-    from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
-
-    for empresa, entry, atividade_id in tarefas:
-        limite_segundos = _estimar_timeout_migracao(entry)
-        with _TPE(max_workers=1) as executor:
-            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
-            try:
-                future.result(timeout=limite_segundos)
-            except _TimeoutErr:
-                atualizar_atividade(atividade_id, "erro", {
-                    "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
-                })
-                # a thread interna pode continuar rodando sozinha em segundo
-                # plano (Python não mata thread à força), mas a fila segue.
-            except Exception as e:
-                atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
-
-def iniciar_migracao_midia_background(user_id: str, novos: dict):
-    """Migra as mídias das empresas recém-coletadas pro R2, sem travar
-    a página. As empresas são processadas uma de cada vez (não em
-    paralelo) — ver _migrar_todas_empresas_sequencial.
-
-    Antes de criar uma atividade nova, verifica se já existe QUALQUER
-    atividade migracao_midia pra essa mesma empresa (não importa o
-    status) e reaproveita o id — assim ela vira só um "empurrão" na
-    mesma notificação em vez de um card novo. Antes disso só reaproveitava
-    quando a atividade estava pendente/em_andamento; se ela já tivesse
-    fechado como 'concluído' e a empresa voltasse a ter mídia pendente
-    depois (nova coleta, ou uma varredura achando itens antigos), o sino
-    ganhava um card duplicado pra sempre 'em andamento' em vez de
-    continuar atualizando o mesmo."""
-    tarefas = []
-    for empresa, entry in novos.items():
-        atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa)
-        if atividade_id:
-            atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
-        else:
-            atividade_id = criar_atividade(
-                user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
-            )
-        tarefas.append((empresa, entry, atividade_id))
-
-    if tarefas:
-        threading.Thread(
-            target=_migrar_todas_empresas_sequencial,
-            args=(user_id, tarefas),
-            daemon=True,
-        ).start()
-
-def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
-    """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
-    procurando qualquer imagem/vídeo que ainda aponte pro link original
-    (não migrado pro R2) — não importa se é recente, antigo, se a
-    migração nunca rodou, ou se rodou e falhou silenciosamente. Devolve
-    só os anúncios pendentes, no mesmo formato que iniciar_migracao_
-    midia_background espera (pra reaproveitar o mesmo pipeline)."""
-    pendentes = {}
-    for empresa, entry in (ads_cache or {}).items():
-        ads_pendentes = []
-        for ad in entry.get("data", []) or []:
-            imagens = ad.get("images") or []
-            videos = ad.get("videos") or []
-            tem_link_original = any(
-                u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
-                for u in (imagens + videos)
-            )
-            if tem_link_original:
-                ads_pendentes.append(ad)
-        if ads_pendentes:
-            pendentes[empresa] = {**entry, "data": ads_pendentes}
-    return pendentes
-
-def verificar_e_migrar_pendentes(user_id: str) -> int:
-    """Roda a varredura completa e dispara a migração pra tudo que ainda
-    estiver com link original. Devolve quantos anúncios foram
-    encontrados pendentes (0 = nada a fazer)."""
-    try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
-        pendentes = encontrar_ads_com_link_original(ads_cache)
-        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
-        if pendentes:
-            iniciar_migracao_midia_background(user_id, pendentes)
-        return total_ads_pendentes
-    except Exception:
-        return 0
-
-def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
-    """As varreduras normais só olham se a URL É do R2 (pelo prefixo) —
-    não confirmam se o arquivo realmente existe lá. Se um objeto sumir
-    do bucket por qualquer motivo (ex: uma corrida durante o
-    reprocessamento), essas varreduras nunca detectam, porque pra elas
-    já "está tudo certo". Essa função verifica de verdade (HEAD request)
-    e, pro que estiver quebrado, busca o link original em `midias.
-    url_origem` pra tentar migrar de novo."""
-    try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
-
-        res_midias = supabase.table("midias").select("url_cdn, url_origem").eq("user_id", user_id).execute()
-        mapa_origem = {m["url_cdn"]: m["url_origem"] for m in (res_midias.data or []) if m.get("url_cdn")}
-
-        verificados = 0
-        quebrados = 0
-        reparar = {}
-
-        for empresa, entry in ads_cache.items():
-            ads_para_reparar = []
-            for ad in entry.get("data", []) or []:
-                precisa_reparar = False
-                ad_copia = dict(ad)
-                for campo in ("images", "videos"):
-                    urls = list(ad.get(campo) or [])
-                    for i, u in enumerate(urls):
-                        if not (u and R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
-                            continue
-                        verificados += 1
-                        try:
-                            ok = requests.head(u, timeout=5).status_code == 200
-                        except Exception:
-                            ok = False
-                        if not ok:
-                            quebrados += 1
-                            origem = mapa_origem.get(u)
-                            if origem:
-                                urls[i] = origem  # volta pro link original, pra tentar migrar de novo
-                                precisa_reparar = True
-                    ad_copia[campo] = urls
-                if precisa_reparar:
-                    ads_para_reparar.append(ad_copia)
-            if ads_para_reparar:
-                reparar[empresa] = {**entry, "data": ads_para_reparar}
-
-        if reparar:
-            iniciar_migracao_midia_background(user_id, reparar)
-
-        atualizar_atividade(atividade_id, "concluido", {
-            "verificados": verificados,
-            "quebrados": quebrados,
-        })
-    except Exception as e:
-        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
-
-def iniciar_reparo_links_quebrados(user_id: str):
-    """Confirma de verdade (não só pelo prefixo da URL) se as mídias já
-    marcadas como salvas no R2 ainda existem, e repara o que sumiu."""
-    atividade_id = criar_atividade(
-        user_id, "reparo_links", "Verificando se os anúncios salvos ainda estão acessíveis", {}
-    )
-    threading.Thread(
-        target=_reparar_links_quebrados_background,
-        args=(user_id, atividade_id),
-        daemon=True,
-    ).start()
-
-def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
-    """Tenta a migração de novo pra uma empresa específica, usando os
-    anúncios que já estão salvos no ads_cache (não precisa recoletar).
-    Reaproveita a MESMA atividade em vez de criar uma nova a cada
-    tentativa — senão cada "Refazer" clicado acumula um registro de
-    "erro" (a tentativa anterior, substituída) que não é uma falha de
-    verdade, só polui a contagem do resumo."""
-    try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
-        entry = cache_atual.get(empresa)
-        if not entry:
-            return False
-
-        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
-        threading.Thread(
-            target=_migrar_midia_background,
-            args=(user_id, empresa, entry, atividade_id),
-            daemon=True,
-        ).start()
-        return True
-    except Exception:
-        return False
-
-# ---------------------------------------------------
-#  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
-# ---------------------------------------------------
-# Antes disso, uma migração que terminava uma passada com itens pendentes
-# ficava "em_andamento" pra sempre, esperando um gatilho que só vinha
-# manual (botão "Refazer"/"Corrigir agora") ou na próxima coleta — podia
-# passar horas/dias sem ninguém perceber. Aqui a gente detecta esse
-# estado ("aviso" presente = já terminou uma passada e está esperando) e
-# refaz sozinho depois de um tempo parado, reaproveitando o mesmo
-# refazer_migracao_midia que o botão já usa — sem criar um caminho novo.
-#
-# Só retenta UMA empresa por vez (a mais parada), mesmo se várias
-# estiverem travadas ao mesmo tempo: migrações concorrentes de vídeo já
-# causaram esgotamento de processos do SO antes (ver comentário em
-# _migrar_todas_empresas_sequencial), então manter o retry automático
-# sequencial também evita repetir esse problema.
-
-LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS = 90
-
-def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS) -> bool:
-    """True quando uma atividade de migracao_midia já terminou uma
-    passada com pendências (tem 'aviso' nos detalhes) e faz mais que
-    `limiar_segundos` desde essa passada — ou seja, não tem nenhuma
-    thread rodando nela agora, só está esperando."""
-    if atividade.get("tipo") != "migracao_midia" or atividade.get("status") != "em_andamento":
-        return False
-    d = atividade.get("detalhes") or {}
-    if not d.get("aviso"):
-        # Sem 'aviso' = ou nunca rodou uma passada ainda (recém-criada),
-        # ou é uma migração antiga sem esse campo — nesses casos não dá
-        # pra saber com segurança se tem thread ativa, então não mexe.
-        return False
-    return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
-
-def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
-    """Varre as migrações de mídia em aberto do usuário e refaz
-    automaticamente a mais antiga que estiver travada (ver
-    _migracao_travada). Devolve True se disparou algum retry (útil pra
-    decidir se vale a pena um st.rerun() logo em seguida)."""
-    if not user_id:
-        return False
-    try:
-        res = (
-            supabase.table("atividades")
-            .select("id, detalhes, criado_em")
-            .eq("user_id", user_id)
-            .eq("tipo", "migracao_midia")
-            .eq("status", "em_andamento")
-            .order("criado_em")
-            .execute()
-        )
-    except Exception:
-        return False
-
-    candidatas = [a for a in (res.data or []) if _migracao_travada(a)]
-    if not candidatas:
-        return False
-
-    # A mais antiga primeiro — respeita a mesma ordem que a fila
-    # sequencial original teria seguido.
-    alvo = candidatas[0]
-    empresa = (alvo.get("detalhes") or {}).get("empresa")
-    if not empresa:
-        return False
-    return bool(refazer_migracao_midia(user_id, empresa, alvo["id"]))
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2

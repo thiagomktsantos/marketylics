@@ -8705,6 +8705,26 @@ elif st.session_state.pagina == "ads":
         except Exception:
             return None
 
+    def _atividades_migracao_midia_recentes(user_id: str, limite: int = 20):
+        """Lista as atividades `migracao_midia` mais recentes. Diferente
+        de `coleta_ads`, a migração de mídia (troca do link original do
+        Facebook pelo link permanente do R2) cria UMA atividade POR
+        EMPRESA e elas podem terminar em momentos diferentes — por isso
+        aqui é preciso olhar várias, não só a última."""
+        try:
+            res = (
+                supabase.table("atividades")
+                .select("id, status")
+                .eq("user_id", user_id)
+                .eq("tipo", "migracao_midia")
+                .order("criado_em", desc=True)
+                .limit(limite)
+                .execute()
+            )
+            return res.data or []
+        except Exception:
+            return []
+
     if "ads_cache" not in st.session_state or not st.session_state.ads_cache:
         st.session_state.ads_cache = carregar_cache_ads()
     if "ads_erro" not in st.session_state:
@@ -8770,52 +8790,93 @@ elif st.session_state.pagina == "ads":
             # ativo mesmo que a flag local tivesse se perdido.
             st.session_state["_coleta_ads_em_andamento"] = True
 
+    # ── Sincronização resiliente pra migração de mídia (links do R2) ──
+    # A coleta em si (`coleta_ads`) salva rápido com os links originais
+    # do Facebook; a troca pelos links permanentes do R2 acontece DEPOIS,
+    # numa atividade separada (`migracao_midia`, uma por empresa, cada
+    # uma terminando num momento diferente). O bloco acima só observava
+    # `coleta_ads` — por isso a coleta podia aparecer "concluída" e até
+    # atualizar "Últ. busca", mas os anúncios continuavam com os links
+    # antigos até a sessão recarregar o cache por qualquer outro motivo.
+    # Aqui a gente rastreia os ids de migração já vistos e força reload
+    # assim que qualquer uma nova aparece concluída/com erro.
+    _migracoes_midia = []
+    if st.session_state.get("user"):
+        _migracoes_midia = _atividades_migracao_midia_recentes(st.session_state.user.id)
+
+    _migracoes_finalizadas_ids = {
+        m["id"] for m in _migracoes_midia if m.get("status") in ("concluido", "erro")
+    }
+    _migracao_em_andamento = any(
+        m.get("status") in ("pendente", "em_andamento") for m in _migracoes_midia
+    )
+
+    if "_ads_migracao_ids_vistos" not in st.session_state:
+        # Primeira renderização dessa sessão: `ads_cache` já foi carregado
+        # fresco do banco, então já reflete essas migrações — só marca a
+        # baseline, sem forçar reload.
+        st.session_state["_ads_migracao_ids_vistos"] = set(_migracoes_finalizadas_ids)
+    else:
+        _novas_migracoes_finalizadas = _migracoes_finalizadas_ids - st.session_state["_ads_migracao_ids_vistos"]
+        if _novas_migracoes_finalizadas:
+            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_ads_migracao_ids_vistos"] |= _novas_migracoes_finalizadas
+            st.rerun()
+
     # Guarda se há uma coleta rodando em background pra essa sessão — usado
     # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
     # (sem clique) enquanto o processo não termina.
     _coleta_em_andamento = bool(st.session_state.get("_coleta_ads_em_andamento"))
 
-    if _coleta_em_andamento:
-        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
-            # Cobre o caso em que a atividade mais recente já era a mesma
-            # id vista antes (ex: sessão nova mas ficou marcada como em
-            # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
-            # sem um id novo pra comparar.
-            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
-            st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
-            st.session_state["_coleta_ads_em_andamento"] = False
-            _coleta_em_andamento = False
-            st.rerun()
-        else:
-            # Botão-fantasma (oculto): usado só pra receber o clique disparado
-            # automaticamente pelo timer em JS logo abaixo, que verifica de
-            # tempos em tempos se a coleta já terminou — sem exigir nenhuma
-            # ação do usuário nem mostrar avisos na tela.
-            st.button("_ads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
-            st.markdown("""
-            <style>
-            .st-key-_btn_verificar_coleta_ads {
-                position:fixed !important; top:-9999px !important; left:-9999px !important;
-                width:0 !important; height:0 !important; overflow:hidden !important;
-                opacity:0 !important; pointer-events:none !important; display:none !important;
+    # Mantém o polling automático (timer JS) rodando não só enquanto a
+    # busca em si está ativa, mas também enquanto sobrar migração de
+    # mídia pendente — senão a troca de link acontece "silenciosa" e só
+    # aparece na tela na próxima ação manual do usuário.
+    _precisa_polling_ads = _coleta_em_andamento or _migracao_em_andamento
+
+    if _coleta_em_andamento and _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
+        # Cobre o caso em que a atividade mais recente já era a mesma
+        # id vista antes (ex: sessão nova mas ficou marcada como em
+        # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
+        # sem um id novo pra comparar.
+        st.session_state.ads_cache = carregar_cache_ads(forcar=True)
+        st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
+        st.session_state["_coleta_ads_em_andamento"] = False
+        _coleta_em_andamento = False
+        _precisa_polling_ads = _coleta_em_andamento or _migracao_em_andamento
+        st.rerun()
+
+    if _precisa_polling_ads:
+        # Botão-fantasma (oculto): usado só pra receber o clique disparado
+        # automaticamente pelo timer em JS logo abaixo, que verifica de
+        # tempos em tempos se a coleta e/ou a migração de mídia já
+        # terminaram — sem exigir nenhuma ação do usuário nem mostrar
+        # avisos na tela.
+        st.button("_ads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
+        st.markdown("""
+        <style>
+        .st-key-_btn_verificar_coleta_ads {
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }
+        .stElementContainer:has(.st-key-_btn_verificar_coleta_ads) {
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        components.html("""
+        <script>
+        setTimeout(function() {
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var i = 0; i < btns.length; i++) {
+                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                if (txt === '_ads_verificar_coleta_trigger_') { btns[i].click(); return; }
             }
-            .stElementContainer:has(.st-key-_btn_verificar_coleta_ads) {
-                display:none !important; height:0 !important; min-height:0 !important;
-                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            components.html("""
-            <script>
-            setTimeout(function() {
-                var btns = window.parent.document.querySelectorAll('button');
-                for (var i = 0; i < btns.length; i++) {
-                    var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
-                    if (txt === '_ads_verificar_coleta_trigger_') { btns[i].click(); return; }
-                }
-            }, 4000);
-            </script>
-            """, height=0)
+        }, 4000);
+        </script>
+        """, height=0)
 
     def empresa_tem_ads_id(e: dict) -> bool:
         if e["tipo"] == "minha":

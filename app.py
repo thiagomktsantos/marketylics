@@ -302,9 +302,37 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
             if resultado.returncode != 0 or not os.path.exists(audio) or os.path.getsize(audio) == 0:
                 return ""  # sem faixa de áudio, ou falha ao extrair
 
-            segmentos, _info = whisper_model.transcribe(audio, language="pt", vad_filter=True)
-            texto = " ".join(s.text.strip() for s in segmentos).strip()
-            return texto
+            # Diferente do ffmpeg acima (que roda em subprocess e por isso
+            # aceita `timeout` nativo), `whisper_model.transcribe()` roda
+            # dentro do próprio processo Python e devolve um GERADOR — a
+            # inferência de verdade só acontece quando iteramos nele (no
+            # `" ".join(...)` logo abaixo). Sem teto de tempo aqui, um
+            # áudio problemático (corrompido, silêncio longo confundindo
+            # o VAD, etc.) podia travar essa iteração indefinidamente e
+            # segurar pra sempre 1 dos 3 workers do ThreadPoolExecutor que
+            # chama esta função — foi isso que deixou uma migração real
+            # parada em "32 de 155" por mais de uma hora, mesmo com o
+            # progresso ao vivo funcionando certinho (o worker travado
+            # nunca chegava a reportar o próximo item).
+            #
+            # Como não dá pra matar uma thread Python à força, rodamos a
+            # transcrição numa thread própria e só ESPERAMOS por ela com
+            # prazo: se estourar, desistimos e devolvemos "" (mídia segue
+            # sem transcrição, sem quebrar o fluxo) — a thread órfã do
+            # Whisper continua rodando sozinha em segundo plano até
+            # terminar, mas não bloqueia mais ninguém.
+            def _transcrever_sync():
+                segmentos, _info = whisper_model.transcribe(audio, language="pt", vad_filter=True)
+                return " ".join(s.text.strip() for s in segmentos).strip()
+
+            from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
+            _timeout_whisper = st.secrets.get("WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS", 240)
+            with _TPE(max_workers=1) as _exec_whisper:
+                _future = _exec_whisper.submit(_transcrever_sync)
+                try:
+                    return _future.result(timeout=_timeout_whisper)
+                except _TimeoutErr:
+                    return ""
     except Exception:
         return ""
 

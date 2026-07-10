@@ -721,12 +721,54 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
         _reportar_progresso_live(_concluidas_agora)
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
+    # ── Heartbeat independente de tarefa concluída ──
+    # _reportar_progresso_live só grava quando um item TERMINA. Com vídeo
+    # (ffmpeg + Whisper), um único item pode levar bem mais que os 90s que
+    # _migracao_travada usa como limiar — se os 3 workers caem todos em
+    # itens lentos ao mesmo tempo, nenhum progresso é escrito por um bom
+    # tempo, e o heurístico de "travado" errava, achando que não tinha
+    # nenhuma thread rodando (e mostrando o botão "Continuar" no meio de
+    # uma migração que seguia ativa — o usuário clicava nele sem precisar,
+    # disparando um refazer_migracao_midia duplicado). Esse heartbeat gira
+    # sozinho a cada ~20s, independente de qualquer item ter terminado, só
+    # pra provar "ainda tem thread viva aqui".
+    INTERVALO_HEARTBEAT_SEGUNDOS = 20
+    _heartbeat_stop = threading.Event()
+
+    def _heartbeat_loop():
+        if not atividade_id:
+            return
+        while not _heartbeat_stop.wait(INTERVALO_HEARTBEAT_SEGUNDOS):
+            with _lock_progresso:
+                _concluidas_hb = _estado_progresso["concluidas"]
+            try:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresa": _empresa_progresso,
+                    "migradas": _concluidas_hb,
+                    "total": total_tarefas,
+                    "aviso": f"Migrando agora — {_concluidas_hb} de {total_tarefas} anúncios processados nesta passada.",
+                    "ultima_tentativa_em": _agora_iso(),
+                    "ultimo_heartbeat_em": _agora_iso(),
+                })
+            except Exception:
+                pass  # heartbeat é best-effort — uma falha isolada não pode derrubar a migração
+
+    _heartbeat_thread = None
+    if atividade_id:
+        _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+        _heartbeat_thread.start()
+
     nao_migrados = []
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
-            resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
-            if nao_migrado:
-                nao_migrados.append(url_original)
+    try:
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
+                resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
+                if nao_migrado:
+                    nao_migrados.append(url_original)
+    finally:
+        _heartbeat_stop.set()
+        if _heartbeat_thread:
+            _heartbeat_thread.join(timeout=2)
 
     stats = {"total": len(tarefas), "nao_migrados": len(nao_migrados), "amostra_nao_migrados": nao_migrados[:5]}
     return resultado, stats
@@ -3076,11 +3118,27 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> boo
 
 LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS = 90
 
+# Heartbeat (ver persistir_midias_de_ads) grava a cada 20s, independente de
+# qualquer item ter terminado — por isso pode usar um limiar bem mais
+# apertado que o antigo (baseado em item concluído) sem gerar falso
+# positivo: perder 2 heartbeats seguidos (40s) já é sinal forte de thread
+# morta; damos folga extra pra jitter de rede/Supabase.
+LIMIAR_HEARTBEAT_TRAVADA_SEGUNDOS = 50
+
 def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS) -> bool:
     """True quando uma atividade de migracao_midia já terminou uma
     passada com pendências (tem 'aviso' nos detalhes) e faz mais que
     `limiar_segundos` desde essa passada — ou seja, não tem nenhuma
-    thread rodando nela agora, só está esperando."""
+    thread rodando nela agora, só está esperando.
+
+    Quando a atividade tem 'ultimo_heartbeat_em' (heartbeat independente
+    de item concluído — ver persistir_midias_de_ads), usamos ele em vez
+    do heurístico antigo baseado em 'ultima_tentativa_em': esse campo só
+    era regravado quando um item terminava, e com vídeo (ffmpeg + Whisper)
+    um único item pode passar de 90s tranquilamente — os 3 workers presos
+    em itens lentos ao mesmo tempo faziam isso achar (errado) que não
+    tinha nenhuma thread ativa, mostrando 'Continuar' no meio de uma
+    migração que seguia rodando normalmente."""
     if atividade.get("tipo") != "migracao_midia" or atividade.get("status") != "em_andamento":
         return False
     d = atividade.get("detalhes") or {}
@@ -3089,6 +3147,8 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
         # ou é uma migração antiga sem esse campo — nesses casos não dá
         # pra saber com segurança se tem thread ativa, então não mexe.
         return False
+    if d.get("ultimo_heartbeat_em"):
+        return _segundos_desde(d["ultimo_heartbeat_em"]) >= LIMIAR_HEARTBEAT_TRAVADA_SEGUNDOS
     return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
 
 def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
@@ -19044,7 +19104,7 @@ html, body { background: transparent; overflow: hidden; }
                             </div>
                             <div class="notif-progress-label">
                                 <span>{_feitos_p} de {_total_p}</span>
-                                <span>{_pct_p}%</span>
+                                <span class="notif-progress-pct">{_pct_p}%</span>
                             </div>
                         </div>
                     """
@@ -19162,6 +19222,9 @@ html, body { background: transparent; overflow: hidden; }
     .notif-progress-label {
         display:flex; justify-content:space-between; margin-top:5px;
         font-size:11.5px; color:#6b7280; font-weight:600;
+    }
+    .notif-progress-pct {
+        font-size:12.5px; font-weight:800; color:#1f2937;
     }
     .btn-excluir {
         display:flex; align-items:center; justify-content:center;

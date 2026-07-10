@@ -3125,6 +3125,33 @@ def iniciar_reparo_links_quebrados(user_id: str):
         daemon=True,
     ).start()
 
+def _resetar_falhas_midia_empresa(user_id: str, empresa: str) -> int:
+    """Apaga os registros de midias_falhas desta empresa — zera o contador
+    de tentativas, dando uma chance nova de download pras URLs que já
+    bateram no teto de MAX_TENTATIVAS_MIDIA (ver o early-return em
+    baixar_e_persistir_midia, que devolve a URL original sem nem tentar
+    baixar quando tentativas >= teto).
+
+    Só é chamada no clique MANUAL de "Refazer" (nunca no retry automático
+    — ver retentar_migracoes_travadas_automaticamente): um clique
+    explícito é o usuário pedindo pra tentar de novo mesmo sabendo que já
+    falhou várias vezes, o que faz sentido quando a causa da falha era
+    passageira (R2 fora do ar, rede, rate limit) e não o link em si.
+    Resetar automaticamente, sem esse pedido explícito, faria a
+    varredura automática cair de novo no loop infinito que o teto existe
+    pra evitar. Devolve quantas linhas foram removidas."""
+    try:
+        res = (
+            supabase.table("midias_falhas")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
     anúncios que já estão salvos no ads_cache (não precisa recoletar).
@@ -3138,6 +3165,14 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> boo
         entry = cache_atual.get(empresa)
         if not entry:
             return False
+
+        # Reseta o teto de tentativas antes de tentar de novo — sem isso,
+        # "Refazer" numa atividade que virou "erro" por ter esgotado as
+        # tentativas (ver _migrar_midia_background) bateria no mesmo teto
+        # na hora, sem baixar nada de verdade, e voltaria a "erro"
+        # imediatamente — dando a falsa impressão de que o botão não fez
+        # nada.
+        _resetar_falhas_midia_empresa(user_id, empresa)
 
         atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
         threading.Thread(

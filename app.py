@@ -10,28 +10,6 @@ import requests
 from supabase import create_client, Client
 
 # ---------------------------------------------------
-#  LOGGER
-# ---------------------------------------------------
-# Logger de verdade (não `print`, que some no Streamlit — o Streamlit
-# intercepta stdout de forma inconsistente entre reruns/threads, então
-# print() é praticamente inútil pra depurar o que acontece em background).
-# Configurado uma única vez, escreve em stdout com timestamp, nível,
-# nome da thread e do logger — o nome da thread é essencial aqui porque
-# migração/transcrição rodam em threads de background separadas da
-# thread principal do Streamlit, e sem isso não dá pra saber qual
-# execução gerou qual linha quando várias coisas rodam ao mesmo tempo.
-import logging
-import sys
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(threadName)-20s | %(name)s | %(message)s",
-    stream=sys.stdout,
-    force=True,  # evita que outra lib já tenha configurado o root logger antes
-)
-logger = logging.getLogger("marketylics")
-
-# ---------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
 # ---------------------------------------------------
 
@@ -132,16 +110,25 @@ whisper_model = get_whisper_model()
 
 
 # ---------------------------------------------------
-#  PLANOS — cota de mídias baixadas/armazenadas por mês
+#  PLANOS — cota de ANÚNCIOS com mídia baixada/armazenada por mês
 # ---------------------------------------------------
 # Placeholder simples até o item 4 do roadmap (tabela uso_organizacao
 # + billing de verdade) existir. O único ponto que precisa mudar
 # quando o billing estiver pronto é obter_plano_usuario().
-
+#
+# IMPORTANTE: a cota é contada por ANÚNCIO (ad_id distinto), não por linha
+# individual da tabela `midias`. Um mesmo anúncio pode ter várias imagens
+# e/ou vídeo (cada upload bem-sucedido vira uma linha própria em `midias`
+# — ver baixar_e_persistir_midia + persistir_midias_de_ads, que cria uma
+# tarefa por URL de imagem/vídeo do anúncio, não uma por anúncio). Contar
+# por linha inflava o consumo real: uma biblioteca com poucos anúncios mas
+# 2-4 mídias cada batia o teto de 500 rapidinho sem ter nem perto de 500
+# anúncios de verdade. Como isto é uma biblioteca de ANÚNCIOS, faz mais
+# sentido cobrar por anúncio — ver _contar_midias_do_mes.
 PLANOS_QUOTA_MIDIAS = {
     "free":    0,     # não baixa mídia — mantém o link original do Facebook (pode expirar)
-    "starter": 50,    # até 50 mídias baixadas/armazenadas por mês
-    "pro":     500,
+    "starter": 50,    # até 50 ANÚNCIOS com mídia baixada/armazenada por mês
+    "pro":     500,   # até 500 ANÚNCIOS com mídia baixada/armazenada por mês
     "agencia": None,  # ilimitado
 }
 
@@ -168,6 +155,14 @@ def obter_plano_usuario() -> str:
     return st.session_state.get("plano_usuario", "pro")
 
 def _contar_midias_do_mes(user_id: str) -> int:
+    """Conta quantos ANÚNCIOS distintos (ad_id) já tiveram pelo menos uma
+    mídia baixada/persistida neste mês — é essa contagem que decide a cota
+    do plano (ver PLANOS_QUOTA_MIDIAS e pode_baixar_midia). Conta por
+    anúncio, não por linha da tabela `midias`: um mesmo anúncio pode gerar
+    várias linhas (uma por imagem/vídeo), e contar por linha faria a cota
+    estourar bem antes de a biblioteca ter perto de `limite` anúncios de
+    verdade. Itens sem ad_id (não deveria acontecer no fluxo normal, mas
+    por segurança) não entram na contagem."""
     try:
         import datetime as _dt
         inicio_mes = _dt.datetime.now().replace(
@@ -175,12 +170,13 @@ def _contar_midias_do_mes(user_id: str) -> int:
         ).isoformat()
         res = (
             supabase.table("midias")
-            .select("id", count="exact")
+            .select("ad_id")
             .eq("user_id", user_id)
             .gte("criado_em", inicio_mes)
+            .not_.is_("ad_id", "null")
             .execute()
         )
-        return res.count or 0
+        return len({row["ad_id"] for row in (res.data or []) if row.get("ad_id")})
     except Exception:
         return 0
 
@@ -504,19 +500,13 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     ou o download falhar por qualquer motivo, devolve a própria
     url_origem — nunca quebra o fluxo existente."""
     if not url_origem or not url_origem.startswith("http"):
-        logger.debug("[%s/%s] URL vazia ou inválida — pulando (%r)", empresa, ad_id, url_origem)
         return url_origem
     if R2_PUBLIC_BASE and url_origem.startswith(R2_PUBLIC_BASE):
-        logger.debug("[%s/%s] já é uma mídia no R2 — nada a fazer", empresa, ad_id)
         return url_origem  # já é uma mídia nossa no R2 — nada a fazer
     if r2_client is None:
-        logger.warning("[%s/%s] r2_client não configurado — mídia não será baixada, mantendo link original", empresa, ad_id)
         return url_origem
     if not pode_baixar_midia(user_id):
-        logger.info("[%s/%s] usuário %s sem cota/plano pra baixar mídia — mantendo link original", empresa, ad_id, user_id)
         return url_origem
-
-    logger.info("[%s/%s] iniciando %s: %s", empresa, ad_id, tipo, url_origem)
 
     # Teto de tentativas — sem isso, QUALQUER chamador (a varredura
     # automática inclusive) tentava de novo pra sempre, mesmo pra uma
@@ -531,13 +521,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             .execute()
         )
         if _falha_existente.data and _falha_existente.data[0]["tentativas"] >= MAX_TENTATIVAS_MIDIA:
-            logger.warning(
-                "[%s/%s] já esgotou %d tentativas pra esta URL — desistindo sem tentar de novo: %s",
-                empresa, ad_id, MAX_TENTATIVAS_MIDIA, url_origem,
-            )
             return url_origem
     except Exception:
-        logger.exception("[%s/%s] falha ao checar midias_falhas — seguindo tentativa normalmente", empresa, ad_id)
         pass  # se a checagem falhar, segue tentando normalmente
 
     try:
@@ -558,10 +543,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             or "application/octet-stream"
         )
         hash_conteudo = hashlib.sha256(conteudo).hexdigest()
-        logger.info(
-            "[%s/%s] download OK: %.1f KB, content-type=%s, hash=%s",
-            empresa, ad_id, len(conteudo) / 1024, content_type, hash_conteudo[:12],
-        )
 
         # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita,
         # MAS só depois de confirmar que o arquivo ainda existe de verdade no
@@ -585,20 +566,14 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             except Exception:
                 _arquivo_existe = False
             if _arquivo_existe:
-                logger.info("[%s/%s] dedupe: mídia idêntica já existe no R2 — reaproveitando %s", empresa, ad_id, _url_dedupe)
                 _limpar_falha_midia(user_id, url_origem)
                 return _url_dedupe
             # arquivo sumiu do bucket apesar do registro no banco — remove
             # a linha órfã e segue pro upload normal abaixo, como se não
             # tivesse achado dedupe nenhum.
-            logger.warning(
-                "[%s/%s] dedupe apontava pra %s mas o arquivo não existe mais no bucket — removendo registro órfão e subindo de novo",
-                empresa, ad_id, _url_dedupe,
-            )
             try:
                 supabase.table("midias").delete().eq("user_id", user_id).eq("hash_conteudo", hash_conteudo).execute()
             except Exception:
-                logger.exception("[%s/%s] falha ao remover registro órfão de midias (hash=%s)", empresa, ad_id, hash_conteudo[:12])
                 pass
 
         ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
@@ -607,17 +582,13 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         thumbnail_url = ""
 
         if tipo == "imagem":
-            logger.debug("[%s/%s] comprimindo imagem...", empresa, ad_id)
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_imagem(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            logger.debug("[%s/%s] imagem comprimida: %.1f KB -> %.1f KB", empresa, ad_id, len(conteudo) / 1024, len(conteudo_upload) / 1024)
         elif tipo == "video":
-            logger.info("[%s/%s] comprimindo vídeo (ffmpeg)... isso pode levar um tempo", empresa, ad_id)
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            logger.info("[%s/%s] vídeo comprimido: %.1f KB -> %.1f KB", empresa, ad_id, len(conteudo) / 1024, len(conteudo_upload) / 1024)
             # Transcrição NÃO roda mais aqui. Antes, cada vídeo migrado podia
             # segurar um dos workers da migração por até alguns minutos
             # (ffmpeg + Whisper na CPU), fazendo a barra "X de Y salvos"
@@ -629,7 +600,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
-        logger.debug("[%s/%s] subindo pro R2: bucket=%s key=%s", empresa, ad_id, R2_BUCKET, storage_key)
         r2_client.put_object(
             Bucket=R2_BUCKET,
             Key=storage_key,
@@ -637,10 +607,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             ContentType=content_type_upload,
         )
         url_cdn = f"{R2_PUBLIC_BASE}/{storage_key}"
-        logger.debug("[%s/%s] upload pro R2 concluído: %s", empresa, ad_id, url_cdn)
 
         if tipo == "video":
-            logger.debug("[%s/%s] extraindo thumbnail do vídeo...", empresa, ad_id)
             frame_capa = _extrair_thumbnail_video(conteudo_upload)
             if frame_capa:
                 storage_key_thumb = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}_capa.jpg"
@@ -652,12 +620,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                         ContentType="image/jpeg",
                     )
                     thumbnail_url = f"{R2_PUBLIC_BASE}/{storage_key_thumb}"
-                    logger.debug("[%s/%s] thumbnail salva: %s", empresa, ad_id, thumbnail_url)
                 except Exception:
-                    logger.exception("[%s/%s] falha ao subir thumbnail do vídeo — seguindo sem thumbnail", empresa, ad_id)
                     thumbnail_url = ""
-            else:
-                logger.warning("[%s/%s] não foi possível extrair thumbnail do vídeo", empresa, ad_id)
 
         supabase.table("midias").insert({
             "user_id":       user_id,
@@ -675,10 +639,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         }).execute()
 
         _limpar_falha_midia(user_id, url_origem)
-        logger.info("[%s/%s] %s migrado com sucesso: %s", empresa, ad_id, tipo, url_cdn)
         return url_cdn
     except Exception as e:
-        logger.error("[%s/%s] falha ao migrar %s (%s): %s", empresa, ad_id, tipo, url_origem, e, exc_info=True)
         _registrar_falha_midia(user_id, empresa, ad_id, tipo, url_origem, e)
         return url_origem
 
@@ -712,7 +674,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
     pra isso nunca mais ficar escondido dentro de um "Concluído"."""
     if r2_client is None:
-        logger.warning("persistir_midias_de_ads: r2_client não configurado — pulando migração de %d empresa(s)", len(dados))
         return dados, {"total": 0, "nao_migrados": 0}
 
     from concurrent.futures import ThreadPoolExecutor
@@ -735,14 +696,9 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
                 tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id))
 
     if not tarefas:
-        logger.info("persistir_midias_de_ads: nenhuma mídia pendente pra %s", list(dados.keys()))
         return resultado, {"total": 0, "nao_migrados": 0}
 
     total_tarefas = len(tarefas)
-    logger.info(
-        "persistir_midias_de_ads: iniciando passada com %d mídia(s) pra migrar (empresas: %s)",
-        total_tarefas, list(dados.keys()),
-    )
 
     # Lock protege o contador de progresso (vários workers do
     # ThreadPoolExecutor terminam "ao mesmo tempo") e o timestamp da
@@ -770,7 +726,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             if not e_ultima and (agora - _estado_progresso["ultima_escrita"] < INTERVALO_MIN_ESCRITA_PROGRESSO):
                 return
             _estado_progresso["ultima_escrita"] = agora
-        logger.debug("progresso live: %d/%d (empresa=%s, atividade_id=%s)", concluidas, total_tarefas, _empresa_progresso, atividade_id)
         atualizar_atividade(atividade_id, "em_andamento", {
             "empresa": _empresa_progresso,
             "migradas": concluidas,
@@ -781,22 +736,14 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 
     def _processar(t):
         empresa, ad_idx, campo, url_idx, u, tipo, ad_id = t
-        import time as _t_item
-        _inicio_item = _t_item.time()
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
-        _duracao_item = _t_item.time() - _inicio_item
         # "não migrado" = a URL não mudou E não é porque já era do R2
         # (nesse caso o não-mudou é intencional, não uma falha)
         ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
         nao_migrado = (nova_url == u) and not ja_era_r2
-        if nao_migrado:
-            logger.warning("[%s/%s] item NÃO migrado (%.1fs) — manteve link original: %s", empresa, ad_id, _duracao_item, u)
-        elif _duracao_item > 10:
-            logger.warning("[%s/%s] item migrado mas demorou %.1fs (tipo=%s) — candidato a gargalo", empresa, ad_id, _duracao_item, tipo)
         with _lock_progresso:
             _estado_progresso["concluidas"] += 1
             _concluidas_agora = _estado_progresso["concluidas"]
-        logger.info("[%s] progresso: %d/%d (item atual levou %.1fs)", empresa, _concluidas_agora, total_tarefas, _duracao_item)
         _reportar_progresso_live(_concluidas_agora)
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
@@ -820,10 +767,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
         while not _heartbeat_stop.wait(INTERVALO_HEARTBEAT_SEGUNDOS):
             with _lock_progresso:
                 _concluidas_hb = _estado_progresso["concluidas"]
-            logger.info(
-                "heartbeat [%s]: ainda rodando — %d/%d processados até agora (atividade_id=%s)",
-                _empresa_progresso, _concluidas_hb, total_tarefas, atividade_id,
-            )
             try:
                 atualizar_atividade(atividade_id, "em_andamento", {
                     "empresa": _empresa_progresso,
@@ -834,18 +777,15 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
                     "ultimo_heartbeat_em": _agora_iso(),
                 })
             except Exception:
-                logger.exception("heartbeat [%s]: falha ao gravar heartbeat na atividade %s", _empresa_progresso, atividade_id)
                 pass  # heartbeat é best-effort — uma falha isolada não pode derrubar a migração
 
     _heartbeat_thread = None
     if atividade_id:
         _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
         _heartbeat_thread.start()
-        logger.debug("heartbeat [%s]: thread iniciada (intervalo=%ds)", _empresa_progresso, INTERVALO_HEARTBEAT_SEGUNDOS)
 
     nao_migrados = []
     try:
-        logger.info("[%s] disparando ThreadPoolExecutor com 6 workers pra %d tarefa(s)", _empresa_progresso, total_tarefas)
         with ThreadPoolExecutor(max_workers=6) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
                 resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
@@ -857,10 +797,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             _heartbeat_thread.join(timeout=2)
 
     stats = {"total": len(tarefas), "nao_migrados": len(nao_migrados), "amostra_nao_migrados": nao_migrados[:5]}
-    logger.info(
-        "[%s] passada concluída: %d/%d migrados, %d não migrados",
-        _empresa_progresso, total_tarefas - len(nao_migrados), total_tarefas, len(nao_migrados),
-    )
     return resultado, stats
 
 # ---------------------------------------------------
@@ -886,11 +822,21 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 import threading
 
 _lock_transcricao_pendente = threading.Lock()
-_usuarios_transcrevendo_agora = set()  # evita 2 filas rodando pro mesmo usuário ao mesmo tempo
+
+@st.cache_resource
+def _get_usuarios_transcrevendo_agora() -> set:
+    # @st.cache_resource (não uma variável solta no módulo) porque o
+    # Streamlit reexecuta o script inteiro do zero a cada rerun — uma
+    # variável de módulo comum voltaria a set() vazio a cada rerun,
+    # quebrando a trava "já tem uma fila rodando pra esse usuário" (mesmo
+    # motivo pelo qual get_r2_client() e get_whisper_model() já usam esse
+    # decorator). cache_resource devolve sempre a MESMA instância do set,
+    # compartilhada por todo o processo, sobrevivendo aos reruns.
+    return set()
+
+_usuarios_transcrevendo_agora = _get_usuarios_transcrevendo_agora()  # evita 2 filas rodando pro mesmo usuário ao mesmo tempo
 
 def _transcrever_pendentes_background(user_id: str):
-    logger.info("=== INÍCIO fila de transcrição pendente: user_id=%s ===", user_id)
-    total_processados = 0
     try:
         while True:
             try:
@@ -904,36 +850,29 @@ def _transcrever_pendentes_background(user_id: str):
                     .execute()
                 )
             except Exception:
-                logger.exception("fila de transcrição: falha ao consultar vídeos pendentes (user_id=%s) — encerrando ciclo", user_id)
                 break
             pendentes = res.data or []
             if not pendentes:
-                logger.debug("fila de transcrição: nenhum vídeo pendente restante (user_id=%s)", user_id)
                 break
-            logger.info("fila de transcrição: %d vídeo(s) pendente(s) neste lote (user_id=%s)", len(pendentes), user_id)
             for midia in pendentes:
                 # String vazia (em vez de deixar NULL) marca "já tentei
                 # transcrever esse vídeo" — sem isso, um vídeo sem áudio
                 # (ou que falha sempre) ficaria sendo pego por essa mesma
                 # fila pra sempre, a cada ciclo.
                 texto = ""
-                logger.debug("fila de transcrição: baixando e transcrevendo midia_id=%s", midia["id"])
                 try:
                     resp = requests.get(midia["url_cdn"], timeout=30)
                     resp.raise_for_status()
                     texto = _transcrever_video_whisper(resp.content)
-                    logger.debug("fila de transcrição: midia_id=%s transcrito (%d caracteres)", midia["id"], len(texto or ""))
                 except Exception:
-                    logger.exception("fila de transcrição: falha ao transcrever midia_id=%s — marcando como tentado (texto vazio)", midia["id"])
+                    pass
                 try:
                     supabase.table("midias").update({"transcricao": texto or ""}).eq("id", midia["id"]).execute()
                 except Exception:
-                    logger.exception("fila de transcrição: falha ao gravar transcrição de midia_id=%s no banco", midia["id"])
-                total_processados += 1
+                    pass
     finally:
         with _lock_transcricao_pendente:
             _usuarios_transcrevendo_agora.discard(user_id)
-        logger.info("=== FIM fila de transcrição pendente: user_id=%s (%d vídeo(s) processados) ===", user_id, total_processados)
 
 def iniciar_transcricao_pendente_background(user_id: str):
     """Dispara (se ainda não tiver uma rodando pra esse usuário) o
@@ -941,14 +880,11 @@ def iniciar_transcricao_pendente_background(user_id: str):
     pro R2 mas ainda não têm transcrição salva. Retorna na hora — nunca
     bloqueia quem chamou (migração, retry automático, etc.)."""
     if not user_id or whisper_model is None:
-        logger.debug("iniciar_transcricao_pendente_background: pulando (user_id=%s, whisper_model=%s)", user_id, whisper_model is not None)
         return
     with _lock_transcricao_pendente:
         if user_id in _usuarios_transcrevendo_agora:
-            logger.debug("iniciar_transcricao_pendente_background: já tem fila rodando pra user_id=%s", user_id)
             return
         _usuarios_transcrevendo_agora.add(user_id)
-    logger.info("iniciar_transcricao_pendente_background: disparando thread de transcrição pra user_id=%s", user_id)
     threading.Thread(target=_transcrever_pendentes_background, args=(user_id,), daemon=True).start()
 
 # ---------------------------------------------------
@@ -3019,20 +2955,27 @@ def _contar_midias_travadas_no_teto(user_id: str, empresa: str) -> int:
 # de INTERVALO_HEARTBEAT_SEGUNDOS — ver persistir_midias_de_ads), o que
 # é uma mensagem simplesmente errada: tinha thread ativa, sim.
 _lock_migracao_empresa_ativa = threading.Lock()
-_migracoes_empresa_ativas_agora = set()  # elementos: (user_id, empresa)
+
+@st.cache_resource
+def _get_migracoes_empresa_ativas_agora() -> set:
+    # Mesmo motivo do _get_usuarios_transcrevendo_agora acima: precisa
+    # sobreviver aos reruns do Streamlit, senão a trava contra threads
+    # duplicadas por (user_id, empresa) volta a zero a cada rerun e para
+    # de funcionar de fato.
+    return set()
+
+_migracoes_empresa_ativas_agora = _get_migracoes_empresa_ativas_agora()  # elementos: (user_id, empresa)
 
 def _migracao_empresa_esta_ativa_agora(user_id: str, empresa: str) -> bool:
     with _lock_migracao_empresa_ativa:
         return (user_id, empresa) in _migracoes_empresa_ativas_agora
 
 def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
-    logger.info("=== INÍCIO migração de mídia: empresa=%s user_id=%s atividade_id=%s ===", empresa, user_id, atividade_id)
     _chave_ativa = (user_id, empresa)
     with _lock_migracao_empresa_ativa:
         _migracoes_empresa_ativas_agora.add(_chave_ativa)
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
-            logger.warning("[%s] empresa alterada/removida antes da migração — abortando", empresa)
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa alterada/removida antes da migração"})
             return
 
@@ -3043,7 +2986,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         # baixar_e_persistir_midia). Dispara a fila separada agora — ela
         # roda numa thread própria e devolve na hora, então não atrasa o
         # fechamento desta atividade de migração.
-        logger.debug("[%s] disparando fila de transcrição pendente em background", empresa)
         iniciar_transcricao_pendente_background(user_id)
 
         # Atualização atômica: troca só os anúncios migrados (por id),
@@ -3055,11 +2997,9 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
         }
         if not atualizacoes:
-            logger.warning("[%s] nenhum anúncio com id pra atualizar após a migração — marcando como concluído mesmo assim", empresa)
             atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "motivo": "nenhum anúncio com id pra atualizar"})
             return
 
-        logger.debug("[%s] gravando %d anúncio(s) atualizado(s) no ads_cache via RPC", empresa, len(atualizacoes))
         res = supabase.rpc("atualizar_ads_no_cache", {
             "p_user_id": user_id,
             "p_empresa": empresa,
@@ -3090,12 +3030,19 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 # dessa empresa, pra pegar links do Facebook atualizados,
                 # antes de migrar de novo).
                 _travadas_no_teto = _contar_midias_travadas_no_teto(user_id, empresa)
-                logger.info(
-                    "[%s] %d/%d migradas, %d pendentes (%d já esgotaram tentativas)",
-                    empresa, migradas, total, nao_migrados, _travadas_no_teto,
-                )
+                # Antes de aceitar "em_andamento" (que promete retry automático),
+                # checa se o motivo real de sobrar pendente é a cota mensal do
+                # plano ter estourado (ver PLANOS_QUOTA_MIDIAS/pode_baixar_midia).
+                # Itens barrados por cota nem chegam a tentar o download — logo
+                # nunca aparecem em midias_falhas e não entram em
+                # _travadas_no_teto — então, sem esta checagem, o código caía
+                # direto no "em_andamento" com a mensagem "vamos tentar de novo
+                # automaticamente", que é falsa: o retry automático não baixa
+                # nada enquanto a cota não liberar no próximo ciclo (ou o plano
+                # mudar), então essa passada ficaria girando pra sempre sem
+                # nenhum progresso real.
+                _cota_esgotada = (_travadas_no_teto < nao_migrados) and not pode_baixar_midia(user_id)
                 if _travadas_no_teto >= nao_migrados:
-                    logger.error("[%s] TODOS os pendentes já esgotaram tentativas — marcando atividade como erro definitivo", empresa)
                     status_final = "erro"
                     detalhes_finais = {
                         "empresa": empresa,
@@ -3109,8 +3056,31 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                             f"migrar de novo."
                         ),
                     }
+                elif _cota_esgotada:
+                    # "erro" aqui não significa "algo quebrou" — significa "o
+                    # retry automático não vai adiantar nada até a cota
+                    # liberar". Isso também tira essa atividade da varredura de
+                    # retentar_migracoes_travadas_automaticamente (que só olha
+                    # status "em_andamento"), evitando um retry infinito e
+                    # inútil enquanto a cota estiver estourada.
+                    _limite_cota = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario())
+                    status_final = "erro"
+                    detalhes_finais = {
+                        "empresa": empresa,
+                        "migradas": migradas,
+                        "total": total,
+                        "cota_esgotada": True,
+                        "motivo": (
+                            f"{nao_migrados} anúncios ainda não foram migrados porque a cota "
+                            f"mensal de anúncios com mídia do seu plano "
+                            f"({_limite_cota if _limite_cota is not None else '∞'}/mês) foi "
+                            f"atingida. Isso não é uma falha passageira — o retry automático "
+                            f"não resolve sozinho. A migração retoma no início do próximo "
+                            f"ciclo ou assim que o plano for atualizado; até lá, use o botão "
+                            f"'Refazer' quando quiser tentar de novo manualmente."
+                        ),
+                    }
                 else:
-                    logger.info("[%s] ainda tem %d pendente(s) com chance de retry automático — atividade fica 'em_andamento'", empresa, nao_migrados)
                     status_final = "em_andamento"
                     detalhes_finais = {
                         # "empresa" precisa ser regravado aqui (e em TODO update
@@ -3138,7 +3108,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                         "ultima_tentativa_em": _agora_iso(),
                     }
             elif total:
-                logger.info("[%s] migração 100%% concluída: %d/%d", empresa, total, total)
                 status_final = "concluido"
                 detalhes_finais = {
                     "empresa": empresa,
@@ -3146,21 +3115,16 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "total": total,
                 }
             else:
-                logger.info("[%s] migração concluída sem itens pra migrar", empresa)
                 status_final = "concluido"
                 detalhes_finais = {"empresa": empresa}
             atualizar_atividade(atividade_id, status_final, detalhes_finais)
-            logger.info("=== FIM migração de mídia: empresa=%s status_final=%s ===", empresa, status_final)
         else:
-            logger.error("[%s] empresa não encontrada no ads_cache no momento de gravar a atualização (RPC devolveu vazio)", empresa)
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
-        logger.error("[%s] EXCEÇÃO não tratada na migração — marcando atividade como erro: %s", empresa, e, exc_info=True)
         atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
     finally:
         with _lock_migracao_empresa_ativa:
             _migracoes_empresa_ativas_agora.discard(_chave_ativa)
-        logger.debug("[%s] liberado do conjunto de migrações ativas agora", empresa)
 
 def _estimar_timeout_migracao(entry: dict) -> int:
     """Calcula um limite de tempo proporcional à quantidade de mídia
@@ -3194,21 +3158,13 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     fila segue pras próximas em vez de ficar parada pra sempre."""
     from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
-    logger.info("fila sequencial de migração: %d empresa(s) na fila: %s", len(tarefas), [t[0] for t in tarefas])
     for empresa, entry, atividade_id in tarefas:
         limite_segundos = _estimar_timeout_migracao(entry)
-        logger.info("[%s] próxima da fila sequencial — timeout estimado: %ds (%.1f min)", empresa, limite_segundos, limite_segundos / 60)
         with _TPE(max_workers=1) as executor:
             future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
             try:
                 future.result(timeout=limite_segundos)
-                logger.info("[%s] retornou da fila sequencial dentro do timeout", empresa)
             except _TimeoutErr:
-                logger.error(
-                    "[%s] TIMEOUT: excedeu o limite estimado de %d min — pulando pra próxima empresa da fila "
-                    "(a thread interna pode seguir rodando sozinha em segundo plano)",
-                    empresa, limite_segundos // 60,
-                )
                 atualizar_atividade(atividade_id, "erro", {
                     "empresa": empresa,
                     "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
@@ -3216,9 +3172,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                 # a thread interna pode continuar rodando sozinha em segundo
                 # plano (Python não mata thread à força), mas a fila segue.
             except Exception as e:
-                logger.error("[%s] exceção ao rodar migração dentro da fila sequencial: %s", empresa, e, exc_info=True)
                 atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
-    logger.info("fila sequencial de migração finalizada (%d empresa(s) processadas)", len(tarefas))
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
@@ -3238,24 +3192,19 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
     for empresa, entry in novos.items():
         atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa)
         if atividade_id:
-            logger.debug("[%s] reaproveitando atividade existente id=%s", empresa, atividade_id)
             atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
         else:
             atividade_id = criar_atividade(
                 user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
             )
-            logger.debug("[%s] criada nova atividade id=%s", empresa, atividade_id)
         tarefas.append((empresa, entry, atividade_id))
 
     if tarefas:
-        logger.info("iniciar_migracao_midia_background: enfileirando %d empresa(s) pra user_id=%s: %s", len(tarefas), user_id, list(novos.keys()))
         threading.Thread(
             target=_migrar_todas_empresas_sequencial,
             args=(user_id, tarefas),
             daemon=True,
         ).start()
-    else:
-        logger.debug("iniciar_migracao_midia_background: nada pra migrar pra user_id=%s", user_id)
 
 def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
     """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
@@ -3489,7 +3438,14 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
 # heartbeat (~20s) — ver o comentário completo dentro de
 # retentar_migracoes_travadas_automaticamente, onde essa trava é usada.
 _lock_retry_migracao = threading.Lock()
-_usuarios_retry_migracao_ativo = set()
+
+@st.cache_resource
+def _get_usuarios_retry_migracao_ativo() -> set:
+    # Mesmo motivo das outras duas acima — precisa ser um singleton que
+    # sobrevive aos reruns do Streamlit, não uma variável de módulo comum.
+    return set()
+
+_usuarios_retry_migracao_ativo = _get_usuarios_retry_migracao_ativo()
 
 def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     """Varre as migrações de mídia em aberto do usuário e refaz
@@ -3538,18 +3494,12 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     # em vez de pedir mais uma coluna que a gente já sabe de antemão.
     candidatas = [a for a in (res.data or []) if _migracao_travada({**a, "user_id": user_id})]
     if not candidatas:
-        logger.debug("retry automático: nenhuma migração travada pra user_id=%s (%d em_andamento no total)", user_id, len(res.data or []))
         return False
-    logger.info(
-        "retry automático: %d migração(ões) travada(s) detectada(s) pra user_id=%s: %s",
-        len(candidatas), user_id, [ (a.get("detalhes") or {}).get("empresa") for a in candidatas ],
-    )
 
     try:
         res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
         cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
     except Exception:
-        logger.exception("retry automático: falha ao ler ads_cache pra user_id=%s — abortando retry", user_id)
         return False
 
     tarefas = []
@@ -3567,13 +3517,11 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
             continue
         entry = cache_atual.get(empresa)
         if not entry:
-            logger.warning("retry automático: [%s] não encontrada no ads_cache atual — pulando esta atividade travada (id=%s)", empresa, alvo["id"])
             continue
         atualizar_atividade(alvo["id"], "em_andamento", {"empresa": empresa})
         tarefas.append((empresa, entry, alvo["id"]))
 
     if not tarefas:
-        logger.warning("retry automático: nenhuma tarefa válida montada a partir de %d candidata(s) travada(s)", len(candidatas))
         return False
 
     # Trava contra sobreposição: sem isso, se a leva de retry anterior
@@ -3591,11 +3539,8 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     # escrever seu próprio heartbeat.
     with _lock_retry_migracao:
         if user_id in _usuarios_retry_migracao_ativo:
-            logger.debug("retry automático: já tem um lote de retry rodando pra user_id=%s — não disparando outro por cima", user_id)
             return False
         _usuarios_retry_migracao_ativo.add(user_id)
-
-    logger.info("retry automático: disparando lote com %d empresa(s): %s", len(tarefas), [t[0] for t in tarefas])
 
     def _rodar_lote_e_liberar():
         try:
@@ -3603,7 +3548,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         finally:
             with _lock_retry_migracao:
                 _usuarios_retry_migracao_ativo.discard(user_id)
-            logger.info("retry automático: lote finalizado, trava liberada pra user_id=%s", user_id)
 
     threading.Thread(target=_rodar_lote_e_liberar, daemon=True).start()
     return True
@@ -4541,7 +4485,26 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
         # nenhum anúncio pendente. Sobrando algum, fica "em_andamento" com
         # o progresso visível, em vez de fechar como sucesso escondendo o
         # que ainda falta migrar.
-        if ainda_pendentes_total:
+        #
+        # Mesma ressalva da migração pontual (ver _migrar_midia_background):
+        # se o motivo de sobrar pendente é a cota mensal ter estourado, não
+        # existe "vamos tentar de novo automaticamente" de verdade — fecha
+        # como cota esgotada em vez de prometer um retry que não vai rodar.
+        if ainda_pendentes_total and not pode_baixar_midia(user_id):
+            _limite_cota = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario())
+            atualizar_atividade(atividade_id, "erro", {
+                "migradas": verificadas_total - ainda_pendentes_total,
+                "total": verificadas_total,
+                "cota_esgotada": True,
+                "motivo": (
+                    f"{ainda_pendentes_total} anúncios ainda não foram migrados porque a cota "
+                    f"mensal de anúncios com mídia do seu plano "
+                    f"({_limite_cota if _limite_cota is not None else '∞'}/mês) foi atingida. "
+                    f"Isso não é uma falha passageira — a migração retoma no início do "
+                    f"próximo ciclo ou assim que o plano for atualizado."
+                ),
+            })
+        elif ainda_pendentes_total:
             atualizar_atividade(atividade_id, "em_andamento", {
                 "migradas": verificadas_total - ainda_pendentes_total,
                 "total": verificadas_total,
@@ -18847,10 +18810,14 @@ html, body { background: transparent; overflow: hidden; }
 
         _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
 
+        # _midias_usadas conta ANÚNCIOS distintos com mídia migrada este mês
+        # (é essa a base real da cota — ver _contar_midias_do_mes). O
+        # detalhe abaixo mostra a composição em arquivos individuais só
+        # como informação extra, não como o que conta pro limite.
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
         _midias_por_tipo = _contar_midias_do_mes_por_tipo(_user_id_uso)
-        _detalhe_midias = f"{_midias_por_tipo['imagem']} imagens · {_midias_por_tipo['video']} vídeos"
+        _detalhe_midias = f"{_midias_por_tipo['imagem']} imagens · {_midias_por_tipo['video']} vídeos no total"
 
         _concorrentes_lista = (st.session_state.get("dados") or {}).get("concorrentes", [])
         _concorrentes_usados = len(_concorrentes_lista)
@@ -18974,7 +18941,7 @@ html, body { background: transparent; overflow: hidden; }
                 verificar_e_migrar_pendentes(_user_id_uso)
                 st.toast("Correção iniciada — acompanhe no sino de notificações.", icon="🔧")
         with _col_u1:
-            st.markdown(_card_uso_svg("Mídias armazenadas", _SVG_FILM, get_avatar_color(0),
+            st.markdown(_card_uso_svg("Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0),
                                        _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
         with _col_u2:
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),

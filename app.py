@@ -18819,6 +18819,17 @@ html, body { background: transparent; overflow: hidden; }
     {_body_bloco}
 </div>"""
 
+        # Altura estimada do iframe calculada em Python (determinística) em vez
+        # de depender só do JS pra medir e redimensionar depois. O JS que
+        # busca o próprio iframe dentro do DOM do Streamlit (window.parent.
+        # document) é frágil — quando falha ou demora, o iframe fica menor
+        # que o conteúdo real e o que vem depois na página (o expander
+        # "Excluir notificações") acaba sobrepondo os cards. Começando já
+        # com uma altura próxima da real, o JS só precisa fazer um ajuste
+        # fino (ex.: quando um título quebra em 2 linhas), não o trabalho
+        # todo — o que elimina a sobreposição visual na maioria dos casos.
+        _altura_estim_cards = _n_ativ * 92 + 24
+
         NOTIF_CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
@@ -18941,7 +18952,7 @@ if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH, 150);
 setTimeout(syncH, 500);
 </script>
-""", height=100, scrolling=False)
+""", height=_altura_estim_cards, scrolling=False)
 
         # Botões nativos ocultos (um por atividade que pode ser "refeita") —
         # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse

@@ -650,6 +650,15 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     _estado_progresso = {"concluidas": 0, "ultima_escrita": 0.0}
     INTERVALO_MIN_ESCRITA_PROGRESSO = 1.5  # segundos entre updates no banco
 
+    # Nome da empresa pra incluir em toda escrita de progresso — precisa
+    # ser regravado sempre porque atualizar_atividade substitui o dict de
+    # detalhes inteiro (não faz merge); sem isso, a primeira atualização
+    # de progresso ao vivo apagaria o campo "empresa" que o botão
+    # Continuar/Refazer depende pra saber qual empresa essa atividade é.
+    # `dados` sempre tem uma única empresa quando atividade_id é passado
+    # (é assim que _migrar_midia_background chama esta função).
+    _empresa_progresso = next(iter(dados), None)
+
     def _reportar_progresso_live(concluidas: int):
         if not atividade_id:
             return
@@ -661,6 +670,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
                 return
             _estado_progresso["ultima_escrita"] = agora
         atualizar_atividade(atividade_id, "em_andamento", {
+            "empresa": _empresa_progresso,
             "migradas": concluidas,
             "total": total_tarefas,
             "aviso": f"Migrando agora — {concluidas} de {total_tarefas} anúncios processados nesta passada.",
@@ -2711,7 +2721,7 @@ def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> 
 def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
-            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
+            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa alterada/removida antes da migração"})
             return
 
         migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id)
@@ -2725,7 +2735,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
         }
         if not atualizacoes:
-            atualizar_atividade(atividade_id, "concluido", {"motivo": "nenhum anúncio com id pra atualizar"})
+            atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "motivo": "nenhum anúncio com id pra atualizar"})
             return
 
         res = supabase.rpc("atualizar_ads_no_cache", {
@@ -2746,6 +2756,13 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             if nao_migrados:
                 status_final = "em_andamento"
                 detalhes_finais = {
+                    # "empresa" precisa ser regravado aqui (e em TODO update
+                    # de detalhes desta atividade) porque atualizar_atividade
+                    # substitui o dict inteiro, não faz merge — sem isso, a
+                    # primeira atualização de progresso apaga a empresa dos
+                    # detalhes e a tela perde a referência de qual empresa
+                    # essa atividade é (o botão Continuar depende disso).
+                    "empresa": empresa,
                     "migradas": migradas,
                     "total": total,
                     "aviso": (
@@ -2766,17 +2783,18 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             elif total:
                 status_final = "concluido"
                 detalhes_finais = {
+                    "empresa": empresa,
                     "migradas": total,
                     "total": total,
                 }
             else:
                 status_final = "concluido"
-                detalhes_finais = {}
+                detalhes_finais = {"empresa": empresa}
             atualizar_atividade(atividade_id, status_final, detalhes_finais)
         else:
-            atualizar_atividade(atividade_id, "erro", {"motivo": "empresa não encontrada no ads_cache no momento da atualização"})
+            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
-        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+        atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
 
 def _estimar_timeout_migracao(entry: dict) -> int:
     """Calcula um limite de tempo proporcional à quantidade de mídia
@@ -2817,12 +2835,13 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                 future.result(timeout=limite_segundos)
             except _TimeoutErr:
                 atualizar_atividade(atividade_id, "erro", {
+                    "empresa": empresa,
                     "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
                 })
                 # a thread interna pode continuar rodando sozinha em segundo
                 # plano (Python não mata thread à força), mas a fila segue.
             except Exception as e:
-                atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+                atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar

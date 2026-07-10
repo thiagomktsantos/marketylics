@@ -3269,21 +3269,25 @@ with st.sidebar:
     _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
 
     # ── Retry automático de migração travada ──
-    # Roda aqui (sino, que é renderizado em toda página) em vez de num
-    # timer JS próprio: assim ele só verifica quando a página já ia
-    # rerodar por qualquer outro motivo (navegação, clique em qualquer
-    # botão, etc.), sem forçar nenhum rerun extra. Forçar rerun por conta
-    # própria nessa parte do app colidia com fluxos de dois cliques com
-    # modal de confirmação (ex: excluir notificação) — o rerun artificial
-    # podia cair bem no meio da confirmação e "engolir" o clique real.
-    # Cooldown de 20s pra não bater no Supabase a cada rerun natural.
-    if st.session_state.user:
+    # Mesma ação usada pelo botão "Continuar" (refazer_migracao_midia),
+    # só que em lote e disparada sozinha. Cooldown de 20s é só limitador
+    # de taxa (não bater no Supabase a cada rerun) — não é a única coisa
+    # que decide se o retry roda; ver _acionar_poll_atividades abaixo,
+    # que chama esta mesma função de forma explícita a partir do clique
+    # no botão oculto de poll.
+    def _retentar_migracoes_com_cooldown():
         import time as _time_retry
         _agora_check_retry = _time_retry.time()
         _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
         if _agora_check_retry - _ultimo_check_retry >= 20:
             st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
+
+    if st.session_state.user:
+        # Roda em qualquer rerun (navegação, clique em qualquer botão),
+        # sem esperar o poll dedicado abaixo — cobre o caso comum de o
+        # usuário já estar navegando/clicando em algo por conta própria.
+        _retentar_migracoes_com_cooldown()
 
     # ── Auto-poll global (mantém o retry rodando em QUALQUER página) ──
     # O retry acima só dispara quando a página já ia rerodar por outro
@@ -3303,7 +3307,14 @@ with st.sidebar:
     # página de Ads (que já tinha seu próprio timer equivalente, hoje
     # redundante com este, mas inofensivo).
     if st.session_state.user and _resumo_sino["andamento"] > 0:
-        st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
+        _clicou_poll_oculto = st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
+        if _clicou_poll_oculto:
+            # O clique no botão oculto É a mesma ação do "Continuar": aqui
+            # fica explícito no código (em vez de depender da ordem das
+            # linhas no script pra "acontecer de rodar antes"). Redundante
+            # com a chamada de cima na mesma passada, mas garante que essa
+            # ligação nunca se perca numa futura reorganização do arquivo.
+            _retentar_migracoes_com_cooldown()
         st.markdown("""
         <style>
         .st-key-_btn_poll_atividades_sidebar {
@@ -3319,13 +3330,24 @@ with st.sidebar:
         """, unsafe_allow_html=True)
         components.html("""
         <script>
-        setTimeout(function() {
+        // Antes: um único setTimeout de 4s que, se o botão ainda não
+        // estivesse montado no DOM nesse instante (rerun demorando um
+        // pouco mais que o normal), simplesmente desistia — o loop de
+        // poll morria em silêncio até o usuário clicar em algo manualmente,
+        // mesmo com a aba aberta e logado. Agora, se não achar o botão na
+        // primeira tentativa, tenta de novo a cada 500ms por até 3s antes
+        // de desistir, em vez de morrer na primeira falha.
+        function tentarClicarPoll(tentativasRestantes) {
             var btns = window.parent.document.querySelectorAll('button');
             for (var i = 0; i < btns.length; i++) {
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === '_poll_atividades_trigger_') { btns[i].click(); return; }
             }
-        }, 4000);
+            if (tentativasRestantes > 0) {
+                setTimeout(function() { tentarClicarPoll(tentativasRestantes - 1); }, 500);
+            }
+        }
+        setTimeout(function() { tentarClicarPoll(6); }, 4000);
         </script>
         """, height=0)
 

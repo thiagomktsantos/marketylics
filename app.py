@@ -23,11 +23,24 @@ st.set_page_config(
 #  SUPABASE
 # ---------------------------------------------------
 
-@st.cache_resource
 def get_supabase() -> Client:
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+    """Cliente Supabase isolado por sessão (guardado em st.session_state),
+    e não mais em @st.cache_resource. O @st.cache_resource criava UM único
+    client compartilhado por todo o processo do servidor — como o login
+    (supabase.auth.sign_in_with_password) guarda o token de sessão dentro
+    do próprio client, isso fazia o token de um usuário "vazar" pra dentro
+    das chamadas de outro usuário rodando ao mesmo tempo no mesmo processo.
+    Na prática, isso podia fazer o RLS barrar silenciosamente operações
+    que deveriam funcionar pro usuário atual (ex.: excluir notificação
+    devolvia sucesso mas não apagava nada, porque o delete rodava com o
+    token de outra sessão). Guardando o client em st.session_state, cada
+    aba/usuário tem o seu próprio client — e ele persiste entre os reruns
+    da mesma sessão, então o login continua funcionando normalmente."""
+    if "_supabase_client" not in st.session_state:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        st.session_state["_supabase_client"] = create_client(url, key)
+    return st.session_state["_supabase_client"]
 
 supabase = get_supabase()
 
@@ -684,8 +697,14 @@ def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
         q = supabase.table("atividades").delete().eq("id", atividade_id)
         if user_id:
             q = q.eq("user_id", user_id)
-        q.execute()
-        return True
+        res = q.execute()
+        # Antes retornava True sempre que não havia exceção — mas o Supabase
+        # não lança erro quando o RLS barra o delete ou quando o filtro não
+        # bate com nenhuma linha, ele só devolve 0 linhas afetadas. Isso fazia
+        # a exclusão "funcionar" na tela (toast de sucesso) sem apagar nada
+        # de verdade no banco. Agora só reporta sucesso se alguma linha foi
+        # de fato apagada.
+        return bool(res.data)
     except Exception:
         return False
 

@@ -3156,6 +3156,50 @@ with st.sidebar:
             st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
 
+    # ── Auto-poll global (mantém o retry rodando em QUALQUER página) ──
+    # O retry acima só dispara quando a página já ia rerodar por outro
+    # motivo (clique em qualquer botão, navegação etc.) — mas telas sem
+    # nenhum polling próprio (ex: Notificações) podiam ficar abertas
+    # indefinidamente sem NUNCA rerodar sozinhas, já que o Streamlit não
+    # tem loop no servidor: ele só reexecuta o script quando o navegador
+    # manda algo. Isso fazia migrações travadas ficarem "paradas" até o
+    # usuário clicar em algo manualmente, mesmo com a aba aberta.
+    #
+    # Aqui, sempre que sobrar atividade em andamento (não só migração —
+    # qualquer uma; o retry acima já filtra internamente pra só mexer em
+    # migracao_midia), plantamos um botão escondido que um timer JS
+    # clica sozinho a cada poucos segundos, simulando um clique real do
+    # usuário. Isso mantém o ciclo de rerun vivo em qualquer tela — e
+    # portanto mantém o retry automático rodando sempre, não só na
+    # página de Ads (que já tinha seu próprio timer equivalente, hoje
+    # redundante com este, mas inofensivo).
+    if st.session_state.user and _resumo_sino["andamento"] > 0:
+        st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
+        st.markdown("""
+        <style>
+        .st-key-_btn_poll_atividades_sidebar {
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }
+        .stElementContainer:has(.st-key-_btn_poll_atividades_sidebar) {
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        components.html("""
+        <script>
+        setTimeout(function() {
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var i = 0; i < btns.length; i++) {
+                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                if (txt === '_poll_atividades_trigger_') { btns[i].click(); return; }
+            }
+        }, 4000);
+        </script>
+        """, height=0)
+
     _qtd_atividades_pendentes = _resumo_sino["total"]
     # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/
     # incompleta; sem selo = nada pendente. Antes era sempre vermelho.

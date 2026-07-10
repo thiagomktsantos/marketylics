@@ -2917,7 +2917,24 @@ def _contar_midias_travadas_no_teto(user_id: str, empresa: str) -> int:
     except Exception:
         return 0
 
+# Marca, em memória, qual (user_id, empresa) tem uma thread processando
+# ela agora mesmo — usado pela exibição (_migracao_travada) pra saber se
+# está "Rodando agora" sem depender só do heartbeat salvo no banco. Sem
+# isso, a tela dizia "Parado" por até uns 20s depois da thread já ter
+# começado a trabalhar de verdade (o primeiro heartbeat só sai depois
+# de INTERVALO_HEARTBEAT_SEGUNDOS — ver persistir_midias_de_ads), o que
+# é uma mensagem simplesmente errada: tinha thread ativa, sim.
+_lock_migracao_empresa_ativa = threading.Lock()
+_migracoes_empresa_ativas_agora = set()  # elementos: (user_id, empresa)
+
+def _migracao_empresa_esta_ativa_agora(user_id: str, empresa: str) -> bool:
+    with _lock_migracao_empresa_ativa:
+        return (user_id, empresa) in _migracoes_empresa_ativas_agora
+
 def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
+    _chave_ativa = (user_id, empresa)
+    with _lock_migracao_empresa_ativa:
+        _migracoes_empresa_ativas_agora.add(_chave_ativa)
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa alterada/removida antes da migração"})
@@ -3030,6 +3047,9 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
+    finally:
+        with _lock_migracao_empresa_ativa:
+            _migracoes_empresa_ativas_agora.discard(_chave_ativa)
 
 def _estimar_timeout_migracao(entry: dict) -> int:
     """Calcula um limite de tempo proporcional à quantidade de mídia
@@ -3315,10 +3335,20 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
     um único item pode passar de 90s tranquilamente — os 3 workers presos
     em itens lentos ao mesmo tempo faziam isso achar (errado) que não
     tinha nenhuma thread ativa, mostrando 'Continuar' no meio de uma
-    migração que seguia rodando normalmente."""
+    migração que seguia rodando normalmente.
+
+    Antes de olhar qualquer timestamp, checa primeiro se ESTE MESMO
+    processo já sabe, em memória, que tem uma thread processando essa
+    empresa agora (ver _migracao_empresa_esta_ativa_agora) — isso evita
+    o atraso de até ~20s entre a thread começar a trabalhar de verdade e
+    o primeiro heartbeat ser escrito no banco, janela em que a tela
+    dizia 'Parado' apesar de já ter uma migração rodando."""
     if atividade.get("tipo") != "migracao_midia" or atividade.get("status") != "em_andamento":
         return False
     d = atividade.get("detalhes") or {}
+    empresa = d.get("empresa") or _extrair_empresa_do_titulo_migracao(atividade.get("titulo") or "")
+    if empresa and _migracao_empresa_esta_ativa_agora(atividade.get("user_id"), empresa):
+        return False
     if not d.get("aviso"):
         # Sem 'aviso' = ou nunca rodou uma passada ainda (recém-criada),
         # ou é uma migração antiga sem esse campo — nesses casos não dá
@@ -3327,6 +3357,13 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
     if d.get("ultimo_heartbeat_em"):
         return _segundos_desde(d["ultimo_heartbeat_em"]) >= LIMIAR_HEARTBEAT_TRAVADA_SEGUNDOS
     return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
+
+# Protege contra o fragment de 15s da sidebar disparando uma nova leva de
+# retry antes da anterior sequer ter tido tempo de escrever seu primeiro
+# heartbeat (~20s) — ver o comentário completo dentro de
+# retentar_migracoes_travadas_automaticamente, onde essa trava é usada.
+_lock_retry_migracao = threading.Lock()
+_usuarios_retry_migracao_ativo = set()
 
 def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     """Varre as migrações de mídia em aberto do usuário e refaz
@@ -3369,8 +3406,11 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         return False
 
     # Mais antiga primeiro — respeita a mesma ordem que a fila
-    # sequencial original seguiria.
-    candidatas = [a for a in (res.data or []) if _migracao_travada(a)]
+    # sequencial original seguiria. O select acima não traz 'user_id'
+    # (não precisa pro resto da query), mas _migracao_travada precisa
+    # dele pra checar o flag de execução ativa em memória — injeta aqui
+    # em vez de pedir mais uma coluna que a gente já sabe de antemão.
+    candidatas = [a for a in (res.data or []) if _migracao_travada({**a, "user_id": user_id})]
     if not candidatas:
         return False
 
@@ -3402,11 +3442,32 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     if not tarefas:
         return False
 
-    threading.Thread(
-        target=_migrar_todas_empresas_sequencial,
-        args=(user_id, tarefas),
-        daemon=True,
-    ).start()
+    # Trava contra sobreposição: sem isso, se a leva de retry anterior
+    # ainda não tiver escrito nenhum heartbeat (o primeiro só sai depois
+    # de ~20s — ver INTERVALO_HEARTBEAT_SEGUNDOS em persistir_midias_de_ads),
+    # a atividade continua parecendo "travada" pro próximo ciclo de 15s
+    # do fragment da sidebar, que dispararia OUTRA thread fazendo o mesmo
+    # trabalho ao mesmo tempo — competindo pelos mesmos downloads/ffmpeg
+    # e piorando exatamente o travamento que o retry deveria resolver
+    # (era isso que deixava empresas grandes, com muito item, presas em
+    # "em_andamento" sem nenhum avanço por horas, enquanto empresas
+    # pequenas conseguiam terminar rápido o suficiente pra escapar do
+    # ciclo). Com a trava, um ciclo de 15s que encontrar uma leva ainda
+    # ativa simplesmente não faz nada — espera a leva atual progredir e
+    # escrever seu próprio heartbeat.
+    with _lock_retry_migracao:
+        if user_id in _usuarios_retry_migracao_ativo:
+            return False
+        _usuarios_retry_migracao_ativo.add(user_id)
+
+    def _rodar_lote_e_liberar():
+        try:
+            _migrar_todas_empresas_sequencial(user_id, tarefas)
+        finally:
+            with _lock_retry_migracao:
+                _usuarios_retry_migracao_ativo.discard(user_id)
+
+    threading.Thread(target=_rodar_lote_e_liberar, daemon=True).start()
     return True
 
 

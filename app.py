@@ -571,7 +571,14 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            transcricao_video = _transcrever_video_whisper(conteudo_upload)
+            # Transcrição NÃO roda mais aqui. Antes, cada vídeo migrado podia
+            # segurar um dos workers da migração por até alguns minutos
+            # (ffmpeg + Whisper na CPU), fazendo a barra "X de Y salvos"
+            # andar bem mais devagar do que o download/upload em si
+            # precisaria. transcricao_video fica "" (vira NULL no banco,
+            # ver insert abaixo) e é isso que sinaliza "pendente" pra fila
+            # separada em _transcrever_pendentes_background — que roda
+            # depois de terminar a migração, sem bloquear o progresso dela.
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
@@ -625,13 +632,14 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
     do Facebook que vai expirar.
 
-    Os downloads de imagem são I/O-bound (rede), mas os de vídeo agora
-    também rodam ffmpeg (compressão + thumbnail) e Whisper (transcrição)
-    — trabalho pesado de CPU/processo. Por isso o pool é bem menor do
-    que seria ideal só pra rede: com muitos vídeos e várias empresas
-    migrando ao mesmo tempo, workers demais já causaram erro de SO
-    ("Resource temporarily unavailable", Errno 11) por esgotar o limite
-    de processos/threads do sistema.
+    Os downloads de imagem são I/O-bound (rede); os de vídeo rodam ffmpeg
+    (compressão + thumbnail) — CPU, mas rápido (segundos). A transcrição
+    via Whisper, que era o trabalho pesado de verdade (podia segurar um
+    worker por minutos), NÃO roda mais aqui — foi movida pra uma fila
+    separada depois da migração (ver _transcrever_pendentes_background),
+    então o pool pode ser maior sem repetir o erro de SO ("Resource
+    temporarily unavailable", Errno 11) que vários ffmpeg+Whisper
+    concorrentes causavam antes.
 
     Se `atividade_id` for passado, grava progresso "ao vivo" nos detalhes
     da atividade (a cada item concluído, com um teto de frequência) —
@@ -760,7 +768,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 
     nao_migrados = []
     try:
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=6) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
                 resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
                 if nao_migrado:
@@ -772,6 +780,82 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 
     stats = {"total": len(tarefas), "nao_migrados": len(nao_migrados), "amostra_nao_migrados": nao_migrados[:5]}
     return resultado, stats
+
+# ---------------------------------------------------
+#  TRANSCRIÇÃO DE VÍDEO EM BACKGROUND (desacoplada da migração)
+# ---------------------------------------------------
+# Antes, a transcrição via Whisper rodava DENTRO de baixar_e_persistir_midia,
+# no meio da migração de mídia — cada vídeo podia segurar um dos workers
+# do ThreadPoolExecutor por até alguns minutos (ffmpeg + Whisper na CPU),
+# fazendo a barra "X de Y anúncios salvos" andar bem mais devagar do que
+# o download/upload em si precisaria (o próprio código já tinha um
+# comentário registrando que isso deixou uma migração real travada em
+# "32 de 155" por mais de uma hora). Agora a migração só baixa, comprime
+# e sobe a mídia pro R2 — rápido, principalmente I/O-bound — e a
+# transcrição roda depois, numa fila própria, sem bloquear o progresso.
+#
+# A fila processa os vídeos já migrados (url_cdn no R2, então nunca
+# expira) que ainda estão com `transcricao` NULL no banco. Cada vídeo
+# ainda passa pelo mesmo teto de tempo por item (ver
+# WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS dentro de _transcrever_video_whisper)
+# — só que agora atrasar a transcrição de um vídeo problemático não
+# atrasa mais a migração de nenhuma empresa.
+
+import threading
+
+_lock_transcricao_pendente = threading.Lock()
+_usuarios_transcrevendo_agora = set()  # evita 2 filas rodando pro mesmo usuário ao mesmo tempo
+
+def _transcrever_pendentes_background(user_id: str):
+    try:
+        while True:
+            try:
+                res = (
+                    supabase.table("midias")
+                    .select("id, url_cdn")
+                    .eq("user_id", user_id)
+                    .eq("tipo", "video")
+                    .is_("transcricao", "null")
+                    .limit(5)
+                    .execute()
+                )
+            except Exception:
+                break
+            pendentes = res.data or []
+            if not pendentes:
+                break
+            for midia in pendentes:
+                # String vazia (em vez de deixar NULL) marca "já tentei
+                # transcrever esse vídeo" — sem isso, um vídeo sem áudio
+                # (ou que falha sempre) ficaria sendo pego por essa mesma
+                # fila pra sempre, a cada ciclo.
+                texto = ""
+                try:
+                    resp = requests.get(midia["url_cdn"], timeout=30)
+                    resp.raise_for_status()
+                    texto = _transcrever_video_whisper(resp.content)
+                except Exception:
+                    pass
+                try:
+                    supabase.table("midias").update({"transcricao": texto or ""}).eq("id", midia["id"]).execute()
+                except Exception:
+                    pass
+    finally:
+        with _lock_transcricao_pendente:
+            _usuarios_transcrevendo_agora.discard(user_id)
+
+def iniciar_transcricao_pendente_background(user_id: str):
+    """Dispara (se ainda não tiver uma rodando pra esse usuário) o
+    processamento, em segundo plano, dos vídeos que já foram migrados
+    pro R2 mas ainda não têm transcrição salva. Retorna na hora — nunca
+    bloqueia quem chamou (migração, retry automático, etc.)."""
+    if not user_id or whisper_model is None:
+        return
+    with _lock_transcricao_pendente:
+        if user_id in _usuarios_transcrevendo_agora:
+            return
+        _usuarios_transcrevendo_agora.add(user_id)
+    threading.Thread(target=_transcrever_pendentes_background, args=(user_id,), daemon=True).start()
 
 # ---------------------------------------------------
 #  LOG DE ATIVIDADES (sino de notificações)
@@ -2841,6 +2925,13 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
 
         migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id)
 
+        # Os vídeos que acabaram de ser migrados já estão salvos no R2 e no
+        # registro `midias`, mas ainda sem transcrição (ver comentário em
+        # baixar_e_persistir_midia). Dispara a fila separada agora — ela
+        # roda numa thread própria e devolve na hora, então não atrasa o
+        # fechamento desta atividade de migração.
+        iniciar_transcricao_pendente_background(user_id)
+
         # Atualização atômica: troca só os anúncios migrados (por id),
         # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
         # Python. Isso evita a corrida entre migrações concorrentes de
@@ -2949,10 +3040,11 @@ def _estimar_timeout_migracao(entry: dict) -> int:
     n_imagens = sum(len(a.get("images") or []) for a in ads)
     n_videos = sum(len(a.get("videos") or []) for a in ads)
 
-    # tetos generosos por item (pior caso: rede lenta, ffmpeg, whisper)
+    # tetos generosos por item (pior caso: rede lenta, ffmpeg). Whisper
+    # não entra mais nessa conta — ver comentário em persistir_midias_de_ads.
     SEGUNDOS_POR_IMAGEM = 20
-    SEGUNDOS_POR_VIDEO = 180
-    PARALELISMO = 3  # bate com o max_workers do ThreadPoolExecutor
+    SEGUNDOS_POR_VIDEO = 60
+    PARALELISMO = 6  # bate com o max_workers do ThreadPoolExecutor
 
     tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
     return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
@@ -3378,6 +3470,14 @@ with st.sidebar:
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
+            # Mesmo ciclo cuida de pegar vídeos que já foram migrados (têm
+            # url_cdn no R2) mas ainda não têm transcrição — seja de uma
+            # migração recente que não chegou a chamar a fila por algum
+            # erro, seja de vídeos migrados antes dessa fila existir.
+            # iniciar_transcricao_pendente_background já se protege contra
+            # rodar 2x ao mesmo tempo pro mesmo usuário, então chamar aqui
+            # a cada 15s é seguro (é só uma checagem "já tem uma rodando?").
+            iniciar_transcricao_pendente_background(st.session_state.user.id)
 
     if st.session_state.user:
         _auto_retry_migracoes_travadas()

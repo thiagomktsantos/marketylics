@@ -982,7 +982,17 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if d.get("aviso"):
         path, _cor = _ICONE_AVISO
-        return _svg_icone(path, "currentColor", 14), d["aviso"]
+        texto = d["aviso"]
+        # Deixa explícito se essa migração pendente está rodando agora (uma
+        # thread ativa processando) ou parada esperando a próxima tentativa
+        # automática — sem isso, "X de Y salvos, Z pendentes" fica ambíguo:
+        # o usuário não sabe se precisa esperar ou se travou de vez.
+        if tipo == "migracao_midia" and atividade.get("status") == "em_andamento":
+            if _migracao_travada(atividade):
+                texto += " · Parado no momento — vamos retomar automaticamente em instantes."
+            else:
+                texto += " · Rodando agora."
+        return _svg_icone(path, "currentColor", 14), texto
     if d.get("motivo"):
         path, _cor = _ICONE_INFO
         return _svg_icone(path, "currentColor", 14), d["motivo"]
@@ -18910,6 +18920,29 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }
 .btn-excluir svg { display:block; }
 .btn-excluir:hover { background:#fee2e2; color:#e05252; }
+
+.excluir-modal-overlay {
+    display:none; position:fixed; inset:0; background:rgba(17,24,39,0.45);
+    align-items:center; justify-content:center; z-index:9999; padding:16px;
+}
+.excluir-modal-overlay.aberto { display:flex; }
+.excluir-modal {
+    background:#fff; border-radius:14px; padding:22px 24px; width:100%;
+    max-width:360px; box-shadow:0 12px 32px rgba(0,0,0,0.18);
+}
+.excluir-modal-titulo {
+    font-size:15px; font-weight:700; color:#111827; margin-bottom:6px;
+}
+.excluir-modal-texto { font-size:13.5px; color:#6b7280; line-height:1.5; margin-bottom:18px; }
+.excluir-modal-acoes { display:flex; justify-content:flex-end; gap:8px; }
+.excluir-modal-btn {
+    padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700;
+    cursor:pointer; font-family:'DM Sans',sans-serif; border:1.5px solid transparent; transition:all 0.15s;
+}
+.excluir-modal-btn.cancelar { background:#fff; border-color:#e5e7eb; color:#374151; }
+.excluir-modal-btn.cancelar:hover { background:#f9fafb; }
+.excluir-modal-btn.confirmar { background:#e05252; color:#fff; }
+.excluir-modal-btn.confirmar:hover { background:#c73e3e; }
 """
 
         components.html(f"""
@@ -18919,6 +18952,16 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 </style>
 <div>
 {_cards_notif_html}
+</div>
+<div class="excluir-modal-overlay" id="excluirModalOverlay">
+    <div class="excluir-modal">
+        <div class="excluir-modal-titulo">Excluir notificação?</div>
+        <div class="excluir-modal-texto">Essa ação não pode ser desfeita.</div>
+        <div class="excluir-modal-acoes">
+            <button class="excluir-modal-btn cancelar" id="excluirModalCancelar">Cancelar</button>
+            <button class="excluir-modal-btn confirmar" id="excluirModalConfirmar">Excluir</button>
+        </div>
+    </div>
 </div>
 <script>
 function syncH() {{
@@ -18954,8 +18997,22 @@ function refazerNotif(idx) {{
     }}
 }}
 
+var _idxParaExcluir = null;
+
 function excluirNotif(idx) {{
-    if (!window.confirm('Excluir esta notificação?')) return;
+    _idxParaExcluir = idx;
+    document.getElementById('excluirModalOverlay').classList.add('aberto');
+}}
+
+function fecharExcluirModal() {{
+    _idxParaExcluir = null;
+    document.getElementById('excluirModalOverlay').classList.remove('aberto');
+}}
+
+function confirmarExclusao() {{
+    var idx = _idxParaExcluir;
+    fecharExcluirModal();
+    if (!idx) return;
     var doc = window.parent.document;
     var chave = 'btn_excluir_ativ_' + idx;
     var porClasse = doc.querySelector('.st-key-' + chave + ' button');
@@ -18966,6 +19023,12 @@ function excluirNotif(idx) {{
         if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
     }}
 }}
+
+document.getElementById('excluirModalCancelar').addEventListener('click', fecharExcluirModal);
+document.getElementById('excluirModalConfirmar').addEventListener('click', confirmarExclusao);
+document.getElementById('excluirModalOverlay').addEventListener('click', function(e) {{
+    if (e.target.id === 'excluirModalOverlay') fecharExcluirModal();
+}});
 
 document.addEventListener('click', function(e) {{
     var ex = e.target.closest('.btn-excluir');

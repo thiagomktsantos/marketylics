@@ -131,6 +131,12 @@ PLANOS_QUOTA_MIDIAS = {
     "pro":     500,   # até 500 ANÚNCIOS com mídia baixada/armazenada por mês
     "agencia": None,  # ilimitado
 }
+# Revisado em jul/2026, depois da virada de métrica pra "por anúncio"
+# (ver comentário acima): os números 500/50 foram mantidos de propósito,
+# não são resquício do critério antigo — mantém a mesma proporção Pro/
+# Starter (10x) e, na prática, representa um AUMENTO real de capacidade
+# em ambos os planos (antes, 500/50 "mídias" cobriam bem menos anúncios
+# de verdade do que 500/50 anúncios cobrem agora).
 
 # Cota de concorrentes monitorados por plano — usada na aba "Uso do plano"
 # do perfil, pra mostrar quanto da cota já foi usado. Precisa ficar em

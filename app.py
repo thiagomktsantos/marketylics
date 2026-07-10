@@ -672,15 +672,19 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 
     Devolve (resultado, stats) — stats traz quantos itens não foram
     migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
-    pra isso nunca mais ficar escondido dentro de um "Concluído"."""
+    pra isso nunca mais ficar escondido dentro de um "Concluído". Também
+    traz um log por ANÚNCIO (não por URL de mídia) de quem migrou com
+    sucesso (anuncios_migrados) e quem deu erro (anuncios_com_erro), cada
+    um com id + título, pra alimentar o "mais informações" da atividade
+    no sino de notificações."""
     if r2_client is None:
-        return dados, {"total": 0, "nao_migrados": 0}
+        return dados, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
 
     from concurrent.futures import ThreadPoolExecutor
     import threading
 
     resultado = {}
-    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id)
+    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id, titulo_ad)
 
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
@@ -690,13 +694,22 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 
         for ad_idx, ad in enumerate(ads_novos):
             ad_id = ad.get("id")
+            # Rótulo legível do anúncio pro log de "quais anúncios foram
+            # migrados"/"quais deram erro" — sem isso o log só teria URLs
+            # de imagem/vídeo cruas, que não dizem nada pro usuário sobre
+            # qual anúncio é qual na tela de "mais informações".
+            _titulo_ad = (
+                (ad.get("title") or "").strip()
+                or (ad.get("body") or "").strip()[:60]
+                or (f"Anúncio {ad_id}" if ad_id else "Anúncio sem título")
+            )
             for url_idx, u in enumerate(ad.get("images") or []):
-                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id))
+                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
-                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id))
+                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad))
 
     if not tarefas:
-        return resultado, {"total": 0, "nao_migrados": 0}
+        return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
 
     total_tarefas = len(tarefas)
 
@@ -735,7 +748,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
         })
 
     def _processar(t):
-        empresa, ad_idx, campo, url_idx, u, tipo, ad_id = t
+        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad = t
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
         # "não migrado" = a URL não mudou E não é porque já era do R2
         # (nesse caso o não-mudou é intencional, não uma falha)
@@ -745,7 +758,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             _estado_progresso["concluidas"] += 1
             _concluidas_agora = _estado_progresso["concluidas"]
         _reportar_progresso_live(_concluidas_agora)
-        return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
+        return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u, ad_id, titulo_ad)
 
     # ── Heartbeat independente de tarefa concluída ──
     # _reportar_progresso_live só grava quando um item TERMINA. Com vídeo
@@ -785,18 +798,45 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
         _heartbeat_thread.start()
 
     nao_migrados = []
+    ads_com_erro = {}    # ad_id -> título, pelo menos 1 mídia falhou
+    ads_migrados = {}    # ad_id -> título, pelo menos 1 mídia migrou com sucesso
     try:
         with ThreadPoolExecutor(max_workers=6) as executor:
-            for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original in executor.map(_processar, tarefas):
+            for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad in executor.map(_processar, tarefas):
                 resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
                 if nao_migrado:
                     nao_migrados.append(url_original)
+                    if ad_id:
+                        ads_com_erro[ad_id] = titulo_ad
+                elif ad_id:
+                    ads_migrados[ad_id] = titulo_ad
     finally:
         _heartbeat_stop.set()
         if _heartbeat_thread:
             _heartbeat_thread.join(timeout=2)
 
-    stats = {"total": len(tarefas), "nao_migrados": len(nao_migrados), "amostra_nao_migrados": nao_migrados[:5]}
+    # Um mesmo anúncio pode ter, por exemplo, a imagem migrada mas o vídeo
+    # não — nesse caso ele conta só como "com erro" no log (não também como
+    # "migrado"), pra não esconder que esse anúncio específico ainda tem
+    # pendência.
+    for _aid in list(ads_migrados):
+        if _aid in ads_com_erro:
+            del ads_migrados[_aid]
+
+    # Cap na amostra gravada nos detalhes da atividade (jsonb no Supabase) —
+    # uma empresa com milhares de anúncios não deve virar um payload gigante
+    # a cada atualização de progresso. O total real (sem cap) fica em
+    # total_anuncios_com_erro/total_anuncios_migrados.
+    LIMITE_AMOSTRA_LOG_ANUNCIOS = 30
+    stats = {
+        "total": len(tarefas),
+        "nao_migrados": len(nao_migrados),
+        "amostra_nao_migrados": nao_migrados[:5],
+        "anuncios_com_erro": [{"id": k, "titulo": v} for k, v in list(ads_com_erro.items())[:LIMITE_AMOSTRA_LOG_ANUNCIOS]],
+        "total_anuncios_com_erro": len(ads_com_erro),
+        "anuncios_migrados": [{"id": k, "titulo": v} for k, v in list(ads_migrados.items())[:LIMITE_AMOSTRA_LOG_ANUNCIOS]],
+        "total_anuncios_migrados": len(ads_migrados),
+    }
     return resultado, stats
 
 # ---------------------------------------------------
@@ -3055,6 +3095,10 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                             f"coleta desta empresa pra pegar links atualizados antes de "
                             f"migrar de novo."
                         ),
+                        "anuncios_com_erro": stats_midia.get("anuncios_com_erro", []),
+                        "total_anuncios_com_erro": stats_midia.get("total_anuncios_com_erro", 0),
+                        "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
+                        "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
                     }
                 elif _cota_esgotada:
                     # "erro" aqui não significa "algo quebrou" — significa "o
@@ -3079,6 +3123,10 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                             f"ciclo ou assim que o plano for atualizado; até lá, use o botão "
                             f"'Refazer' quando quiser tentar de novo manualmente."
                         ),
+                        "anuncios_com_erro": stats_midia.get("anuncios_com_erro", []),
+                        "total_anuncios_com_erro": stats_midia.get("total_anuncios_com_erro", 0),
+                        "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
+                        "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
                     }
                 else:
                     status_final = "em_andamento"
@@ -3098,6 +3146,10 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                             f"vamos tentar de novo automaticamente)"
                         ),
                         "amostra": stats_midia.get("amostra_nao_migrados", []),
+                        "anuncios_com_erro": stats_midia.get("anuncios_com_erro", []),
+                        "total_anuncios_com_erro": stats_midia.get("total_anuncios_com_erro", 0),
+                        "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
+                        "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
                         # Carimba quando essa passada terminou — é o que permite
                         # diferenciar "ainda processando agora" de "já terminou
                         # e está só esperando a próxima tentativa" sem precisar
@@ -3113,6 +3165,8 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "empresa": empresa,
                     "migradas": total,
                     "total": total,
+                    "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
+                    "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
                 }
             else:
                 status_final = "concluido"
@@ -4445,6 +4499,9 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
         from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
         verificadas_total, ainda_pendentes_total = 0, 0
+        _log_com_erro_geral = []   # acumula entre empresas, com prefixo da empresa no título
+        _log_migrados_geral = []
+        LIMITE_AMOSTRA_LOG_GERAL = 30
         for empresa, entry in ads_cache.items():
             n_pendentes_empresa = sum(
                 1 for ad in entry.get("data", []) for u in (ad.get("images") or []) + (ad.get("videos") or [])
@@ -4480,6 +4537,19 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
 
             verificadas_total += stats.get("total", 0)
             ainda_pendentes_total += stats.get("nao_migrados", 0)
+            # Empresa vai junto no título aqui porque a varredura geral mistura
+            # várias empresas numa atividade só — sem isso, "mais informações"
+            # mostraria uma lista de anúncios sem dizer de qual empresa é cada um.
+            if len(_log_com_erro_geral) < LIMITE_AMOSTRA_LOG_GERAL:
+                for a in stats.get("anuncios_com_erro", []):
+                    if len(_log_com_erro_geral) >= LIMITE_AMOSTRA_LOG_GERAL:
+                        break
+                    _log_com_erro_geral.append({"id": a["id"], "titulo": f"{a['titulo']} ({empresa})"})
+            if len(_log_migrados_geral) < LIMITE_AMOSTRA_LOG_GERAL:
+                for a in stats.get("anuncios_migrados", []):
+                    if len(_log_migrados_geral) >= LIMITE_AMOSTRA_LOG_GERAL:
+                        break
+                    _log_migrados_geral.append({"id": a["id"], "titulo": f"{a['titulo']} ({empresa})"})
 
         # Mesma regra da migração pontual: só é "concluido" se não sobrou
         # nenhum anúncio pendente. Sobrando algum, fica "em_andamento" com
@@ -4503,6 +4573,8 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
                     f"Isso não é uma falha passageira — a migração retoma no início do "
                     f"próximo ciclo ou assim que o plano for atualizado."
                 ),
+                "anuncios_com_erro": _log_com_erro_geral,
+                "anuncios_migrados": _log_migrados_geral,
             })
         elif ainda_pendentes_total:
             atualizar_atividade(atividade_id, "em_andamento", {
@@ -4513,12 +4585,15 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
                     f"Biblioteca de Arquivos Permanente — {ainda_pendentes_total} ainda pendentes "
                     f"(vamos tentar de novo automaticamente)"
                 ),
+                "anuncios_com_erro": _log_com_erro_geral,
+                "anuncios_migrados": _log_migrados_geral,
             })
         else:
             atualizar_atividade(atividade_id, "concluido", {
                 "pendentes_antes": pendentes_antes,
                 "verificadas": verificadas_total,
                 "ainda_pendentes_depois": 0,
+                "anuncios_migrados": _log_migrados_geral,
             })
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
@@ -19396,6 +19471,35 @@ html, body { background: transparent; overflow: hidden; }
                 _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
 
+                # Log de quais anúncios especificamente deram erro nesta
+                # atividade — só faz sentido mostrar quando o status é "erro"
+                # de verdade (link expirado ou cota esgotada), não durante um
+                # "em_andamento" comum. A mensagem principal (_detalhe_safe)
+                # já diz QUANTOS deram erro; "mais informações" existe pra
+                # dizer QUAIS, sem precisar abrir o banco pra descobrir.
+                _detalhes_dict_ativ = _a.get("detalhes") or {}
+                _anuncios_erro_ativ = _detalhes_dict_ativ.get("anuncios_com_erro") or []
+                _total_anuncios_erro_ativ = _detalhes_dict_ativ.get("total_anuncios_com_erro", len(_anuncios_erro_ativ))
+                _tem_mais_info_ativ = _a.get("status") == "erro" and bool(_anuncios_erro_ativ)
+
+                _mais_info_html = ""
+                if _tem_mais_info_ativ:
+                    _itens_erro_html = "".join(
+                        f'<li>{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</li>'
+                        for _it in _anuncios_erro_ativ
+                    )
+                    _nota_truncado_html = (
+                        f'<div class="notif-mais-info-nota">mostrando {len(_anuncios_erro_ativ)} de {_total_anuncios_erro_ativ}</div>'
+                        if _total_anuncios_erro_ativ > len(_anuncios_erro_ativ) else ""
+                    )
+                    _mais_info_html = f"""
+                        <span class="notif-mais-info" data-idx="{_id_ativ}">mais informações</span>
+                        <div class="notif-mais-info-body" id="mi_{_id_ativ}" style="display:none">
+                            <ul class="notif-mais-info-list">{_itens_erro_html}</ul>
+                            {_nota_truncado_html}
+                        </div>
+                    """
+
                 _chevron_rot = ' style="transform:rotate(180deg)"' if _rodando_agora_ativ else ""
                 _chevron_svg = f"""
                     <span class="notif-chevron" data-idx="{_id_ativ}"{_chevron_rot}>
@@ -19439,7 +19543,8 @@ html, body { background: transparent; overflow: hidden; }
                         _corpo_html += (
                             f'<div class="notif-detail">'
                             f'<span class="notif-detail-icon">{_detalhe_icone_ativ}</span>'
-                            f'{_detalhe_safe}</div>'
+                            f'<div>{_detalhe_safe}{_mais_info_html}</div>'
+                            f'</div>'
                         )
                     _corpo_html += _progresso_html
                     if _pode_refazer:
@@ -19531,6 +19636,20 @@ html, body { background: transparent; overflow: hidden; }
     .notif-detail-icon { display:flex; align-items:center; flex-shrink:0; margin-top:2px; }
     .notif-detail-icon svg { display:block; }
     .notif-detail-icon:empty { display:none; }
+    .notif-mais-info {
+        display:inline-block; margin-top:4px; font-size:12.5px; font-weight:700;
+        color:#2f8fd1; cursor:pointer; text-decoration:underline; text-underline-offset:2px;
+    }
+    .notif-mais-info:hover { color:#1d4ed8; }
+    .notif-mais-info-body {
+        margin-top:8px; padding:10px 12px; background:#f9fafb; border:1px solid #eef1f5;
+        border-radius:8px; max-height:180px; overflow-y:auto;
+    }
+    .notif-mais-info-list { list-style:disc; padding-left:18px; margin:0; }
+    .notif-mais-info-list li {
+        font-size:12.5px; color:#4b5563; line-height:1.6; word-break:break-word;
+    }
+    .notif-mais-info-nota { font-size:11.5px; color:#9ca3af; margin-top:6px; font-style:italic; }
     .btn-refazer {
         margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
         background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;
@@ -19589,6 +19708,14 @@ html, body { background: transparent; overflow: hidden; }
         b.style.display = open ? 'none' : 'block';
         var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
         chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+        setTimeout(syncH, 100);
+    }}
+
+    function toggleMaisInfo(idx) {{
+        var b = document.getElementById('mi_' + idx);
+        if (!b) return;
+        var open = b.style.display !== 'none';
+        b.style.display = open ? 'none' : 'block';
         setTimeout(syncH, 100);
     }}
 
@@ -19680,6 +19807,9 @@ html, body { background: transparent; overflow: hidden; }
     document.addEventListener('click', function(e) {{
         var ex = e.target.closest('.btn-excluir');
         if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
+
+        var mi = e.target.closest('.notif-mais-info');
+        if (mi) {{ e.stopPropagation(); toggleMaisInfo(mi.dataset.idx); return; }}
 
         var rf = e.target.closest('.btn-refazer');
         if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}

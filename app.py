@@ -18671,6 +18671,13 @@ elif st.session_state.pagina == "notificacoes":
 @font-face {
     font-family: 'Animo';
     src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+    /* unicode-range restrito ao ASCII basico: essa fonte nao tem os
+       glifos acentuados (C-cedilha, O-til, A-til, E-agudo...), entao sem
+       isso o navegador tenta usa-la mesmo assim pra essas letras e mostra
+       um quadradinho (tofu) em vez de cair pro fallback 'DM Sans'.
+       Limitando o range, qualquer caractere fora do ASCII basico ja cai
+       automaticamente pra DM Sans. */
+    unicode-range: U+0020-007E;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }

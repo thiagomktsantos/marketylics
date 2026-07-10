@@ -18920,29 +18920,6 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }
 .btn-excluir svg { display:block; }
 .btn-excluir:hover { background:#fee2e2; color:#e05252; }
-
-.excluir-modal-overlay {
-    display:none; position:fixed; inset:0; background:rgba(17,24,39,0.45);
-    align-items:center; justify-content:center; z-index:9999; padding:16px;
-}
-.excluir-modal-overlay.aberto { display:flex; }
-.excluir-modal {
-    background:#fff; border-radius:14px; padding:22px 24px; width:100%;
-    max-width:360px; box-shadow:0 12px 32px rgba(0,0,0,0.18);
-}
-.excluir-modal-titulo {
-    font-size:15px; font-weight:700; color:#111827; margin-bottom:6px;
-}
-.excluir-modal-texto { font-size:13.5px; color:#6b7280; line-height:1.5; margin-bottom:18px; }
-.excluir-modal-acoes { display:flex; justify-content:flex-end; gap:8px; }
-.excluir-modal-btn {
-    padding:8px 16px; border-radius:8px; font-size:13px; font-weight:700;
-    cursor:pointer; font-family:'DM Sans',sans-serif; border:1.5px solid transparent; transition:all 0.15s;
-}
-.excluir-modal-btn.cancelar { background:#fff; border-color:#e5e7eb; color:#374151; }
-.excluir-modal-btn.cancelar:hover { background:#f9fafb; }
-.excluir-modal-btn.confirmar { background:#e05252; color:#fff; }
-.excluir-modal-btn.confirmar:hover { background:#c73e3e; }
 """
 
         components.html(f"""
@@ -18952,16 +18929,6 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
 </style>
 <div>
 {_cards_notif_html}
-</div>
-<div class="excluir-modal-overlay" id="excluirModalOverlay">
-    <div class="excluir-modal">
-        <div class="excluir-modal-titulo">Excluir notificação?</div>
-        <div class="excluir-modal-texto">Essa ação não pode ser desfeita.</div>
-        <div class="excluir-modal-acoes">
-            <button class="excluir-modal-btn cancelar" id="excluirModalCancelar">Cancelar</button>
-            <button class="excluir-modal-btn confirmar" id="excluirModalConfirmar">Excluir</button>
-        </div>
-    </div>
 </div>
 <script>
 function syncH() {{
@@ -18997,22 +18964,7 @@ function refazerNotif(idx) {{
     }}
 }}
 
-var _idxParaExcluir = null;
-
-function excluirNotif(idx) {{
-    _idxParaExcluir = idx;
-    document.getElementById('excluirModalOverlay').classList.add('aberto');
-}}
-
-function fecharExcluirModal() {{
-    _idxParaExcluir = null;
-    document.getElementById('excluirModalOverlay').classList.remove('aberto');
-}}
-
-function confirmarExclusao() {{
-    var idx = _idxParaExcluir;
-    fecharExcluirModal();
-    if (!idx) return;
+function clicarBotaoExcluir(idx) {{
     var doc = window.parent.document;
     var chave = 'btn_excluir_ativ_' + idx;
     var porClasse = doc.querySelector('.st-key-' + chave + ' button');
@@ -19024,11 +18976,66 @@ function confirmarExclusao() {{
     }}
 }}
 
-document.getElementById('excluirModalCancelar').addEventListener('click', fecharExcluirModal);
-document.getElementById('excluirModalConfirmar').addEventListener('click', confirmarExclusao);
-document.getElementById('excluirModalOverlay').addEventListener('click', function(e) {{
-    if (e.target.id === 'excluirModalOverlay') fecharExcluirModal();
-}});
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+
+function excluirNotif(idx) {{
+    abrirConfirmacao(
+        '🗑️ Excluir notificação',
+        'Tem certeza que deseja excluir esta notificação? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, excluir',
+        function() {{ clicarBotaoExcluir(idx); }}
+    );
+}}
 
 document.addEventListener('click', function(e) {{
     var ex = e.target.closest('.btn-excluir');

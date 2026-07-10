@@ -18766,7 +18766,14 @@ html, body { background: transparent; overflow: hidden; }
                 </span>
             """ if _tem_detalhe else ""
 
-            _excluir_btn_html = ""  # exclusão agora é feita via controles nativos do Streamlit, abaixo da lista
+            _excluir_svg = _svg_icone(
+                "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
+                "currentColor", 14,
+            )
+            _excluir_btn_html = (
+                f'<button class="btn-excluir" data-idx="{_id_ativ}" title="Excluir esta notificação">'
+                f'{_excluir_svg}</button>'
+            )
 
             _progresso_html = ""
             if _progresso_ativ:
@@ -18947,7 +18954,23 @@ function refazerNotif(idx) {{
     }}
 }}
 
+function excluirNotif(idx) {{
+    if (!window.confirm('Excluir esta notificação?')) return;
+    var doc = window.parent.document;
+    var chave = 'btn_excluir_ativ_' + idx;
+    var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+    if (porClasse) {{ porClasse.click(); return; }}
+    var btns = doc.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+        if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
+    }}
+}}
+
 document.addEventListener('click', function(e) {{
+    var ex = e.target.closest('.btn-excluir');
+    if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
+
     var rf = e.target.closest('.btn-refazer');
     if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
 
@@ -18987,37 +19010,29 @@ setTimeout(syncH, 500);
                     st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
                 st.rerun()
 
-        # Exclusão de notificações — feita 100% com widgets nativos do
-        # Streamlit (sem JS/iframe no meio). O ícone de lixeira dentro do
-        # card acima é só decorativo; tentamos por um tempo "clicar" num
-        # botão escondido via JS a partir do iframe do card, mas isso
-        # depende de acessar o documento pai a partir de um iframe
-        # sandboxed — nem sempre confiável (e navegação de URL nem é
-        # permitida nesse sandbox). Widgets nativos não têm essa limitação.
-        with st.expander("🗑️ Excluir notificações", expanded=True):
-            for _a_del in _todas_atividades:
-                _eid_del = _a_del["id"]
-                _titulo_del = _a_del.get("titulo") or "—"
-                _confirm_key = f"confirmar_excluir_notif_{_eid_del}"
-                col_txt, col_btn = st.columns([5, 1])
-                with col_txt:
-                    st.markdown(f"<div style='padding-top:6px;font-size:13.5px;color:#374151'>{_titulo_del} · {_tempo_relativo(_a_del.get('criado_em',''))}</div>", unsafe_allow_html=True)
-                with col_btn:
-                    if st.session_state.get(_confirm_key):
-                        cc1, cc2 = st.columns(2)
-                        with cc1:
-                            if st.button("✅", key=f"sim_{_eid_del}", help="Confirmar exclusão"):
-                                if excluir_atividade(_eid_del, st.session_state.user.id):
-                                    st.toast("Notificação excluída.", icon="🗑️")
-                                else:
-                                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
-                                st.session_state.pop(_confirm_key, None)
-                                st.rerun()
-                        with cc2:
-                            if st.button("✖️", key=f"nao_{_eid_del}", help="Cancelar"):
-                                st.session_state.pop(_confirm_key, None)
-                                st.rerun()
-                    else:
-                        if st.button("🗑️", key=f"del_{_eid_del}", help="Excluir esta notificação"):
-                            st.session_state[_confirm_key] = True
-                            st.rerun()
+        # Exclusão de notificações — agora feita direto pelo ícone de lixeira
+        # dentro de cada card (mesmo truque já usado no botão "🔄 Refazer"):
+        # o clique no iframe aciona, via JS, um botão nativo escondido com
+        # o mesmo id da atividade. A confirmação é um window.confirm() no
+        # próprio navegador, então não precisa de estado de confirmação
+        # no servidor. Isso elimina a lista nativa duplicada que ficava
+        # embaixo dos cards.
+        _acoes_excluir = {}
+        for _eid in _excluir_ids:
+            _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
+
+        if _excluir_ids:
+            _excluir_hide_css = "\n".join([
+                f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
+                f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
+                for _eid in _excluir_ids
+            ])
+            st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
+
+        for _eid in _excluir_ids:
+            if _acoes_excluir.get(_eid):
+                if excluir_atividade(_eid, st.session_state.user.id):
+                    st.toast("Notificação excluída.", icon="🗑️")
+                else:
+                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
+                st.rerun()

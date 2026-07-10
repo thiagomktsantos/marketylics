@@ -2812,6 +2812,27 @@ def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> 
     except Exception:
         return True  # checagem é só economia — em dúvida, não bloqueia
 
+def _contar_midias_travadas_no_teto(user_id: str, empresa: str) -> int:
+    """Conta quantas URLs de mídia dessa empresa já bateram no teto de
+    MAX_TENTATIVAS_MIDIA tentativas em midias_falhas — ou seja,
+    baixar_e_persistir_midia já desiste delas de cara (nem tenta baixar
+    de novo, ver o `if ... >= MAX_TENTATIVAS_MIDIA: return url_origem`
+    lá dentro). Usado logo abaixo pra distinguir "ainda vale a pena
+    deixar o retry automático tentar de novo" de "travado de vez —
+    precisa de link novo (nova coleta), retry não resolve"."""
+    try:
+        res = (
+            supabase.table("midias_falhas")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .gte("tentativas", MAX_TENTATIVAS_MIDIA)
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
 def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
@@ -2848,32 +2869,61 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             nao_migrados = stats_midia.get("nao_migrados", 0)
             migradas = total - nao_migrados
             if nao_migrados:
-                status_final = "em_andamento"
-                detalhes_finais = {
-                    # "empresa" precisa ser regravado aqui (e em TODO update
-                    # de detalhes desta atividade) porque atualizar_atividade
-                    # substitui o dict inteiro, não faz merge — sem isso, a
-                    # primeira atualização de progresso apaga a empresa dos
-                    # detalhes e a tela perde a referência de qual empresa
-                    # essa atividade é (o botão Continuar depende disso).
-                    "empresa": empresa,
-                    "migradas": migradas,
-                    "total": total,
-                    "aviso": (
-                        f"{migradas} de {total} anúncios salvos na Biblioteca de Arquivos "
-                        f"Permanente — {nao_migrados} ainda pendentes (link original expira; "
-                        f"vamos tentar de novo automaticamente)"
-                    ),
-                    "amostra": stats_midia.get("amostra_nao_migrados", []),
-                    # Carimba quando essa passada terminou — é o que permite
-                    # diferenciar "ainda processando agora" de "já terminou
-                    # e está só esperando a próxima tentativa" sem precisar
-                    # de coluna nova no banco. O retry automático (ver
-                    # retentar_migracoes_travadas_automaticamente) usa esse
-                    # campo pra saber há quanto tempo essa atividade está
-                    # parada antes de decidir refazer sozinho.
-                    "ultima_tentativa_em": _agora_iso(),
-                }
+                # Se TODOS os pendentes desta passada já bateram no teto de
+                # MAX_TENTATIVAS_MIDIA (ver baixar_e_persistir_midia), não
+                # existe "vamos tentar de novo automaticamente" real — o
+                # próprio código já desiste dessas URLs antes de tentar
+                # baixar. Deixar como "em_andamento" nesse caso faz o retry
+                # automático (retentar_migracoes_travadas_automaticamente)
+                # ficar rodando essa empresa pra sempre, sem nenhuma chance
+                # de progresso, e mostra pro usuário uma mensagem enganosa
+                # de que vai se resolver sozinho. Aqui vira "erro" de
+                # verdade — só assim para de ser retentada à toa e o
+                # usuário sabe que precisa de uma ação real (nova coleta
+                # dessa empresa, pra pegar links do Facebook atualizados,
+                # antes de migrar de novo).
+                _travadas_no_teto = _contar_midias_travadas_no_teto(user_id, empresa)
+                if _travadas_no_teto >= nao_migrados:
+                    status_final = "erro"
+                    detalhes_finais = {
+                        "empresa": empresa,
+                        "migradas": migradas,
+                        "total": total,
+                        "motivo": (
+                            f"{nao_migrados} anúncios têm links do Facebook que já expiraram "
+                            f"e esgotaram as {MAX_TENTATIVAS_MIDIA} tentativas automáticas de "
+                            f"download — não vão se resolver sozinhos. É preciso uma nova "
+                            f"coleta desta empresa pra pegar links atualizados antes de "
+                            f"migrar de novo."
+                        ),
+                    }
+                else:
+                    status_final = "em_andamento"
+                    detalhes_finais = {
+                        # "empresa" precisa ser regravado aqui (e em TODO update
+                        # de detalhes desta atividade) porque atualizar_atividade
+                        # substitui o dict inteiro, não faz merge — sem isso, a
+                        # primeira atualização de progresso apaga a empresa dos
+                        # detalhes e a tela perde a referência de qual empresa
+                        # essa atividade é (o botão Continuar depende disso).
+                        "empresa": empresa,
+                        "migradas": migradas,
+                        "total": total,
+                        "aviso": (
+                            f"{migradas} de {total} anúncios salvos na Biblioteca de Arquivos "
+                            f"Permanente — {nao_migrados} ainda pendentes (link original expira; "
+                            f"vamos tentar de novo automaticamente)"
+                        ),
+                        "amostra": stats_midia.get("amostra_nao_migrados", []),
+                        # Carimba quando essa passada terminou — é o que permite
+                        # diferenciar "ainda processando agora" de "já terminou
+                        # e está só esperando a próxima tentativa" sem precisar
+                        # de coluna nova no banco. O retry automático (ver
+                        # retentar_migracoes_travadas_automaticamente) usa esse
+                        # campo pra saber há quanto tempo essa atividade está
+                        # parada antes de decidir refazer sozinho.
+                        "ultima_tentativa_em": _agora_iso(),
+                    }
             elif total:
                 status_final = "concluido"
                 detalhes_finais = {

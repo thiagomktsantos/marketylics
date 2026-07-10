@@ -18957,7 +18957,7 @@ setTimeout(syncH, 500);
         # depende de acessar o documento pai a partir de um iframe
         # sandboxed — nem sempre confiável (e navegação de URL nem é
         # permitida nesse sandbox). Widgets nativos não têm essa limitação.
-        with st.expander("🗑️ Excluir notificações"):
+        with st.expander("🗑️ Excluir notificações", expanded=True):
             for _a_del in _todas_atividades:
                 _eid_del = _a_del["id"]
                 _titulo_del = _a_del.get("titulo") or "—"

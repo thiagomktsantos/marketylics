@@ -186,6 +186,40 @@ def _contar_midias_do_mes(user_id: str) -> int:
     except Exception:
         return 0
 
+def _contar_midias_do_mes_por_empresa(user_id: str) -> dict:
+    """Quebra a mesma contagem de _contar_midias_do_mes (ANÚNCIOS distintos
+    com mídia baixada/persistida neste mês) por empresa — usado na aba
+    'Uso do plano' pra mostrar quanto da cota cada empresa monitorada
+    (a própria empresa do usuário e cada concorrente) está consumindo.
+    Devolve {nome_da_empresa: quantidade_de_anuncios}."""
+    resultado = {}
+    if not user_id:
+        return resultado
+    try:
+        import datetime as _dt
+        inicio_mes = _dt.datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        res = (
+            supabase.table("midias")
+            .select("empresa, ad_id")
+            .eq("user_id", user_id)
+            .gte("criado_em", inicio_mes)
+            .not_.is_("ad_id", "null")
+            .execute()
+        )
+        _ids_por_empresa = {}
+        for row in (res.data or []):
+            aid = row.get("ad_id")
+            emp = row.get("empresa") or ""
+            if not aid or not emp:
+                continue
+            _ids_por_empresa.setdefault(emp, set()).add(aid)
+        resultado = {emp: len(ids) for emp, ids in _ids_por_empresa.items()}
+        return resultado
+    except Exception:
+        return resultado
+
 def _contar_midias_do_mes_por_tipo(user_id: str) -> dict:
     """Detalha a contagem de mídias do mês por tipo (imagem/vídeo) — usado
     na aba 'Uso do plano' pra mostrar o que compõe o total armazenado."""
@@ -18909,6 +18943,31 @@ html, body { background: transparent; overflow: hidden; }
             if _concorrentes_lista else "nenhum concorrente cadastrado"
         )
 
+        # Quebra do uso de mídia por empresa (a própria + cada concorrente) —
+        # pra mostrar quem está de fato consumindo a cota, não só o total.
+        _midias_por_empresa = _contar_midias_do_mes_por_empresa(_user_id_uso) if _user_id_uso else {}
+        _nome_minha_empresa = ((st.session_state.get("dados") or {}).get("minha_empresa") or {}).get("nome", "")
+        _linhas_uso_empresa = []
+        if _nome_minha_empresa:
+            _linhas_uso_empresa.append({
+                "nome": _nome_minha_empresa,
+                "usado": _midias_por_empresa.get(_nome_minha_empresa, 0),
+                "cor": get_minha_empresa_color(),
+                "tag": "Minha empresa",
+            })
+        for _i_conc, _c in enumerate(_concorrentes_lista):
+            _nome_c = (_c.get("nome") or "").strip()
+            if not _nome_c:
+                continue
+            _linhas_uso_empresa.append({
+                "nome": _nome_c,
+                "usado": _midias_por_empresa.get(_nome_c, 0),
+                "cor": get_concorrente_color(_i_conc),
+                "tag": "Concorrente",
+            })
+        _linhas_uso_empresa.sort(key=lambda x: -x["usado"])
+        _max_uso_empresa = max([_l["usado"] for _l in _linhas_uso_empresa] + [1])
+
         # Estas três já têm contador real no sistema de cooldown/cota
         # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
         _coleta_ads_usadas   = _contar_execucoes_mes(_user_id_uso, "coleta_ads")   if _user_id_uso else 0
@@ -18998,6 +19057,39 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
+        def _render_uso_por_empresa(linhas: list, maximo: int) -> str:
+            """Lista compacta 'quem consome a cota' — uma linha por empresa
+            monitorada (a própria + concorrentes), com bolinha colorida (mesma
+            cor usada no resto do app pra distinguir minha empresa de cada
+            concorrente), nome, tag e uma barrinha proporcional ao uso."""
+            if not linhas:
+                return (
+                    '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
+                    "nenhuma empresa monitorada ainda</div>"
+                )
+            _itens_html = ""
+            for _l in linhas:
+                _nome_safe = (_l["nome"] or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _pct_barra = round((_l["usado"] / maximo) * 100) if maximo else 0
+                _itens_html += f"""
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 2px">
+                    <span style="width:9px;height:9px;border-radius:50%;background:{_l['cor']};flex-shrink:0"></span>
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;gap:8px">
+                            <span style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;
+                                         text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
+                            <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
+                        </div>
+                        <div style="width:100%;height:5px;border-radius:4px;background:#eef1f5;margin-top:5px;overflow:hidden">
+                            <div style="width:{_pct_barra}%;height:100%;border-radius:4px;background:{_l['cor']}"></div>
+                        </div>
+                    </div>
+                    <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
+                        {_l['usado']} anúncio{'s' if _l['usado'] != 1 else ''}
+                    </span>
+                </div>"""
+            return _itens_html
+
         # Anúncios ainda com link original do Facebook em vez do link
         # permanente da Biblioteca — ao contrário das outras métricas,
         # aqui "alto %" é ruim (quer dizer que muita coisa ainda depende
@@ -19014,7 +19106,7 @@ html, body { background: transparent; overflow: hidden; }
         )
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
-        _col_u0, _col_u1, _col_u2, _col_u3, _col_u4, _col_u5 = st.columns(6)
+        _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
                                        _total_pendentes_link, _total_ads_geral or 1, _detalhe_link), unsafe_allow_html=True)
@@ -19027,6 +19119,23 @@ html, body { background: transparent; overflow: hidden; }
         with _col_u2:
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
                                        _concorrentes_usados, _concorrentes_limite, _detalhe_concorrentes), unsafe_allow_html=True)
+
+        # Detalhamento por empresa (a própria + cada concorrente) de quem
+        # está de fato consumindo a cota de "Anúncios com mídia salva" —
+        # os cards acima só mostram o total, sem dizer se o consumo é
+        # concentrado numa empresa só ou distribuído entre várias.
+        with st.expander("📊 Ver uso por empresa (minha empresa e concorrentes)", expanded=False):
+            st.markdown(
+                _html(f"""
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                            padding:6px 16px;margin-bottom:4px">
+                    {_render_uso_por_empresa(_linhas_uso_empresa, _max_uso_empresa)}
+                </div>
+                """),
+                unsafe_allow_html=True,
+            )
+
+        _col_u3, _col_u4, _col_u5 = st.columns(3)
         with _col_u3:
             st.markdown(_card_uso_svg("Coletas de anúncios", _SVG_DOWNLOAD, get_avatar_color(3),
                                        _coleta_ads_usadas, _coleta_ads_limite, _detalhe_coleta_ads), unsafe_allow_html=True)

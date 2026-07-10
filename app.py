@@ -972,6 +972,27 @@ def _segundos_desde(iso_str: str) -> float:
     except Exception:
         return float("inf")
 
+import re as _re_ativ
+
+def _extrair_empresa_do_titulo_migracao(titulo: str):
+    """Fallback pra recuperar o nome da empresa quando `detalhes.empresa`
+    não está presente numa atividade migracao_midia — o que já aconteceu
+    com registros antigos porque atualizar_atividade() substitui o dict
+    de detalhes inteiro (não faz merge), então uma atualização de
+    progresso sem a chave 'empresa' apagava esse dado do registro,
+    mesmo com a atividade ainda bem identificada pelo título. O título é
+    montado sempre no mesmo formato em iniciar_migracao_midia_background
+    ('Salvando anúncios de {empresa} na Biblioteca de Arquivos
+    Permanente'), então dá pra extrair de volta com segurança. Sem esse
+    fallback, uma atividade antiga fica com o botão de continuar
+    escondido pra sempre (só se resolveria na próxima vez que algo
+    regravasse os detalhes) — com ele, a tela se autocorrige na hora,
+    sem precisar esperar nenhuma nova escrita no banco."""
+    if not titulo:
+        return None
+    m = _re_ativ.match(r"^Salvando anúncios de (.+) na Biblioteca de Arquivos Permanente$", titulo)
+    return m.group(1) if m else None
+
 def _tempo_relativo(iso_str: str) -> str:
     try:
         import datetime as _dt
@@ -3049,7 +3070,7 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     try:
         res = (
             supabase.table("atividades")
-            .select("id, detalhes, criado_em")
+            .select("id, titulo, detalhes, criado_em")
             .eq("user_id", user_id)
             .eq("tipo", "migracao_midia")
             .eq("status", "em_andamento")
@@ -3067,6 +3088,14 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     # sequencial original teria seguido.
     alvo = candidatas[0]
     empresa = (alvo.get("detalhes") or {}).get("empresa")
+    if not empresa:
+        # Registro antigo sem 'empresa' nos detalhes (ver
+        # _extrair_empresa_do_titulo_migracao) — sem esse fallback, o
+        # retry automático desistia dessa atividade em silêncio pra
+        # sempre, sem nenhum sinal visível pro usuário de que parou de
+        # tentar. Com ele, o retry automático volta a funcionar mesmo
+        # pra atividades antigas já quebradas no banco.
+        empresa = _extrair_empresa_do_titulo_migracao(alvo.get("titulo") or "")
     if not empresa:
         return False
     return bool(refazer_migracao_midia(user_id, empresa, alvo["id"]))
@@ -18816,6 +18845,12 @@ html, body { background: transparent; overflow: hidden; }
                 _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
                 _id_ativ = _a["id"]
                 _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+                if not _empresa_ativ and _a.get("tipo") == "migracao_midia":
+                    # Registro antigo sem 'empresa' nos detalhes (ver
+                    # _extrair_empresa_do_titulo_migracao) — recupera do
+                    # título em vez de deixar o botão escondido até a
+                    # próxima gravação de progresso.
+                    _empresa_ativ = _extrair_empresa_do_titulo_migracao(_a.get("titulo") or "")
                 # Só oferece o botão quando dá pra saber qual empresa refazer —
                 # sem isso o painel expandido abriria vazio (só a setinha, sem
                 # texto e sem botão), uma UX capenga.
@@ -19173,6 +19208,8 @@ html, body { background: transparent; overflow: hidden; }
                 if _acoes_refazer.get(_rid):
                     _atividade_ref = next((x for x in _todas_atividades if x["id"] == _rid), None)
                     _empresa_ref = (_atividade_ref.get("detalhes") or {}).get("empresa") if _atividade_ref else None
+                    if not _empresa_ref and _atividade_ref and _atividade_ref.get("tipo") == "migracao_midia":
+                        _empresa_ref = _extrair_empresa_do_titulo_migracao(_atividade_ref.get("titulo") or "")
                     if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
                         st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                     else:

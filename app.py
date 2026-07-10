@@ -3093,9 +3093,29 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
 
 def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     """Varre as migrações de mídia em aberto do usuário e refaz
-    automaticamente a mais antiga que estiver travada (ver
-    _migracao_travada). Devolve True se disparou algum retry (útil pra
-    decidir se vale a pena um st.rerun() logo em seguida)."""
+    automaticamente TODAS as que estiverem travadas (ver
+    _migracao_travada) num único lote sequencial — em vez de refazer
+    só a mais antiga a cada ciclo do sino (12s) e depender de outro
+    ciclo pra pegar a próxima.
+
+    Antes, com 2+ empresas travadas ao mesmo tempo, elas ficavam se
+    revezando uma por ciclo: cada rodada de retry cuidava de 1 empresa,
+    e as outras ficavam ociosas esperando a vez, mesmo que a empresa em
+    retry tivesse terminado rápido. Isso multiplicava o tempo total de
+    fila sem nenhum ganho de segurança — o sistema já processa uma
+    empresa de cada vez mesmo (ver _migrar_todas_empresas_sequencial,
+    que existe justamente pra evitar Errno 11 de ffmpeg/Whisper
+    concorrentes). Agrupar todas as travadas num só lote elimina esse
+    tempo ocioso entre uma e outra sem aumentar a concorrência real:
+    continua sendo 1 migração ativa por vez, só sem pausa artificial
+    entre elas.
+
+    Também evita N queries repetidas ao ads_cache (uma por empresa,
+    como refazer_migracao_midia fazia sendo chamada individualmente) —
+    aqui a busca é feita uma vez só pra montar o lote inteiro.
+
+    Devolve True se disparou algum retry (útil pra decidir se vale a
+    pena um st.rerun() logo em seguida)."""
     if not user_id:
         return False
     try:
@@ -3111,25 +3131,46 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     except Exception:
         return False
 
+    # Mais antiga primeiro — respeita a mesma ordem que a fila
+    # sequencial original seguiria.
     candidatas = [a for a in (res.data or []) if _migracao_travada(a)]
     if not candidatas:
         return False
 
-    # A mais antiga primeiro — respeita a mesma ordem que a fila
-    # sequencial original teria seguido.
-    alvo = candidatas[0]
-    empresa = (alvo.get("detalhes") or {}).get("empresa")
-    if not empresa:
-        # Registro antigo sem 'empresa' nos detalhes (ver
-        # _extrair_empresa_do_titulo_migracao) — sem esse fallback, o
-        # retry automático desistia dessa atividade em silêncio pra
-        # sempre, sem nenhum sinal visível pro usuário de que parou de
-        # tentar. Com ele, o retry automático volta a funcionar mesmo
-        # pra atividades antigas já quebradas no banco.
-        empresa = _extrair_empresa_do_titulo_migracao(alvo.get("titulo") or "")
-    if not empresa:
+    try:
+        res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
+    except Exception:
         return False
-    return bool(refazer_migracao_midia(user_id, empresa, alvo["id"]))
+
+    tarefas = []
+    for alvo in candidatas:
+        empresa = (alvo.get("detalhes") or {}).get("empresa")
+        if not empresa:
+            # Registro antigo sem 'empresa' nos detalhes (ver
+            # _extrair_empresa_do_titulo_migracao) — sem esse fallback, o
+            # retry automático desistia dessa atividade em silêncio pra
+            # sempre, sem nenhum sinal visível pro usuário de que parou de
+            # tentar. Com ele, o retry automático volta a funcionar mesmo
+            # pra atividades antigas já quebradas no banco.
+            empresa = _extrair_empresa_do_titulo_migracao(alvo.get("titulo") or "")
+        if not empresa:
+            continue
+        entry = cache_atual.get(empresa)
+        if not entry:
+            continue
+        atualizar_atividade(alvo["id"], "em_andamento", {"empresa": empresa})
+        tarefas.append((empresa, entry, alvo["id"]))
+
+    if not tarefas:
+        return False
+
+    threading.Thread(
+        target=_migrar_todas_empresas_sequencial,
+        args=(user_id, tarefas),
+        daemon=True,
+    ).start()
+    return True
 
 
 # ---------------------------------------------------

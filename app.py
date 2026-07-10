@@ -18641,6 +18641,21 @@ html, body { background: transparent; overflow: hidden; }
 # ---------------------------------------------------
 elif st.session_state.pagina == "notificacoes":
 
+    # Exclusão de notificação via parâmetro de URL — o clique no botão
+    # "Sim, excluir" (dentro do iframe do card) não consegue rodar Python
+    # diretamente, então em vez de tentar "achar e clicar" num botão
+    # escondido do Streamlit (mecanismo frágil que dependia de seletores
+    # CSS internos e falhava silenciosamente), o JS navega a própria
+    # página com ?excluir_atividade=<id> e tratamos aqui, de forma direta.
+    _eid_para_excluir = st.query_params.get("excluir_atividade")
+    if _eid_para_excluir and st.session_state.user:
+        if excluir_atividade(_eid_para_excluir, st.session_state.user.id):
+            st.toast("Notificação excluída.", icon="🗑️")
+        else:
+            st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
+        st.query_params.pop("excluir_atividade", None)
+        st.rerun()
+
     st.markdown(
         '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">',
         unsafe_allow_html=True,
@@ -18955,17 +18970,9 @@ function excluirNotif(idx) {{
     confirmBtn.style.cssText = 'padding:11px;border-radius:9px;border:none;background:#e05252;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
     confirmBtn.onclick = function() {{
         ov.remove();
-        var chave = 'btn_excluir_ativ_' + idx;
-        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
-        if (porClasse) {{ porClasse.click(); return; }}
-        // Fallback: nem sempre o Streamlit aplica a classe .st-key-<key> de
-        // forma confiável — mesmo truque já usado em excluirAnalise() pra
-        // achar o botão escondido pelo texto quando o seletor de classe falha.
-        var btns = doc.querySelectorAll('button');
-        for (var b of btns) {{
-            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
-            if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
-        }}
+        var url = new URL(doc.location.href);
+        url.searchParams.set('excluir_atividade', idx);
+        doc.location.href = url.toString();
     }};
 
     row.appendChild(cancelBtn);
@@ -19021,26 +19028,4 @@ setTimeout(syncH, 500);
                     st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                 else:
                     st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
-                st.rerun()
-
-        # Mesmo truque pro botão de excluir — disponível em toda atividade,
-        # não só nas com erro, pra dar liberdade de limpar a lista.
-        _acoes_excluir = {}
-        for _eid in _excluir_ids:
-            _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
-
-        if _excluir_ids:
-            _excluir_hide_css = "\n".join([
-                f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
-                f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
-                for _eid in _excluir_ids
-            ])
-            st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
-
-        for _eid in _excluir_ids:
-            if _acoes_excluir.get(_eid):
-                if excluir_atividade(_eid, st.session_state.user.id):
-                    st.toast("Notificação excluída.", icon="🗑️")
-                else:
-                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
                 st.rerun()

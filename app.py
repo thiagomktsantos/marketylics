@@ -3269,77 +3269,33 @@ with st.sidebar:
     _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
 
     # ── Retry automático de migração travada ──
-    # Roda aqui (sino, que é renderizado em toda página) em vez de num
-    # timer JS próprio: assim ele só verifica quando a página já ia
-    # rerodar por qualquer outro motivo (navegação, clique em qualquer
-    # botão, etc.), sem forçar nenhum rerun extra. Forçar rerun por conta
-    # própria nessa parte do app colidia com fluxos de dois cliques com
-    # modal de confirmação (ex: excluir notificação) — o rerun artificial
-    # podia cair bem no meio da confirmação e "engolir" o clique real.
-    # Cooldown de 20s pra não bater no Supabase a cada rerun natural.
-    if st.session_state.user:
-        import time as _time_retry
-        _agora_check_retry = _time_retry.time()
-        _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
-        if _agora_check_retry - _ultimo_check_retry >= 20:
-            st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
+    # Antes, essa checagem rodava "de carona" em qualquer rerun do script
+    # inteiro (clique em botão, navegação, ou o botão fantasma clicado via
+    # JS entre iframes) — mas a página de Notificações usa um
+    # st.fragment(run_every="2s") pra se atualizar sozinha, e reruns de
+    # fragment NÃO rerodam o resto do script (só a função decorada). Então
+    # enquanto o usuário ficava OLHANDO a tela de notificações — o cenário
+    # onde mais se esperava que o retry funcionasse —, o bloco da sidebar
+    # (fora do fragment) só rerodava se algo forçasse um rerun completo, e
+    # o truque de botão fantasma + JS clicando via window.parent.document
+    # é frágil (depende do iframe ser remontado, de nenhum bloqueador
+    # interferir, etc.) — na prática, migrações ficavam paradas horas com
+    # a aba aberta e logada.
+    #
+    # Agora usamos o mesmo mecanismo nativo que já funciona pra atualizar
+    # as notificações sozinhas: um st.fragment(run_every=...) próprio,
+    # que o Streamlit rerruna periodicamente por conta própria (via
+    # websocket, sem precisar de nenhum clique real ou simulado) enquanto
+    # a aba estiver aberta e conectada — em QUALQUER página, porque a
+    # sidebar é renderizada em todas elas. Substitui por completo o antigo
+    # bloco "Auto-poll global" (botão escondido + setInterval em JS).
+    @st.fragment(run_every="15s")
+    def _auto_retry_migracoes_travadas():
+        if st.session_state.user:
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
 
-    # ── Auto-poll global (mantém o retry rodando em QUALQUER página) ──
-    # O retry acima só dispara quando a página já ia rerodar por outro
-    # motivo (clique em qualquer botão, navegação etc.) — mas telas sem
-    # nenhum polling próprio (ex: Notificações) podiam ficar abertas
-    # indefinidamente sem NUNCA rerodar sozinhas, já que o Streamlit não
-    # tem loop no servidor: ele só reexecuta o script quando o navegador
-    # manda algo. Isso fazia migrações travadas ficarem "paradas" até o
-    # usuário clicar em algo manualmente, mesmo com a aba aberta.
-    #
-    # Aqui, sempre que sobrar atividade em andamento (não só migração —
-    # qualquer uma; o retry acima já filtra internamente pra só mexer em
-    # migracao_midia), plantamos um botão escondido que um timer JS
-    # clica sozinho a cada poucos segundos, simulando um clique real do
-    # usuário. Isso mantém o ciclo de rerun vivo em qualquer tela — e
-    # portanto mantém o retry automático rodando sempre, não só na
-    # página de Ads (que já tinha seu próprio timer equivalente, hoje
-    # redundante com este, mas inofensivo).
-    if st.session_state.user and _resumo_sino["andamento"] > 0:
-        st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
-        st.markdown("""
-        <style>
-        .st-key-_btn_poll_atividades_sidebar {
-            position:fixed !important; top:-9999px !important; left:-9999px !important;
-            width:0 !important; height:0 !important; overflow:hidden !important;
-            opacity:0 !important; pointer-events:none !important; display:none !important;
-        }
-        .stElementContainer:has(.st-key-_btn_poll_atividades_sidebar) {
-            display:none !important; height:0 !important; min-height:0 !important;
-            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        components.html("""
-        <script>
-        // setInterval (não setTimeout): o setTimeout de disparo único que
-        // existia aqui dependia do Streamlit remontar este iframe do zero a
-        // cada rerun pra continuar "batendo" — mas como o HTML/JS enviado é
-        // idêntico em todo rerun (nada varia dentro da string), o frontend
-        // pode reaproveitar o mesmo iframe sem recriá-lo, e o timer então só
-        // disparava UMA vez na vida do componente. Na prática isso fazia o
-        // ciclo de auto-retry morrer silenciosamente depois do primeiro
-        // clique, deixando migrações "paradas" mesmo com a aba aberta e
-        // logada — só voltava a rodar se algo *externo* forçasse um rerun
-        // (navegação manual, F5). Com setInterval, uma vez montado o timer
-        // continua rodando sozinho pra sempre, independente de o iframe ser
-        // remontado ou não nos reruns seguintes.
-        setInterval(function() {
-            var btns = window.parent.document.querySelectorAll('button');
-            for (var i = 0; i < btns.length; i++) {
-                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
-                if (txt === '_poll_atividades_trigger_') { btns[i].click(); return; }
-            }
-        }, 4000);
-        </script>
-        """, height=0)
+    if st.session_state.user:
+        _auto_retry_migracoes_travadas()
 
     _qtd_atividades_pendentes = _resumo_sino["total"]
     # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/

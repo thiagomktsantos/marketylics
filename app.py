@@ -625,6 +625,9 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     from concurrent.futures import ThreadPoolExecutor
     import threading
 
+    resultado = {}
+    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id)
+
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
         ads_novos = [dict(ad) for ad in entry.get("data", [])]

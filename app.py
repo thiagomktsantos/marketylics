@@ -18904,8 +18904,14 @@ function toggleNotif(idx) {{
 
 function refazerNotif(idx) {{
     var doc = window.parent.document;
-    var el = doc.querySelector('.st-key-btn_refazer_ativ_' + idx + ' button');
-    if (el) el.click();
+    var chave = 'btn_refazer_ativ_' + idx;
+    var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+    if (porClasse) {{ porClasse.click(); return; }}
+    var btns = doc.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+        if (txt === '_refazer_ativ_' + idx + '_') {{ b.click(); return; }}
+    }}
 }}
 
 function excluirNotif(idx) {{
@@ -18949,8 +18955,17 @@ function excluirNotif(idx) {{
     confirmBtn.style.cssText = 'padding:11px;border-radius:9px;border:none;background:#e05252;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
     confirmBtn.onclick = function() {{
         ov.remove();
-        var el = doc.querySelector('.st-key-btn_excluir_ativ_' + idx + ' button');
-        if (el) el.click();
+        var chave = 'btn_excluir_ativ_' + idx;
+        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+        if (porClasse) {{ porClasse.click(); return; }}
+        // Fallback: nem sempre o Streamlit aplica a classe .st-key-<key> de
+        // forma confiável — mesmo truque já usado em excluirAnalise() pra
+        // achar o botão escondido pelo texto quando o seletor de classe falha.
+        var btns = doc.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
+        }}
     }};
 
     row.appendChild(cancelBtn);

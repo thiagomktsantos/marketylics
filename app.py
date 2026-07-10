@@ -591,7 +591,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         _registrar_falha_midia(user_id, empresa, ad_id, tipo, url_origem, e)
         return url_origem
 
-def persistir_midias_de_ads(dados: dict, user_id: str):
+def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None):
     """Percorre um dict no formato do ads_cache e substitui as URLs de
     imagens/vídeos por versões permanentes no R2, quando possível.
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
@@ -605,6 +605,17 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
     ("Resource temporarily unavailable", Errno 11) por esgotar o limite
     de processos/threads do sistema.
 
+    Se `atividade_id` for passado, grava progresso "ao vivo" nos detalhes
+    da atividade (a cada item concluído, com um teto de frequência) —
+    é isso que permite a barra de progresso no sino atualizar sozinha
+    enquanto a passada ainda está rodando, tipo a barra de cópia de
+    arquivos do Windows, em vez de só pular quando a passada inteira
+    termina. Os números gravados durante a corrida são uma contagem de
+    itens já processados (sucesso ou falha) — uma aproximação honesta de
+    "quanto já andou" pra dar feedback em tempo real; o número final
+    definitivo de migrados-de-verdade só é conhecido (e gravado) no fim
+    da passada, então pode ajustar pra baixo se algum item falhar.
+
     Devolve (resultado, stats) — stats traz quantos itens não foram
     migrados (falha de rede/ffmpeg, ou bloqueio por cota do plano),
     pra isso nunca mais ficar escondido dentro de um "Concluído"."""
@@ -612,9 +623,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
         return dados, {"total": 0, "nao_migrados": 0}
 
     from concurrent.futures import ThreadPoolExecutor
-
-    resultado = {}
-    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id)
+    import threading
 
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
@@ -632,6 +641,32 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
     if not tarefas:
         return resultado, {"total": 0, "nao_migrados": 0}
 
+    total_tarefas = len(tarefas)
+
+    # Lock protege o contador de progresso (vários workers do
+    # ThreadPoolExecutor terminam "ao mesmo tempo") e o timestamp da
+    # última escrita no Supabase, que usamos pro throttle abaixo.
+    _lock_progresso = threading.Lock()
+    _estado_progresso = {"concluidas": 0, "ultima_escrita": 0.0}
+    INTERVALO_MIN_ESCRITA_PROGRESSO = 1.5  # segundos entre updates no banco
+
+    def _reportar_progresso_live(concluidas: int):
+        if not atividade_id:
+            return
+        import time as _t_prog
+        agora = _t_prog.time()
+        with _lock_progresso:
+            e_ultima = concluidas >= total_tarefas
+            if not e_ultima and (agora - _estado_progresso["ultima_escrita"] < INTERVALO_MIN_ESCRITA_PROGRESSO):
+                return
+            _estado_progresso["ultima_escrita"] = agora
+        atualizar_atividade(atividade_id, "em_andamento", {
+            "migradas": concluidas,
+            "total": total_tarefas,
+            "aviso": f"Migrando agora — {concluidas} de {total_tarefas} anúncios processados nesta passada.",
+            "ultima_tentativa_em": _agora_iso(),
+        })
+
     def _processar(t):
         empresa, ad_idx, campo, url_idx, u, tipo, ad_id = t
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
@@ -639,6 +674,10 @@ def persistir_midias_de_ads(dados: dict, user_id: str):
         # (nesse caso o não-mudou é intencional, não uma falha)
         ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
         nao_migrado = (nova_url == u) and not ja_era_r2
+        with _lock_progresso:
+            _estado_progresso["concluidas"] += 1
+            _concluidas_agora = _estado_progresso["concluidas"]
+        _reportar_progresso_live(_concluidas_agora)
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u)
 
     nao_migrados = []
@@ -2675,7 +2714,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "erro", {"motivo": "empresa alterada/removida antes da migração"})
             return
 
-        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id)
+        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id)
 
         # Atualização atômica: troca só os anúncios migrados (por id),
         # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
@@ -18724,399 +18763,428 @@ html, body { background: transparent; overflow: hidden; }
 </script>
 """, height=70)
 
-    _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
+    @st.fragment(run_every="2s")
+    def _renderizar_atividades_ao_vivo():
+        """Desenha a lista de atividades (cards, texto e barra de progresso)
+        dentro de um st.fragment que se atualiza sozinho a cada ~2 segundos —
+        é o que dá o efeito de progresso 'ao vivo' (tipo barra de cópia do
+        Windows) enquanto uma migração está rodando, sem precisar de
+        clique nem de recarregar a página inteira. Só essa função reroda
+        no intervalo; o resto da página (cabeçalho, sidebar) fica parado.
+        Precisa estar numa função à parte porque st.fragment decora uma
+        função, não um bloco de código solto."""
+        _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
 
-    if not _todas_atividades:
-        _bell_svg = _svg_icone(
-            "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
-            "#c7cdd6", 32,
-        )
-        st.markdown(_html(f"""
-        <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
-                    text-align:center;background:#fff;margin-top:8px">
-            <div style="margin-bottom:8px;display:flex;justify-content:center">{_bell_svg}</div>
-            <div style="font-size:14px;color:#9ca3af">Nenhuma atividade registrada ainda.</div>
-        </div>
-        """), unsafe_allow_html=True)
-    else:
-        _n_ativ = len(_todas_atividades)
-        _refazer_ids = []
-        _excluir_ids = []
-        _cards_notif_html = ""
-
-        for _pos, _a in enumerate(_todas_atividades):
-            _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
-            _id_ativ = _a["id"]
-            _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
-            # Só oferece o botão quando dá pra saber qual empresa refazer —
-            # sem isso o painel expandido abriria vazio (só a setinha, sem
-            # texto e sem botão), uma UX capenga.
-            #
-            # Pra "em_andamento" só mostra o botão quando a migração está
-            # de fato parada (travada — sem thread ativa processando agora),
-            # senão o botão ficava visível também enquanto "Rodando agora",
-            # o que é confuso/redundante (clicar nele reiniciaria algo que
-            # já está em progresso). Quando está travada, o botão vira
-            # "Continuar" em vez de "Refazer", já que o usuário está
-            # apenas retomando de onde parou, não recomeçando do zero.
-            _migracao_parada_ativ = (
-                _a.get("tipo") == "migracao_midia"
-                and _a.get("status") == "em_andamento"
-                and _migracao_travada(_a)
+        if not _todas_atividades:
+            _bell_svg = _svg_icone(
+                "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
+                "#c7cdd6", 32,
             )
-            _pode_refazer = (
-                _a.get("tipo") == "migracao_midia"
-                and bool(_empresa_ativ)
-                and (_a.get("status") == "erro" or _migracao_parada_ativ)
-            )
-            _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
-            _progresso_ativ = _progresso_atividade(_a)
-            _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
-            if _pode_refazer:
-                _refazer_ids.append(_id_ativ)
-            _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
+            st.markdown(_html(f"""
+            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                        text-align:center;background:#fff;margin-top:8px">
+                <div style="margin-bottom:8px;display:flex;justify-content:center">{_bell_svg}</div>
+                <div style="font-size:14px;color:#9ca3af">Nenhuma atividade registrada ainda.</div>
+            </div>
+            """), unsafe_allow_html=True)
+        else:
+            _n_ativ = len(_todas_atividades)
+            _refazer_ids = []
+            _excluir_ids = []
+            _cards_notif_html = ""
 
-            _titulo_safe = (_a.get("titulo") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
-
-            _chevron_svg = f"""
-                <span class="notif-chevron" data-idx="{_id_ativ}">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                </span>
-            """ if _tem_detalhe else ""
-
-            _excluir_svg = _svg_icone(
-                "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
-                "currentColor", 14,
-            )
-            _excluir_btn_html = (
-                f'<button class="btn-excluir" data-idx="{_id_ativ}" title="Excluir esta notificação">'
-                f'{_excluir_svg}</button>'
-            )
-
-            _progresso_html = ""
-            if _progresso_ativ:
-                _feitos_p, _total_p = _progresso_ativ
-                _pct_p = max(0, min(100, round((_feitos_p / _total_p) * 100))) if _total_p else 0
-                _cor_barra = _ui["cor"]  # acompanha o status: âmbar em andamento, verde quando concluído
-                _progresso_html = f"""
-                    <div class="notif-progress-wrap">
-                        <div class="notif-progress-track">
-                            <div class="notif-progress-fill" style="width:{_pct_p}%;background:{_cor_barra}"></div>
-                        </div>
-                        <div class="notif-progress-label">
-                            <span>{_feitos_p} de {_total_p}</span>
-                            <span>{_pct_p}%</span>
-                        </div>
-                    </div>
-                """
-
-            _corpo_html = ""
-            if _tem_detalhe:
-                _corpo_html += "<div class=\"notif-body-inner\">"
-                if _detalhe_safe:
-                    _corpo_html += (
-                        f'<div class="notif-detail">'
-                        f'<span class="notif-detail-icon">{_detalhe_icone_ativ}</span>'
-                        f'{_detalhe_safe}</div>'
-                    )
-                _corpo_html += _progresso_html
+            for _pos, _a in enumerate(_todas_atividades):
+                _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
+                _id_ativ = _a["id"]
+                _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
+                # Só oferece o botão quando dá pra saber qual empresa refazer —
+                # sem isso o painel expandido abriria vazio (só a setinha, sem
+                # texto e sem botão), uma UX capenga.
+                #
+                # Pra "em_andamento" só mostra o botão quando a migração está
+                # de fato parada (travada — sem thread ativa processando agora),
+                # senão o botão ficava visível também enquanto "Rodando agora",
+                # o que é confuso/redundante (clicar nele reiniciaria algo que
+                # já está em progresso). Quando está travada, o botão vira
+                # "Continuar" em vez de "Refazer", já que o usuário está
+                # apenas retomando de onde parou, não recomeçando do zero.
+                _migracao_parada_ativ = (
+                    _a.get("tipo") == "migracao_midia"
+                    and _a.get("status") == "em_andamento"
+                    and _migracao_travada(_a)
+                )
+                _pode_refazer = (
+                    _a.get("tipo") == "migracao_midia"
+                    and bool(_empresa_ativ)
+                    and (_a.get("status") == "erro" or _migracao_parada_ativ)
+                )
+                _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
+                _progresso_ativ = _progresso_atividade(_a)
+                _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
                 if _pode_refazer:
-                    _refazer_svg = _svg_icone(
-                        "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
-                        "#374151", 14,
-                    )
-                    _rotulo_refazer = "Continuar" if _migracao_parada_ativ else "Refazer"
-                    _corpo_html += (
-                        f'<button class="btn-refazer" data-idx="{_id_ativ}">'
-                        f'<span class="btn-refazer-icon">{_refazer_svg}</span>{_rotulo_refazer}</button>'
-                    )
-                _corpo_html += "</div>"
+                    _refazer_ids.append(_id_ativ)
+                _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
-            _body_bloco = (
-                f'<div class="notif-body" id="nb_{_id_ativ}">{_corpo_html}</div>'
-                if _tem_detalhe else ""
-            )
+                # Cards com uma migração realmente rodando agora (progresso
+                # + status em_andamento e não travada) começam ABERTOS por
+                # padrão — não dá pra confiar no estado de expandido/
+                # recolhido do JS (data-idx toggle) porque o fragment
+                # redesenha esses cards do zero a cada atualização "ao
+                # vivo" (a cada ~2s), o que resetaria um card que o usuário
+                # tinha aberto manualmente de volta pra fechado toda hora.
+                _rodando_agora_ativ = (
+                    _a.get("tipo") == "migracao_midia"
+                    and _a.get("status") == "em_andamento"
+                    and bool(_progresso_ativ)
+                    and not _migracao_parada_ativ
+                )
 
-            _cards_notif_html += f"""
-<div class="notif-card">
-    <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
-        <span class="notif-hdr-icon">{_svg_icone(_ui['path'], _ui['cor'])}</span>
-        <div class="notif-title-wrap">
-            <span class="notif-title">{_titulo_safe}</span>
-            <span class="notif-time">· {_tempo_safe}</span>
+                _titulo_safe = (_a.get("titulo") or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
+
+                _chevron_rot = ' style="transform:rotate(180deg)"' if _rodando_agora_ativ else ""
+                _chevron_svg = f"""
+                    <span class="notif-chevron" data-idx="{_id_ativ}"{_chevron_rot}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </span>
+                """ if _tem_detalhe else ""
+
+                _excluir_svg = _svg_icone(
+                    "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
+                    "currentColor", 14,
+                )
+                _excluir_btn_html = (
+                    f'<button class="btn-excluir" data-idx="{_id_ativ}" title="Excluir esta notificação">'
+                    f'{_excluir_svg}</button>'
+                )
+
+                _progresso_html = ""
+                if _progresso_ativ:
+                    _feitos_p, _total_p = _progresso_ativ
+                    _pct_p = max(0, min(100, round((_feitos_p / _total_p) * 100))) if _total_p else 0
+                    _cor_barra = _ui["cor"]  # acompanha o status: âmbar em andamento, verde quando concluído
+                    _progresso_html = f"""
+                        <div class="notif-progress-wrap">
+                            <div class="notif-progress-track">
+                                <div class="notif-progress-fill" style="width:{_pct_p}%;background:{_cor_barra}"></div>
+                            </div>
+                            <div class="notif-progress-label">
+                                <span>{_feitos_p} de {_total_p}</span>
+                                <span>{_pct_p}%</span>
+                            </div>
+                        </div>
+                    """
+
+                _corpo_html = ""
+                if _tem_detalhe:
+                    _corpo_html += "<div class=\"notif-body-inner\">"
+                    if _detalhe_safe:
+                        _corpo_html += (
+                            f'<div class="notif-detail">'
+                            f'<span class="notif-detail-icon">{_detalhe_icone_ativ}</span>'
+                            f'{_detalhe_safe}</div>'
+                        )
+                    _corpo_html += _progresso_html
+                    if _pode_refazer:
+                        _refazer_svg = _svg_icone(
+                            "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
+                            "#374151", 14,
+                        )
+                        _rotulo_refazer = "Continuar" if _migracao_parada_ativ else "Refazer"
+                        _corpo_html += (
+                            f'<button class="btn-refazer" data-idx="{_id_ativ}">'
+                            f'<span class="btn-refazer-icon">{_refazer_svg}</span>{_rotulo_refazer}</button>'
+                        )
+                    _corpo_html += "</div>"
+
+                _estilo_body_aberto = ' style="display:block"' if _rodando_agora_ativ else ""
+
+                _body_bloco = (
+                    f'<div class="notif-body" id="nb_{_id_ativ}"{_estilo_body_aberto}>{_corpo_html}</div>'
+                    if _tem_detalhe else ""
+                )
+
+                _cards_notif_html += f"""
+    <div class="notif-card">
+        <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
+            <span class="notif-hdr-icon">{_svg_icone(_ui['path'], _ui['cor'])}</span>
+            <div class="notif-title-wrap">
+                <span class="notif-title">{_titulo_safe}</span>
+                <span class="notif-time">· {_tempo_safe}</span>
+            </div>
+            <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">{_ui['label']}</span>
+            {_excluir_btn_html}
+            {_chevron_svg}
         </div>
-        <span class="notif-badge" style="background:{_ui['cor']}1a;color:{_ui['cor']}">{_ui['label']}</span>
-        {_excluir_btn_html}
-        {_chevron_svg}
+        {_body_bloco}
+    </div>"""
+
+            # Altura estimada do iframe calculada em Python (determinística) em vez
+            # de depender só do JS pra medir e redimensionar depois. O JS que
+            # busca o próprio iframe dentro do DOM do Streamlit (window.parent.
+            # document) é frágil — quando falha ou demora, o iframe fica menor
+            # que o conteúdo real e o que vem depois na página (o expander
+            # "Excluir notificações") acaba sobrepondo os cards. Começando já
+            # com uma altura próxima da real, o JS só precisa fazer um ajuste
+            # fino (ex.: quando um título quebra em 2 linhas), não o trabalho
+            # todo — o que elimina a sobreposição visual na maioria dos casos.
+            _altura_estim_cards = _n_ativ * 92 + 24
+
+            NOTIF_CSS = """
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+    .notif-card {
+        background:#ffffff; border:1px solid #e5e7eb; border-radius:14px;
+        overflow:hidden; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
+    }
+    .notif-card:last-child { margin-bottom:0; }
+    .notif-hdr {
+        display:flex; align-items:center; gap:10px; padding:14px 18px;
+        transition:background 0.15s;
+    }
+    .notif-hdr.has-detail { cursor:pointer; }
+    .notif-hdr:hover { background:#f9fafb; }
+    .notif-hdr-icon { display:flex; align-items:center; flex-shrink:0; }
+    .notif-hdr-icon svg { display:block; }
+    .notif-title-wrap {
+        flex:1; min-width:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    }
+    .notif-title {
+        font-size:14px; font-weight:600; color:#111827;
+        overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .notif-time { font-size:12px; color:#9ca3af; white-space:nowrap; }
+    .notif-badge {
+        font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px;
+        white-space:nowrap; flex-shrink:0;
+    }
+    .notif-chevron {
+        display:flex; align-items:center; flex-shrink:0; color:#6b7280; transition:transform 0.2s;
+    }
+    .notif-body { display:none; border-top:1px solid #f3f4f6; }
+    .notif-body-inner { padding:14px 18px 16px; }
+    .notif-detail {
+        font-size:13px; color:#4b5563; line-height:1.6;
+        display:flex; align-items:flex-start; gap:8px;
+    }
+    .notif-detail-icon { display:flex; align-items:center; flex-shrink:0; margin-top:2px; }
+    .notif-detail-icon svg { display:block; }
+    .notif-detail-icon:empty { display:none; }
+    .btn-refazer {
+        margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
+        background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;
+        font-family:'DM Sans',sans-serif; transition:all 0.15s;
+        display:inline-flex; align-items:center; gap:6px;
+    }
+    .btn-refazer:hover { border-color:#3a9fd6; background:#eff6ff; color:#1d4ed8; }
+    .btn-refazer-icon { display:flex; align-items:center; }
+    .btn-refazer-icon svg { display:block; }
+    .btn-refazer:hover .btn-refazer-icon svg { fill:#1d4ed8; }
+    .notif-progress-wrap { margin-top:10px; }
+    .notif-progress-track {
+        width:100%; height:7px; border-radius:5px; background:#eef1f5; overflow:hidden;
+    }
+    .notif-progress-fill { height:100%; border-radius:5px; transition:width 0.3s ease; }
+    .notif-progress-label {
+        display:flex; justify-content:space-between; margin-top:5px;
+        font-size:11.5px; color:#6b7280; font-weight:600;
+    }
+    .btn-excluir {
+        display:flex; align-items:center; justify-content:center;
+        width:26px; height:26px; flex-shrink:0; border:none; border-radius:7px;
+        background:transparent; color:#b0b8c4; cursor:pointer; transition:all 0.15s;
+    }
+    .btn-excluir svg { display:block; }
+    .btn-excluir:hover { background:#fee2e2; color:#e05252; }
+    """
+
+            components.html(f"""
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+    {NOTIF_CSS}
+    </style>
+    <div>
+    {_cards_notif_html}
     </div>
-    {_body_bloco}
-</div>"""
-
-        # Altura estimada do iframe calculada em Python (determinística) em vez
-        # de depender só do JS pra medir e redimensionar depois. O JS que
-        # busca o próprio iframe dentro do DOM do Streamlit (window.parent.
-        # document) é frágil — quando falha ou demora, o iframe fica menor
-        # que o conteúdo real e o que vem depois na página (o expander
-        # "Excluir notificações") acaba sobrepondo os cards. Começando já
-        # com uma altura próxima da real, o JS só precisa fazer um ajuste
-        # fino (ex.: quando um título quebra em 2 linhas), não o trabalho
-        # todo — o que elimina a sobreposição visual na maioria dos casos.
-        _altura_estim_cards = _n_ativ * 92 + 24
-
-        NOTIF_CSS = """
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
-.notif-card {
-    background:#ffffff; border:1px solid #e5e7eb; border-radius:14px;
-    overflow:hidden; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
-}
-.notif-card:last-child { margin-bottom:0; }
-.notif-hdr {
-    display:flex; align-items:center; gap:10px; padding:14px 18px;
-    transition:background 0.15s;
-}
-.notif-hdr.has-detail { cursor:pointer; }
-.notif-hdr:hover { background:#f9fafb; }
-.notif-hdr-icon { display:flex; align-items:center; flex-shrink:0; }
-.notif-hdr-icon svg { display:block; }
-.notif-title-wrap {
-    flex:1; min-width:0; display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-}
-.notif-title {
-    font-size:14px; font-weight:600; color:#111827;
-    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.notif-time { font-size:12px; color:#9ca3af; white-space:nowrap; }
-.notif-badge {
-    font-size:11px; font-weight:700; padding:4px 12px; border-radius:20px;
-    white-space:nowrap; flex-shrink:0;
-}
-.notif-chevron {
-    display:flex; align-items:center; flex-shrink:0; color:#6b7280; transition:transform 0.2s;
-}
-.notif-body { display:none; border-top:1px solid #f3f4f6; }
-.notif-body-inner { padding:14px 18px 16px; }
-.notif-detail {
-    font-size:13px; color:#4b5563; line-height:1.6;
-    display:flex; align-items:flex-start; gap:8px;
-}
-.notif-detail-icon { display:flex; align-items:center; flex-shrink:0; margin-top:2px; }
-.notif-detail-icon svg { display:block; }
-.notif-detail-icon:empty { display:none; }
-.btn-refazer {
-    margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
-    background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;
-    font-family:'DM Sans',sans-serif; transition:all 0.15s;
-    display:inline-flex; align-items:center; gap:6px;
-}
-.btn-refazer:hover { border-color:#3a9fd6; background:#eff6ff; color:#1d4ed8; }
-.btn-refazer-icon { display:flex; align-items:center; }
-.btn-refazer-icon svg { display:block; }
-.btn-refazer:hover .btn-refazer-icon svg { fill:#1d4ed8; }
-.notif-progress-wrap { margin-top:10px; }
-.notif-progress-track {
-    width:100%; height:7px; border-radius:5px; background:#eef1f5; overflow:hidden;
-}
-.notif-progress-fill { height:100%; border-radius:5px; transition:width 0.3s ease; }
-.notif-progress-label {
-    display:flex; justify-content:space-between; margin-top:5px;
-    font-size:11.5px; color:#6b7280; font-weight:600;
-}
-.btn-excluir {
-    display:flex; align-items:center; justify-content:center;
-    width:26px; height:26px; flex-shrink:0; border:none; border-radius:7px;
-    background:transparent; color:#b0b8c4; cursor:pointer; transition:all 0.15s;
-}
-.btn-excluir svg { display:block; }
-.btn-excluir:hover { background:#fee2e2; color:#e05252; }
-"""
-
-        components.html(f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-{NOTIF_CSS}
-</style>
-<div>
-{_cards_notif_html}
-</div>
-<script>
-function syncH() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-    var frames = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < frames.length; i++) {{
-        try {{ if (frames[i].contentWindow === window) {{
-            frames[i].style.height = (h + 8) + 'px';
-            break;
-        }} }} catch(e) {{}}
+    <script>
+    function syncH() {{
+        var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        var frames = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < frames.length; i++) {{
+            try {{ if (frames[i].contentWindow === window) {{
+                frames[i].style.height = (h + 8) + 'px';
+                break;
+            }} }} catch(e) {{}}
+        }}
     }}
-}}
 
-function toggleNotif(idx) {{
-    var b = document.getElementById('nb_' + idx);
-    if (!b) return;
-    var open = b.style.display !== 'none';
-    b.style.display = open ? 'none' : 'block';
-    var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
-    chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
-    setTimeout(syncH, 100);
-}}
-
-function refazerNotif(idx) {{
-    var doc = window.parent.document;
-    var chave = 'btn_refazer_ativ_' + idx;
-    var porClasse = doc.querySelector('.st-key-' + chave + ' button');
-    if (porClasse) {{ porClasse.click(); return; }}
-    var btns = doc.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
-        if (txt === '_refazer_ativ_' + idx + '_') {{ b.click(); return; }}
+    function toggleNotif(idx) {{
+        var b = document.getElementById('nb_' + idx);
+        if (!b) return;
+        var open = b.style.display !== 'none';
+        b.style.display = open ? 'none' : 'block';
+        var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
+        chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+        setTimeout(syncH, 100);
     }}
-}}
 
-function clicarBotaoExcluir(idx) {{
-    var doc = window.parent.document;
-    var chave = 'btn_excluir_ativ_' + idx;
-    var porClasse = doc.querySelector('.st-key-' + chave + ' button');
-    if (porClasse) {{ porClasse.click(); return; }}
-    var btns = doc.querySelectorAll('button');
-    for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
-        if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
+    function refazerNotif(idx) {{
+        var doc = window.parent.document;
+        var chave = 'btn_refazer_ativ_' + idx;
+        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+        if (porClasse) {{ porClasse.click(); return; }}
+        var btns = doc.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            if (txt === '_refazer_ativ_' + idx + '_') {{ b.click(); return; }}
+        }}
     }}
-}}
 
-function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
-    var doc = window.parent.document;
-    var old = doc.getElementById('confirm_modal_overlay');
-    if (old) old.remove();
+    function clicarBotaoExcluir(idx) {{
+        var doc = window.parent.document;
+        var chave = 'btn_excluir_ativ_' + idx;
+        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+        if (porClasse) {{ porClasse.click(); return; }}
+        var btns = doc.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
+        }}
+    }}
 
-    var ov = doc.createElement('div');
-    ov.id = 'confirm_modal_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+    function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+        var doc = window.parent.document;
+        var old = doc.getElementById('confirm_modal_overlay');
+        if (old) old.remove();
 
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+        var ov = doc.createElement('div');
+        ov.id = 'confirm_modal_overlay';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+        ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
 
-    var icone = doc.createElement('div');
-    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
-    icone.textContent = '⚠️';
+        var box = doc.createElement('div');
+        box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
 
-    var tit = doc.createElement('div');
-    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
-    tit.textContent = titulo;
+        var icone = doc.createElement('div');
+        icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+        icone.textContent = '⚠️';
 
-    var msg = doc.createElement('div');
-    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
-    msg.textContent = mensagem;
+        var tit = doc.createElement('div');
+        tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+        tit.textContent = titulo;
 
-    var btnsRow = doc.createElement('div');
-    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+        var msg = doc.createElement('div');
+        msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+        msg.textContent = mensagem;
 
-    var cancelBtn = doc.createElement('button');
-    cancelBtn.textContent = 'Cancelar';
-    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    cancelBtn.onclick = function() {{ ov.remove(); }};
+        var btnsRow = doc.createElement('div');
+        btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
 
-    var confirmBtn = doc.createElement('button');
-    confirmBtn.textContent = labelBtn;
-    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+        var cancelBtn = doc.createElement('button');
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+        cancelBtn.onclick = function() {{ ov.remove(); }};
 
-    btnsRow.appendChild(cancelBtn);
-    btnsRow.appendChild(confirmBtn);
-    box.appendChild(icone);
-    box.appendChild(tit);
-    box.appendChild(msg);
-    box.appendChild(btnsRow);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
+        var confirmBtn = doc.createElement('button');
+        confirmBtn.textContent = labelBtn;
+        confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+        confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
 
-    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
-    doc.addEventListener('keydown', escFn);
-}}
+        btnsRow.appendChild(cancelBtn);
+        btnsRow.appendChild(confirmBtn);
+        box.appendChild(icone);
+        box.appendChild(tit);
+        box.appendChild(msg);
+        box.appendChild(btnsRow);
+        ov.appendChild(box);
+        doc.body.appendChild(ov);
 
-function excluirNotif(idx) {{
-    abrirConfirmacao(
-        '🗑️ Excluir notificação',
-        'Tem certeza que deseja excluir esta notificação? Esta ação não pode ser desfeita.',
-        '#ef4444',
-        'Sim, excluir',
-        function() {{ clicarBotaoExcluir(idx); }}
-    );
-}}
+        var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+        doc.addEventListener('keydown', escFn);
+    }}
 
-document.addEventListener('click', function(e) {{
-    var ex = e.target.closest('.btn-excluir');
-    if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
+    function excluirNotif(idx) {{
+        abrirConfirmacao(
+            '🗑️ Excluir notificação',
+            'Tem certeza que deseja excluir esta notificação? Esta ação não pode ser desfeita.',
+            '#ef4444',
+            'Sim, excluir',
+            function() {{ clicarBotaoExcluir(idx); }}
+        );
+    }}
 
-    var rf = e.target.closest('.btn-refazer');
-    if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
+    document.addEventListener('click', function(e) {{
+        var ex = e.target.closest('.btn-excluir');
+        if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
 
-    var hdr = e.target.closest('.notif-hdr.has-detail');
-    if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
-}});
+        var rf = e.target.closest('.btn-refazer');
+        if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
 
-if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
-setTimeout(syncH, 150);
-setTimeout(syncH, 500);
-</script>
-""", height=_altura_estim_cards, scrolling=False)
+        var hdr = e.target.closest('.notif-hdr.has-detail');
+        if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
+    }});
 
-        # Botões nativos ocultos (um por atividade que pode ser "refeita") —
-        # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse
-        # botão via JS (mesmo truque usado pra excluir análises), já que o
-        # conteúdo do iframe não consegue rodar código Python diretamente.
-        _acoes_refazer = {}
-        for _rid in _refazer_ids:
-            _acoes_refazer[_rid] = st.button(f"_refazer_ativ_{_rid}_", key=f"btn_refazer_ativ_{_rid}")
+    if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+    setTimeout(syncH, 150);
+    setTimeout(syncH, 500);
+    </script>
+    """, height=_altura_estim_cards, scrolling=False)
 
-        if _refazer_ids:
-            _refazer_hide_css = "\n".join([
-                f'.st-key-btn_refazer_ativ_{_rid} {{ display: none !important; }}'
-                f'.stElementContainer:has(.st-key-btn_refazer_ativ_{_rid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
-                for _rid in _refazer_ids
-            ])
-            st.markdown(f"<style>{_refazer_hide_css}</style>", unsafe_allow_html=True)
+            # Botões nativos ocultos (um por atividade que pode ser "refeita") —
+            # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse
+            # botão via JS (mesmo truque usado pra excluir análises), já que o
+            # conteúdo do iframe não consegue rodar código Python diretamente.
+            _acoes_refazer = {}
+            for _rid in _refazer_ids:
+                _acoes_refazer[_rid] = st.button(f"_refazer_ativ_{_rid}_", key=f"btn_refazer_ativ_{_rid}")
 
-        for _rid in _refazer_ids:
-            if _acoes_refazer.get(_rid):
-                _atividade_ref = next((x for x in _todas_atividades if x["id"] == _rid), None)
-                _empresa_ref = (_atividade_ref.get("detalhes") or {}).get("empresa") if _atividade_ref else None
-                if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
-                    st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
-                else:
-                    st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
-                st.rerun()
+            if _refazer_ids:
+                _refazer_hide_css = "\n".join([
+                    f'.st-key-btn_refazer_ativ_{_rid} {{ display: none !important; }}'
+                    f'.stElementContainer:has(.st-key-btn_refazer_ativ_{_rid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
+                    for _rid in _refazer_ids
+                ])
+                st.markdown(f"<style>{_refazer_hide_css}</style>", unsafe_allow_html=True)
 
-        # Exclusão de notificações — agora feita direto pelo ícone de lixeira
-        # dentro de cada card (mesmo truque já usado no botão "🔄 Refazer"):
-        # o clique no iframe aciona, via JS, um botão nativo escondido com
-        # o mesmo id da atividade. A confirmação é um window.confirm() no
-        # próprio navegador, então não precisa de estado de confirmação
-        # no servidor. Isso elimina a lista nativa duplicada que ficava
-        # embaixo dos cards.
-        _acoes_excluir = {}
-        for _eid in _excluir_ids:
-            _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
+            for _rid in _refazer_ids:
+                if _acoes_refazer.get(_rid):
+                    _atividade_ref = next((x for x in _todas_atividades if x["id"] == _rid), None)
+                    _empresa_ref = (_atividade_ref.get("detalhes") or {}).get("empresa") if _atividade_ref else None
+                    if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
+                        st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
+                    else:
+                        st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
+                    st.rerun()
 
-        if _excluir_ids:
-            _excluir_hide_css = "\n".join([
-                f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
-                f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
-                for _eid in _excluir_ids
-            ])
-            st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
+            # Exclusão de notificações — agora feita direto pelo ícone de lixeira
+            # dentro de cada card (mesmo truque já usado no botão "🔄 Refazer"):
+            # o clique no iframe aciona, via JS, um botão nativo escondido com
+            # o mesmo id da atividade. A confirmação é um window.confirm() no
+            # próprio navegador, então não precisa de estado de confirmação
+            # no servidor. Isso elimina a lista nativa duplicada que ficava
+            # embaixo dos cards.
+            _acoes_excluir = {}
+            for _eid in _excluir_ids:
+                _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
 
-        for _eid in _excluir_ids:
-            if _acoes_excluir.get(_eid):
-                if excluir_atividade(_eid, st.session_state.user.id):
-                    st.toast("Notificação excluída.", icon="🗑️")
-                else:
-                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
-                st.rerun()
+            if _excluir_ids:
+                _excluir_hide_css = "\n".join([
+                    f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
+                    f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
+                    for _eid in _excluir_ids
+                ])
+                st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
+
+            for _eid in _excluir_ids:
+                if _acoes_excluir.get(_eid):
+                    if excluir_atividade(_eid, st.session_state.user.id):
+                        st.toast("Notificação excluída.", icon="🗑️")
+                    else:
+                        st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
+                    st.rerun()
+
+    _renderizar_atividades_ao_vivo()

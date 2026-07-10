@@ -3269,25 +3269,21 @@ with st.sidebar:
     _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
 
     # ── Retry automático de migração travada ──
-    # Mesma ação usada pelo botão "Continuar" (refazer_migracao_midia),
-    # só que em lote e disparada sozinha. Cooldown de 20s é só limitador
-    # de taxa (não bater no Supabase a cada rerun) — não é a única coisa
-    # que decide se o retry roda; ver _acionar_poll_atividades abaixo,
-    # que chama esta mesma função de forma explícita a partir do clique
-    # no botão oculto de poll.
-    def _retentar_migracoes_com_cooldown():
+    # Roda aqui (sino, que é renderizado em toda página) em vez de num
+    # timer JS próprio: assim ele só verifica quando a página já ia
+    # rerodar por qualquer outro motivo (navegação, clique em qualquer
+    # botão, etc.), sem forçar nenhum rerun extra. Forçar rerun por conta
+    # própria nessa parte do app colidia com fluxos de dois cliques com
+    # modal de confirmação (ex: excluir notificação) — o rerun artificial
+    # podia cair bem no meio da confirmação e "engolir" o clique real.
+    # Cooldown de 20s pra não bater no Supabase a cada rerun natural.
+    if st.session_state.user:
         import time as _time_retry
         _agora_check_retry = _time_retry.time()
         _ultimo_check_retry = st.session_state.get("_ultimo_check_retry_migracao", 0)
         if _agora_check_retry - _ultimo_check_retry >= 20:
             st.session_state["_ultimo_check_retry_migracao"] = _agora_check_retry
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
-
-    if st.session_state.user:
-        # Roda em qualquer rerun (navegação, clique em qualquer botão),
-        # sem esperar o poll dedicado abaixo — cobre o caso comum de o
-        # usuário já estar navegando/clicando em algo por conta própria.
-        _retentar_migracoes_com_cooldown()
 
     # ── Auto-poll global (mantém o retry rodando em QUALQUER página) ──
     # O retry acima só dispara quando a página já ia rerodar por outro
@@ -3307,14 +3303,7 @@ with st.sidebar:
     # página de Ads (que já tinha seu próprio timer equivalente, hoje
     # redundante com este, mas inofensivo).
     if st.session_state.user and _resumo_sino["andamento"] > 0:
-        _clicou_poll_oculto = st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
-        if _clicou_poll_oculto:
-            # O clique no botão oculto É a mesma ação do "Continuar": aqui
-            # fica explícito no código (em vez de depender da ordem das
-            # linhas no script pra "acontecer de rodar antes"). Redundante
-            # com a chamada de cima na mesma passada, mas garante que essa
-            # ligação nunca se perca numa futura reorganização do arquivo.
-            _retentar_migracoes_com_cooldown()
+        st.button("_poll_atividades_trigger_", key="_btn_poll_atividades_sidebar")
         st.markdown("""
         <style>
         .st-key-_btn_poll_atividades_sidebar {
@@ -3330,24 +3319,13 @@ with st.sidebar:
         """, unsafe_allow_html=True)
         components.html("""
         <script>
-        // Antes: um único setTimeout de 4s que, se o botão ainda não
-        // estivesse montado no DOM nesse instante (rerun demorando um
-        // pouco mais que o normal), simplesmente desistia — o loop de
-        // poll morria em silêncio até o usuário clicar em algo manualmente,
-        // mesmo com a aba aberta e logado. Agora, se não achar o botão na
-        // primeira tentativa, tenta de novo a cada 500ms por até 3s antes
-        // de desistir, em vez de morrer na primeira falha.
-        function tentarClicarPoll(tentativasRestantes) {
+        setTimeout(function() {
             var btns = window.parent.document.querySelectorAll('button');
             for (var i = 0; i < btns.length; i++) {
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === '_poll_atividades_trigger_') { btns[i].click(); return; }
             }
-            if (tentativasRestantes > 0) {
-                setTimeout(function() { tentarClicarPoll(tentativasRestantes - 1); }, 500);
-            }
-        }
-        setTimeout(function() { tentarClicarPoll(6); }, 4000);
+        }, 4000);
         </script>
         """, height=0)
 
@@ -19053,13 +19031,17 @@ html, body { background: transparent; overflow: hidden; }
                 # sem isso o painel expandido abriria vazio (só a setinha, sem
                 # texto e sem botão), uma UX capenga.
                 #
-                # Pra "em_andamento" só mostra o botão quando a migração está
-                # de fato parada (travada — sem thread ativa processando agora),
-                # senão o botão ficava visível também enquanto "Rodando agora",
-                # o que é confuso/redundante (clicar nele reiniciaria algo que
-                # já está em progresso). Quando está travada, o botão vira
-                # "Continuar" em vez de "Refazer", já que o usuário está
-                # apenas retomando de onde parou, não recomeçando do zero.
+                # "em_andamento" NUNCA mostra botão, mesmo quando está travada
+                # (parada esperando a próxima passada): enquanto o usuário
+                # estiver logado com a aba aberta, retentar_migracoes_travadas_
+                # automaticamente() já cuida de retomar sozinha (ver bloco
+                # "Retry automático de migração travada" / "Auto-poll global"
+                # na sidebar) — não existe estado em que uma migração parada
+                # precise de clique manual pra continuar. Oferecer um botão
+                # "Continuar" ali só sugeria (errado) que a retomada dependia
+                # do usuário. O botão de refazer manual fica reservado só pra
+                # "erro" de verdade (falha real que o retry automático não
+                # resolve sozinho).
                 _migracao_parada_ativ = (
                     _a.get("tipo") == "migracao_midia"
                     and _a.get("status") == "em_andamento"
@@ -19068,7 +19050,7 @@ html, body { background: transparent; overflow: hidden; }
                 _pode_refazer = (
                     _a.get("tipo") == "migracao_midia"
                     and bool(_empresa_ativ)
-                    and (_a.get("status") == "erro" or _migracao_parada_ativ)
+                    and _a.get("status") == "erro"
                 )
                 _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
                 _progresso_ativ = _progresso_atividade(_a)
@@ -19146,10 +19128,14 @@ html, body { background: transparent; overflow: hidden; }
                             "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
                             "#374151", 14,
                         )
-                        _rotulo_refazer = "Continuar" if _migracao_parada_ativ else "Refazer"
+                        # Sempre "Refazer": _pode_refazer só é True pra status
+                        # "erro" agora (migração travada/parada se resolve
+                        # sozinha via retry automático, sem botão — ver
+                        # comentário acima de _pode_refazer), então não existe
+                        # mais o caso "Continuar" aqui.
                         _corpo_html += (
                             f'<button class="btn-refazer" data-idx="{_id_ativ}">'
-                            f'<span class="btn-refazer-icon">{_refazer_svg}</span>{_rotulo_refazer}</button>'
+                            f'<span class="btn-refazer-icon">{_refazer_svg}</span>Refazer</button>'
                         )
                     _corpo_html += "</div>"
 

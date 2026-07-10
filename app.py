@@ -3319,7 +3319,19 @@ with st.sidebar:
         """, unsafe_allow_html=True)
         components.html("""
         <script>
-        setTimeout(function() {
+        // setInterval (não setTimeout): o setTimeout de disparo único que
+        // existia aqui dependia do Streamlit remontar este iframe do zero a
+        // cada rerun pra continuar "batendo" — mas como o HTML/JS enviado é
+        // idêntico em todo rerun (nada varia dentro da string), o frontend
+        // pode reaproveitar o mesmo iframe sem recriá-lo, e o timer então só
+        // disparava UMA vez na vida do componente. Na prática isso fazia o
+        // ciclo de auto-retry morrer silenciosamente depois do primeiro
+        // clique, deixando migrações "paradas" mesmo com a aba aberta e
+        // logada — só voltava a rodar se algo *externo* forçasse um rerun
+        // (navegação manual, F5). Com setInterval, uma vez montado o timer
+        // continua rodando sozinho pra sempre, independente de o iframe ser
+        // remontado ou não nos reruns seguintes.
+        setInterval(function() {
             var btns = window.parent.document.querySelectorAll('button');
             for (var i = 0; i < btns.length; i++) {
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();

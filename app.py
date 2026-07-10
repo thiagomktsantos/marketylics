@@ -18641,21 +18641,6 @@ html, body { background: transparent; overflow: hidden; }
 # ---------------------------------------------------
 elif st.session_state.pagina == "notificacoes":
 
-    # Exclusão de notificação via parâmetro de URL — o clique no botão
-    # "Sim, excluir" (dentro do iframe do card) não consegue rodar Python
-    # diretamente, então em vez de tentar "achar e clicar" num botão
-    # escondido do Streamlit (mecanismo frágil que dependia de seletores
-    # CSS internos e falhava silenciosamente), o JS navega a própria
-    # página com ?excluir_atividade=<id> e tratamos aqui, de forma direta.
-    _eid_para_excluir = st.query_params.get("excluir_atividade")
-    if _eid_para_excluir and st.session_state.user:
-        if excluir_atividade(_eid_para_excluir, st.session_state.user.id):
-            st.toast("Notificação excluída.", icon="🗑️")
-        else:
-            st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
-        st.query_params.pop("excluir_atividade", None)
-        st.rerun()
-
     st.markdown(
         '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">',
         unsafe_allow_html=True,
@@ -18755,11 +18740,7 @@ html, body { background: transparent; overflow: hidden; }
                 </span>
             """ if _tem_detalhe else ""
 
-            _excluir_svg = _svg_icone(
-                "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
-                "currentColor", 14,
-            )
-            _excluir_btn_html = f'<button class="btn-excluir" data-idx="{_id_ativ}" title="Excluir">{_excluir_svg}</button>'
+            _excluir_btn_html = ""  # exclusão agora é feita via controles nativos do Streamlit, abaixo da lista
 
             _progresso_html = ""
             if _progresso_ativ:
@@ -18929,70 +18910,9 @@ function refazerNotif(idx) {{
     }}
 }}
 
-function excluirNotif(idx) {{
-    // window.confirm() não funciona aqui: o components.html roda num
-    // iframe "sandboxed" sem allow-modals, então confirm()/alert() ficam
-    // bloqueados silenciosamente pelo navegador (a função só volta
-    // undefined/false na hora, sem nunca pausar ou mostrar nada) — por
-    // isso o clique parecia "não fazer nada". Usa um modal próprio,
-    // desenhado direto no documento pai, igual o resto do app já faz
-    // pra outras confirmações de exclusão.
-    var doc = window.parent.document;
-    var old = doc.getElementById('confirm_excluir_notif_overlay');
-    if (old) old.remove();
-
-    var ov = doc.createElement('div');
-    ov.id = 'confirm_excluir_notif_overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
-    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
-
-    var box = doc.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:16px;padding:28px;width:min(92vw,380px);box-shadow:0 20px 60px rgba(0,0,0,0.35);font-family:DM Sans,sans-serif;';
-
-    var tit = doc.createElement('div');
-    tit.style.cssText = 'font-size:16px;font-weight:800;color:#111827;text-align:center;margin-bottom:8px;';
-    tit.textContent = 'Excluir notificação';
-
-    var msg = doc.createElement('div');
-    msg.style.cssText = 'font-size:13.5px;color:#6b7280;text-align:center;line-height:1.6;margin-bottom:22px;';
-    msg.textContent = 'Essa ação não pode ser desfeita.';
-
-    var row = doc.createElement('div');
-    row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
-
-    var cancelBtn = doc.createElement('button');
-    cancelBtn.textContent = 'Cancelar';
-    cancelBtn.style.cssText = 'padding:11px;border-radius:9px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    cancelBtn.onclick = function() {{ ov.remove(); }};
-
-    var confirmBtn = doc.createElement('button');
-    confirmBtn.textContent = 'Sim, excluir';
-    confirmBtn.style.cssText = 'padding:11px;border-radius:9px;border:none;background:#e05252;color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
-    confirmBtn.onclick = function() {{
-        ov.remove();
-        var url = new URL(doc.location.href);
-        url.searchParams.set('excluir_atividade', idx);
-        doc.location.href = url.toString();
-    }};
-
-    row.appendChild(cancelBtn);
-    row.appendChild(confirmBtn);
-    box.appendChild(tit);
-    box.appendChild(msg);
-    box.appendChild(row);
-    ov.appendChild(box);
-    doc.body.appendChild(ov);
-
-    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
-    doc.addEventListener('keydown', escFn);
-}}
-
 document.addEventListener('click', function(e) {{
     var rf = e.target.closest('.btn-refazer');
     if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
-
-    var ex = e.target.closest('.btn-excluir');
-    if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
 
     var hdr = e.target.closest('.notif-hdr.has-detail');
     if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
@@ -19029,3 +18949,38 @@ setTimeout(syncH, 500);
                 else:
                     st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
                 st.rerun()
+
+        # Exclusão de notificações — feita 100% com widgets nativos do
+        # Streamlit (sem JS/iframe no meio). O ícone de lixeira dentro do
+        # card acima é só decorativo; tentamos por um tempo "clicar" num
+        # botão escondido via JS a partir do iframe do card, mas isso
+        # depende de acessar o documento pai a partir de um iframe
+        # sandboxed — nem sempre confiável (e navegação de URL nem é
+        # permitida nesse sandbox). Widgets nativos não têm essa limitação.
+        with st.expander("🗑️ Excluir notificações"):
+            for _a_del in _todas_atividades:
+                _eid_del = _a_del["id"]
+                _titulo_del = _a_del.get("titulo") or "—"
+                _confirm_key = f"confirmar_excluir_notif_{_eid_del}"
+                col_txt, col_btn = st.columns([5, 1])
+                with col_txt:
+                    st.markdown(f"<div style='padding-top:6px;font-size:13.5px;color:#374151'>{_titulo_del} · {_tempo_relativo(_a_del.get('criado_em',''))}</div>", unsafe_allow_html=True)
+                with col_btn:
+                    if st.session_state.get(_confirm_key):
+                        cc1, cc2 = st.columns(2)
+                        with cc1:
+                            if st.button("✅", key=f"sim_{_eid_del}", help="Confirmar exclusão"):
+                                if excluir_atividade(_eid_del, st.session_state.user.id):
+                                    st.toast("Notificação excluída.", icon="🗑️")
+                                else:
+                                    st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
+                                st.session_state.pop(_confirm_key, None)
+                                st.rerun()
+                        with cc2:
+                            if st.button("✖️", key=f"nao_{_eid_del}", help="Cancelar"):
+                                st.session_state.pop(_confirm_key, None)
+                                st.rerun()
+                    else:
+                        if st.button("🗑️", key=f"del_{_eid_del}", help="Excluir esta notificação"):
+                            st.session_state[_confirm_key] = True
+                            st.rerun()

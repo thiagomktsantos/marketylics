@@ -18748,13 +18748,26 @@ html, body { background: transparent; overflow: hidden; }
             _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
             _id_ativ = _a["id"]
             _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
-            # Só oferece "Refazer" quando dá pra saber qual empresa refazer —
+            # Só oferece o botão quando dá pra saber qual empresa refazer —
             # sem isso o painel expandido abriria vazio (só a setinha, sem
             # texto e sem botão), uma UX capenga.
+            #
+            # Pra "em_andamento" só mostra o botão quando a migração está
+            # de fato parada (travada — sem thread ativa processando agora),
+            # senão o botão ficava visível também enquanto "Rodando agora",
+            # o que é confuso/redundante (clicar nele reiniciaria algo que
+            # já está em progresso). Quando está travada, o botão vira
+            # "Continuar" em vez de "Refazer", já que o usuário está
+            # apenas retomando de onde parou, não recomeçando do zero.
+            _migracao_parada_ativ = (
+                _a.get("tipo") == "migracao_midia"
+                and _a.get("status") == "em_andamento"
+                and _migracao_travada(_a)
+            )
             _pode_refazer = (
-                _a.get("status") in ("erro", "em_andamento")
-                and _a.get("tipo") == "migracao_midia"
+                _a.get("tipo") == "migracao_midia"
                 and bool(_empresa_ativ)
+                and (_a.get("status") == "erro" or _migracao_parada_ativ)
             )
             _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
             _progresso_ativ = _progresso_atividade(_a)
@@ -18817,9 +18830,10 @@ html, body { background: transparent; overflow: hidden; }
                         "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
                         "#374151", 14,
                     )
+                    _rotulo_refazer = "Continuar" if _migracao_parada_ativ else "Refazer"
                     _corpo_html += (
                         f'<button class="btn-refazer" data-idx="{_id_ativ}">'
-                        f'<span class="btn-refazer-icon">{_refazer_svg}</span>Refazer</button>'
+                        f'<span class="btn-refazer-icon">{_refazer_svg}</span>{_rotulo_refazer}</button>'
                     )
                 _corpo_html += "</div>"
 

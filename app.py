@@ -16019,155 +16019,83 @@ function setHeight(isOpen) {{
         if not _permitido_redes:
             st.warning(f"🚫 {_motivo_bloqueio_redes}")
 
+    def _coletar_redes_background(user_id: str, todas: list, atividade_id: str):
+        """Roda a coleta de verdade (chamadas ao RapidAPI) numa thread —
+        sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
+        pra saber o user_id, já que threads não devem tocar nisso."""
+        try:
+            resultados_lista = []
+            for e in todas:
+                r_col = coletar_rapidapi(e["instagram"])
+                resultados_lista.append({**e, **(r_col or {"erro": "Sem resposta"})})
+
+            supabase.table("ci_dados").update({
+                "metricas_redes": {
+                    "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "dados": resultados_lista,
+                },
+            }).eq("user_id", user_id).execute()
+
+            _nomes_ok_redes = [r["nome"] for r in resultados_lista if not r.get("erro")]
+            _com_erro_redes = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}
+            _total_posts_redes = sum(
+                len(r.get("posts", [])) for r in resultados_lista if not r.get("erro")
+            )
+            _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
+            atualizar_atividade(atividade_id, _status_final_redes, {
+                "coletados": _nomes_ok_redes,
+                "com_erro": _com_erro_redes,
+                "total_posts": _total_posts_redes,
+            })
+        except Exception as e:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
     if coletar and _permitido_redes:
+        coletar_rapidapi.clear()
+
         _id_ativ_coleta_redes = criar_atividade(
             st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"
         )
+        threading.Thread(
+            target=_coletar_redes_background,
+            args=(st.session_state.user.id, todas, _id_ativ_coleta_redes),
+            daemon=True,
+        ).start()
 
-        coletar_rapidapi.clear()
-        resultados_lista = []
+        st.session_state["_coleta_redes_em_andamento"] = True
+        st.rerun()
 
-        modal_placeholder = st.empty()
+    if st.session_state.get("_coleta_redes_em_andamento"):
+        _ultima_coleta_redes_ativ = None
+        try:
+            _res_ativ_redes = (
+                supabase.table("atividades")
+                .select("status")
+                .eq("user_id", st.session_state.user.id)
+                .eq("tipo", "coleta_redes")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if _res_ativ_redes.data:
+                _ultima_coleta_redes_ativ = _res_ativ_redes.data[0]
+        except Exception:
+            pass
 
-        def render_modal_coleta(processados, total, itens):
-            linhas_html = []
-            for item in itens:
-                icone = "✅" if item.get("done") else ("⏳" if item.get("atual") else "⬜")
-                detalhe = ""
-                if item.get("done"):
-                    detalhe = f'<span style="color:#3a9fd6;font-weight:700">{item["n"]} posts</span>'
-                elif item.get("atual"):
-                    detalhe = '<span style="color:#9ca3af;font-size:12px">Coletando...</span>'
-
-                linhas_html.append(
-                    '<div style="background:#1e3a5f;border-radius:10px;padding:14px 18px;'
-                    'display:flex;align-items:center;justify-content:space-between;gap:12px;">'
-                    '<div style="display:flex;align-items:center;gap:12px;">'
-                    f'<span style="font-size:20px">{icone}</span>'
-                    '<div>'
-                    f'<div style="font-size:14px;font-weight:700;color:#e2e8f0">{item["nome"]}</div>'
-                    '</div></div>'
-                    f'{detalhe}'
-                    '</div>'
-                )
-
-            linhas_itens = "".join(linhas_html)
-            pct = int((processados / total) * 100) if total > 0 else 0
-            is_done = processados == total
-            cor_pct = "#22c55e" if is_done else "#3a9fd6"
-            icone_hdr = "✅" if is_done else "⏳"
-            titulo = "Busca concluída!" if is_done else "Coletando perfis..."
-            plural = "s" if total > 1 else ""
-            qtd_label = "empresas" if total > 1 else "empresa"
-            rodape = (
-                '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">'
-                'Fechando automaticamente...</div>'
-            ) if is_done else ""
-
-            html_modal = f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.overlay {{
-    position:fixed; inset:0;
-    background:rgba(0,0,0,0.72);
-    z-index:999999;
-    display:flex; align-items:center; justify-content:center;
-    padding:24px;
-}}
-.card {{
-    background:#0e2a47;
-    border-radius:20px;
-    padding:32px;
-    width:min(95vw,500px);
-    box-shadow:0 20px 60px rgba(0,0,0,0.5);
-    border:1px solid #1e3a5f;
-}}
-</style>
-<div class="overlay">
-<div class="card">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
-        <div style="width:42px;height:42px;border-radius:50%;background:{cor_pct};
-            display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
-            {icone_hdr}
-        </div>
-        <div>
-            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{titulo}</div>
-            <div style="font-size:13px;color:#94a3b8;">{processados}/{total} {qtd_label} processada{plural}</div>
-        </div>
-        <div style="margin-left:auto;font-size:22px;font-weight:900;color:{cor_pct};">{pct}%</div>
-    </div>
-    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
-        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:10px;">{linhas_itens}</div>
-    {rodape}
-</div>
-</div>
-<script>
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{
-            if (iframes[i].contentWindow === window) {{
-                iframes[i].style.position = 'fixed';
-                iframes[i].style.inset = '0';
-                iframes[i].style.width = '100vw';
-                iframes[i].style.height = '100vh';
-                iframes[i].style.zIndex = '999998';
-                iframes[i].style.border = 'none';
-                break;
-            }}
-        }} catch(e) {{}}
-    }}
-}})();
-</script>
-"""
-            with modal_placeholder:
-                components.html(html_modal, height=600, scrolling=False)
-
-        itens_status = [{"nome": e["nome"], "done": False, "atual": False, "n": 0} for e in todas]
-
-        for idx_e, e in enumerate(todas):
-            itens_status[idx_e]["atual"] = True
-            render_modal_coleta(idx_e, len(todas), itens_status)
-
-            r_col = coletar_rapidapi(e["instagram"])
-            n_posts = len(r_col.get("posts", [])) if r_col and not r_col.get("erro") else 0
-
-            itens_status[idx_e]["done"] = True
-            itens_status[idx_e]["atual"] = False
-            itens_status[idx_e]["n"] = n_posts
-            resultados_lista.append({**e, **(r_col or {"erro": "Sem resposta"})})
-
-        render_modal_coleta(len(todas), len(todas), itens_status)
-        import time; time.sleep(2)
-        modal_placeholder.empty()
-
-        salvar_cache_redes(resultados_lista)
-        cache = {
-            "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "dados": resultados_lista,
-        }
-        st.session_state.metricas_redes = cache
-        st.toast("Dados coletados e salvos!", icon="✅")
-
-        # Grava o resultado de verdade na atividade (em vez de deixar
-        # "detalhes" vazio) — assim o sino mostra quais perfis foram
-        # coletados, quantos posts no total e quem deu erro, ao invés de
-        # só repetir o título genérico "Coleta de redes sociais".
-        _nomes_ok_redes = [r["nome"] for r in resultados_lista if not r.get("erro")]
-        _com_erro_redes = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}
-        _total_posts_redes = sum(
-            len(r.get("posts", [])) for r in resultados_lista if not r.get("erro")
-        )
-        _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
-        atualizar_atividade(_id_ativ_coleta_redes, _status_final_redes, {
-            "coletados": _nomes_ok_redes,
-            "com_erro": _com_erro_redes,
-            "total_posts": _total_posts_redes,
-        })
+        if _ultima_coleta_redes_ativ and _ultima_coleta_redes_ativ.get("status") in ("concluido", "erro"):
+            cache = carregar_cache_redes()
+            st.session_state.metricas_redes = cache
+            st.session_state["_coleta_redes_em_andamento"] = False
+            st.rerun()
+        else:
+            st.info(
+                "🔵 Coleta de redes sociais rodando em background — a página já pode ser usada "
+                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
+                "atualizar abaixo pra ver os dados novos.",
+                icon="🔵",
+            )
+            if st.button("🔄 Verificar se a coleta terminou", key="_btn_verificar_coleta_redes"):
+                st.rerun()
 
     ok = []
     if cache.get("dados"):

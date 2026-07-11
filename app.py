@@ -18997,7 +18997,10 @@ html, body { background: transparent; overflow: hidden; }
 
         # Quebra de "Anúncios com mídia salva" por empresa (a própria +
         # cada concorrente) — pra mostrar quem está de fato consumindo a
-        # cota mensal, não só o total.
+        # cota mensal, não só o total. "ultima_coleta" vem do cache de
+        # anúncios (mesmo "ts" usado no bloco de Links Pendentes), pra
+        # manter os dois blocos com o mesmo formato de informação.
+        _ads_cache_uso = st.session_state.get("ads_cache") or {}
         _midias_por_empresa = _contar_midias_do_mes_por_empresa(_user_id_uso) if _user_id_uso else {}
         _linhas_midia_empresa = []
         if _nome_minha_empresa:
@@ -19006,6 +19009,7 @@ html, body { background: transparent; overflow: hidden; }
                 "usado": _midias_por_empresa.get(_nome_minha_empresa, 0),
                 "cor": get_minha_empresa_color(),
                 "tag": "Minha empresa",
+                "ultima_coleta": (_ads_cache_uso.get(_nome_minha_empresa) or {}).get("ts", ""),
             })
         for _i_conc, _c in enumerate(_concorrentes_lista):
             _nome_c = (_c.get("nome") or "").strip()
@@ -19016,6 +19020,7 @@ html, body { background: transparent; overflow: hidden; }
                 "usado": _midias_por_empresa.get(_nome_c, 0),
                 "cor": get_concorrente_color(_i_conc),
                 "tag": "Concorrente",
+                "ultima_coleta": (_ads_cache_uso.get(_nome_c) or {}).get("ts", ""),
             })
         _linhas_midia_empresa.sort(key=lambda x: -x["usado"])
         _max_midia_empresa = max([_l["usado"] for _l in _linhas_midia_empresa] + [1])
@@ -19110,15 +19115,16 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        def _render_uso_por_empresa(linhas: list, maximo: int, rotulo_singular: str = "anúncio", rotulo_plural: str = "anúncios") -> str:
-            """Lista compacta 'quem consome a cota' — uma linha por empresa
-            monitorada (a própria + concorrentes), com bolinha colorida (mesma
-            cor usada no resto do app pra distinguir minha empresa de cada
-            concorrente), nome, tag e uma barrinha proporcional ao uso.
-            rotulo_singular/rotulo_plural definem o texto ao lado do número
-            (ex.: "anúncio salvo"/"anúncios salvos" ou "link pendente"/
-            "links pendentes"), pra reaproveitar o mesmo componente em
-            métricas diferentes."""
+        def _render_bloco_por_empresa(linhas: list, maximo: int, rotulo_singular: str, rotulo_plural: str) -> str:
+            """Lista compacta 'quem consome a cota' — mesmo formato visual
+            pros dois blocos de detalhamento por empresa (Links Pendentes
+            e Anúncios com Mídia Salva): bolinha colorida, nome, tag,
+            barra proporcional ao uso, contagem à direita, e uma linha de
+            detalhe com a última coleta daquela empresa e — quando a
+            linha tiver a chave "expirando" com valor > 0 — quantos itens
+            vão expirar em breve. rotulo_singular/rotulo_plural definem o
+            texto ao lado do número (ex.: "anúncio salvo"/"anúncios
+            salvos" ou "link pendente"/"links pendentes")."""
             if not linhas:
                 return (
                     '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
@@ -19128,6 +19134,14 @@ html, body { background: transparent; overflow: hidden; }
             for _l in linhas:
                 _nome_safe = (_l["nome"] or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 _pct_barra = round((_l["usado"] / maximo) * 100) if maximo else 0
+                _detalhe_partes = []
+                if _l.get("ultima_coleta"):
+                    _detalhe_partes.append(f"última coleta {_l['ultima_coleta']}")
+                else:
+                    _detalhe_partes.append("sem coleta registrada")
+                if _l.get("expirando"):
+                    _detalhe_partes.append(f"{_l['expirando']} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h")
+                _detalhe_txt = " · ".join(_detalhe_partes)
                 _itens_html += f"""
                 <div style="display:flex;align-items:center;gap:10px;padding:8px 2px">
                     <span style="width:9px;height:9px;border-radius:50%;background:{_l['cor']};flex-shrink:0"></span>
@@ -19140,6 +19154,7 @@ html, body { background: transparent; overflow: hidden; }
                         <div style="width:100%;height:5px;border-radius:4px;background:#eef1f5;margin-top:5px;overflow:hidden">
                             <div style="width:{_pct_barra}%;height:100%;border-radius:4px;background:{_l['cor']}"></div>
                         </div>
+                        <div style="font-size:11px;color:#9ca3af;margin-top:4px">{_detalhe_txt}</div>
                     </div>
                     <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
                         {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
@@ -19151,7 +19166,6 @@ html, body { background: transparent; overflow: hidden; }
         # permanente da Biblioteca — ao contrário das outras métricas,
         # aqui "alto %" é ruim (quer dizer que muita coisa ainda depende
         # de um link que pode expirar).
-        _ads_cache_uso = st.session_state.get("ads_cache") or {}
         _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
         _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
@@ -19198,41 +19212,6 @@ html, body { background: transparent; overflow: hidden; }
         _linhas_links_pendentes.sort(key=lambda x: -x["usado"])
         _max_links_pendentes = max([_l["usado"] for _l in _linhas_links_pendentes] + [1])
 
-        def _render_links_pendentes_por_empresa(linhas: list, maximo: int) -> str:
-            """Mesma ideia de _render_uso_por_empresa, mas com uma segunda
-            linha por empresa mostrando a última coleta de anúncios e
-            quantos links daquela empresa vão expirar em breve."""
-            if not linhas:
-                return (
-                    '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
-                    "nenhuma empresa monitorada ainda</div>"
-                )
-            _itens_html = ""
-            for _l in linhas:
-                _nome_safe = (_l["nome"] or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _pct_barra = round((_l["usado"] / maximo) * 100) if maximo else 0
-                _coleta_txt = f"última coleta {_l['ultima_coleta']}" if _l["ultima_coleta"] else "sem coleta registrada"
-                _exp_txt = f" · {_l['expirando']} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h" if _l["expirando"] else ""
-                _itens_html += f"""
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 2px">
-                    <span style="width:9px;height:9px;border-radius:50%;background:{_l['cor']};flex-shrink:0;margin-top:2px;align-self:flex-start"></span>
-                    <div style="flex:1;min-width:0">
-                        <div style="display:flex;justify-content:space-between;gap:8px">
-                            <span style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;
-                                         text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
-                            <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
-                        </div>
-                        <div style="width:100%;height:5px;border-radius:4px;background:#eef1f5;margin-top:5px;overflow:hidden">
-                            <div style="width:{_pct_barra}%;height:100%;border-radius:4px;background:{_l['cor']}"></div>
-                        </div>
-                        <div style="font-size:11px;color:#9ca3af;margin-top:4px">{_coleta_txt}{_exp_txt}</div>
-                    </div>
-                    <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
-                        {_l['usado']} pendente{'s' if _l['usado'] != 1 else ''}
-                    </span>
-                </div>"""
-            return _itens_html
-
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
@@ -19258,7 +19237,7 @@ html, body { background: transparent; overflow: hidden; }
                                 letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
                         Links pendentes por empresa
                     </div>
-                    {_render_links_pendentes_por_empresa(_linhas_links_pendentes, _max_links_pendentes)}
+                    {_render_bloco_por_empresa(_linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes")}
                 </div>
                 """),
                 unsafe_allow_html=True,
@@ -19272,7 +19251,7 @@ html, body { background: transparent; overflow: hidden; }
                                 letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
                         Anúncios com mídia salva por empresa
                     </div>
-                    {_render_uso_por_empresa(_linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos")}
+                    {_render_bloco_por_empresa(_linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos")}
                 </div>
                 """),
                 unsafe_allow_html=True,

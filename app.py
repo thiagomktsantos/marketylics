@@ -19189,12 +19189,12 @@ html, body { background: transparent; overflow: hidden; }
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
                 _expira_html = (
-                    f' (<span style="color:#e05252;font-weight:700">⚠ expira em até '
+                    f' (<span style="color:#e05252;font-weight:700">expira em até '
                     f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>)'
                     if _l.get("expirando") else ""
                 )
                 _linhas_html += f"""
-                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
+                <div style="display:flex;align-items:center;gap:5px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
                     <div style="position:relative;width:46px;height:46px;flex-shrink:0">
                         {_mini}
                         <div style="position:absolute;inset:0;display:flex;align-items:center;
@@ -19206,7 +19206,7 @@ html, body { background: transparent; overflow: hidden; }
                                          text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
                             <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
                         </div>
-                        <div style="font-size:13px;font-weight:700;color:#374151;margin-top:2px">
+                        <div style="font-size:13px;font-weight:700;color:#374151;">
                             {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}{_expira_html}
                         </div>
                     </div>

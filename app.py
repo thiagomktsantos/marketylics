@@ -19174,7 +19174,7 @@ html, body { background: transparent; overflow: hidden; }
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
                 _expira_html = (
-                    f' (<span style="color:#e05252;font-weight:700">⚠ expira em até '
+                    f' (<span style="color:#e05252;font-weight:700">expira em até '
                     f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>)'
                     if _l.get("expirando") else ""
                 )

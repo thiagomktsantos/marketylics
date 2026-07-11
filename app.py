@@ -1111,6 +1111,7 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                     "empresa": empresa,
                     "transcritas": transcritas,
                     "total": max(total, transcritas),
+                    "falhou_em": _agora_iso(),
                     "aviso": (
                         f"{len(_ids_falharam)} de {transcritas} vídeos tiveram erro ao "
                         f"salvar a transcrição no banco (rede instável, sessão expirada "
@@ -1164,7 +1165,7 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
         atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
     else:
         atividade_id = criar_atividade(
-            user_id, "transcricao_video", f"Transcrevendo vídeos de {empresa}",
+            user_id, "transcricao_video", f"{empresa} · Transcrevendo vídeos de anúncios",
             {"empresa": empresa, "transcritas": 0, "total": total},
         )
     threading.Thread(target=_transcrever_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
@@ -1225,6 +1226,30 @@ def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
         return bool(res.data)
     except Exception:
         return False
+
+def excluir_atividades_com_erro(user_id: str) -> int:
+    """Remove TODAS as atividades em status 'erro' do usuário de uma vez
+    — usado pelo botão 'Limpar notificações com erro' na página de
+    notificações. Existe porque nem todo 'erro' é retentável sozinho
+    (ex: migracao_midia com cota estourada ou link do Facebook expirado
+    de vez — ver comentário em _migrar_midia_background) — pra esses
+    casos não faz sentido um retry automático (só ia falhar nas mesmas
+    de novo), então a única forma de o alerta do sino sumir era excluir
+    uma por uma, manualmente, card por card. Devolve quantas foram
+    removidas."""
+    if not user_id:
+        return 0
+    try:
+        res = (
+            supabase.table("atividades")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("status", "erro")
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
 
 def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     try:
@@ -1330,7 +1355,7 @@ _TIPO_ATIVIDADE_LABELS = {
     ),
     "transcricao_video": (
         "M12,14A3,3 0 0,0 15,11V5A3,3 0 0,0 12,2A3,3 0 0,0 9,5V11A3,3 0 0,0 12,14M19,11H17.7C17.7,14 15.19,15.9 12,15.9C8.81,15.9 6.3,14 6.3,11H5C5,14.41 7.72,17.23 11,17.72V21H13V17.72C16.28,17.23 19,14.41 19,11Z",
-        "#8b5cf6", "Transcrevendo áudio dos vídeos",
+        "#8b5cf6", "Transcrevendo áudio dos vídeos de anúncios",
     ),
     "reprocessamento_midia": (
         "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
@@ -1510,14 +1535,20 @@ def _extrair_empresa_do_titulo_migracao(titulo: str):
     progresso sem a chave 'empresa' apagava esse dado do registro,
     mesmo com a atividade ainda bem identificada pelo título. O título é
     montado sempre no mesmo formato em iniciar_migracao_midia_background
-    ('Salvando anúncios de {empresa} na Biblioteca de Arquivos
-    Permanente'), então dá pra extrair de volta com segurança. Sem esse
+    ('{empresa} · Salvando anúncios na Biblioteca de Arquivos
+    Permanente' — formato novo, padronizado 'Empresa · Ação'; registros
+    criados antes dessa padronização usam o formato antigo 'Salvando
+    anúncios de {empresa} na Biblioteca de Arquivos Permanente', então
+    tenta os dois), então dá pra extrair de volta com segurança. Sem esse
     fallback, uma atividade antiga fica com o botão de continuar
     escondido pra sempre (só se resolveria na próxima vez que algo
     regravasse os detalhes) — com ele, a tela se autocorrige na hora,
     sem precisar esperar nenhuma nova escrita no banco."""
     if not titulo:
         return None
+    m = _re_ativ.match(r"^(.+) · Salvando anúncios na Biblioteca de Arquivos Permanente$", titulo)
+    if m:
+        return m.group(1)
     m = _re_ativ.match(r"^Salvando anúncios de (.+) na Biblioteca de Arquivos Permanente$", titulo)
     return m.group(1) if m else None
 
@@ -1646,7 +1677,7 @@ def _formatar_detalhes_atividade(atividade: dict):
         total_t = d.get("total", d["transcritas"])
         concluida = atividade.get("status") == "concluido" or d["transcritas"] >= total_t
         path, _cor = _ICONE_OK if concluida else _ICONE_INFO
-        texto = f"{d['transcritas']} de {total_t} vídeos transcritos."
+        texto = f"{d['transcritas']} de {total_t} vídeos de anúncios transcritos."
         if atividade.get("status") == "em_andamento":
             texto += " · Rodando agora."
         return _svg_icone(path, "currentColor", 14), texto
@@ -3562,7 +3593,7 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
             atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
         else:
             atividade_id = criar_atividade(
-                user_id, "migracao_midia", f"Salvando anúncios de {empresa} na Biblioteca de Arquivos Permanente", {"empresa": empresa}
+                user_id, "migracao_midia", f"{empresa} · Salvando anúncios na Biblioteca de Arquivos Permanente", {"empresa": empresa}
             )
         tarefas.append((empresa, entry, atividade_id))
 
@@ -3947,6 +3978,66 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     threading.Thread(target=_rodar_lote_e_liberar, daemon=True).start()
     return True
 
+# ---------------------------------------------------
+#  RETRY AUTOMÁTICO DE TRANSCRIÇÃO COM ERRO
+# ---------------------------------------------------
+# Diferente de migracao_midia (onde 'erro' às vezes é PERMANENTE de
+# propósito — cota mensal estourada, link do Facebook expirado de vez —
+# e por isso NUNCA é retentado sozinho, só via clique manual em
+# "Refazer"), o 'erro' de transcricao_video hoje só significa "o UPDATE
+# que grava a transcrição falhou" (rede instável, sessão expirada, RLS
+# mal configurado — foi exatamente isso que deixou atividades de vídeo
+# presas em 'erro' no sino pra sempre até a policy de UPDATE ser criada
+# na tabela `midias`). Causas desse tipo tendem a ser transitórias ou já
+# corrigidas, então aqui faz sentido retentar sozinho — sem isso, o
+# usuário ficava refém de clicar "Refazer" manualmente em cada card, ou
+# via de exclusão em massa (ver excluir_atividades_com_erro), só pra
+# fazer o alerta do sino sumir.
+#
+# Como _transcrever_pendentes_background já tem proteção contra loop
+# infinito (cada linha só é tentada uma vez por execução — ver comentário
+# lá), não tem risco de reprocessar a mesma linha pra sempre. Ainda assim
+# mantém um cooldown entre tentativas automáticas: se o problema de
+# verdade AINDA não tiver sido corrigido, não faz sentido martelar o
+# banco a cada 15s tentando de novo a mesma coisa que vai falhar de novo.
+LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS = 300  # 5 min entre tentativas automáticas
+
+def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
+    """Varre as atividades transcricao_video em 'erro' do usuário e
+    refaz automaticamente as que já passaram do cooldown desde a última
+    falha (ver LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS). Devolve True
+    se disparou algum retry."""
+    if not user_id:
+        return False
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "transcricao_video")
+            .eq("status", "erro")
+            .execute()
+        )
+    except Exception:
+        return False
+
+    disparou = False
+    for a in (res.data or []):
+        d = a.get("detalhes") or {}
+        empresa = d.get("empresa")
+        if not empresa:
+            continue
+        # 'falhou_em' só existe em atividades marcadas erro depois desta
+        # correção — registros antigos (sem o campo) são tratados como
+        # "já passou do cooldown há muito tempo" (_segundos_desde devolve
+        # infinito pra string vazia), então são retentados na primeira
+        # oportunidade em vez de ficarem presos pra sempre por falta do
+        # campo novo.
+        if _segundos_desde(d.get("falhou_em", "")) < LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS:
+            continue
+        if refazer_transcricao_video(user_id, empresa, a["id"]):
+            disparou = True
+    return disparou
 
 # ---------------------------------------------------
 # SIDEBAR (apenas quando logado)
@@ -4023,6 +4114,14 @@ with st.sidebar:
             # mesmo se a thread original tiver morrido.
             for _empresa_pendente in _empresas_com_transcricao_pendente(st.session_state.user.id):
                 iniciar_transcricao_pendente_background(st.session_state.user.id, _empresa_pendente)
+            # Diferente da migração (onde 'erro' pode ser permanente de
+            # propósito e por isso nunca é retentado sozinho), 'erro' em
+            # transcricao_video hoje só significa falha transitória no
+            # UPDATE (ver retentar_transcricoes_com_erro_automaticamente)
+            # — vale a pena tentar de novo sozinho, respeitando um
+            # cooldown, em vez de deixar o alerta vermelho no sino
+            # esperando um clique manual em "Refazer" pra sempre.
+            retentar_transcricoes_com_erro_automaticamente(st.session_state.user.id)
 
     if st.session_state.user:
         _auto_retry_migracoes_travadas()
@@ -20126,6 +20225,51 @@ html, body { background: transparent; overflow: hidden; }
 })();
 </script>
 """, height=70)
+
+    # Botão "Limpar notificações com erro" — resolve o caso de atividades
+    # cujo 'erro' não é retentável sozinho (ex: migracao_midia com cota
+    # mensal estourada, ou link do Facebook expirado de vez — ver
+    # comentário em _migrar_midia_background) e por isso nunca somem do
+    # sino sozinhas, mesmo com os retries automáticos existentes (que só
+    # cobrem os casos transitórios). Confirmação em 2 passos (sem modal
+    # JS, só st.session_state) porque é uma ação em lote e irreversível —
+    # evita apagar tudo com 1 clique errado.
+    if st.session_state.user:
+        _n_erros_notif = 0
+        try:
+            _res_n_erros = (
+                supabase.table("atividades")
+                .select("id", count="exact")
+                .eq("user_id", st.session_state.user.id)
+                .eq("status", "erro")
+                .execute()
+            )
+            _n_erros_notif = _res_n_erros.count or 0
+        except Exception:
+            pass
+
+        if _n_erros_notif:
+            if st.session_state.get("_confirmar_limpar_erros"):
+                st.warning(
+                    f"Apagar as {_n_erros_notif} notificação(ões) com erro? Isso não "
+                    f"afeta os anúncios/mídia já salvos, só o histórico de atividade "
+                    f"— e não pode ser desfeito."
+                )
+                _col_conf1, _col_conf2 = st.columns(2)
+                with _col_conf1:
+                    if st.button("Sim, apagar", key="_btn_confirmar_limpar_erros", type="primary"):
+                        _n_removidas = excluir_atividades_com_erro(st.session_state.user.id)
+                        st.session_state["_confirmar_limpar_erros"] = False
+                        st.toast(f"{_n_removidas} notificação(ões) com erro removida(s).", icon="🗑️")
+                        st.rerun()
+                with _col_conf2:
+                    if st.button("Cancelar", key="_btn_cancelar_limpar_erros"):
+                        st.session_state["_confirmar_limpar_erros"] = False
+                        st.rerun()
+            else:
+                if st.button(f"🗑️ Limpar {_n_erros_notif} notificação(ões) com erro", key="_btn_limpar_erros"):
+                    st.session_state["_confirmar_limpar_erros"] = True
+                    st.rerun()
 
     @st.fragment(run_every="2s")
     def _renderizar_atividades_ao_vivo():

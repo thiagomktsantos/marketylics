@@ -20263,6 +20263,10 @@ html, body { background: transparent; overflow: hidden; }
         min-height: 40px !important;
         background: #ffffff !important;
         box-shadow: none !important;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%239ca3af" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="20" y2="20"/></svg>') !important;
+        background-repeat: no-repeat !important;
+        background-position: 12px center !important;
+        background-size: 16px 16px !important;
     }
     .st-key-_busca_notif div[data-testid="stTextInput"] > div:focus-within {
         border-color: #9ca3af !important;
@@ -20273,6 +20277,8 @@ html, body { background: transparent; overflow: hidden; }
         font-size: 14px !important;
         font-family: 'DM Sans', sans-serif !important;
         box-shadow: none !important;
+        padding-left: 34px !important;
+        background: transparent !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -20310,25 +20316,93 @@ html, body { background: transparent; overflow: hidden; }
             st.text_input(
                 "Buscar notificações",
                 key="_busca_notif",
-                placeholder="🔎 Buscar por empresa ou tipo de atividade...",
+                placeholder="Buscar por empresa ou tipo de atividade...",
                 label_visibility="collapsed",
             )
+
+        # Os dois botões abaixo (Marcar como lidas / Limpar com erro) usam
+        # ícone em SVG em vez de emoji, no mesmo esquema já usado pelo
+        # "Refazer"/"Excluir" dentro dos cards mais abaixo: um st.button
+        # nativo ESCONDIDO continua fazendo a ação de verdade (toda a
+        # lógica em Python normal), e o botão que aparece de fato é HTML
+        # puro dentro de um components.html — o clique nele "aperta", via
+        # JS, o botão nativo escondido (window.parent.document, porque
+        # components.html roda num iframe à parte).
+        _check_svg_tb = _svg_icone(_ICONE_OK[0], "currentColor", 15)
+        _lixeira_svg_tb = _svg_icone(
+            "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
+            "currentColor", 15,
+        )
+        _TOOLBAR_BTN_CSS = """
+        <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: 'DM Sans', sans-serif; }
+        .tb-btn {
+            width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
+            gap: 7px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
+            color: #374151; font-size: 14px; font-weight: 600; cursor: pointer;
+            transition: all 0.12s ease; white-space: nowrap;
+        }
+        .tb-btn:hover { background: #f9fafb; border-color: #9ca3af; color: #111827; }
+        .tb-btn svg { display: block; flex-shrink: 0; }
+        .tb-btn.disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+        </style>
+        """
+
         with _col_lidas:
             _rotulo_lidas = (
-                f"✅ Marcar como lidas ({_n_erros_nao_lidos})" if _n_erros_nao_lidos
-                else "✅ Marcar como lidas"
+                f"Marcar como lidas ({_n_erros_nao_lidos})" if _n_erros_nao_lidos
+                else "Marcar como lidas"
             )
-            if st.button(_rotulo_lidas, key="_btn_marcar_lidas",
-                         disabled=_n_erros_nao_lidos == 0, use_container_width=True):
+            _lidas_disabled = _n_erros_nao_lidos == 0
+            components.html(f"""
+            {_TOOLBAR_BTN_CSS}
+            <button class="tb-btn{' disabled' if _lidas_disabled else ''}" id="tb_btn_lidas">
+                {_check_svg_tb}<span>{_rotulo_lidas}</span>
+            </button>
+            <script>
+            document.getElementById('tb_btn_lidas').addEventListener('click', function() {{
+                var doc = window.parent.document;
+                var el = doc.querySelector('.st-key-_btn_marcar_lidas button');
+                if (el) el.click();
+            }});
+            </script>
+            """, height=44)
+            if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
                 _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
                 st.toast(f"{_n_marcadas} notificação(ões) marcada(s) como lida(s).", icon="✅")
                 st.rerun()
+
         with _col_limpar:
             if _n_erros_notif and not st.session_state.get("_confirmar_limpar_erros"):
-                if st.button(f"🗑️ Limpar {_n_erros_notif} com erro", key="_btn_limpar_erros",
-                             use_container_width=True):
+                components.html(f"""
+                {_TOOLBAR_BTN_CSS}
+                <button class="tb-btn" id="tb_btn_limpar">
+                    {_lixeira_svg_tb}<span>Limpar {_n_erros_notif} com erro</span>
+                </button>
+                <script>
+                document.getElementById('tb_btn_limpar').addEventListener('click', function() {{
+                    var doc = window.parent.document;
+                    var el = doc.querySelector('.st-key-_btn_limpar_erros button');
+                    if (el) el.click();
+                }});
+                </script>
+                """, height=44)
+                if st.button("_limpar_erros_", key="_btn_limpar_erros"):
                     st.session_state["_confirmar_limpar_erros"] = True
                     st.rerun()
+
+        # Esconde os dois botões nativos "gatilho" (só existem pro JS acima
+        # clicar neles) sem esconder o resto da coluna onde estão.
+        st.markdown("""
+        <style>
+        .st-key-_btn_marcar_lidas, .st-key-_btn_limpar_erros { display: none !important; }
+        .stElementContainer:has(.st-key-_btn_marcar_lidas),
+        .stElementContainer:has(.st-key-_btn_limpar_erros) {
+            display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
         if _n_erros_notif and st.session_state.get("_confirmar_limpar_erros"):
             st.warning(
@@ -20762,8 +20836,8 @@ html, body { background: transparent; overflow: hidden; }
         box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
 
         var icone = doc.createElement('div');
-        icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
-        icone.textContent = '⚠️';
+        icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;color:' + corBtn + ';margin:0 auto 20px;';
+        icone.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z"/></svg>';
 
         var tit = doc.createElement('div');
         tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
@@ -20801,7 +20875,7 @@ html, body { background: transparent; overflow: hidden; }
 
     function excluirNotif(idx) {{
         abrirConfirmacao(
-            '🗑️ Excluir notificação',
+            'Excluir notificação',
             'Tem certeza que deseja excluir esta notificação? Esta ação não pode ser desfeita.',
             '#ef4444',
             'Sim, excluir',

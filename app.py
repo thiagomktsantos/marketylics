@@ -1251,6 +1251,27 @@ def excluir_atividades_com_erro(user_id: str) -> int:
     except Exception:
         return 0
 
+def marcar_erros_como_lidos(user_id: str) -> int:
+    """Marca TODAS as notificações em status 'erro' como lidas (lida=true),
+    sem excluir nada — diferente de excluir_atividades_com_erro. Serve pra
+    quem já viu/tratou os erros e só quer tirar o alerta vermelho do sino,
+    mas ainda quer manter o card no histórico da página de notificações
+    pra consulta depois. Devolve quantas foram marcadas."""
+    if not user_id:
+        return 0
+    try:
+        res = (
+            supabase.table("atividades")
+            .update({"lida": True})
+            .eq("user_id", user_id)
+            .eq("status", "erro")
+            .eq("lida", False)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
 def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     try:
         res = (
@@ -1285,19 +1306,23 @@ def resumo_sino_atividades(user_id: str) -> dict:
     coisa em andamento/incompleta (ex: migração que ainda não terminou
     de salvar tudo), e nenhum selo quando não há nada pendente. Antes o
     selo era sempre vermelho, então erro e "só rodando" pareciam a
-    mesma coisa."""
+    mesma coisa.
+
+    Erros já marcados como lidos (ver marcar_erros_como_lidos) não
+    contam mais aqui — "marcar como lidas" existe justamente pra tirar
+    o alerta do sino sem precisar excluir o card do histórico."""
     try:
         res = (
             supabase.table("atividades")
-            .select("status")
+            .select("status, lida")
             .eq("user_id", user_id)
             .in_("status", ["pendente", "em_andamento", "erro"])
             .execute()
         )
         linhas = res.data or []
-        n_erro = sum(1 for r in linhas if r.get("status") == "erro")
-        n_andamento = len(linhas) - n_erro
-        return {"total": len(linhas), "erro": n_erro, "andamento": n_andamento}
+        n_erro = sum(1 for r in linhas if r.get("status") == "erro" and not r.get("lida"))
+        n_andamento = sum(1 for r in linhas if r.get("status") != "erro")
+        return {"total": n_erro + n_andamento, "erro": n_erro, "andamento": n_andamento}
     except Exception:
         return {"total": 0, "erro": 0, "andamento": 0}
 
@@ -20226,49 +20251,75 @@ html, body { background: transparent; overflow: hidden; }
 </script>
 """, height=70)
 
-    # Botão "Limpar notificações com erro" — resolve o caso de atividades
-    # cujo 'erro' não é retentável sozinho (ex: migracao_midia com cota
-    # mensal estourada, ou link do Facebook expirado de vez — ver
-    # comentário em _migrar_midia_background) e por isso nunca somem do
-    # sino sozinhas, mesmo com os retries automáticos existentes (que só
-    # cobrem os casos transitórios). Confirmação em 2 passos (sem modal
-    # JS, só st.session_state) porque é uma ação em lote e irreversível —
-    # evita apagar tudo com 1 clique errado.
+    # Barra de ações da página: busca por texto (filtra os cards abaixo),
+    # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
+    # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver
+    # excluir_atividades_com_erro). Existem porque nem todo 'erro' é
+    # retentável sozinho (ex: migracao_midia com cota mensal estourada, ou
+    # link do Facebook expirado de vez — ver comentário em
+    # _migrar_midia_background) e por isso nunca somem do sino sozinhas,
+    # mesmo com os retries automáticos existentes (que só cobrem os casos
+    # transitórios). "Limpar" tem confirmação em 2 passos (sem modal JS,
+    # só st.session_state) porque é uma ação em lote e irreversível — evita
+    # apagar tudo com 1 clique errado. "Marcar como lidas" não precisa de
+    # confirmação porque não é destrutivo (o card continua no histórico).
     if st.session_state.user:
         _n_erros_notif = 0
+        _n_erros_nao_lidos = 0
         try:
             _res_n_erros = (
                 supabase.table("atividades")
-                .select("id", count="exact")
+                .select("id, lida", count="exact")
                 .eq("user_id", st.session_state.user.id)
                 .eq("status", "erro")
                 .execute()
             )
             _n_erros_notif = _res_n_erros.count or 0
+            _n_erros_nao_lidos = sum(1 for r in (_res_n_erros.data or []) if not r.get("lida"))
         except Exception:
             pass
 
-        if _n_erros_notif:
-            if st.session_state.get("_confirmar_limpar_erros"):
-                st.warning(
-                    f"Apagar as {_n_erros_notif} notificação(ões) com erro? Isso não "
-                    f"afeta os anúncios/mídia já salvos, só o histórico de atividade "
-                    f"— e não pode ser desfeito."
-                )
-                _col_conf1, _col_conf2 = st.columns(2)
-                with _col_conf1:
-                    if st.button("Sim, apagar", key="_btn_confirmar_limpar_erros", type="primary"):
-                        _n_removidas = excluir_atividades_com_erro(st.session_state.user.id)
-                        st.session_state["_confirmar_limpar_erros"] = False
-                        st.toast(f"{_n_removidas} notificação(ões) com erro removida(s).", icon="🗑️")
-                        st.rerun()
-                with _col_conf2:
-                    if st.button("Cancelar", key="_btn_cancelar_limpar_erros"):
-                        st.session_state["_confirmar_limpar_erros"] = False
-                        st.rerun()
-            else:
-                if st.button(f"🗑️ Limpar {_n_erros_notif} notificação(ões) com erro", key="_btn_limpar_erros"):
+        _col_busca, _col_lidas, _col_limpar = st.columns([3, 1.3, 1.3])
+        with _col_busca:
+            st.text_input(
+                "Buscar notificações",
+                key="_busca_notif",
+                placeholder="🔎 Buscar por empresa ou tipo de atividade...",
+                label_visibility="collapsed",
+            )
+        with _col_lidas:
+            _rotulo_lidas = (
+                f"✅ Marcar como lidas ({_n_erros_nao_lidos})" if _n_erros_nao_lidos
+                else "✅ Marcar como lidas"
+            )
+            if st.button(_rotulo_lidas, key="_btn_marcar_lidas",
+                         disabled=_n_erros_nao_lidos == 0, use_container_width=True):
+                _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
+                st.toast(f"{_n_marcadas} notificação(ões) marcada(s) como lida(s).", icon="✅")
+                st.rerun()
+        with _col_limpar:
+            if _n_erros_notif and not st.session_state.get("_confirmar_limpar_erros"):
+                if st.button(f"🗑️ Limpar {_n_erros_notif} com erro", key="_btn_limpar_erros",
+                             use_container_width=True):
                     st.session_state["_confirmar_limpar_erros"] = True
+                    st.rerun()
+
+        if _n_erros_notif and st.session_state.get("_confirmar_limpar_erros"):
+            st.warning(
+                f"Apagar as {_n_erros_notif} notificação(ões) com erro? Isso não "
+                f"afeta os anúncios/mídia já salvos, só o histórico de atividade "
+                f"— e não pode ser desfeito."
+            )
+            _col_conf1, _col_conf2 = st.columns(2)
+            with _col_conf1:
+                if st.button("Sim, apagar", key="_btn_confirmar_limpar_erros", type="primary"):
+                    _n_removidas = excluir_atividades_com_erro(st.session_state.user.id)
+                    st.session_state["_confirmar_limpar_erros"] = False
+                    st.toast(f"{_n_removidas} notificação(ões) com erro removida(s).", icon="🗑️")
+                    st.rerun()
+            with _col_conf2:
+                if st.button("Cancelar", key="_btn_cancelar_limpar_erros"):
+                    st.session_state["_confirmar_limpar_erros"] = False
                     st.rerun()
 
     @st.fragment(run_every="2s")
@@ -20283,16 +20334,33 @@ html, body { background: transparent; overflow: hidden; }
         função, não um bloco de código solto."""
         _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
 
+        # Filtro de busca (texto digitado na caixa da barra de ações, acima):
+        # compara com o título e com a empresa nos detalhes, sem acento/case,
+        # pra achar tanto "Kedu" quanto "kedu" ou "salvando". Feito em Python
+        # sobre a lista já carregada (não é uma query nova no Supabase) —
+        # simples e rápido o bastante pro volume de 50 atividades recentes.
+        _termo_busca = remover_acentos((st.session_state.get("_busca_notif") or "").strip().lower())
+        if _termo_busca:
+            def _atividade_bate_busca(a):
+                _empresa_a = (a.get("detalhes") or {}).get("empresa") or ""
+                _alvo = f"{a.get('titulo') or ''} {_empresa_a}"
+                return _termo_busca in remover_acentos(_alvo.lower())
+            _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
+
         if not _todas_atividades:
             _bell_svg = _svg_icone(
                 "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
                 "#c7cdd6", 32,
             )
+            _msg_vazio_notif = (
+                "Nenhuma notificação encontrada pra essa busca."
+                if _termo_busca else "Nenhuma atividade registrada ainda."
+            )
             st.markdown(_html(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px">
                 <div style="margin-bottom:8px;display:flex;justify-content:center">{_bell_svg}</div>
-                <div style="font-size:14px;color:#9ca3af">Nenhuma atividade registrada ainda.</div>
+                <div style="font-size:14px;color:#9ca3af">{_msg_vazio_notif}</div>
             </div>
             """), unsafe_allow_html=True)
         else:
@@ -20302,7 +20370,14 @@ html, body { background: transparent; overflow: hidden; }
             _cards_notif_html = ""
 
             for _pos, _a in enumerate(_todas_atividades):
-                _ui = _ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"])
+                _ui = dict(_ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"]))
+                if _a.get("status") == "erro" and _a.get("lida"):
+                    # Erro já marcado como lido (via "Marcar como lidas" na
+                    # barra de ações) — continua no histórico, só deixa de
+                    # contar pro alerta do sino (ver resumo_sino_atividades),
+                    # mas o card sinaliza isso pra não parecer que sumiu.
+                    _ui["label"] = _ui["label"] + " · lida"
+
                 _id_ativ = _a["id"]
                 _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
                 if not _empresa_ativ and _a.get("tipo") == "migracao_midia":

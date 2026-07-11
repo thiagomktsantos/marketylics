@@ -12728,6 +12728,7 @@ function openImagesModal(imgs, snapUrl) {
 }
 
 function mostrarTranscricaoTip(ev) {
+    if (window.__transcTipHideTimer) { clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }
     var el = ev.currentTarget;
     var texto = el.getAttribute('data-texto') || '';
     if (!texto) return;
@@ -12743,10 +12744,19 @@ function mostrarTranscricaoTip(ev) {
     var tip = document.createElement('div');
     tip.id = 'transc_tip_flutuante';
     tip.textContent = texto;
+    // pointer-events:auto (em vez de none) + os listeners abaixo são o
+    // que permite passar o mouse do badge pro balão pra rolar um texto
+    // longo sem ele sumir no meio do caminho — antes, com pointer-events
+    // none, o mouse "atravessava" o balão, contava como se tivesse saído
+    // do badge, e escondia o tooltip bem na hora de tentar ler/rolar.
     tip.style.cssText = 'position:fixed;z-index:999999;max-width:240px;max-height:200px;overflow-y:auto;' +
         'background:#111;color:#fff;font-size:11px;line-height:1.5;padding:10px 12px;border-radius:8px;' +
-        'box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:"DM Sans",sans-serif;pointer-events:none;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:"DM Sans",sans-serif;pointer-events:auto;' +
         'white-space:pre-wrap;';
+    tip.addEventListener('mouseenter', function() {
+        if (window.__transcTipHideTimer) { clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }
+    });
+    tip.addEventListener('mouseleave', function() { esconderTranscricaoTip(); });
     document.body.appendChild(tip);
     var tipRect = tip.getBoundingClientRect();
     var top  = rect.bottom + 6;
@@ -12759,8 +12769,15 @@ function mostrarTranscricaoTip(ev) {
 }
 
 function esconderTranscricaoTip() {
-    var old = document.getElementById('transc_tip_flutuante');
-    if (old) old.remove();
+    // Pequeno atraso antes de remover: dá tempo do mouse entrar no
+    // próprio balão (mostrarTranscricaoTip cancela esse timer) sem o
+    // tooltip desaparecer no instante em que o cursor sai do badge.
+    if (window.__transcTipHideTimer) clearTimeout(window.__transcTipHideTimer);
+    window.__transcTipHideTimer = setTimeout(function() {
+        var old = document.getElementById('transc_tip_flutuante');
+        if (old) old.remove();
+        window.__transcTipHideTimer = null;
+    }, 200);
 }
 """
 

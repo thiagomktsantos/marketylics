@@ -991,23 +991,49 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
     atualizando `atividade_id` a cada vídeo terminado — é essa atualização
     ao vivo (via o mesmo st.fragment de 2s que já anima a migração) que
     deixa visível que a transcrição está progredindo de verdade, em vez
-    de só um badge estático que não muda nunca."""
+    de só um badge estático que não muda nunca.
+
+    BUG CORRIGIDO (visto em produção: atividade de Kedu passou de "8 de
+    8" pra "522 de 528" numa hora, com só 30 vídeos de verdade no banco):
+    se o UPDATE que grava a transcrição falhasse pra uma linha (RLS,
+    rede, sessão do Supabase expirada — client guardado em st.session_state
+    tem TTL de token), a linha continuava NULL no banco pra sempre.
+    Como a query de busca não excluía nada, a MESMA linha voltava a
+    aparecer em toda volta do `while True`, era baixada e transcrita de
+    novo, `transcritas` (e `total`, que segue `transcritas`) incrementava
+    de novo — um loop infinito silencioso que nunca chegava a
+    'concluído' e inflava os números sem limite. A correção: cada linha
+    só pode ser tentada UMA VEZ por execução desta thread — sucesso ou
+    falha, ela sai da fila desta passada (rastreada em
+    `_ids_tentados_neste_run`, excluída da próxima busca via
+    `.not_.in_`). Falhas de verdade agora ficam registradas em
+    `_ids_falharam` e reportadas na atividade (status 'erro', com
+    'aviso' explicando quantas falharam) em vez de desaparecerem."""
     _chave_ativa = (user_id, empresa)
     transcritas = 0
     total = _contar_transcricoes_pendentes(user_id, empresa)
+    _ids_tentados_neste_run = set()
+    _ids_falharam = []
+    _erros_update_amostra = []  # guarda a mensagem real de até 3 falhas, pra diagnosticar a causa (RLS, coluna estourada, etc.) sem precisar de acesso a log de servidor
     try:
         while True:
             try:
-                res = (
+                _query = (
                     supabase.table("midias")
                     .select("id, url_cdn")
                     .eq("user_id", user_id)
                     .eq("empresa", empresa)
                     .eq("tipo", "video")
                     .is_("transcricao", "null")
-                    .limit(5)
-                    .execute()
                 )
+                if _ids_tentados_neste_run:
+                    # Exclui linhas já tentadas NESTA execução — sucesso
+                    # ou falha, não volta pra fila até a próxima vez que
+                    # iniciar_transcricao_pendente_background for chamada
+                    # do zero. Sem isso, uma linha cujo UPDATE falha fica
+                    # NULL pra sempre e é reprocessada em loop infinito.
+                    _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
+                res = _query.limit(5).execute()
             except Exception:
                 break
             pendentes = res.data or []
@@ -1036,6 +1062,7 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                         "ultimo_heartbeat_em": _agora_iso(),
                     })
             for midia in pendentes:
+                _ids_tentados_neste_run.add(midia["id"])
                 # String vazia (em vez de deixar NULL) marca "já tentei
                 # transcrever esse vídeo" — sem isso, um vídeo sem áudio
                 # (ou que falha sempre) ficaria sendo pego por essa mesma
@@ -1049,8 +1076,16 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                     pass
                 try:
                     supabase.table("midias").update({"transcricao": texto or ""}).eq("id", midia["id"]).execute()
-                except Exception:
-                    pass
+                except Exception as _e_update:
+                    # Não faz mais "pass" silencioso: fica registrado (id
+                    # já está em _ids_tentados_neste_run, então não volta
+                    # a ser tentado nesta execução) e vira um "erro" real
+                    # no fim, visível no sino, em vez de sumir sem deixar
+                    # rastro. Guarda a mensagem de verdade (até 3
+                    # amostras) pra dar pra diagnosticar a causa raiz.
+                    _ids_falharam.append(str(midia["id"]))
+                    if len(_erros_update_amostra) < 3:
+                        _erros_update_amostra.append(f"{midia['id']}: {_e_update}")
                 transcritas += 1
                 if atividade_id:
                     # Regrava 'empresa' em TODO update de detalhes (mesmo
@@ -1066,11 +1101,31 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                         "ultimo_heartbeat_em": _agora_iso(),
                     })
         if atividade_id:
-            atualizar_atividade(atividade_id, "concluido", {
-                "empresa": empresa,
-                "transcritas": transcritas,
-                "total": max(total, transcritas),
-            })
+            if _ids_falharam:
+                # Pelo menos um UPDATE falhou de verdade — não marca
+                # 'concluido' fingindo que deu tudo certo. Fica 'erro',
+                # com o botão "Refazer" disponível (que só tenta de novo
+                # os que ainda estiverem NULL — os que tiveram sucesso
+                # não voltam pra fila).
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresa": empresa,
+                    "transcritas": transcritas,
+                    "total": max(total, transcritas),
+                    "aviso": (
+                        f"{len(_ids_falharam)} de {transcritas} vídeos tiveram erro ao "
+                        f"salvar a transcrição no banco (rede instável, sessão expirada "
+                        f"ou permissão negada) — não vão se resolver sozinhos nesta "
+                        f"passada. Clique 'Refazer' pra tentar de novo, ou aguarde: o "
+                        f"religamento automático da sidebar também tenta a cada 15s.\n"
+                        f"Detalhe técnico (até 3 amostras): {' | '.join(_erros_update_amostra)}"
+                    ),
+                })
+            else:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "empresa": empresa,
+                    "transcritas": transcritas,
+                    "total": max(total, transcritas),
+                })
     except Exception as e:
         if atividade_id:
             atualizar_atividade(atividade_id, "erro", {

@@ -20251,6 +20251,32 @@ html, body { background: transparent; overflow: hidden; }
 </script>
 """, height=70)
 
+    # CSS só do campo de busca: por padrão o text_input do Streamlit vem
+    # mais fino/mais alto que os botões (altura/borda/padding diferentes),
+    # então essa regra escopada pela key (.st-key-_busca_notif) alinha o
+    # visual com os botões "Marcar como lidas"/"Limpar com erro" ao lado.
+    st.markdown("""
+    <style>
+    .st-key-_busca_notif div[data-testid="stTextInput"] > div {
+        border-radius: 8px !important;
+        border: 1px solid #d1d5db !important;
+        min-height: 40px !important;
+        background: #ffffff !important;
+        box-shadow: none !important;
+    }
+    .st-key-_busca_notif div[data-testid="stTextInput"] > div:focus-within {
+        border-color: #9ca3af !important;
+    }
+    .st-key-_busca_notif div[data-testid="stTextInput"] input {
+        border: none !important;
+        min-height: 38px !important;
+        font-size: 14px !important;
+        font-family: 'DM Sans', sans-serif !important;
+        box-shadow: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     # Barra de ações da página: busca por texto (filtra os cards abaixo),
     # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
     # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver

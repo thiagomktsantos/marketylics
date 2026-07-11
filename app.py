@@ -153,6 +153,55 @@ PLANOS_QUOTA_CONCORRENTES = {
 # no Facebook) ficaria sendo tentado pra sempre a cada coleta.
 MAX_TENTATIVAS_MIDIA = 5
 
+# Janela (em horas) usada pra marcar um link original da Meta como "vai
+# expirar em breve" no card de Links Pendentes. URLs do CDN da Meta
+# (scontent-*.fbcdn.net) trazem embutido um parâmetro "oe" — um timestamp
+# Unix em hexadecimal com o instante exato em que aquele link para de
+# funcionar. Isso permite saber a expiração real sem precisar de uma nova
+# coleta. 48h é um valor de partida (link "na berlinda"); ajustável.
+JANELA_EXPIRACAO_LINK_HORAS = 48
+
+def _extrair_expiracao_url(url: str):
+    """Extrai o timestamp de expiração embutido numa URL do CDN da Meta
+    (parâmetro de query 'oe', hex = Unix timestamp em segundos). Devolve
+    um datetime (UTC) ou None se a URL não tiver o parâmetro ou não for
+    parseável — nesse caso o link entra como 'sem previsão', não como
+    'não vai expirar'."""
+    if not url:
+        return None
+    try:
+        import urllib.parse as _urlparse
+        import datetime as _dt_exp
+        qs = _urlparse.urlparse(url).query
+        oe = _urlparse.parse_qs(qs).get("oe", [None])[0]
+        if not oe:
+            return None
+        return _dt_exp.datetime.utcfromtimestamp(int(oe, 16))
+    except Exception:
+        return None
+
+def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
+    """Conta quantos anúncios (de uma lista de ads ainda com link original,
+    ver encontrar_ads_com_link_original) têm pelo menos uma mídia cujo
+    link expira dentro da janela informada — ou já expirou. Usa a
+    expiração real embutida na URL (ver _extrair_expiracao_url), não uma
+    estimativa por data de coleta."""
+    import datetime as _dt_exp
+    limite = _dt_exp.datetime.utcnow() + _dt_exp.timedelta(hours=horas)
+    total = 0
+    for ad in ads or []:
+        urls = (ad.get("images") or []) + (ad.get("videos") or [])
+        exp_mais_proxima = None
+        for u in urls:
+            if not u or (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
+                continue
+            exp = _extrair_expiracao_url(u)
+            if exp and (exp_mais_proxima is None or exp < exp_mais_proxima):
+                exp_mais_proxima = exp
+        if exp_mais_proxima and exp_mais_proxima <= limite:
+            total += 1
+    return total
+
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
     # Padrão temporário "pro" enquanto não existe billing — evita travar
@@ -238,6 +287,7 @@ def _contar_midias_do_mes_por_tipo(user_id: str) -> dict:
                 .eq("user_id", user_id)
                 .eq("tipo", tipo)
                 .gte("criado_em", inicio_mes)
+                .not_.is_("ad_id", "null")
                 .execute()
             )
             resultado[tipo] = res.count or 0
@@ -18945,6 +18995,32 @@ html, body { background: transparent; overflow: hidden; }
 
         _nome_minha_empresa = ((st.session_state.get("dados") or {}).get("minha_empresa") or {}).get("nome", "")
 
+        # Quebra de "Anúncios com mídia salva" por empresa (a própria +
+        # cada concorrente) — pra mostrar quem está de fato consumindo a
+        # cota mensal, não só o total.
+        _midias_por_empresa = _contar_midias_do_mes_por_empresa(_user_id_uso) if _user_id_uso else {}
+        _linhas_midia_empresa = []
+        if _nome_minha_empresa:
+            _linhas_midia_empresa.append({
+                "nome": _nome_minha_empresa,
+                "usado": _midias_por_empresa.get(_nome_minha_empresa, 0),
+                "cor": get_minha_empresa_color(),
+                "tag": "Minha empresa",
+            })
+        for _i_conc, _c in enumerate(_concorrentes_lista):
+            _nome_c = (_c.get("nome") or "").strip()
+            if not _nome_c:
+                continue
+            _linhas_midia_empresa.append({
+                "nome": _nome_c,
+                "usado": _midias_por_empresa.get(_nome_c, 0),
+                "cor": get_concorrente_color(_i_conc),
+                "tag": "Concorrente",
+            })
+        _linhas_midia_empresa.sort(key=lambda x: -x["usado"])
+        _max_midia_empresa = max([_l["usado"] for _l in _linhas_midia_empresa] + [1])
+
+
         # Estas três já têm contador real no sistema de cooldown/cota
         # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
         _coleta_ads_usadas   = _contar_execucoes_mes(_user_id_uso, "coleta_ads")   if _user_id_uso else 0
@@ -19074,52 +19150,93 @@ html, body { background: transparent; overflow: hidden; }
         # Anúncios ainda com link original do Facebook em vez do link
         # permanente da Biblioteca — ao contrário das outras métricas,
         # aqui "alto %" é ruim (quer dizer que muita coisa ainda depende
-        # de um link que pode expirar), então o card já nasce priorizado
-        # em primeiro, com uma ação direta pra corrigir.
+        # de um link que pode expirar).
         _ads_cache_uso = st.session_state.get("ads_cache") or {}
         _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
         _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
         _ja_na_biblioteca = _total_ads_geral - _total_pendentes_link
+        _total_expirando_link = sum(
+            _contar_links_expirando(e.get("data", [])) for e in _pendentes_link_dict.values()
+        )
         _detalhe_link = (
-            f"{_ja_na_biblioteca} já salvos na Biblioteca de Arquivos Permanente"
+            f"{_ja_na_biblioteca} já salvos · {_total_expirando_link} vão expirar em até "
+            f"{JANELA_EXPIRACAO_LINK_HORAS}h"
             if _total_ads_geral else "nenhum anúncio coletado ainda"
         )
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
         # Quebra de "Links pendentes" por empresa (a própria + cada
-        # concorrente) — o card acima só mostra o total geral (soma de
-        # todos os anúncios com link original ainda não migrado), sem
-        # dizer se o problema está concentrado numa empresa só ou
-        # espalhado entre várias.
+        # concorrente) — quantos anúncios daquela empresa ainda têm link
+        # original, quantos disso vão expirar logo, e quando foi a
+        # última coleta de anúncios daquela empresa (o "ts" do cache).
+        def _linha_link_pendente(nome: str, cor: str, tag: str) -> dict:
+            _entry = _pendentes_link_dict.get(nome) or {}
+            _ads_pendentes_empresa = _entry.get("data", [])
+            _entry_geral = _ads_cache_uso.get(nome) or {}
+            return {
+                "nome": nome,
+                "usado": len(_ads_pendentes_empresa),
+                "cor": cor,
+                "tag": tag,
+                "expirando": _contar_links_expirando(_ads_pendentes_empresa),
+                "ultima_coleta": _entry_geral.get("ts", ""),
+            }
+
         _linhas_links_pendentes = []
         if _nome_minha_empresa:
-            _linhas_links_pendentes.append({
-                "nome": _nome_minha_empresa,
-                "usado": len((_pendentes_link_dict.get(_nome_minha_empresa) or {}).get("data", [])),
-                "cor": get_minha_empresa_color(),
-                "tag": "Minha empresa",
-            })
+            _linhas_links_pendentes.append(
+                _linha_link_pendente(_nome_minha_empresa, get_minha_empresa_color(), "Minha empresa")
+            )
         for _i_conc, _c in enumerate(_concorrentes_lista):
             _nome_c = (_c.get("nome") or "").strip()
             if not _nome_c:
                 continue
-            _linhas_links_pendentes.append({
-                "nome": _nome_c,
-                "usado": len((_pendentes_link_dict.get(_nome_c) or {}).get("data", [])),
-                "cor": get_concorrente_color(_i_conc),
-                "tag": "Concorrente",
-            })
+            _linhas_links_pendentes.append(
+                _linha_link_pendente(_nome_c, get_concorrente_color(_i_conc), "Concorrente")
+            )
         _linhas_links_pendentes.sort(key=lambda x: -x["usado"])
         _max_links_pendentes = max([_l["usado"] for _l in _linhas_links_pendentes] + [1])
+
+        def _render_links_pendentes_por_empresa(linhas: list, maximo: int) -> str:
+            """Mesma ideia de _render_uso_por_empresa, mas com uma segunda
+            linha por empresa mostrando a última coleta de anúncios e
+            quantos links daquela empresa vão expirar em breve."""
+            if not linhas:
+                return (
+                    '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
+                    "nenhuma empresa monitorada ainda</div>"
+                )
+            _itens_html = ""
+            for _l in linhas:
+                _nome_safe = (_l["nome"] or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                _pct_barra = round((_l["usado"] / maximo) * 100) if maximo else 0
+                _coleta_txt = f"última coleta {_l['ultima_coleta']}" if _l["ultima_coleta"] else "sem coleta registrada"
+                _exp_txt = f" · {_l['expirando']} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h" if _l["expirando"] else ""
+                _itens_html += f"""
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 2px">
+                    <span style="width:9px;height:9px;border-radius:50%;background:{_l['cor']};flex-shrink:0;margin-top:2px;align-self:flex-start"></span>
+                    <div style="flex:1;min-width:0">
+                        <div style="display:flex;justify-content:space-between;gap:8px">
+                            <span style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;
+                                         text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
+                            <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
+                        </div>
+                        <div style="width:100%;height:5px;border-radius:4px;background:#eef1f5;margin-top:5px;overflow:hidden">
+                            <div style="width:{_pct_barra}%;height:100%;border-radius:4px;background:{_l['cor']}"></div>
+                        </div>
+                        <div style="font-size:11px;color:#9ca3af;margin-top:4px">{_coleta_txt}{_exp_txt}</div>
+                    </div>
+                    <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
+                        {_l['usado']} pendente{'s' if _l['usado'] != 1 else ''}
+                    </span>
+                </div>"""
+            return _itens_html
 
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
                                        _total_pendentes_link, _total_ads_geral or 1, _detalhe_link), unsafe_allow_html=True)
-            if _total_pendentes_link > 0 and st.button("🔧 Corrigir agora", key="_btn_corrigir_links_pendentes", use_container_width=True):
-                verificar_e_migrar_pendentes(_user_id_uso)
-                st.toast("Correção iniciada — acompanhe no sino de notificações.", icon="🔧")
         with _col_u1:
             st.markdown(_card_uso_svg("Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0),
                                        _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
@@ -19127,14 +19244,35 @@ html, body { background: transparent; overflow: hidden; }
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
                                        _concorrentes_usados, _concorrentes_limite, _detalhe_concorrentes), unsafe_allow_html=True)
 
-        # Detalhamento por empresa (a própria + cada concorrente) de
-        # "Links pendentes" — o card acima só mostra o total.
-        with st.expander("📊 Ver links pendentes por empresa (minha empresa e concorrentes)", expanded=False):
+        # Detalhamento por empresa — sempre visível (sem botão de ação e
+        # sem expander pra abrir/fechar), lado a lado: Links Pendentes
+        # (com última coleta e previsão de expiração) e Anúncios com
+        # Mídia Salva (quem está consumindo a cota mensal).
+        _col_det0, _col_det1 = st.columns(2)
+        with _col_det0:
             st.markdown(
                 _html(f"""
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                            padding:6px 16px;margin-bottom:4px">
-                    {_render_uso_por_empresa(_linhas_links_pendentes, _max_links_pendentes, "link pendente", "links pendentes")}
+                            padding:16px 16px 10px 16px;margin-bottom:16px">
+                    <div style="font-size:12.5px;font-weight:700;text-transform:uppercase;
+                                letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
+                        Links pendentes por empresa
+                    </div>
+                    {_render_links_pendentes_por_empresa(_linhas_links_pendentes, _max_links_pendentes)}
+                </div>
+                """),
+                unsafe_allow_html=True,
+            )
+        with _col_det1:
+            st.markdown(
+                _html(f"""
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                            padding:16px 16px 10px 16px;margin-bottom:16px">
+                    <div style="font-size:12.5px;font-weight:700;text-transform:uppercase;
+                                letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
+                        Anúncios com mídia salva por empresa
+                    </div>
+                    {_render_uso_por_empresa(_linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos")}
                 </div>
                 """),
                 unsafe_allow_html=True,

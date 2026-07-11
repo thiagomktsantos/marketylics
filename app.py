@@ -1013,6 +1013,28 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
             pendentes = res.data or []
             if not pendentes:
                 break
+            # Pode ter surgido vídeo NOVO pra essa empresa depois que
+            # `total` foi calculado lá em cima (ex: outro fluxo de mídia —
+            # reprocessamento, retentativa, uma migração concorrente —
+            # inseriu mais um vídeo com `transcricao` NULL enquanto essa
+            # fila já estava rodando). Sem este recálculo, a barra
+            # chegava em "19 de 19" (100%) e ficava ali parada enquanto a
+            # thread, na real, seguia processando um 20º vídeo que o
+            # total antigo não previa — a atividade continuava
+            # 'em_andamento' (correto), mas visualmente parecia travada
+            # em 100% em vez de mostrar "19 de 20" e a barra recuando pra
+            # 95%. Só recalcula aqui (uma vez por lote de 5, não por
+            # vídeo) pra não gerar uma query extra a cada item.
+            total_real = transcritas + _contar_transcricoes_pendentes(user_id, empresa)
+            if total_real > total:
+                total = total_real
+                if atividade_id:
+                    atualizar_atividade(atividade_id, "em_andamento", {
+                        "empresa": empresa,
+                        "transcritas": transcritas,
+                        "total": total,
+                        "ultimo_heartbeat_em": _agora_iso(),
+                    })
             for midia in pendentes:
                 # String vazia (em vez de deixar NULL) marca "já tentei
                 # transcrever esse vídeo" — sem isso, um vídeo sem áudio

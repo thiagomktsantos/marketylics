@@ -180,38 +180,25 @@ def _extrair_expiracao_url(url: str):
     except Exception:
         return None
 
-def _contar_links(ads: list, apenas_pendentes: bool = False) -> int:
-    """Conta LINKS individuais (cada imagem/vídeo é um link) numa lista de
-    anúncios — não anúncios. Com apenas_pendentes=True, conta só os que
-    ainda apontam pro link original da Meta (não migrados pro R2); sem
-    isso, conta todos os links (migrados + pendentes)."""
-    total = 0
-    for ad in ads or []:
-        urls = (ad.get("images") or []) + (ad.get("videos") or [])
-        for u in urls:
-            if not u:
-                continue
-            migrado = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
-            if apenas_pendentes and migrado:
-                continue
-            total += 1
-    return total
-
 def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
-    """Conta quantos LINKS individuais (não anúncios) ainda com URL
-    original da Meta expiram dentro da janela informada — ou já
-    expiraram. Usa a expiração real embutida na URL (ver
-    _extrair_expiracao_url), não uma estimativa por data de coleta."""
+    """Conta quantos ANÚNCIOS (de uma lista de ads ainda com link
+    original, ver encontrar_ads_com_link_original) têm pelo menos uma
+    mídia cujo link expira dentro da janela informada — ou já expirou.
+    Usa a expiração real embutida na URL (ver _extrair_expiracao_url),
+    não uma estimativa por data de coleta."""
     import datetime as _dt_exp
     limite = _dt_exp.datetime.utcnow() + _dt_exp.timedelta(hours=horas)
     total = 0
     for ad in ads or []:
         urls = (ad.get("images") or []) + (ad.get("videos") or [])
+        exp_mais_proxima = None
         for u in urls:
             if not u or (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
                 continue
             exp = _extrair_expiracao_url(u)
-            if exp and exp <= limite:
+            if exp and (exp_mais_proxima is None or exp < exp_mais_proxima):
+                exp_mais_proxima = exp
+        if exp_mais_proxima and exp_mais_proxima <= limite:
                 total += 1
     return total
 
@@ -19245,36 +19232,32 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        # Links individuais (cada imagem/vídeo é um link) que ainda apontam
-        # pro CDN original da Meta em vez do link permanente da Biblioteca
-        # — ao contrário das outras métricas, aqui "alto %" é ruim (quer
-        # dizer que muito link ainda depende da Meta e pode expirar).
-        # Importante: aqui a unidade é o LINK, não o anúncio — um mesmo
-        # anúncio pode ter vários links, e cada um conta separado.
-        _total_links_geral = sum(_contar_links(e.get("data", [])) for e in _ads_cache_uso.values())
-        _total_links_pendentes = sum(
-            _contar_links(e.get("data", []), apenas_pendentes=True) for e in _ads_cache_uso.values()
-        )
+        # Anúncios que ainda têm pelo menos um link original da Meta (não
+        # migrado pro R2) — ao contrário das outras métricas, aqui "alto
+        # %" é ruim (quer dizer que muito anúncio ainda depende da Meta e
+        # pode quebrar). A unidade aqui é o ANÚNCIO, não o link
+        # individual — um anúncio com 5 links pendentes conta 1 vez, não 5.
+        _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
+        _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
+        _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
         _total_expirando_link = sum(
-            _contar_links_expirando(e.get("data", [])) for e in _ads_cache_uso.values()
+            _contar_links_expirando(e.get("data", [])) for e in _pendentes_link_dict.values()
         )
-        # Aqui o que importa não é "quantos já foram migrados" (a leitura
-        # padrão do anel, tipo "15%"), e sim quantos ainda dependem da
-        # Meta e correm risco real de quebrar — por isso o texto principal
-        # vira essa frase de urgência em vez do % cru, com a contagem
-        # total de links logo abaixo.
-        if not _total_links_geral:
+        # O texto principal vira a frase de urgência (quantos anúncios têm
+        # link prestes a expirar) em vez do % cru de migração, com a
+        # contagem total de anúncios logo abaixo.
+        if not _total_ads_geral:
             _pct_expiravel = 0
-            _texto_pct_links = '<div style="font-size:14px;color:#9ca3af">nenhum link coletado ainda</div>'
+            _texto_pct_links = '<div style="font-size:14px;color:#9ca3af">nenhum anúncio coletado ainda</div>'
             _texto_fracao_links = ""
         else:
-            _pct_expiravel = round(_total_expirando_link / _total_links_geral * 100)
+            _pct_expiravel = round(_total_expirando_link / _total_ads_geral * 100)
             _cor_pct_expiravel = "#e05252" if _total_expirando_link else "#4a9b6e"
             _texto_pct_links = (
                 f'<div style="font-size:18px;font-weight:800;color:{_cor_pct_expiravel};line-height:1.3">'
-                f'{_pct_expiravel}% dos links são expiráveis</div>'
+                f'{_pct_expiravel}% dos anúncios são links expiráveis</div>'
             )
-            _texto_fracao_links = f"{_total_links_pendentes} de {_total_links_geral} links"
+            _texto_fracao_links = f"{_total_pendentes_link} de {_total_ads_geral} anúncios"
         _detalhe_link = ""
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
@@ -19298,17 +19281,17 @@ html, body { background: transparent; overflow: hidden; }
         _ultima_coleta_link = _ultima_coleta_mais_recente(_ads_cache_uso)
 
         # Quebra de "Links da Meta" por empresa (a própria + cada
-        # concorrente) — quantos LINKS daquela empresa ainda são
-        # originais da Meta, quantos disso vão expirar logo, e quando foi
-        # a última coleta de anúncios daquela empresa (o "ts" do cache).
+        # concorrente) — quantos ANÚNCIOS daquela empresa ainda têm link
+        # original, quantos disso vão expirar logo, e quando foi a
+        # última coleta de anúncios daquela empresa (o "ts" do cache).
         def _linha_link_pendente(nome: str, cor: str, tag: str) -> dict:
-            _ads_empresa = (_ads_cache_uso.get(nome) or {}).get("data", [])
+            _ads_pendentes_empresa = (_pendentes_link_dict.get(nome) or {}).get("data", [])
             return {
                 "nome": nome,
-                "usado": _contar_links(_ads_empresa, apenas_pendentes=True),
+                "usado": len(_ads_pendentes_empresa),
                 "cor": cor,
                 "tag": tag,
-                "expirando": _contar_links_expirando(_ads_empresa),
+                "expirando": _contar_links_expirando(_ads_pendentes_empresa),
                 "ultima_coleta": (_ads_cache_uso.get(nome) or {}).get("ts", ""),
             }
 
@@ -19331,8 +19314,8 @@ html, body { background: transparent; overflow: hidden; }
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_com_empresas_svg(
-                "Links da Meta", _SVG_LINK, "#1a2e4a", _total_links_pendentes, _total_links_geral or 1,
-                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "link", "links",
+                "Links da Meta", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
+                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "anúncio com link", "anúncios com link",
                 ultima_coleta_geral=_ultima_coleta_link,
                 texto_pct_custom=_texto_pct_links, texto_fracao_custom=_texto_fracao_links
             ), unsafe_allow_html=True)

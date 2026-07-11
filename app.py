@@ -19134,12 +19134,15 @@ html, body { background: transparent; overflow: hidden; }
 
         def _card_uso_com_empresas_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str,
                                         linhas: list, maximo_linhas: int, rotulo_singular: str, rotulo_plural: str,
-                                        size: int = 108, stroke: int = 9) -> str:
+                                        ultima_coleta_geral: str = "", size: int = 108, stroke: int = 9) -> str:
             """Card único: o mesmo anel grande de total do _card_uso_svg,
             seguido — no mesmo card, sem separar em outro bloco — pela
             quebra por empresa. Cada empresa vira um mini-anel (donut),
             reaproveitando a mesma linguagem visual do anel principal, em
-            vez da barrinha horizontal usada antes."""
+            vez da barrinha horizontal usada antes. A última coleta
+            aparece só uma vez pro card inteiro (não repetida por linha
+            de empresa) — normalmente é o mesmo lote de coleta pra todo
+            mundo, então repetir por empresa era ruído."""
             r = (size / 2) - stroke - 2
             cx = cy = size / 2
             circum = round(2 * _math_uso.pi * r, 2)
@@ -19169,6 +19172,11 @@ html, body { background: transparent; overflow: hidden; }
                 f'<div style="font-size:11.5px;color:#9ca3af;margin-top:6px;white-space:nowrap">{detalhe}</div>'
                 if detalhe else ""
             )
+            coleta_geral_html = (
+                f'<div style="font-size:11px;color:#9ca3af;margin-top:3px;white-space:nowrap">'
+                f'última coleta {ultima_coleta_geral}</div>'
+                if ultima_coleta_geral else ""
+            )
 
             _linhas_html = ""
             for _l in linhas:
@@ -19176,14 +19184,15 @@ html, body { background: transparent; overflow: hidden; }
                 _row_pct = round((_l["usado"] / maximo_linhas) * 100) if maximo_linhas else 0
                 _row_pct = max(0, min(100, _row_pct))
                 _mini = _mini_donut_svg(_row_pct, _l["cor"])
-                _detalhe_partes = []
-                if _l.get("ultima_coleta"):
-                    _detalhe_partes.append(f"última coleta {_l['ultima_coleta']}")
-                else:
-                    _detalhe_partes.append("sem coleta registrada")
-                if _l.get("expirando"):
-                    _detalhe_partes.append(f"{_l['expirando']} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h")
-                _detalhe_txt = " · ".join(_detalhe_partes)
+                # Só a urgência de expiração fica por linha (última coleta já
+                # aparece uma vez só, lá em cima) — e ganha destaque em
+                # vermelho pra chamar atenção de verdade, não é só mais uma
+                # informação neutra no meio das outras.
+                _expira_html = (
+                    f'<div style="font-size:11px;color:#e05252;font-weight:700;margin-top:2px">'
+                    f'⚠ {_l["expirando"]} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h</div>'
+                    if _l.get("expirando") else ""
+                )
                 _linhas_html += f"""
                 <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
                     <div style="position:relative;width:46px;height:46px;flex-shrink:0">
@@ -19200,7 +19209,7 @@ html, body { background: transparent; overflow: hidden; }
                         <div style="font-size:13px;font-weight:700;color:#374151;margin-top:2px">
                             {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
                         </div>
-                        <div style="font-size:11px;color:#9ca3af;margin-top:2px">{_detalhe_txt}</div>
+                        {_expira_html}
                     </div>
                 </div>"""
             if not linhas:
@@ -19229,6 +19238,7 @@ html, body { background: transparent; overflow: hidden; }
                     {texto_pct_html}
                     <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
                     {detalhe_html}
+                    {coleta_geral_html}
                 </div>
                 <div style="width:100%;margin-top:16px">
                     {_linhas_html}

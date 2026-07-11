@@ -12352,19 +12352,25 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         else:
                             imgs_badge_html = ""
 
-                        # Badge "💬 Transcrição": mostra em tooltip o texto
-                        # falado do vídeo (Whisper), quando já foi transcrito
-                        # e salvo em `midias` (ver _mapa_transcricoes acima —
-                        # não dispara transcrição nova aqui, só lê o que já
-                        # está pronto, pra não travar a tela renderizando os
-                        # cards).
+                        # Badge "💬 Transcrição": mostra o texto falado do
+                        # vídeo (Whisper) num tooltip customizado ao passar o
+                        # mouse — usamos um elemento próprio (via JS) em vez
+                        # do atributo `title` nativo do navegador, que é lento
+                        # pra aparecer, corta em uma linha e não é confiável
+                        # dentro do iframe. Só aparece quando já foi
+                        # transcrito e salvo em `midias` (ver
+                        # _mapa_transcricoes acima — não dispara transcrição
+                        # nova aqui, só lê o que já está pronto, pra não
+                        # travar a tela renderizando os cards).
                         _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
                         if _transcricao_txt:
-                            _transcricao_tt = _escapar_tooltip(_transcricao_txt[:400])
-                            if len(_transcricao_txt) > 400:
+                            _transcricao_tt = _escapar_tooltip(_transcricao_txt[:1200])
+                            if len(_transcricao_txt) > 1200:
                                 _transcricao_tt += "…"
                             transcricao_badge_html = f"""
-    <div title="{_transcricao_tt}"
+    <div data-texto="{_transcricao_tt}"
+         onmouseenter="mostrarTranscricaoTip(event)"
+         onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
          style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
@@ -12402,9 +12408,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     {origem_badge_html}
     {imgs_badge_html}
     {transcricao_badge_html}
-    <div style="position:absolute;bottom:7px;right:7px;background:#ffffff;
-                color:#000000;font-size:10px;font-weight:700;padding:2px 7px;
-                border-radius:4px;pointer-events:none">▶ VER VÍDEO</div>
 </div>
 <script>
 (function(){{
@@ -12722,6 +12725,42 @@ function openImagesModal(imgs, snapUrl) {
 
     window.parent.__adsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
     doc.addEventListener('keydown', window.parent.__adsModalEscFn);
+}
+
+function mostrarTranscricaoTip(ev) {
+    var el = ev.currentTarget;
+    var texto = el.getAttribute('data-texto') || '';
+    if (!texto) return;
+    var old = document.getElementById('transc_tip_flutuante');
+    if (old) old.remove();
+    // Usa o documento LOCAL do iframe (não window.parent.document) e
+    // position:fixed — assim o tooltip escapa do overflow:hidden do
+    // .card/.media-block sem precisar traduzir coordenadas entre o
+    // iframe e a página pai (o que os modais fazem, mas eles cobrem a
+    // tela inteira; aqui precisamos de um balão posicionado perto do
+    // badge, então fica mais simples e correto ficar dentro do iframe).
+    var rect = el.getBoundingClientRect();
+    var tip = document.createElement('div');
+    tip.id = 'transc_tip_flutuante';
+    tip.textContent = texto;
+    tip.style.cssText = 'position:fixed;z-index:999999;max-width:240px;max-height:200px;overflow-y:auto;' +
+        'background:#111;color:#fff;font-size:11px;line-height:1.5;padding:10px 12px;border-radius:8px;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:"DM Sans",sans-serif;pointer-events:none;' +
+        'white-space:pre-wrap;';
+    document.body.appendChild(tip);
+    var tipRect = tip.getBoundingClientRect();
+    var top  = rect.bottom + 6;
+    var left = rect.right - tipRect.width;
+    if (left < 6) left = 6;
+    if (top + tipRect.height > window.innerHeight - 6) { top = rect.top - tipRect.height - 6; }
+    if (top < 6) top = 6;
+    tip.style.top  = top + 'px';
+    tip.style.left = left + 'px';
+}
+
+function esconderTranscricaoTip() {
+    var old = document.getElementById('transc_tip_flutuante');
+    if (old) old.remove();
 }
 """
 

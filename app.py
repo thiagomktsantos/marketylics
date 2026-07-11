@@ -19189,8 +19189,8 @@ html, body { background: transparent; overflow: hidden; }
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
                 _expira_html = (
-                    f' · <span style="color:#e05252;font-weight:700">⚠ {_l["expirando"]} expira em até '
-                    f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>'
+                    f' (<span style="color:#e05252;font-weight:700">⚠ expira em até '
+                    f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>)'
                     if _l.get("expirando") else ""
                 )
                 _linhas_html += f"""
@@ -19322,7 +19322,7 @@ html, body { background: transparent; overflow: hidden; }
         with _col_u0:
             st.markdown(_card_uso_com_empresas_svg(
                 "Links da Meta", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
-                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes",
+                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "anúncio de link", "anúncios de link",
                 ultima_coleta_geral=_ultima_coleta_link
             ), unsafe_allow_html=True)
         with _col_u1:

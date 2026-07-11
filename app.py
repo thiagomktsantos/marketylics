@@ -922,25 +922,79 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
 # WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS dentro de _transcrever_video_whisper)
 # — só que agora atrasar a transcrição de um vídeo problemático não
 # atrasa mais a migração de nenhuma empresa.
+#
+# A fila roda POR EMPRESA (não mais uma fila genérica por usuário) e
+# gera uma atividade `transcricao_video` própria — mesmo padrão da
+# `migracao_midia` (ver criar_atividade/atualizar_atividade mais abaixo):
+# assim o sino de notificações mostra "X de Y vídeos transcritos" por
+# empresa, com barra de progresso, em vez do badge "⏳ Transcrevendo…"
+# no card do vídeo ser a única pista (e uma pista sem nenhuma noção de
+# quantidade ou de tempo decorrido — exatamente o problema de "como sei
+# que não travou" que motivou essa mudança).
 
 import threading
 
 _lock_transcricao_pendente = threading.Lock()
 
 @st.cache_resource
-def _get_usuarios_transcrevendo_agora() -> set:
+def _get_transcricoes_empresa_ativas_agora() -> set:
     # @st.cache_resource (não uma variável solta no módulo) porque o
     # Streamlit reexecuta o script inteiro do zero a cada rerun — uma
     # variável de módulo comum voltaria a set() vazio a cada rerun,
-    # quebrando a trava "já tem uma fila rodando pra esse usuário" (mesmo
+    # quebrando a trava "já tem uma fila rodando pra essa empresa" (mesmo
     # motivo pelo qual get_r2_client() e get_whisper_model() já usam esse
     # decorator). cache_resource devolve sempre a MESMA instância do set,
     # compartilhada por todo o processo, sobrevivendo aos reruns.
     return set()
 
-_usuarios_transcrevendo_agora = _get_usuarios_transcrevendo_agora()  # evita 2 filas rodando pro mesmo usuário ao mesmo tempo
+_transcricoes_empresa_ativas_agora = _get_transcricoes_empresa_ativas_agora()  # elementos: (user_id, empresa) — evita 2 filas rodando pra mesma empresa ao mesmo tempo
 
-def _transcrever_pendentes_background(user_id: str):
+def _contar_transcricoes_pendentes(user_id: str, empresa: str) -> int:
+    """Quantos vídeos dessa empresa já foram migrados (estão em `midias`)
+    mas ainda não têm transcrição salva (`transcricao` NULL)."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .eq("tipo", "video")
+            .is_("transcricao", "null")
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
+def _empresas_com_transcricao_pendente(user_id: str) -> list:
+    """Lista as empresas distintas do usuário que ainda têm vídeo migrado
+    sem transcrição — usada pelo auto-retry da sidebar (a cada 15s) pra
+    saber quais filas de transcrição precisam ser (re)ligadas, do mesmo
+    jeito que retentar_migracoes_travadas_automaticamente faz pra
+    migração."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("empresa")
+            .eq("user_id", user_id)
+            .eq("tipo", "video")
+            .is_("transcricao", "null")
+            .limit(2000)
+            .execute()
+        )
+        return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
+    except Exception:
+        return []
+
+def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
+    """Processa a fila de transcrição de UMA empresa até esvaziar, indo
+    atualizando `atividade_id` a cada vídeo terminado — é essa atualização
+    ao vivo (via o mesmo st.fragment de 2s que já anima a migração) que
+    deixa visível que a transcrição está progredindo de verdade, em vez
+    de só um badge estático que não muda nunca."""
+    _chave_ativa = (user_id, empresa)
+    transcritas = 0
+    total = _contar_transcricoes_pendentes(user_id, empresa)
     try:
         while True:
             try:
@@ -948,6 +1002,7 @@ def _transcrever_pendentes_background(user_id: str):
                     supabase.table("midias")
                     .select("id, url_cdn")
                     .eq("user_id", user_id)
+                    .eq("empresa", empresa)
                     .eq("tipo", "video")
                     .is_("transcricao", "null")
                     .limit(5)
@@ -974,22 +1029,68 @@ def _transcrever_pendentes_background(user_id: str):
                     supabase.table("midias").update({"transcricao": texto or ""}).eq("id", midia["id"]).execute()
                 except Exception:
                     pass
+                transcritas += 1
+                if atividade_id:
+                    # Regrava 'empresa' em TODO update de detalhes (mesmo
+                    # cuidado de _migrar_midia_background) porque
+                    # atualizar_atividade substitui o dict inteiro, não
+                    # faz merge — sem isso, esse update apagaria a
+                    # empresa dos detalhes e o botão "Refazer" perderia a
+                    # referência de qual empresa é essa atividade.
+                    atualizar_atividade(atividade_id, "em_andamento", {
+                        "empresa": empresa,
+                        "transcritas": transcritas,
+                        "total": max(total, transcritas),
+                        "ultimo_heartbeat_em": _agora_iso(),
+                    })
+        if atividade_id:
+            atualizar_atividade(atividade_id, "concluido", {
+                "empresa": empresa,
+                "transcritas": transcritas,
+                "total": max(total, transcritas),
+            })
+    except Exception as e:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {
+                "empresa": empresa,
+                "motivo": str(e),
+                "transcritas": transcritas,
+                "total": max(total, transcritas),
+            })
     finally:
         with _lock_transcricao_pendente:
-            _usuarios_transcrevendo_agora.discard(user_id)
+            _transcricoes_empresa_ativas_agora.discard(_chave_ativa)
 
-def iniciar_transcricao_pendente_background(user_id: str):
-    """Dispara (se ainda não tiver uma rodando pra esse usuário) o
-    processamento, em segundo plano, dos vídeos que já foram migrados
-    pro R2 mas ainda não têm transcrição salva. Retorna na hora — nunca
-    bloqueia quem chamou (migração, retry automático, etc.)."""
-    if not user_id or whisper_model is None:
+def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
+    """Dispara (se ainda não tiver uma rodando pra essa empresa) o
+    processamento, em segundo plano, dos vídeos dessa empresa que já
+    foram migrados pro R2 mas ainda não têm transcrição salva. Cria/
+    reaproveita uma atividade `transcricao_video` pra essa empresa, do
+    mesmo jeito que iniciar_migracao_midia_background faz com
+    `migracao_midia`. Retorna na hora — nunca bloqueia quem chamou
+    (migração, retry automático, etc.)."""
+    if not user_id or not empresa or whisper_model is None:
         return
     with _lock_transcricao_pendente:
-        if user_id in _usuarios_transcrevendo_agora:
+        if (user_id, empresa) in _transcricoes_empresa_ativas_agora:
             return
-        _usuarios_transcrevendo_agora.add(user_id)
-    threading.Thread(target=_transcrever_pendentes_background, args=(user_id,), daemon=True).start()
+        _transcricoes_empresa_ativas_agora.add((user_id, empresa))
+    total = _contar_transcricoes_pendentes(user_id, empresa)
+    if not total:
+        # Nada pendente pra essa empresa agora — não cria atividade só
+        # pra mostrar "0 de 0", isso só poluiria o sino à toa.
+        with _lock_transcricao_pendente:
+            _transcricoes_empresa_ativas_agora.discard((user_id, empresa))
+        return
+    atividade_id = _atividade_transcricao_mais_recente_id(user_id, empresa)
+    if atividade_id:
+        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
+    else:
+        atividade_id = criar_atividade(
+            user_id, "transcricao_video", f"Transcrevendo vídeos de {empresa}",
+            {"empresa": empresa, "transcritas": 0, "total": total},
+        )
+    threading.Thread(target=_transcrever_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
 
 # ---------------------------------------------------
 #  LOG DE ATIVIDADES (sino de notificações)
@@ -1150,6 +1251,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M19.35,10.04C18.67,6.59 15.64,4 12,4C9.11,4 6.6,5.64 5.35,8.04C2.34,8.36 0,10.91 0,14A6,6 0 0,0 6,20H19A5,5 0 0,0 24,15C24,12.36 21.95,10.22 19.35,10.04Z",
         "#3a9fd6", "Salvando anúncios na Biblioteca de Arquivos Permanente",
     ),
+    "transcricao_video": (
+        "M12,14A3,3 0 0,0 15,11V5A3,3 0 0,0 12,2A3,3 0 0,0 9,5V11A3,3 0 0,0 12,14M19,11H17.7C17.7,14 15.19,15.9 12,15.9C8.81,15.9 6.3,14 6.3,11H5C5,14.41 7.72,17.23 11,17.72V21H13V17.72C16.28,17.23 19,14.41 19,11Z",
+        "#8b5cf6", "Transcrevendo áudio dos vídeos",
+    ),
     "reprocessamento_midia": (
         "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
         "#8a97ab", "Otimizando espaço da Biblioteca de Arquivos Permanente",
@@ -1242,6 +1347,61 @@ def migracao_midia_em_andamento(user_id: str, empresa: str) -> bool:
     até a migração terminar)."""
     return _atividade_migracao_aberta_id(user_id, empresa) is not None
 
+def _atividade_transcricao_aberta_id(user_id: str, empresa: str):
+    """Igual a _atividade_migracao_aberta_id, mas pra atividades
+    `transcricao_video`: acha o id de uma atividade ainda aberta
+    (pendente/em_andamento) dessa empresa, se existir."""
+    if not user_id:
+        return None
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "transcricao_video")
+            .in_("status", ["pendente", "em_andamento"])
+            .order("criado_em", desc=True)
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return a["id"]
+        return None
+    except Exception:
+        return None
+
+def _atividade_transcricao_mais_recente_id(user_id: str, empresa: str):
+    """Igual a _atividade_migracao_mais_recente_id, mas pra
+    `transcricao_video`: acha a atividade mais recente dessa empresa não
+    importa o status, pra reaproveitar o mesmo card em vez de duplicar
+    (mesmo motivo: uma empresa pode voltar a ter vídeo pendente de
+    transcrição depois de uma atividade anterior já ter fechado como
+    'concluído' — nova migração trazendo vídeos novos, por exemplo)."""
+    if not user_id:
+        return None
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "transcricao_video")
+            .order("criado_em", desc=True)
+            .limit(50)
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return a["id"]
+        return None
+    except Exception:
+        return None
+
+def transcricao_video_em_andamento(user_id: str, empresa: str) -> bool:
+    """Confere se ainda existe uma fila de transcrição rodando em
+    background pra essa empresa específica — mesmo uso de
+    migracao_midia_em_andamento, mas pro Whisper."""
+    return _atividade_transcricao_aberta_id(user_id, empresa) is not None
+
 def _agora_iso() -> str:
     """ISO 8601 em UTC — usado pra carimbar quando uma atividade foi
     tocada por último, sem depender de coluna própria no banco."""
@@ -1306,6 +1466,7 @@ _PARES_PROGRESSO_POR_TIPO = {
     # de progresso com %; cobre os tipos cujos detalhes trazem uma
     # contagem "x de y" pareada.
     "migracao_midia":        ("migradas", "total"),
+    "transcricao_video":     ("transcritas", "total"),
     "reprocessamento_midia": ("processadas", "total"),
     "reconciliacao_midia":   ("corrigidos", "verificados"),
     "retentativa_midia":     ("recuperadas", "verificadas"),
@@ -1402,6 +1563,15 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "migracao_midia" and "migradas" in d:
         path, _cor = _ICONE_OK
         texto = f"{d['migradas']} de {d.get('total', d['migradas'])} anúncios salvos na Biblioteca de Arquivos Permanente."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "transcricao_video" and "transcritas" in d:
+        total_t = d.get("total", d["transcritas"])
+        concluida = atividade.get("status") == "concluido" or d["transcritas"] >= total_t
+        path, _cor = _ICONE_OK if concluida else _ICONE_INFO
+        texto = f"{d['transcritas']} de {total_t} vídeos transcritos."
+        if atividade.get("status") == "em_andamento":
+            texto += " · Rodando agora."
         return _svg_icone(path, "currentColor", 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
@@ -3062,7 +3232,7 @@ _lock_migracao_empresa_ativa = threading.Lock()
 
 @st.cache_resource
 def _get_migracoes_empresa_ativas_agora() -> set:
-    # Mesmo motivo do _get_usuarios_transcrevendo_agora acima: precisa
+    # Mesmo motivo do _get_transcricoes_empresa_ativas_agora acima: precisa
     # sobreviver aos reruns do Streamlit, senão a trava contra threads
     # duplicadas por (user_id, empresa) volta a zero a cada rerun e para
     # de funcionar de fato.
@@ -3087,10 +3257,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
 
         # Os vídeos que acabaram de ser migrados já estão salvos no R2 e no
         # registro `midias`, mas ainda sem transcrição (ver comentário em
-        # baixar_e_persistir_midia). Dispara a fila separada agora — ela
-        # roda numa thread própria e devolve na hora, então não atrasa o
-        # fechamento desta atividade de migração.
-        iniciar_transcricao_pendente_background(user_id)
+        # baixar_e_persistir_midia). Dispara a fila separada agora, JÁ
+        # PRA ESSA EMPRESA — ela roda numa thread própria e devolve na
+        # hora, então não atrasa o fechamento desta atividade de
+        # migração, e cria/atualiza a atividade `transcricao_video`
+        # correspondente pra essa mesma empresa.
+        iniciar_transcricao_pendente_background(user_id, empresa)
 
         # Atualização atômica: troca só os anúncios migrados (por id),
         # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
@@ -3489,6 +3661,34 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> boo
     except Exception:
         return False
 
+def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> bool:
+    """Equivalente a refazer_migracao_midia, mas pra atividades
+    `transcricao_video`: usado pelo botão "🔄 Refazer" no sino quando uma
+    atividade de transcrição terminou como 'erro'. Reaproveita a MESMA
+    atividade em vez de criar uma nova a cada tentativa, e devolve False
+    (sem religar nada) se não sobrou nenhum vídeo pendente dessa empresa
+    — o que evita ficar "girando" no botão sem fazer diferença nenhuma."""
+    if not user_id or not empresa:
+        return False
+    total = _contar_transcricoes_pendentes(user_id, empresa)
+    if not total:
+        atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "transcritas": 0, "total": 0})
+        return False
+    with _lock_transcricao_pendente:
+        if (user_id, empresa) in _transcricoes_empresa_ativas_agora:
+            # já tem uma fila rodando pra essa empresa (ex: o auto-retry de
+            # 15s religou antes do clique chegar) — não duplica a thread,
+            # mas ainda assim é um "sucesso" do ponto de vista do usuário.
+            return True
+        _transcricoes_empresa_ativas_agora.add((user_id, empresa))
+    atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
+    threading.Thread(
+        target=_transcrever_pendentes_background,
+        args=(user_id, empresa, atividade_id),
+        daemon=True,
+    ).start()
+    return True
+
 # ---------------------------------------------------
 #  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
 # ---------------------------------------------------
@@ -3734,11 +3934,18 @@ with st.sidebar:
             # Mesmo ciclo cuida de pegar vídeos que já foram migrados (têm
             # url_cdn no R2) mas ainda não têm transcrição — seja de uma
             # migração recente que não chegou a chamar a fila por algum
-            # erro, seja de vídeos migrados antes dessa fila existir.
-            # iniciar_transcricao_pendente_background já se protege contra
-            # rodar 2x ao mesmo tempo pro mesmo usuário, então chamar aqui
-            # a cada 15s é seguro (é só uma checagem "já tem uma rodando?").
-            iniciar_transcricao_pendente_background(st.session_state.user.id)
+            # erro, seja de vídeos migrados antes dessa fila existir, seja
+            # de uma fila que estava rodando e morreu no meio (ex: reinício
+            # do processo do servidor). _empresas_com_transcricao_pendente
+            # varre por empresa, e iniciar_transcricao_pendente_background
+            # já se protege contra rodar 2x ao mesmo tempo pra mesma
+            # empresa, então chamar aqui a cada 15s é seguro (é só uma
+            # checagem "já tem uma fila rodando pra essa empresa?") — é
+            # esse religamento automático que garante que a transcrição
+            # nunca fica "travada" por mais de ~15s com a aba aberta,
+            # mesmo se a thread original tiver morrido.
+            for _empresa_pendente in _empresas_com_transcricao_pendente(st.session_state.user.id):
+                iniciar_transcricao_pendente_background(st.session_state.user.id, _empresa_pendente)
 
     if st.session_state.user:
         _auto_retry_migracoes_travadas()
@@ -19903,8 +20110,17 @@ html, body { background: transparent; overflow: hidden; }
                     and _a.get("status") == "em_andamento"
                     and _migracao_travada(_a)
                 )
+                # transcricao_video não tem uma checagem de "travada"
+                # separada (heartbeat próprio, teto de tempo etc.) porque
+                # já não precisa: o auto-retry de 15s (ver
+                # _empresas_com_transcricao_pendente na sidebar) religa
+                # sozinho a fila de qualquer empresa com vídeo pendente
+                # sempre que não há nenhuma thread ativa pra ela — então
+                # "em_andamento" aqui nunca fica "esperando o usuário"
+                # por mais do que esse intervalo, mesmo que a thread
+                # original tenha morrido (ex: reinício do servidor).
                 _pode_refazer = (
-                    _a.get("tipo") == "migracao_midia"
+                    _a.get("tipo") in ("migracao_midia", "transcricao_video")
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
                 )
@@ -19915,15 +20131,16 @@ html, body { background: transparent; overflow: hidden; }
                     _refazer_ids.append(_id_ativ)
                 _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
-                # Cards com uma migração realmente rodando agora (progresso
-                # + status em_andamento e não travada) começam ABERTOS por
-                # padrão — não dá pra confiar no estado de expandido/
-                # recolhido do JS (data-idx toggle) porque o fragment
-                # redesenha esses cards do zero a cada atualização "ao
-                # vivo" (a cada ~2s), o que resetaria um card que o usuário
-                # tinha aberto manualmente de volta pra fechado toda hora.
+                # Cards com uma migração ou transcrição realmente rodando
+                # agora (progresso + status em_andamento e não travada)
+                # começam ABERTOS por padrão — não dá pra confiar no estado
+                # de expandido/recolhido do JS (data-idx toggle) porque o
+                # fragment redesenha esses cards do zero a cada atualização
+                # "ao vivo" (a cada ~2s), o que resetaria um card que o
+                # usuário tinha aberto manualmente de volta pra fechado
+                # toda hora.
                 _rodando_agora_ativ = (
-                    _a.get("tipo") == "migracao_midia"
+                    _a.get("tipo") in ("migracao_midia", "transcricao_video")
                     and _a.get("status") == "em_andamento"
                     and bool(_progresso_ativ)
                     and not _migracao_parada_ativ
@@ -20309,13 +20526,20 @@ html, body { background: transparent; overflow: hidden; }
             for _rid in _refazer_ids:
                 if _acoes_refazer.get(_rid):
                     _atividade_ref = next((x for x in _todas_atividades if x["id"] == _rid), None)
+                    _tipo_ref = _atividade_ref.get("tipo") if _atividade_ref else None
                     _empresa_ref = (_atividade_ref.get("detalhes") or {}).get("empresa") if _atividade_ref else None
-                    if not _empresa_ref and _atividade_ref and _atividade_ref.get("tipo") == "migracao_midia":
+                    if not _empresa_ref and _tipo_ref == "migracao_midia":
                         _empresa_ref = _extrair_empresa_do_titulo_migracao(_atividade_ref.get("titulo") or "")
-                    if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
-                        st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
+                    if _tipo_ref == "transcricao_video":
+                        if _empresa_ref and refazer_transcricao_video(st.session_state.user.id, _empresa_ref, _rid):
+                            st.toast(f"Refazendo a transcrição de {_empresa_ref}...", icon="🔄")
+                        else:
+                            st.toast(f"Nenhum vídeo de {_empresa_ref} pendente de transcrição.", icon="⚠️")
                     else:
-                        st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
+                        if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
+                            st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
+                        else:
+                            st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
                     st.rerun()
 
             # Exclusão de notificações — agora feita direto pelo ícone de lixeira

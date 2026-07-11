@@ -12142,10 +12142,22 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # um. Um vídeo recém-migrado, então, fica sem o badge até a
                 # fila separada (_transcrever_pendentes_background) terminar
                 # de processar ele — nada quebra, só demora a aparecer.
+                #
+                # `transcricao` tem 3 estados possíveis na linha de `midias`
+                # (ver baixar_e_persistir_midia/_transcrever_pendentes_background):
+                #   NULL       → vídeo migrado, mas a fila de transcrição
+                #                ainda não chegou nele (badge "⏳ Transcrevendo…")
+                #   ""         → fila já tentou, não achou fala nenhuma
+                #                (vídeo mudo, só música, erro de áudio etc.)
+                #                — tratado como "nunca vai ter", sem badge
+                #   com texto  → transcrição pronta (badge "💬 Transcrição")
+                # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
+                # migrou pro R2 — também sem badge nenhum.
                 _urls_video_cards = list({
                     u for ad in ads_f for u in (ad.get("videos") or [])[:1] if u
                 })
-                _mapa_transcricoes = {}
+                _mapa_transcricoes = {}          # url -> texto pronto (não vazio)
+                _urls_transcricao_pendente = set()  # url -> já migrado, transcrição ainda NULL
                 if _urls_video_cards:
                     try:
                         _res_transc = (
@@ -12155,9 +12167,16 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             .execute()
                         )
                         for _row in (_res_transc.data or []):
-                            _txt_transc = (_row.get("transcricao") or "").strip()
-                            if _txt_transc:
-                                _mapa_transcricoes[_row["url_cdn"]] = _txt_transc
+                            _url_row = _row.get("url_cdn")
+                            _val_transc = _row.get("transcricao")
+                            if _val_transc is None:
+                                _urls_transcricao_pendente.add(_url_row)
+                            else:
+                                _txt_transc = _val_transc.strip()
+                                if _txt_transc:
+                                    _mapa_transcricoes[_url_row] = _txt_transc
+                                # "" (tentou, sem fala) fica de fora dos dois —
+                                # de propósito, pra não mostrar badge nenhum.
                     except Exception:
                         pass  # sem transcrição em lote não pode travar a tela — badge só some
 
@@ -12362,7 +12381,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # _mapa_transcricoes acima — não dispara transcrição
                         # nova aqui, só lê o que já está pronto, pra não
                         # travar a tela renderizando os cards).
+                        #
+                        # Se ainda não tem texto pronto, mas o vídeo já está
+                        # migrado e só aguardando a fila de transcrição (linha
+                        # em `midias` com transcricao NULL — ver
+                        # _urls_transcricao_pendente acima), mostra um badge
+                        # diferente avisando que é passageiro, em vez de
+                        # simplesmente esconder tudo (o que antes deixava
+                        # "sem transcrição ainda" indistinguível de "nunca vai
+                        # ter transcrição").
                         _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
+                        _transcricao_esta_pendente = (
+                            not _transcricao_txt
+                            and (vid_thumb in _urls_transcricao_pendente or vid_modal in _urls_transcricao_pendente)
+                        )
                         if _transcricao_txt:
                             _transcricao_tt = _escapar_tooltip(_transcricao_txt[:1200])
                             if len(_transcricao_txt) > 1200:
@@ -12377,6 +12409,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
         💬 Transcrição
+    </div>"""
+                        elif _transcricao_esta_pendente:
+                            transcricao_badge_html = """
+    <div title="Vídeo já salvo — a transcrição ainda está sendo processada e aparece em breve"
+         onclick="event.stopPropagation()"
+         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px">
+        ⏳ Transcrevendo…
     </div>"""
                         else:
                             transcricao_badge_html = ""

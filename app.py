@@ -19115,25 +19115,67 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        def _render_bloco_por_empresa(linhas: list, maximo: int, rotulo_singular: str, rotulo_plural: str) -> str:
-            """Lista compacta 'quem consome a cota' — mesmo formato visual
-            pros dois blocos de detalhamento por empresa (Links Pendentes
-            e Anúncios com Mídia Salva): bolinha colorida, nome, tag,
-            barra proporcional ao uso, contagem à direita, e uma linha de
-            detalhe com a última coleta daquela empresa e — quando a
-            linha tiver a chave "expirando" com valor > 0 — quantos itens
-            vão expirar em breve. rotulo_singular/rotulo_plural definem o
-            texto ao lado do número (ex.: "anúncio salvo"/"anúncios
-            salvos" ou "link pendente"/"links pendentes")."""
-            if not linhas:
-                return (
-                    '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
-                    "nenhuma empresa monitorada ainda</div>"
-                )
-            _itens_html = ""
+        def _mini_donut_svg(pct: int, cor: str, size: int = 46, stroke: int = 5) -> str:
+            """Mini anel de progresso (mesma linguagem visual do anel grande
+            dos cards), usado pra representar cada empresa na quebra por
+            empresa — no lugar da barrinha horizontal."""
+            r = (size / 2) - stroke - 1
+            cx = cy = size / 2
+            circum = round(2 * _math_uso.pi * r, 2)
+            pct = max(0, min(100, pct))
+            dash = round(pct / 100 * circum, 2)
+            gap = round(circum - dash, 2)
+            offset = round(circum * 0.25, 2)
+            return f"""<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
+                <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cor}" stroke-width="{stroke}"
+                    stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>
+            </svg>"""
+
+        def _card_uso_com_empresas_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str,
+                                        linhas: list, maximo_linhas: int, rotulo_singular: str, rotulo_plural: str,
+                                        size: int = 108, stroke: int = 9) -> str:
+            """Card único: o mesmo anel grande de total do _card_uso_svg,
+            seguido — no mesmo card, sem separar em outro bloco — pela
+            quebra por empresa. Cada empresa vira um mini-anel (donut),
+            reaproveitando a mesma linguagem visual do anel principal, em
+            vez da barrinha horizontal usada antes."""
+            r = (size / 2) - stroke - 2
+            cx = cy = size / 2
+            circum = round(2 * _math_uso.pi * r, 2)
+
+            if limite is None:
+                pct = 100
+                texto_pct_html = ""
+                texto_fracao = f"{usado} · ilimitado"
+            else:
+                limite_seguro = max(limite, 0)
+                pct = 100 if limite_seguro == 0 else max(0, min(100, round(usado / limite_seguro * 100)))
+                cor_num = cor
+                if pct >= 100:
+                    cor_num = "#e05252"
+                elif pct >= 80:
+                    cor_num = "#e2a63a"
+                texto_pct_html = f'<div style="font-size:22px;font-weight:800;color:{cor_num};line-height:1.2">{pct}%</div>'
+                texto_fracao = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0"
+
+            dash   = round(pct / 100 * circum, 2)
+            gap    = round(circum - dash, 2)
+            offset = round(circum * 0.25, 2)
+            icon_s = size * 0.34
+            icon_pos = round((size - icon_s) / 2, 1)
+
+            detalhe_html = (
+                f'<div style="font-size:11.5px;color:#9ca3af;margin-top:6px;white-space:nowrap">{detalhe}</div>'
+                if detalhe else ""
+            )
+
+            _linhas_html = ""
             for _l in linhas:
                 _nome_safe = (_l["nome"] or "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                _pct_barra = round((_l["usado"] / maximo) * 100) if maximo else 0
+                _row_pct = round((_l["usado"] / maximo_linhas) * 100) if maximo_linhas else 0
+                _row_pct = max(0, min(100, _row_pct))
+                _mini = _mini_donut_svg(_row_pct, _l["cor"])
                 _detalhe_partes = []
                 if _l.get("ultima_coleta"):
                     _detalhe_partes.append(f"última coleta {_l['ultima_coleta']}")
@@ -19142,25 +19184,57 @@ html, body { background: transparent; overflow: hidden; }
                 if _l.get("expirando"):
                     _detalhe_partes.append(f"{_l['expirando']} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h")
                 _detalhe_txt = " · ".join(_detalhe_partes)
-                _itens_html += f"""
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 2px">
-                    <span style="width:9px;height:9px;border-radius:50%;background:{_l['cor']};flex-shrink:0"></span>
-                    <div style="flex:1;min-width:0">
+                _linhas_html += f"""
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
+                    <div style="position:relative;width:46px;height:46px;flex-shrink:0">
+                        {_mini}
+                        <div style="position:absolute;inset:0;display:flex;align-items:center;
+                                    justify-content:center;font-size:10px;font-weight:800;color:{_l['cor']}">{_row_pct}%</div>
+                    </div>
+                    <div style="flex:1;min-width:0;text-align:left">
                         <div style="display:flex;justify-content:space-between;gap:8px">
                             <span style="font-size:13px;font-weight:600;color:#374151;overflow:hidden;
                                          text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
                             <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
                         </div>
-                        <div style="width:100%;height:5px;border-radius:4px;background:#eef1f5;margin-top:5px;overflow:hidden">
-                            <div style="width:{_pct_barra}%;height:100%;border-radius:4px;background:{_l['cor']}"></div>
+                        <div style="font-size:13px;font-weight:700;color:#374151;margin-top:2px">
+                            {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
                         </div>
-                        <div style="font-size:11px;color:#9ca3af;margin-top:4px">{_detalhe_txt}</div>
+                        <div style="font-size:11px;color:#9ca3af;margin-top:2px">{_detalhe_txt}</div>
                     </div>
-                    <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
-                        {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
-                    </span>
                 </div>"""
-            return _itens_html
+            if not linhas:
+                _linhas_html = (
+                    '<div style="font-size:13px;color:#9ca3af;padding:10px 2px;'
+                    'border-top:1px solid #f1f3f5;width:100%">nenhuma empresa monitorada ainda</div>'
+                )
+
+            return _html(f"""
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
+                        padding:20px 18px 18px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
+                        display:flex;flex-direction:column;align-items:center">
+                <div style="width:100%;font-size:12.5px;font-weight:700;text-transform:uppercase;
+                            letter-spacing:0.6px;color:#1a2e4a;margin-bottom:14px">{titulo}</div>
+                <hr style="width:100%;border:none;border-top:1px solid #e5e7eb;margin:0 0 22px 0"/>
+                <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
+                    <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{cor}" stroke-width="{stroke}"
+                        stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>
+                    <g transform="translate({icon_pos},{icon_pos}) scale({icon_s/24:.3f})"
+                       fill="none" stroke="{cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        {svg_inner}
+                    </g>
+                </svg>
+                <div style="text-align:center;margin-top:10px">
+                    {texto_pct_html}
+                    <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
+                    {detalhe_html}
+                </div>
+                <div style="width:100%;margin-top:16px">
+                    {_linhas_html}
+                </div>
+            </div>
+            """)
 
         # Anúncios ainda com link original do Facebook em vez do link
         # permanente da Biblioteca — ao contrário das outras métricas,
@@ -19214,48 +19288,18 @@ html, body { background: transparent; overflow: hidden; }
 
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
-            st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
-                                       _total_pendentes_link, _total_ads_geral or 1, _detalhe_link), unsafe_allow_html=True)
+            st.markdown(_card_uso_com_empresas_svg(
+                "Links pendentes", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
+                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes"
+            ), unsafe_allow_html=True)
         with _col_u1:
-            st.markdown(_card_uso_svg("Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0),
-                                       _midias_usadas, _midias_limite, _detalhe_midias), unsafe_allow_html=True)
+            st.markdown(_card_uso_com_empresas_svg(
+                "Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0), _midias_usadas, _midias_limite,
+                _detalhe_midias, _linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos"
+            ), unsafe_allow_html=True)
         with _col_u2:
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
                                        _concorrentes_usados, _concorrentes_limite, _detalhe_concorrentes), unsafe_allow_html=True)
-
-        # Detalhamento por empresa — sempre visível (sem botão de ação e
-        # sem expander pra abrir/fechar), lado a lado: Links Pendentes
-        # (com última coleta e previsão de expiração) e Anúncios com
-        # Mídia Salva (quem está consumindo a cota mensal).
-        _col_det0, _col_det1 = st.columns(2)
-        with _col_det0:
-            st.markdown(
-                _html(f"""
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                            padding:16px 16px 10px 16px;margin-bottom:16px">
-                    <div style="font-size:12.5px;font-weight:700;text-transform:uppercase;
-                                letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
-                        Links pendentes por empresa
-                    </div>
-                    {_render_bloco_por_empresa(_linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes")}
-                </div>
-                """),
-                unsafe_allow_html=True,
-            )
-        with _col_det1:
-            st.markdown(
-                _html(f"""
-                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
-                            padding:16px 16px 10px 16px;margin-bottom:16px">
-                    <div style="font-size:12.5px;font-weight:700;text-transform:uppercase;
-                                letter-spacing:0.6px;color:#1a2e4a;margin-bottom:10px">
-                        Anúncios com mídia salva por empresa
-                    </div>
-                    {_render_bloco_por_empresa(_linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos")}
-                </div>
-                """),
-                unsafe_allow_html=True,
-            )
 
         _col_u3, _col_u4, _col_u5 = st.columns(3)
         with _col_u3:

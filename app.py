@@ -19189,8 +19189,8 @@ html, body { background: transparent; overflow: hidden; }
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
                 _expira_html = (
-                    f'<div style="font-size:11px;color:#e05252;font-weight:700;margin-top:2px">'
-                    f'⚠ {_l["expirando"]} expira em até {JANELA_EXPIRACAO_LINK_HORAS}h</div>'
+                    f' · <span style="color:#e05252;font-weight:700">⚠ {_l["expirando"]} expira em até '
+                    f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>'
                     if _l.get("expirando") else ""
                 )
                 _linhas_html += f"""
@@ -19207,9 +19207,8 @@ html, body { background: transparent; overflow: hidden; }
                             <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
                         </div>
                         <div style="font-size:13px;font-weight:700;color:#374151;margin-top:2px">
-                            {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
+                            {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}{_expira_html}
                         </div>
-                        {_expira_html}
                     </div>
                 </div>"""
             if not linhas:
@@ -19253,18 +19252,40 @@ html, body { background: transparent; overflow: hidden; }
         _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
         _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
-        _ja_na_biblioteca = _total_ads_geral - _total_pendentes_link
         _total_expirando_link = sum(
             _contar_links_expirando(e.get("data", [])) for e in _pendentes_link_dict.values()
         )
-        _detalhe_link = (
-            f"{_ja_na_biblioteca} já salvos · {_total_expirando_link} vão expirar em até "
-            f"{JANELA_EXPIRACAO_LINK_HORAS}h"
-            if _total_ads_geral else "nenhum anúncio coletado ainda"
-        )
+        if not _total_ads_geral:
+            _detalhe_link = "nenhum anúncio coletado ainda"
+        elif _total_expirando_link:
+            _detalhe_link = (
+                f'<span style="color:#e05252;font-weight:700">{_total_expirando_link} vão expirar em '
+                f'até {JANELA_EXPIRACAO_LINK_HORAS}h</span>'
+            )
+        else:
+            _detalhe_link = f"nenhum expira nas próximas {JANELA_EXPIRACAO_LINK_HORAS}h"
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
-        # Quebra de "Links pendentes" por empresa (a própria + cada
+
+        def _ultima_coleta_mais_recente(entradas: dict) -> str:
+            """Pega o "ts" (última coleta) mais recente entre as empresas
+            monitoradas, pra mostrar uma única data no card (em vez de
+            repetir, quase sempre igual, em cada linha de empresa)."""
+            import datetime as _dt_uc
+            candidatos = []
+            for _e in (entradas or {}).values():
+                _ts = (_e or {}).get("ts", "")
+                if not _ts:
+                    continue
+                try:
+                    candidatos.append(_dt_uc.datetime.strptime(_ts, "%d/%m/%Y %H:%M"))
+                except Exception:
+                    continue
+            return max(candidatos).strftime("%d/%m/%Y %H:%M") if candidatos else ""
+
+        _ultima_coleta_link = _ultima_coleta_mais_recente(_ads_cache_uso)
+
+        # Quebra de "Links da Meta" por empresa (a própria + cada
         # concorrente) — quantos anúncios daquela empresa ainda têm link
         # original, quantos disso vão expirar logo, e quando foi a
         # última coleta de anúncios daquela empresa (o "ts" do cache).
@@ -19295,17 +19316,20 @@ html, body { background: transparent; overflow: hidden; }
             )
         _linhas_links_pendentes.sort(key=lambda x: -x["usado"])
         _max_links_pendentes = max([_l["usado"] for _l in _linhas_links_pendentes] + [1])
+        _ultima_coleta_midia = _ultima_coleta_mais_recente(_ads_cache_uso)
 
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_com_empresas_svg(
-                "Links pendentes", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
-                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes"
+                "Links da Meta", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
+                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "pendente", "pendentes",
+                ultima_coleta_geral=_ultima_coleta_link
             ), unsafe_allow_html=True)
         with _col_u1:
             st.markdown(_card_uso_com_empresas_svg(
                 "Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0), _midias_usadas, _midias_limite,
-                _detalhe_midias, _linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos"
+                _detalhe_midias, _linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos",
+                ultima_coleta_geral=_ultima_coleta_midia
             ), unsafe_allow_html=True)
         with _col_u2:
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),

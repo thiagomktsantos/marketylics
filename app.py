@@ -180,26 +180,39 @@ def _extrair_expiracao_url(url: str):
     except Exception:
         return None
 
+def _contar_links(ads: list, apenas_pendentes: bool = False) -> int:
+    """Conta LINKS individuais (cada imagem/vídeo é um link) numa lista de
+    anúncios — não anúncios. Com apenas_pendentes=True, conta só os que
+    ainda apontam pro link original da Meta (não migrados pro R2); sem
+    isso, conta todos os links (migrados + pendentes)."""
+    total = 0
+    for ad in ads or []:
+        urls = (ad.get("images") or []) + (ad.get("videos") or [])
+        for u in urls:
+            if not u:
+                continue
+            migrado = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
+            if apenas_pendentes and migrado:
+                continue
+            total += 1
+    return total
+
 def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
-    """Conta quantos anúncios (de uma lista de ads ainda com link original,
-    ver encontrar_ads_com_link_original) têm pelo menos uma mídia cujo
-    link expira dentro da janela informada — ou já expirou. Usa a
-    expiração real embutida na URL (ver _extrair_expiracao_url), não uma
-    estimativa por data de coleta."""
+    """Conta quantos LINKS individuais (não anúncios) ainda com URL
+    original da Meta expiram dentro da janela informada — ou já
+    expiraram. Usa a expiração real embutida na URL (ver
+    _extrair_expiracao_url), não uma estimativa por data de coleta."""
     import datetime as _dt_exp
     limite = _dt_exp.datetime.utcnow() + _dt_exp.timedelta(hours=horas)
     total = 0
     for ad in ads or []:
         urls = (ad.get("images") or []) + (ad.get("videos") or [])
-        exp_mais_proxima = None
         for u in urls:
             if not u or (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
                 continue
             exp = _extrair_expiracao_url(u)
-            if exp and (exp_mais_proxima is None or exp < exp_mais_proxima):
-                exp_mais_proxima = exp
-        if exp_mais_proxima and exp_mais_proxima <= limite:
-            total += 1
+            if exp and exp <= limite:
+                total += 1
     return total
 
 def obter_plano_usuario() -> str:
@@ -19109,15 +19122,20 @@ html, body { background: transparent; overflow: hidden; }
 
         def _card_uso_com_empresas_svg(titulo: str, svg_inner: str, cor: str, usado: int, limite, detalhe: str,
                                         linhas: list, maximo_linhas: int, rotulo_singular: str, rotulo_plural: str,
-                                        ultima_coleta_geral: str = "", size: int = 108, stroke: int = 9) -> str:
+                                        ultima_coleta_geral: str = "", texto_pct_custom: str = "",
+                                        texto_fracao_custom: str = "", size: int = 108, stroke: int = 9) -> str:
             """Card único: o mesmo anel grande de total do _card_uso_svg,
             seguido — no mesmo card, sem separar em outro bloco — pela
             quebra por empresa. Cada empresa vira um mini-anel (donut),
             reaproveitando a mesma linguagem visual do anel principal, em
             vez da barrinha horizontal usada antes. A última coleta
-            aparece só uma vez pro card inteiro (não repetida por linha
-            de empresa) — normalmente é o mesmo lote de coleta pra todo
-            mundo, então repetir por empresa era ruído."""
+            aparece só uma vez, no cabeçalho do card (não repetida por
+            linha de empresa nem no meio do corpo) — normalmente é o
+            mesmo lote de coleta pra todo mundo, então repetir era ruído.
+            texto_pct_custom/texto_fracao_custom substituem o número de %
+            e a fração padrão quando a leitura "direta" (ex.: "15%") não
+            é o que importa — caso de Links da Meta, onde o que interessa
+            é quanto disso é urgente, não só a proporção migrada."""
             r = (size / 2) - stroke - 2
             cx = cy = size / 2
             circum = round(2 * _math_uso.pi * r, 2)
@@ -19137,6 +19155,11 @@ html, body { background: transparent; overflow: hidden; }
                 texto_pct_html = f'<div style="font-size:22px;font-weight:800;color:{cor_num};line-height:1.2">{pct}%</div>'
                 texto_fracao = f"{usado} de {limite_seguro}" if limite_seguro > 0 else f"{usado} de 0"
 
+            if texto_pct_custom:
+                texto_pct_html = texto_pct_custom
+            if texto_fracao_custom:
+                texto_fracao = texto_fracao_custom
+
             dash   = round(pct / 100 * circum, 2)
             gap    = round(circum - dash, 2)
             offset = round(circum * 0.25, 2)
@@ -19147,9 +19170,9 @@ html, body { background: transparent; overflow: hidden; }
                 f'<div style="font-size:11.5px;color:#9ca3af;margin-top:6px;white-space:nowrap">{detalhe}</div>'
                 if detalhe else ""
             )
-            coleta_geral_html = (
-                f'<div style="font-size:11px;color:#9ca3af;margin-top:3px;white-space:nowrap">'
-                f'última coleta {ultima_coleta_geral}</div>'
+            cabecalho_coleta_html = (
+                f'<div style="font-size:11px;font-weight:500;color:#9ca3af;white-space:nowrap;'
+                f'text-transform:none;letter-spacing:normal">última coleta {ultima_coleta_geral}</div>'
                 if ultima_coleta_geral else ""
             )
 
@@ -19196,8 +19219,11 @@ html, body { background: transparent; overflow: hidden; }
             <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
                         padding:20px 18px 18px 18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05);
                         display:flex;flex-direction:column;align-items:center">
-                <div style="width:100%;font-size:12.5px;font-weight:700;text-transform:uppercase;
-                            letter-spacing:0.6px;color:#1a2e4a;margin-bottom:14px">{titulo}</div>
+                <div style="width:100%;display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px">
+                    <div style="font-size:12.5px;font-weight:700;text-transform:uppercase;
+                                letter-spacing:0.6px;color:#1a2e4a">{titulo}</div>
+                    {cabecalho_coleta_html}
+                </div>
                 <hr style="width:100%;border:none;border-top:1px solid #e5e7eb;margin:0 0 22px 0"/>
                 <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg">
                     <circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>
@@ -19212,7 +19238,6 @@ html, body { background: transparent; overflow: hidden; }
                     {texto_pct_html}
                     <div style="font-size:14.5px;font-weight:700;color:#374151;white-space:nowrap">{texto_fracao}</div>
                     {detalhe_html}
-                    {coleta_geral_html}
                 </div>
                 <div style="width:100%;margin-top:16px">
                     {_linhas_html}
@@ -19220,25 +19245,37 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        # Anúncios ainda com link original do Facebook em vez do link
-        # permanente da Biblioteca — ao contrário das outras métricas,
-        # aqui "alto %" é ruim (quer dizer que muita coisa ainda depende
-        # de um link que pode expirar).
-        _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
-        _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
-        _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
-        _total_expirando_link = sum(
-            _contar_links_expirando(e.get("data", [])) for e in _pendentes_link_dict.values()
+        # Links individuais (cada imagem/vídeo é um link) que ainda apontam
+        # pro CDN original da Meta em vez do link permanente da Biblioteca
+        # — ao contrário das outras métricas, aqui "alto %" é ruim (quer
+        # dizer que muito link ainda depende da Meta e pode expirar).
+        # Importante: aqui a unidade é o LINK, não o anúncio — um mesmo
+        # anúncio pode ter vários links, e cada um conta separado.
+        _total_links_geral = sum(_contar_links(e.get("data", [])) for e in _ads_cache_uso.values())
+        _total_links_pendentes = sum(
+            _contar_links(e.get("data", []), apenas_pendentes=True) for e in _ads_cache_uso.values()
         )
-        if not _total_ads_geral:
-            _detalhe_link = "nenhum anúncio coletado ainda"
-        elif _total_expirando_link:
-            _detalhe_link = (
-                f'<span style="color:#e05252;font-weight:700">{_total_expirando_link} vão expirar em '
-                f'até {JANELA_EXPIRACAO_LINK_HORAS}h</span>'
-            )
+        _total_expirando_link = sum(
+            _contar_links_expirando(e.get("data", [])) for e in _ads_cache_uso.values()
+        )
+        # Aqui o que importa não é "quantos já foram migrados" (a leitura
+        # padrão do anel, tipo "15%"), e sim quantos ainda dependem da
+        # Meta e correm risco real de quebrar — por isso o texto principal
+        # vira essa frase de urgência em vez do % cru, com a contagem
+        # total de links logo abaixo.
+        if not _total_links_geral:
+            _pct_expiravel = 0
+            _texto_pct_links = '<div style="font-size:14px;color:#9ca3af">nenhum link coletado ainda</div>'
+            _texto_fracao_links = ""
         else:
-            _detalhe_link = f"nenhum expira nas próximas {JANELA_EXPIRACAO_LINK_HORAS}h"
+            _pct_expiravel = round(_total_expirando_link / _total_links_geral * 100)
+            _cor_pct_expiravel = "#e05252" if _total_expirando_link else "#4a9b6e"
+            _texto_pct_links = (
+                f'<div style="font-size:18px;font-weight:800;color:{_cor_pct_expiravel};line-height:1.3">'
+                f'{_pct_expiravel}% dos links são expiráveis</div>'
+            )
+            _texto_fracao_links = f"{_total_links_pendentes} de {_total_links_geral} links"
+        _detalhe_link = ""
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
 
@@ -19261,20 +19298,18 @@ html, body { background: transparent; overflow: hidden; }
         _ultima_coleta_link = _ultima_coleta_mais_recente(_ads_cache_uso)
 
         # Quebra de "Links da Meta" por empresa (a própria + cada
-        # concorrente) — quantos anúncios daquela empresa ainda têm link
-        # original, quantos disso vão expirar logo, e quando foi a
-        # última coleta de anúncios daquela empresa (o "ts" do cache).
+        # concorrente) — quantos LINKS daquela empresa ainda são
+        # originais da Meta, quantos disso vão expirar logo, e quando foi
+        # a última coleta de anúncios daquela empresa (o "ts" do cache).
         def _linha_link_pendente(nome: str, cor: str, tag: str) -> dict:
-            _entry = _pendentes_link_dict.get(nome) or {}
-            _ads_pendentes_empresa = _entry.get("data", [])
-            _entry_geral = _ads_cache_uso.get(nome) or {}
+            _ads_empresa = (_ads_cache_uso.get(nome) or {}).get("data", [])
             return {
                 "nome": nome,
-                "usado": len(_ads_pendentes_empresa),
+                "usado": _contar_links(_ads_empresa, apenas_pendentes=True),
                 "cor": cor,
                 "tag": tag,
-                "expirando": _contar_links_expirando(_ads_pendentes_empresa),
-                "ultima_coleta": _entry_geral.get("ts", ""),
+                "expirando": _contar_links_expirando(_ads_empresa),
+                "ultima_coleta": (_ads_cache_uso.get(nome) or {}).get("ts", ""),
             }
 
         _linhas_links_pendentes = []
@@ -19296,9 +19331,10 @@ html, body { background: transparent; overflow: hidden; }
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_com_empresas_svg(
-                "Links da Meta", _SVG_LINK, "#1a2e4a", _total_pendentes_link, _total_ads_geral or 1,
-                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "anúncio de link", "anúncios de link",
-                ultima_coleta_geral=_ultima_coleta_link
+                "Links da Meta", _SVG_LINK, "#1a2e4a", _total_links_pendentes, _total_links_geral or 1,
+                _detalhe_link, _linhas_links_pendentes, _max_links_pendentes, "link", "links",
+                ultima_coleta_geral=_ultima_coleta_link,
+                texto_pct_custom=_texto_pct_links, texto_fracao_custom=_texto_fracao_links
             ), unsafe_allow_html=True)
         with _col_u1:
             st.markdown(_card_uso_com_empresas_svg(

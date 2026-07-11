@@ -19721,7 +19721,10 @@ html, body { background: transparent; overflow: hidden; }
                 _mais_info_html = ""
                 if _tem_mais_info_ativ:
                     _itens_erro_html = "".join(
-                        f'<li>{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}</li>'
+                        '<li>'
+                        f'<span class="notif-mais-info-id">ID: {(_it.get("id") or "—")}</span> · '
+                        f'{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}'
+                        '</li>'
                         for _it in _anuncios_erro_ativ
                     )
                     _nota_truncado_html = (
@@ -19885,6 +19888,7 @@ html, body { background: transparent; overflow: hidden; }
     .notif-mais-info-list li {
         font-size:12.5px; color:#4b5563; line-height:1.6; word-break:break-word;
     }
+    .notif-mais-info-id { color:#9ca3af; font-size:11.5px; }
     .notif-mais-info-nota { font-size:11.5px; color:#9ca3af; margin-top:6px; font-style:italic; }
     .btn-refazer {
         margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;

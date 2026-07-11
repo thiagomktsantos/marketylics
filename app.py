@@ -269,32 +269,6 @@ def _contar_midias_do_mes_por_empresa(user_id: str) -> dict:
     except Exception:
         return resultado
 
-def _contar_midias_do_mes_por_tipo(user_id: str) -> dict:
-    """Detalha a contagem de mídias do mês por tipo (imagem/vídeo) — usado
-    na aba 'Uso do plano' pra mostrar o que compõe o total armazenado."""
-    resultado = {"imagem": 0, "video": 0}
-    if not user_id:
-        return resultado
-    try:
-        import datetime as _dt
-        inicio_mes = _dt.datetime.now().replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
-        for tipo in resultado:
-            res = (
-                supabase.table("midias")
-                .select("id", count="exact")
-                .eq("user_id", user_id)
-                .eq("tipo", tipo)
-                .gte("criado_em", inicio_mes)
-                .not_.is_("ad_id", "null")
-                .execute()
-            )
-            resultado[tipo] = res.count or 0
-        return resultado
-    except Exception:
-        return resultado
-
 def pode_baixar_midia(user_id: str) -> bool:
     limite = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario(), 0)
     if limite is None:
@@ -18976,13 +18950,14 @@ html, body { background: transparent; overflow: hidden; }
         _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
 
         # _midias_usadas conta ANÚNCIOS distintos com mídia migrada este mês
-        # (é essa a base real da cota — ver _contar_midias_do_mes). O
-        # detalhe abaixo mostra a composição em arquivos individuais só
-        # como informação extra, não como o que conta pro limite.
+        # (é essa a base real da cota — ver _contar_midias_do_mes). Antes
+        # o card também mostrava a composição em arquivos individuais
+        # (imagens/vídeos), mas isso é uma contagem diferente (por linha,
+        # não por anúncio) misturada no mesmo card — confuso, então
+        # ficou só a contagem que realmente importa pra cota: anúncios.
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
-        _midias_por_tipo = _contar_midias_do_mes_por_tipo(_user_id_uso)
-        _detalhe_midias = f"{_midias_por_tipo['imagem']} imagens · {_midias_por_tipo['video']} vídeos no total"
+        _detalhe_midias = ""
 
         _concorrentes_lista = (st.session_state.get("dados") or {}).get("concorrentes", [])
         _concorrentes_usados = len(_concorrentes_lista)
@@ -19189,12 +19164,12 @@ html, body { background: transparent; overflow: hidden; }
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
                 _expira_html = (
-                    f' (<span style="color:#e05252;font-weight:700">expira em até '
+                    f' (<span style="color:#e05252;font-weight:700">⚠ expira em até '
                     f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>)'
                     if _l.get("expirando") else ""
                 )
                 _linhas_html += f"""
-                <div style="display:flex;align-items:center;gap:5px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
                     <div style="position:relative;width:46px;height:46px;flex-shrink:0">
                         {_mini}
                         <div style="position:absolute;inset:0;display:flex;align-items:center;
@@ -19206,7 +19181,7 @@ html, body { background: transparent; overflow: hidden; }
                                          text-overflow:ellipsis;white-space:nowrap">{_nome_safe}</span>
                             <span style="font-size:12px;color:#9ca3af;white-space:nowrap">{_l['tag']}</span>
                         </div>
-                        <div style="font-size:13px;font-weight:700;color:#374151;">
+                        <div style="font-size:13px;font-weight:700;color:#374151;margin-top:2px">
                             {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}{_expira_html}
                         </div>
                     </div>

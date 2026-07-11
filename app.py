@@ -18943,30 +18943,7 @@ html, body { background: transparent; overflow: hidden; }
             if _concorrentes_lista else "nenhum concorrente cadastrado"
         )
 
-        # Quebra do uso de mídia por empresa (a própria + cada concorrente) —
-        # pra mostrar quem está de fato consumindo a cota, não só o total.
-        _midias_por_empresa = _contar_midias_do_mes_por_empresa(_user_id_uso) if _user_id_uso else {}
         _nome_minha_empresa = ((st.session_state.get("dados") or {}).get("minha_empresa") or {}).get("nome", "")
-        _linhas_uso_empresa = []
-        if _nome_minha_empresa:
-            _linhas_uso_empresa.append({
-                "nome": _nome_minha_empresa,
-                "usado": _midias_por_empresa.get(_nome_minha_empresa, 0),
-                "cor": get_minha_empresa_color(),
-                "tag": "Minha empresa",
-            })
-        for _i_conc, _c in enumerate(_concorrentes_lista):
-            _nome_c = (_c.get("nome") or "").strip()
-            if not _nome_c:
-                continue
-            _linhas_uso_empresa.append({
-                "nome": _nome_c,
-                "usado": _midias_por_empresa.get(_nome_c, 0),
-                "cor": get_concorrente_color(_i_conc),
-                "tag": "Concorrente",
-            })
-        _linhas_uso_empresa.sort(key=lambda x: -x["usado"])
-        _max_uso_empresa = max([_l["usado"] for _l in _linhas_uso_empresa] + [1])
 
         # Estas três já têm contador real no sistema de cooldown/cota
         # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
@@ -19057,11 +19034,15 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        def _render_uso_por_empresa(linhas: list, maximo: int) -> str:
+        def _render_uso_por_empresa(linhas: list, maximo: int, rotulo_singular: str = "anúncio", rotulo_plural: str = "anúncios") -> str:
             """Lista compacta 'quem consome a cota' — uma linha por empresa
             monitorada (a própria + concorrentes), com bolinha colorida (mesma
             cor usada no resto do app pra distinguir minha empresa de cada
-            concorrente), nome, tag e uma barrinha proporcional ao uso."""
+            concorrente), nome, tag e uma barrinha proporcional ao uso.
+            rotulo_singular/rotulo_plural definem o texto ao lado do número
+            (ex.: "anúncio salvo"/"anúncios salvos" ou "link pendente"/
+            "links pendentes"), pra reaproveitar o mesmo componente em
+            métricas diferentes."""
             if not linhas:
                 return (
                     '<div style="font-size:13px;color:#9ca3af;padding:8px 2px">'
@@ -19085,7 +19066,7 @@ html, body { background: transparent; overflow: hidden; }
                         </div>
                     </div>
                     <span style="font-size:13px;font-weight:700;color:#374151;white-space:nowrap;flex-shrink:0">
-                        {_l['usado']} anúncio{'s' if _l['usado'] != 1 else ''}
+                        {_l['usado']} {rotulo_singular if _l['usado'] == 1 else rotulo_plural}
                     </span>
                 </div>"""
             return _itens_html
@@ -19106,6 +19087,32 @@ html, body { background: transparent; overflow: hidden; }
         )
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
+        # Quebra de "Links pendentes" por empresa (a própria + cada
+        # concorrente) — o card acima só mostra o total geral (soma de
+        # todos os anúncios com link original ainda não migrado), sem
+        # dizer se o problema está concentrado numa empresa só ou
+        # espalhado entre várias.
+        _linhas_links_pendentes = []
+        if _nome_minha_empresa:
+            _linhas_links_pendentes.append({
+                "nome": _nome_minha_empresa,
+                "usado": len((_pendentes_link_dict.get(_nome_minha_empresa) or {}).get("data", [])),
+                "cor": get_minha_empresa_color(),
+                "tag": "Minha empresa",
+            })
+        for _i_conc, _c in enumerate(_concorrentes_lista):
+            _nome_c = (_c.get("nome") or "").strip()
+            if not _nome_c:
+                continue
+            _linhas_links_pendentes.append({
+                "nome": _nome_c,
+                "usado": len((_pendentes_link_dict.get(_nome_c) or {}).get("data", [])),
+                "cor": get_concorrente_color(_i_conc),
+                "tag": "Concorrente",
+            })
+        _linhas_links_pendentes.sort(key=lambda x: -x["usado"])
+        _max_links_pendentes = max([_l["usado"] for _l in _linhas_links_pendentes] + [1])
+
         _col_u0, _col_u1, _col_u2 = st.columns(3)
         with _col_u0:
             st.markdown(_card_uso_svg("Links pendentes", _SVG_LINK, "#1a2e4a",
@@ -19120,16 +19127,14 @@ html, body { background: transparent; overflow: hidden; }
             st.markdown(_card_uso_svg("Concorrentes", _SVG_TARGET, get_avatar_color(1),
                                        _concorrentes_usados, _concorrentes_limite, _detalhe_concorrentes), unsafe_allow_html=True)
 
-        # Detalhamento por empresa (a própria + cada concorrente) de quem
-        # está de fato consumindo a cota de "Anúncios com mídia salva" —
-        # os cards acima só mostram o total, sem dizer se o consumo é
-        # concentrado numa empresa só ou distribuído entre várias.
-        with st.expander("📊 Ver uso por empresa (minha empresa e concorrentes)", expanded=False):
+        # Detalhamento por empresa (a própria + cada concorrente) de
+        # "Links pendentes" — o card acima só mostra o total.
+        with st.expander("📊 Ver links pendentes por empresa (minha empresa e concorrentes)", expanded=False):
             st.markdown(
                 _html(f"""
                 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;
                             padding:6px 16px;margin-bottom:4px">
-                    {_render_uso_por_empresa(_linhas_uso_empresa, _max_uso_empresa)}
+                    {_render_uso_por_empresa(_linhas_links_pendentes, _max_links_pendentes, "link pendente", "links pendentes")}
                 </div>
                 """),
                 unsafe_allow_html=True,

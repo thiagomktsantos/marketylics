@@ -18955,9 +18955,26 @@ html, body { background: transparent; overflow: hidden; }
         # (imagens/vídeos), mas isso é uma contagem diferente (por linha,
         # não por anúncio) misturada no mesmo card — confuso, então
         # ficou só a contagem que realmente importa pra cota: anúncios.
+        # O detalhe complementa o "146 de 500" com o que falta e quando a
+        # cota renova, pra dar o mesmo tipo de informação acionável que o
+        # card de Links da Meta já tem (não só o número cru).
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
-        _detalhe_midias = ""
+        if _midias_limite:
+            import datetime as _dt_uso
+            _midias_restantes = max(_midias_limite - _midias_usadas, 0)
+            _hoje_uso = _dt_uso.date.today()
+            if _hoje_uso.month == 12:
+                _proximo_mes_uso = _dt_uso.date(_hoje_uso.year + 1, 1, 1)
+            else:
+                _proximo_mes_uso = _dt_uso.date(_hoje_uso.year, _hoje_uso.month + 1, 1)
+            _dias_ate_renovar = (_proximo_mes_uso - _hoje_uso).days
+            _detalhe_midias = (
+                f"{_midias_restantes} anúncios ainda disponíveis · renova em {_dias_ate_renovar}"
+                f" dia{'s' if _dias_ate_renovar != 1 else ''}"
+            )
+        else:
+            _detalhe_midias = ""
 
         _concorrentes_lista = (st.session_state.get("dados") or {}).get("concorrentes", [])
         _concorrentes_usados = len(_concorrentes_lista)

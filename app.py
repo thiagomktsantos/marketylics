@@ -18950,31 +18950,14 @@ html, body { background: transparent; overflow: hidden; }
         _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
 
         # _midias_usadas conta ANÚNCIOS distintos com mídia migrada este mês
-        # (é essa a base real da cota — ver _contar_midias_do_mes). Antes
-        # o card também mostrava a composição em arquivos individuais
-        # (imagens/vídeos), mas isso é uma contagem diferente (por linha,
-        # não por anúncio) misturada no mesmo card — confuso, então
+        # (é essa a base real da cota — ver _contar_midias_do_mes). O
+        # card já mostrava a composição em arquivos individuais
+        # (imagens/vídeos) antes, mas isso é uma contagem diferente (por
+        # linha, não por anúncio) misturada no mesmo card — confuso, então
         # ficou só a contagem que realmente importa pra cota: anúncios.
-        # O detalhe complementa o "146 de 500" com o que falta e quando a
-        # cota renova, pra dar o mesmo tipo de informação acionável que o
-        # card de Links da Meta já tem (não só o número cru).
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
-        if _midias_limite:
-            import datetime as _dt_uso
-            _midias_restantes = max(_midias_limite - _midias_usadas, 0)
-            _hoje_uso = _dt_uso.date.today()
-            if _hoje_uso.month == 12:
-                _proximo_mes_uso = _dt_uso.date(_hoje_uso.year + 1, 1, 1)
-            else:
-                _proximo_mes_uso = _dt_uso.date(_hoje_uso.year, _hoje_uso.month + 1, 1)
-            _dias_ate_renovar = (_proximo_mes_uso - _hoje_uso).days
-            _detalhe_midias = (
-                f"{_midias_restantes} anúncios ainda disponíveis · renova em {_dias_ate_renovar}"
-                f" dia{'s' if _dias_ate_renovar != 1 else ''}"
-            )
-        else:
-            _detalhe_midias = ""
+        _detalhe_midias = ""
 
         _concorrentes_lista = (st.session_state.get("dados") or {}).get("concorrentes", [])
         _concorrentes_usados = len(_concorrentes_lista)
@@ -19489,12 +19472,11 @@ html, body { background: transparent; overflow: hidden; }
                     ("coletas",      "Coleta de anúncios e redes sociais"),
                     ("coletas",      "Não salva mídias dos anúncios — usa o link original (pode expirar)"),
                     ("coletas",      "Sem cache de coleta salvo entre sessões"),
-                    ("coletas",      "Limite de coletas por mês"),
+                    ("coletas",      "Até 5 coletas de anúncios/mês"),
+                    ("coletas",      "Até 5 coletas de redes sociais/mês"),
                     ("concorrentes", "Apenas 1 concorrente monitorado"),
                     ("analises",     "Confronto de sites (visão básica)"),
-                    ("analises",     "Sem análises de IA"),
-                    ("analises",     "Até 15 posts analisados/mês"),
-                    ("analises",     "Até 10 anúncios analisados/mês"),
+                    ("analises",     "Até 5 análises de IA/mês (posts ou anúncios)"),
                 ],
             },
             {
@@ -19503,13 +19485,13 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": "Free",
                 "itens": [
                     ("coletas",      "Cache de coleta salvo entre sessões"),
+                    ("coletas",      "Até 30 coletas de anúncios/mês"),
+                    ("coletas",      "Até 30 coletas de redes sociais/mês"),
                     ("coletas",      "Até 50 mídias de anúncios baixadas e armazenadas/mês"),
                     ("coletas",      "Histórico de anúncios preservado (sem links expirando)"),
                     ("coletas",      "Exportação das coletas em CSV"),
                     ("concorrentes", "Até 5 concorrentes monitorados"),
-                    ("analises",     "Análises de IA (limitadas por mês)"),
-                    ("analises",     "Até 100 posts analisados/mês"),
-                    ("analises",     "Até 50 anúncios analisados/mês"),
+                    ("analises",     "Até 40 análises de IA/mês (posts ou anúncios)"),
                     ("analises",     "Exportação dos relatórios de análise (PDF)"),
                 ],
             },
@@ -19519,14 +19501,14 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": "Starter",
                 "itens": [
                     ("coletas",      "Até 500 mídias de anúncios baixadas e armazenadas/mês"),
+                    ("coletas",      "Até 150 coletas de anúncios/mês"),
+                    ("coletas",      "Até 150 coletas de redes sociais/mês"),
                     ("coletas",      "Prioridade na migração de mídia"),
                     ("coletas",      "Coleta automática agendada (diária)"),
                     ("coletas",      "Modelos de coleta salvos"),
                     ("concorrentes", "Até 20 concorrentes monitorados"),
-                    ("analises",     "Análises de IA ilimitadas"),
+                    ("analises",     "Até 200 análises de IA/mês (posts ou anúncios)"),
                     ("analises",     "Confronto de sites completo (todas as métricas)"),
-                    ("analises",     "Até 500 posts analisados/mês"),
-                    ("analises",     "Até 300 anúncios analisados/mês"),
                 ],
             },
             {
@@ -19535,12 +19517,12 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": "Pro",
                 "itens": [
                     ("coletas",      "Mídias de anúncios baixadas e armazenadas ilimitadas"),
+                    ("coletas",      "Coletas de anúncios e de redes sociais ilimitadas"),
                     ("coletas",      "Coleta simultânea de múltiplas contas"),
                     ("coletas",      "Exportação avançada dos dados (API)"),
                     ("coletas",      "Prioridade máxima no processamento das coletas"),
                     ("concorrentes", "Concorrentes monitorados ilimitados"),
-                    ("analises",     "Posts analisados ilimitados"),
-                    ("analises",     "Anúncios analisados ilimitados"),
+                    ("analises",     "Análises de IA ilimitadas (posts e anúncios)"),
                     ("analises",     "Relatórios de análise em white-label"),
                     ("analises",     "Insights comparativos entre contas de clientes"),
                     ("outros",       "Gestão de múltiplas contas de clientes"),

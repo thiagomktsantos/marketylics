@@ -12133,6 +12133,41 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
                 }
 
+                # Transcrições já salvas dos vídeos, buscadas em lote (uma
+                # query só) pra alimentar o badge "💬 Transcrição" do card.
+                # Só lê o que já está pronto na tabela `midias` — NÃO chama
+                # obter_transcricao_video aqui, porque essa função roda o
+                # Whisper na hora como fallback quando não acha nada salvo,
+                # o que travaria a tela inteira esperando transcrever um por
+                # um. Um vídeo recém-migrado, então, fica sem o badge até a
+                # fila separada (_transcrever_pendentes_background) terminar
+                # de processar ele — nada quebra, só demora a aparecer.
+                _urls_video_cards = list({
+                    u for ad in ads_f for u in (ad.get("videos") or [])[:1] if u
+                })
+                _mapa_transcricoes = {}
+                if _urls_video_cards:
+                    try:
+                        _res_transc = (
+                            supabase.table("midias")
+                            .select("url_cdn, transcricao")
+                            .in_("url_cdn", _urls_video_cards)
+                            .execute()
+                        )
+                        for _row in (_res_transc.data or []):
+                            _txt_transc = (_row.get("transcricao") or "").strip()
+                            if _txt_transc:
+                                _mapa_transcricoes[_row["url_cdn"]] = _txt_transc
+                    except Exception:
+                        pass  # sem transcrição em lote não pode travar a tela — badge só some
+
+                def _escapar_tooltip(s: str) -> str:
+                    return (
+                        s.replace("&", "&amp;").replace('"', "&quot;")
+                         .replace("<", "&lt;").replace(">", "&gt;")
+                         .replace("\n", " ")
+                    )
+
                 all_cards_html = []
 
                 for j, ad in enumerate(ads_f):
@@ -12296,6 +12331,50 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         </svg>
     </div>"""
 
+                        # Badge "🖼️ +N": anúncios Dinâmicos costumam vir com
+                        # imagens alternativas junto do vídeo (Meta testa
+                        # combinações de criativo), mas o card sempre priorizava
+                        # o vídeo e escondia essas imagens de vez — nenhum lugar
+                        # da tela dava pra vê-las. Aqui expõe um botão que abre
+                        # elas num modal à parte, sem interferir no clique
+                        # normal do card (que continua abrindo o vídeo).
+                        _imgs_dyn_alt = [u for u in images[:4] if u]
+                        if _imgs_dyn_alt:
+                            _imgs_dyn_js = _json.dumps(_imgs_dyn_alt, ensure_ascii=True)
+                            imgs_badge_html = f"""
+    <div onclick="event.stopPropagation();openImagesModal({_imgs_dyn_js}, '{snap_url_safe_vid}')"
+         title="Este anúncio dinâmico também tem {len(_imgs_dyn_alt)} imagem(ns) alternativa(s) — clique pra ver"
+         style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:pointer;display:flex;align-items:center;gap:4px">
+        🖼️ +{len(_imgs_dyn_alt)}
+    </div>"""
+                        else:
+                            imgs_badge_html = ""
+
+                        # Badge "💬 Transcrição": mostra em tooltip o texto
+                        # falado do vídeo (Whisper), quando já foi transcrito
+                        # e salvo em `midias` (ver _mapa_transcricoes acima —
+                        # não dispara transcrição nova aqui, só lê o que já
+                        # está pronto, pra não travar a tela renderizando os
+                        # cards).
+                        _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
+                        if _transcricao_txt:
+                            _transcricao_tt = _escapar_tooltip(_transcricao_txt[:400])
+                            if len(_transcricao_txt) > 400:
+                                _transcricao_tt += "…"
+                            transcricao_badge_html = f"""
+    <div title="{_transcricao_tt}"
+         onclick="event.stopPropagation()"
+         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        💬 Transcrição
+    </div>"""
+                        else:
+                            transcricao_badge_html = ""
+
                         media_block = f"""
 <div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
      id="vwrap_{uid}"
@@ -12321,6 +12400,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         </div>
     </div>
     {origem_badge_html}
+    {imgs_badge_html}
+    {transcricao_badge_html}
     <div style="position:absolute;bottom:7px;right:7px;background:#ffffff;
                 color:#000000;font-size:10px;font-weight:700;padding:2px 7px;
                 border-radius:4px;pointer-events:none">▶ VER VÍDEO</div>
@@ -12590,6 +12671,54 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
         overlay.appendChild(box);
         doc.body.appendChild(overlay);
     }
+
+    window.parent.__adsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
+    doc.addEventListener('keydown', window.parent.__adsModalEscFn);
+}
+
+function openImagesModal(imgs, snapUrl) {
+    var doc = window.parent.document;
+    var old = doc.getElementById('ads_modal_overlay');
+    if (old) old.remove();
+
+    var overlay = doc.createElement('div');
+    overlay.id = 'ads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
+    overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:transparent;border-radius:16px;position:relative;padding:44px 24px 24px;max-width:min(92vw,900px);';
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+
+    var label = doc.createElement('div');
+    label.textContent = 'Imagens alternativas deste anúncio dinâmico';
+    label.style.cssText = 'color:#fff;font-size:13px;font-weight:600;text-align:center;margin-bottom:14px;font-family:DM Sans,sans-serif;';
+
+    var grid = doc.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;';
+    (imgs || []).forEach(function(src) {
+        var cell = doc.createElement('div');
+        cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:120px;';
+        var imgEl = doc.createElement('img');
+        imgEl.style.cssText = 'display:block;width:100%;height:auto;max-height:55vh;object-fit:contain;';
+        imgEl.onerror = function() {
+            cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:24px;">Imagem não disponível' +
+                (snapUrl ? '<br><a href="' + snapUrl + '" target="_blank" style="color:#3a9fd6">Ver no Ad Library →</a>' : '') + '</div>';
+        };
+        imgEl.src = src || '';
+        cell.appendChild(imgEl);
+        grid.appendChild(cell);
+    });
+
+    box.appendChild(closeBtn);
+    box.appendChild(label);
+    box.appendChild(grid);
+    overlay.appendChild(box);
+    doc.body.appendChild(overlay);
 
     window.parent.__adsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
     doc.addEventListener('keydown', window.parent.__adsModalEscFn);

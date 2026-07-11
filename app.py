@@ -19470,7 +19470,7 @@ html, body { background: transparent; overflow: hidden; }
                 "herda_de": None,
                 "itens": [
                     ("coletas",      "Coleta de anúncios e redes sociais"),
-                    ("coletas",      "Não salva mídias dos anúncios — usa o link original (pode expirar)"),
+                    ("coletas",      "Não salva mídias dos anúncios — usa o link original"),
                     ("coletas",      "Sem cache de coleta salvo entre sessões"),
                     ("coletas",      "Até 5 coletas de anúncios/mês"),
                     ("coletas",      "Até 5 coletas de redes sociais/mês"),

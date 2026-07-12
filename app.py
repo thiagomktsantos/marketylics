@@ -20251,42 +20251,57 @@ html, body { background: transparent; overflow: hidden; }
 </script>
 """, height=70)
 
-    # CSS só do campo de busca: por padrão o text_input do Streamlit vem
-    # mais fino/mais alto que os botões (altura/borda/padding diferentes),
-    # então essa regra escopada pela key (.st-key-_busca_notif) alinha o
-    # visual com os botões "Marcar como lidas"/"Limpar com erro" ao lado.
-    st.markdown("""
-    <style>
-    .st-key-_busca_notif > div,
-    .st-key-_busca_notif[data-testid="stTextInput"] > div,
-    .st-key-_busca_notif div[data-testid="stTextInput"] > div {
-        border-radius: 8px !important;
-        border: 1px solid #d1d5db !important;
-        min-height: 40px !important;
-        background-color: #ffffff !important;
-        box-shadow: none !important;
-        background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWNhM2FmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTAuNSIgY3k9IjEwLjUiIHI9IjYuNSIvPjxsaW5lIHgxPSIxNS41IiB5MT0iMTUuNSIgeDI9IjIwIiB5Mj0iMjAiLz48L3N2Zz4=') !important;
-        background-repeat: no-repeat !important;
-        background-position: 12px center !important;
-        background-size: 16px 16px !important;
-    }
-    .st-key-_busca_notif > div:focus-within,
-    .st-key-_busca_notif[data-testid="stTextInput"] > div:focus-within,
-    .st-key-_busca_notif div[data-testid="stTextInput"] > div:focus-within {
-        border-color: #9ca3af !important;
-    }
-    .st-key-_busca_notif input,
-    .st-key-_busca_notif div[data-testid="stTextInput"] input {
-        border: none !important;
-        min-height: 38px !important;
-        font-size: 14px !important;
-        font-family: 'DM Sans', sans-serif !important;
-        box-shadow: none !important;
-        padding-left: 34px !important;
-        background: transparent !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # O campo de busca é estilizado via JS (em vez de CSS por seletor
+    # ".st-key-...") porque a estrutura interna que o Streamlit gera pro
+    # text_input (quantos <div> de wrapper existem, em qual nível a classe
+    # "st-key-_busca_notif" realmente é aplicada) varia entre versões e é
+    # fácil de acertar errado — foi exatamente o que aconteceu aqui antes.
+    # Em vez de tentar adivinhar o seletor CSS certo, o script abaixo acha o
+    # <input> de verdade pelo texto do placeholder (isso é garantido de
+    # existir, é o texto que a gente mesmo definiu) e estiliza ELE e o
+    # elemento pai dele diretamente — sem depender de nome de classe nenhum.
+    # Roda em cima de window.parent.document (o componente vive num iframe
+    # à parte) com algumas tentativas (setTimeout) porque o Streamlit pode
+    # ainda não ter terminado de montar o <input> no instante em que esse
+    # iframe carrega.
+    components.html("""
+    <script>
+    (function() {
+        var ICON = "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWNhM2FmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTAuNSIgY3k9IjEwLjUiIHI9IjYuNSIvPjxsaW5lIHgxPSIxNS41IiB5MT0iMTUuNSIgeDI9IjIwIiB5Mj0iMjAiLz48L3N2Zz4=')";
+        function estilizar() {
+            var doc = window.parent.document;
+            var inp = doc.querySelector('input[placeholder="Buscar por empresa ou tipo de atividade..."]');
+            if (!inp) return false;
+            var wrap = inp.parentElement;
+            if (wrap) {
+                wrap.style.setProperty('border', '1px solid #d1d5db', 'important');
+                wrap.style.setProperty('border-radius', '8px', 'important');
+                wrap.style.setProperty('min-height', '40px', 'important');
+                wrap.style.setProperty('background-color', '#ffffff', 'important');
+                wrap.style.setProperty('background-image', ICON, 'important');
+                wrap.style.setProperty('background-repeat', 'no-repeat', 'important');
+                wrap.style.setProperty('background-position', '12px center', 'important');
+                wrap.style.setProperty('background-size', '16px 16px', 'important');
+                wrap.style.setProperty('box-shadow', 'none', 'important');
+            }
+            inp.style.setProperty('border', 'none', 'important');
+            inp.style.setProperty('min-height', '38px', 'important');
+            inp.style.setProperty('font-size', '14px', 'important');
+            inp.style.setProperty('box-shadow', 'none', 'important');
+            inp.style.setProperty('padding-left', '34px', 'important');
+            inp.style.setProperty('background', 'transparent', 'important');
+            return true;
+        }
+        if (!estilizar()) {
+            var tentativas = 0;
+            var iv = setInterval(function() {
+                tentativas++;
+                if (estilizar() || tentativas > 20) clearInterval(iv);
+            }, 150);
+        }
+    })();
+    </script>
+    """, height=0)
 
     # Barra de ações da página: busca por texto (filtra os cards abaixo),
     # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
@@ -20391,12 +20406,15 @@ html, body { background: transparent; overflow: hidden; }
                 """, height=44)
 
         # Os dois botões nativos "gatilho" (só existem pro JS acima clicar
-        # neles) ficam dentro de UM container com key própria, escondido
-        # como bloco único (display:none no wrapper inteiro). Isso evita o
-        # bug anterior: esconder cada botão individualmente ainda deixava o
-        # "gap" do flex do Streamlit entre eles, criando um espaço vazio
-        # grande na página. Um clique via JS (el.click()) funciona
-        # normalmente mesmo com o wrapper em display:none.
+        # neles) são escondidos via JS, não CSS por classe: em vez de tentar
+        # acertar o nome exato da classe/container que o Streamlit gera (foi
+        # isso que deu errado antes — a classe .st-key-X às vezes não está
+        # onde a gente espera), o script sobe a partir do próprio <button>
+        # pegando o ancestral mais externo que ainda não tem irmãos (ou
+        # seja, o wrapper que existe só pra esse botão) e aplica
+        # display:none NELE. Assim some por completo — sem sobrar "gap" de
+        # flex do Streamlit entre os itens, porque o item some do layout de
+        # verdade, não só fica com altura 0.
         with st.container(key="_ghost_wrap_toolbar_notif"):
             if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
                 _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
@@ -20406,11 +20424,40 @@ html, body { background: transparent; overflow: hidden; }
                 st.session_state["_confirmar_limpar_erros"] = True
                 st.rerun()
 
-        st.markdown("""
-        <style>
-        .st-key-_ghost_wrap_toolbar_notif { display: none !important; }
-        </style>
-        """, unsafe_allow_html=True)
+        components.html("""
+        <script>
+        (function() {
+            function colapsar(txtAlvo) {
+                var doc = window.parent.document;
+                var btns = doc.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {
+                    var txt = (btns[i].textContent || btns[i].innerText || '').trim();
+                    if (txt === txtAlvo) {
+                        var el = btns[i];
+                        while (el.parentElement && el.parentElement.children.length === 1) {
+                            el = el.parentElement;
+                        }
+                        el.style.setProperty('display', 'none', 'important');
+                        return true;
+                    }
+                }
+                return false;
+            }
+            function tentar() {
+                var a = colapsar('_marcar_lidas_');
+                var b = colapsar('_limpar_erros_');
+                return a && b;
+            }
+            if (!tentar()) {
+                var n = 0;
+                var iv = setInterval(function() {
+                    n++;
+                    if (tentar() || n > 20) clearInterval(iv);
+                }, 150);
+            }
+        })();
+        </script>
+        """, height=0)
 
         if _n_erros_notif and st.session_state.get("_confirmar_limpar_erros"):
             st.warning(
@@ -20904,6 +20951,22 @@ html, body { background: transparent; overflow: hidden; }
         var hdr = e.target.closest('.notif-hdr.has-detail');
         if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
     }});
+
+    function colapsarGhosts() {{
+        var doc = window.parent.document;
+        var btns = doc.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {{
+            var txt = (btns[i].textContent || btns[i].innerText || '').trim();
+            if (/^_(refazer_ativ_|excluir_ativ_)\\d+_$/.test(txt)) {{
+                var el = btns[i];
+                while (el.parentElement && el.parentElement.children.length === 1) {{
+                    el = el.parentElement;
+                }}
+                el.style.setProperty('display', 'none', 'important');
+            }}
+        }}
+    }}
+    [150, 400, 800, 1500].forEach(function(t) {{ setTimeout(colapsarGhosts, t); }});
 
     if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
     setTimeout(syncH, 150);

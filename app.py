@@ -180,15 +180,35 @@ def _extrair_expiracao_url(url: str):
     except Exception:
         return None
 
-def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
-    """Conta quantos ANÚNCIOS (de uma lista de ads ainda com link
-    original, ver encontrar_ads_com_link_original) têm pelo menos uma
-    mídia cujo link expira dentro da janela informada — ou já expirou.
-    Usa a expiração real embutida na URL (ver _extrair_expiracao_url),
-    não uma estimativa por data de coleta."""
+def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> dict:
+    """Classifica os ANÚNCIOS (de uma lista de ads ainda com link
+    original, ver encontrar_ads_com_link_original) pela urgência REAL de
+    expiração, usando o timestamp exato embutido na URL da Meta (ver
+    _extrair_expiracao_url) — nunca uma estimativa por data de coleta.
+
+    Separa em dois grupos, porque são coisas diferentes pro usuário:
+      - "expirados": o link já venceu (exp <= agora). Antes isso entrava
+        junto com "expirando", como se fosse só "vai vencer logo" — mas
+        um link já morto é um problema diferente (a mídia já pode estar
+        quebrada agora) de um link que ainda funciona mas vai quebrar.
+      - "expirando": ainda não venceu, mas vence dentro da janela.
+
+    "agora" é recalculado a cada chamada (datetime.utcnow()), então o
+    resultado reflete o instante real da renderização — cada rerun do
+    Streamlit (refresh da página, navegação etc.) recalcula do zero
+    contra o relógio atual, não guarda um valor "congelado" de uma
+    coleta anterior.
+
+    proxima_expiracao: o timestamp de expiração mais próximo entre os
+    anúncios "expirando" (o mais urgente do grupo) — usado pra montar o
+    texto "expira em Xh Ymin" com o tempo real restante, em vez do texto
+    fixo "expira em até 48h" que não dizia se faltavam 47h ou 10 minutos."""
     import datetime as _dt_exp
-    limite = _dt_exp.datetime.utcnow() + _dt_exp.timedelta(hours=horas)
-    total = 0
+    agora = _dt_exp.datetime.utcnow()
+    limite = agora + _dt_exp.timedelta(hours=horas)
+    expirados = 0
+    expirando = 0
+    proxima_expiracao = None
     for ad in ads or []:
         urls = (ad.get("images") or []) + (ad.get("videos") or [])
         exp_mais_proxima = None
@@ -198,9 +218,44 @@ def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS)
             exp = _extrair_expiracao_url(u)
             if exp and (exp_mais_proxima is None or exp < exp_mais_proxima):
                 exp_mais_proxima = exp
-        if exp_mais_proxima and exp_mais_proxima <= limite:
-                total += 1
-    return total
+        if exp_mais_proxima is None:
+            continue
+        if exp_mais_proxima <= agora:
+            expirados += 1
+        elif exp_mais_proxima <= limite:
+            expirando += 1
+            if proxima_expiracao is None or exp_mais_proxima < proxima_expiracao:
+                proxima_expiracao = exp_mais_proxima
+    return {"expirados": expirados, "expirando": expirando, "proxima_expiracao": proxima_expiracao}
+
+def _formatar_tempo_restante(quando, agora=None) -> str:
+    """Formata o tempo real restante até 'quando' (datetime UTC) de forma
+    legível ('2d 4h', '3h 12min', '8min'), pra mostrar a contagem
+    verdadeira em vez do texto fixo 'até 48h'. Recalculado a cada rerun
+    do Streamlit, então sempre reflete o tempo restante no momento em
+    que a página foi gerada (não "tica" sozinho na tela sem interação —
+    pra isso seria preciso um componente JS com setInterval, que dá pra
+    adicionar depois se for importante ter atualização contínua sem
+    precisar recarregar/interagir com a página)."""
+    import datetime as _dt_fmt
+    agora = agora or _dt_fmt.datetime.utcnow()
+    total_min = int((quando - agora).total_seconds() // 60)
+    if total_min <= 0:
+        return "menos de 1 min"
+    dias, resto_min = divmod(total_min, 60 * 24)
+    horas, minutos = divmod(resto_min, 60)
+    if dias:
+        return f"{dias}d {horas}h" if horas else f"{dias}d"
+    if horas:
+        return f"{horas}h {minutos}min" if minutos else f"{horas}h"
+    return f"{minutos}min"
+
+def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
+    """Mantida por compatibilidade — soma expirados + expirando (ver
+    _classificar_links_expiracao). Prefira a função nova onde for
+    preciso distinguir os dois grupos."""
+    _c = _classificar_links_expiracao(ads, horas)
+    return _c["expirados"] + _c["expirando"]
 
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
@@ -19735,11 +19790,26 @@ html, body { background: transparent; overflow: hidden; }
                 # aparece uma vez só, lá em cima) — e ganha destaque em
                 # vermelho pra chamar atenção de verdade, não é só mais uma
                 # informação neutra no meio das outras.
-                _expira_html = (
-                    f' (<span style="color:#e05252;font-weight:700">expira em até '
-                    f'{JANELA_EXPIRACAO_LINK_HORAS}h</span>)'
-                    if _l.get("expirando") else ""
-                )
+                #
+                # Duas badges separadas, porque são situações diferentes:
+                # "já expirado" (vermelho mais escuro, problema acontecendo
+                # agora) e "expira em Xh Ymin" (vermelho normal, com o tempo
+                # real restante calculado na hora — não mais um texto fixo
+                # "até 48h" igual pra tudo que caísse na janela).
+                _partes_urgencia_link = []
+                if _l.get("expirados"):
+                    _n_exp = _l["expirados"]
+                    _partes_urgencia_link.append(
+                        f'<span style="color:#b91c1c;font-weight:700">{_n_exp} '
+                        f'{"já expirado" if _n_exp == 1 else "já expirados"}</span>'
+                    )
+                if _l.get("expirando"):
+                    _prox_exp = _l.get("proxima_expiracao")
+                    _txt_restante = _formatar_tempo_restante(_prox_exp) if _prox_exp else f"até {JANELA_EXPIRACAO_LINK_HORAS}h"
+                    _partes_urgencia_link.append(
+                        f'<span style="color:#e05252;font-weight:700">expira em {_txt_restante}</span>'
+                    )
+                _expira_html = f' ({" · ".join(_partes_urgencia_link)})' if _partes_urgencia_link else ""
                 _linhas_html += f"""
                 <div style="display:flex;align-items:center;gap:5px;padding:12px 0;border-top:1px solid #f1f3f5;width:100%">
                     <div style="position:relative;width:46px;height:46px;flex-shrink:0">
@@ -19802,24 +19872,38 @@ html, body { background: transparent; overflow: hidden; }
         _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
         _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
-        _total_expirando_link = sum(
-            _contar_links_expirando(e.get("data", [])) for e in _pendentes_link_dict.values()
-        )
+        # Classificação real (timestamp exato da URL, recalculado a cada
+        # rerun contra o relógio atual — ver _classificar_links_expiracao)
+        # em vez de um único número que misturava "já morreu" com "vai
+        # morrer logo". _total_expirando_link = ainda não venceu mas
+        # vence dentro da janela; _total_expirados_link = já venceu.
+        _total_expirando_link = 0
+        _total_expirados_link = 0
+        for _e in _pendentes_link_dict.values():
+            _u = _classificar_links_expiracao(_e.get("data", []))
+            _total_expirando_link += _u["expirando"]
+            _total_expirados_link += _u["expirados"]
+        _total_urgente_link = _total_expirando_link + _total_expirados_link
         # O texto principal vira a frase de urgência (quantos anúncios têm
-        # link prestes a expirar) em vez do % cru de migração, com a
-        # contagem total de anúncios logo abaixo.
+        # link já expirado ou prestes a expirar) em vez do % cru de
+        # migração, com a contagem total de anúncios logo abaixo.
         if not _total_ads_geral:
             _pct_expiravel = 0
             _texto_pct_links = '<div style="font-size:14px;color:#9ca3af">nenhum anúncio coletado ainda</div>'
             _texto_fracao_links = ""
         else:
-            _pct_expiravel = round(_total_expirando_link / _total_ads_geral * 100)
-            _cor_pct_expiravel = "#e05252" if _total_expirando_link else "#4a9b6e"
+            _pct_expiravel = round(_total_urgente_link / _total_ads_geral * 100)
+            _cor_pct_expiravel = "#e05252" if _total_urgente_link else "#4a9b6e"
             _texto_pct_links = (
                 f'<div style="font-size:18px;font-weight:800;color:{_cor_pct_expiravel};line-height:1.3">'
                 f'{_pct_expiravel}% dos anúncios são links expiráveis</div>'
             )
             _texto_fracao_links = f"{_total_pendentes_link} de {_total_ads_geral} anúncios"
+            if _total_expirados_link:
+                _texto_fracao_links += (
+                    f' <span style="color:#b91c1c;font-weight:700">'
+                    f'({_total_expirados_link} já {"expirado" if _total_expirados_link == 1 else "expirados"})</span>'
+                )
         _detalhe_link = ""
         _SVG_LINK = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
 
@@ -19848,12 +19932,15 @@ html, body { background: transparent; overflow: hidden; }
         # última coleta de anúncios daquela empresa (o "ts" do cache).
         def _linha_link_pendente(nome: str, cor: str, tag: str) -> dict:
             _ads_pendentes_empresa = (_pendentes_link_dict.get(nome) or {}).get("data", [])
+            _urgencia_empresa = _classificar_links_expiracao(_ads_pendentes_empresa)
             return {
                 "nome": nome,
                 "usado": len(_ads_pendentes_empresa),
                 "cor": cor,
                 "tag": tag,
-                "expirando": _contar_links_expirando(_ads_pendentes_empresa),
+                "expirando": _urgencia_empresa["expirando"],
+                "expirados": _urgencia_empresa["expirados"],
+                "proxima_expiracao": _urgencia_empresa["proxima_expiracao"],
                 "ultima_coleta": (_ads_cache_uso.get(nome) or {}).get("ts", ""),
             }
 

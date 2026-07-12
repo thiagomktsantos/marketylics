@@ -20257,20 +20257,25 @@ html, body { background: transparent; overflow: hidden; }
     # visual com os botões "Marcar como lidas"/"Limpar com erro" ao lado.
     st.markdown("""
     <style>
+    .st-key-_busca_notif > div,
+    .st-key-_busca_notif[data-testid="stTextInput"] > div,
     .st-key-_busca_notif div[data-testid="stTextInput"] > div {
         border-radius: 8px !important;
         border: 1px solid #d1d5db !important;
         min-height: 40px !important;
-        background: #ffffff !important;
+        background-color: #ffffff !important;
         box-shadow: none !important;
         background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWNhM2FmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTAuNSIgY3k9IjEwLjUiIHI9IjYuNSIvPjxsaW5lIHgxPSIxNS41IiB5MT0iMTUuNSIgeDI9IjIwIiB5Mj0iMjAiLz48L3N2Zz4=') !important;
         background-repeat: no-repeat !important;
         background-position: 12px center !important;
         background-size: 16px 16px !important;
     }
+    .st-key-_busca_notif > div:focus-within,
+    .st-key-_busca_notif[data-testid="stTextInput"] > div:focus-within,
     .st-key-_busca_notif div[data-testid="stTextInput"] > div:focus-within {
         border-color: #9ca3af !important;
     }
+    .st-key-_busca_notif input,
     .st-key-_busca_notif div[data-testid="stTextInput"] input {
         border: none !important;
         min-height: 38px !important;

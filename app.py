@@ -20406,15 +20406,16 @@ html, body { background: transparent; overflow: hidden; }
                 """, height=44)
 
         # Os dois botões nativos "gatilho" (só existem pro JS acima clicar
-        # neles) são escondidos via JS, não CSS por classe: em vez de tentar
-        # acertar o nome exato da classe/container que o Streamlit gera (foi
-        # isso que deu errado antes — a classe .st-key-X às vezes não está
-        # onde a gente espera), o script sobe a partir do próprio <button>
-        # pegando o ancestral mais externo que ainda não tem irmãos (ou
-        # seja, o wrapper que existe só pra esse botão) e aplica
-        # display:none NELE. Assim some por completo — sem sobrar "gap" de
-        # flex do Streamlit entre os itens, porque o item some do layout de
-        # verdade, não só fica com altura 0.
+        # neles) são achados pela classe .st-key-X (mesmo mecanismo já usado
+        # pro clique, comprovadamente confiável) e escondidos via JS: o
+        # script sobe a partir do <button> pegando o ancestral mais externo
+        # que ainda não tem irmãos (ou seja, o wrapper que existe só pra
+        # esse botão) e aplica display:none NELE. Isso garante que some por
+        # completo, sem sobrar "gap" de flex do Streamlit entre os itens.
+        # IMPORTANTE: não dá pra achar esses botões pelo texto (tentativa
+        # anterior) porque o Streamlit renderiza o label do st.button como
+        # markdown — "_marcar_lidas_" vira itálico e os "_" do texto
+        # literal desaparecem do textContent renderizado.
         with st.container(key="_ghost_wrap_toolbar_notif"):
             if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
                 _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
@@ -20427,25 +20428,20 @@ html, body { background: transparent; overflow: hidden; }
         components.html("""
         <script>
         (function() {
-            function colapsar(txtAlvo) {
+            function colapsar(keyClasse) {
                 var doc = window.parent.document;
-                var btns = doc.querySelectorAll('button');
-                for (var i = 0; i < btns.length; i++) {
-                    var txt = (btns[i].textContent || btns[i].innerText || '').trim();
-                    if (txt === txtAlvo) {
-                        var el = btns[i];
-                        while (el.parentElement && el.parentElement.children.length === 1) {
-                            el = el.parentElement;
-                        }
-                        el.style.setProperty('display', 'none', 'important');
-                        return true;
-                    }
+                var btn = doc.querySelector('.st-key-' + keyClasse + ' button');
+                if (!btn) return false;
+                var el = btn;
+                while (el.parentElement && el.parentElement.children.length === 1) {
+                    el = el.parentElement;
                 }
-                return false;
+                el.style.setProperty('display', 'none', 'important');
+                return true;
             }
             function tentar() {
-                var a = colapsar('_marcar_lidas_');
-                var b = colapsar('_limpar_erros_');
+                var a = colapsar('_btn_marcar_lidas');
+                var b = colapsar('_btn_limpar_erros');
                 return a && b;
             }
             if (!tentar()) {
@@ -20953,18 +20949,24 @@ html, body { background: transparent; overflow: hidden; }
     }});
 
     function colapsarGhosts() {{
+        // Acha pelos containers cuja classe contém "st-key-btn_refazer_ativ_"
+        // ou "st-key-btn_excluir_ativ_" (mesmo prefixo de key usado no
+        // Python) em vez de tentar casar pelo texto do botão: o Streamlit
+        // renderiza o label do st.button como markdown, então um texto tipo
+        // "_refazer_ativ_123_" perde os "_" das pontas (viram itálico) e
+        // nunca bate com o texto original — foi exatamente isso que quebrou
+        // a tentativa anterior.
         var doc = window.parent.document;
-        var btns = doc.querySelectorAll('button');
-        for (var i = 0; i < btns.length; i++) {{
-            var txt = (btns[i].textContent || btns[i].innerText || '').trim();
-            if (/^_(refazer_ativ_|excluir_ativ_)\\d+_$/.test(txt)) {{
-                var el = btns[i];
-                while (el.parentElement && el.parentElement.children.length === 1) {{
-                    el = el.parentElement;
-                }}
-                el.style.setProperty('display', 'none', 'important');
+        var alvos = doc.querySelectorAll(
+            '[class*="st-key-btn_refazer_ativ_"], [class*="st-key-btn_excluir_ativ_"]'
+        );
+        alvos.forEach(function(c) {{
+            var el = c;
+            while (el.parentElement && el.parentElement.children.length === 1) {{
+                el = el.parentElement;
             }}
-        }}
+            el.style.setProperty('display', 'none', 'important');
+        }});
     }}
     [150, 400, 800, 1500].forEach(function(t) {{ setTimeout(colapsarGhosts, t); }});
 

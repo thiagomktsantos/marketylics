@@ -12854,19 +12854,47 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # da tela dava pra vê-las. Aqui expõe um botão que abre
                         # elas num modal à parte, sem interferir no clique
                         # normal do card (que continua abrindo o vídeo).
+                        #
+                        # O clique NÃO vai num onclick="" inline com o JSON das
+                        # imagens embutido direto (era assim antes e não
+                        # funcionava): esse JSON tem aspas duplas dentro dele
+                        # (cada URL vem entre "..."), e colocar isso dentro de
+                        # um atributo HTML também delimitado por aspas duplas
+                        # (onclick="...") faz o navegador fechar o atributo na
+                        # primeira aspa que aparecer no meio do array — o
+                        # onclick ficava truncado/quebrado e o clique não fazia
+                        # nada. A correção segue o mesmo padrão já usado pro
+                        # resto do card (ver wrapEl.addEventListener acima):
+                        # o array vai numa variável JS separada, dentro de um
+                        # <script>, e o clique é ligado via addEventListener.
                         _imgs_dyn_alt = [u for u in images[:4] if u]
                         if _imgs_dyn_alt:
                             _imgs_dyn_js = _json.dumps(_imgs_dyn_alt, ensure_ascii=True)
                             imgs_badge_html = f"""
-    <div onclick="event.stopPropagation();openImagesModal({_imgs_dyn_js}, '{snap_url_safe_vid}')"
+    <div id="imgsbadge_{uid}"
          title="Este anúncio dinâmico também tem {len(_imgs_dyn_alt)} imagem(ns) alternativa(s) — clique pra ver"
          style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:pointer;display:flex;align-items:center;gap:4px">
         🖼️ +{len(_imgs_dyn_alt)}
     </div>"""
+                            imgs_badge_script = f"""
+<script>
+(function(){{
+    var ALT_IMGS_{uid} = {_imgs_dyn_js};
+    var SNAP_ALT_{uid} = '{snap_url_safe_vid}';
+    var badgeEl_{uid} = document.getElementById('imgsbadge_{uid}');
+    if (badgeEl_{uid}) {{
+        badgeEl_{uid}.addEventListener('click', function(e) {{
+            e.stopPropagation();
+            openImagesModal(ALT_IMGS_{uid}, SNAP_ALT_{uid});
+        }});
+    }}
+}})();
+</script>"""
                         else:
                             imgs_badge_html = ""
+                            imgs_badge_script = ""
 
                         # Badge "💬 Transcrição": mostra o texto falado do
                         # vídeo (Whisper) num tooltip customizado ao passar o
@@ -12981,7 +13009,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         }});
     }}
 }})();
-</script>"""
+</script>
+{imgs_badge_script}"""
 
                     elif img_primary:
                         all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)

@@ -20263,7 +20263,7 @@ html, body { background: transparent; overflow: hidden; }
         min-height: 40px !important;
         background: #ffffff !important;
         box-shadow: none !important;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%239ca3af" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="20" y2="20"/></svg>') !important;
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWNhM2FmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTAuNSIgY3k9IjEwLjUiIHI9IjYuNSIvPjxsaW5lIHgxPSIxNS41IiB5MT0iMTUuNSIgeDI9IjIwIiB5Mj0iMjAiLz48L3N2Zz4=') !important;
         background-repeat: no-repeat !important;
         background-position: 12px center !important;
         background-size: 16px 16px !important;
@@ -20368,10 +20368,6 @@ html, body { background: transparent; overflow: hidden; }
             }});
             </script>
             """, height=44)
-            if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
-                _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
-                st.toast(f"{_n_marcadas} notificação(ões) marcada(s) como lida(s).", icon="✅")
-                st.rerun()
 
         with _col_limpar:
             if _n_erros_notif and not st.session_state.get("_confirmar_limpar_erros"):
@@ -20388,19 +20384,26 @@ html, body { background: transparent; overflow: hidden; }
                 }});
                 </script>
                 """, height=44)
-                if st.button("_limpar_erros_", key="_btn_limpar_erros"):
-                    st.session_state["_confirmar_limpar_erros"] = True
-                    st.rerun()
 
-        # Esconde os dois botões nativos "gatilho" (só existem pro JS acima
-        # clicar neles) sem esconder o resto da coluna onde estão.
+        # Os dois botões nativos "gatilho" (só existem pro JS acima clicar
+        # neles) ficam dentro de UM container com key própria, escondido
+        # como bloco único (display:none no wrapper inteiro). Isso evita o
+        # bug anterior: esconder cada botão individualmente ainda deixava o
+        # "gap" do flex do Streamlit entre eles, criando um espaço vazio
+        # grande na página. Um clique via JS (el.click()) funciona
+        # normalmente mesmo com o wrapper em display:none.
+        with st.container(key="_ghost_wrap_toolbar_notif"):
+            if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
+                _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
+                st.toast(f"{_n_marcadas} notificação(ões) marcada(s) como lida(s).", icon="✅")
+                st.rerun()
+            if st.button("_limpar_erros_", key="_btn_limpar_erros"):
+                st.session_state["_confirmar_limpar_erros"] = True
+                st.rerun()
+
         st.markdown("""
         <style>
-        .st-key-_btn_marcar_lidas, .st-key-_btn_limpar_erros { display: none !important; }
-        .stElementContainer:has(.st-key-_btn_marcar_lidas),
-        .stElementContainer:has(.st-key-_btn_limpar_erros) {
-            display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important;
-        }
+        .st-key-_ghost_wrap_toolbar_notif { display: none !important; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -20907,17 +20910,20 @@ html, body { background: transparent; overflow: hidden; }
             # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse
             # botão via JS (mesmo truque usado pra excluir análises), já que o
             # conteúdo do iframe não consegue rodar código Python diretamente.
-            _acoes_refazer = {}
-            for _rid in _refazer_ids:
-                _acoes_refazer[_rid] = st.button(f"_refazer_ativ_{_rid}_", key=f"btn_refazer_ativ_{_rid}")
+            #
+            # Todos ficam dentro de UM container (key="_ghost_wrap_cards_notif",
+            # ver abaixo, compartilhado com os botões de excluir) escondido como
+            # bloco único. Antes, cada botão era escondido individualmente via
+            # CSS (":has()" por id) e, com até 50 atividades, o "gap" do layout
+            # flex do Streamlit entre esses itens ocultos se acumulava e sobrava
+            # como um espaço vazio enorme na página — mesmo com cada botão
+            # colapsado, o espaçamento ENTRE eles continuava lá.
+            _wrap_ghost_cards_notif = st.container(key="_ghost_wrap_cards_notif")
 
-            if _refazer_ids:
-                _refazer_hide_css = "\n".join([
-                    f'.st-key-btn_refazer_ativ_{_rid} {{ display: none !important; }}'
-                    f'.stElementContainer:has(.st-key-btn_refazer_ativ_{_rid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
-                    for _rid in _refazer_ids
-                ])
-                st.markdown(f"<style>{_refazer_hide_css}</style>", unsafe_allow_html=True)
+            _acoes_refazer = {}
+            with _wrap_ghost_cards_notif:
+                for _rid in _refazer_ids:
+                    _acoes_refazer[_rid] = st.button(f"_refazer_ativ_{_rid}_", key=f"btn_refazer_ativ_{_rid}")
 
             for _rid in _refazer_ids:
                 if _acoes_refazer.get(_rid):
@@ -20946,16 +20952,16 @@ html, body { background: transparent; overflow: hidden; }
             # no servidor. Isso elimina a lista nativa duplicada que ficava
             # embaixo dos cards.
             _acoes_excluir = {}
-            for _eid in _excluir_ids:
-                _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
+            with _wrap_ghost_cards_notif:
+                for _eid in _excluir_ids:
+                    _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
 
-            if _excluir_ids:
-                _excluir_hide_css = "\n".join([
-                    f'.st-key-btn_excluir_ativ_{_eid} {{ display: none !important; }}'
-                    f'.stElementContainer:has(.st-key-btn_excluir_ativ_{_eid}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}'
-                    for _eid in _excluir_ids
-                ])
-                st.markdown(f"<style>{_excluir_hide_css}</style>", unsafe_allow_html=True)
+            if _refazer_ids or _excluir_ids:
+                st.markdown("""
+                <style>
+                .st-key-_ghost_wrap_cards_notif { display: none !important; }
+                </style>
+                """, unsafe_allow_html=True)
 
             for _eid in _excluir_ids:
                 if _acoes_excluir.get(_eid):

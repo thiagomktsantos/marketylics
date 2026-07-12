@@ -220,7 +220,14 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
     ids_expirados = []
     ids_expirando = []
     for ad in ads or []:
-        urls = (ad.get("images") or []) + (ad.get("videos") or [])
+        _imagens_ad = ad.get("images") or []
+        _videos_ad = ad.get("videos") or []
+        # Mesma regra de encontrar_ads_com_link_original: se o anúncio tem
+        # vídeo, só o link do vídeo importa (é dali que vem o thumb
+        # exibido no card) — as imagens desse tipo de anúncio só aparecem
+        # no modal opcional "🖼️ +N" e não derrubam nada visível se
+        # expirarem, então não entram na conta de urgência.
+        urls = _videos_ad if _videos_ad else _imagens_ad
         exp_mais_proxima = None
         for u in urls:
             if not u or (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE)):
@@ -3720,20 +3727,37 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict):
 
 def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
     """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
-    procurando qualquer imagem/vídeo que ainda aponte pro link original
+    procurando qualquer mídia que ainda aponte pro link original da Meta
     (não migrado pro R2) — não importa se é recente, antigo, se a
     migração nunca rodou, ou se rodou e falhou silenciosamente. Devolve
     só os anúncios pendentes, no mesmo formato que iniciar_migracao_
-    midia_background espera (pra reaproveitar o mesmo pipeline)."""
+    midia_background espera (pra reaproveitar o mesmo pipeline).
+
+    Quando o anúncio TEM vídeo, só o(s) link(s) de vídeo entram nessa
+    verificação — as imagens (`images`) são ignoradas nesse caso. Isso
+    não é um descuido: no card de anúncios, o thumb de um anúncio com
+    vídeo nunca vem do campo `images` — vem do próprio `<video>` sendo
+    avançado pra um frame (`onloadedmetadata="this.currentTime=2.5"`).
+    As imagens desse tipo de anúncio (comum em campanhas "Dinâmicas",
+    onde a Meta testa variações de criativo) só aparecem mesmo dentro do
+    modal opcional "🖼️ +N", que já tem seu próprio fallback caso a
+    imagem tenha quebrado. Ou seja: um link de imagem expirado nesse
+    caso não quebra nada que o usuário veja por padrão — só contava
+    como "urgente" antes por engano, inflando o card de Links da Meta
+    (e disparando migração) por uma mídia que não é a que realmente
+    sustenta a experiência. Só quando o anúncio NÃO tem vídeo (é uma
+    imagem "de verdade", a mídia principal) é que as imagens voltam a
+    contar normalmente."""
     pendentes = {}
     for empresa, entry in (ads_cache or {}).items():
         ads_pendentes = []
         for ad in entry.get("data", []) or []:
             imagens = ad.get("images") or []
             videos = ad.get("videos") or []
+            midias_relevantes = videos if videos else imagens
             tem_link_original = any(
                 u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
-                for u in (imagens + videos)
+                for u in midias_relevantes
             )
             if tem_link_original:
                 ads_pendentes.append(ad)

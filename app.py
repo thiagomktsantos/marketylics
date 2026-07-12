@@ -202,13 +202,23 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
     proxima_expiracao: o timestamp de expiração mais próximo entre os
     anúncios "expirando" (o mais urgente do grupo) — usado pra montar o
     texto "expira em Xh Ymin" com o tempo real restante, em vez do texto
-    fixo "expira em até 48h" que não dizia se faltavam 47h ou 10 minutos."""
+    fixo "expira em até 48h" que não dizia se faltavam 47h ou 10 minutos.
+
+    ids_expirados/ids_expirando: lista de {id, titulo, exp} de cada
+    anúncio classificado em cada grupo — usada pra montar um tooltip
+    (hover) nas badges do card, mostrando quais anúncios exatamente
+    entraram na conta. Isso existe pra permitir conferir na prática se a
+    classificação bate com a realidade (ex.: abrir o anúncio pelo id e
+    ver se o link realmente está quebrado), em vez de confiar cegamente
+    no número agregado."""
     import datetime as _dt_exp
     agora = _dt_exp.datetime.utcnow()
     limite = agora + _dt_exp.timedelta(hours=horas)
     expirados = 0
     expirando = 0
     proxima_expiracao = None
+    ids_expirados = []
+    ids_expirando = []
     for ad in ads or []:
         urls = (ad.get("images") or []) + (ad.get("videos") or [])
         exp_mais_proxima = None
@@ -220,13 +230,37 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
                 exp_mais_proxima = exp
         if exp_mais_proxima is None:
             continue
+        _info_ad = {"id": ad.get("id", ""), "titulo": ad.get("titulo", ""), "exp": exp_mais_proxima}
         if exp_mais_proxima <= agora:
             expirados += 1
+            ids_expirados.append(_info_ad)
         elif exp_mais_proxima <= limite:
             expirando += 1
+            ids_expirando.append(_info_ad)
             if proxima_expiracao is None or exp_mais_proxima < proxima_expiracao:
                 proxima_expiracao = exp_mais_proxima
-    return {"expirados": expirados, "expirando": expirando, "proxima_expiracao": proxima_expiracao}
+    return {
+        "expirados": expirados, "expirando": expirando, "proxima_expiracao": proxima_expiracao,
+        "ids_expirados": ids_expirados, "ids_expirando": ids_expirando,
+    }
+
+def _montar_tooltip_ids(itens: list, agora=None) -> str:
+    """Monta o texto do tooltip (atributo title=, tooltip nativo do
+    navegador ao passar o mouse) listando os anúncios de uma badge de
+    urgência — id, título (se houver) e a data/hora exata de expiração
+    (UTC) daquele link, uma por linha. Limita a 20 itens pra não virar
+    um tooltip gigante quando são centenas de anúncios; o restante só
+    entra na contagem "+N outros"."""
+    import datetime as _dt_tt
+    agora = agora or _dt_tt.datetime.utcnow()
+    linhas = []
+    for it in (itens or [])[:20]:
+        _tit = f" — {it['titulo']}" if it.get("titulo") else ""
+        _exp_str = it["exp"].strftime("%d/%m/%Y %H:%M UTC") if it.get("exp") else "?"
+        linhas.append(f"id {it.get('id') or '?'}{_tit} (expira/expirou: {_exp_str})")
+    if len(itens or []) > 20:
+        linhas.append(f"+{len(itens) - 20} outros")
+    return "\n".join(linhas)
 
 def _formatar_tempo_restante(quando, agora=None) -> str:
     """Formata o tempo real restante até 'quando' (datetime UTC) de forma
@@ -19795,19 +19829,29 @@ html, body { background: transparent; overflow: hidden; }
                 # "já expirado" (vermelho mais escuro, problema acontecendo
                 # agora) e "expira em Xh Ymin" (vermelho normal, com o tempo
                 # real restante calculado na hora — não mais um texto fixo
-                # "até 48h" igual pra tudo que caísse na janela).
+                # "até 48h" igual pra tudo que caísse na janela). Cada uma
+                # tem um title= (tooltip nativo do navegador, aparece ao
+                # passar o mouse) listando os ids dos anúncios por trás do
+                # número, pra dar pra conferir na prática.
                 _partes_urgencia_link = []
+                def _esc_tooltip(txt: str) -> str:
+                    return (txt.replace("&", "&amp;").replace('"', "&quot;")
+                               .replace("<", "&lt;").replace(">", "&gt;"))
                 if _l.get("expirados"):
                     _n_exp = _l["expirados"]
+                    _tooltip_exp = _esc_tooltip(_montar_tooltip_ids(_l.get("ids_expirados")))
                     _partes_urgencia_link.append(
-                        f'<span style="color:#b91c1c;font-weight:700">{_n_exp} '
+                        f'<span title="{_tooltip_exp}" style="color:#b91c1c;font-weight:700;'
+                        f'cursor:help;border-bottom:1px dotted #b91c1c">{_n_exp} '
                         f'{"já expirado" if _n_exp == 1 else "já expirados"}</span>'
                     )
                 if _l.get("expirando"):
                     _prox_exp = _l.get("proxima_expiracao")
                     _txt_restante = _formatar_tempo_restante(_prox_exp) if _prox_exp else f"até {JANELA_EXPIRACAO_LINK_HORAS}h"
+                    _tooltip_expirando = _esc_tooltip(_montar_tooltip_ids(_l.get("ids_expirando")))
                     _partes_urgencia_link.append(
-                        f'<span style="color:#e05252;font-weight:700">expira em {_txt_restante}</span>'
+                        f'<span title="{_tooltip_expirando}" style="color:#e05252;font-weight:700;'
+                        f'cursor:help;border-bottom:1px dotted #e05252">expira em {_txt_restante}</span>'
                     )
                 _expira_html = f' ({" · ".join(_partes_urgencia_link)})' if _partes_urgencia_link else ""
                 _linhas_html += f"""
@@ -19879,10 +19923,12 @@ html, body { background: transparent; overflow: hidden; }
         # vence dentro da janela; _total_expirados_link = já venceu.
         _total_expirando_link = 0
         _total_expirados_link = 0
+        _todos_ids_expirados_link = []
         for _e in _pendentes_link_dict.values():
             _u = _classificar_links_expiracao(_e.get("data", []))
             _total_expirando_link += _u["expirando"]
             _total_expirados_link += _u["expirados"]
+            _todos_ids_expirados_link.extend(_u["ids_expirados"])
         _total_urgente_link = _total_expirando_link + _total_expirados_link
         # O texto principal vira a frase de urgência (quantos anúncios têm
         # link já expirado ou prestes a expirar) em vez do % cru de
@@ -19900,8 +19946,14 @@ html, body { background: transparent; overflow: hidden; }
             )
             _texto_fracao_links = f"{_total_pendentes_link} de {_total_ads_geral} anúncios"
             if _total_expirados_link:
+                _tooltip_total_exp = (
+                    _montar_tooltip_ids(_todos_ids_expirados_link)
+                    .replace("&", "&amp;").replace('"', "&quot;")
+                    .replace("<", "&lt;").replace(">", "&gt;")
+                )
                 _texto_fracao_links += (
-                    f' <span style="color:#b91c1c;font-weight:700">'
+                    f' <span title="{_tooltip_total_exp}" style="color:#b91c1c;font-weight:700;'
+                    f'cursor:help;border-bottom:1px dotted #b91c1c">'
                     f'({_total_expirados_link} já {"expirado" if _total_expirados_link == 1 else "expirados"})</span>'
                 )
         _detalhe_link = ""
@@ -19941,6 +19993,8 @@ html, body { background: transparent; overflow: hidden; }
                 "expirando": _urgencia_empresa["expirando"],
                 "expirados": _urgencia_empresa["expirados"],
                 "proxima_expiracao": _urgencia_empresa["proxima_expiracao"],
+                "ids_expirados": _urgencia_empresa["ids_expirados"],
+                "ids_expirando": _urgencia_empresa["ids_expirando"],
                 "ultima_coleta": (_ads_cache_uso.get(nome) or {}).get("ts", ""),
             }
 

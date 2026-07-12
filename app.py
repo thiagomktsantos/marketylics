@@ -20519,6 +20519,15 @@ html, body { background: transparent; overflow: hidden; }
             _refazer_ids = []
             _excluir_ids = []
             _cards_notif_html = ""
+            # Acumulador de altura real, card a card (em vez de "n * 92px
+            # fixo"): cada card fechado (o normal) ocupa só a linha do
+            # cabeçalho (~68px); só os que abrem sozinhos por padrão
+            # (migração/transcrição rodando AGORA, ver _rodando_agora_ativ)
+            # somam a altura extra do corpo (texto + barra de progresso).
+            # Isso evita tanto sobrar espaço vazio (estimativa alta demais
+            # quando a maioria dos cards está fechada) quanto cortar cards
+            # (estimativa baixa demais quando vários estão abertos).
+            _altura_total_estim = 20
 
             for _pos, _a in enumerate(_todas_atividades):
                 _ui = dict(_ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"]))
@@ -20699,6 +20708,17 @@ html, body { background: transparent; overflow: hidden; }
                     if _tem_detalhe else ""
                 )
 
+                _altura_total_estim += 68  # cabeçalho do card (fechado) + margem
+                if _rodando_agora_ativ:
+                    # corpo forçado aberto: soma texto de detalhe + barra de
+                    # progresso (os únicos elementos possíveis nesse estado —
+                    # "rodando agora" nunca tem botão "Refazer")
+                    _altura_total_estim += 16  # padding do corpo
+                    if _detalhe_safe:
+                        _altura_total_estim += 40
+                    if _progresso_ativ:
+                        _altura_total_estim += 38
+
                 _cards_notif_html += f"""
     <div class="notif-card">
         <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
@@ -20714,26 +20734,20 @@ html, body { background: transparent; overflow: hidden; }
         {_body_bloco}
     </div>"""
 
-            # Altura FIXA do iframe (não depende mais de "_n_ativ * estimativa_px").
-            # A estimativa por card (92px) misturava cards fechados (~60px) com
-            # cards abertos por padrão (progresso rodando, ~150px+), então a
-            # altura calculada quase nunca batia com a real. O JS (syncH)
-            # corrigia depois, mas como isso roda dentro de um
-            # st.fragment(run_every="2s"), o Python reenviava a altura errada
-            # de novo a cada 2s — antes do JS conseguir se firmar — e sobrava
-            # um espaço vazio enorme embaixo do último card (ou, no sentido
-            # contrário, cards cortados). Trocado por: iframe com altura fixa
-            # e a lista de cards rolando DENTRO dele (ver .notif-scroll-wrap
-            # no CSS abaixo) — assim a altura nunca depende de contar cards
-            # nem de JS correndo a tempo.
-            _altura_fixa_cards = 640
+            # Altura calculada card a card (ver _altura_total_estim acumulada
+            # no loop acima) em vez de um valor fixo — um valor fixo com
+            # scroll interno criava DUAS barras de rolagem na tela (a da
+            # página toda + a de dentro da caixa de notificações), o que é
+            # pior UX do que uma altura calculada com folga pequena. Como a
+            # estimativa por card agora é precisa (cabeçalho ~68px, e só os
+            # cards abertos por padrão somam a altura real do corpo), o erro
+            # acumulado fica pequeno mesmo com muitas atividades — o JS
+            # (syncH) só faz o ajuste fino final.
+            _altura_estim_cards = _altura_total_estim
 
             NOTIF_CSS = """
     * { margin:0; padding:0; box-sizing:border-box; }
-    html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; height:100%; }
-    .notif-scroll-wrap {
-        height:100%; overflow-y:auto; overflow-x:hidden; padding-right:4px;
-    }
+    html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
     .notif-card {
         background:#ffffff; border:1px solid #e5e7eb; border-radius:14px;
         overflow:hidden; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
@@ -20822,10 +20836,21 @@ html, body { background: transparent; overflow: hidden; }
     <style>
     {NOTIF_CSS}
     </style>
-    <div class="notif-scroll-wrap">
+    <div>
     {_cards_notif_html}
     </div>
     <script>
+    function syncH() {{
+        var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+        var frames = window.parent.document.querySelectorAll('iframe');
+        for (var i = 0; i < frames.length; i++) {{
+            try {{ if (frames[i].contentWindow === window) {{
+                frames[i].style.height = (h + 8) + 'px';
+                break;
+            }} }} catch(e) {{}}
+        }}
+    }}
+
     function toggleNotif(idx) {{
         var b = document.getElementById('nb_' + idx);
         if (!b) return;
@@ -20833,6 +20858,7 @@ html, body { background: transparent; overflow: hidden; }
         b.style.display = open ? 'none' : 'block';
         var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
         chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+        setTimeout(syncH, 100);
     }}
 
     function toggleMaisInfo(idx) {{
@@ -20840,6 +20866,7 @@ html, body { background: transparent; overflow: hidden; }
         if (!b) return;
         var open = b.style.display !== 'none';
         b.style.display = open ? 'none' : 'block';
+        setTimeout(syncH, 100);
     }}
 
     function refazerNotif(idx) {{
@@ -20946,8 +20973,11 @@ html, body { background: transparent; overflow: hidden; }
     // container "_ghost_wrap_cards_notif" (ver logo abaixo, no Python) —
     // era esse único container, não mais os botões individuais, que
     // resolvia o espaço vazio acumulado.
+    if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+    setTimeout(syncH, 150);
+    setTimeout(syncH, 500);
     </script>
-    """, height=_altura_fixa_cards, scrolling=False)
+    """, height=_altura_estim_cards, scrolling=False)
 
             # Botões nativos ocultos (um por atividade que pode ser "refeita") —
             # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse

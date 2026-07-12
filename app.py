@@ -20714,20 +20714,26 @@ html, body { background: transparent; overflow: hidden; }
         {_body_bloco}
     </div>"""
 
-            # Altura estimada do iframe calculada em Python (determinística) em vez
-            # de depender só do JS pra medir e redimensionar depois. O JS que
-            # busca o próprio iframe dentro do DOM do Streamlit (window.parent.
-            # document) é frágil — quando falha ou demora, o iframe fica menor
-            # que o conteúdo real e o que vem depois na página (o expander
-            # "Excluir notificações") acaba sobrepondo os cards. Começando já
-            # com uma altura próxima da real, o JS só precisa fazer um ajuste
-            # fino (ex.: quando um título quebra em 2 linhas), não o trabalho
-            # todo — o que elimina a sobreposição visual na maioria dos casos.
-            _altura_estim_cards = _n_ativ * 92 + 24
+            # Altura FIXA do iframe (não depende mais de "_n_ativ * estimativa_px").
+            # A estimativa por card (92px) misturava cards fechados (~60px) com
+            # cards abertos por padrão (progresso rodando, ~150px+), então a
+            # altura calculada quase nunca batia com a real. O JS (syncH)
+            # corrigia depois, mas como isso roda dentro de um
+            # st.fragment(run_every="2s"), o Python reenviava a altura errada
+            # de novo a cada 2s — antes do JS conseguir se firmar — e sobrava
+            # um espaço vazio enorme embaixo do último card (ou, no sentido
+            # contrário, cards cortados). Trocado por: iframe com altura fixa
+            # e a lista de cards rolando DENTRO dele (ver .notif-scroll-wrap
+            # no CSS abaixo) — assim a altura nunca depende de contar cards
+            # nem de JS correndo a tempo.
+            _altura_fixa_cards = 640
 
             NOTIF_CSS = """
     * { margin:0; padding:0; box-sizing:border-box; }
-    html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+    html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; height:100%; }
+    .notif-scroll-wrap {
+        height:100%; overflow-y:auto; overflow-x:hidden; padding-right:4px;
+    }
     .notif-card {
         background:#ffffff; border:1px solid #e5e7eb; border-radius:14px;
         overflow:hidden; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.04);
@@ -20816,21 +20822,10 @@ html, body { background: transparent; overflow: hidden; }
     <style>
     {NOTIF_CSS}
     </style>
-    <div>
+    <div class="notif-scroll-wrap">
     {_cards_notif_html}
     </div>
     <script>
-    function syncH() {{
-        var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-        var frames = window.parent.document.querySelectorAll('iframe');
-        for (var i = 0; i < frames.length; i++) {{
-            try {{ if (frames[i].contentWindow === window) {{
-                frames[i].style.height = (h + 8) + 'px';
-                break;
-            }} }} catch(e) {{}}
-        }}
-    }}
-
     function toggleNotif(idx) {{
         var b = document.getElementById('nb_' + idx);
         if (!b) return;
@@ -20838,7 +20833,6 @@ html, body { background: transparent; overflow: hidden; }
         b.style.display = open ? 'none' : 'block';
         var chevrons = document.querySelectorAll('.notif-chevron[data-idx="' + idx + '"]');
         chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
-        setTimeout(syncH, 100);
     }}
 
     function toggleMaisInfo(idx) {{
@@ -20846,7 +20840,6 @@ html, body { background: transparent; overflow: hidden; }
         if (!b) return;
         var open = b.style.display !== 'none';
         b.style.display = open ? 'none' : 'block';
-        setTimeout(syncH, 100);
     }}
 
     function refazerNotif(idx) {{
@@ -20948,33 +20941,13 @@ html, body { background: transparent; overflow: hidden; }
         if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
     }});
 
-    function colapsarGhosts() {{
-        // Acha pelos containers cuja classe contém "st-key-btn_refazer_ativ_"
-        // ou "st-key-btn_excluir_ativ_" (mesmo prefixo de key usado no
-        // Python) em vez de tentar casar pelo texto do botão: o Streamlit
-        // renderiza o label do st.button como markdown, então um texto tipo
-        // "_refazer_ativ_123_" perde os "_" das pontas (viram itálico) e
-        // nunca bate com o texto original — foi exatamente isso que quebrou
-        // a tentativa anterior.
-        var doc = window.parent.document;
-        var alvos = doc.querySelectorAll(
-            '[class*="st-key-btn_refazer_ativ_"], [class*="st-key-btn_excluir_ativ_"]'
-        );
-        alvos.forEach(function(c) {{
-            var el = c;
-            while (el.parentElement && el.parentElement.children.length === 1) {{
-                el = el.parentElement;
-            }}
-            el.style.setProperty('display', 'none', 'important');
-        }});
-    }}
-    [150, 400, 800, 1500].forEach(function(t) {{ setTimeout(colapsarGhosts, t); }});
-
-    if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
-    setTimeout(syncH, 150);
-    setTimeout(syncH, 500);
+    // Não precisa mais de colapsarGhosts() aqui: os botões nativos ocultos
+    // (refazer/excluir) já ficam 100% escondidos de uma vez só via CSS no
+    // container "_ghost_wrap_cards_notif" (ver logo abaixo, no Python) —
+    // era esse único container, não mais os botões individuais, que
+    // resolvia o espaço vazio acumulado.
     </script>
-    """, height=_altura_estim_cards, scrolling=False)
+    """, height=_altura_fixa_cards, scrolling=False)
 
             # Botões nativos ocultos (um por atividade que pode ser "refeita") —
             # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse

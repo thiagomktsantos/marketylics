@@ -10725,7 +10725,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
-.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:220px; }}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:200px; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-coletar-loading {{ background:#3a5170; cursor:not-allowed; opacity:0.85; }}
 .btn-coletar-loading:hover {{ background:#3a5170; }}
@@ -15841,7 +15841,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
-.btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 0; min-width:240px; }}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 0; min-width:200px; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}

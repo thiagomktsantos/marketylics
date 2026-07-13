@@ -10617,7 +10617,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 '<button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">'
                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
-                'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
+                'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
                 '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
                 'Buscar / Atualizar Anúncios</button>'
             )

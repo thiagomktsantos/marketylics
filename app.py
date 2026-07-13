@@ -10551,7 +10551,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 {_av_html_h}
                 <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
-                    <div style="font-size:11px;color:#9ca3af;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_sub_h}</div>
                 </div>
                 <span style="display:inline-flex;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
             </div>"""
@@ -10591,7 +10590,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 <div class="dd-icon">{_av_item_html}</div>
                 <div class="dd-info">
                     <span class="dd-nome">{_e_h["nome"]}</span>
-                    <div class="dd-handle">{_sub_d}</div>
                 </div>
                 <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
             </div>"""
@@ -10658,13 +10656,16 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:10px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
-.dd-item:last-child {{ margin-bottom:0; }}
+.dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
 .dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item:last-child:hover {{ background:#17406a; border-color:#17406a; box-shadow:none; }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
+.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #3b82f6; }}
 .dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
+.dd-item:last-child .dd-handle {{ color:#94a3b8; }}
 .dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
@@ -10713,7 +10714,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
 </div>
@@ -15823,7 +15824,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <div class="dd-icon" id="dd-trigger-icon"></div>
                 <div class="dd-info">
                     <span class="dd-nome" id="dd-trigger-nome"></span>
-                    <div class="dd-handle" id="dd-trigger-handle"></div>
                 </div>
                 <span id="dd-trigger-badge"></span>
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -15839,7 +15839,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. coleta: <b>{ultima_coleta}</b></button>
             <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
+            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if ultima_coleta else ''}
     </div>
 </div>
@@ -15869,7 +15869,6 @@ function renderTrigger() {{
     var e = EMPRESAS_CTRL[SELECTED_IDX];
     if (!e) return;
     document.getElementById('dd-trigger-nome').textContent = e.nome;
-    document.getElementById('dd-trigger-handle').textContent = e.handle;
     document.getElementById('dd-trigger-badge').innerHTML = badgeHtml(e.tipo);
     document.getElementById('dd-trigger-icon').innerHTML = iconSvg();
 }}
@@ -15884,7 +15883,6 @@ function renderList() {{
             '<div class="dd-icon">' + iconSvg() + '</div>'
             + '<div class="dd-info">'
             + '<span class="dd-nome">' + e.nome + '</span>'
-            + '<div class="dd-handle">' + e.handle + '</div>'
             + '</div>'
             + badgeHtml(e.tipo);
         item.onclick = function() {{ selectItem(i); }};

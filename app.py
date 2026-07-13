@@ -18402,9 +18402,18 @@ Seguidores: {r.get('seguidores',0)} | Posts: {r.get('total_posts',0)} | Eng. mé
                 _titulo_modal = f"Postagens — {r['nome']}"
                 _render_modal_redes_ia("gerando", f"Postagens — {r['nome']}", 50, _ph)
                 try:
-                    resp_post = gerar_com_ia(f"""
-{perfil_ctx}
-Analise os CRIATIVOS e as LEGENDAS (copy) deste perfil Instagram.
+                    import requests as _req
+                    import base64 as _b64
+
+                    n_reels_ctx = sum(1 for p in posts_list[:12] if p.get("is_video"))
+                    n_imgs_ctx  = len(posts_list[:12]) - n_reels_ctx
+
+                    parts = [f"""{perfil_ctx}
+Analise os CRIATIVOS e as LEGENDAS (copy) deste perfil Instagram com base nos
+dados, imagens reais e transcrições de áudio dos Reels abaixo.
+
+Perfil tem {n_imgs_ctx} posts de imagem/carrossel e {n_reels_ctx} Reels entre os últimos considerados.
+
 Responda em português com:
 
 ### Análise de Criativo
@@ -18422,13 +18431,86 @@ Responda em português com:
 **O que melhorar:** (2 pontos)
 
 Seja direto e objetivo.
-""")
-                    st.session_state[chave_criativo] = resp_post.text
-                    st.session_state[chave_copy] = resp_post.text
+
+Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando disponíveis):"""]
+
+                    # Envia até 6 imagens reais (posts de imagem/carrossel) pro Gemini —
+                    # mesmo padrão usado na análise de Anúncios.
+                    imgs_enviadas = 0
+                    for i, p in enumerate(posts_list[:12]):
+                        if imgs_enviadas >= 6:
+                            break
+                        if p.get("is_video"):
+                            continue
+                        img_url = (
+                            (p.get("carousel_imgs_hd") or [None])[0]
+                            or p.get("thumb_hd")
+                            or p.get("display_url")
+                        )
+                        if not img_url:
+                            continue
+                        try:
+                            headers = {
+                                "User-Agent": "Mozilla/5.0",
+                                "Referer": "https://www.instagram.com/",
+                            }
+                            r_img = _req.get(img_url, headers=headers, timeout=8, stream=True)
+                            if r_img.status_code == 200:
+                                ct = r_img.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                                if not ct.startswith("image/"):
+                                    ct = "image/jpeg"
+                                img_data = _b64.b64encode(r_img.content).decode("utf-8")
+                                parts.append(f"\nPost {i+1} ({p.get('date','') or '—'}):")
+                                parts.append({
+                                    "inline_data": {
+                                        "mime_type": ct,
+                                        "data": img_data,
+                                    }
+                                })
+                                imgs_enviadas += 1
+                        except Exception:
+                            continue
+
+                    # Reels não são enviados pro Gemini como vídeo — manda a
+                    # transcrição do áudio (via Whisper), reaproveitando a mesma
+                    # obter_transcricao_video() já usada nos Anúncios (inclusive
+                    # o fallback de transcrever na hora se não houver nada salvo).
+                    vids_transcritos = 0
+                    _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
+                    for i, p in enumerate(posts_list[:12]):
+                        if not p.get("is_video") or not p.get("video_url"):
+                            continue
+                        transcricao_post = obter_transcricao_video(p["video_url"], _user_id_transcricao)
+                        if transcricao_post:
+                            parts.append(
+                                f"\nTranscrição do áudio do Reel do Post {i+1}: "
+                                f"{_truncar(transcricao_post, 600)}"
+                            )
+                            vids_transcritos += 1
+
+                    # Converte parts para formato Gemini multimodal
+                    gemini_parts = []
+                    for p_part in parts:
+                        if isinstance(p_part, str):
+                            gemini_parts.append(p_part)
+                        elif isinstance(p_part, dict) and "inline_data" in p_part:
+                            gemini_parts.append(p_part)
+
+                    resp_post = gerar_com_ia(gemini_parts)
+
+                    _nota_escopo_post = (
+                        f"\n\n---\n_📊 Base da análise: {len(posts_list[:12])} posts recentes · "
+                        f"{imgs_enviadas} imagem(ns) analisada(s) visualmente · "
+                        f"{vids_transcritos} Reel(s) transcrito(s) por áudio (Whisper)._"
+                    )
+                    texto_relatorio_post = resp_post.text + _nota_escopo_post
+
+                    st.session_state[chave_criativo] = texto_relatorio_post
+                    st.session_state[chave_copy] = texto_relatorio_post
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Postagens — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp_post.text,
+                        "relatorio": texto_relatorio_post,
                         "tipo": "postagem",
                         "perfil": r.get("handle", ""),
                         "nome": r["nome"],

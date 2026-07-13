@@ -91,22 +91,60 @@ r2_client = get_r2_client()
 # CPU do próprio servidor — sem chamar API paga nenhuma. O "custo" aqui é
 # tempo de processamento, não dinheiro.
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_whisper_model():
     """Carrega o modelo Whisper local uma única vez e mantém em cache
     pelo resto do processo. Modelo "base": bom equilíbrio entre
     qualidade e velocidade/RAM em CPU. Retorna None se o pacote
-    faster-whisper não estiver instalado ou o carregamento falhar —
-    nesse caso os vídeos seguem sem transcrição, sem quebrar o resto
-    do app."""
-    try:
+    faster-whisper não estiver instalado, se o download/carregamento
+    travar (ver timeout abaixo) ou se falhar por qualquer outro motivo
+    — nesse caso os vídeos seguem sem transcrição, sem quebrar o resto
+    do app.
+
+    IMPORTANTE: na primeira execução em cada novo container (todo
+    redeploy no Streamlit Cloud é um container novo), o faster-whisper
+    baixa os pesos do modelo lá do Hugging Face Hub. Sem HF_TOKEN
+    configurado nos secrets, esse download é anônimo e pode ficar lento
+    ou até travar (rate limit / rede instável) — e como isso rodava
+    direto no import do módulo (fora de função, antes de qualquer UI
+    do Streamlit), um download travado prendia o app inteiro na tela
+    de carregamento pra sempre. Por isso o carregamento roda numa
+    thread separada com timeout (mesmo padrão já usado em
+    _transcrever_video_whisper pro transcribe()) e só é chamado sob
+    demanda (lazy, ver whisper_model_ou_none() abaixo), nunca no
+    import."""
+    import concurrent.futures as _cf
+
+    def _carregar():
         from faster_whisper import WhisperModel
         tamanho_modelo = st.secrets.get("WHISPER_MODEL_SIZE", "base")
         return WhisperModel(tamanho_modelo, device="cpu", compute_type="int8")
+
+    _timeout_carregar = st.secrets.get("WHISPER_LOAD_TIMEOUT_SEGUNDOS", 90)
+    try:
+        with _cf.ThreadPoolExecutor(max_workers=1) as _exec:
+            _future = _exec.submit(_carregar)
+            try:
+                return _future.result(timeout=_timeout_carregar)
+            except _cf.TimeoutError:
+                # Não dá pra matar a thread de download em andamento (ela
+                # continua rodando sozinha em segundo plano, mesmo depois
+                # do timeout — mesmo comportamento aceito no transcribe()).
+                # O importante é o app não ficar preso esperando por ela.
+                return None
     except Exception:
         return None
 
-whisper_model = get_whisper_model()
+
+def whisper_model_ou_none():
+    """Acesso lazy ao modelo Whisper: só dispara o carregamento (e o
+    possível download do Hugging Face Hub) na primeira vez que alguém
+    realmente precisa transcrever um vídeo — nunca no import do módulo.
+    Assim, mesmo que o download trave ou demore, a UI do Streamlit sobe
+    normalmente e o app fica utilizável; só a transcrição por Whisper
+    fica indisponível nesse meio-tempo (fallback já tratado em quem
+    chama isso, via checagens de `is None`)."""
+    return get_whisper_model()
 
 
 # ---------------------------------------------------
@@ -442,7 +480,8 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
     tiver carregado, o ffmpeg não estiver disponível, o vídeo não tiver
     áudio, ou qualquer etapa falhar — nunca quebra o fluxo de
     coleta/análise."""
-    if whisper_model is None:
+    _wm = whisper_model_ou_none()
+    if _wm is None:
         return ""
 
     import subprocess
@@ -493,7 +532,7 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
             # Whisper continua rodando sozinha em segundo plano até
             # terminar, mas não bloqueia mais ninguém.
             def _transcrever_sync():
-                segmentos, _info = whisper_model.transcribe(audio, language="pt", vad_filter=True)
+                segmentos, _info = _wm.transcribe(audio, language="pt", vad_filter=True)
                 return " ".join(s.text.strip() for s in segmentos).strip()
 
             from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
@@ -530,7 +569,7 @@ def obter_transcricao_video(url_video: str, user_id: str = None) -> str:
     except Exception:
         pass
 
-    if not texto and whisper_model is not None:
+    if not texto and whisper_model_ou_none() is not None:
         try:
             resp = requests.get(url_video, timeout=30)
             resp.raise_for_status()
@@ -1214,7 +1253,7 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
     mesmo jeito que iniciar_migracao_midia_background faz com
     `migracao_midia`. Retorna na hora — nunca bloqueia quem chamou
     (migração, retry automático, etc.)."""
-    if not user_id or not empresa or whisper_model is None:
+    if not user_id or not empresa or whisper_model_ou_none() is None:
         return
     with _lock_transcricao_pendente:
         if (user_id, empresa) in _transcricoes_empresa_ativas_agora:
@@ -1347,7 +1386,7 @@ def iniciar_transcricao_reels_pendente_background(user_id: str):
     reaproveita) a atividade `transcricao_reel` e dispara o processamento
     em segundo plano. Retorna na hora, nunca bloqueia quem chamou (mesmo
     padrão de iniciar_transcricao_pendente_background pros Anúncios)."""
-    if not user_id or whisper_model is None:
+    if not user_id or whisper_model_ou_none() is None:
         return
     with _lock_transcricao_reels_pendente:
         if user_id in _reels_transcricao_ativa_agora:

@@ -6396,7 +6396,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-icon-geral img {{ width:100%; height:100%; object-fit:cover; border-radius:9px; }}
 .dd-info-geral {{ min-width:0; margin-left:10px; margin-right:10px; flex:1; }}
 .dd-nome-geral {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
+    font-size:13px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle-geral {{ font-size:12px; color:#9ca3af; }}
@@ -14643,7 +14643,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-icon svg {{ width:18px; height:18px; }}
 .dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
 .dd-nome {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
+    font-size:13px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle {{ font-size:12px; color:#9ca3af; }}
@@ -15798,7 +15798,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-icon svg {{ width:18px; height:18px; }}
 .dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
 .dd-nome {{
-    font-size:14px; font-weight:700; color:#1a2e4a;
+    font-size:13px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle {{ font-size:12px; color:#9ca3af; }}

@@ -12221,8 +12221,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         <div style="flex:1;min-width:0">
             <div style="font-size:17px;font-weight:700;color:#111827">{nome}</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span style="font-size:13px;color:#6b7280;font-weight:500">{badge_lbl}</span>
-                <span style="color:#d1d5db;font-size:12px">·</span>
                 <span style="font-size:13px;color:#6b7280">Página: {page_display}</span>
             </div>
         </div>

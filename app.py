@@ -10594,16 +10594,14 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         _emp_dd_ghost_css_parts.append(f"""
         .st-key-{_k_comp_h},
         .st-key-ads_buscar_header_btn,
-        .st-key-ads_limpar_cache_btn,
-        .st-key-ads_forcar_atualizacao_btn {{
+        .st-key-ads_limpar_cache_btn {{
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
             opacity:0 !important; pointer-events:none !important; display:none !important;
         }}
         .stElementContainer:has(.st-key-{_k_comp_h}),
         .stElementContainer:has(.st-key-ads_buscar_header_btn),
-        .stElementContainer:has(.st-key-ads_limpar_cache_btn),
-        .stElementContainer:has(.st-key-ads_forcar_atualizacao_btn) {{
+        .stElementContainer:has(.st-key-ads_limpar_cache_btn) {{
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
         }}
@@ -10648,18 +10646,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 st.toast("Cache limpo!", icon="🗑️")
                 st.rerun()
 
-        # Ghost: forçar atualização — ignora tudo que já está em
-        # `session_state` e busca o cache direto do Supabase. Serve de
-        # via de escape manual pra qualquer cenário em que a sincronização
-        # automática (acima) ainda não tenha rodado nesse render.
-        if st.button("ads_forcar_atualizacao", key="ads_forcar_atualizacao_btn"):
-            st.session_state.ads_cache = carregar_cache_ads(forcar=True)
-            st.session_state["_ads_ultima_atividade_id_vista"] = (
-                _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
-            )
-            st.toast("Anúncios atualizados!", icon="🔄")
-            st.rerun()
- 
         # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
         _djs = "[]"
         _fn = ""
@@ -10860,8 +10846,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
-            <button class="link-btn" onclick="triggerForcar()" title="Rebusca o cache mais recente do servidor, ignorando o que já foi carregado nesta sessão"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Atualizar</button>
-            <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()">Limpar</button>
         </div>''' if _ultima_ts else ''}
     </div>
@@ -10894,7 +10878,6 @@ function triggerGhost(label){{
     for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
 }}
 function triggerBuscar(){{ triggerGhost('ads_buscar_header_trigger'); }}
-function triggerForcar(){{ triggerGhost('ads_forcar_atualizacao'); }}
 function triggerLimpar() {{
     abrirConfirmacao(
         '🗑️ Limpar cache de anúncios',

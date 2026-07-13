@@ -291,13 +291,6 @@ def _formatar_tempo_restante(quando, agora=None) -> str:
         return f"{horas}h {minutos}min" if minutos else f"{horas}h"
     return f"{minutos}min"
 
-def _contar_links_expirando(ads: list, horas: int = JANELA_EXPIRACAO_LINK_HORAS) -> int:
-    """Mantida por compatibilidade — soma expirados + expirando (ver
-    _classificar_links_expiracao). Prefira a função nova onde for
-    preciso distinguir os dois grupos."""
-    _c = _classificar_links_expiracao(ads, horas)
-    return _c["expirados"] + _c["expirando"]
-
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
     # Padrão temporário "pro" enquanto não existe billing — evita travar
@@ -586,28 +579,6 @@ def _extrair_thumbnail_video(conteudo: bytes):
         except Exception:
             continue
     return None
-
-def obter_thumbnail_video(url_video: str) -> str:
-    """Devolve a URL permanente (R2) da imagem de capa do vídeo — o frame
-    extraído e salvo no momento do upload/reprocessamento. Usada nas
-    análises de IA no lugar de mandar o vídeo em si."""
-    if not url_video:
-        return ""
-
-    cache = st.session_state.setdefault("_cache_thumbs_video", {})
-    if url_video in cache:
-        return cache[url_video]
-
-    url_thumb = ""
-    try:
-        res = supabase.table("midias").select("thumbnail_url").eq("url_cdn", url_video).execute()
-        if res.data and (res.data[0].get("thumbnail_url") or "").strip():
-            url_thumb = res.data[0]["thumbnail_url"].strip()
-    except Exception:
-        pass
-
-    cache[url_video] = url_thumb
-    return url_thumb
 
 def _registrar_falha_midia(user_id: str, empresa: str, ad_id: str, tipo: str,
                             url_origem: str, erro) -> None:
@@ -1381,19 +1352,6 @@ def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
         return res.data or []
     except Exception:
         return []
-
-def contar_atividades_pendentes(user_id: str) -> int:
-    try:
-        res = (
-            supabase.table("atividades")
-            .select("id", count="exact")
-            .eq("user_id", user_id)
-            .in_("status", ["pendente", "em_andamento"])
-            .execute()
-        )
-        return res.count or 0
-    except Exception:
-        return 0
 
 def resumo_sino_atividades(user_id: str) -> dict:
     """Conta atividades que ainda pedem atenção, separando por urgência —
@@ -2223,19 +2181,6 @@ def salvar_ads_analises():
     except Exception as e:
         st.toast(f"Erro ao salvar análises de ads: {e}", icon="⚠️")
 
-def salvar_analises():
-    """DEPRECATED: mantido só por compatibilidade — regrava as 3 listas inteiras.
-    Prefira salvar_analises_padrao() / salvar_redes_analises() / salvar_ads_analises(),
-    que fazem update parcial (só a coluna que de fato mudou)."""
-    try:
-        supabase.table("ci_dados").update({
-            "analises_salvas": st.session_state.get("analises_salvas", []),
-            "redes_analises_salvas": st.session_state.get("redes_analises_salvas", []),
-            "ads_analises_salvas": st.session_state.get("ads_analises_salvas", []),
-        }).eq("user_id", st.session_state.user.id).execute()
-    except Exception as e:
-        st.toast(f"Erro ao salvar análises: {e}", icon="⚠️")
-
 # ---------------------------------------------------
 # ESTADO DA SESSÃO
 # ---------------------------------------------------
@@ -2300,21 +2245,6 @@ def trocar_pagina(destino):
 # ---------------------------------------------------
 # FUNÇÃO IA — BATTLE CARD
 # ---------------------------------------------------
-
-def consultar_ia(prompt):
-    if gemini_model is None:
-        return "Erro: Chave API Gemini não configurada."
-    try:
-        emp = st.session_state.dados["minha_empresa"]
-        contexto = f"""
-Empresa: {emp['nome']}
-Setor: {emp['setor']}
-Instagram: {emp['instagram']}
-"""
-        resposta = gerar_com_ia(contexto + "\n" + prompt)
-        return resposta.text
-    except Exception as e:
-        return f"Erro: {str(e)}"
 
 def montar_contexto_concorrente(nome: str) -> str:
     """Monta um resumo em texto dos dados REAIS já coletados sobre um
@@ -4616,51 +4546,6 @@ function triggerPerfilBtn(label) {
 # HELPER — CABEÇALHO COM PERÍODO
 # ---------------------------------------------------
 
-def cabecalho_analise(titulo, subtitulo=""):
-    import datetime
-    h1, h2 = st.columns([6, 3])
-    with h1:
-        st.markdown(
-            f"<h1 style='font-size:28px;font-weight:600;color:#111827;letter-spacing:-0.5px;margin:0;font-family:DM Sans,sans-serif'>{titulo}</h1>",
-            unsafe_allow_html=True
-        )
-        if subtitulo:
-            st.markdown(f"<div style='font-size:16px;color:#6b7280;margin-top:3px'>{subtitulo}</div>", unsafe_allow_html=True)
-    with h2:
-        periodo = st.selectbox(
-            "Período",
-            ["Últimos 7 dias", "Últimos 30 dias", "Últimos 90 dias", "Últimos 12 meses", "Todo o período"],
-            index=1,
-            label_visibility="collapsed"
-        )
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>", unsafe_allow_html=True)
-    periodo_map = {
-        "Últimos 7 dias": 7, "Últimos 30 dias": 30,
-        "Últimos 90 dias": 90, "Últimos 12 meses": 365, "Todo o período": None,
-    }
-    dias = periodo_map[periodo]
-    if dias:
-        data_inicio = (datetime.date.today() - datetime.timedelta(days=dias)).strftime("%Y-%m-%d")
-    else:
-        data_inicio = None
-    return periodo, data_inicio
-
-def cabecalho_simples(titulo, subtitulo=""):
-    st.markdown(
-        f"<h1 style='font-size:28px;font-weight:600;color:#111827;"
-        f"letter-spacing:-0.5px;margin:0;font-family:DM Sans,sans-serif'>{titulo}</h1>",
-        unsafe_allow_html=True,
-    )
-    if subtitulo:
-        st.markdown(
-            f"<div style='font-size:16px;color:#6b7280;margin-top:3px'>{subtitulo}</div>",
-            unsafe_allow_html=True,
-        )
-    st.markdown(
-        "<hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>",
-        unsafe_allow_html=True,
-    )
-
 # ---------------------------------------------------
 # FUNÇÕES GLOBAIS
 # ---------------------------------------------------
@@ -4784,24 +4669,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
 # Facebook (que pode já ter expirado) — a mídia já está no nosso próprio
 # bucket, então baixamos da nossa cópia, comprimimos, subimos a versão
 # nova, e atualizamos as referências (tabela midias + ads_cache).
-
-def _substituir_url_em_ads_cache(ads_cache: dict, url_antiga: str, url_nova: str) -> dict:
-    """Troca uma URL de mídia pela nova em todas as listas images/videos
-    do ads_cache, em qualquer empresa/anúncio onde ela apareça."""
-    novo = {}
-    for empresa, entry in ads_cache.items():
-        entry_novo = dict(entry)
-        ads_novos = []
-        for ad in entry.get("data", []):
-            ad_novo = dict(ad)
-            if url_antiga in (ad_novo.get("images") or []):
-                ad_novo["images"] = [url_nova if u == url_antiga else u for u in ad_novo["images"]]
-            if url_antiga in (ad_novo.get("videos") or []):
-                ad_novo["videos"] = [url_nova if u == url_antiga else u for u in ad_novo["videos"]]
-            ads_novos.append(ad_novo)
-        entry_novo["data"] = ads_novos
-        novo[empresa] = entry_novo
-    return novo
 
 def _comprimir_midia_existente(tipo: str, conteudo: bytes, mime_type: str):
     """Roteia pra função de compressão certa (imagem ou vídeo) de acordo

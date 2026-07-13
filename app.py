@@ -18472,10 +18472,10 @@ function buildGrid(posts) {{
             : '';
         var transcBadge = '';
         if (p.is_video && p.transcricao_status === 'pronta') {{
-            var tTxt = (p.transcricao_texto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-            transcBadge = '<div class="transcricao-badge pronta" title="' + tTxt + '">💬 Transcrição</div>';
+            var tTxt = (p.transcricao_texto || '').replace(/"/g, '&quot;');
+            transcBadge = '<div class="transcricao-badge pronta" data-texto="' + tTxt + '" onmouseenter="mostrarTranscricaoTip(event)" onmouseleave="esconderTranscricaoTip()" onclick="event.stopPropagation()">💬 Transcrição</div>';
         }} else if (p.is_video && p.transcricao_status === 'pendente') {{
-            transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve">⏳ Transcrevendo…</div>';
+            transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve" onclick="event.stopPropagation()">⏳ Transcrevendo…</div>';
         }}
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
@@ -18591,6 +18591,45 @@ function trigger(label) {{
             }}
         }} catch(e) {{}}
     }}
+}}
+
+function mostrarTranscricaoTip(ev) {{
+    if (window.__transcTipHideTimer) {{ clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }}
+    var el = ev.currentTarget;
+    var texto = el.getAttribute('data-texto') || '';
+    if (!texto) return;
+    var old = document.getElementById('transc_tip_flutuante');
+    if (old) old.remove();
+    var rect = el.getBoundingClientRect();
+    var tip = document.createElement('div');
+    tip.id = 'transc_tip_flutuante';
+    tip.textContent = texto;
+    tip.style.cssText = 'position:fixed;z-index:999999;max-width:240px;max-height:200px;overflow-y:auto;' +
+        'background:#111;color:#fff;font-size:11px;line-height:1.5;padding:10px 12px;border-radius:8px;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:"DM Sans",sans-serif;pointer-events:auto;' +
+        'white-space:pre-wrap;';
+    tip.addEventListener('mouseenter', function() {{
+        if (window.__transcTipHideTimer) {{ clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }}
+    }});
+    tip.addEventListener('mouseleave', function() {{ esconderTranscricaoTip(); }});
+    document.body.appendChild(tip);
+    var tipRect = tip.getBoundingClientRect();
+    var top  = rect.bottom + 6;
+    var left = rect.right - tipRect.width;
+    if (left < 6) left = 6;
+    if (top + tipRect.height > window.innerHeight - 6) {{ top = rect.top - tipRect.height - 6; }}
+    if (top < 6) top = 6;
+    tip.style.top  = top + 'px';
+    tip.style.left = left + 'px';
+}}
+
+function esconderTranscricaoTip() {{
+    if (window.__transcTipHideTimer) clearTimeout(window.__transcTipHideTimer);
+    window.__transcTipHideTimer = setTimeout(function() {{
+        var old = document.getElementById('transc_tip_flutuante');
+        if (old) old.remove();
+        window.__transcTipHideTimer = null;
+    }}, 200);
 }}
 
 function syncHeight() {{

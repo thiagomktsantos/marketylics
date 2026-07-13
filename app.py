@@ -10493,9 +10493,57 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 st.rerun()
  
         if st.button("hdemp_comparativo", key=_k_comp_h):
-            st.session_state.ads_empresa_ativa = "__comparativo__"
-            st.session_state.ads_main_tab = "analise"
-            st.session_state.ads_analise_subtab = "comparativo_ads"
+            if gemini_model is None:
+                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+            elif not st.session_state.ads_cache:
+                st.toast("Busque os anúncios das empresas antes de gerar a análise comparativa.", icon="⚠️")
+            else:
+                import datetime as _dt_ads_h
+                resumo_ads_h = "\n\n".join([
+                    f"Empresa: {empresa}\nAnúncios:\n" + "\n".join([
+                        f"  - {ad.get('titulo','')}: {ad.get('descricao','')[:120]}"
+                        for ad in ads[:8]
+                    ])
+                    for empresa, ads in st.session_state.ads_cache.items()
+                ])
+                try:
+                    with st.spinner("Gerando análise comparativa..."):
+                        resp_h = gerar_com_ia(f"""
+Você é especialista em marketing digital e tráfego pago.
+Compare os anúncios das empresas abaixo e faça uma análise comparativa estratégica em português.
+
+{resumo_ads_h}
+
+Responda com:
+### Visão Geral Comparativa
+Comparação resumida das empresas em termos de estratégia de anúncios.
+
+### Quem se Destaca e Por Quê
+Destaque a empresa com melhor estratégia e explique os motivos.
+
+### Pontos Fortes de Cada Empresa
+Para cada empresa, 1-2 pontos fortes nos anúncios.
+
+### Oportunidades Identificadas
+2-3 oportunidades estratégicas para as empresas com menor desempenho.
+
+### Recomendações Finais
+3 ações concretas para melhorar a performance geral dos anúncios.
+
+Seja direto, objetivo e baseado nos dados fornecidos.
+""")
+                    st.session_state.ads_analises_salvas = st.session_state.get("ads_analises_salvas", [])
+                    st.session_state.ads_analises_salvas.append({
+                        "titulo": f"Comparativo Geral — {_dt_ads_h.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_ads_h.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp_h.text,
+                        "tipo": "comparativo_ads",
+                        "empresas": list(st.session_state.ads_cache.keys()),
+                    })
+                    salvar_ads_analises()
+                    st.toast("Análise comparativa gerada! Veja em Análise de IA.", icon="✅")
+                except Exception as e:
+                    st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
             st.rerun()
  
         # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
@@ -10552,7 +10600,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
                 <div style="flex:1;min-width:0">
                     <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
                 </div>
-                <span style="display:inline-flex;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
+                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
             </div>"""
         elif _comp_active:
             _selected_html = """
@@ -10714,7 +10762,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
 </div>
@@ -10726,14 +10774,17 @@ var ULTIMA     = '{_ultima_ts}';
  
 function toggleDropdown(){{
     var m = document.getElementById('dd-list'); var ar = document.getElementById('dd-arrow');
+    var bd = document.getElementById('dd-trigger-badge');
     var open = m.classList.contains('open');
-    if(open){{ m.classList.remove('open'); ar.classList.remove('open'); }}
-    else{{ m.classList.add('open'); ar.classList.add('open'); }}
+    if(open){{ m.classList.remove('open'); ar.classList.remove('open'); if(bd) bd.style.display='none'; }}
+    else{{ m.classList.add('open'); ar.classList.add('open'); if(bd) bd.style.display='inline-flex'; }}
     setHeight(!open);
 }}
 function closeDropdown(){{
     document.getElementById('dd-list').classList.remove('open');
     document.getElementById('dd-arrow').classList.remove('open');
+    var bd = document.getElementById('dd-trigger-badge');
+    if(bd) bd.style.display='none';
     setHeight(false);
 }}
 document.addEventListener('click', function(e){{

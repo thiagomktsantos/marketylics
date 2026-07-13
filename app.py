@@ -14700,7 +14700,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <div class="dd-icon" id="dd-trigger-icon"></div>
                 <div class="dd-info">
                     <span class="dd-nome" id="dd-trigger-nome"></span>
-                    <div class="dd-handle">Gerar estratégia contra este concorrente</div>
                 </div>
                 <span class="dd-badge-conc">Concorrente</span>
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"

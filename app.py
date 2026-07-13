@@ -16765,7 +16765,7 @@ function setHeight(isOpen) {{
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
     if coletar and _permitido_redes:
-        coletar_rapidapi.clear()
+        st.session_state.pop("_cache_rapidapi", None)
 
         _id_ativ_coleta_redes = criar_atividade(
             st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"

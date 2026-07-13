@@ -1244,14 +1244,18 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 # pendente → em_andamento → concluido/erro, pra exibir no sino da
 # sidebar e, mais pra frente, servir de base pro item 3 (jobs).
 
-def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None) -> str:
-    """Cria um registro de atividade e devolve o id (pra depois atualizar)."""
+def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None, status: str = "em_andamento") -> str:
+    """Cria um registro de atividade e devolve o id (pra depois atualizar).
+    `status` default é "em_andamento" (caso de uso original: processo que
+    ainda vai rodar e será atualizado depois via atualizar_atividade). Pode
+    ser criada já "concluido" pra fatos instantâneos que não têm uma etapa
+    de processamento depois (ex: alerta de posts novos detectados)."""
     try:
         res = supabase.table("atividades").insert({
             "user_id": user_id,
             "tipo": tipo,
             "titulo": titulo,
-            "status": "em_andamento",
+            "status": status,
             "detalhes": detalhes or {},
         }).execute()
         return res.data[0]["id"] if res.data else None
@@ -1455,6 +1459,10 @@ _TIPO_ATIVIDADE_LABELS = {
     "reparo_links": (
         "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z",
         "#e05252", "Verificando links salvos",
+    ),
+    "novos_posts": (
+        "M12,22C6.48,22 2,17.52 2,12C2,6.48 6.48,2 12,2C17.52,2 22,6.48 22,12C22,17.52 17.52,22 12,22M13,7H11V13L16.25,16.15L17,14.92L13,12.5V7Z",
+        "#2ecc71", "Novos posts em redes sociais",
     ),
 }
 
@@ -1759,6 +1767,14 @@ def _formatar_detalhes_atividade(atividade: dict):
         texto = f"{d['transcritas']} de {total_t} vídeos de anúncios transcritos."
         if atividade.get("status") == "em_andamento":
             texto += " · Rodando agora."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "novos_posts" and "por_empresa" in d:
+        path, _cor = _ICONE_OK
+        partes_empresa = [
+            f"{nome_e} ({qtd_e})" for nome_e, qtd_e in d["por_empresa"].items()
+        ]
+        texto = f"Novos posts: {', '.join(partes_empresa)}."
         return _svg_icone(path, "currentColor", 14), texto
 
     # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
@@ -16758,7 +16774,43 @@ function setHeight(isOpen) {{
         if not _permitido_redes:
             st.warning(f"🚫 {_motivo_bloqueio_redes}")
 
-    def _coletar_redes_background(user_id: str, todas: list, atividade_id: str):
+    def _detectar_posts_novos(cache_anterior: dict, resultados_lista: list) -> dict:
+        """Compara os posts recém-coletados com a última coleta salva (por
+        handle) e devolve {nome_empresa: qtd_de_posts_novos}.
+
+        Um post é "novo" quando o shortcode/post_url dele não aparecia na
+        coleta anterior daquele mesmo handle. Perfis que ainda não tinham
+        NENHUMA coleta anterior são ignorados de propósito — na primeira
+        coleta todo post é "novo" trivialmente, e isso só geraria um alerta
+        inútil de "N posts novos" assim que um concorrente é cadastrado."""
+        anteriores_por_handle = {
+            (r.get("instagram") or "").lstrip("@").strip().lower(): r
+            for r in (cache_anterior.get("dados") or [])
+            if not r.get("erro")
+        }
+        por_empresa = {}
+        for r in resultados_lista:
+            if r.get("erro"):
+                continue
+            handle = (r.get("instagram") or "").lstrip("@").strip().lower()
+            anterior = anteriores_por_handle.get(handle)
+            if anterior is None:
+                continue
+            ids_antigos = {
+                (p.get("shortcode") or p.get("post_url") or "")
+                for p in (anterior.get("posts") or [])
+                if (p.get("shortcode") or p.get("post_url"))
+            }
+            qtd_novos = sum(
+                1 for p in (r.get("posts") or [])
+                if (p.get("shortcode") or p.get("post_url"))
+                and (p.get("shortcode") or p.get("post_url")) not in ids_antigos
+            )
+            if qtd_novos:
+                por_empresa[r["nome"]] = qtd_novos
+        return por_empresa
+
+    def _coletar_redes_background(user_id: str, todas: list, atividade_id: str, cache_anterior: dict):
         """Roda a coleta de verdade (chamadas ao RapidAPI) numa thread —
         sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
         pra saber o user_id, já que threads não devem tocar nisso."""
@@ -16786,6 +16838,23 @@ function setHeight(isOpen) {{
                 "com_erro": _com_erro_redes,
                 "total_posts": _total_posts_redes,
             })
+
+            # Alerta separado de "posts novos" — não mexe no status da
+            # atividade de coleta acima, é uma notificação própria (fica
+            # marcada com "concluido" na hora, já que é um fato instantâneo,
+            # não um processo que ainda vai rodar).
+            _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
+            if _novos_por_empresa:
+                _total_novos = sum(_novos_por_empresa.values())
+                _titulo_novos = (
+                    f"{_total_novos} novo post detectado" if _total_novos == 1
+                    else f"{_total_novos} novos posts detectados"
+                )
+                criar_atividade(
+                    user_id, "novos_posts", _titulo_novos,
+                    {"por_empresa": _novos_por_empresa, "total_novos": _total_novos},
+                    status="concluido",
+                )
         except Exception as e:
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
@@ -16797,7 +16866,7 @@ function setHeight(isOpen) {{
         )
         threading.Thread(
             target=_coletar_redes_background,
-            args=(st.session_state.user.id, todas, _id_ativ_coleta_redes),
+            args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),
             daemon=True,
         ).start()
 

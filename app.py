@@ -18035,12 +18035,12 @@ body{{padding-bottom:8px;}}
 .transcricao-badge {{
     position:absolute; top:8px; right:8px;
     font-size:10px; font-weight:700; padding:3px 8px;
-    border-radius:6px; cursor:help;
+    border-radius:20px; cursor:help;
     display:flex; align-items:center; gap:4px;
     max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }}
-.transcricao-badge.pronta {{ background:rgba(21,128,61,0.85); color:#fff; }}
-.transcricao-badge.pendente {{ background:rgba(0,0,0,0.45); color:#fbbf24; }}
+.transcricao-badge.pronta {{ background:rgba(0,0,0,0.65); color:#fff; }}
+.transcricao-badge.pendente {{ background:rgba(0,0,0,0.55); color:#fbbf24; }}
 .metrics-row {{
     display:grid; grid-template-columns:2fr 1fr 1fr 1fr;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
@@ -18473,7 +18473,7 @@ function buildGrid(posts) {{
         var transcBadge = '';
         if (p.is_video && p.transcricao_status === 'pronta') {{
             var tTxt = (p.transcricao_texto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-            transcBadge = '<div class="transcricao-badge pronta" title="' + tTxt + '">💬 Transcrito</div>';
+            transcBadge = '<div class="transcricao-badge pronta" title="' + tTxt + '">💬 Transcrição</div>';
         }} else if (p.is_video && p.transcricao_status === 'pendente') {{
             transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve">⏳ Transcrevendo…</div>';
         }}

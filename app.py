@@ -1237,6 +1237,139 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
         )
     threading.Thread(target=_transcrever_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
 
+
+# ---------------------------------------------------
+#  TRANSCRIÇÃO DE REELS (REDES SOCIAIS) — mesmo padrão dos vídeos de
+#  Anúncios acima, mas adaptado: aqui não existe uma tabela `midias` por
+#  vídeo — os posts de Redes Sociais vivem inteiros dentro do JSON
+#  `ci_dados.metricas_redes.dados` (uma lista de perfis, cada um com sua
+#  lista de `posts`). Um post já processado ganha a chave "transcricao"
+#  no próprio dict (mesmo que "" — vídeo sem áudio/erro na transcrição —
+#  só a AUSÊNCIA da chave é que conta como pendente); isso evita ficar
+#  tentando pra sempre um Reel problemático, mesmo padrão do vídeo de
+#  Anúncio que grava "" em vez de deixar NULL.
+# ---------------------------------------------------
+
+_lock_transcricao_reels_pendente = threading.Lock()
+
+@st.cache_resource
+def _get_reels_transcricao_ativa_agora() -> set:
+    # Mesmo motivo do _get_transcricoes_empresa_ativas_agora: precisa
+    # sobreviver aos reruns do Streamlit, por isso cache_resource em vez
+    # de uma variável de módulo comum.
+    return set()
+
+_reels_transcricao_ativa_agora = _get_reels_transcricao_ativa_agora()  # elementos: user_id — evita 2 filas rodando ao mesmo tempo pro mesmo usuário
+
+def _contar_reels_pendentes_transcricao(user_id: str) -> int:
+    """Quantos Reels (posts de vídeo) já coletados nas Redes Sociais
+    ainda não têm transcrição salva no cache."""
+    try:
+        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
+        dados = ((res.data[0].get("metricas_redes") or {}) if res.data else {}).get("dados") or []
+        total = 0
+        for perfil in dados:
+            if perfil.get("erro"):
+                continue
+            for p in (perfil.get("posts") or []):
+                if p.get("is_video") and p.get("video_url") and "transcricao" not in p:
+                    total += 1
+        return total
+    except Exception:
+        return 0
+
+def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
+    """Varre os perfis coletados nas Redes Sociais procurando Reels sem
+    transcrição salva, baixa o áudio e transcreve com Whisper (reaproveita
+    _transcrever_video_whisper, o mesmo usado nos Anúncios), gravando o
+    texto direto no post dentro do JSON — assim a Análise de IA das
+    Postagens passa a ler a transcrição já pronta, em vez de baixar e
+    transcrever na hora a cada análise."""
+    transcritas = 0
+    total = 0
+    try:
+        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
+        metricas = (res.data[0].get("metricas_redes") or {}) if res.data else {}
+        dados = metricas.get("dados") or []
+
+        pendentes_refs = []  # (indice_perfil, indice_post)
+        for pi, perfil in enumerate(dados):
+            if perfil.get("erro"):
+                continue
+            for pj, p in enumerate(perfil.get("posts") or []):
+                if p.get("is_video") and p.get("video_url") and "transcricao" not in p:
+                    pendentes_refs.append((pi, pj))
+        total = len(pendentes_refs)
+
+        if not total:
+            atualizar_atividade(atividade_id, "concluido", {"transcritas": 0, "total": 0})
+            return
+
+        for pi, pj in pendentes_refs:
+            video_url = dados[pi]["posts"][pj].get("video_url", "")
+            texto = ""
+            try:
+                resp = requests.get(video_url, timeout=30)
+                resp.raise_for_status()
+                texto = _transcrever_video_whisper(resp.content)
+            except Exception:
+                pass
+            dados[pi]["posts"][pj]["transcricao"] = texto or ""
+            transcritas += 1
+
+            # Salva a cada Reel processado (não só no final) — assim, se a
+            # thread cair no meio do caminho, o que já foi transcrito não
+            # se perde e não precisa ser refeito do zero.
+            metricas["dados"] = dados
+            try:
+                supabase.table("ci_dados").update({"metricas_redes": metricas}).eq("user_id", user_id).execute()
+            except Exception:
+                pass
+
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "transcritas": transcritas,
+                "total": total,
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+
+        atualizar_atividade(atividade_id, "concluido", {"transcritas": transcritas, "total": total})
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {
+            "motivo": str(e), "transcritas": transcritas, "total": max(total, transcritas),
+        })
+    finally:
+        with _lock_transcricao_reels_pendente:
+            _reels_transcricao_ativa_agora.discard(user_id)
+
+def iniciar_transcricao_reels_pendente_background(user_id: str):
+    """Checkin da página de Redes Sociais: verifica se há posts coletados
+    e, entre eles, Reels ainda sem transcrição — se houver, cria (ou
+    reaproveita) a atividade `transcricao_reel` e dispara o processamento
+    em segundo plano. Retorna na hora, nunca bloqueia quem chamou (mesmo
+    padrão de iniciar_transcricao_pendente_background pros Anúncios)."""
+    if not user_id or whisper_model is None:
+        return
+    with _lock_transcricao_reels_pendente:
+        if user_id in _reels_transcricao_ativa_agora:
+            return
+        _reels_transcricao_ativa_agora.add(user_id)
+    total = _contar_reels_pendentes_transcricao(user_id)
+    if not total:
+        # Sem posts, ou sem Reels pendentes — não cria atividade só pra
+        # mostrar "0 de 0" e poluir o sino à toa.
+        with _lock_transcricao_reels_pendente:
+            _reels_transcricao_ativa_agora.discard(user_id)
+        return
+    atividade_id = criar_atividade(
+        user_id, "transcricao_reel", "Transcrevendo Reels das Redes Sociais",
+        {"transcritas": 0, "total": total},
+    )
+    threading.Thread(
+        target=_transcrever_reels_pendentes_background,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
 # ---------------------------------------------------
 #  LOG DE ATIVIDADES (sino de notificações)
 # ---------------------------------------------------
@@ -1459,6 +1592,10 @@ _TIPO_ATIVIDADE_LABELS = {
     "reparo_links": (
         "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z",
         "#e05252", "Verificando links salvos",
+    ),
+    "transcricao_reel": (
+        "M12,14A3,3 0 0,0 15,11V5A3,3 0 0,0 12,2A3,3 0 0,0 9,5V11A3,3 0 0,0 12,14M19,11H17.7C17.7,14 15.19,15.9 12,15.9C8.81,15.9 6.3,14 6.3,11H5C5,14.41 7.72,17.23 11,17.72V21H13V17.72C16.28,17.23 19,14.41 19,11Z",
+        "#8b5cf6", "Transcrevendo Reels das redes sociais",
     ),
     "novos_posts": (
         "M12,22C6.48,22 2,17.52 2,12C2,6.48 6.48,2 12,2C17.52,2 22,6.48 22,12C22,17.52 17.52,22 12,22M13,7H11V13L16.25,16.15L17,14.92L13,12.5V7Z",
@@ -1765,6 +1902,15 @@ def _formatar_detalhes_atividade(atividade: dict):
         concluida = atividade.get("status") == "concluido" or d["transcritas"] >= total_t
         path, _cor = _ICONE_OK if concluida else _ICONE_INFO
         texto = f"{d['transcritas']} de {total_t} vídeos de anúncios transcritos."
+        if atividade.get("status") == "em_andamento":
+            texto += " · Rodando agora."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "transcricao_reel" and "transcritas" in d:
+        total_t = d.get("total", d["transcritas"])
+        concluida = atividade.get("status") == "concluido" or d["transcritas"] >= total_t
+        path, _cor = _ICONE_OK if concluida else _ICONE_INFO
+        texto = f"{d['transcritas']} de {total_t} Reels transcritos."
         if atividade.get("status") == "em_andamento":
             texto += " · Rodando agora."
         return _svg_icone(path, "currentColor", 14), texto
@@ -15732,7 +15878,22 @@ elif st.session_state.pagina == "redes":
  
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
- 
+
+    # Checkin de segurança: roda uma vez por sessão (não a cada rerun),
+    # verificando se já existem posts coletados e, entre eles, Reels
+    # ainda sem transcrição — se houver, dispara a transcrição em segundo
+    # plano (ver iniciar_transcricao_reels_pendente_background). Cobre
+    # tanto posts que ficaram pendentes de uma coleta anterior (ex: a
+    # sessão foi fechada antes da transcrição rodar) quanto o caso normal
+    # de qualquer usuário que abre a página com dados já salvos.
+    if not st.session_state.get("_verificacao_reels_pendentes_feita") and st.session_state.get("user"):
+        threading.Thread(
+            target=iniciar_transcricao_reels_pendente_background,
+            args=(st.session_state.user.id,),
+            daemon=True,
+        ).start()
+        st.session_state["_verificacao_reels_pendentes_feita"] = True
+
     # ── Cabeçalho ──────────────────────────────────────────────────
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
@@ -16855,6 +17016,13 @@ function setHeight(isOpen) {{
                     {"por_empresa": _novos_por_empresa, "total_novos": _total_novos},
                     status="concluido",
                 )
+
+            # Checkin: essa coleta pode ter trazido Reels novos (ou Reels
+            # que já existiam mas ainda não tinham transcrição) — dispara
+            # a transcrição pendente em segundo plano, sem bloquear a
+            # coleta em si (que já terminou e já atualizou a atividade
+            # acima).
+            iniciar_transcricao_reels_pendente_background(user_id)
         except Exception as e:
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
@@ -18541,15 +18709,21 @@ Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando d
                             continue
 
                     # Reels não são enviados pro Gemini como vídeo — manda a
-                    # transcrição do áudio (via Whisper), reaproveitando a mesma
-                    # obter_transcricao_video() já usada nos Anúncios (inclusive
-                    # o fallback de transcrever na hora se não houver nada salvo).
+                    # transcrição do áudio (via Whisper). Prioriza a transcrição
+                    # que o checkin da página de Redes Sociais já deixou salva
+                    # no próprio post (ver _transcrever_reels_pendentes_background)
+                    # — só cai no fallback de obter_transcricao_video (baixar e
+                    # transcrever na hora) se esse checkin ainda não rodou pra
+                    # esse Reel específico.
                     vids_transcritos = 0
                     _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
                     for i, p in enumerate(posts_list[:12]):
                         if not p.get("is_video") or not p.get("video_url"):
                             continue
-                        transcricao_post = obter_transcricao_video(p["video_url"], _user_id_transcricao)
+                        if "transcricao" in p:
+                            transcricao_post = p["transcricao"]
+                        else:
+                            transcricao_post = obter_transcricao_video(p["video_url"], _user_id_transcricao)
                         if transcricao_post:
                             parts.append(
                                 f"\nTranscrição do áudio do Reel do Post {i+1}: "

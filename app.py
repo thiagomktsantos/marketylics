@@ -17696,23 +17696,40 @@ Como interpretar as métricas desta postagem?
                 if not c_imgs_hd and c_imgs:
                     c_imgs_hd = c_imgs
 
+                # Status da transcrição do Reel, pro badge "💬 Transcrito" no
+                # card (ver _transcrever_reels_pendentes_background):
+                #   "pronta"   → já tem texto salvo (post["transcricao"] não-vazio)
+                #   "sem_fala" → já tentou, não achou fala (transcricao == "") —
+                #                tratado como estado final, sem badge nenhum
+                #   "pendente" → é vídeo mas ainda não tem a chave "transcricao"
+                #                (checkin ainda não chegou nesse Reel)
+                #   ""         → não é vídeo, não se aplica
+                if not p.get("is_video"):
+                    _transc_status = ""
+                elif "transcricao" in p:
+                    _transc_status = "pronta" if (p.get("transcricao") or "").strip() else "sem_fala"
+                else:
+                    _transc_status = "pendente"
+
                 posts_json_data.append({
-                    "jp":               jp,
-                    "thumb":            p.get("thumb", ""),
-                    "thumb_hd":         p.get("thumb_hd", "") or p.get("thumb", ""),
-                    "caption":          p.get("caption", ""),
-                    "date":             p.get("date", ""),
-                    "likes":            p.get("likes", 0),
-                    "comments":         p.get("comments", 0),
-                    "eng":              p.get("likes", 0) + p.get("comments", 0),
-                    "is_video":         p.get("is_video", False),
-                    "media_type":       p.get("media_type", 1),
-                    "video_url":        p.get("video_url", ""),
-                    "ig_url":           ig_post_url,
-                    "resultado_ia":     resultado_ia_html,
-                    "tem_ia":           bool(resultado_ia),
-                    "carousel_imgs":    c_imgs,
-                    "carousel_imgs_hd": c_imgs_hd,
+                    "jp":                 jp,
+                    "thumb":              p.get("thumb", ""),
+                    "thumb_hd":           p.get("thumb_hd", "") or p.get("thumb", ""),
+                    "caption":            p.get("caption", ""),
+                    "date":               p.get("date", ""),
+                    "likes":              p.get("likes", 0),
+                    "comments":           p.get("comments", 0),
+                    "eng":                p.get("likes", 0) + p.get("comments", 0),
+                    "is_video":           p.get("is_video", False),
+                    "media_type":         p.get("media_type", 1),
+                    "video_url":          p.get("video_url", ""),
+                    "ig_url":             ig_post_url,
+                    "resultado_ia":       resultado_ia_html,
+                    "tem_ia":             bool(resultado_ia),
+                    "carousel_imgs":      c_imgs,
+                    "carousel_imgs_hd":   c_imgs_hd,
+                    "transcricao_status": _transc_status,
+                    "transcricao_texto":  (p.get("transcricao") or "")[:600],
                 })
 
             posts_json_str = _json_posts.dumps(posts_json_data, ensure_ascii=True)
@@ -18015,6 +18032,15 @@ body{{padding-bottom:8px;}}
     border-radius:6px; pointer-events:none;
     display:flex; align-items:center; gap:4px;
 }}
+.transcricao-badge {{
+    position:absolute; top:8px; right:8px;
+    font-size:10px; font-weight:700; padding:3px 8px;
+    border-radius:6px; cursor:help;
+    display:flex; align-items:center; gap:4px;
+    max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}}
+.transcricao-badge.pronta {{ background:rgba(21,128,61,0.85); color:#fff; }}
+.transcricao-badge.pendente {{ background:rgba(0,0,0,0.45); color:#fbbf24; }}
 .metrics-row {{
     display:grid; grid-template-columns:2fr 1fr 1fr 1fr;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
@@ -18444,6 +18470,13 @@ function buildGrid(posts) {{
         var playOverlay = p.is_video
             ? '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;"><div style="width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;border:2px solid #ffffff !important;"><svg width="20" height="20" viewBox="0 0 54 54" fill="none"><polygon points="18,12 44,27 18,42" fill="white"/></svg></div></div>'
             : '';
+        var transcBadge = '';
+        if (p.is_video && p.transcricao_status === 'pronta') {{
+            var tTxt = (p.transcricao_texto || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            transcBadge = '<div class="transcricao-badge pronta" title="' + tTxt + '">💬 Transcrito</div>';
+        }} else if (p.is_video && p.transcricao_status === 'pendente') {{
+            transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve">⏳ Transcrevendo…</div>';
+        }}
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
             : '<div class="thumb-fallback" onclick="openModalByIdx(' + idx + ')"><span style="font-size:28px">' + iconFallback + '</span><span style="font-size:11px;color:#9ca3af;margin-top:4px">Sem imagem</span></div>' + dotsHtml;
@@ -18451,7 +18484,7 @@ function buildGrid(posts) {{
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =
             '<div class="thumb-wrap" id="tw_' + idx + '" onclick="openModalByIdx(' + idx + ')">' + thumbInner
-            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div></div>'
+            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + '</div>'
             + '<div class="metrics-row">'
             + '<div class="metric-cell"><span class="metric-cell-val" style="font-size:11px;font-weight:700">' + (p.date || '—') + '</span></div>'
             + '<div class="metric-cell"><span class="metric-cell-lbl">❤️</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'

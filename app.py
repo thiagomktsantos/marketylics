@@ -20015,7 +20015,7 @@ html, body { background: transparent; overflow: hidden; }
             ), unsafe_allow_html=True)
         with _col_u1:
             st.markdown(_card_uso_com_empresas_svg(
-                "Anúncios com mídia salva", _SVG_FILM, get_avatar_color(0), _midias_usadas, _midias_limite,
+                "Mídias salvas", _SVG_FILM, get_avatar_color(0), _midias_usadas, _midias_limite,
                 _detalhe_midias, _linhas_midia_empresa, _max_midia_empresa, "anúncio salvo", "anúncios salvos",
                 ultima_coleta_geral=_ultima_coleta_midia
             ), unsafe_allow_html=True)

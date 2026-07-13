@@ -2039,10 +2039,16 @@ class _RespostaBloqueada:
     def __init__(self, texto):
         self.text = texto
 
-def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia"):
+def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = None):
     """Substituto direto de `gemini_model.generate_content(...)` que
-    aplica cooldown + cota mensal antes de gastar uma chamada de IA."""
-    user_id = st.session_state.user.id if st.session_state.get("user") else None
+    aplica cooldown + cota mensal antes de gastar uma chamada de IA.
+
+    Passe `user_id` explicitamente quando chamar de uma thread em
+    background — `st.session_state` não é seguro de acessar fora da
+    thread principal do Streamlit, então sem isso o cooldown/cota seria
+    pulado silenciosamente em vez de aplicado."""
+    if user_id is None:
+        user_id = st.session_state.user.id if st.session_state.get("user") else None
     if user_id:
         permitido, motivo = verificar_pode_executar_acao(user_id, tipo_acao)
         if not permitido:
@@ -2851,7 +2857,7 @@ def salvar_seo_cache():
 # GEMINI — RELATÓRIO DE POSICIONAMENTO
 # ---------------------------------------------------
 
-def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: list) -> str:
+def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: list, user_id: str = None) -> str:
     if gemini_model is None:
         return "Erro: Chave API Gemini não configurada."
 
@@ -2904,7 +2910,7 @@ Seja direto, objetivo e use dados do conteúdo real dos sites.
 """
 
     try:
-        resposta = gerar_com_ia(prompt)
+        resposta = gerar_com_ia(prompt, user_id=user_id)
         return resposta.text
     except Exception as e:
         return f"Erro ao gerar relatório: {e}"
@@ -8034,128 +8040,109 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
     # ══════════════════════════════════════════════════════════════
     # PROCESSAR — Relatório geral com modal de loading
     # ══════════════════════════════════════════════════════════════
+    def _gerar_comparativa_background(user_id: str, sites_disponiveis: list, atividade_id: str):
+        """Roda a extração dos sites + geração do relatório numa thread —
+        sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
+        pra ler/gravar dados, já que threads não devem tocar nisso."""
+        try:
+            relatorio_sites = {}
+            for s in sites_disponiveis:
+                relatorio_sites[s["url"]] = extrair_conteudo_site(s["url"])
+
+            empresa_principal = None
+            concorrentes_data = []
+            for s in sites_disponiveis:
+                item = {"nome": s["nome"], "url": s["url"], "conteudo": relatorio_sites.get(s["url"], "")}
+                if s["tipo"] == "minha":
+                    empresa_principal = item
+                else:
+                    concorrentes_data.append(item)
+
+            if empresa_principal is None and sites_disponiveis:
+                empresa_principal = {
+                    "nome": sites_disponiveis[0]["nome"],
+                    "url":  sites_disponiveis[0]["url"],
+                    "conteudo": relatorio_sites.get(sites_disponiveis[0]["url"], ""),
+                }
+
+            relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data, user_id=user_id)
+
+            nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
+            titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+
+            res = supabase.table("ci_dados").select("analises_salvas").eq("user_id", user_id).execute()
+            analises_atuais = (res.data[0].get("analises_salvas") or []) if res.data else []
+            analises_atuais.append({
+                "titulo": titulo_auto,
+                "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "relatorio": relatorio,
+                "sites": nomes_com_url,
+                "tipo": "geral",
+            })
+            supabase.table("ci_dados").update({
+                "analises_salvas": analises_atuais,
+                "relatorio_sites": relatorio_sites,
+            }).eq("user_id", user_id).execute()
+
+            atualizar_atividade(atividade_id, "concluido", {"sites": nomes_com_url})
+        except Exception as e:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
     if gerar_btn:
-        st.session_state.relatorio_gemini = ""
-        st.session_state.relatorio_sites = {}
+        _id_ativ_comparativa = criar_atividade(
+            st.session_state.user.id, "analise_ia", "Gerando relatório comparativo de sites"
+        )
+        threading.Thread(
+            target=_gerar_comparativa_background,
+            args=(st.session_state.user.id, sites_disponiveis, _id_ativ_comparativa),
+            daemon=True,
+        ).start()
 
-        modal_geral_placeholder = st.empty()
-
-        def _render_modal_geral(fase: str, descricao: str, pct: int, _ph=modal_geral_placeholder):
-            fases = {
-                "lendo":     ("Acessando os sites…",       "Lendo conteúdo das páginas…"),
-                "enviando":  ("Enviando para o Gemini…",   "Processando com IA…"),
-                "gerando":   ("Gerando relatório geral…",  "Comparando posicionamentos…"),
-                "concluido": ("Relatório concluído!",       "Redirecionando…"),
-            }
-            sub1, sub2 = fases.get(fase, ("Processando…", "Aguarde…"))
-            is_done  = fase == "concluido"
-            cor_pct  = "#22c55e" if is_done else "#3a9fd6"
-            icone    = "✅" if is_done else "⏳"
-            rodape   = (
-                '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">'
-                'Fechando automaticamente…</div>'
-            ) if is_done else ""
-            desc_safe = (descricao or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'","&#39;").replace('"',"&quot;")
-            html_modal = f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
-.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
-.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
-@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
-</style>
-<div class="overlay"><div class="card">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
-        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
-        <div style="flex:1;min-width:0;">
-            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
-            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
-        </div>
-        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
-    </div>
-    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
-        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;transition:width 0.3s;border-radius:8px;"></div>
-    </div>
-    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
-        <div>
-            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{desc_safe}</div>
-            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Relatório comparativo geral…</div>
-        </div>
-        <div style="font-size:18px;">{icone}</div>
-    </div>
-    {rodape}
-</div></div>
-<script>
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
-            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
-            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
-</script>"""
-            with _ph:
-                components.html(html_modal, height=600, scrolling=False)
-
-        total_sites = len(sites_disponiveis)
-        for i_s, s in enumerate(sites_disponiveis):
-            pct_leitura = int(10 + (i_s / total_sites) * 35)
-            _render_modal_geral("lendo", f"Lendo {s['nome']} ({s['url']}) — {i_s + 1}/{total_sites}", pct_leitura)
-            conteudo = extrair_conteudo_site(s["url"])
-            st.session_state.relatorio_sites[s["url"]] = conteudo
-
-        _render_modal_geral("enviando", f"{total_sites} site{'s' if total_sites != 1 else ''} lido{'s' if total_sites != 1 else ''} — enviando para IA…", 55)
-
-        empresa_principal = None
-        concorrentes_data = []
-        for s in sites_disponiveis:
-            item = {
-                "nome": s["nome"],
-                "url":  s["url"],
-                "conteudo": st.session_state.relatorio_sites.get(s["url"], ""),
-            }
-            if s["tipo"] == "minha":
-                empresa_principal = item
-            else:
-                concorrentes_data.append(item)
-
-        if empresa_principal is None and sites_disponiveis:
-            empresa_principal = {
-                "nome": sites_disponiveis[0]["nome"],
-                "url":  sites_disponiveis[0]["url"],
-                "conteudo": st.session_state.relatorio_sites.get(sites_disponiveis[0]["url"], ""),
-            }
-
-        _render_modal_geral("gerando", "Comparando posicionamentos…", 80)
-
-        relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data)
-        st.session_state.relatorio_gemini = relatorio
-        st.session_state["sites_ultima_geracao"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
-
-        nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
-        titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
-        st.session_state.analises_salvas.append({
-            "titulo": titulo_auto,
-            "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "relatorio": relatorio,
-            "sites": nomes_com_url,
-            "tipo": "geral",
-        })
-
-        salvar_analises_padrao()
-
-        _render_modal_geral("concluido", "Relatório geral pronto!", 100)
-        import time as _time; _time.sleep(1.5)
-        modal_geral_placeholder.empty()
-
-        st.session_state.sites_main_tab = "analise"
+        st.session_state["_comparativa_em_andamento"] = True
         st.rerun()
+
+    if st.session_state.get("_comparativa_em_andamento"):
+        _ultima_comparativa_ativ = None
+        try:
+            _res_ativ_comp2 = (
+                supabase.table("atividades")
+                .select("status")
+                .eq("user_id", st.session_state.user.id)
+                .eq("tipo", "analise_ia")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if _res_ativ_comp2.data:
+                _ultima_comparativa_ativ = _res_ativ_comp2.data[0]
+        except Exception:
+            pass
+
+        if _ultima_comparativa_ativ and _ultima_comparativa_ativ.get("status") in ("concluido", "erro"):
+            try:
+                res_reload = (
+                    supabase.table("ci_dados")
+                    .select("analises_salvas, relatorio_sites")
+                    .eq("user_id", st.session_state.user.id)
+                    .execute()
+                )
+                if res_reload.data:
+                    st.session_state.analises_salvas = res_reload.data[0].get("analises_salvas") or []
+                    st.session_state.relatorio_sites = res_reload.data[0].get("relatorio_sites") or {}
+            except Exception:
+                pass
+            st.session_state["_comparativa_em_andamento"] = False
+            st.session_state.sites_main_tab = "analise"
+            st.rerun()
+        else:
+            st.info(
+                "🔵 Relatório comparativo rodando em background — a página já pode ser usada "
+                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
+                "atualizar abaixo pra ver o relatório novo.",
+                icon="🔵",
+            )
+            if st.button("🔄 Verificar se o relatório terminou", key="_btn_verificar_comparativa"):
+                st.rerun()
 
     # ══════════════════════════════════════════════════════════════
     # BARRA DE NAVEGAÇÃO PRINCIPAL

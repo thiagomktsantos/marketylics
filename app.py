@@ -16267,8 +16267,22 @@ function setHeight(isOpen) {{
             pass
         return {}
 
-    @st.cache_data(ttl=1800, show_spinner=False)
-    def coletar_rapidapi(handle: str) -> dict:
+    def _rapidapi_get_com_retry(url: str, headers: dict, tentativas: int = 3, timeout: int = 20):
+        """GET com retry + backoff pra aguentar instabilidade da API do
+        RapidAPI (timeouts pontuais são comuns em horários de pico).
+        Levanta a última exceção se todas as tentativas falharem."""
+        import time
+        ultimo_erro = None
+        for i in range(tentativas):
+            try:
+                return requests.get(url, headers=headers, timeout=timeout)
+            except requests.exceptions.RequestException as e:
+                ultimo_erro = e
+                if i < tentativas - 1:
+                    time.sleep(1.5 * (i + 1))  # backoff: 1.5s, 3s
+        raise ultimo_erro
+
+    def _coletar_rapidapi_sem_cache(handle: str) -> dict:
         handle_limpo = handle.lstrip("@").strip()
         if not handle_limpo:
             return {"erro": "Handle vazio"}
@@ -16282,11 +16296,15 @@ function setHeight(isOpen) {{
                 "x-rapidapi-host": "instagram-looter2.p.rapidapi.com",
             }
 
-            r = requests.get(
-                f"https://instagram-looter2.p.rapidapi.com/profile?username={handle_limpo}",
-                headers=headers,
-                timeout=15,
-            )
+            try:
+                r = _rapidapi_get_com_retry(
+                    f"https://instagram-looter2.p.rapidapi.com/profile?username={handle_limpo}",
+                    headers=headers,
+                )
+            except requests.exceptions.Timeout:
+                return {"erro": "A API do Instagram demorou demais pra responder (timeout). Tenta de novo em instantes."}
+            except requests.exceptions.RequestException as e:
+                return {"erro": f"Falha ao conectar na API do Instagram: {e}"}
             data = r.json()
             user_data = data
             if isinstance(data, dict):
@@ -16307,7 +16325,7 @@ function setHeight(isOpen) {{
                     f"https://instagram-looter2.p.rapidapi.com/user-medias?id={pk}&count=12",
                 ]:
                     try:
-                        rp    = requests.get(endpoint, headers=headers, timeout=15)
+                        rp    = _rapidapi_get_com_retry(endpoint, headers=headers)
                         pr    = rp.json()
                         items = pr if isinstance(pr, list) else pr.get("items", [])
                         if items:
@@ -16505,6 +16523,28 @@ function setHeight(isOpen) {{
             }
         except Exception as e:
             return {"erro": str(e)}
+
+    _RAPIDAPI_CACHE_TTL = 1800  # 30 min
+
+    def coletar_rapidapi(handle: str) -> dict:
+        # Cache manual por handle em session_state (em vez de
+        # @st.cache_data) de propósito: só grava no cache quando a
+        # coleta dá certo (erro is None). Assim, um timeout pontual da
+        # RapidAPI não fica "preso" no cache por 30 min pro mesmo
+        # handle — e, diferente de um @st.cache_data.clear() global,
+        # isso não afeta o cache de outros handles já coletados com
+        # sucesso.
+        import time
+        cache = st.session_state.setdefault("_cache_rapidapi", {})
+        agora = time.time()
+        entrada = cache.get(handle)
+        if entrada and (agora - entrada["ts"]) < _RAPIDAPI_CACHE_TTL:
+            return entrada["dados"]
+
+        resultado = _coletar_rapidapi_sem_cache(handle)
+        if not resultado.get("erro"):
+            cache[handle] = {"ts": agora, "dados": resultado}
+        return resultado
 
     def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
         score = 0

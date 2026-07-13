@@ -15769,6 +15769,22 @@ html, body { background: transparent; overflow: hidden; }
         import json as _jr_ctrl
         empresas_ctrl_json = _jr_ctrl.dumps(todas_empresas_ctrl, ensure_ascii=False)
 
+        _coleta_redes_em_andamento_ctrl = bool(st.session_state.get("_coleta_redes_em_andamento"))
+        if _coleta_redes_em_andamento_ctrl:
+            _btn_coletar_redes_html = (
+                '<button class="ctrl-btn btn-coletar btn-coletar-loading" disabled>'
+                '<span class="btn-coletar-spinner"></span> Buscando...</button>'
+            )
+        else:
+            _btn_coletar_redes_html = (
+                '<button class="ctrl-btn btn-coletar" onclick="triggerColetar()">'
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+                'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
+                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>'
+                '<line x1="12" y1="15" x2="12" y2="3"/></svg> Coletar dados</button>'
+            )
+
         components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -15796,7 +15812,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .dd-icon svg {{ width:18px; height:18px; }}
-.dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
+.dd-info {{ min-width:0; margin-left:4px; margin-right:10px; }}
 .dd-nome {{
     font-size:13px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
@@ -15809,7 +15825,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-#dd-trigger-badge {{ margin-left:auto; flex-shrink:0; }}
+#dd-trigger-badge {{ margin-left:auto; flex-shrink:0; display:none; }}
 .dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
 
@@ -15824,7 +15840,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-list.open {{ display:block; }}
 .dd-item {{
     background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
-    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:6px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; background-color:#0e2a47; }}
@@ -15843,6 +15859,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .btn-coletar {{ background:#0e2a47; color:#fff; flex:1;padding: 6px 12px; min-width:200px; }}
 .btn-coletar:hover {{ background:#1a3f6a; }}
+.btn-coletar-loading {{ background:#3a5170; cursor:not-allowed; opacity:0.85; }}
+.btn-coletar-loading:hover {{ background:#3a5170; }}
+.btn-coletar-spinner {{
+    width:14px; height:14px; border-radius:50%; flex-shrink:0;
+    border:2px solid rgba(255,255,255,0.35); border-top-color:#fff;
+    animation:btnColetarSpinRedes 0.8s linear infinite;
+}}
+@keyframes btnColetarSpinRedes {{ to {{ transform:rotate(360deg); }} }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 
@@ -15885,7 +15909,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <button class="ctrl-btn btn-coletar" onclick="triggerColetar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Coletar dados</button>
+        {_btn_coletar_redes_html}
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. coleta: <b>{ultima_coleta}</b></button>
             <span class="sep">|</span>
@@ -15953,8 +15977,7 @@ function renderList() {{
         + '<div class="dd-info">'
         + '<span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>'
         + '<div class="dd-handle">Comparar todos os perfis</div>'
-        + '</div>'
-        + '<span class="dd-badge-minha" style="background:#224161;color:#15803d;border:none;">🏆</span>';
+        + '</div>';
     compItem.onclick = function() {{ triggerComparativo(); closeDropdown(); }};
     list.appendChild(compItem);
 }}
@@ -15980,12 +16003,16 @@ function openDropdown() {{
     renderList();
     document.getElementById('dd-list').classList.add('open');
     document.getElementById('dd-arrow').classList.add('open');
+    var bd = document.getElementById('dd-trigger-badge');
+    if (bd) bd.style.display = 'inline-flex';
     setHeight(true);
 }}
 
 function closeDropdown() {{
     document.getElementById('dd-list').classList.remove('open');
     document.getElementById('dd-arrow').classList.remove('open');
+    var bd = document.getElementById('dd-trigger-badge');
+    if (bd) bd.style.display = 'none';
     setHeight(false);
 }}
 
@@ -16802,14 +16829,36 @@ function setHeight(isOpen) {{
             st.session_state["_coleta_redes_em_andamento"] = False
             st.rerun()
         else:
-            st.info(
-                "🔵 Coleta de redes sociais rodando em background — a página já pode ser usada "
-                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
-                "atualizar abaixo pra ver os dados novos.",
-                icon="🔵",
-            )
-            if st.button("🔄 Verificar se a coleta terminou", key="_btn_verificar_coleta_redes"):
-                st.rerun()
+            # Botão-fantasma (oculto): recebe o clique disparado automaticamente
+            # pelo timer em JS logo abaixo, que verifica de tempos em tempos se
+            # a coleta já terminou — sem exigir ação do usuário nem mostrar
+            # avisos na tela (o próprio botão "Coletar dados" já indica o
+            # estado de carregamento).
+            st.button("_redes_verificar_coleta_trigger_", key="_btn_verificar_coleta_redes")
+            st.markdown("""
+            <style>
+            .st-key-_btn_verificar_coleta_redes {
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }
+            .stElementContainer:has(.st-key-_btn_verificar_coleta_redes) {
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            components.html("""
+            <script>
+            setTimeout(function() {
+                var btns = window.parent.document.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {
+                    var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                    if (txt === '_redes_verificar_coleta_trigger_') { btns[i].click(); return; }
+                }
+            }, 4000);
+            </script>
+            """, height=0)
 
     ok = []
     if cache.get("dados"):

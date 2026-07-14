@@ -3078,11 +3078,15 @@ section.main div.stFormSubmitButton > button:hover {
 section.main div[data-testid="stTextInput"] input,
 section.main div[data-testid="stSelectbox"] select,
 section.main div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
+section.main div[data-testid="stSelectbox"] input[role="combobox"],
 section.main div[data-baseweb="select"] {
     font-size: 15px !important; border-radius: 7px !important;
     border: 1px solid #e5e7eb !important;
     background: #f3f4f6 !important; background-color: #f3f4f6 !important;
     font-family: 'DM Sans', sans-serif !important; color: #111827 !important;
+}
+section.main div[data-testid="stSelectbox"] input[role="combobox"] {
+    border: none !important;
 }
 section.main label {
     font-size: 14px !important; font-weight: 500 !important;
@@ -3132,7 +3136,8 @@ details summary { font-size: 16px !important; font-weight: 500 !important; paddi
 .popup-text { color: #6b7280; margin-bottom: 24px; font-size: 15px; line-height: 1.6; }
 
 div[data-baseweb="select"] > div,
-div[data-testid="stSelectbox"] div:has(input[role="combobox"]) {
+div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
+div[data-testid="stSelectbox"] input[role="combobox"] {
     border-radius: 7px !important; min-height: 42px !important;
     font-size: 15px !important; font-family: 'DM Sans', sans-serif !important;
     background: #f3f4f6 !important; background-color: #f3f4f6 !important;
@@ -3266,7 +3271,8 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] textarea {
 }
 
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] > div,
-section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] div:has(input[role="combobox"]) {
+section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
+section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] input[role="combobox"] {
     background: #f3f4f6 !important;
     background-color: #f3f4f6 !important;
     border: 1px solid #e5e7eb !important;
@@ -5499,11 +5505,19 @@ if st.session_state.pagina == "home":
     .st-key-card_redes [data-baseweb="select"] > div,
     .st-key-card_identificacao div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
     .st-key-card_setor div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
-    .st-key-card_redes div[data-testid="stSelectbox"] div:has(input[role="combobox"]) {
+    .st-key-card_redes div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
+    .st-key-card_identificacao div[data-testid="stSelectbox"] input[role="combobox"],
+    .st-key-card_setor div[data-testid="stSelectbox"] input[role="combobox"],
+    .st-key-card_redes div[data-testid="stSelectbox"] input[role="combobox"] {
         background: #f3f4f6 !important;
         background-color: #f3f4f6 !important;
         border: 1px solid #e5e7eb !important;
         border-radius: 7px !important;
+    }
+    .st-key-card_identificacao div[data-testid="stSelectbox"] input[role="combobox"],
+    .st-key-card_setor div[data-testid="stSelectbox"] input[role="combobox"],
+    .st-key-card_redes div[data-testid="stSelectbox"] input[role="combobox"] {
+        border: none !important;
     }
     .st-key-card_redes div[data-testid="stForm"] {
         border: none !important;
@@ -12715,7 +12729,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     transition: border-color 0.15s !important;
                 }}
                 .st-key-{filtros_key} div[data-baseweb="select"] > div,
-                .st-key-{filtros_key} div[data-testid="stSelectbox"] div:has(input[role="combobox"]) {{
+                .st-key-{filtros_key} div[data-testid="stSelectbox"] div:has(input[role="combobox"]),
+                .st-key-{filtros_key} div[data-testid="stSelectbox"] input[role="combobox"] {{
                     background-color: #fafafa !important;
                     border: 1px solid #e5e7eb !important;
                     border-radius: 8px !important;

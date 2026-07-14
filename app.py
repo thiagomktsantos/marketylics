@@ -877,6 +877,13 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
                 tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
                 tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad))
+            # Foto de perfil da página — é a mesma URL pra todo anúncio
+            # dessa empresa, mas o dedupe por hash já evita subir de novo;
+            # sem isso, esse campo nunca passava pelo R2 e continuava
+            # dependendo do link do Facebook, que expira.
+            _foto_perfil = ad.get("page_profile_picture")
+            if _foto_perfil:
+                tarefas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad))
 
     if not tarefas:
         return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
@@ -973,7 +980,10 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     try:
         with ThreadPoolExecutor(max_workers=6) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad in executor.map(_processar, tarefas):
-                resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
+                if campo == "page_profile_picture":
+                    resultado[empresa]["data"][ad_idx][campo] = nova_url
+                else:
+                    resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
                 if nao_migrado:
                     nao_migrados.append(url_original)
                     if ad_id:
@@ -4157,6 +4167,9 @@ def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
             imagens = ad.get("images") or []
             videos = ad.get("videos") or []
             midias_relevantes = videos if videos else imagens
+            foto_perfil = ad.get("page_profile_picture")
+            if foto_perfil:
+                midias_relevantes = list(midias_relevantes) + [foto_perfil]
             tem_link_original = any(
                 u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
                 for u in midias_relevantes
@@ -4223,6 +4236,22 @@ def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
                                 urls[i] = origem  # volta pro link original, pra tentar migrar de novo
                                 precisa_reparar = True
                     ad_copia[campo] = urls
+
+                # foto de perfil é um campo único (string), não uma lista —
+                # mesma verificação, sem indexação.
+                _foto = ad.get("page_profile_picture")
+                if _foto and R2_PUBLIC_BASE and _foto.startswith(R2_PUBLIC_BASE):
+                    verificados += 1
+                    try:
+                        ok_foto = requests.head(_foto, timeout=5).status_code == 200
+                    except Exception:
+                        ok_foto = False
+                    if not ok_foto:
+                        quebrados += 1
+                        origem_foto = mapa_origem.get(_foto)
+                        if origem_foto:
+                            ad_copia["page_profile_picture"] = origem_foto
+                            precisa_reparar = True
                 if precisa_reparar:
                     ads_para_reparar.append(ad_copia)
             if ads_para_reparar:

@@ -3379,6 +3379,10 @@ if not st.session_state.logado:
         border: none !important;
         border-radius: 16px !important;
     }
+    div[data-baseweb="tab-panel"] {
+        padding-top: 8px !important;
+        padding-bottom: 0 !important;
+    }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
         max-width: 440px !important;
@@ -3393,6 +3397,8 @@ if not st.session_state.logado:
         border-radius: 8px !important;
         background: #fafafa !important;
         font-size: 15px !important;
+        padding: 10px 14px !important;
+        line-height: 1.4 !important;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #3a9fd6 !important;

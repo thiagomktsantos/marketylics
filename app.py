@@ -5497,8 +5497,8 @@ if st.session_state.pagina == "home":
     .st-key-card_identificacao [data-baseweb="select"] > div,
     .st-key-card_setor [data-baseweb="select"] > div,
     .st-key-card_redes [data-baseweb="select"] > div {
-        background: #ffffff !important;
-        background-color: #ffffff !important;
+        background: #f3f4f6 !important;
+        background-color: #f3f4f6 !important;
         border: 1px solid #e5e7eb !important;
         border-radius: 7px !important;
     }

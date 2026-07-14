@@ -3420,10 +3420,10 @@ if not st.session_state.logado:
         margin-bottom: 8px !important;
     }
     div[data-testid="stTabs"] button[role="tab"] {
-        font-size: 18px !important;
+        font-size: 20px !important;
         font-weight: 900 !important;
         font-family: 'DM Sans', sans-serif !important;
-        padding: 8px 0 !important;
+        padding: 10px 0 !important;
         color: #9ca3af !important;
         border-radius: 8px 8px 0px 0px !important;
         margin-bottom: -2px !important;
@@ -3432,9 +3432,23 @@ if not st.session_state.logado:
         flex: 1 !important;
         text-align: center !important;
     }
+    div[data-testid="stTabs"] button[role="tab"] p,
+    div[data-testid="stTabs"] button[role="tab"] div,
+    div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"] p {
+        font-size: 20px !important;
+        font-weight: 900 !important;
+        color: inherit !important;
+    }
     div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-        color: #fff !important;
+        color: #ffffff !important;
         background-color: #3a9fd6 !important;
+    }
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p,
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] div,
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {
+        color: #ffffff !important;
     }
     div[data-testid="stTabs"] button[role="tab"]:focus,
     div[data-testid="stTabs"] button[role="tab"]:focus-visible {
@@ -3442,7 +3456,7 @@ if not st.session_state.logado:
         outline: none !important;
     }
     div[data-baseweb="tab-highlight"] {
-        background-color: #3a9fd6 !important;
+        background-color: transparent !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -8655,7 +8669,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
@@ -13849,7 +13863,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
@@ -19059,7 +19073,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>

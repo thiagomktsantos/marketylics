@@ -3406,24 +3406,28 @@ if not st.session_state.logado:
         box-shadow: none !important;
     }
 
-    /* Espaçamento reduzido do form (topo do form e entre label/input) */
+    /* Espaçamento do form (topo mantido, resto equilibrado) */
     div[data-testid="stForm"] {
         padding-top: 4px !important;
     }
     div[data-testid="stForm"] [data-testid="stVerticalBlock"] {
-        gap: 0.35rem !important;
+        gap: 0.6rem !important;
     }
     div[data-testid="stForm"] [data-testid="stElementContainer"] {
-        margin-bottom: 0 !important;
+        margin: 0 !important;
     }
     div[data-testid="stForm"] label[data-testid="stWidgetLabel"] {
-        margin-bottom: 2px !important;
+        margin-bottom: 0 !important;
         padding-bottom: 0 !important;
         min-height: 0 !important;
     }
     div[data-testid="stForm"] label[data-testid="stWidgetLabel"] p {
-        margin: 0 0 4px 0 !important;
+        margin: 0 0 6px 0 !important;
         line-height: 1.2 !important;
+    }
+    div[data-testid="stForm"] div.stFormSubmitButton {
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     div.stFormSubmitButton > button {
@@ -3435,7 +3439,7 @@ if not st.session_state.logado:
         font-weight: 700 !important;
         padding: 12px !important;
         width: 100% !important;
-        margin-bottom: 15px;
+        margin: 6px 0 0 0 !important;
     }
     div.stFormSubmitButton > button:hover { opacity: 0.9 !important; }
 

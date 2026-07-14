@@ -3287,12 +3287,27 @@ components.html("""
             }
         });
 
-        // Botões (inclusive os de submit de formulário) mantêm a cor definida no CSS —
-        // aqui só garantimos que nenhum estilo inline antigo fique preso neles.
-        var botoes = window.parent.document.querySelectorAll(
-            '[data-testid="stVerticalBlockBorderWrapper"] button'
+        // Botões primary (ex: "Salvar") recebem a cor azul explicitamente aqui,
+        // com a mesma prioridade máxima usada acima — assim nenhuma outra regra
+        // (nem o próprio bloqueio de fundo branco) consegue apagar a cor deles.
+        var botoesPrimary = window.parent.document.querySelectorAll(
+            '[data-testid="stVerticalBlockBorderWrapper"] button[kind^="primary"], ' +
+            '[data-testid="stVerticalBlockBorderWrapper"] button[data-testid*="Primary"], ' +
+            '[data-testid="stVerticalBlockBorderWrapper"] button[data-testid*="primary"]'
         );
-        botoes.forEach(function(btn) {
+        botoesPrimary.forEach(function(btn) {
+            btn.style.setProperty('background', '#0780c0', 'important');
+            btn.style.setProperty('background-color', '#0780c0', 'important');
+            btn.style.setProperty('color', '#ffffff', 'important');
+            btn.style.setProperty('border', 'none', 'important');
+        });
+
+        // Demais botões (ex: "Cancelar") só têm o inline antigo limpo, deixando
+        // o CSS normal do app definir a aparência (fundo branco, borda cinza).
+        var botoesResto = window.parent.document.querySelectorAll(
+            '[data-testid="stVerticalBlockBorderWrapper"] button:not([kind^="primary"])'
+        );
+        botoesResto.forEach(function(btn) {
             btn.style.removeProperty('background');
             btn.style.removeProperty('background-color');
         });

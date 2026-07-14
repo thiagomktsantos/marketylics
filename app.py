@@ -3124,6 +3124,17 @@ html body [role="option"][role="option"] {
     font-family: 'DM Sans', sans-serif !important;
 }
 
+/* Garante paridade exata entre o texto do select e o texto dos campos
+   normais: mesma especificidade aplicada nos dois, então nenhum dos
+   dois fica refém de um CSS interno do Streamlit que vença só um deles. */
+html body section.main input[type="text"][type="text"],
+html body section.main input[role="combobox"][role="combobox"] {
+    font-size: 0.875rem !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 400 !important;
+    letter-spacing: normal !important;
+}
+
 section.main label {
     font-size: 14px !important; font-weight: 500 !important;
     color: #374151 !important; font-family: 'DM Sans', sans-serif !important;

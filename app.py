@@ -3077,6 +3077,7 @@ section.main div.stFormSubmitButton > button:hover {
 
 section.main div[data-testid="stTextInput"] input,
 section.main div[data-testid="stSelectbox"] select,
+section.main div[data-testid="stSelectbox"] div,
 section.main div[data-baseweb="select"] {
     font-size: 15px !important; border-radius: 7px !important;
     border: 1px solid #e5e7eb !important;
@@ -3130,7 +3131,8 @@ details summary { font-size: 16px !important; font-weight: 500 !important; paddi
 .popup-title { font-size: 20px; font-weight: 600; margin-bottom: 10px; color: #111827; }
 .popup-text { color: #6b7280; margin-bottom: 24px; font-size: 15px; line-height: 1.6; }
 
-div[data-baseweb="select"] > div {
+div[data-baseweb="select"] > div,
+div[data-testid="stSelectbox"] div {
     border-radius: 7px !important; min-height: 42px !important;
     font-size: 15px !important; font-family: 'DM Sans', sans-serif !important;
     background: #f3f4f6 !important; background-color: #f3f4f6 !important;
@@ -3263,7 +3265,8 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] textarea {
     color: #111827 !important;
 }
 
-section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] > div {
+section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] > div,
+section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] div {
     background: #f3f4f6 !important;
     background-color: #f3f4f6 !important;
     border: 1px solid #e5e7eb !important;
@@ -3313,7 +3316,7 @@ components.html("""
                     // limpa qualquer resquício de execuções anteriores deste script.
                     el.style.removeProperty('background');
                     el.style.removeProperty('background-color');
-                } else if (el.closest('[data-baseweb="select"]')) {
+                } else if (el.closest('[data-baseweb="select"], [data-testid="stSelectbox"]')) {
                     // Caixa visível do select (div interna) segue o mesmo
                     // cinza claro definido no CSS para inputs/selects.
                     el.style.setProperty('background', '#f3f4f6', 'important');
@@ -5496,7 +5499,10 @@ if st.session_state.pagina == "home":
     }
     .st-key-card_identificacao [data-baseweb="select"] > div,
     .st-key-card_setor [data-baseweb="select"] > div,
-    .st-key-card_redes [data-baseweb="select"] > div {
+    .st-key-card_redes [data-baseweb="select"] > div,
+    .st-key-card_identificacao div[data-testid="stSelectbox"] div,
+    .st-key-card_setor div[data-testid="stSelectbox"] div,
+    .st-key-card_redes div[data-testid="stSelectbox"] div {
         background: #f3f4f6 !important;
         background-color: #f3f4f6 !important;
         border: 1px solid #e5e7eb !important;
@@ -12711,7 +12717,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     color: #111827 !important;
                     transition: border-color 0.15s !important;
                 }}
-                .st-key-{filtros_key} div[data-baseweb="select"] > div {{
+                .st-key-{filtros_key} div[data-baseweb="select"] > div,
+                .st-key-{filtros_key} div[data-testid="stSelectbox"] div {{
                     background-color: #fafafa !important;
                     border: 1px solid #e5e7eb !important;
                     border-radius: 8px !important;

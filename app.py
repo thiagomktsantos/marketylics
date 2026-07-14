@@ -3092,7 +3092,7 @@ section.main div[data-baseweb="select"] div,
 section.main div[data-baseweb="select"] span,
 section.main div[data-baseweb="select"] input {
     font-size: 0.875rem !important;
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: "Source Sans", sans-serif !important;
 }
 section.main div[data-baseweb="select"] input {
     caret-color: transparent !important;
@@ -3109,7 +3109,7 @@ section.main div[data-baseweb="select"] input {
 html body input[role="combobox"][role="combobox"][role="combobox"],
 input[role="combobox"][role="combobox"][role="combobox"] {
     font-size: 0.875rem !important;
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: "Source Sans", sans-serif !important;
     caret-color: transparent !important;
     cursor: pointer !important;
 }
@@ -3121,7 +3121,7 @@ html body ul[role="listbox"] li,
 html body ul[role="listbox"] [role="option"],
 html body [role="option"][role="option"] {
     font-size: 0.875rem !important;
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: "Source Sans", sans-serif !important;
 }
 
 /* Garante paridade exata entre o texto do select e o texto dos campos
@@ -3130,7 +3130,7 @@ html body [role="option"][role="option"] {
 html body section.main input[type="text"][type="text"],
 html body section.main input[role="combobox"][role="combobox"] {
     font-size: 0.875rem !important;
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: "Source Sans", sans-serif !important;
     font-weight: 400 !important;
     letter-spacing: normal !important;
 }
@@ -3329,7 +3329,7 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] span,
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
     font-size: 0.875rem !important;
-    font-family: 'DM Sans', sans-serif !important;
+    font-family: "Source Sans", sans-serif !important;
 }
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
     caret-color: transparent !important;
@@ -3434,6 +3434,62 @@ components.html("""
     });
 
     observer.observe(window.parent.document.body, {
+        childList: true,
+        subtree: true,
+        attributes: false
+    });
+})();
+</script>
+""", height=0)
+
+# ── Força a fonte (Source Sans) via JavaScript — garante que os campos
+#    de texto e os selects fiquem com a MESMA font-family real usada
+#    pelo Streamlit internamente, via inline style important (que vence
+#    qualquer CSS, mesmo com !important). ──
+components.html("""
+<script>
+(function() {
+    function forcarFonte() {
+        var doc = window.parent.document;
+
+        // Campos de texto normais (inputs e textareas dentro do app)
+        var campos = doc.querySelectorAll(
+            'section.main input, section.main textarea, ' +
+            'input[role="combobox"]'
+        );
+        campos.forEach(function(el) {
+            el.style.setProperty('font-family', '"Source Sans", sans-serif', 'important');
+            el.style.setProperty('font-size', '0.875rem', 'important');
+        });
+
+        // Lista de opções do select, que o Streamlit renderiza em portal
+        // fora da árvore de section.main (por isso precisa buscar no doc todo)
+        var opcoes = doc.querySelectorAll(
+            '[data-baseweb="popover"] li, [data-baseweb="popover"] [role="option"], ' +
+            '[data-baseweb="menu"] li, [data-baseweb="menu"] [role="option"], ' +
+            'ul[role="listbox"] li, ul[role="listbox"] [role="option"], [role="option"]'
+        );
+        opcoes.forEach(function(el) {
+            el.style.setProperty('font-family', '"Source Sans", sans-serif', 'important');
+            el.style.setProperty('font-size', '0.875rem', 'important');
+            el.querySelectorAll('*').forEach(function(inner) {
+                inner.style.setProperty('font-family', '"Source Sans", sans-serif', 'important');
+                inner.style.setProperty('font-size', '0.875rem', 'important');
+            });
+        });
+    }
+
+    forcarFonte();
+    setTimeout(forcarFonte, 200);
+    setTimeout(forcarFonte, 500);
+    setTimeout(forcarFonte, 1000);
+    setTimeout(forcarFonte, 2000);
+
+    var observerFonte = new MutationObserver(function() {
+        forcarFonte();
+    });
+
+    observerFonte.observe(window.parent.document.body, {
         childList: true,
         subtree: true,
         attributes: false
@@ -5586,7 +5642,7 @@ if st.session_state.pagina == "home":
     .st-key-card_redes [data-baseweb="select"] span,
     .st-key-card_redes [data-baseweb="select"] input {
         font-size: 0.875rem !important;
-        font-family: 'DM Sans', sans-serif !important;
+        font-family: "Source Sans", sans-serif !important;
     }
     .st-key-card_identificacao [data-baseweb="select"] input,
     .st-key-card_setor [data-baseweb="select"] input,

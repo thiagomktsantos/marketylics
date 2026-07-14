@@ -18071,7 +18071,7 @@ body{{padding-bottom:8px;}}
     display:grid; grid-template-columns:1.6fr 1.2fr 1.2fr 1.2fr;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
 }}
-.metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; }}
+.metric-cell {{ padding:8px 5px; text-align:center; border-right:1px solid #f3f4f6; }}
 .metric-cell:last-child {{ border-right:none; }}
 .metric-cell-lbl {{ font-size:13px; margin-bottom:2px; line-height:1; }}
 .metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; }}

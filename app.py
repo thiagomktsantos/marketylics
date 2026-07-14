@@ -3080,6 +3080,7 @@ section.main div[data-testid="stSelectbox"] select,
 section.main div[data-baseweb="select"] {
     font-size: 15px !important; border-radius: 7px !important;
     border: 1px solid #e5e7eb !important;
+    background: #f3f4f6 !important; background-color: #f3f4f6 !important;
     font-family: 'DM Sans', sans-serif !important; color: #111827 !important;
 }
 section.main label {
@@ -3132,6 +3133,7 @@ details summary { font-size: 16px !important; font-weight: 500 !important; paddi
 div[data-baseweb="select"] > div {
     border-radius: 7px !important; min-height: 42px !important;
     font-size: 15px !important; font-family: 'DM Sans', sans-serif !important;
+    background: #f3f4f6 !important; background-color: #f3f4f6 !important;
 }
 div[data-testid="stDataFrame"] {
     border-radius: 10px !important; overflow: hidden !important; border: 1px solid #e5e7eb !important;
@@ -3139,6 +3141,7 @@ div[data-testid="stDataFrame"] {
 section.main div[data-testid="stTextArea"] textarea {
     font-size: 15px !important; border-radius: 7px !important;
     border: 1px solid #e5e7eb !important;
+    background: #f3f4f6 !important; background-color: #f3f4f6 !important;
     font-family: 'DM Sans', sans-serif !important;
     color: #111827 !important; resize: vertical !important;
 }
@@ -3252,8 +3255,8 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] {
 
 section.main [data-testid="stVerticalBlockBorderWrapper"] input,
 section.main [data-testid="stVerticalBlockBorderWrapper"] textarea {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
+    background: #f3f4f6 !important;
+    background-color: #f3f4f6 !important;
     border: 1px solid #e5e7eb !important;
     border-radius: 7px !important;
     font-size: 15px !important;
@@ -3261,8 +3264,8 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] textarea {
 }
 
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] > div {
-    background: #ffffff !important;
-    background-color: #ffffff !important;
+    background: #f3f4f6 !important;
+    background-color: #f3f4f6 !important;
     border: 1px solid #e5e7eb !important;
     border-radius: 7px !important;
 }
@@ -3310,6 +3313,11 @@ components.html("""
                     // limpa qualquer resquício de execuções anteriores deste script.
                     el.style.removeProperty('background');
                     el.style.removeProperty('background-color');
+                } else if (el.closest('[data-baseweb="select"]')) {
+                    // Caixa visível do select (div interna) segue o mesmo
+                    // cinza claro definido no CSS para inputs/selects.
+                    el.style.setProperty('background', '#f3f4f6', 'important');
+                    el.style.setProperty('background-color', '#f3f4f6', 'important');
                 } else {
                     el.style.setProperty('background', '#ffffff', 'important');
                     el.style.setProperty('background-color', '#ffffff', 'important');

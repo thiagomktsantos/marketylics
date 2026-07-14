@@ -3088,6 +3088,11 @@ section.main div[data-baseweb="select"] {
 section.main div[data-testid="stSelectbox"] input[role="combobox"] {
     border: none !important;
 }
+section.main div[data-baseweb="select"] div,
+section.main div[data-baseweb="select"] span {
+    font-size: 15px !important;
+    font-family: 'DM Sans', sans-serif !important;
+}
 section.main label {
     font-size: 14px !important; font-weight: 500 !important;
     color: #374151 !important; font-family: 'DM Sans', sans-serif !important;
@@ -5518,6 +5523,15 @@ if st.session_state.pagina == "home":
     .st-key-card_setor div[data-testid="stSelectbox"] input[role="combobox"],
     .st-key-card_redes div[data-testid="stSelectbox"] input[role="combobox"] {
         border: none !important;
+    }
+    .st-key-card_identificacao [data-baseweb="select"] div,
+    .st-key-card_identificacao [data-baseweb="select"] span,
+    .st-key-card_setor [data-baseweb="select"] div,
+    .st-key-card_setor [data-baseweb="select"] span,
+    .st-key-card_redes [data-baseweb="select"] div,
+    .st-key-card_redes [data-baseweb="select"] span {
+        font-size: 15px !important;
+        font-family: 'DM Sans', sans-serif !important;
     }
     .st-key-card_redes div[data-testid="stForm"] {
         border: none !important;

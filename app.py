@@ -3420,10 +3420,10 @@ if not st.session_state.logado:
         margin-bottom: 8px !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] {
-        font-size: 20px !important;
-        font-weight: 900 !important;
+        font-size: 14px !important;
+        font-weight: 700 !important;
         font-family: 'DM Sans', sans-serif !important;
-        padding: 10px 0 !important;
+        padding: 12px 0 !important;
         color: #9ca3af !important;
         border-radius: 8px 8px 0px 0px !important;
         margin-bottom: -2px !important;
@@ -3431,14 +3431,19 @@ if not st.session_state.logado:
         box-shadow: none !important;
         flex: 1 !important;
         text-align: center !important;
+        line-height: 1.2 !important;
+        box-sizing: border-box !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] p,
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] div,
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"],
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"] p {
-        font-size: 20px !important;
-        font-weight: 900 !important;
+        font-size: 14px !important;
+        font-weight: 700 !important;
         color: inherit !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] {
         color: #ffffff !important;

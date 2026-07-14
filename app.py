@@ -18407,7 +18407,7 @@ function openModal(thumbUrl, igUrl, videoUrl, isVideo, carouselImgs) {{
             if (i > 0) {{
                 var prev = doc.createElement('button');
                 prev.innerHTML = '&#8249;';
-                prev.style.cssText = 'position:absolute;left:-26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;line-height:1;z-index:6;';
+                prev.style.cssText = 'position:absolute;left:-26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,0.15);border:none;color:#fff;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;line-height:1;z-index:6;';
                 prev.onmouseover = function() {{ this.style.background = 'rgba(255,255,255,0.28)'; }};
                 prev.onmouseout  = function() {{ this.style.background = 'rgba(255,255,255,0.15)'; }};
                 prev.onclick = function(e) {{ e.stopPropagation(); curIdx--; renderSlide(curIdx); }};
@@ -18416,7 +18416,7 @@ function openModal(thumbUrl, igUrl, videoUrl, isVideo, carouselImgs) {{
             if (i < imgs.length - 1) {{
                 var next = doc.createElement('button');
                 next.innerHTML = '&#8250;';
-                next.style.cssText = 'position:absolute;right:-26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;line-height:1;z-index:6;';
+                next.style.cssText = 'position:absolute;right:-26px;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:rgba(0,0,0,0.15);border:none;color:#fff;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;line-height:1;z-index:6;';
                 next.onmouseover = function() {{ this.style.background = 'rgba(255,255,255,0.28)'; }};
                 next.onmouseout  = function() {{ this.style.background = 'rgba(255,255,255,0.15)'; }};
                 next.onclick = function(e) {{ e.stopPropagation(); curIdx++; renderSlide(curIdx); }};

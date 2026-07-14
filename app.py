@@ -8655,7 +8655,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
@@ -13849,7 +13849,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>
@@ -19059,7 +19059,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
     background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
 }}
-.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-pill.active .tab-badge {{ background:rgba(0,0,0,0.15); color:#fff; }}
 .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 .tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
 </style>

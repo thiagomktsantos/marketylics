@@ -6254,6 +6254,7 @@ body {{ padding-bottom: 8px; }}
         CARDS.forEach(function(c) {{
             var card = document.createElement('div');
             card.className = 'card';
+            card.style.borderTop = '3px solid ' + c.cor;
  
             var hdr = document.createElement('div');
             hdr.className = 'card-header';

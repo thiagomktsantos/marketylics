@@ -3091,7 +3091,7 @@ section.main div[data-testid="stSelectbox"] input[role="combobox"] {
 section.main div[data-baseweb="select"] div,
 section.main div[data-baseweb="select"] span,
 section.main div[data-baseweb="select"] input {
-    font-size: 15px !important;
+    font-size: 0.875rem !important;
     font-family: 'DM Sans', sans-serif !important;
 }
 section.main div[data-baseweb="select"] input {
@@ -3102,21 +3102,25 @@ section.main div[data-baseweb="select"] input {
 /* ── Regras globais (sem escopo) ──
    O input do combobox e a lista de opções do BaseWeb Select são
    renderizados em portal fora de section.main / dos containers de card,
-   então precisam de seletores sem escopo para serem alcançados. */
-input[role="combobox"] {
-    font-size: 15px !important;
+   então precisam de seletores sem escopo para serem alcançados.
+   Especificidade elevada (atributo repetido) para vencer o CSS interno
+   do Streamlit, que também aplica font-size com !important.
+   0.875rem = mesmo tamanho usado pelos campos de texto (input/textarea). */
+html body input[role="combobox"][role="combobox"][role="combobox"],
+input[role="combobox"][role="combobox"][role="combobox"] {
+    font-size: 0.875rem !important;
     font-family: 'DM Sans', sans-serif !important;
     caret-color: transparent !important;
     cursor: pointer !important;
 }
-div[data-baseweb="popover"] li,
-div[data-baseweb="popover"] [role="option"],
-div[data-baseweb="menu"] li,
-div[data-baseweb="menu"] [role="option"],
-ul[role="listbox"] li,
-ul[role="listbox"] [role="option"],
-[role="option"] {
-    font-size: 15px !important;
+html body div[data-baseweb="popover"] li,
+html body div[data-baseweb="popover"] [role="option"],
+html body div[data-baseweb="menu"] li,
+html body div[data-baseweb="menu"] [role="option"],
+html body ul[role="listbox"] li,
+html body ul[role="listbox"] [role="option"],
+html body [role="option"][role="option"] {
+    font-size: 0.875rem !important;
     font-family: 'DM Sans', sans-serif !important;
 }
 
@@ -3313,7 +3317,7 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSel
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] div,
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] span,
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
-    font-size: 15px !important;
+    font-size: 0.875rem !important;
     font-family: 'DM Sans', sans-serif !important;
 }
 section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
@@ -5570,7 +5574,7 @@ if st.session_state.pagina == "home":
     .st-key-card_redes [data-baseweb="select"] div,
     .st-key-card_redes [data-baseweb="select"] span,
     .st-key-card_redes [data-baseweb="select"] input {
-        font-size: 15px !important;
+        font-size: 0.875rem !important;
         font-family: 'DM Sans', sans-serif !important;
     }
     .st-key-card_identificacao [data-baseweb="select"] input,

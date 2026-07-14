@@ -3597,6 +3597,24 @@ if not st.session_state.logado:
         background: #fff !important;
         box-shadow: none !important;
     }
+    /* O <input> fica dentro de um wrapper do BaseWeb (div[data-baseweb="input"])
+       que tem sua própria borda/box-shadow de foco (anel azul padrão), com um
+       border-radius diferente do nosso — isso cria o efeito de "borda bugada"
+       (duas bordas com raios diferentes sobrepostas). Neutralizamos o wrapper
+       para sobrar só a borda que definimos no <input>. */
+    div[data-testid="stTextInput"] div[data-baseweb="input"],
+    div[data-testid="stTextInput"] div[data-baseweb="base-input"] {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        border-radius: 8px !important;
+    }
+    div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within,
+    div[data-testid="stTextInput"] div[data-baseweb="base-input"]:focus-within {
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
 
     /* Espaçamento do form (topo mantido, resto equilibrado) */
     div[data-testid="stForm"] {

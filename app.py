@@ -3433,6 +3433,9 @@ if not st.session_state.logado:
         text-align: center !important;
         line-height: 1.2 !important;
         box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] p,
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] div,
@@ -3444,6 +3447,9 @@ if not st.session_state.logado:
         line-height: 1.2 !important;
         margin: 0 !important;
         padding: 0 !important;
+        width: 100% !important;
+        text-align: center !important;
+        justify-content: center !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] {
         color: #ffffff !important;

@@ -5495,8 +5495,8 @@ if st.session_state.pagina == "home":
     .st-key-card_identificacao textarea,
     .st-key-card_setor textarea,
     .st-key-card_redes textarea {
-        background: #ffffff !important;
-        background-color: #ffffff !important;
+        background: #f3f4f6 !important;
+        background-color: #f3f4f6 !important;
         border: 1px solid #e5e7eb !important;
         border-radius: 7px !important;
     }

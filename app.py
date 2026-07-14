@@ -3045,6 +3045,29 @@ section.main div.stFormSubmitButton > button:hover {
     background: #1f2937 !important;
 }
 
+/* Botões "Salvar" mirados por key estável (.st-key-*) — não depende do
+   atributo kind/data-testid interno do Streamlit, que pode mudar entre versões. */
+.st-key-btn_salvar_empresa button,
+.st-key-btn_salvar_concorrente button {
+    background: #0780c0 !important;
+    background-color: #0780c0 !important;
+    color: #ffffff !important;
+    border: none !important;
+    opacity: 1 !important;
+}
+.st-key-btn_salvar_empresa button:hover,
+.st-key-btn_salvar_concorrente button:hover {
+    background: #065f9e !important;
+    background-color: #065f9e !important;
+    color: #ffffff !important;
+}
+.st-key-btn_salvar_empresa button p,
+.st-key-btn_salvar_concorrente button p,
+.st-key-btn_salvar_empresa button span,
+.st-key-btn_salvar_concorrente button span {
+    color: #ffffff !important;
+}
+
 .form-section-header {
     font-size: 13px; font-weight: 600; color: #6b7280;
     text-transform: uppercase; letter-spacing: 0.8px;
@@ -3287,13 +3310,12 @@ components.html("""
             }
         });
 
-        // Botões primary (ex: "Salvar") recebem a cor azul explicitamente aqui,
-        // com a mesma prioridade máxima usada acima — assim nenhuma outra regra
-        // (nem o próprio bloqueio de fundo branco) consegue apagar a cor deles.
+        // Botões "Salvar" (identificados pela key estável .st-key-btn_salvar_*)
+        // recebem a cor azul explicitamente aqui, com a mesma prioridade máxima
+        // usada acima — assim nenhuma outra regra consegue apagar a cor deles.
         var botoesPrimary = window.parent.document.querySelectorAll(
-            '[data-testid="stVerticalBlockBorderWrapper"] button[kind^="primary"], ' +
-            '[data-testid="stVerticalBlockBorderWrapper"] button[data-testid*="Primary"], ' +
-            '[data-testid="stVerticalBlockBorderWrapper"] button[data-testid*="primary"]'
+            '.st-key-btn_salvar_empresa button, ' +
+            '.st-key-btn_salvar_concorrente button'
         );
         botoesPrimary.forEach(function(btn) {
             btn.style.setProperty('background', '#0780c0', 'important');
@@ -3302,14 +3324,16 @@ components.html("""
             btn.style.setProperty('border', 'none', 'important');
         });
 
-        // Demais botões (ex: "Cancelar") só têm o inline antigo limpo, deixando
-        // o CSS normal do app definir a aparência (fundo branco, borda cinza).
+        // Demais botões dentro dos cards (ex: "Cancelar") só têm o inline antigo
+        // limpo, deixando o CSS normal do app definir a aparência.
         var botoesResto = window.parent.document.querySelectorAll(
-            '[data-testid="stVerticalBlockBorderWrapper"] button:not([kind^="primary"])'
+            '[data-testid="stVerticalBlockBorderWrapper"] button'
         );
         botoesResto.forEach(function(btn) {
-            btn.style.removeProperty('background');
-            btn.style.removeProperty('background-color');
+            if (!btn.closest('.st-key-btn_salvar_empresa') && !btn.closest('.st-key-btn_salvar_concorrente')) {
+                btn.style.removeProperty('background');
+                btn.style.removeProperty('background-color');
+            }
         });
     }
 
@@ -5615,8 +5639,8 @@ html, body { background: transparent; overflow: hidden; }
                 form_divider()
 
                 col_salvar, col_cancelar = st.columns(2)
-                salvar   = col_salvar.form_submit_button("Salvar",   use_container_width=True, type="primary")
-                cancelar = col_cancelar.form_submit_button("Cancelar", use_container_width=True)
+                salvar   = col_salvar.form_submit_button("Salvar",   use_container_width=True, type="primary", key="btn_salvar_empresa")
+                cancelar = col_cancelar.form_submit_button("Cancelar", use_container_width=True, key="btn_cancelar_empresa")
 
                 if cancelar:
                     if tem_dados:
@@ -6053,8 +6077,8 @@ function triggerAdicionar() {
             )
  
             col1, col2 = st.columns(2)
-            salvar   = col1.form_submit_button("Salvar",   use_container_width=True, type="primary")
-            cancelar = col2.form_submit_button("Cancelar", use_container_width=True)
+            salvar   = col1.form_submit_button("Salvar",   use_container_width=True, type="primary", key="btn_salvar_concorrente")
+            cancelar = col2.form_submit_button("Cancelar", use_container_width=True, key="btn_cancelar_concorrente")
  
             if cancelar:
                 st.session_state.mostrar_form_concorrente = False

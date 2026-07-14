@@ -3098,6 +3098,28 @@ section.main div[data-baseweb="select"] input {
     caret-color: transparent !important;
     cursor: pointer !important;
 }
+
+/* ── Regras globais (sem escopo) ──
+   O input do combobox e a lista de opções do BaseWeb Select são
+   renderizados em portal fora de section.main / dos containers de card,
+   então precisam de seletores sem escopo para serem alcançados. */
+input[role="combobox"] {
+    font-size: 15px !important;
+    font-family: 'DM Sans', sans-serif !important;
+    caret-color: transparent !important;
+    cursor: pointer !important;
+}
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] [role="option"],
+div[data-baseweb="menu"] li,
+div[data-baseweb="menu"] [role="option"],
+ul[role="listbox"] li,
+ul[role="listbox"] [role="option"],
+[role="option"] {
+    font-size: 15px !important;
+    font-family: 'DM Sans', sans-serif !important;
+}
+
 section.main label {
     font-size: 14px !important; font-weight: 500 !important;
     color: #374151 !important; font-family: 'DM Sans', sans-serif !important;

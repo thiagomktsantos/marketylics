@@ -5589,7 +5589,7 @@ html, body { background: transparent; overflow: hidden; }
                 form_divider()
 
                 col_salvar, col_cancelar = st.columns(2)
-                salvar   = col_salvar.form_submit_button("Salvar",   use_container_width=True)
+                salvar   = col_salvar.form_submit_button("Salvar",   use_container_width=True, type="primary")
                 cancelar = col_cancelar.form_submit_button("Cancelar", use_container_width=True)
 
                 if cancelar:

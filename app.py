@@ -3061,11 +3061,11 @@ section.main div.stFormSubmitButton > button:hover {
     background-color: #065f9e !important;
     color: #ffffff !important;
 }
-.st-key-btn_salvar_empresa button p,
-.st-key-btn_salvar_concorrente button p,
-.st-key-btn_salvar_empresa button span,
-.st-key-btn_salvar_concorrente button span {
+.st-key-btn_salvar_empresa button *,
+.st-key-btn_salvar_concorrente button * {
     color: #ffffff !important;
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .form-section-header {
@@ -3305,8 +3305,15 @@ components.html("""
         containers.forEach(function(el) {
             var tag = el.tagName.toLowerCase();
             if (TAGS_IGNORADAS.indexOf(tag) === -1) {
-                el.style.setProperty('background', '#ffffff', 'important');
-                el.style.setProperty('background-color', '#ffffff', 'important');
+                if (el.closest('button')) {
+                    // Miolo (texto/ícone) de botões: nunca pintar de branco —
+                    // limpa qualquer resquício de execuções anteriores deste script.
+                    el.style.removeProperty('background');
+                    el.style.removeProperty('background-color');
+                } else {
+                    el.style.setProperty('background', '#ffffff', 'important');
+                    el.style.setProperty('background-color', '#ffffff', 'important');
+                }
             }
         });
 
@@ -3322,6 +3329,11 @@ components.html("""
             btn.style.setProperty('background-color', '#0780c0', 'important');
             btn.style.setProperty('color', '#ffffff', 'important');
             btn.style.setProperty('border', 'none', 'important');
+            btn.querySelectorAll('*').forEach(function(inner) {
+                inner.style.setProperty('color', '#ffffff', 'important');
+                inner.style.setProperty('background', 'transparent', 'important');
+                inner.style.setProperty('background-color', 'transparent', 'important');
+            });
         });
 
         // Demais botões dentro dos cards (ex: "Cancelar") só têm o inline antigo

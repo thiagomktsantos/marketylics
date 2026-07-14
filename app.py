@@ -6027,7 +6027,7 @@ function triggerAdicionar() {
             )
  
             col1, col2 = st.columns(2)
-            salvar   = col1.form_submit_button("Salvar",   use_container_width=True)
+            salvar   = col1.form_submit_button("Salvar",   use_container_width=True, type="primary")
             cancelar = col2.form_submit_button("Cancelar", use_container_width=True)
  
             if cancelar:

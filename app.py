@@ -3089,9 +3089,14 @@ section.main div[data-testid="stSelectbox"] input[role="combobox"] {
     border: none !important;
 }
 section.main div[data-baseweb="select"] div,
-section.main div[data-baseweb="select"] span {
+section.main div[data-baseweb="select"] span,
+section.main div[data-baseweb="select"] input {
     font-size: 15px !important;
     font-family: 'DM Sans', sans-serif !important;
+}
+section.main div[data-baseweb="select"] input {
+    caret-color: transparent !important;
+    cursor: pointer !important;
 }
 section.main label {
     font-size: 14px !important; font-weight: 500 !important;
@@ -3282,6 +3287,16 @@ section.main [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSel
     background-color: #f3f4f6 !important;
     border: 1px solid #e5e7eb !important;
     border-radius: 7px !important;
+}
+section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] div,
+section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] span,
+section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
+    font-size: 15px !important;
+    font-family: 'DM Sans', sans-serif !important;
+}
+section.main [data-testid="stVerticalBlockBorderWrapper"] [data-baseweb="select"] input {
+    caret-color: transparent !important;
+    cursor: pointer !important;
 }
 
 section.main [data-testid="stVerticalBlockBorderWrapper"] iframe,
@@ -5526,12 +5541,21 @@ if st.session_state.pagina == "home":
     }
     .st-key-card_identificacao [data-baseweb="select"] div,
     .st-key-card_identificacao [data-baseweb="select"] span,
+    .st-key-card_identificacao [data-baseweb="select"] input,
     .st-key-card_setor [data-baseweb="select"] div,
     .st-key-card_setor [data-baseweb="select"] span,
+    .st-key-card_setor [data-baseweb="select"] input,
     .st-key-card_redes [data-baseweb="select"] div,
-    .st-key-card_redes [data-baseweb="select"] span {
+    .st-key-card_redes [data-baseweb="select"] span,
+    .st-key-card_redes [data-baseweb="select"] input {
         font-size: 15px !important;
         font-family: 'DM Sans', sans-serif !important;
+    }
+    .st-key-card_identificacao [data-baseweb="select"] input,
+    .st-key-card_setor [data-baseweb="select"] input,
+    .st-key-card_redes [data-baseweb="select"] input {
+        caret-color: transparent !important;
+        cursor: pointer !important;
     }
     .st-key-card_redes div[data-testid="stForm"] {
         border: none !important;

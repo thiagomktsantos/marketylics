@@ -3406,6 +3406,26 @@ if not st.session_state.logado:
         box-shadow: none !important;
     }
 
+    /* Espaçamento reduzido do form (topo do form e entre label/input) */
+    div[data-testid="stForm"] {
+        padding-top: 4px !important;
+    }
+    div[data-testid="stForm"] [data-testid="stVerticalBlock"] {
+        gap: 0.35rem !important;
+    }
+    div[data-testid="stForm"] [data-testid="stElementContainer"] {
+        margin-bottom: 0 !important;
+    }
+    div[data-testid="stForm"] label[data-testid="stWidgetLabel"] {
+        margin-bottom: 2px !important;
+        padding-bottom: 0 !important;
+        min-height: 0 !important;
+    }
+    div[data-testid="stForm"] label[data-testid="stWidgetLabel"] p {
+        margin: 0 0 4px 0 !important;
+        line-height: 1.2 !important;
+    }
+
     div.stFormSubmitButton > button {
         background: linear-gradient(135deg, #3a9fd6 0%, #2ecc71 100%) !important;
         color: #fff !important;

@@ -3272,7 +3272,7 @@ button[data-testid="baseButton-secondary"][kind="secondary"]:has(~ *) {
 components.html("""
 <script>
 (function() {
-    var TAGS_IGNORADAS = ['iframe','canvas','img','svg','video','input','textarea','select','option'];
+    var TAGS_IGNORADAS = ['iframe','canvas','img','svg','video','input','textarea','select','option','button'];
 
     function forcarBranco() {
         var containers = window.parent.document.querySelectorAll(
@@ -3280,10 +3280,21 @@ components.html("""
             '[data-testid="stVerticalBlockBorderWrapper"] *'
         );
         containers.forEach(function(el) {
-            if (TAGS_IGNORADAS.indexOf(el.tagName.toLowerCase()) === -1) {
+            var tag = el.tagName.toLowerCase();
+            if (TAGS_IGNORADAS.indexOf(tag) === -1) {
                 el.style.setProperty('background', '#ffffff', 'important');
                 el.style.setProperty('background-color', '#ffffff', 'important');
             }
+        });
+
+        // Botões (inclusive os de submit de formulário) mantêm a cor definida no CSS —
+        // aqui só garantimos que nenhum estilo inline antigo fique preso neles.
+        var botoes = window.parent.document.querySelectorAll(
+            '[data-testid="stVerticalBlockBorderWrapper"] button'
+        );
+        botoes.forEach(function(btn) {
+            btn.style.removeProperty('background');
+            btn.style.removeProperty('background-color');
         });
     }
 

@@ -3123,7 +3123,7 @@ section.main div[data-testid="stTextArea"] textarea {
 div[data-testid="stTabs"] > div:first-child {
     justify-content: center !important; border-bottom: 2px solid #e5e7eb !important; gap: 0 !important;
 }
-div[data-testid="stTabs"] button[role="tab"] {
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] {
     font-size: 15px !important;
     font-weight: 600 !important;
     font-family: 'DM Sans', sans-serif !important;
@@ -3133,10 +3133,10 @@ div[data-testid="stTabs"] button[role="tab"] {
     margin-bottom: -2px !important;
     text-transform: uppercase;
 }
-div[data-testid="stTabs"] button[role="tab"] p,
-div[data-testid="stTabs"] button[role="tab"] div,
-div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"],
-div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"] p {
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] p,
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] div,
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"],
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"] p {
     font-family: 'DM Sans', sans-serif !important;
     font-size: 14px !important;
     font-weight: 600 !important;
@@ -3144,7 +3144,7 @@ div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"]
     padding: 0 !important;
     text-transform: uppercase;
 }
-div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] {
     color: #fff !important;
     background-color: #3a9fd6 !important;
 }
@@ -3419,7 +3419,7 @@ if not st.session_state.logado:
         gap: 0 !important;
         margin-bottom: 8px !important;
     }
-    div[data-testid="stTabs"] button[role="tab"] {
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] {
         font-size: 20px !important;
         font-weight: 900 !important;
         font-family: 'DM Sans', sans-serif !important;
@@ -3432,30 +3432,30 @@ if not st.session_state.logado:
         flex: 1 !important;
         text-align: center !important;
     }
-    div[data-testid="stTabs"] button[role="tab"] p,
-    div[data-testid="stTabs"] button[role="tab"] div,
-    div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"],
-    div[data-testid="stTabs"] button[role="tab"] [data-testid="stMarkdownContainer"] p {
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] p,
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] div,
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] [data-testid="stMarkdownContainer"] p {
         font-size: 20px !important;
         font-weight: 900 !important;
         color: inherit !important;
     }
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] {
         color: #ffffff !important;
         background-color: #3a9fd6 !important;
     }
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p,
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] div,
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"],
-    div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] p,
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] div,
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"],
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="true"] [data-testid="stMarkdownContainer"] p {
         color: #ffffff !important;
     }
-    div[data-testid="stTabs"] button[role="tab"]:focus,
-    div[data-testid="stTabs"] button[role="tab"]:focus-visible {
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"]:focus,
+    div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"]:focus-visible {
         box-shadow: none !important;
         outline: none !important;
     }
-    div[data-baseweb="tab-highlight"] {
+    .react-aria-SelectionIndicator {
         background-color: transparent !important;
     }
     </style>

@@ -18038,9 +18038,7 @@ body{{padding-bottom:8px;}}
     display:flex; flex-direction:column; overflow:hidden;
     position:relative; border-radius:14px;
     box-shadow:0 1px 4px rgba(0,0,0,0.06);
-    transition:box-shadow 0.15s, border-color 0.15s;
 }}
-.post-card:hover {{ border:2px solid #6fd1f3; box-shadow:0 4px 16px rgba(58,159,214,0.12); }}
 .thumb-wrap {{
     position:relative; width:100%; aspect-ratio:1/1;
     background:#f0f2f5; overflow:hidden; flex-shrink:0; cursor:pointer;
@@ -18071,7 +18069,7 @@ body{{padding-bottom:8px;}}
     display:grid; grid-template-columns:1.6fr 1.2fr 1.2fr 1.2fr;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
 }}
-.metric-cell {{ padding:8px 5px; text-align:center; border-right:1px solid #f3f4f6; }}
+.metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; }}
 .metric-cell:last-child {{ border-right:none; }}
 .metric-cell-lbl {{ font-size:13px; margin-bottom:2px; line-height:1; }}
 .metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; }}

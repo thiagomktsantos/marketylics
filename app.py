@@ -8403,7 +8403,6 @@ body {{ padding-bottom:8px; }}
     overflow:hidden; display:flex; flex-direction:column;
     transition:box-shadow 0.15s; box-shadow:0 4px 20px rgba(0,0,0,0.10);
 }}
-.site-card:hover {{ border:1px solid #6fd1f3!important; }}
 .card-header {{
     display:flex; align-items:center; gap:12px;
     padding:16px 18px 14px; border-bottom:1px solid #f3f4f6;

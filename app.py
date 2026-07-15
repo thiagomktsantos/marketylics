@@ -3560,7 +3560,7 @@ if not st.session_state.logado:
 
     section.main .block-container {
         max-width: 440px !important;
-        padding: 10px 24px 48px 24px !important;
+        padding: 0px 24px 48px 24px !important;
         margin: 0 auto !important;
         background: transparent !important;
     }

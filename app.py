@@ -3570,9 +3570,16 @@ if not st.session_state.logado:
         background: #ffffff !important;
         border-radius: 16px !important;
         box-shadow: 0 2px 20px rgba(0,0,0,0.08) !important;
+        padding-top: 0 !important;
     }
-    [data-testid="stVerticalBlockBorderWrapper"] > div:first-child {
-        padding-top: 4px !important;
+    [data-testid="stVerticalBlockBorderWrapper"] > div:first-child,
+    [data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child,
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stVerticalBlock"] {
+        padding-top: 0 !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"] .stElementContainer:first-child {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] > div,
     [data-testid="stVerticalBlockBorderWrapper"] > div > div,
@@ -3727,7 +3734,7 @@ if not st.session_state.logado:
 
     with st.container(border=True):
         st.markdown(f"""
-        <div style="text-align:center;margin-top:0;margin-bottom:36px">
+        <div style="text-align:center;margin-top:-24px;margin-bottom:36px">
             {'<img src="' + logo_src + '" style="width:242px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
             <div style="font-size:13px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>

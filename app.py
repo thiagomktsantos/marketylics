@@ -3725,8 +3725,8 @@ if not st.session_state.logado:
     with st.container(border=True):
         st.markdown(f"""
         <div style="text-align:center;margin-bottom:36px">
-            {'<img src="' + logo_src + '" style="width:200px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
-            <div style="font-size:10.9px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
+            {'<img src="' + logo_src + '" style="width:220px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
+            <div style="font-size:12px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>
         """, unsafe_allow_html=True)
 

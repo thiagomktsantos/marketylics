@@ -8099,23 +8099,48 @@ function setHeightGeral(isOpen) {{
                 resumo_executivo_html = f"""
 <!DOCTYPE html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>* {{ margin:0; padding:0; box-sizing:border-box; }} html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}</style>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.score-tooltip-wrap {{ position:relative; display:inline-flex; align-items:center; }}
+.score-tooltip-wrap .tip {{
+    display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
+    line-height:1.8; width:200px; z-index:9999; white-space:normal;
+    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
+}}
+.score-tooltip-wrap .tip::after {{
+    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:#1a2e4a;
+}}
+.score-tooltip-wrap:hover .tip {{ display:block; }}
+.q-badge {{
+    width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
+    align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
+    cursor:default; flex-shrink:0; margin-left:5px;
+}}
+</style>
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
     <div style="display:grid;grid-template-columns:auto 1fr 1.15fr;gap:22px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;justify-content:center;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Score Geral</div>
-        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
+        <div style="display:flex;align-items:center;margin-bottom:10px;">
+          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
+          <div class="score-tooltip-wrap"><div class="q-badge">?</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;">
           <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;">{_sg_lbl}</div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>
-      <div style="display:flex;flex-direction:column;justify-content:center;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
-        <div style="display:flex;flex-direction:row;gap:18px;">
+      <div style="display:flex;flex-direction:column;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Desempenho por área</div>
+        <div style="display:flex;flex-direction:row;gap:18px;justify-content:center;flex:1;align-items:center;">
           {_area_rings_html}
         </div>
       </div>
@@ -8125,13 +8150,13 @@ function setHeightGeral(isOpen) {{
       </div>
     </div>
   </div>
-  <div style="background:#f0f5ff;border:1px solid #dbe6fb;border-radius:14px;padding:16px 18px;width:260px;flex-shrink:0;display:flex;flex-direction:column;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+  <div style="background:#f0f5ff;border:1px solid #dbe6fb;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;">💡 Insight da IA</div>
       <div style="font-size:20px;line-height:1;">🤖</div>
     </div>
-    <div style="font-size:12px;color:#374151;line-height:1.6;flex:1;">{_insight_txt}</div>
-    <div style="margin-top:14px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
+    <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
+    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
       Ver todos os insights
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>

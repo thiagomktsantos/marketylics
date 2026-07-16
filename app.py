@@ -7938,13 +7938,13 @@ function setHeightGeral(isOpen) {{
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
 
                 if _score_geral >= 80:
-                    _sg_lbl, _sg_cor = "Muito bom", "#22c55e"
+                    _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", "🏆"
                 elif _score_geral >= 60:
-                    _sg_lbl, _sg_cor = "Bom", "#3b82f6"
+                    _sg_lbl, _sg_cor, _sg_icon = "Bom", "#3b82f6", "👍"
                 elif _score_geral >= 40:
-                    _sg_lbl, _sg_cor = "Regular", "#f59e0b"
+                    _sg_lbl, _sg_cor, _sg_icon = "Regular", "#f59e0b", "⚠️"
                 else:
-                    _sg_lbl, _sg_cor = "Precisa de atenção", "#ef4444"
+                    _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", "📝"
 
                 # ── Comparação com concorrentes: recalcula o score geral (mesma
                 # fórmula acima) de CADA empresa cadastrada — não só a
@@ -8164,11 +8164,11 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:12px;">
-          <div style="display:flex;align-items:baseline;gap:3px;background:{_sg_cor}14;border-radius:12px;padding:4px 12px 4px 10px;">
-            <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:{_sg_cor};opacity:0.65;">/100</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="display:flex;align-items:baseline;gap:3px;">
+            <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:#9ca3af;">/100</span>
           </div>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_lbl}</div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>

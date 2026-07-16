@@ -2021,43 +2021,22 @@ def _ultima_execucao_acao(user_id: str, tipo_acao: str):
         return None
 
 def _contar_execucoes_mes(user_id: str, tipo_acao: str) -> int:
-    """Lê o contador já pronto em `uso_organizacao` (O(1), incrementado
-    atomicamente por registrar_execucao_acao) em vez de fazer COUNT(*)
-    ao vivo em `atividades` toda vez — mais rápido à medida que o
-    histórico de atividades cresce."""
     try:
         import datetime as _dt
-        mes_atual = _dt.datetime.now().replace(day=1).date().isoformat()
+        inicio_mes = _dt.datetime.now().replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
         res = (
-            supabase.table("uso_organizacao")
-            .select("quantidade")
+            supabase.table("atividades")
+            .select("id", count="exact")
             .eq("user_id", user_id)
-            .eq("tipo_acao", tipo_acao)
-            .eq("mes", mes_atual)
+            .eq("tipo", tipo_acao)
+            .gte("criado_em", inicio_mes)
             .execute()
         )
-        if res.data:
-            return res.data[0].get("quantidade", 0)
-        return 0
+        return res.count or 0
     except Exception:
-        # se a tabela/RPC ainda não existir (migração não rodada), cai
-        # pro comportamento antigo — nunca bloqueia por causa disso.
-        try:
-            import datetime as _dt
-            inicio_mes = _dt.datetime.now().replace(
-                day=1, hour=0, minute=0, second=0, microsecond=0
-            ).isoformat()
-            res = (
-                supabase.table("atividades")
-                .select("id", count="exact")
-                .eq("user_id", user_id)
-                .eq("tipo", tipo_acao)
-                .gte("criado_em", inicio_mes)
-                .execute()
-            )
-            return res.count or 0
-        except Exception:
-            return 0
+        return 0
 
 def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
     """Confere cooldown (anti-abuso) e cota mensal (custo) antes de deixar
@@ -2087,8 +2066,7 @@ def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
     return True, ""
 
 def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
-    """Grava a execução na tabela atividades (histórico/cooldown) E
-    incrementa o contador rápido em uso_organizacao (cota mensal)."""
+    """Grava a execução na tabela atividades (conta pra cooldown/cota)."""
     if not user_id:
         return
     try:
@@ -2101,14 +2079,6 @@ def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
         }).execute()
     except Exception:
         pass
-    try:
-        supabase.rpc("incrementar_uso_organizacao", {
-            "p_user_id": user_id,
-            "p_tipo_acao": tipo_acao,
-            "p_delta": 1,
-        }).execute()
-    except Exception:
-        pass  # se a função ainda não existir (migração não rodada), não quebra nada
 
 class _RespostaBloqueada:
     """Objeto-substituto com atributo .text — mesma interface da resposta
@@ -6762,6 +6732,65 @@ elif st.session_state.pagina == "geral":
             "oportunidades": sum(1 for c in criterios if not c["ok"]),
         }
 
+    def calcular_score_ads(ads_info: dict) -> dict:
+        """Score heurístico da estratégia de anúncios, no mesmo espírito do
+        calcular_score_bio: soma pontos por boas práticas identificadas nos
+        anúncios coletados e devolve o que falta melhorar."""
+        total = ads_info.get("total", 0) or 0
+        criterios = []
+
+        if total >= 5:
+            criterios.append({"label": "Volume de anúncios ativos", "ok": True})
+        else:
+            criterios.append({"label": "Volume de anúncios ativos", "ok": False})
+
+        if ads_info.get("prova_social", 0) > 0:
+            criterios.append({"label": "Usa prova social", "ok": True})
+        else:
+            criterios.append({"label": "Usa prova social", "ok": False})
+
+        if ads_info.get("urgencia", 0) > 0:
+            criterios.append({"label": "Usa gatilho de urgência", "ok": True})
+        else:
+            criterios.append({"label": "Usa gatilho de urgência", "ok": False})
+
+        if total and (ads_info.get("cta_direto", 0) / total) >= 0.15:
+            criterios.append({"label": "CTA direto consistente", "ok": True})
+        else:
+            criterios.append({"label": "CTA direto consistente", "ok": False})
+
+        if total and (ads_info.get("beneficio", 0) / total) >= 0.2:
+            criterios.append({"label": "Comunica benefícios claros", "ok": True})
+        else:
+            criterios.append({"label": "Comunica benefícios claros", "ok": False})
+
+        plataformas = ads_info.get("plataformas", {}) or {}
+        if len([v for v in plataformas.values() if v > 0]) >= 2:
+            criterios.append({"label": "Diversifica plataformas", "ok": True})
+        else:
+            criterios.append({"label": "Diversifica plataformas", "ok": False})
+
+        pesos = [20, 20, 15, 15, 15, 15]
+        score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
+
+        if score >= 80:
+            classificacao, icon, cor = "Excelente", "🏆", "#22c55e"
+        elif score >= 60:
+            classificacao, icon, cor = "Muito bom", "👍", "#3b82f6"
+        elif score >= 40:
+            classificacao, icon, cor = "Regular", "⚠️", "#f59e0b"
+        else:
+            classificacao, icon, cor = "Precisa melhorar", "📝", "#ef4444"
+
+        return {
+            "score": score,
+            "classificacao": classificacao,
+            "icon": icon,
+            "cor": cor,
+            "criterios": criterios,
+            "faltando": [c["label"] for c in criterios if not c["ok"]],
+        }
+
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
 
@@ -7563,13 +7592,28 @@ function setHeightGeral(isOpen) {{
                 path_post = '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'
                 path_enm  = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
 
+                # Contexto do engajamento em relação a uma faixa de referência do setor,
+                # pra sair de "número frio" pra "isso é bom ou ruim?" (pedido nº2 do feedback)
+                _eng_pct_val = r.get("eng_pct", 0) or 0
+                if _eng_pct_val < 1.0:
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟡", "Abaixo da média", "#b45309"
+                elif _eng_pct_val < 3.0:
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟢", "Na média do setor", "#15803d"
+                else:
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟢", "Acima da média", "#15803d"
+                eng_ctx_html = (
+                    f'<div style="text-align:center;margin-top:3px;">'
+                    f'<span style="font-size:9px;font-weight:700;color:{eng_ctx_cor};white-space:nowrap;">'
+                    f'{eng_ctx_icon} {eng_ctx_txt}</span></div>'
+                )
+
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Estatísticas</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
-                    + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")
+                    + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%") + eng_ctx_html + '</div>')
                     + stat_item(path_post, "#8b5cf6", "#f5f3ff", m["posts"],   "#374151", "Posts")
                     + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post")
                     + '</div></div>'
@@ -7640,26 +7684,31 @@ function setHeightGeral(isOpen) {{
 
                 nuvem = m.get("nuvem_palavras", [])
                 if nuvem:
+                    # Item 6 do feedback: a nuvem ocupava muito espaço pra pouca utilidade.
+                    # Troca por "Top assuntos" — as 5 palavras mais frequentes, cada uma com
+                    # sua barra de participação percentual sobre o total das top-palavras.
                     COLOR_NUVEM_TXT = [
-                        "#1d4ed8", "#15803d", "#7e22ce", "#c2410c",
-                        "#0f766e", "#b91c1c", "#854d0e", "#334155",
+                        "#1d4ed8", "#15803d", "#7e22ce", "#c2410c", "#0f766e",
                     ]
-                    nuvem_chips = ""
-                    for idx, (palavra, freq) in enumerate(nuvem):
+                    top5 = nuvem[:5]
+                    total_freq = sum(freq for _, freq in top5) or 1
+                    nuvem_rows = ""
+                    for idx, (palavra, freq) in enumerate(top5):
                         txt_c = COLOR_NUVEM_TXT[idx % len(COLOR_NUVEM_TXT)]
-                        nuvem_chips += (
-                            f'<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;'
-                            f'font-weight:600;background:#f8f8f8;color:{txt_c};padding:3px 10px;'
-                            f'border-radius:20px;line-height:1.3;white-space:nowrap;cursor:default;">'
-                            f'{palavra}'
-                            f'<span style="font-size:9px;font-weight:700;opacity:0.55;margin-left:2px;">{freq}x</span>'
-                            f'</span>'
+                        pct_p = round(freq / total_freq * 100)
+                        nuvem_rows += (
+                            '<div style="margin-bottom:6px;">'
+                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;text-transform:capitalize;">{palavra}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:{txt_c};">{pct_p}%</span></div>'
+                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{pct_p}%;background:{txt_c};border-radius:3px;"></div></div></div>'
                         )
                     nuvem_block_html = (
                         '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                        '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Nuvem de Palavras</div>'
+                        '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Top Assuntos</div>'
                         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                        f'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">{nuvem_chips}</div>'
+                        f'{nuvem_rows}'
                         '</div>'
                     )
                 else:
@@ -7770,6 +7819,137 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div></div>'
                 )
             d["ads_block_html"] = ads_block_html
+
+        # ══════════════════════════════════════════════════════════════
+        # RESUMO EXECUTIVO — item nº1 do feedback: antes de mergulhar nos
+        # detalhes de cada área, o gestor precisa entender em 5 segundos
+        # "como estou / onde estou perdendo / o que fazer agora".
+        # ══════════════════════════════════════════════════════════════
+        if empresas_cards_data:
+            _d0 = empresas_cards_data[0]
+
+            _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg)
+            if _d0["tem_redes"]:
+                _areas.append(("Redes Sociais", _d0["redes"]["score_val"],
+                                _d0["redes"]["score_faltando"], "#3b82f6"))
+            if _d0["seo_status_ok"]:
+                _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e"))
+            if _d0["tem_ads"]:
+                _ads_score_info = calcular_score_ads(_d0["ads"])
+                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#f97316"))
+            else:
+                _ads_score_info = None
+
+            if _areas:
+                _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
+
+                if _score_geral >= 80:
+                    _sg_lbl, _sg_cor = "Muito bom", "#22c55e"
+                elif _score_geral >= 60:
+                    _sg_lbl, _sg_cor = "Bom", "#3b82f6"
+                elif _score_geral >= 40:
+                    _sg_lbl, _sg_cor = "Regular", "#f59e0b"
+                else:
+                    _sg_lbl, _sg_cor = "Precisa de atenção", "#ef4444"
+
+                # ── Rings "Desempenho por Área" ────────────────────────
+                _area_rings_html = ""
+                for _lbl, _sc, _falt, _cor_area in _areas:
+                    if _sc >= 80:   _area_txt = "Excelente"
+                    elif _sc >= 60: _area_txt = "Bom"
+                    elif _sc >= 40: _area_txt = "Regular"
+                    else:           _area_txt = "Precisa melhorar"
+                    _area_rings_html += (
+                        '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:88px;">'
+                        + make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=64, stroke=6)
+                        .replace('flex:1;min-width:0;','flex:0;')
+                        + f'<div style="font-size:10px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
+                        '</div>'
+                    )
+
+                # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
+                _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
+                _oportunidades_top = []
+                for _lbl, _sc, _falt, _ in _areas_ordenadas:
+                    if _falt:
+                        _oportunidades_top.append((_lbl, _falt[0]))
+                    if len(_oportunidades_top) >= 3:
+                        break
+
+                if _oportunidades_top:
+                    _oport_html = "".join(
+                        f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
+                        f'border-bottom:1px solid #f3f4f6;">'
+                        f'<div style="width:18px;height:18px;border-radius:50%;background:#eff6ff;color:#1d4ed8;'
+                        f'font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;'
+                        f'flex-shrink:0;margin-top:1px;">{_i+1}</div>'
+                        f'<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_txt}</div>'
+                        f'<div style="font-size:11px;color:#9ca3af;">{_lbl}</div></div></div>'
+                        for _i, (_lbl, _txt) in enumerate(_oportunidades_top)
+                    )
+                else:
+                    _oport_html = (
+                        '<div style="font-size:12px;color:#22c55e;font-weight:700;padding:8px 0;">'
+                        '✅ Nenhuma pendência crítica identificada no momento.</div>'
+                    )
+
+                # ── Insight da IA: texto-guia baseado na área mais fraca e mais forte ──
+                _melhor = max(_areas, key=lambda a: a[1])
+                _pior = min(_areas, key=lambda a: a[1])
+                if _melhor[0] == _pior[0]:
+                    _insight_txt = (
+                        f"Sua presença em {_melhor[0]} está com nota {_melhor[1]}/100. "
+                        f"Foque nos itens listados em oportunidades para evoluir."
+                    )
+                else:
+                    _insight_txt = (
+                        f"Sua presença é mais forte em {_melhor[0]} ({_melhor[1]}/100), mas "
+                        f"{_pior[0]} está com nota {_pior[1]}/100 e concentra as maiores oportunidades. "
+                        f"Priorize os itens pendentes dessa área para elevar o score geral."
+                    )
+
+                resumo_executivo_html = f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>* {{ margin:0; padding:0; box-sizing:border-box; }} html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}</style>
+</head><body>
+<div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;margin-top:16px;">
+  <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
+  <div style="display:grid;grid-template-columns:auto 1fr 1.3fr;gap:22px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;justify-content:center;min-width:120px;border-right:1px solid #f3f4f6;padding-right:22px;">
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Score Geral</div>
+      <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
+      <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};margin-top:6px;width:fit-content;">{_sg_lbl}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;justify-content:center;border-right:1px solid #f3f4f6;padding-right:22px;">
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">{_area_rings_html}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
+      {_oport_html}
+    </div>
+  </div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f3f4f6;display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:10px;padding:12px 14px;">
+    <div style="font-size:16px;flex-shrink:0;">💡</div>
+    <div><div style="font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Insight da IA</div>
+    <div style="font-size:12px;color:#374151;line-height:1.6;">{_insight_txt}</div></div>
+  </div>
+</div>
+<script>
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i=0;i<iframes.length;i++) {{
+        try {{ if (iframes[i].contentWindow===window) {{ iframes[i].style.height=(h+8)+'px'; iframes[i].style.marginTop='0px'; break; }} }} catch(e) {{}}
+    }}
+}}
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
+</script>
+</body></html>
+"""
+                components.html(resumo_executivo_html, height=260, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 
@@ -10653,14 +10833,6 @@ elif st.session_state.pagina == "ads":
             f"Coleta de anúncios: {_nomes_empresas}",
             {"empresas": [e["nome"] for e in empresas]},
         )
-        try:
-            supabase.rpc("incrementar_uso_organizacao", {
-                "p_user_id": st.session_state.user.id,
-                "p_tipo_acao": "coleta_ads",
-                "p_delta": 1,
-            }).execute()
-        except Exception:
-            pass
 
         threading.Thread(
             target=_executar_busca_background,
@@ -17428,14 +17600,6 @@ function setHeight(isOpen) {{
         _id_ativ_coleta_redes = criar_atividade(
             st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"
         )
-        try:
-            supabase.rpc("incrementar_uso_organizacao", {
-                "p_user_id": st.session_state.user.id,
-                "p_tipo_acao": "coleta_redes",
-                "p_delta": 1,
-            }).execute()
-        except Exception:
-            pass
         threading.Thread(
             target=_coletar_redes_background,
             args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),

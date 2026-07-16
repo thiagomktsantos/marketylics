@@ -8008,7 +8008,7 @@ function setHeightGeral(isOpen) {{
                     _svg_match = re.search(r"(<svg.*?</svg>)", _donut_full, re.S)
                     _svg_only = _svg_match.group(1) if _svg_match else ""
                     _area_rings_html += (
-                        '<div style="display:flex;align-items:center;gap:10px;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;">'
                         + _svg_only +
                         '<div>'
                         f'<div style="font-size:11px;font-weight:800;color:#1a2e4a;">{_lbl}</div>'
@@ -8101,27 +8101,39 @@ function setHeightGeral(isOpen) {{
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>* {{ margin:0; padding:0; box-sizing:border-box; }} html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}</style>
 </head><body>
-<div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;margin-top:16px;">
-  <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
-  <div style="display:grid;grid-template-columns:auto 1fr 1.15fr 1.15fr;gap:22px;align-items:stretch;">
-    <div style="display:flex;flex-direction:column;justify-content:center;min-width:130px;border-right:1px solid #f3f4f6;padding-right:22px;">
-      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Score Geral</div>
-      <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
-      <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};margin-top:6px;width:fit-content;">{_sg_lbl}</div>
-      {_comparacao_html}
+<div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
+    <div style="display:grid;grid-template-columns:auto 1fr 1.15fr;gap:22px;align-items:stretch;">
+      <div style="display:flex;flex-direction:column;justify-content:center;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Score Geral</div>
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;">{_sg_lbl}</div>
+        </div>
+        {_comparacao_html}
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
+        <div style="display:flex;flex-direction:row;gap:18px;">
+          {_area_rings_html}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
+        {_oport_html}
+      </div>
     </div>
-    <div style="display:flex;flex-direction:column;justify-content:center;gap:14px;border-right:1px solid #f3f4f6;padding-right:22px;">
-      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
-      {_area_rings_html}
+  </div>
+  <div style="background:#f0f5ff;border:1px solid #dbe6fb;border-radius:14px;padding:16px 18px;width:260px;flex-shrink:0;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;">💡 Insight da IA</div>
+      <div style="font-size:20px;line-height:1;">🤖</div>
     </div>
-    <div style="border-right:1px solid #f3f4f6;padding-right:22px;">
-      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
-      {_oport_html}
-    </div>
-    <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:10px;padding:14px 16px;">
-      <div style="font-size:18px;flex-shrink:0;">🤖</div>
-      <div><div style="font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Insight da IA</div>
-      <div style="font-size:12px;color:#374151;line-height:1.6;">{_insight_txt}</div></div>
+    <div style="font-size:12px;color:#374151;line-height:1.6;flex:1;">{_insight_txt}</div>
+    <div style="margin-top:14px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
+      Ver todos os insights
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
   </div>
 </div>

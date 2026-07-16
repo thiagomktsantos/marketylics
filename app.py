@@ -8056,9 +8056,9 @@ function setHeightGeral(isOpen) {{
                     else:           _area_txt = "Precisa melhorar"
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
-                    _svg_only = _svg_ring_area(_sc, _cor_area, size=54, stroke=5, icon_svg=_icon_svg)
+                    _svg_only = _svg_ring_area(_sc, _cor_area, size=62, stroke=6, icon_svg=_icon_svg)
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:64px;flex-shrink:0;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:72px;flex-shrink:0;">'
                         + _svg_only +
                         '<div>'
                         f'<div style="font-size:10px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
@@ -8176,7 +8176,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:22px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
+      <div style="display:flex;flex-direction:column;min-width:130px;border-right:1px solid #f3f4f6;padding-right:18px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
@@ -8193,7 +8193,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
       <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
-        <div style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;justify-content:space-between;flex:1;align-items:center;">
+        <div style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;justify-content:space-between;flex:1;align-items:flex-start;">
           {_area_rings_html}
         </div>
       </div>

@@ -8139,13 +8139,13 @@ function setHeightGeral(isOpen) {{
                 _pior = min(_areas, key=lambda a: a[1])
                 if _melhor[0] == _pior[0]:
                     _insight_txt = (
-                        f"Sua presença em {_melhor[0]} está com nota {_melhor[1]}/100. "
+                        f"Sua presença em <b>{_melhor[0]}</b> está com nota <b>{_melhor[1]}/100</b>. "
                         f"Foque nos itens listados em oportunidades para evoluir."
                     )
                 else:
                     _insight_txt = (
-                        f"Sua presença é mais forte em {_melhor[0]} ({_melhor[1]}/100), mas "
-                        f"{_pior[0]} está com nota {_pior[1]}/100 e concentra as maiores oportunidades. "
+                        f"Sua presença é mais forte em <b>{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
+                        f"<b>{_pior[0]}</b> está com nota <b>{_pior[1]}/100</b> e concentra as maiores oportunidades. "
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )
 

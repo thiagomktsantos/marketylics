@@ -8097,7 +8097,7 @@ function setHeightGeral(isOpen) {{
                         _oport_rows.append(
                             f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
-                            f'<div style="width:18px;height:18px;border-radius:50%;background:#eff6ff;color:#1d4ed8;'
+                            f'<div style="width:18px;height:18px;border-radius:50%;background:#3b82f6;color:#ffffff;'
                             f'font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;'
                             f'flex-shrink:0;margin-top:1px;">{_i+1}</div>'
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'

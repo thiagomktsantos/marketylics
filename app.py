@@ -8164,7 +8164,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;">
+        <div style="display:flex;align-items:center;gap:12px;">
           <div style="display:flex;align-items:baseline;gap:3px;background:{_sg_cor}14;border-radius:12px;padding:4px 12px 4px 10px;">
             <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:{_sg_cor};opacity:0.65;">/100</span>
           </div>
@@ -8209,7 +8209,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=320, scrolling=False)
+                components.html(resumo_executivo_html, height=340, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

@@ -3239,7 +3239,7 @@ div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"][aria-selected="tr
     background-color: #3a9fd6 !important;
 }
 
-.sb-logo { padding: 18px 16px; border-bottom:1px solid #1e2530; margin-bottom:8px; }
+.sb-logo { padding:22px 18px 16px; border-bottom:1px solid #1e2530; margin-bottom:8px; }
 .sb-logo-sub { font-size:8.4px; color:#3a9fd6; font-weight:600; letter-spacing:2px; text-transform:uppercase; text-align:center; font-family:'DM Sans',sans-serif; }
 
 [data-testid="stSidebar"] [class*="st-key-_hidden_"] {
@@ -5080,12 +5080,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 </style>
 <div class="overlay"><div class="card">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
-        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
+        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
         <div style="flex:1;min-width:0;">
             <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
             <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
         </div>
-        <div style="font-size:;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
+        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
     </div>
     <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
         <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
@@ -7422,7 +7422,7 @@ function setHeightGeral(isOpen) {{
 .oport-wrap:hover .oport-tip { display: block; }
 .score-tooltip-wrap { position:relative; display:inline-flex; align-items:center; }
 .score-tooltip-wrap .tip {
-    display:none; position:absolute; bottom:; left:50%; transform:translateX(-50%);
+    display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
     background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
     line-height:1.8; width:200px; z-index:9999; white-space:normal;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
@@ -8157,7 +8157,7 @@ function setHeightGeral(isOpen) {{
 html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
 .score-tooltip-wrap {{ position:relative; display:inline-flex; align-items:center; }}
 .score-tooltip-wrap .tip {{
-    display:none; position:absolute; top:; left:-10px; transform:none;
+    display:none; position:absolute; top:22px; left:-10px; transform:none;
     background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
     line-height:1.8; width:200px; z-index:9999; white-space:normal;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
@@ -8187,7 +8187,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 </style>
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px ;flex:1;min-width:0;">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
@@ -8206,7 +8206,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         {_comparacao_html}
       </div>
-      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:12px;">
+      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
@@ -8226,10 +8226,12 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
     </div>
   </div>
-  <div style="background:#f0f5ff;border:1px solid #dbe6fb;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">💡 Insight da IA</div>
-      <div style="font-size:20px;line-height:1;">🤖</div>
+  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+        Insight da IA
+      </div>
     </div>
     <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
     <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>

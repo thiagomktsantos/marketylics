@@ -7222,21 +7222,27 @@ function setHeightGeral(isOpen) {{
     # FUNÇÕES DE DONUT
     # ══════════════════════════════════════════════════════════════════
 
-    def make_donut_svg(pct, color, label, count, size=50, stroke=5):
+    def make_donut_svg(pct, color, label, count, size=50, stroke=5, font_size=None):
         r = (size / 2) - stroke - 2
         cx = cy = size / 2
         circum = round(2 * _math.pi * r, 2)
         dash = round(pct / 100 * circum, 2)
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
+        # Número central: por padrão proporcional ao tamanho do anel (mantém o
+        # comportamento antigo pros usos existentes), mas aceita um valor fixo
+        # via font_size pra deixar o número mais em destaque (ex.: nos rings
+        # de "Desempenho por Área", que precisam do número bem visível dentro
+        # do anel, igual ao print de referência).
+        _font_size = font_size if font_size is not None else max(11, round(size * 0.24))
         return (
             f'<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
             f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
-            f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="middle"'
-            f' font-size="12" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="central"'
+            f' font-size="{_font_size}" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">{count}</text>'
             f'</svg>'
             f'<div style="display:flex;flex-direction:column;min-width:0;">'
             f'<span style="font-size:14px;font-weight:800;color:{color};line-height:1.2;">{pct}%</span>'
@@ -7609,12 +7615,12 @@ function setHeightGeral(isOpen) {{
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Principais Métricas</div>'
-                    '<div style="font-size:11px;font-weight:700;color:#3a9fd6;">Ver detalhes</div>'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;white-space:nowrap;">Principais Métricas</div>'
+                    '<div style="font-size:11px;font-weight:700;color:#3a9fd6;white-space:nowrap;flex-shrink:0;">Ver detalhes</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
-                    '<div style="display:flex;gap:4px;align-items:flex-start;">'
+                    '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
                     + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%") + eng_ctx_html + '</div>')
                     + stat_item(path_post, "#8b5cf6", "#f5f3ff", m["posts"],   "#374151", "Posts")
@@ -8004,14 +8010,14 @@ function setHeightGeral(isOpen) {{
                     elif _sc >= 60: _area_txt = "Bom"
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
-                    _donut_full = make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=60, stroke=6)
+                    _donut_full = make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=64, stroke=6, font_size=20)
                     _svg_match = re.search(r"(<svg.*?</svg>)", _donut_full, re.S)
                     _svg_only = _svg_match.group(1) if _svg_match else ""
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:74px;flex-shrink:0;">'
                         + _svg_only +
                         '<div>'
-                        f'<div style="font-size:11px;font-weight:800;color:#1a2e4a;">{_lbl}</div>'
+                        f'<div style="font-size:10.5px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
                         f'<div style="font-size:11px;color:#9ca3af;font-weight:600;">{_sc}/100</div>'
                         f'<div style="font-size:10px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
                         '</div></div>'
@@ -8123,8 +8129,8 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
-    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
-    <div style="display:grid;grid-template-columns:auto 1fr 1.15fr;gap:22px;align-items:stretch;">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO</div>
+    <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:22px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
@@ -8140,7 +8146,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
       <div style="display:flex;flex-direction:column;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Desempenho por área</div>
-        <div style="display:flex;flex-direction:row;gap:18px;justify-content:center;flex:1;align-items:center;">
+        <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:10px;justify-content:center;flex:1;align-items:center;">
           {_area_rings_html}
         </div>
       </div>

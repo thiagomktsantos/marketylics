@@ -8001,35 +8001,52 @@ function setHeightGeral(isOpen) {{
                 else:
                     _comparacao_html = ""
 
-                # ── Rings "Desempenho por Área" ── (só o número no anel +
-                # rótulo + classificação — sem repetir o percentual do lado,
-                # que antes duplicava o número já mostrado dentro do anel) ──
-                #
-                # _svg_ring_area monta o <svg> do anel diretamente (sem passar
-                # por make_donut_svg + regex pra "recortar" só a parte do
-                # <svg>) — antes, se make_donut_svg mudasse de formato, o
-                # regex podia não bater e o anel ficava sem nenhum <svg>
-                # dentro. Construindo o <svg> aqui na mão, garantimos que
-                # sempre existe um elemento <svg> de verdade dentro de cada
-                # donut, com o número desenhado via <text> nele.
-                def _svg_ring_area(pct, color, size=64, stroke=6, font_size=20):
+                # ── Rings "Desempenho por Área" ── anel colorido com um círculo
+                # branco no centro e um ícone em SVG representando a área
+                # (Instagram/redes, globo/site, megafone/anúncios), no estilo
+                # da referência enviada — em vez do número cru dentro do anel.
+                # O número e a classificação continuam abaixo do anel.
+                def _svg_ring_area(pct, color, size=64, stroke=6, icon_svg=None, icon_size=None):
                     r = (size / 2) - stroke - 2
                     cx = cy = size / 2
                     circum = round(2 * _math.pi * r, 2)
                     dash = round(pct / 100 * circum, 2)
                     gap = round(circum - dash, 2)
                     offset = round(circum * 0.25, 2)
+                    _isz = icon_size or round(size * 0.42)
+                    _center_html = (
+                        f'<circle cx="{cx}" cy="{cy}" r="{r - stroke/2 - 1}" fill="#ffffff"/>'
+                        f'<g transform="translate({cx - _isz/2},{cy - _isz/2}) scale({_isz/24})" '
+                        f'fill="none" stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                        f'{icon_svg}</g>'
+                    )
                     return (
                         f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" '
                         f'xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
                         f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
                         f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
                         f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
-                        f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="central"'
-                        f' font-size="{font_size}" font-weight="800" fill="{color}"'
-                        f' font-family="DM Sans,sans-serif">{pct}</text>'
+                        f'{_center_html}'
                         f'</svg>'
                     )
+
+                _AREA_ICONS = {
+                    "Redes Sociais": (
+                        '<rect x="3" y="3" width="18" height="18" rx="5"></rect>'
+                        '<circle cx="12" cy="12" r="4"></circle>'
+                        '<circle cx="17.3" cy="6.7" r="1.1" fill="{c}" stroke="none"></circle>'
+                    ),
+                    "Site": (
+                        '<circle cx="12" cy="12" r="9"></circle>'
+                        '<ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>'
+                        '<line x1="3" y1="12" x2="21" y2="12"></line>'
+                    ),
+                    "Anúncios": (
+                        '<path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"></path>'
+                        '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path>'
+                        '<path d="M18.5 6a9 9 0 0 1 0 12"></path>'
+                    ),
+                }
 
                 _area_rings_html = ""
                 for _lbl, _sc, _falt, _cor_area in _areas:
@@ -8037,14 +8054,16 @@ function setHeightGeral(isOpen) {{
                     elif _sc >= 60: _area_txt = "Bom"
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
-                    _svg_only = _svg_ring_area(_sc, _cor_area, size=64, stroke=6, font_size=20)
+                    _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
+                    _icon_svg = _icon_tpl.format(c=_cor_area)
+                    _svg_only = _svg_ring_area(_sc, _cor_area, size=54, stroke=5, icon_svg=_icon_svg)
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:74px;flex-shrink:0;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:64px;flex-shrink:0;">'
                         + _svg_only +
                         '<div>'
-                        f'<div style="font-size:10.5px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
-                        f'<div style="font-size:11px;color:#9ca3af;font-weight:600;">{_sc}/100</div>'
-                        f'<div style="font-size:10px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
+                        f'<div style="font-size:10px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
+                        f'<div style="font-size:10.5px;color:#9ca3af;font-weight:600;">{_sc}/100</div>'
+                        f'<div style="font-size:9.5px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
                         '</div></div>'
                     )
 
@@ -8166,15 +8185,15 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
           <div style="display:flex;align-items:baseline;gap:3px;">
-            <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:#9ca3af;">/100</span>
+            <span style="font-size:36px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:800;color:#9ca3af;">/100</span>
           </div>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_icon} {_sg_lbl}</div>
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;font-size:13px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>
       <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
-        <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:10px;justify-content:center;flex:1;align-items:center;">
+        <div style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;justify-content:space-between;flex:1;align-items:center;">
           {_area_rings_html}
         </div>
       </div>

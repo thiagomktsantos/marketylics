@@ -8072,23 +8072,23 @@ function setHeightGeral(isOpen) {{
                 # um ganho estimado (heurístico — não há histórico de conversão
                 # pra calcular um valor real). ──
                 _OPORT_TEXTOS = {
-                    "Title":                    ("Otimizar o título das páginas (SEO)", "Ganho estimado: +8% de cliques na busca"),
-                    "H1":                       ("Estruturar o H1 das páginas principais", "Ganho estimado: +6% de relevância para buscadores"),
-                    "Meta Desc.":               ("Escrever meta descrições mais atrativas", "Ganho estimado: +5% de CTR na busca"),
-                    "Seções (H2)":              ("Organizar o conteúdo com subtítulos (H2)", "Ganho estimado: +4% de tempo na página"),
-                    "Sitemap":                  ("Publicar um sitemap.xml", "Ganho estimado: +10% de indexação"),
-                    "Tem bio":                  ("Escrever uma bio completa no Instagram", "Ganho estimado: +10% de conversão no perfil"),
-                    "Proposta de valor clara":  ("Deixar a proposta de valor explícita na bio", "Ganho estimado: +12% de reconhecimento de marca"),
-                    "Link na bio":              ("Adicionar um link estratégico na bio", "Ganho estimado: +15% de tráfego para o site"),
-                    "Posicionamento da marca":  ("Reforçar o posicionamento de marca na bio", "Diferenciação no mercado"),
-                    "CTA na bio":               ("Incluir uma chamada para ação na bio", "Ganho estimado: +8% de conversão"),
-                    "Diferenciação no mercado": ("Aumentar o engajamento para se diferenciar", "Ganho estimado: +20% de alcance orgânico"),
-                    "Volume de anúncios ativos":("Aumentar o volume de anúncios ativos", "Ganho estimado: +25% de alcance pago"),
-                    "Usa prova social":         ("Incluir prova social nos anúncios", "Ganho estimado: +18% de confiança e CTR"),
-                    "Usa gatilho de urgência":  ("Usar gatilhos de urgência nos anúncios", "Ganho estimado: +10% de conversão"),
-                    "CTA direto consistente":   ("Padronizar o CTA direto nos anúncios", "Ganho estimado: +12% de cliques"),
-                    "Comunica benefícios claros":("Comunicar os benefícios de forma mais clara", "Ganho estimado: +9% de CTR"),
-                    "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "Ganho estimado: +15% de alcance"),
+                    "Title":                    ("Otimizar o título das páginas (SEO)", "Ganho estimado: +8% de cliques na busca", "Inclua a palavra-chave principal no início do title, com até 60 caracteres."),
+                    "H1":                       ("Estruturar o H1 das páginas principais", "Ganho estimado: +6% de relevância para buscadores", "Adicione um H1 único por página, claro e alinhado com a busca do usuário."),
+                    "Meta Desc.":               ("Escrever meta descrições mais atrativas", "Ganho estimado: +5% de CTR na busca", "Escreva uma meta description de 120–160 caracteres com o benefício principal e um CTA."),
+                    "Seções (H2)":              ("Organizar o conteúdo com subtítulos (H2)", "Ganho estimado: +4% de tempo na página", "Divida o conteúdo em blocos com H2 descritivos, facilitando leitura e SEO."),
+                    "Sitemap":                  ("Publicar um sitemap.xml", "Ganho estimado: +10% de indexação", "Gere e publique um sitemap.xml e envie no Google Search Console."),
+                    "Tem bio":                  ("Escrever uma bio completa no Instagram", "Ganho estimado: +10% de conversão no perfil", "Complete a bio explicando de forma direta o que a empresa faz."),
+                    "Proposta de valor clara":  ("Deixar a proposta de valor explícita na bio", "Ganho estimado: +12% de reconhecimento de marca", "Deixe claro na bio qual problema você resolve e para quem."),
+                    "Link na bio":              ("Adicionar um link estratégico na bio", "Ganho estimado: +15% de tráfego para o site", "Adicione um link direto para uma landing page, site ou WhatsApp."),
+                    "Posicionamento da marca":  ("Reforçar o posicionamento de marca na bio", "Diferenciação no mercado", "Destaque na bio o que diferencia a marca da concorrência."),
+                    "CTA na bio":               ("Incluir uma chamada para ação na bio", "Ganho estimado: +8% de conversão", "Inclua uma chamada direta, como 'Peça agora' ou 'Fale conosco'."),
+                    "Diferenciação no mercado": ("Aumentar o engajamento para se diferenciar", "Ganho estimado: +20% de alcance orgânico", "Aumente a frequência de posts e responda comentários para elevar o engajamento."),
+                    "Volume de anúncios ativos":("Aumentar o volume de anúncios ativos", "Ganho estimado: +25% de alcance pago", "Publique mais anúncios ativos simultaneamente para testar públicos e criativos."),
+                    "Usa prova social":         ("Incluir prova social nos anúncios", "Ganho estimado: +18% de confiança e CTR", "Inclua depoimentos, avaliações ou números de clientes nos anúncios."),
+                    "Usa gatilho de urgência":  ("Usar gatilhos de urgência nos anúncios", "Ganho estimado: +10% de conversão", "Use frases como 'por tempo limitado' ou contagem regressiva nos anúncios."),
+                    "CTA direto consistente":   ("Padronizar o CTA direto nos anúncios", "Ganho estimado: +12% de cliques", "Padronize um CTA claro, como 'Compre agora', em todos os anúncios."),
+                    "Comunica benefícios claros":("Comunicar os benefícios de forma mais clara", "Ganho estimado: +9% de CTR", "Destaque os benefícios do produto ou serviço de forma direta no anúncio."),
+                    "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "Ganho estimado: +15% de alcance", "Rode anúncios em mais de uma plataforma (Meta, Google, TikTok) simultaneamente."),
                 }
 
                 # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
@@ -8101,10 +8101,15 @@ function setHeightGeral(isOpen) {{
                         break
 
                 if _oportunidades_top:
+                    _chevron_svg = (
+                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" '
+                        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                        '<polyline points="9 18 15 12 9 6"/></svg>'
+                    )
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
                     _oport_rows = []
                     for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
-                        _titulo_op, _ganho_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, ""))
+                        _titulo_op, _ganho_op, _como_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, "", "Priorize esse item para elevar o score dessa área."))
                         _ganho_html = (
                             f'<div style="font-size:10px;color:#22c55e;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
                             if _ganho_op else ""
@@ -8117,7 +8122,10 @@ function setHeightGeral(isOpen) {{
                             f'font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;'
                             f'text-align:center;flex-shrink:0;margin-top:1px;">{_badge_txt}</div>'
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
-                            f'{_ganho_html}</div></div>'
+                            f'{_ganho_html}</div>'
+                            f'<div class="oport-tip-wrap" style="flex-shrink:0;margin-top:2px;">{_chevron_svg}'
+                            f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}</div>'
+                            f'</div></div>'
                         )
                     _oport_html = "".join(_oport_rows)
                 else:
@@ -8164,6 +8172,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
     cursor:default; flex-shrink:0; margin-left:5px;
 }}
+.oport-tip-wrap {{ position:relative; display:inline-flex; align-items:center; cursor:default; }}
+.oport-tip-wrap .tip {{
+    display:none; position:absolute; bottom:24px; right:-6px; transform:none;
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
+    line-height:1.7; width:210px; z-index:9999; white-space:normal; text-align:left;
+    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
+}}
+.oport-tip-wrap .tip::after {{
+    content:''; position:absolute; top:100%; right:10px; transform:none;
+    border:5px solid transparent; border-top-color:#1a2e4a;
+}}
+.oport-tip-wrap:hover .tip {{ display:block; }}
 </style>
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">

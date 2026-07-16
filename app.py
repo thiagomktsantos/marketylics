@@ -7408,7 +7408,7 @@ function setHeightGeral(isOpen) {{
     position: relative; display: inline-flex; align-items: center; cursor: default;
 }
 .oport-wrap .oport-tip {
-    display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+    display: none; position: absolute; top: calc(100% + 8px); left: 50%;
     transform: translateX(-50%); background: #1a2e4a; color: #fff;
     border-radius: 10px; padding: 10px 14px; font-size: 11px; line-height: 1.9;
     min-width: 190px; max-width: 230px; z-index: 9999; white-space: normal;
@@ -7416,8 +7416,8 @@ function setHeightGeral(isOpen) {{
     font-family: 'DM Sans', sans-serif; text-align: left;
 }
 .oport-wrap .oport-tip::after {
-    content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-    border: 6px solid transparent; border-top-color: #1a2e4a;
+    content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    border: 6px solid transparent; border-bottom-color: #1a2e4a;
 }
 .oport-wrap:hover .oport-tip { display: block; }
 .score-tooltip-wrap { position:relative; display:inline-flex; align-items:center; }
@@ -8494,7 +8494,7 @@ function syncH() {{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var iframes=window.parent.document.querySelectorAll('iframe');
     for(var i=0;i<iframes.length;i++){{
-        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-16px';break;}}}}catch(e){{}}
+        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-20px';break;}}}}catch(e){{}}
     }}
 }}
 buildCards();

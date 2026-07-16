@@ -8159,7 +8159,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:22px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
-          <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
+          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
@@ -8173,13 +8173,13 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         {_comparacao_html}
       </div>
       <div style="display:flex;flex-direction:column;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Desempenho por área</div>
+        <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Desempenho por área</div>
         <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:10px;justify-content:center;flex:1;align-items:center;">
           {_area_rings_html}
         </div>
       </div>
       <div>
-        <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
+        <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
         {_oport_html}
       </div>
     </div>

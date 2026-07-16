@@ -8061,9 +8061,9 @@ function setHeightGeral(isOpen) {{
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:84px;flex-shrink:0;">'
                         + _svg_only +
                         '<div>'
-                        f'<div style="font-size:10px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
-                        f'<div style="font-size:11px;font-weight:800;"><span style="color:{_cor_area};">{_sc}</span><span style="color:#9ca3af;font-weight:600;">/100</span></div>'
-                        f'<div style="font-size:9.5px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
+                        f'<div style="font-size:12px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
+                        f'<div style="font-size:11px;font-weight:800;"><span style="color:{_cor_area};font-size:13px;">{_sc}</span><span style="color:#9ca3af;font-weight:600;">/100</span></div>'
+                        f'<div style="font-size:11px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
                         '</div></div>'
                     )
 

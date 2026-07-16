@@ -8164,7 +8164,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
           <div style="display:flex;align-items:baseline;gap:3px;">
             <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:#9ca3af;">/100</span>
           </div>
@@ -8172,8 +8172,8 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         {_comparacao_html}
       </div>
-      <div style="display:flex;flex-direction:column;gap:12px;border-right:1px solid #f3f4f6;padding-right:22px;">
-        <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Desempenho por área</div>
+      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
+        <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
         <div style="display:flex;flex-direction:row;flex-wrap:wrap;gap:10px;justify-content:center;flex:1;align-items:center;">
           {_area_rings_html}
         </div>

@@ -8056,13 +8056,13 @@ function setHeightGeral(isOpen) {{
                     else:           _area_txt = "Precisa melhorar"
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
-                    _svg_only = _svg_ring_area(_sc, _cor_area, size=62, stroke=6, icon_svg=_icon_svg)
+                    _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:72px;flex-shrink:0;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:84px;flex-shrink:0;">'
                         + _svg_only +
                         '<div>'
                         f'<div style="font-size:10px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
-                        f'<div style="font-size:10.5px;color:#9ca3af;font-weight:600;">{_sc}/100</div>'
+                        f'<div style="font-size:11px;font-weight:800;"><span style="color:{_cor_area};">{_sc}</span><span style="color:#9ca3af;font-weight:600;">/100</span></div>'
                         f'<div style="font-size:9.5px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
                         '</div></div>'
                     )
@@ -8176,18 +8176,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:22px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;min-width:130px;border-right:1px solid #f3f4f6;padding-right:18px;">
+      <div style="display:flex;flex-direction:column;min-width:110px;border-right:1px solid #f3f4f6;padding-right:14px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          <div style="display:flex;align-items:baseline;gap:3px;">
-            <span style="font-size:36px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:800;color:#9ca3af;">/100</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:baseline;gap:2px;">
+            <span style="font-size:32px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:13px;font-weight:800;color:#9ca3af;">/100</span>
           </div>
-          <div style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;font-size:13px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_icon} {_sg_lbl}</div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>

@@ -8494,7 +8494,7 @@ function syncH() {{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var iframes=window.parent.document.querySelectorAll('iframe');
     for(var i=0;i<iframes.length;i++){{
-        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-20px';break;}}}}catch(e){{}}
+        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-77px';break;}}}}catch(e){{}}
     }}
 }}
 buildCards();

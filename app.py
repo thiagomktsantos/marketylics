@@ -8042,9 +8042,9 @@ function setHeightGeral(isOpen) {{
                         '<line x1="3" y1="12" x2="21" y2="12"></line>'
                     ),
                     "Anúncios": (
-                        '<path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"></path>'
-                        '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path>'
-                        '<path d="M18.5 6a9 9 0 0 1 0 12"></path>'
+                        '<path d="M18 8a3 3 0 0 1 0 6"></path>'
+                        '<path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"></path>'
+                        '<path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"></path>'
                     ),
                 }
 

@@ -8234,10 +8234,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
     </div>
     <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
-    <div style="display:flex;align-items:flex-start;gap:12px;flex:1;">
-      <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
-      <img src="https://raw.githubusercontent.com/thiagomktsantos/marketylics/bfab6607425464e2a98f751d74ddaea28f6d6642/images/insights_de_ia.png" style="width:56px;height:56px;object-fit:contain;flex-shrink:0;" alt="Insight IA">
-    </div>
+    <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
       Ver todos os insights
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>

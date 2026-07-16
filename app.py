@@ -8226,15 +8226,17 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
     </div>
   </div>
-  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;align-self:flex-start;">
-    <div style="display:flex;align-items:center;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
-        Insight da IA
+  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+    <div>
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+          Insight da IA
+        </div>
       </div>
+      <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
     </div>
-    <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
-    <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
+    <div style="font-size:12.5px;color:#374151;line-height:1.7;">{_insight_txt}</div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
       Ver todos os insights
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -8268,7 +8270,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 body {{ padding-bottom:8px; }}
 {tooltip_css}
 .empresa-card {{
-    overflow:hidden; margin-top: 4px; padding: 0 12px;
+    overflow:hidden; margin-top: 0px; padding: 0 12px;
 }}
 .cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
@@ -8492,7 +8494,7 @@ function syncH() {{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var iframes=window.parent.document.querySelectorAll('iframe');
     for(var i=0;i<iframes.length;i++){{
-        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-20px';break;}}}}catch(e){{}}
+        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-40px';break;}}}}catch(e){{}}
     }}
 }}
 buildCards();

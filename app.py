@@ -8004,15 +8004,40 @@ function setHeightGeral(isOpen) {{
                 # ── Rings "Desempenho por Área" ── (só o número no anel +
                 # rótulo + classificação — sem repetir o percentual do lado,
                 # que antes duplicava o número já mostrado dentro do anel) ──
+                #
+                # _svg_ring_area monta o <svg> do anel diretamente (sem passar
+                # por make_donut_svg + regex pra "recortar" só a parte do
+                # <svg>) — antes, se make_donut_svg mudasse de formato, o
+                # regex podia não bater e o anel ficava sem nenhum <svg>
+                # dentro. Construindo o <svg> aqui na mão, garantimos que
+                # sempre existe um elemento <svg> de verdade dentro de cada
+                # donut, com o número desenhado via <text> nele.
+                def _svg_ring_area(pct, color, size=64, stroke=6, font_size=20):
+                    r = (size / 2) - stroke - 2
+                    cx = cy = size / 2
+                    circum = round(2 * _math.pi * r, 2)
+                    dash = round(pct / 100 * circum, 2)
+                    gap = round(circum - dash, 2)
+                    offset = round(circum * 0.25, 2)
+                    return (
+                        f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" '
+                        f'xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
+                        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+                        f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
+                        f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="central"'
+                        f' font-size="{font_size}" font-weight="800" fill="{color}"'
+                        f' font-family="DM Sans,sans-serif">{pct}</text>'
+                        f'</svg>'
+                    )
+
                 _area_rings_html = ""
                 for _lbl, _sc, _falt, _cor_area in _areas:
                     if _sc >= 80:   _area_txt = "Excelente"
                     elif _sc >= 60: _area_txt = "Bom"
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
-                    _donut_full = make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=64, stroke=6, font_size=20)
-                    _svg_match = re.search(r"(<svg.*?</svg>)", _donut_full, re.S)
-                    _svg_only = _svg_match.group(1) if _svg_match else ""
+                    _svg_only = _svg_ring_area(_sc, _cor_area, size=64, stroke=6, font_size=20)
                     _area_rings_html += (
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:74px;flex-shrink:0;">'
                         + _svg_only +
@@ -8107,17 +8132,17 @@ function setHeightGeral(isOpen) {{
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
 .score-tooltip-wrap {{ position:relative; display:inline-flex; align-items:center; }}
 .score-tooltip-wrap .tip {{
-    display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
+    display:none; position:absolute; top:22px; left:-10px; transform:none;
     background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
     line-height:1.8; width:200px; z-index:9999; white-space:normal;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
 }}
 .score-tooltip-wrap .tip::after {{
-    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
-    border:5px solid transparent; border-top-color:#1a2e4a;
+    content:''; position:absolute; bottom:100%; left:14px; transform:none;
+    border:5px solid transparent; border-bottom-color:#1a2e4a;
 }}
 .score-tooltip-wrap:hover .tip {{ display:block; }}
 .q-badge {{
@@ -8129,7 +8154,8 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
-    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
+    <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:22px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;min-width:150px;border-right:1px solid #f3f4f6;padding-right:22px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
@@ -8139,7 +8165,9 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;">
-          <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
+          <div style="display:flex;align-items:baseline;gap:3px;background:{_sg_cor}14;border-radius:12px;padding:4px 12px 4px 10px;">
+            <span style="font-size:44px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:16px;font-weight:800;color:{_sg_cor};opacity:0.65;">/100</span>
+          </div>
           <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;">{_sg_lbl}</div>
         </div>
         {_comparacao_html}

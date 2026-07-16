@@ -8094,9 +8094,9 @@ function setHeightGeral(isOpen) {{
                 # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
                 _oportunidades_top = []
-                for _lbl, _sc, _falt, _ in _areas_ordenadas:
+                for _lbl, _sc, _falt, _cor_a in _areas_ordenadas:
                     if _falt:
-                        _oportunidades_top.append((_lbl, _falt[0]))
+                        _oportunidades_top.append((_lbl, _falt[0], _cor_a))
                     if len(_oportunidades_top) >= 3:
                         break
 
@@ -8107,7 +8107,7 @@ function setHeightGeral(isOpen) {{
                         '<polyline points="9 18 15 12 9 6"/></svg>'
                     )
                     _oport_rows = []
-                    for _i, (_lbl, _falt_raw) in enumerate(_oportunidades_top):
+                    for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
                         _titulo_op, _ganho_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, ""))
                         _ganho_html = (
                             f'<div style="font-size:10px;color:#22c55e;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
@@ -8116,11 +8116,10 @@ function setHeightGeral(isOpen) {{
                         _oport_rows.append(
                             f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
-                            f'<div style="width:18px;height:18px;border-radius:50%;background:#3b82f6;color:#ffffff;'
-                            f'font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;'
-                            f'flex-shrink:0;margin-top:1px;">{_i+1}</div>'
+                            f'<div style="padding:3px 8px;border-radius:8px;background:{_cor_op}1a;color:{_cor_op};'
+                            f'font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;'
+                            f'flex-shrink:0;margin-top:1px;white-space:nowrap;">{_lbl}</div>'
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
-                            f'<div style="font-size:11px;color:#9ca3af;">{_lbl}</div>'
                             f'{_ganho_html}</div>'
                             f'<div style="flex-shrink:0;margin-top:2px;">{_chevron_svg}</div></div>'
                         )
@@ -8175,7 +8174,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
-    <div style="display:grid;grid-template-columns:auto minmax(260px,1.2fr) 1.1fr;gap:18px;align-items:stretch;">
+    <div style="display:grid;grid-template-columns:auto minmax(230px,1.05fr) 1.15fr;gap:18px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;width:260px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:14px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
@@ -8192,7 +8191,12 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         {_comparacao_html}
       </div>
       <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
-        <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
+        <div style="display:flex;align-items:center;margin-bottom:10px;">
+          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
+          <div class="score-tooltip-wrap"><div class="q-badge">?</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de cada área: Redes Sociais, Site e Anúncios.</div>
+          </div>
+        </div>
         <div style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;justify-content:space-between;flex:1;align-items:flex-start;">
           {_area_rings_html}
         </div>

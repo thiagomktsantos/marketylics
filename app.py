@@ -7609,7 +7609,10 @@ function setHeightGeral(isOpen) {{
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Estatísticas</div>'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Principais Métricas</div>'
+                    '<div style="font-size:11px;font-weight:700;color:#3a9fd6;">Ver detalhes</div>'
+                    '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
@@ -7714,7 +7717,66 @@ function setHeightGeral(isOpen) {{
                 else:
                     nuvem_block_html = ""
 
-                redes_block_html = stats_block_html + score_block_html + tipos_block_html + nuvem_block_html
+                # ── Desempenho vs Concorrentes ───────────────────────────
+                # Compara seguidores, engajamento e volume de posts da
+                # empresa selecionada contra a média dos outros perfis já
+                # coletados (dados_redes_map tem todo mundo, não só quem
+                # entrou em empresas_cards_data — que aqui só tem o
+                # selecionado pelo filtro). Não temos histórico de série
+                # temporal salvo em nenhum lugar do app ainda, então isso
+                # é uma comparação "neste instante", não uma tendência.
+                def _outros_valores(campo, cast=float):
+                    vals = []
+                    for _nome_o, _r_o in dados_redes_map.items():
+                        if _nome_o == e["nome"]:
+                            continue
+                        try:
+                            v = cast(_r_o.get(campo, 0) or 0)
+                        except (TypeError, ValueError):
+                            v = 0
+                        if v:
+                            vals.append(v)
+                    return vals
+
+                def _mini_comparativo(label, valor_atual, outros_vals, sufixo=""):
+                    if not outros_vals:
+                        return ""
+                    media = sum(outros_vals) / len(outros_vals)
+                    if media <= 0:
+                        return ""
+                    pct = round((valor_atual - media) / media * 100)
+                    acima = pct >= 0
+                    cor = "#22c55e" if acima else "#ef4444"
+                    seta = "▲" if acima else "▼"
+                    return (
+                        '<div style="flex:1;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px;text-align:center;">'
+                        f'<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">{label}</div>'
+                        f'<div style="font-size:17px;font-weight:800;color:#111827;line-height:1.1;">{valor_atual:g}{sufixo}</div>'
+                        f'<div style="font-size:10px;font-weight:700;color:{cor};margin-top:3px;">{seta} {abs(pct)}% {"acima" if acima else "abaixo"} da média</div>'
+                        '</div>'
+                    )
+
+                _outros_seg = _outros_valores("seguidores", int)
+                _outros_eng = _outros_valores("eng_pct", float)
+                _outros_posts = _outros_valores("total_posts", int)
+
+                _cmp_seg   = _mini_comparativo("Seguidores", r.get("seguidores", 0) or 0, _outros_seg)
+                _cmp_eng   = _mini_comparativo("Engajamento", round(r.get("eng_pct", 0) or 0, 1), _outros_eng, sufixo="%")
+                _cmp_posts = _mini_comparativo("Posts coletados", r.get("total_posts", 0) or 0, _outros_posts)
+
+                _cmp_cards = _cmp_seg + _cmp_eng + _cmp_posts
+                if _cmp_cards:
+                    vs_concorrentes_block_html = (
+                        '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                        '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Desempenho vs Concorrentes</div>'
+                        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
+                        f'<div style="display:flex;gap:8px;">{_cmp_cards}</div>'
+                        '</div>'
+                    )
+                else:
+                    vs_concorrentes_block_html = ""
+
+                redes_block_html = stats_block_html + score_block_html + vs_concorrentes_block_html + tipos_block_html + nuvem_block_html
             else:
                 redes_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
@@ -7811,7 +7873,33 @@ function setHeightGeral(isOpen) {{
                     + ads_dest_content + '</div>'
                 )
 
-                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block
+                # ── Insight da IA (Anúncios) ─────────────────────────────
+                # Mesmo espírito do painel "Insight da IA" do Resumo
+                # Executivo, só que focado no que dá pra melhorar na
+                # estratégia de anúncios especificamente.
+                _score_ads_info = calcular_score_ads(a)
+                _faltando_ads = _score_ads_info.get("faltando", [])
+                if _faltando_ads:
+                    _sugestao_ads = " e ".join(_faltando_ads[:2]).lower()
+                    _texto_insight_ads = (
+                        f'Seus anúncios estão classificados como "{_score_ads_info["classificacao"]}" '
+                        f'({_score_ads_info["score"]}/100). Para evoluir, foque em: {_sugestao_ads}.'
+                    )
+                else:
+                    _texto_insight_ads = (
+                        f'Seus anúncios estão classificados como "{_score_ads_info["classificacao"]}" '
+                        f'({_score_ads_info["score"]}/100) — todos os critérios avaliados estão OK. '
+                        'Continue monitorando o desempenho para manter esse nível.'
+                    )
+                ads_insight_block = (
+                    '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">'
+                    '🤖 Insight da IA</div>'
+                    f'<div style="font-size:12px;color:#7c2d12;line-height:1.6;">{_texto_insight_ads}</div>'
+                    '</div>'
+                )
+
+                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block + ads_insight_block
             else:
                 ads_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'

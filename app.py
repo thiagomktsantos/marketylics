@@ -7995,7 +7995,7 @@ function setHeightGeral(isOpen) {{
                     _comparacao_html = (
                         f'<div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:10px;width:100%;">'
                         f'<div style="height:100%;width:{_pct_a_frente}%;background:linear-gradient(90deg,#3b82f6,{_sg_cor});border-radius:3px;"></div></div>'
-                        f'<div style="font-size:13px;color:#64748b;margin-top:8px;">'
+                        f'<div style="font-size:13px;color:#64748b;margin-top:8px;line-height:1.5;word-wrap:break-word;">'
                         f'Você está à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> dos concorrentes</div>'
                     )
                 else:
@@ -8176,16 +8176,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(210px,0.9fr) 1.35fr;gap:18px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;min-width:95px;border-right:1px solid #f3f4f6;padding-right:12px;">
+      <div style="display:flex;flex-direction:column;width:150px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:14px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <span style="font-size:28px;font-weight:900;letter-spacing:-1.2px;color:{_sg_cor};line-height:1;">{_score_geral}<span style="font-size:12px;font-weight:800;color:#9ca3af;">/100</span></span>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:baseline;gap:2px;">
+            <span style="font-size:32px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:13px;font-weight:800;color:#9ca3af;">/100</span>
+          </div>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>

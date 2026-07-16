@@ -8191,7 +8191,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
     <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;width:230px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:14px;">
+      <div style="display:flex;flex-direction:column;width:260px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:18px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>

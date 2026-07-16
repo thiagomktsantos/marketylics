@@ -7852,20 +7852,106 @@ function setHeightGeral(isOpen) {{
                 else:
                     _sg_lbl, _sg_cor = "Precisa de atenção", "#ef4444"
 
-                # ── Rings "Desempenho por Área" ────────────────────────
+                # ── Comparação com concorrentes: recalcula o score geral (mesma
+                # fórmula acima) de CADA empresa cadastrada — não só a
+                # selecionada — pra saber à frente de quantos % delas a
+                # empresa selecionada está. Versão enxuta: só o número final
+                # de cada uma, sem montar o card inteiro (isso seria caro
+                # demais pra rodar em toda empresa a cada render). ──
+                def _score_geral_leve(_nome_emp):
+                    _areas_leve = []
+                    _r_leve = dados_redes_map.get(_nome_emp)
+                    if _r_leve:
+                        _sc_redes_leve = calcular_score_bio(
+                            (_r_leve.get("bio") or ""),
+                            (_r_leve.get("external_url") or "").strip(),
+                            _r_leve.get("seguidores", 0),
+                            _r_leve.get("eng_pct", 0.0),
+                        )
+                        _areas_leve.append(_sc_redes_leve["score"])
+                    _seo_leve = seo_cache.get(_nome_emp, {})
+                    if _seo_leve.get("status") == "ok":
+                        _sitemap_leve = _seo_leve.get("sitemap", {})
+                        _pontos_leve = sum([
+                            bool(_seo_leve.get("title")), bool(_seo_leve.get("h1")),
+                            bool(_seo_leve.get("description")), bool(_seo_leve.get("h2s")),
+                            _sitemap_leve.get("status") == "ok",
+                        ])
+                        _areas_leve.append(round((_pontos_leve / 5) * 100))
+                    _ads_entry_leve = ads_cache.get(_nome_emp, {})
+                    _ads_lista_leve = _ads_entry_leve.get("data", []) if _ads_entry_leve else []
+                    if _ads_lista_leve:
+                        _ads_info_leve = calcular_categorias_ads(_ads_lista_leve)
+                        _areas_leve.append(calcular_score_ads(_ads_info_leve)["score"])
+                    if not _areas_leve:
+                        return None
+                    return round(sum(_areas_leve) / len(_areas_leve))
+
+                _scores_concorrentes = []
+                for _e_outra in todas_empresas_geral:
+                    if _e_outra["nome"] == _d0["nome"]:
+                        continue
+                    _sc_outra = _score_geral_leve(_e_outra["nome"])
+                    if _sc_outra is not None:
+                        _scores_concorrentes.append(_sc_outra)
+
+                if _scores_concorrentes:
+                    _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
+                    _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
+                    _comparacao_html = (
+                        f'<div style="font-size:11px;color:#64748b;margin-top:8px;">'
+                        f'Você está à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> dos concorrentes</div>'
+                        f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:5px;width:100%;">'
+                        f'<div style="height:100%;width:{_pct_a_frente}%;background:{_sg_cor};border-radius:3px;"></div></div>'
+                    )
+                else:
+                    _comparacao_html = ""
+
+                # ── Rings "Desempenho por Área" ── (só o número no anel +
+                # rótulo + classificação — sem repetir o percentual do lado,
+                # que antes duplicava o número já mostrado dentro do anel) ──
                 _area_rings_html = ""
                 for _lbl, _sc, _falt, _cor_area in _areas:
                     if _sc >= 80:   _area_txt = "Excelente"
                     elif _sc >= 60: _area_txt = "Bom"
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
+                    _donut_full = make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=60, stroke=6)
+                    _svg_match = re.search(r"(<svg.*?</svg>)", _donut_full, re.S)
+                    _svg_only = _svg_match.group(1) if _svg_match else ""
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:88px;">'
-                        + make_donut_svg(_sc, _cor_area, _lbl, f"{_sc}", size=64, stroke=6)
-                        .replace('flex:1;min-width:0;','flex:0;')
-                        + f'<div style="font-size:10px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
-                        '</div>'
+                        '<div style="display:flex;align-items:center;gap:10px;">'
+                        + _svg_only +
+                        '<div>'
+                        f'<div style="font-size:11px;font-weight:800;color:#1a2e4a;">{_lbl}</div>'
+                        f'<div style="font-size:11px;color:#9ca3af;font-weight:600;">{_sc}/100</div>'
+                        f'<div style="font-size:10px;font-weight:700;color:{_cor_area};">{_area_txt}</div>'
+                        '</div></div>'
                     )
+
+                # ── Textos das oportunidades: em vez do nome cru do critério
+                # que falta (ex.: "H1"), um texto mais estratégico/acionável +
+                # um ganho estimado (heurístico — não há histórico de conversão
+                # pra calcular um valor real). ──
+                _OPORT_TEXTOS = {
+                    "Title":                    ("Otimizar o título das páginas (SEO)", "Ganho estimado: +8% de cliques na busca"),
+                    "H1":                       ("Estruturar o H1 das páginas principais", "Ganho estimado: +6% de relevância para buscadores"),
+                    "Meta Desc.":               ("Escrever meta descrições mais atrativas", "Ganho estimado: +5% de CTR na busca"),
+                    "Seções (H2)":              ("Organizar o conteúdo com subtítulos (H2)", "Ganho estimado: +4% de tempo na página"),
+                    "Sitemap":                  ("Publicar um sitemap.xml", "Ganho estimado: +10% de indexação"),
+                    "Tem bio":                  ("Escrever uma bio completa no Instagram", "Ganho estimado: +10% de conversão no perfil"),
+                    "Proposta de valor clara":  ("Deixar a proposta de valor explícita na bio", "Ganho estimado: +12% de reconhecimento de marca"),
+                    "Link na bio":              ("Adicionar um link estratégico na bio", "Ganho estimado: +15% de tráfego para o site"),
+                    "Posicionamento da marca":  ("Reforçar o posicionamento de marca na bio", "Diferenciação no mercado"),
+                    "CTA na bio":               ("Incluir uma chamada para ação na bio", "Ganho estimado: +8% de conversão"),
+                    "Diferenciação no mercado": ("Aumentar o engajamento para se diferenciar", "Ganho estimado: +20% de alcance orgânico"),
+                    "Volume de anúncios ativos":("Aumentar o volume de anúncios ativos", "Ganho estimado: +25% de alcance pago"),
+                    "Usa prova social":         ("Incluir prova social nos anúncios", "Ganho estimado: +18% de confiança e CTR"),
+                    "Usa gatilho de urgência":  ("Usar gatilhos de urgência nos anúncios", "Ganho estimado: +10% de conversão"),
+                    "CTA direto consistente":   ("Padronizar o CTA direto nos anúncios", "Ganho estimado: +12% de cliques"),
+                    "Comunica benefícios claros":("Comunicar os benefícios de forma mais clara", "Ganho estimado: +9% de CTR"),
+                    "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "Ganho estimado: +15% de alcance"),
+                }
 
                 # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
@@ -7877,16 +7963,30 @@ function setHeightGeral(isOpen) {{
                         break
 
                 if _oportunidades_top:
-                    _oport_html = "".join(
-                        f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
-                        f'border-bottom:1px solid #f3f4f6;">'
-                        f'<div style="width:18px;height:18px;border-radius:50%;background:#eff6ff;color:#1d4ed8;'
-                        f'font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;'
-                        f'flex-shrink:0;margin-top:1px;">{_i+1}</div>'
-                        f'<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_txt}</div>'
-                        f'<div style="font-size:11px;color:#9ca3af;">{_lbl}</div></div></div>'
-                        for _i, (_lbl, _txt) in enumerate(_oportunidades_top)
+                    _chevron_svg = (
+                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" '
+                        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                        '<polyline points="9 18 15 12 9 6"/></svg>'
                     )
+                    _oport_rows = []
+                    for _i, (_lbl, _falt_raw) in enumerate(_oportunidades_top):
+                        _titulo_op, _ganho_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, ""))
+                        _ganho_html = (
+                            f'<div style="font-size:10px;color:#22c55e;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
+                            if _ganho_op else ""
+                        )
+                        _oport_rows.append(
+                            f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
+                            f'border-bottom:1px solid #f3f4f6;">'
+                            f'<div style="width:18px;height:18px;border-radius:50%;background:#eff6ff;color:#1d4ed8;'
+                            f'font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;'
+                            f'flex-shrink:0;margin-top:1px;">{_i+1}</div>'
+                            f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
+                            f'<div style="font-size:11px;color:#9ca3af;">{_lbl}</div>'
+                            f'{_ganho_html}</div>'
+                            f'<div style="flex-shrink:0;margin-top:2px;">{_chevron_svg}</div></div>'
+                        )
+                    _oport_html = "".join(_oport_rows)
                 else:
                     _oport_html = (
                         '<div style="font-size:12px;color:#22c55e;font-weight:700;padding:8px 0;">'
@@ -7915,25 +8015,26 @@ function setHeightGeral(isOpen) {{
 </head><body>
 <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;margin-top:16px;">
   <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:14px;">RESUMO EXECUTIVO ✨</div>
-  <div style="display:grid;grid-template-columns:auto 1fr 1.3fr;gap:22px;align-items:stretch;">
-    <div style="display:flex;flex-direction:column;justify-content:center;min-width:120px;border-right:1px solid #f3f4f6;padding-right:22px;">
+  <div style="display:grid;grid-template-columns:auto 1fr 1.15fr 1.15fr;gap:22px;align-items:stretch;">
+    <div style="display:flex;flex-direction:column;justify-content:center;min-width:130px;border-right:1px solid #f3f4f6;padding-right:22px;">
       <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Score Geral</div>
       <div style="display:flex;align-items:baseline;gap:4px;"><span style="font-size:38px;font-weight:900;letter-spacing:-2px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>
       <div style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};margin-top:6px;width:fit-content;">{_sg_lbl}</div>
+      {_comparacao_html}
     </div>
-    <div style="display:flex;flex-direction:column;justify-content:center;border-right:1px solid #f3f4f6;padding-right:22px;">
-      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Desempenho por área</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;">{_area_rings_html}</div>
+    <div style="display:flex;flex-direction:column;justify-content:center;gap:14px;border-right:1px solid #f3f4f6;padding-right:22px;">
+      <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
+      {_area_rings_html}
     </div>
-    <div>
+    <div style="border-right:1px solid #f3f4f6;padding-right:22px;">
       <div style="font-size:10px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">Oportunidades prioritárias</div>
       {_oport_html}
     </div>
-  </div>
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid #f3f4f6;display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:10px;padding:12px 14px;">
-    <div style="font-size:16px;flex-shrink:0;">💡</div>
-    <div><div style="font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Insight da IA</div>
-    <div style="font-size:12px;color:#374151;line-height:1.6;">{_insight_txt}</div></div>
+    <div style="display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border-radius:10px;padding:14px 16px;">
+      <div style="font-size:18px;flex-shrink:0;">🤖</div>
+      <div><div style="font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:5px;">Insight da IA</div>
+      <div style="font-size:12px;color:#374151;line-height:1.6;">{_insight_txt}</div></div>
+    </div>
   </div>
 </div>
 <script>
@@ -7949,7 +8050,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=260, scrolling=False)
+                components.html(resumo_executivo_html, height=320, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

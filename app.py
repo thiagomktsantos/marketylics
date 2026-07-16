@@ -8106,6 +8106,7 @@ function setHeightGeral(isOpen) {{
                         'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
                         '<polyline points="9 18 15 12 9 6"/></svg>'
                     )
+                    _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
                     _oport_rows = []
                     for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
                         _titulo_op, _ganho_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, ""))
@@ -8113,12 +8114,13 @@ function setHeightGeral(isOpen) {{
                             f'<div style="font-size:10px;color:#22c55e;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
                             if _ganho_op else ""
                         )
+                        _badge_txt = _BADGE_LBL.get(_lbl, _lbl)
                         _oport_rows.append(
                             f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
-                            f'<div style="padding:3px 8px;border-radius:8px;background:{_cor_op}1a;color:{_cor_op};'
+                            f'<div style="width:56px;padding:3px 6px;border-radius:8px;background:{_cor_op}1a;color:{_cor_op};'
                             f'font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;'
-                            f'flex-shrink:0;margin-top:1px;white-space:nowrap;">{_lbl}</div>'
+                            f'text-align:center;flex-shrink:0;margin-top:1px;">{_badge_txt}</div>'
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
                             f'{_ganho_html}</div>'
                             f'<div style="flex-shrink:0;margin-top:2px;">{_chevron_svg}</div></div>'
@@ -8174,7 +8176,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
-    <div style="display:grid;grid-template-columns:auto minmax(230px,1.05fr) 1.15fr;gap:18px;align-items:stretch;">
+    <div style="display:grid;grid-template-columns:auto minmax(215px,0.95fr) 1.2fr;gap:18px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;width:260px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:14px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>

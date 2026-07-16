@@ -536,7 +536,7 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
                 return " ".join(s.text.strip() for s in segmentos).strip()
 
             from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
-            _timeout_whisper = st.secrets.get("WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS", 240)
+            _timeout_whisper = st.secrets.get("WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS", )
             with _TPE(max_workers=1) as _exec_whisper:
                 _future = _exec_whisper.submit(_transcrever_sync)
                 try:
@@ -8190,7 +8190,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
-    <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
+    <div style="display:grid;grid-template-columns:auto minmax(230px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;width:270px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:18px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
@@ -8206,7 +8206,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         {_comparacao_html}
       </div>
-      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:22px;">
+      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:12px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>

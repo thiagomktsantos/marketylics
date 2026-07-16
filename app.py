@@ -8139,13 +8139,13 @@ function setHeightGeral(isOpen) {{
                 _pior = min(_areas, key=lambda a: a[1])
                 if _melhor[0] == _pior[0]:
                     _insight_txt = (
-                        f"Sua presença em <b>{_melhor[0]}</b> está com nota <b>{_melhor[1]}/100</b>. "
+                        f"Sua presença em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
                         f"Foque nos itens listados em oportunidades para evoluir."
                     )
                 else:
                     _insight_txt = (
-                        f"Sua presença é mais forte em <b>{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
-                        f"<b>{_pior[0]}</b> está com nota <b>{_pior[1]}/100</b> e concentra as maiores oportunidades. "
+                        f"Sua presença é mais forte em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
+                        f"<b style=\"color:#008ac7;\">{_pior[0]} ({_pior[1]}/100)</b> concentra as maiores oportunidades. "
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )
 
@@ -8235,9 +8235,9 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     </div>
     <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
     <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
-    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
+    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
       Ver todos os insights
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
   </div>
 </div>

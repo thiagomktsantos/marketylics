@@ -8175,19 +8175,17 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
-    <div style="display:grid;grid-template-columns:auto minmax(240px,1.1fr) 1.15fr;gap:18px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;min-width:110px;border-right:1px solid #f3f4f6;padding-right:14px;">
+    <div style="display:grid;grid-template-columns:auto minmax(210px,0.9fr) 1.35fr;gap:18px;align-items:stretch;">
+      <div style="display:flex;flex-direction:column;min-width:95px;border-right:1px solid #f3f4f6;padding-right:12px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-          <div style="display:flex;align-items:baseline;gap:2px;">
-            <span style="font-size:32px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:13px;font-weight:800;color:#9ca3af;">/100</span>
-          </div>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <span style="font-size:28px;font-weight:900;letter-spacing:-1.2px;color:{_sg_cor};line-height:1;">{_score_geral}<span style="font-size:12px;font-weight:800;color:#9ca3af;">/100</span></span>
+          <div style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>
@@ -8205,9 +8203,10 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
   </div>
   <div style="background:#f0f5ff;border:1px solid #dbe6fb;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#1a2e4a;text-transform:uppercase;letter-spacing:0.5px;">💡 Insight da IA</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">💡 Insight da IA</div>
       <div style="font-size:20px;line-height:1;">🤖</div>
     </div>
+    <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
     <div style="font-size:12.5px;color:#374151;line-height:1.7;flex:1;">{_insight_txt}</div>
     <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#2563eb;cursor:pointer;">
       Ver todos os insights

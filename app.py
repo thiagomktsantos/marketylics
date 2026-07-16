@@ -7993,10 +7993,10 @@ function setHeightGeral(isOpen) {{
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
                     _comparacao_html = (
-                        f'<div style="font-size:11px;color:#64748b;margin-top:8px;">'
+                        f'<div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:10px;width:100%;">'
+                        f'<div style="height:100%;width:{_pct_a_frente}%;background:linear-gradient(90deg,#3b82f6,{_sg_cor});border-radius:3px;"></div></div>'
+                        f'<div style="font-size:13px;color:#64748b;margin-top:8px;">'
                         f'Você está à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> dos concorrentes</div>'
-                        f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:5px;width:100%;">'
-                        f'<div style="height:100%;width:{_pct_a_frente}%;background:{_sg_cor};border-radius:3px;"></div></div>'
                     )
                 else:
                     _comparacao_html = ""

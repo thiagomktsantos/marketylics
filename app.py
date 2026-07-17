@@ -7691,9 +7691,9 @@ function setHeightGeral(isOpen) {{
                         _icone = _icon_nok
                         _sub = '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>'
                     score_checklist_html += (
-                        '<div style="display:flex;align-items:flex-start;gap:7px;">'
+                        '<div style="display:flex;align-items:center;gap:7px;">'
                         + _icone +
-                        '<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.3;">'
+                        '<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'
                         + c["label"] + '</div>' + _sub + '</div></div>'
                     )
 
@@ -7719,7 +7719,7 @@ function setHeightGeral(isOpen) {{
                     f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
                     f'{m["score_icon"]} {m["score_lbl"]}</div>'
                     '</div>'
-                    f'<div style="flex:1;min-width:180px;display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;">{score_checklist_html}</div>'
+                    f'<div style="flex:1;min-width:180px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
                     '</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'

@@ -67,6 +67,99 @@ _SVG_ICONE_PRECISA_MELHORAR = (
 )
 
 # ---------------------------------------------------
+#  ÍCONES SVG — DIVERSOS (Dashboard Geral). Mesmo padrão dos acima:
+#  stroke/fill="currentColor" pra herdar a cor do elemento onde entram.
+# ---------------------------------------------------
+
+_SVG_ICONE_CHECK = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_ERRO = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_ROBO = (
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-2px;flex-shrink:0">'
+    '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/>'
+    '<path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_DINHEIRO = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<line x1="12" y1="2" x2="12" y2="22"/>'
+    '<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_PESSOAS = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>'
+    '<path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_RELOGIO = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_CTA = (
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_GRAFICO = (
+    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>'
+    '<line x1="6" y1="20" x2="6" y2="14"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_MEGAFONE = (
+    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_LINK = (
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
+    '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_PONTO = (
+    '<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" '
+    'style="vertical-align:1px;flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>'
+)
+
+# ---------------------------------------------------
 #  SUPABASE
 # ---------------------------------------------------
 

@@ -6708,10 +6708,10 @@ elif st.session_state.pagina == "geral":
         else:
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
 
-        if score >= 90:
+        if score >= 91:
             classificacao, classificacao_icon = "Excelente", "🏆"
             cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
-        elif score >= 80:
+        elif score >= 81:
             classificacao, classificacao_icon = "Muito bom", "👍"
             cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
         elif score >= 60:
@@ -6776,9 +6776,9 @@ elif st.session_state.pagina == "geral":
         pesos = [20, 20, 15, 15, 15, 15]
         score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
 
-        if score >= 90:
+        if score >= 91:
             classificacao, icon, cor = "Excelente", "🏆", "#22c55e"
-        elif score >= 80:
+        elif score >= 81:
             classificacao, icon, cor = "Muito bom", "👍", "#3b82f6"
         elif score >= 60:
             classificacao, icon, cor = "Bom", "👍", "#60a5fa"
@@ -7561,8 +7561,8 @@ function setHeightGeral(isOpen) {{
                               bool(seo.get("h2s")), sitemap.get("status")=="ok"])
             seo_score_val = round((seo_pontos / 5) * 100) if seo_status_ok else 0
 
-            if seo_score_val >= 90:   seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente","🏆","#22c55e"
-            elif seo_score_val >= 80: seo_score_lbl, seo_score_icon, seo_score_cor = "Muito bom","👍","#3b82f6"
+            if seo_score_val >= 91:   seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente","🏆","#22c55e"
+            elif seo_score_val >= 81: seo_score_lbl, seo_score_icon, seo_score_cor = "Muito bom","👍","#3b82f6"
             elif seo_score_val >= 60: seo_score_lbl, seo_score_icon, seo_score_cor = "Bom","👍","#60a5fa"
             elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular","⚠️","#f59e0b"
             else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar","📝","#ef4444"
@@ -7999,9 +7999,9 @@ function setHeightGeral(isOpen) {{
             if _areas:
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
 
-                if _score_geral >= 90:
+                if _score_geral >= 91:
                     _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", "🏆"
-                elif _score_geral >= 80:
+                elif _score_geral >= 81:
                     _sg_lbl, _sg_cor, _sg_icon = "Muito bom", "#3b82f6", "👍"
                 elif _score_geral >= 60:
                     _sg_lbl, _sg_cor, _sg_icon = "Bom", "#60a5fa", "👍"
@@ -8114,8 +8114,8 @@ function setHeightGeral(isOpen) {{
 
                 _area_rings_html = ""
                 for _lbl, _sc, _falt, _cor_area in _areas:
-                    if _sc >= 90:   _area_txt = "Excelente"
-                    elif _sc >= 80: _area_txt = "Muito bom"
+                    if _sc >= 91:   _area_txt = "Excelente"
+                    elif _sc >= 81: _area_txt = "Muito bom"
                     elif _sc >= 60: _area_txt = "Bom"
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
@@ -8458,7 +8458,7 @@ function buildSeoColumn(d,colEl) {{
     var scoreNum=d.seo_score_val;
     var scoreTextColor=scoreNum>=80?'#15803d':scoreNum>=40?'#92400e':'#b91c1c';
     var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
-    var scoreTxt2=scoreNum>=90?'🏆 Excelente':scoreNum>=80?'👍 Muito bom':scoreNum>=60?'👍 Bom':scoreNum>=40?'⚠️ Regular':'📝 Precisa melhorar';
+    var scoreTxt2=scoreNum>=91?'🏆 Excelente':scoreNum>=81?'👍 Muito bom':scoreNum>=60?'👍 Bom':scoreNum>=40?'⚠️ Regular':'📝 Precisa melhorar';
     var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
     var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);
     var SEO_ITEMS=[
@@ -17754,10 +17754,10 @@ function setHeight(isOpen) {{
         else:
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
 
-        if score >= 90:
+        if score >= 91:
             classificacao, classificacao_icon = "Excelente", "🏆"
             cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
-        elif score >= 80:
+        elif score >= 81:
             classificacao, classificacao_icon = "Muito bom", "👍"
             cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
         elif score >= 60:

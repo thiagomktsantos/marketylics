@@ -20,6 +20,53 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------
+#  ÍCONES SVG — CLASSIFICAÇÃO DE SCORE (Excelente / Muito bom / Bom /
+#  Regular / Precisa melhorar). stroke="currentColor" faz o ícone herdar
+#  a cor do texto do badge onde é inserido, sem precisar passar cor à parte.
+# ---------------------------------------------------
+
+_SVG_ICONE_EXCELENTE = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-2px;flex-shrink:0">'
+    '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>'
+    '<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>'
+    '<path d="M4 22h16"/>'
+    '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>'
+    '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>'
+    '<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_BOM = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-2px;flex-shrink:0">'
+    '<path d="M7 10v12"/>'
+    '<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_REGULAR = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-2px;flex-shrink:0">'
+    '<path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>'
+    '<line x1="12" y1="9" x2="12" y2="13"/>'
+    '<line x1="12" y1="17" x2="12.01" y2="17"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_PRECISA_MELHORAR = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-2px;flex-shrink:0">'
+    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
+    '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
+    '</svg>'
+)
+
+# ---------------------------------------------------
 #  SUPABASE
 # ---------------------------------------------------
 

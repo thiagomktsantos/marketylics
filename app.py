@@ -7723,9 +7723,9 @@ function setHeightGeral(isOpen) {{
                     f'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
                     '</div>'
                     '</div>'
-                    f'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
                     f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div></div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
                     '</div>'
                 )
 
@@ -8458,14 +8458,6 @@ function buildSeoColumn(d,colEl) {{
         {{label:'Sitemap',ok:d.sitemap_status==='ok'}},
     ];
     var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
-    var seoFaltandoHtml=(d.seo_faltando||[]).map(function(f){{return '<div style="display:flex;align-items:center;gap:5px;">❌ '+esc(f)+'</div>';}}).join('');
-    var nokHtml='';
-    if(nok>0){{
-        nokHtml='<div class="oport-wrap">'
-            +'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;color:#3b9fd6;background:#fbfbfb;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'+nok+' oportunidade'+(nok!==1?'s':'')+'</div>'
-            +'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'+seoFaltandoHtml+'</div>'
-            +'</div>';
-    }}
     var iconOk='<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
     var iconNok='<div style="width:18px;height:18px;border-radius:50%;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="#f59e0b" stroke="none"/></svg></div>';
     var checklistHtml='';
@@ -8486,7 +8478,7 @@ function buildSeoColumn(d,colEl) {{
         +'✅ Title +20<br>✅ H1 +20<br>✅ Meta Desc. +20<br>✅ Seções (H2) +20<br>✅ Sitemap +20'
         +'</div></div>'
         +'</div>'
-        +nokHtml+'</div>'
+        +'</div>'
         +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
         +'<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
         +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:130px;">'
@@ -8497,8 +8489,8 @@ function buildSeoColumn(d,colEl) {{
         +'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">'+checklistHtml+'</div>'
         +'</div>'
         +'</div>'
-        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados</div>'
-        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>';
+        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
+        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
     var ct=d.seo_contato||{{}};

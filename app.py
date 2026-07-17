@@ -7713,13 +7713,15 @@ function setHeightGeral(isOpen) {{
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
-                    '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">'
+                    '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:130px;">'
                     + score_ring_svg +
                     f'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;'
                     f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
                     f'{m["score_icon"]} {m["score_lbl"]}</div>'
                     '</div>'
-                    f'<div style="flex:1;min-width:180px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
+                    '<div style="flex:1;display:flex;justify-content:center;">'
+                    f'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
+                    '</div>'
                     '</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
@@ -8428,6 +8430,20 @@ function calcTopWords(d) {{
     return combined.filter(function(item){{return item.word.split(' ').every(function(p){{return p.length>=3;}});}})
         .sort(function(a,b){{return b.count-a.count;}}).filter(function(item){{return item.count>1;}}).slice(0,14);
 }}
+function makeScoreRingSvg(score,color,size,stroke){{
+    size=size||110;stroke=stroke||10;
+    var r=(size/2)-(stroke/2)-2,cx=size/2,cy=size/2;
+    var circum=Math.round(2*Math.PI*r*100)/100;
+    var dash=Math.round(score/100*circum*100)/100;
+    var gap=Math.round((circum-dash)*100)/100;
+    var offset=Math.round(circum*0.25*100)/100;
+    return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+        +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#e5e7eb" stroke-width="'+stroke+'"/>'
+        +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+stroke+'" stroke-dasharray="'+dash+' '+gap+'" stroke-dashoffset="'+offset+'" stroke-linecap="round"/>'
+        +'<text x="'+cx+'" y="'+(cy-7)+'" text-anchor="middle" dominant-baseline="central" font-size="'+Math.round(size*0.26)+'" font-weight="900" fill="'+color+'" font-family="DM Sans,sans-serif">'+score+'</text>'
+        +'<text x="'+cx+'" y="'+(cy+16)+'" text-anchor="middle" dominant-baseline="central" font-size="'+Math.round(size*0.11)+'" font-weight="700" fill="#9ca3af" font-family="DM Sans,sans-serif">/100</text>'
+        +'</svg>';
+}}
 function buildSeoColumn(d,colEl) {{
     if(!d.seo_status_ok){{colEl.innerHTML+='<div class="placeholder-box">Extraia o SEO na página de Sites para ver os dados aqui.</div>';return;}}
     var scoreNum=d.seo_score_val;
@@ -8450,8 +8466,15 @@ function buildSeoColumn(d,colEl) {{
             +'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'+seoFaltandoHtml+'</div>'
             +'</div>';
     }}
-    var chipsHtml='';
-    SEO_ITEMS.forEach(function(it){{if(it.ok)chipsHtml+='<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> '+it.label+'</div>';}});
+    var iconOk='<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
+    var iconNok='<div style="width:18px;height:18px;border-radius:50%;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="#f59e0b" stroke="none"/></svg></div>';
+    var checklistHtml='';
+    SEO_ITEMS.forEach(function(it){{
+        var icone=it.ok?iconOk:iconNok;
+        var sub=it.ok?'':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>';
+        checklistHtml+='<div style="display:flex;align-items:center;gap:7px;">'+icone+'<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'+it.label+'</div>'+sub+'</div></div>';
+    }});
+    var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
     scoreBlock.innerHTML=
@@ -8464,12 +8487,18 @@ function buildSeoColumn(d,colEl) {{
         +'</div></div>'
         +'</div>'
         +nokHtml+'</div>'
-        +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
-        +'<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;"><span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:'+scoreTextColor+';">'+scoreNum+'</span><span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
-        +'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;flex-shrink:0;">'+scoreTxt2+'</div></div>'
-        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
-        +'<div style="display:flex;flex-wrap:wrap;">'+chipsHtml+'</div>';
+        +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
+        +'<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
+        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:130px;">'
+        +seoRingSvg
+        +'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;margin-top:8px;">'+scoreTxt2+'</div>'
+        +'</div>'
+        +'<div style="flex:1;display:flex;justify-content:center;">'
+        +'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">'+checklistHtml+'</div>'
+        +'</div>'
+        +'</div>'
+        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados</div>'
+        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
     var ct=d.seo_contato||{{}};

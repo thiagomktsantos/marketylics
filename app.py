@@ -7821,11 +7821,11 @@ function setHeightGeral(isOpen) {{
                     'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>'
                 )
                 _icon_nok = (
-                    '<div style="width:18px;height:18px;border-radius:50%;border:2px solid #f59e0b;'
+                    '<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;'
                     'display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">'
-                    '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="3" '
+                    '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" '
                     'stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/>'
-                    '<circle cx="12" cy="16.5" r="0.6" fill="#f59e0b" stroke="none"/></svg></div>'
+                    '<circle cx="12" cy="16.5" r="0.6" fill="#fff" stroke="none"/></svg></div>'
                 )
 
                 score_checklist_html = ""
@@ -7844,6 +7844,13 @@ function setHeightGeral(isOpen) {{
                     )
 
                 score_ring_svg = make_score_ring_svg(m["score_val"], m["score_cor"], size=110, stroke=10)
+
+                # Cor final da barra de progresso: segue a mesma lógica simplificada
+                # (verde/âmbar/vermelho) usada na barra do Score de SEO, em vez da
+                # cor de classificação em 5 níveis — assim o gradiente azul→cor
+                # sempre fica visível em duas cores, mesmo quando a classificação
+                # (ex.: "Muito bom") usa o mesmo azul do início do gradiente.
+                _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
@@ -7870,7 +7877,7 @@ function setHeightGeral(isOpen) {{
                     '</div>'
                     '</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
-                    f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div></div>'
+                    f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{_perfil_bar_cor});"></div></div>'
                     f'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
                     '</div>'
                 )
@@ -8103,7 +8110,7 @@ function setHeightGeral(isOpen) {{
                 _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e"))
             if _d0["tem_ads"]:
                 _ads_score_info = calcular_score_ads(_d0["ads"])
-                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#f97316"))
+                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6"))
             else:
                 _ads_score_info = None
 
@@ -8167,6 +8174,12 @@ function setHeightGeral(isOpen) {{
                 if _scores_concorrentes:
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
+                    # Mesma lógica da barra do Score de SEO: cor final fixa
+                    # (verde/âmbar/vermelho) em vez da cor de classificação em 5
+                    # níveis, pra garantir que o gradiente sempre tenha duas
+                    # cores visíveis (ex.: "Muito bom" usa o mesmo azul do início
+                    # do gradiente e "sumia" o efeito).
+                    _sg_bar_cor = "#22c55e" if _score_geral >= 80 else ("#f59e0b" if _score_geral >= 40 else "#ef4444")
                     # Texto no 2ª pessoa ("Você") só faz sentido pra empresa do
                     # próprio usuário. Quando a empresa selecionada no filtro é
                     # um concorrente, troca pelo nome dele e ajusta o universo
@@ -8176,7 +8189,7 @@ function setHeightGeral(isOpen) {{
                     _universo_frente = "dos concorrentes" if _is_minha_d0 else "das demais empresas monitoradas"
                     _comparacao_html = (
                         f'<div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:10px;width:100%;">'
-                        f'<div style="height:100%;width:{_pct_a_frente}%;background:linear-gradient(90deg,#3b82f6,{_sg_cor});border-radius:3px;"></div></div>'
+                        f'<div style="height:100%;width:{_pct_a_frente}%;background:linear-gradient(90deg,#3b82f6,{_sg_bar_cor});border-radius:3px;"></div></div>'
                         f'<div style="font-size:13px;color:#64748b;margin-top:8px;line-height:1.5;word-wrap:break-word;">'
                         f'{_sujeito_frente} à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> {_universo_frente}</div>'
                     )
@@ -8590,7 +8603,7 @@ function buildSeoColumn(d,colEl) {{
     ];
     var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
     var iconOk='<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
-    var iconNok='<div style="width:18px;height:18px;border-radius:50%;border:2px solid #f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="#f59e0b" stroke="none"/></svg></div>';
+    var iconNok='<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="#fff" stroke="none"/></svg></div>';
     var checklistHtml='';
     SEO_ITEMS.forEach(function(it){{
         var icone=it.ok?iconOk:iconNok;

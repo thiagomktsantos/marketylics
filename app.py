@@ -7788,7 +7788,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;">'
                     + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")
                     + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%") + eng_ctx_html + '</div>')
-                    + stat_item(path_post, "#8b5cf6", "#f5f3ff", m["posts"],   "#374151", "Posts")
+                    + stat_item(path_post, "#e1306c", "#f5f3ff", m["posts"],   "#374151", "Posts")
                     + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post")
                     + '</div></div>'
                 )

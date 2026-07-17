@@ -6849,19 +6849,19 @@ elif st.session_state.pagina == "geral":
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
 
         if score >= 91:
-            classificacao, classificacao_icon = "Excelente", "🏆"
+            classificacao, classificacao_icon = "Excelente", _SVG_ICONE_EXCELENTE
             cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
         elif score >= 81:
-            classificacao, classificacao_icon = "Muito bom", "👍"
+            classificacao, classificacao_icon = "Muito bom", _SVG_ICONE_BOM
             cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
         elif score >= 60:
-            classificacao, classificacao_icon = "Bom", "👍"
+            classificacao, classificacao_icon = "Bom", _SVG_ICONE_BOM
             cor_classe, bg_classe, brd_classe = "#60a5fa", "#eff6ff", "#bfdbfe"
         elif score >= 40:
-            classificacao, classificacao_icon = "Regular", "⚠️"
+            classificacao, classificacao_icon = "Regular", _SVG_ICONE_REGULAR
             cor_classe, bg_classe, brd_classe = "#f59e0b", "#fffbeb", "#fde68a"
         else:
-            classificacao, classificacao_icon = "Precisa melhorar", "📝"
+            classificacao, classificacao_icon = "Precisa melhorar", _SVG_ICONE_PRECISA_MELHORAR
             cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
 
         return {
@@ -6917,15 +6917,15 @@ elif st.session_state.pagina == "geral":
         score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
 
         if score >= 91:
-            classificacao, icon, cor = "Excelente", "🏆", "#22c55e"
+            classificacao, icon, cor = "Excelente", _SVG_ICONE_EXCELENTE, "#22c55e"
         elif score >= 81:
-            classificacao, icon, cor = "Muito bom", "👍", "#3b82f6"
+            classificacao, icon, cor = "Muito bom", _SVG_ICONE_BOM, "#3b82f6"
         elif score >= 60:
-            classificacao, icon, cor = "Bom", "👍", "#60a5fa"
+            classificacao, icon, cor = "Bom", _SVG_ICONE_BOM, "#60a5fa"
         elif score >= 40:
-            classificacao, icon, cor = "Regular", "⚠️", "#f59e0b"
+            classificacao, icon, cor = "Regular", _SVG_ICONE_REGULAR, "#f59e0b"
         else:
-            classificacao, icon, cor = "Precisa melhorar", "📝", "#ef4444"
+            classificacao, icon, cor = "Precisa melhorar", _SVG_ICONE_PRECISA_MELHORAR, "#ef4444"
 
         return {
             "score": score,
@@ -7701,11 +7701,11 @@ function setHeightGeral(isOpen) {{
                               bool(seo.get("h2s")), sitemap.get("status")=="ok"])
             seo_score_val = round((seo_pontos / 5) * 100) if seo_status_ok else 0
 
-            if seo_score_val >= 91:   seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente","🏆","#22c55e"
-            elif seo_score_val >= 81: seo_score_lbl, seo_score_icon, seo_score_cor = "Muito bom","👍","#3b82f6"
-            elif seo_score_val >= 60: seo_score_lbl, seo_score_icon, seo_score_cor = "Bom","👍","#60a5fa"
-            elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular","⚠️","#f59e0b"
-            else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar","📝","#ef4444"
+            if seo_score_val >= 91:   seo_score_lbl, seo_score_icon, seo_score_cor = "Excelente",_SVG_ICONE_EXCELENTE,"#22c55e"
+            elif seo_score_val >= 81: seo_score_lbl, seo_score_icon, seo_score_cor = "Muito bom",_SVG_ICONE_BOM,"#3b82f6"
+            elif seo_score_val >= 60: seo_score_lbl, seo_score_icon, seo_score_cor = "Bom",_SVG_ICONE_BOM,"#60a5fa"
+            elif seo_score_val >= 40: seo_score_lbl, seo_score_icon, seo_score_cor = "Regular",_SVG_ICONE_REGULAR,"#f59e0b"
+            else:                     seo_score_lbl, seo_score_icon, seo_score_cor = "Precisa melhorar",_SVG_ICONE_PRECISA_MELHORAR,"#ef4444"
 
             seo_items_check = [
                 {"label": "Title",       "ok": bool(seo.get("title"))},
@@ -7767,11 +7767,11 @@ function setHeightGeral(isOpen) {{
                 # pra sair de "número frio" pra "isso é bom ou ruim?" (pedido nº2 do feedback)
                 _eng_pct_val = r.get("eng_pct", 0) or 0
                 if _eng_pct_val < 1.0:
-                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟡", "Abaixo da média", "#b45309"
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = _SVG_ICONE_PONTO, "Abaixo da média", "#b45309"
                 elif _eng_pct_val < 3.0:
-                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟢", "Na média do setor", "#15803d"
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = _SVG_ICONE_PONTO, "Na média do setor", "#15803d"
                 else:
-                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = "🟢", "Acima da média", "#15803d"
+                    eng_ctx_icon, eng_ctx_txt, eng_ctx_cor = _SVG_ICONE_PONTO, "Acima da média", "#15803d"
                 eng_ctx_html = (
                     f'<div style="text-align:center;margin-top:3px;">'
                     f'<span style="font-size:9px;font-weight:700;color:{eng_ctx_cor};white-space:nowrap;">'
@@ -7794,7 +7794,7 @@ function setHeightGeral(isOpen) {{
                 )
 
                 score_nok = m["score_oportunidades"]
-                score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">❌ {f}</div>' for f in m.get("score_faltando", []))
+                score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">{_SVG_ICONE_ERRO} {f}</div>' for f in m.get("score_faltando", []))
                 if score_nok > 0:
                     score_nok_html = (
                         f'<div class="oport-wrap">'
@@ -7852,8 +7852,8 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
                     '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
                     '<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-                    '✅ Tem bio +20<br>✅ Proposta de valor +20<br>✅ Posicionamento +20<br>'
-                    '✅ Link na bio +15<br>✅ CTA na bio +15<br>✅ Engajamento ≥3% +10'
+                    f'{_SVG_ICONE_CHECK} Tem bio +20<br>{_SVG_ICONE_CHECK} Proposta de valor +20<br>{_SVG_ICONE_CHECK} Posicionamento +20<br>'
+                    f'{_SVG_ICONE_CHECK} Link na bio +15<br>{_SVG_ICONE_CHECK} CTA na bio +15<br>{_SVG_ICONE_CHECK} Engajamento ≥3% +10'
                     '</div></div></div>'
                     + score_nok_html +
                     '</div>'
@@ -7958,7 +7958,7 @@ function setHeightGeral(isOpen) {{
             else:
                 redes_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
-                    '<div style="font-size:20px;margin-bottom:6px;">📊</div>'
+                    f'<div style="margin-bottom:6px;display:flex;justify-content:center;">{_SVG_ICONE_GRAFICO}</div>'
                     '<div style="font-size:11px;color:#9ca3af;">Sem dados de redes sociais coletados</div></div>'
                 )
             d["redes_block_html"] = redes_block_html
@@ -8000,10 +8000,10 @@ function setHeightGeral(isOpen) {{
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                    + barra_tipo("💰 Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
-                    + barra_tipo("👥 Com prova social", a["prova_social"], total_ads, "#22c55e")
-                    + barra_tipo("⏰ Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
-                    + barra_tipo("👉 CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
+                    + barra_tipo(f"{_SVG_ICONE_DINHEIRO} Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
+                    + barra_tipo(f"{_SVG_ICONE_PESSOAS} Com prova social", a["prova_social"], total_ads, "#22c55e")
+                    + barra_tipo(f"{_SVG_ICONE_RELOGIO} Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
+                    + barra_tipo(f"{_SVG_ICONE_CTA} CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
                     + '</div>'
                 )
 
@@ -8035,7 +8035,7 @@ function setHeightGeral(isOpen) {{
                         dest_rows += (
                             '<div style="margin-bottom:8px;">'
                             '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">🔗 {dom_display}</span>'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">{_SVG_ICONE_LINK} {dom_display}</span>'
                             f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span></div>'
                             f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
                             f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div></div></div>'
@@ -8073,7 +8073,7 @@ function setHeightGeral(isOpen) {{
                 ads_insight_block = (
                     '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">'
-                    '🤖 Insight da IA</div>'
+                    f'{_SVG_ICONE_ROBO} Insight da IA</div>'
                     f'<div style="font-size:12px;color:#7c2d12;line-height:1.6;">{_texto_insight_ads}</div>'
                     '</div>'
                 )
@@ -8082,7 +8082,7 @@ function setHeightGeral(isOpen) {{
             else:
                 ads_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
-                    '<div style="font-size:20px;margin-bottom:6px;">📣</div>'
+                    f'<div style="margin-bottom:6px;display:flex;justify-content:center;">{_SVG_ICONE_MEGAFONE}</div>'
                     '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div></div>'
                 )
             d["ads_block_html"] = ads_block_html
@@ -8111,15 +8111,15 @@ function setHeightGeral(isOpen) {{
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
 
                 if _score_geral >= 91:
-                    _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", "🏆"
+                    _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", _SVG_ICONE_EXCELENTE
                 elif _score_geral >= 81:
-                    _sg_lbl, _sg_cor, _sg_icon = "Muito bom", "#3b82f6", "👍"
+                    _sg_lbl, _sg_cor, _sg_icon = "Muito bom", "#3b82f6", _SVG_ICONE_BOM
                 elif _score_geral >= 60:
-                    _sg_lbl, _sg_cor, _sg_icon = "Bom", "#60a5fa", "👍"
+                    _sg_lbl, _sg_cor, _sg_icon = "Bom", "#60a5fa", _SVG_ICONE_BOM
                 elif _score_geral >= 40:
-                    _sg_lbl, _sg_cor, _sg_icon = "Regular", "#f59e0b", "⚠️"
+                    _sg_lbl, _sg_cor, _sg_icon = "Regular", "#f59e0b", _SVG_ICONE_REGULAR
                 else:
-                    _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", "📝"
+                    _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
 
                 # ── Comparação com concorrentes: recalcula o score geral (mesma
                 # fórmula acima) de CADA empresa cadastrada — não só a
@@ -8314,7 +8314,7 @@ function setHeightGeral(isOpen) {{
                 else:
                     _oport_html = (
                         '<div style="font-size:12px;color:#22c55e;font-weight:700;padding:8px 0;">'
-                        '✅ Nenhuma pendência crítica identificada no momento.</div>'
+                        f'{_SVG_ICONE_CHECK} Nenhuma pendência crítica identificada no momento.</div>'
                     )
 
                 # ── Insight da IA: texto-guia baseado na área mais fraca e mais forte ──
@@ -8580,7 +8580,7 @@ function buildSeoColumn(d,colEl) {{
     var scoreNum=d.seo_score_val;
     var scoreTextColor=scoreNum>=80?'#15803d':scoreNum>=40?'#92400e':'#b91c1c';
     var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
-    var scoreTxt2=scoreNum>=91?'🏆 Excelente':scoreNum>=81?'👍 Muito bom':scoreNum>=60?'👍 Bom':scoreNum>=40?'⚠️ Regular':'📝 Precisa melhorar';
+    var scoreTxt2=scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Excelente':scoreNum>=81?'{_SVG_ICONE_BOM} Muito bom':scoreNum>=60?'{_SVG_ICONE_BOM} Bom':scoreNum>=40?'{_SVG_ICONE_REGULAR} Regular':'{_SVG_ICONE_PRECISA_MELHORAR} Precisa melhorar';
     var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
     var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);
     var SEO_ITEMS=[

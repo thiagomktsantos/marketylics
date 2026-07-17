@@ -7250,6 +7250,25 @@ function setHeightGeral(isOpen) {{
             f'</div></div>'
         )
 
+    def make_score_ring_svg(score, color, size=110, stroke=10):
+        r = (size / 2) - (stroke / 2) - 2
+        cx = cy = size / 2
+        circum = round(2 * _math.pi * r, 2)
+        dash = round(score / 100 * circum, 2)
+        gap  = round(circum - dash, 2)
+        offset = round(circum * 0.25, 2)
+        return (
+            f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#e5e7eb" stroke-width="{stroke}"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}"'
+            f' stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
+            f'<text x="{cx}" y="{cy - 7}" text-anchor="middle" dominant-baseline="central"'
+            f' font-size="{round(size * 0.26)}" font-weight="900" fill="{color}" font-family="DM Sans,sans-serif">{score}</text>'
+            f'<text x="{cx}" y="{cy + 16}" text-anchor="middle" dominant-baseline="central"'
+            f' font-size="{round(size * 0.11)}" font-weight="700" fill="#9ca3af" font-family="DM Sans,sans-serif">/100</text>'
+            f'</svg>'
+        )
+
     PLAT_ICONS_SVG = {
         "facebook": (
             '#1877f2', 'Facebook',
@@ -7643,14 +7662,46 @@ function setHeightGeral(isOpen) {{
                 else:
                     score_nok_html = ""
 
-                score_chips_html = "".join(
-                    '<div class="score-chip-ok"><span class="score-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> ' + c["label"] + '</div>'
-                    for c in m["score_criterios"] if c["ok"]
+                # ── Checklist dos critérios (mesmos 6 critérios de sempre — só o
+                # visual mudou pro formato "anel + lista" do print de referência).
+                # Item ok: check verde. Item não-ok: aviso âmbar + "Melhoria sugerida".
+                _total_criterios = len(m["score_criterios"])
+                _ok_criterios = _total_criterios - m["score_oportunidades"]
+
+                _icon_ok = (
+                    '<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;'
+                    'display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">'
+                    '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" '
+                    'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>'
                 )
+                _icon_nok = (
+                    '<div style="width:18px;height:18px;border-radius:50%;border:2px solid #f59e0b;'
+                    'display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">'
+                    '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="3" '
+                    'stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/>'
+                    '<circle cx="12" cy="16.5" r="0.6" fill="#f59e0b" stroke="none"/></svg></div>'
+                )
+
+                score_checklist_html = ""
+                for c in m["score_criterios"]:
+                    if c["ok"]:
+                        _icone = _icon_ok
+                        _sub = ""
+                    else:
+                        _icone = _icon_nok
+                        _sub = '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>'
+                    score_checklist_html += (
+                        '<div style="display:flex;align-items:flex-start;gap:7px;">'
+                        + _icone +
+                        '<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.3;">'
+                        + c["label"] + '</div>' + _sub + '</div></div>'
+                    )
+
+                score_ring_svg = make_score_ring_svg(m["score_val"], m["score_cor"], size=110, stroke=10)
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
                     '<div style="display:flex;align-items:center;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
                     '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
@@ -7660,16 +7711,19 @@ function setHeightGeral(isOpen) {{
                     '</div></div></div>'
                     + score_nok_html +
                     '</div>'
-                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:baseline;gap:4px;line-height:1;flex-shrink:0;">'
-                    f'<span style="font-size:30px;font-weight:900;letter-spacing:-2px;line-height:1;color:{m["score_cor"]};">{m["score_val"]}</span>'
-                    '<span style="font-size:15px;font-weight:600;color:#9ca3af;">/100</span></div>'
-                    f'<div style="display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:12px;font-size:14px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;flex-shrink:0;">'
-                    f'{m["score_icon"]} {m["score_lbl"]}</div></div>'
-                    f'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-bottom:10px;">'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
+                    '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
+                    '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">'
+                    + score_ring_svg +
+                    f'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;'
+                    f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
+                    f'{m["score_icon"]} {m["score_lbl"]}</div>'
+                    '</div>'
+                    f'<div style="flex:1;min-width:180px;display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;">{score_checklist_html}</div>'
+                    '</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#405068;margin-bottom:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
+                    '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
                     f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{m["score_cor"]});"></div></div>'
-                    f'<div style="display:flex;flex-wrap:wrap;">{score_chips_html}</div>'
                     '</div>'
                 )
 

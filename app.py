@@ -7800,37 +7800,7 @@ function setHeightGeral(isOpen) {{
                     + tipo_donuts + '</div>'
                 )
 
-                nuvem = m.get("nuvem_palavras", [])
-                if nuvem:
-                    # Item 6 do feedback: a nuvem ocupava muito espaço pra pouca utilidade.
-                    # Troca por "Top assuntos" — as 5 palavras mais frequentes, cada uma com
-                    # sua barra de participação percentual sobre o total das top-palavras.
-                    COLOR_NUVEM_TXT = [
-                        "#1d4ed8", "#15803d", "#7e22ce", "#c2410c", "#0f766e",
-                    ]
-                    top5 = nuvem[:5]
-                    total_freq = sum(freq for _, freq in top5) or 1
-                    nuvem_rows = ""
-                    for idx, (palavra, freq) in enumerate(top5):
-                        txt_c = COLOR_NUVEM_TXT[idx % len(COLOR_NUVEM_TXT)]
-                        pct_p = round(freq / total_freq * 100)
-                        nuvem_rows += (
-                            '<div style="margin-bottom:6px;">'
-                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;text-transform:capitalize;">{palavra}</span>'
-                            f'<span style="font-size:11px;font-weight:800;color:{txt_c};">{pct_p}%</span></div>'
-                            f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                            f'<div style="height:100%;width:{pct_p}%;background:{txt_c};border-radius:3px;"></div></div></div>'
-                        )
-                    nuvem_block_html = (
-                        '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                        '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Top Assuntos</div>'
-                        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                        f'{nuvem_rows}'
-                        '</div>'
-                    )
-                else:
-                    nuvem_block_html = ""
+                nuvem_block_html = ""
 
                 # ── Desempenho vs Concorrentes ───────────────────────────
                 # Compara seguidores, engajamento e volume de posts da
@@ -7994,15 +7964,16 @@ function setHeightGeral(isOpen) {{
                 # estratégia de anúncios especificamente.
                 _score_ads_info = calcular_score_ads(a)
                 _faltando_ads = _score_ads_info.get("faltando", [])
+                _dono_ads_txt = "Seus anúncios estão" if d["badge_lbl"] == "Minha Empresa" else f'Os anúncios de {d["nome"]} estão'
                 if _faltando_ads:
                     _sugestao_ads = " e ".join(_faltando_ads[:2]).lower()
                     _texto_insight_ads = (
-                        f'Seus anúncios estão classificados como "{_score_ads_info["classificacao"]}" '
+                        f'{_dono_ads_txt} classificados como "{_score_ads_info["classificacao"]}" '
                         f'({_score_ads_info["score"]}/100). Para evoluir, foque em: {_sugestao_ads}.'
                     )
                 else:
                     _texto_insight_ads = (
-                        f'Seus anúncios estão classificados como "{_score_ads_info["classificacao"]}" '
+                        f'{_dono_ads_txt} classificados como "{_score_ads_info["classificacao"]}" '
                         f'({_score_ads_info["score"]}/100) — todos os critérios avaliados estão OK. '
                         'Continue monitorando o desempenho para manter esse nível.'
                     )
@@ -8103,11 +8074,18 @@ function setHeightGeral(isOpen) {{
                 if _scores_concorrentes:
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
+                    # Texto no 2ª pessoa ("Você") só faz sentido pra empresa do
+                    # próprio usuário. Quando a empresa selecionada no filtro é
+                    # um concorrente, troca pelo nome dele e ajusta o universo
+                    # da comparação (que aqui inclui a própria empresa também).
+                    _is_minha_d0 = _d0["badge_lbl"] == "Minha Empresa"
+                    _sujeito_frente = "Você está" if _is_minha_d0 else f'<b style="color:#1a2e4a;">{_d0["nome"]}</b> está'
+                    _universo_frente = "dos concorrentes" if _is_minha_d0 else "das demais empresas monitoradas"
                     _comparacao_html = (
                         f'<div style="height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:10px;width:100%;">'
                         f'<div style="height:100%;width:{_pct_a_frente}%;background:linear-gradient(90deg,#3b82f6,{_sg_cor});border-radius:3px;"></div></div>'
                         f'<div style="font-size:13px;color:#64748b;margin-top:8px;line-height:1.5;word-wrap:break-word;">'
-                        f'Você está à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> dos concorrentes</div>'
+                        f'{_sujeito_frente} à frente de <b style="color:#1a2e4a;">{_pct_a_frente}%</b> {_universo_frente}</div>'
                     )
                 else:
                     _comparacao_html = ""
@@ -8247,16 +8225,20 @@ function setHeightGeral(isOpen) {{
                     )
 
                 # ── Insight da IA: texto-guia baseado na área mais fraca e mais forte ──
+                # "Sua" só cabe quando a empresa selecionada é a do próprio
+                # usuário; pra concorrente, troca pelo nome dela.
                 _melhor = max(_areas, key=lambda a: a[1])
                 _pior = min(_areas, key=lambda a: a[1])
+                _is_minha_d0_insight = _d0["badge_lbl"] == "Minha Empresa"
+                _presenca_txt = "Sua presença" if _is_minha_d0_insight else f'A presença de {_d0["nome"]}'
                 if _melhor[0] == _pior[0]:
                     _insight_txt = (
-                        f"Sua presença em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
+                        f"{_presenca_txt} em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
                         f"Foque nos itens listados em oportunidades para evoluir."
                     )
                 else:
                     _insight_txt = (
-                        f"Sua presença é mais forte em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
+                        f"{_presenca_txt} é mais forte em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
                         f"<b style=\"color:#008ac7;\">{_pior[0]} ({_pior[1]}/100)</b> concentra as maiores oportunidades. "
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )

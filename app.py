@@ -7791,11 +7791,21 @@ function setHeightGeral(isOpen) {{
                     pct = round((valor_atual - media) / media * 100)
                     acima = pct >= 0
                     cor = "#15803d" if acima else "#b45309"
-                    seta = "▲" if acima else "▼"
+                    if acima:
+                        _seta_svg = (
+                            f'<svg width="8" height="8" viewBox="0 0 24 24" fill="{cor}" '
+                            f'style="flex-shrink:0;margin-top:2px;"><path d="M12 4 22 20H2Z"/></svg>'
+                        )
+                    else:
+                        _seta_svg = (
+                            f'<svg width="8" height="8" viewBox="0 0 24 24" fill="{cor}" '
+                            f'style="flex-shrink:0;margin-top:2px;"><path d="M12 20 2 4H22Z"/></svg>'
+                        )
                     return (
-                        '<div style="text-align:center;margin-top:3px;">'
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};">'
-                        f'{seta} {abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div>'
+                        '<div style="display:flex;align-items:flex-start;justify-content:center;gap:3px;margin-top:3px;">'
+                        + _seta_svg +
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
+                        f'{abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div>'
                     )
 
                 _outros_seg    = _outros_valores("seguidores", int)

@@ -18173,6 +18173,7 @@ function setHeight(isOpen) {{
         sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
         pra saber o user_id, já que threads não devem tocar nisso."""
         try:
+            import datetime as _dt_redes_bg
             resultados_lista = []
             for e in todas:
                 r_col = coletar_rapidapi(e["instagram"])
@@ -18180,7 +18181,7 @@ function setHeight(isOpen) {{
 
             supabase.table("ci_dados").update({
                 "metricas_redes": {
-                    "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "ultima_coleta": _dt_redes_bg.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "dados": resultados_lista,
                 },
             }).eq("user_id", user_id).execute()

@@ -5867,7 +5867,7 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
 
         try:
             r = _rapidapi_get_com_retry(
-                f"https://instagram-looter2.p.rapidapi.com/profile?username={handle_limpo}",
+                f"https://instagram-looter2.p.rapidapi.com/profile2?username={handle_limpo}",
                 headers=headers,
             )
         except requests.exceptions.Timeout:
@@ -6041,6 +6041,12 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
         # postagens disponíveis" na tela). Agora isso conta como erro,
         # pra notificação refletir a realidade e o usuário saber que
         # precisa tentar coletar de novo.
+        # /profile2 não traz mais media_count (sempre vem null) — como
+        # fallback, usa a quantidade de posts que realmente vieram na
+        # coleta em vez de deixar o total zerado (ficaria enganoso na UI).
+        if total_posts == 0 and posts_data:
+            total_posts = len(posts_data)
+
         if seg == 0 and total_posts == 0 and not posts_data:
             return {"erro": "A API não retornou dados para este perfil (perfil privado, incorreto ou instabilidade momentânea). Tente coletar novamente."}
 

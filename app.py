@@ -7824,8 +7824,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;'
                     'display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">'
                     '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" '
-                    'stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/>'
-                    '<circle cx="12" cy="16.5" r="0.6" fill="#fff" stroke="none"/></svg></div>'
+                    'stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>'
                 )
 
                 score_checklist_html = ""
@@ -8307,14 +8306,14 @@ function setHeightGeral(isOpen) {{
                     for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
                         _titulo_op, _ganho_op, _como_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, "", "Priorize esse item para elevar o score dessa área."))
                         _ganho_html = (
-                            f'<div style="font-size:10px;color:#22c55e;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
+                            f'<div style="font-size:10px;color:#008ac7;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
                             if _ganho_op else ""
                         )
                         _badge_txt = _BADGE_LBL.get(_lbl, _lbl)
                         _oport_rows.append(
                             f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
-                            f'<div style="width:56px;padding:3px 6px;border-radius:8px;background:{_cor_op}1a;color:{_cor_op};'
+                            f'<div style="width:56px;padding:3px 6px;border-radius:8px;background:{_cor_op};color:#fff;'
                             f'font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;'
                             f'text-align:center;flex-shrink:0;margin-top:1px;">{_badge_txt}</div>'
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'

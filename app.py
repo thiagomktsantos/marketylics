@@ -2111,7 +2111,8 @@ def _formatar_detalhes_atividade(atividade: dict):
             _partes_nv = [f"{_nome_nv} ({_qtd_nv})" for _nome_nv, _qtd_nv in _por_empresa_nv.items()]
             texto = f"Novos posts: {', '.join(_partes_nv)}. " + texto
         if erros_d:
-            texto += f" Com erro: {', '.join(erros_d.keys())}."
+            _detalhes_erro_redes = "; ".join(f"{_nome_e}: {_msg_e}" for _nome_e, _msg_e in erros_d.items())
+            texto += f" Com erro: {_detalhes_erro_redes}."
             path, _cor = _ICONE_AVISO
         else:
             path, _cor = _ICONE_OK

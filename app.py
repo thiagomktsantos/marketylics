@@ -8386,17 +8386,17 @@ function setHeightGeral(isOpen) {{
                 def barra_tipo(icone_svg, texto_label, valor, total, cor):
                     pct = round(valor / total * 100) if total else 0
                     return (
-                        '<div style="margin-bottom:10px;">'
-                        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+                        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                         f'<div style="width:22px;height:22px;border-radius:50%;background:{cor};'
                         'display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;">'
                         f'{icone_svg}</div>'
-                        '<div style="flex:1;display:flex;justify-content:space-between;align-items:baseline;">'
+                        '<div style="flex:1;min-width:0;">'
+                        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
                         f'<span style="font-size:11px;color:#374151;font-weight:600;">{texto_label}</span>'
                         f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span></div>'
-                        '</div>'
                         f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                        f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
+                        f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div>'
+                        '</div></div>'
                     )
 
                 formato_donuts = (

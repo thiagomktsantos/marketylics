@@ -5880,8 +5880,13 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
             if "data" in data:   user_data = data["data"]
             elif "user" in data: user_data = data["user"]
 
-        if not user_data or "message" in user_data:
-            return {"erro": user_data.get("message", "Perfil não encontrado")}
+        if not user_data or user_data.get("status") is False or "message" in user_data or "errorMessage" in user_data:
+            _msg_erro_rapidapi = (
+                user_data.get("errorMessage")
+                or user_data.get("message")
+                or "Perfil não encontrado"
+            ) if isinstance(user_data, dict) else "Perfil não encontrado"
+            return {"erro": _msg_erro_rapidapi}
 
         seg         = int(user_data.get("follower_count") or user_data.get("edge_followed_by", {}).get("count") or 0)
         total_posts = int(user_data.get("media_count") or user_data.get("edge_owner_to_timeline_media", {}).get("count") or 0)

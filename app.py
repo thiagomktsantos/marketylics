@@ -8209,48 +8209,26 @@ function setHeightGeral(isOpen) {{
                         return ""
                     pct = round((valor_atual - media) / media * 100)
                     acima = pct >= 0
-
-                    # Empatado com a média (0%): não faz sentido dizer "0%
-                    # acima/abaixo" — não há diferença nenhuma. Mensagem
-                    # neutra própria, com um traço no lugar da seta.
-                    if pct == 0:
-                        cor = "#6b7280"
+                    cor = "#15803d" if acima else "#b45309"
+                    if acima:
                         _seta_svg = (
                             f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                            f'style="flex-shrink:0;"><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+                            f'style="flex-shrink:0;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
                         )
-                        _texto = "Na média do mercado"
                     else:
-                        cor = "#15803d" if acima else "#b45309"
-                        if acima:
-                            _seta_svg = (
-                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
-                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                                f'style="flex-shrink:0;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
-                            )
-                        else:
-                            _seta_svg = (
-                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
-                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                                f'style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
-                            )
-                        # 100% ou mais acima da média: em vez de repetir o
-                        # número cru ("150% acima da média"), uma mensagem de
-                        # destaque — "o dobro (ou mais)" comunica melhor uma
-                        # diferença tão grande.
-                        if pct >= 100:
-                            _texto = "O dobro da média (ou mais)"
-                        else:
-                            _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da média'
-
+                        _seta_svg = (
+                            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
+                            f'style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
+                        )
                     return (
                         '<div style="text-align:center;margin-top:6px;">'
                         f'<div style="display:inline-flex;align-items:flex-start;gap:3px;background:{cor}14;'
                         f'padding:4px 8px;border-radius:7px;">'
                         + _seta_svg +
                         f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
-                        f'{_texto}</span></div></div>'
+                        f'{abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div></div>'
                     )
 
                 _outros_seg    = _outros_valores("seguidores", int)
@@ -8273,7 +8251,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:nowrap;">'
                     + ('<div style="flex:1;">' + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
                     + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")  + eng_ctx_html    + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_post, "#e1306c", "#fdf2f8", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
+                    + ('<div style="flex:1;">' + stat_item(path_post, "#e1306c", "#f5f3ff", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
                     + ('<div style="flex:1;">' + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post") + engmed_ctx_html + '</div>')
                     + '</div></div>'
                 )
@@ -9143,10 +9121,11 @@ function syncH() {{
 }}
 buildCards();
 if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
-setTimeout(syncH,300);setTimeout(syncH,800);setTimeout(syncH,2000);
+window.addEventListener('load',syncH);
+setTimeout(syncH,50);setTimeout(syncH,150);setTimeout(syncH,300);setTimeout(syncH,800);setTimeout(syncH,1500);setTimeout(syncH,3000);
 </script>
 </body></html>
-""", height=900, scrolling=False)
+""", height=620, scrolling=False)
 
     else:
         st.markdown(

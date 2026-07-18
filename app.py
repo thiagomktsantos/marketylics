@@ -18207,10 +18207,11 @@ function setHeight(isOpen) {{
 
     ok = []
     if cache.get("dados"):
-        ok    = [r for r in cache["dados"] if not r.get("erro")]
-        erros = [r for r in cache["dados"] if r.get("erro")]
-        for r in erros:
-            st.warning(f"⚠️ {r['nome']}: {r['erro']}")
+        ok = [r for r in cache["dados"] if not r.get("erro")]
+        # Erros de coleta (perfil sem dados, API instável etc.) não são mais
+        # exibidos aqui na página — já aparecem no sino de notificações,
+        # dentro da atividade "Coleta de redes sociais" ("Com erro: ..."),
+        # que é o lugar certo pra esse tipo de aviso pontual/transitório.
 
     # Detectar perfis configurados que ainda não foram coletados
     handles_coletados = {r.get("instagram", "").lstrip("@").strip().lower() for r in cache.get("dados", [])}

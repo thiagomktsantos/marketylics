@@ -7749,7 +7749,7 @@ function setHeightGeral(isOpen) {{
                         f'<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0;">'
                         f'<div style="width:44px;height:44px;border-radius:50%;background:{icon_bg};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
-                        f'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
+                        f'<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
                         f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
                         f'</div>'
                         f'<div style="font-size:18px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
@@ -7793,21 +7793,23 @@ function setHeightGeral(isOpen) {{
                     cor = "#15803d" if acima else "#b45309"
                     if acima:
                         _seta_svg = (
-                            f'<svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                            f'style="flex-shrink:0;margin-top:2px;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
+                            f'style="flex-shrink:0;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
                         )
                     else:
                         _seta_svg = (
-                            f'<svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                            f'style="flex-shrink:0;margin-top:2px;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
+                            f'style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
                         )
                     return (
-                        '<div style="display:flex;align-items:flex-start;justify-content:center;gap:3px;margin-top:3px;">'
+                        '<div style="text-align:center;margin-top:6px;">'
+                        f'<div style="display:inline-flex;align-items:flex-start;gap:3px;background:{cor}14;'
+                        f'padding:4px 8px;border-radius:7px;">'
                         + _seta_svg +
                         f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
-                        f'{abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div>'
+                        f'{abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div></div>'
                     )
 
                 _outros_seg    = _outros_valores("seguidores", int)

@@ -127,7 +127,7 @@ _SVG_ICONE_CTA = (
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
     'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
     'style="vertical-align:-1px;flex-shrink:0">'
-    '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>'
+    '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
     '</svg>'
 )
 
@@ -8218,7 +8218,7 @@ function setHeightGeral(isOpen) {{
                         _icone_svg = (
                             f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                            f'style="flex-shrink:0;"><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/></svg>'
+                            f'style="flex-shrink:0;"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>'
                         )
                     else:
                         cor = "#15803d" if acima else "#b45309"
@@ -8243,7 +8243,7 @@ function setHeightGeral(isOpen) {{
 
                     return (
                         '<div style="text-align:center;margin-top:6px;">'
-                        f'<div style="display:inline-flex;align-items:flex-start;gap:3px;background:{cor}14;'
+                        f'<div style="display:inline-flex;align-items:center;gap:3px;background:{cor}14;'
                         f'padding:4px 8px;border-radius:7px;">'
                         + _icone_svg +
                         f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
@@ -8276,19 +8276,6 @@ function setHeightGeral(isOpen) {{
                 )
 
                 score_nok = m["score_oportunidades"]
-                score_faltando_html = "".join(f'<div style="display:flex;align-items:center;gap:5px;">{_SVG_ICONE_ERRO} {f}</div>' for f in m.get("score_faltando", []))
-                if score_nok > 0:
-                    score_nok_html = (
-                        f'<div class="oport-wrap">'
-                        f'<div style="display:inline-flex;align-items:center;font-size:11px;font-weight:700;'
-                        f'color:#3b9fd6;background:#fbfbfb;padding:4px 11px;border-radius:20px;white-space:nowrap;flex-shrink:0;">+'
-                        f'{score_nok} oportunidade{"s" if score_nok != 1 else ""}</div>'
-                        f'<div class="oport-tip"><div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;">O que melhorar:</div>'
-                        f'{score_faltando_html}</div>'
-                        f'</div>'
-                    )
-                else:
-                    score_nok_html = ""
 
                 # ── Checklist dos critérios (mesmos 6 critérios de sempre — só o
                 # visual mudou pro formato "anel + lista" do print de referência).
@@ -8343,7 +8330,6 @@ function setHeightGeral(isOpen) {{
                     f'{_SVG_ICONE_CHECK} Tem bio +20<br>{_SVG_ICONE_CHECK} Proposta de valor +20<br>{_SVG_ICONE_CHECK} Posicionamento +20<br>'
                     f'{_SVG_ICONE_CHECK} Link na bio +15<br>{_SVG_ICONE_CHECK} CTA na bio +15<br>{_SVG_ICONE_CHECK} Engajamento ≥3% +10'
                     '</div></div></div>'
-                    + score_nok_html +
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
@@ -8397,13 +8383,18 @@ function setHeightGeral(isOpen) {{
                 a = d["ads"]
                 total_ads = a["total"] or 1
 
-                def barra_tipo(label, valor, total, cor):
+                def barra_tipo(icone_svg, texto_label, valor, total, cor):
                     pct = round(valor / total * 100) if total else 0
                     return (
-                        '<div style="margin-bottom:8px;">'
-                        '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                        f'<span style="font-size:11px;color:#374151;font-weight:600;">{label}</span>'
+                        '<div style="margin-bottom:10px;">'
+                        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+                        f'<div style="width:22px;height:22px;border-radius:50%;background:{cor};'
+                        'display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;">'
+                        f'{icone_svg}</div>'
+                        '<div style="flex:1;display:flex;justify-content:space-between;align-items:baseline;">'
+                        f'<span style="font-size:11px;color:#374151;font-weight:600;">{texto_label}</span>'
                         f'<span style="font-size:11px;font-weight:800;color:{cor};">{valor}</span></div>'
+                        '</div>'
                         f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
                         f'<div style="height:100%;width:{pct}%;background:{cor};border-radius:3px;"></div></div></div>'
                     )
@@ -8429,10 +8420,10 @@ function setHeightGeral(isOpen) {{
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                    + barra_tipo(f"{_SVG_ICONE_DINHEIRO} Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
-                    + barra_tipo(f"{_SVG_ICONE_PESSOAS} Com prova social", a["prova_social"], total_ads, "#22c55e")
-                    + barra_tipo(f"{_SVG_ICONE_RELOGIO} Com urgência",     a["urgencia"],     total_ads, "#f59e0b")
-                    + barra_tipo(f"{_SVG_ICONE_CTA} CTA direto",       a["cta_direto"],   total_ads, "#8b5cf6")
+                    + barra_tipo(_SVG_ICONE_DINHEIRO, "Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
+                    + barra_tipo(_SVG_ICONE_PESSOAS,  "Com prova social", a["prova_social"], total_ads, "#22c55e")
+                    + barra_tipo(_SVG_ICONE_RELOGIO,  "Com urgência",     a["urgencia"],     total_ads, "#e1306c")
+                    + barra_tipo(_SVG_ICONE_CTA,      "CTA direto",       a["cta_direto"],   total_ads, "#1a2e4a")
                     + '</div>'
                 )
 

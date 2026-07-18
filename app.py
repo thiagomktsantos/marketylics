@@ -7746,14 +7746,14 @@ function setHeightGeral(isOpen) {{
 
                 def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
                     return (
-                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;">'
-                        f'<div style="width:38px;height:38px;border-radius:50%;background:{icon_bg};'
+                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0;">'
+                        f'<div style="width:44px;height:44px;border-radius:50%;background:{icon_bg};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
-                        f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
+                        f'<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
                         f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
                         f'</div>'
-                        f'<div style="font-size:16px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
-                        f'<div style="font-size:9px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
+                        f'<div style="font-size:18px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
+                        f'<div style="font-size:10px;color:#9ca3af;font-weight:700;text-transform:uppercase;'
                         f'letter-spacing:0.5px;white-space:nowrap;">{label}</div>'
                         f'</div>'
                     )
@@ -7793,13 +7793,15 @@ function setHeightGeral(isOpen) {{
                     cor = "#15803d" if acima else "#b45309"
                     if acima:
                         _seta_svg = (
-                            f'<svg width="8" height="8" viewBox="0 0 24 24" fill="{cor}" '
-                            f'style="flex-shrink:0;margin-top:2px;"><path d="M12 4 22 20H2Z"/></svg>'
+                            f'<svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
+                            f'style="flex-shrink:0;margin-top:2px;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
                         )
                     else:
                         _seta_svg = (
-                            f'<svg width="8" height="8" viewBox="0 0 24 24" fill="{cor}" '
-                            f'style="flex-shrink:0;margin-top:2px;"><path d="M12 20 2 4H22Z"/></svg>'
+                            f'<svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
+                            f'style="flex-shrink:0;margin-top:2px;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
                         )
                     return (
                         '<div style="display:flex;align-items:flex-start;justify-content:center;gap:3px;margin-top:3px;">'

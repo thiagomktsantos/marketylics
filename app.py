@@ -1494,8 +1494,12 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
             atualizar_atividade(atividade_id, "concluido", {"transcritas": 0, "total": 0})
             return
 
+        _por_empresa_reel = {}
+        _falhas_reel = 0
+        _falhas_por_empresa_reel = {}
         for pi, pj in pendentes_refs:
             video_url = dados[pi]["posts"][pj].get("video_url", "")
+            _nome_empresa_reel = dados[pi].get("nome") or "—"
             texto = ""
             try:
                 resp = requests.get(video_url, timeout=30)
@@ -1505,6 +1509,11 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
                 pass
             dados[pi]["posts"][pj]["transcricao"] = texto or ""
             transcritas += 1
+            if texto:
+                _por_empresa_reel[_nome_empresa_reel] = _por_empresa_reel.get(_nome_empresa_reel, 0) + 1
+            else:
+                _falhas_reel += 1
+                _falhas_por_empresa_reel[_nome_empresa_reel] = _falhas_por_empresa_reel.get(_nome_empresa_reel, 0) + 1
 
             # Salva a cada Reel processado (não só no final) — assim, se a
             # thread cair no meio do caminho, o que já foi transcrito não
@@ -1518,10 +1527,19 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
             atualizar_atividade(atividade_id, "em_andamento", {
                 "transcritas": transcritas,
                 "total": total,
+                "por_empresa": _por_empresa_reel,
+                "falhas": _falhas_reel,
+                "falhas_por_empresa": _falhas_por_empresa_reel,
                 "ultimo_heartbeat_em": _agora_iso(),
             })
 
-        atualizar_atividade(atividade_id, "concluido", {"transcritas": transcritas, "total": total})
+        atualizar_atividade(atividade_id, "concluido", {
+            "transcritas": transcritas,
+            "total": total,
+            "por_empresa": _por_empresa_reel,
+            "falhas": _falhas_reel,
+            "falhas_por_empresa": _falhas_por_empresa_reel,
+        })
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {
             "motivo": str(e), "transcritas": transcritas, "total": max(total, transcritas),
@@ -2074,6 +2092,14 @@ def _formatar_detalhes_atividade(atividade: dict):
         total_posts = d.get("total_posts", 0)
         nomes_ok = d.get("coletados", [])
         texto = f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
+        # Info de "posts novos" (antes era uma notificação própria, "X novos
+        # posts detectados", que aparecia logo acima desta — redundante,
+        # já que as duas eram sobre a mesma coleta). Agora entra como
+        # primeira frase deste mesmo card, quando aplicável.
+        _por_empresa_nv = d.get("por_empresa_novos") or {}
+        if _por_empresa_nv:
+            _partes_nv = [f"{_nome_nv} ({_qtd_nv})" for _nome_nv, _qtd_nv in _por_empresa_nv.items()]
+            texto = f"Novos posts: {', '.join(_partes_nv)}. " + texto
         if erros_d:
             texto += f" Com erro: {', '.join(erros_d.keys())}."
             path, _cor = _ICONE_AVISO
@@ -2098,8 +2124,21 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "transcricao_reel" and "transcritas" in d:
         total_t = d.get("total", d["transcritas"])
         concluida = atividade.get("status") == "concluido" or d["transcritas"] >= total_t
-        path, _cor = _ICONE_OK if concluida else _ICONE_INFO
-        texto = f"{d['transcritas']} de {total_t} Reels transcritos."
+        _falhas_t = d.get("falhas", 0)
+        path, _cor = (_ICONE_AVISO if (concluida and _falhas_t) else _ICONE_OK) if concluida else _ICONE_INFO
+        texto = f"{d['transcritas']} de {total_t} Reels transcritos"
+        _por_empresa_t = d.get("por_empresa") or {}
+        if _por_empresa_t:
+            _partes_t = [f"{_nome_t} ({_qtd_t})" for _nome_t, _qtd_t in _por_empresa_t.items()]
+            texto += f" — {', '.join(_partes_t)}"
+        texto += "."
+        if _falhas_t:
+            _falhas_emp_t = d.get("falhas_por_empresa") or {}
+            if _falhas_emp_t:
+                _partes_falha_t = [f"{_nome_f} ({_qtd_f})" for _nome_f, _qtd_f in _falhas_emp_t.items()]
+                texto += f" {_falhas_t} não puderam ser transcritos — {', '.join(_partes_falha_t)} (áudio indisponível ou erro no download)."
+            else:
+                texto += f" {_falhas_t} não puderam ser transcritos (áudio indisponível ou erro no download)."
         if atividade.get("status") == "em_andamento":
             texto += " · Rodando agora."
         return _svg_icone(path, "currentColor", 14), texto
@@ -17723,6 +17762,19 @@ function setHeight(isOpen) {{
                     except Exception:
                         continue
 
+            # Guarda contra "sucesso fantasma": a API às vezes responde 200
+            # com um perfil válido mas sem follower_count/media_count e sem
+            # nenhum post (perfil privado, endpoint instável, etc). Sem essa
+            # checagem isso virava um resultado "ok" com seguidores=0 e
+            # posts=0 — a atividade "Coleta de redes sociais" marcava
+            # Concluído e listava o perfil como coletado com sucesso, mas na
+            # prática nenhum dado real chegou (perfil ficava com 0/0 e "Sem
+            # postagens disponíveis" na tela). Agora isso conta como erro,
+            # pra notificação refletir a realidade e o usuário saber que
+            # precisa tentar coletar de novo.
+            if seg == 0 and total_posts == 0 and not posts_data:
+                return {"erro": "A API não retornou dados para este perfil (perfil privado, incorreto ou instabilidade momentânea). Tente coletar novamente."}
+
             if posts_data:
                 eng_medio = sum(p["likes"] + p["comments"] for p in posts_data) / len(posts_data)
                 eng_pct   = round(eng_medio / seg * 100, 2) if seg > 0 else 0.0
@@ -18062,28 +18114,18 @@ function setHeight(isOpen) {{
                 len(r.get("posts", [])) for r in resultados_lista if not r.get("erro")
             )
             _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
+
+            # "Posts novos" entra dentro da MESMA atividade de coleta, em vez
+            # de virar uma segunda notificação separada logo acima desta —
+            # as duas eram sobre o mesmo evento (a coleta que acabou de
+            # rodar), então ficavam redundantes lado a lado no sino.
+            _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
             atualizar_atividade(atividade_id, _status_final_redes, {
                 "coletados": _nomes_ok_redes,
                 "com_erro": _com_erro_redes,
                 "total_posts": _total_posts_redes,
+                "por_empresa_novos": _novos_por_empresa,
             })
-
-            # Alerta separado de "posts novos" — não mexe no status da
-            # atividade de coleta acima, é uma notificação própria (fica
-            # marcada com "concluido" na hora, já que é um fato instantâneo,
-            # não um processo que ainda vai rodar).
-            _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
-            if _novos_por_empresa:
-                _total_novos = sum(_novos_por_empresa.values())
-                _titulo_novos = (
-                    f"{_total_novos} novo post detectado" if _total_novos == 1
-                    else f"{_total_novos} novos posts detectados"
-                )
-                criar_atividade(
-                    user_id, "novos_posts", _titulo_novos,
-                    {"por_empresa": _novos_por_empresa, "total_novos": _total_novos},
-                    status="concluido",
-                )
 
             # Checkin: essa coleta pode ter trazido Reels novos (ou Reels
             # que já existiam mas ainda não tinham transcrição) — dispara

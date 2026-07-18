@@ -7746,7 +7746,7 @@ function setHeightGeral(isOpen) {{
 
                 def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
                     return (
-                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;">'
+                        f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;">'
                         f'<div style="width:38px;height:38px;border-radius:50%;background:{icon_bg};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
                         f'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
@@ -7794,7 +7794,7 @@ function setHeightGeral(isOpen) {{
                     seta = "▲" if acima else "▼"
                     return (
                         '<div style="text-align:center;margin-top:3px;">'
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};white-space:nowrap;">'
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};">'
                         f'{seta} {abs(pct)}% {"acima" if acima else "abaixo"} da média</span></div>'
                     )
 
@@ -7815,7 +7815,7 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:11px;font-weight:700;color:#3a9fd6;white-space:nowrap;flex-shrink:0;">Ver detalhes</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
-                    '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:wrap;">'
+                    '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:nowrap;">'
                     + ('<div style="flex:1;">' + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
                     + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")  + eng_ctx_html    + '</div>')
                     + ('<div style="flex:1;">' + stat_item(path_post, "#e1306c", "#f5f3ff", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')

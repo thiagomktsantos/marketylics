@@ -8416,14 +8416,20 @@ function setHeightGeral(isOpen) {{
                     + formato_donuts + '</div>'
                 )
 
+                _tipos_anuncio_itens = sorted(
+                    [
+                        (_SVG_ICONE_DINHEIRO, "Com benefício",    a["beneficio"],    "#3a9fd6"),
+                        (_SVG_ICONE_PESSOAS,  "Com prova social", a["prova_social"], "#22c55e"),
+                        (_SVG_ICONE_RELOGIO,  "Com urgência",     a["urgencia"],     "#e1306c"),
+                        (_SVG_ICONE_CTA,      "CTA direto",       a["cta_direto"],   "#1a2e4a"),
+                    ],
+                    key=lambda item: item[2], reverse=True
+                )
                 ads_tipos_block = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Tipos de anúncio</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
-                    + barra_tipo(_SVG_ICONE_DINHEIRO, "Com benefício",    a["beneficio"],    total_ads, "#3a9fd6")
-                    + barra_tipo(_SVG_ICONE_PESSOAS,  "Com prova social", a["prova_social"], total_ads, "#22c55e")
-                    + barra_tipo(_SVG_ICONE_RELOGIO,  "Com urgência",     a["urgencia"],     total_ads, "#e1306c")
-                    + barra_tipo(_SVG_ICONE_CTA,      "CTA direto",       a["cta_direto"],   total_ads, "#1a2e4a")
+                    + "".join(barra_tipo(_icone, _lbl, _val, total_ads, _cor) for _icone, _lbl, _val, _cor in _tipos_anuncio_itens)
                     + '</div>'
                 )
 
@@ -8445,6 +8451,31 @@ function setHeightGeral(isOpen) {{
                     + plat_donuts + '</div>'
                 )
 
+                def _icone_destino(dominio):
+                    """Escolhe o ícone (e cor) do destino do anúncio com base no
+                    domínio. Domínios de marcas conhecidas usam a logo oficial
+                    (ícone colorido sobre fundo branco); os demais caem no
+                    ícone genérico de link (fundo indigo, ícone branco)."""
+                    _d = (dominio or "").lower()
+                    if "whatsapp" in _d or "wa.me" in _d:
+                        _chave_plat = "whatsapp"
+                    elif "instagram" in _d:
+                        _chave_plat = "instagram"
+                    elif "fb.me" in _d or "facebook" in _d:
+                        _chave_plat = "facebook"
+                    elif "m.me" in _d or "messenger" in _d:
+                        _chave_plat = "messenger"
+                    elif "threads" in _d:
+                        _chave_plat = "threads"
+                    else:
+                        _chave_plat = None
+
+                    if _chave_plat and _chave_plat in PLAT_ICONS_SVG:
+                        _cor_marca, _, _path_marca = PLAT_ICONS_SVG[_chave_plat]
+                        _icone_html = f'<svg width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{_path_marca}</svg>'
+                        return _icone_html, _cor_marca, True
+                    return _SVG_ICONE_LINK, "#6366f1", False
+
                 destinos = a.get("destinos", [])
                 if destinos:
                     dest_max  = max(v for _, v in destinos) or 1
@@ -8452,13 +8483,23 @@ function setHeightGeral(isOpen) {{
                     for dom, cnt in destinos:
                         pct = round(cnt / dest_max * 100)
                         dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                        _icone_dest, _cor_dest, _e_marca = _icone_destino(dom)
+                        _circulo_style = (
+                            f'background:#fff;border:1px solid {_cor_dest}55;'
+                            if _e_marca else f'background:{_cor_dest};color:#fff;'
+                        )
                         dest_rows += (
-                            '<div style="margin-bottom:8px;">'
+                            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+                            f'<div style="width:22px;height:22px;border-radius:50%;{_circulo_style}'
+                            'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                            f'{_icone_dest}</div>'
+                            '<div style="flex:1;min-width:0;">'
                             '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
-                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">{_SVG_ICONE_LINK} {dom_display}</span>'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:75%;">{dom_display}</span>'
                             f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{cnt}</span></div>'
                             f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
-                            f'<div style="height:100%;width:{pct}%;background:#6366f1;border-radius:3px;"></div></div></div>'
+                            f'<div style="height:100%;width:{pct}%;background:{_cor_dest};border-radius:3px;"></div></div>'
+                            '</div></div>'
                         )
                     ads_dest_content = dest_rows
                 else:

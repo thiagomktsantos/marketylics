@@ -8306,7 +8306,7 @@ function setHeightGeral(isOpen) {{
                     for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
                         _titulo_op, _ganho_op, _como_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, "", "Priorize esse item para elevar o score dessa área."))
                         _ganho_html = (
-                            f'<div style="font-size:10px;color:#008ac7;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
+                            f'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
                             if _ganho_op else ""
                         )
                         _badge_txt = _BADGE_LBL.get(_lbl, _lbl)
@@ -8602,7 +8602,7 @@ function buildSeoColumn(d,colEl) {{
     ];
     var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
     var iconOk='<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
-    var iconNok='<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="#fff" stroke="none"/></svg></div>';
+    var iconNok='<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>';
     var checklistHtml='';
     SEO_ITEMS.forEach(function(it){{
         var icone=it.ok?iconOk:iconNok;

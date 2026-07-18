@@ -8454,8 +8454,8 @@ function setHeightGeral(isOpen) {{
                 def _icone_destino(dominio):
                     """Escolhe o ícone (e cor) do destino do anúncio com base no
                     domínio. Domínios de marcas conhecidas usam a logo oficial
-                    (ícone colorido sobre fundo branco); os demais caem no
-                    ícone genérico de link (fundo indigo, ícone branco)."""
+                    em branco sobre fundo cheio na cor da marca; os demais caem
+                    no ícone genérico de link (fundo indigo, ícone branco)."""
                     _d = (dominio or "").lower()
                     if "whatsapp" in _d or "wa.me" in _d:
                         _chave_plat = "whatsapp"
@@ -8472,9 +8472,13 @@ function setHeightGeral(isOpen) {{
 
                     if _chave_plat and _chave_plat in PLAT_ICONS_SVG:
                         _cor_marca, _, _path_marca = PLAT_ICONS_SVG[_chave_plat]
-                        _icone_html = f'<svg width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{_path_marca}</svg>'
-                        return _icone_html, _cor_marca, True
-                    return _SVG_ICONE_LINK, "#6366f1", False
+                        # A logo original vem com fill fixo (ou gradiente) pra
+                        # combinar com fundo branco. Aqui o fundo do círculo já
+                        # é a cor da marca, então força o traço pra branco.
+                        _path_branco = re.sub(r'fill="[^"]*"', 'fill="#fff"', _path_marca)
+                        _icone_html = f'<svg width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{_path_branco}</svg>'
+                        return _icone_html, _cor_marca
+                    return _SVG_ICONE_LINK, "#6366f1"
 
                 destinos = a.get("destinos", [])
                 if destinos:
@@ -8483,14 +8487,10 @@ function setHeightGeral(isOpen) {{
                     for dom, cnt in destinos:
                         pct = round(cnt / dest_max * 100)
                         dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
-                        _icone_dest, _cor_dest, _e_marca = _icone_destino(dom)
-                        _circulo_style = (
-                            f'background:#fff;border:1px solid {_cor_dest}55;'
-                            if _e_marca else f'background:{_cor_dest};color:#fff;'
-                        )
+                        _icone_dest, _cor_dest = _icone_destino(dom)
                         dest_rows += (
                             '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
-                            f'<div style="width:22px;height:22px;border-radius:50%;{_circulo_style}'
+                            f'<div style="width:22px;height:22px;border-radius:50%;background:{_cor_dest};color:#fff;'
                             'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
                             f'{_icone_dest}</div>'
                             '<div style="flex:1;min-width:0;">'

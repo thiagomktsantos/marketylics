@@ -1747,6 +1747,15 @@ _ATIVIDADE_STATUS_UI = {
         "path": "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
         "cor": "#e05252", "label": "Erro",
     },
+    # Não é um status salvo no banco — é aplicado só na hora de renderizar
+    # (ver loop dos cards), quando uma atividade concluiu mas parte dela
+    # falhou (ex.: coleta de redes que trouxe 1 de 3 perfis). Sem isso, o
+    # card mostrava badge/ícone verdes de "Concluído", escondendo que teve
+    # erro — o "Com erro: ..." ficava perdido no meio do texto de detalhe.
+    "concluido_com_erro": {
+        "path": "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
+        "cor": "#e05252", "label": "Concluído com erros",
+    },
 }
 
 def _svg_icone(path: str, cor: str, tamanho: int = 16) -> str:
@@ -4555,6 +4564,65 @@ def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> 
     ).start()
     return True
 
+def _refazer_coleta_redes_background(user_id: str, dados_atuais: list, alvos: list, atividade_id: str):
+    """Roda em thread: recoleta só os perfis de `alvos` via RapidAPI e
+    mescla o resultado de volta na lista completa (`dados_atuais`), sem
+    mexer nos perfis que já tinham dado certo antes."""
+    try:
+        by_key = {(r.get("key") or r.get("nome")): r for r in dados_atuais}
+        for alvo in alvos:
+            r_col = coletar_rapidapi(alvo["instagram"])
+            by_key[alvo.get("key") or alvo.get("nome")] = {**alvo, **(r_col or {"erro": "Sem resposta"})}
+
+        resultados_lista = list(by_key.values())
+        supabase.table("ci_dados").update({
+            "metricas_redes": {
+                "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "dados": resultados_lista,
+            },
+        }).eq("user_id", user_id).execute()
+
+        _nomes_ok = [r["nome"] for r in resultados_lista if not r.get("erro")]
+        _com_erro = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}
+        _total_posts = sum(len(r.get("posts", [])) for r in resultados_lista if not r.get("erro"))
+        _status_final = "erro" if (_com_erro and not _nomes_ok) else "concluido"
+
+        atualizar_atividade(atividade_id, _status_final, {
+            "coletados": _nomes_ok,
+            "com_erro": _com_erro,
+            "total_posts": _total_posts,
+        })
+        iniciar_transcricao_reels_pendente_background(user_id)
+    except Exception as e:
+        atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+def refazer_coleta_redes(user_id: str, atividade_id: str, empresas_com_erro: list) -> bool:
+    """Tenta recoletar, via RapidAPI, só os perfis que falharam numa coleta
+    anterior de redes sociais — botão "Tentar novamente" que aparece no
+    sino quando a atividade 'coleta_redes' termina com parte dos perfis
+    em erro. Reaproveita a MESMA atividade (mesmo padrão de
+    refazer_migracao_midia/refazer_transcricao_video) e não recoleta os
+    perfis que já tinham dado certo antes."""
+    if not user_id or not empresas_com_erro:
+        return False
+    try:
+        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
+        cache_atual = (res.data[0].get("metricas_redes") or {}) if res.data else {}
+    except Exception:
+        return False
+    dados_atuais = cache_atual.get("dados") or []
+    alvos = [r for r in dados_atuais if r.get("nome") in empresas_com_erro and r.get("instagram")]
+    if not alvos:
+        return False
+
+    atualizar_atividade(atividade_id, "em_andamento", {"empresa": ", ".join(empresas_com_erro)})
+    threading.Thread(
+        target=_refazer_coleta_redes_background,
+        args=(user_id, dados_atuais, alvos, atividade_id),
+        daemon=True,
+    ).start()
+    return True
+
 # ---------------------------------------------------
 #  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
 # ---------------------------------------------------
@@ -5759,6 +5827,305 @@ def iniciar_migracao_pendente_geral_background(user_id: str):
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa
 # ---------------------------------------------------
+
+# ── Coleta de perfis do Instagram via RapidAPI ──────────────────────
+# Movido para escopo de módulo (antes vivia só dentro do bloco da
+# página "redes") pra poder ser reutilizado pelo botão "Tentar
+# novamente" das notificações (refazer_coleta_redes, abaixo), que
+# roda a partir da página "notificacoes" — um escopo totalmente
+# separado do bloco onde essas funções viviam antes.
+def _rapidapi_get_com_retry(url: str, headers: dict, tentativas: int = 3, timeout: int = 20):
+    """GET com retry + backoff pra aguentar instabilidade da API do
+    RapidAPI (timeouts pontuais são comuns em horários de pico).
+    Levanta a última exceção se todas as tentativas falharem."""
+    import time
+    ultimo_erro = None
+    for i in range(tentativas):
+        try:
+            return requests.get(url, headers=headers, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            ultimo_erro = e
+            if i < tentativas - 1:
+                time.sleep(1.5 * (i + 1))  # backoff: 1.5s, 3s
+    raise ultimo_erro
+
+def _coletar_rapidapi_sem_cache(handle: str) -> dict:
+    handle_limpo = handle.lstrip("@").strip()
+    if not handle_limpo:
+        return {"erro": "Handle vazio"}
+    try:
+        rapidapi_key = st.secrets.get("RAPIDAPI_KEY", "")
+        if not rapidapi_key:
+            return {"erro": "RAPIDAPI_KEY não configurada"}
+
+        headers = {
+            "x-rapidapi-key": rapidapi_key,
+            "x-rapidapi-host": "instagram-looter2.p.rapidapi.com",
+        }
+
+        try:
+            r = _rapidapi_get_com_retry(
+                f"https://instagram-looter2.p.rapidapi.com/profile?username={handle_limpo}",
+                headers=headers,
+            )
+        except requests.exceptions.Timeout:
+            return {"erro": "A API do Instagram demorou demais pra responder (timeout). Tenta de novo em instantes."}
+        except requests.exceptions.RequestException as e:
+            return {"erro": f"Falha ao conectar na API do Instagram: {e}"}
+        data = r.json()
+        user_data = data
+        if isinstance(data, dict):
+            if "data" in data:   user_data = data["data"]
+            elif "user" in data: user_data = data["user"]
+
+        if not user_data or "message" in user_data:
+            return {"erro": user_data.get("message", "Perfil não encontrado")}
+
+        seg         = int(user_data.get("follower_count") or user_data.get("edge_followed_by", {}).get("count") or 0)
+        total_posts = int(user_data.get("media_count") or user_data.get("edge_owner_to_timeline_media", {}).get("count") or 0)
+        pk          = str(user_data.get("pk") or user_data.get("id") or "").strip()
+
+        posts_data = []
+        if pk:
+            for endpoint in [
+                f"https://instagram-looter2.p.rapidapi.com/user-feeds?id={pk}&count=12&allow_restricted_media=false",
+                f"https://instagram-looter2.p.rapidapi.com/user-medias?id={pk}&count=12",
+            ]:
+                try:
+                    rp    = _rapidapi_get_com_retry(endpoint, headers=headers)
+                    pr    = rp.json()
+                    items = pr if isinstance(pr, list) else pr.get("items", [])
+                    if items:
+                        for p in items[:12]:
+                            likes    = int(p.get("like_count") or 0)
+                            comments = int(p.get("comment_count") or 0)
+
+                            thumb = ""
+                            thumb_hd = ""
+                            if p.get("image_versions2"):
+                                cands = p["image_versions2"].get("candidates", [])
+                                if cands:
+                                    cands_sorted = sorted(cands, key=lambda c: c.get("width", 0), reverse=True)
+                                    thumb_hd = cands_sorted[0].get("url", "")
+                                    thumb = cands_sorted[-1].get("url", "")
+                                    if len(cands_sorted) == 1:
+                                        thumb = thumb_hd
+                                else:
+                                    thumb_hd = ""
+                                    thumb = ""
+
+                            if not thumb_hd:
+                                thumb_hd = (
+                                    p.get("display_url")
+                                    or p.get("thumbnail_src")
+                                    or p.get("image_url")
+                                    or ""
+                                )
+
+                            if p.get("display_resources"):
+                                resources = sorted(
+                                    p["display_resources"],
+                                    key=lambda r: r.get("config_width", 0),
+                                    reverse=True
+                                )
+                                if resources:
+                                    thumb_hd = resources[0].get("src", "") or thumb_hd
+
+                            if not thumb_hd:
+                                thumb_hd = thumb
+
+                            if not thumb:
+                                thumb = thumb_hd
+
+                            if p.get("thumbnail_url") and not thumb:
+                                thumb = p["thumbnail_url"]
+                                if not thumb_hd:
+                                    thumb_hd = thumb
+
+                            caption  = ""
+                            if p.get("caption"):
+                                caption = (
+                                    p["caption"].get("text", "")
+                                    if isinstance(p["caption"], dict)
+                                    else str(p["caption"])
+                                )[:500]
+                            taken_at = p.get("taken_at", 0)
+                            date_str = ""
+                            if taken_at:
+                                try:
+                                    date_str = datetime.datetime.fromtimestamp(taken_at).strftime("%d/%m/%Y")
+                                except Exception:
+                                    pass
+                            shortcode = p.get("code") or p.get("shortcode") or ""
+                            post_url  = f"https://www.instagram.com/p/{shortcode}/" if shortcode else ""
+
+                            media_type = p.get("media_type", 1)
+                            is_reel = media_type == 2
+
+                            video_url = ""
+                            if is_reel:
+                                video_url = (
+                                    p.get("video_url")
+                                    or (p.get("video_versions") or [{}])[0].get("url", "")
+                                    or ""
+                                )
+
+                            carousel_imgs = []
+                            carousel_imgs_hd = []
+
+                            if media_type == 8:
+                                for slide in (p.get("carousel_media") or []):
+                                    cands = slide.get("image_versions2", {}).get("candidates", [])
+                                    url_hd     = cands[0].get("url", "") if cands else ""
+                                    url_thumb  = cands[-1].get("url", "") if cands else url_hd
+                                    url_display = slide.get("display_uri", "")
+
+                                    escolhida_hd    = url_hd or url_display
+                                    escolhida_thumb = url_thumb or url_display or url_hd
+
+                                    if escolhida_hd:
+                                        carousel_imgs_hd.append(escolhida_hd)
+                                    if escolhida_thumb:
+                                        carousel_imgs.append(escolhida_thumb)
+
+                                if not carousel_imgs and thumb:
+                                    carousel_imgs = [thumb]
+                                if not carousel_imgs_hd and thumb_hd:
+                                    carousel_imgs_hd = [thumb_hd]
+
+                            posts_data.append({
+                                "likes":          likes,
+                                "comments":       comments,
+                                "thumb":          thumb,
+                                "thumb_hd":       thumb_hd,
+                                "display_url":    p.get("display_url") or p.get("thumbnail_src") or p.get("image_url") or thumb_hd,
+                                "caption":        caption,
+                                "date":           date_str,
+                                "is_video":       is_reel,
+                                "media_type":     media_type,
+                                "video_url":      video_url,
+                                "post_url":       post_url,
+                                "shortcode":      shortcode,
+                                "carousel_imgs":  carousel_imgs,
+                                "carousel_imgs_hd": carousel_imgs_hd,
+                                "_raw": {
+                                    k: v for k, v in p.items()
+                                    if k not in ("carousel_media", "video_versions", "image_versions2")
+                                },
+                                "_raw_image_versions2": {
+                                    "candidates": [
+                                        {"width": c.get("width"), "height": c.get("height"), "url": c.get("url", "")[:80] + "..."}
+                                        for c in (p.get("image_versions2") or {}).get("candidates", [])
+                                    ]
+                                },
+                                "_raw_display_resources": p.get("display_resources", []),
+                            })
+                        break
+                except Exception:
+                    continue
+
+        # Guarda contra "sucesso fantasma": a API às vezes responde 200
+        # com um perfil válido mas sem follower_count/media_count e sem
+        # nenhum post (perfil privado, endpoint instável, etc). Sem essa
+        # checagem isso virava um resultado "ok" com seguidores=0 e
+        # posts=0 — a atividade "Coleta de redes sociais" marcava
+        # Concluído e listava o perfil como coletado com sucesso, mas na
+        # prática nenhum dado real chegou (perfil ficava com 0/0 e "Sem
+        # postagens disponíveis" na tela). Agora isso conta como erro,
+        # pra notificação refletir a realidade e o usuário saber que
+        # precisa tentar coletar de novo.
+        if seg == 0 and total_posts == 0 and not posts_data:
+            return {"erro": "A API não retornou dados para este perfil (perfil privado, incorreto ou instabilidade momentânea). Tente coletar novamente."}
+
+        if posts_data:
+            eng_medio = sum(p["likes"] + p["comments"] for p in posts_data) / len(posts_data)
+            eng_pct   = round(eng_medio / seg * 100, 2) if seg > 0 else 0.0
+        else:
+            eng_pct   = 3.0 if seg <= 10_000 else (2.0 if seg <= 50_000 else (1.5 if seg <= 100_000 else 1.0))
+            eng_medio = round(seg * eng_pct / 100, 1)
+
+        _profile_pic_raw = (
+            user_data.get("profile_pic_url_hd")
+            or user_data.get("profile_pic_url")
+            or user_data.get("hd_profile_pic_url_info", {}).get("url", "")
+            or ""
+        )
+
+        if not _profile_pic_raw and posts_data:
+            try:
+                raw = posts_data[0].get("_raw", {})
+                _profile_pic_raw = (
+                    raw.get("user", {}).get("profile_pic_url_hd", "")
+                    or raw.get("user", {}).get("profile_pic_url", "")
+                    or raw.get("caption", {}).get("user", {}).get("profile_pic_url_hd", "")
+                    or raw.get("caption", {}).get("user", {}).get("profile_pic_url", "")
+                    or ""
+                )
+            except Exception:
+                pass
+
+        profile_pic = _profile_pic_raw
+
+        if profile_pic:
+            try:
+                import requests as _req
+                import base64 as _b64
+                _r = _req.get(profile_pic, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+                if _r.status_code == 200:
+                    _mime = _r.headers.get("content-type", "image/jpeg").split(";")[0]
+                    profile_pic = f"data:{_mime};base64,{_b64.b64encode(_r.content).decode()}"
+            except Exception:
+                pass
+
+        _bio_links = user_data.get("bio_links") or []
+        _all_urls = [
+            link.get("url", "") for link in _bio_links if link.get("url", "")
+        ]
+        if not _all_urls and user_data.get("external_url"):
+            _all_urls = [user_data["external_url"]]
+        _external_url = " | ".join(_all_urls)
+
+        return {
+            "handle":       "@" + handle_limpo,
+            "nome_exibido": user_data.get("full_name") or user_data.get("username", handle_limpo),
+            "seguidores":   seg,
+            "seguindo":     int(user_data.get("following_count") or 0),
+            "total_posts":  total_posts,
+            "bio":          (user_data.get("biography") or ""),
+            "external_url": _external_url,
+            "is_verified":  user_data.get("is_verified", False),
+            "eng_medio":    round(eng_medio, 1),
+            "eng_pct":      eng_pct,
+            "posts":        posts_data,
+            "fonte":        "rapidapi",
+            "erro":         None,
+            "profile_pic":  profile_pic,
+        }
+    except Exception as e:
+        return {"erro": str(e)}
+
+_RAPIDAPI_CACHE_TTL = 1800  # 30 min
+
+def coletar_rapidapi(handle: str) -> dict:
+    # Cache manual por handle em session_state (em vez de
+    # @st.cache_data) de propósito: só grava no cache quando a
+    # coleta dá certo (erro is None). Assim, um timeout pontual da
+    # RapidAPI não fica "preso" no cache por 30 min pro mesmo
+    # handle — e, diferente de um @st.cache_data.clear() global,
+    # isso não afeta o cache de outros handles já coletados com
+    # sucesso.
+    import time
+    cache = st.session_state.setdefault("_cache_rapidapi", {})
+    agora = time.time()
+    entrada = cache.get(handle)
+    if entrada and (agora - entrada["ts"]) < _RAPIDAPI_CACHE_TTL:
+        return entrada["dados"]
+
+    resultado = _coletar_rapidapi_sem_cache(handle)
+    if not resultado.get("erro"):
+        cache[handle] = {"ts": agora, "dados": resultado}
+    return resultado
+
 
 if st.session_state.pagina == "home":
  
@@ -17572,298 +17939,8 @@ function setHeight(isOpen) {{
             pass
         return {}
 
-    def _rapidapi_get_com_retry(url: str, headers: dict, tentativas: int = 3, timeout: int = 20):
-        """GET com retry + backoff pra aguentar instabilidade da API do
-        RapidAPI (timeouts pontuais são comuns em horários de pico).
-        Levanta a última exceção se todas as tentativas falharem."""
-        import time
-        ultimo_erro = None
-        for i in range(tentativas):
-            try:
-                return requests.get(url, headers=headers, timeout=timeout)
-            except requests.exceptions.RequestException as e:
-                ultimo_erro = e
-                if i < tentativas - 1:
-                    time.sleep(1.5 * (i + 1))  # backoff: 1.5s, 3s
-        raise ultimo_erro
-
-    def _coletar_rapidapi_sem_cache(handle: str) -> dict:
-        handle_limpo = handle.lstrip("@").strip()
-        if not handle_limpo:
-            return {"erro": "Handle vazio"}
-        try:
-            rapidapi_key = st.secrets.get("RAPIDAPI_KEY", "")
-            if not rapidapi_key:
-                return {"erro": "RAPIDAPI_KEY não configurada"}
-
-            headers = {
-                "x-rapidapi-key": rapidapi_key,
-                "x-rapidapi-host": "instagram-looter2.p.rapidapi.com",
-            }
-
-            try:
-                r = _rapidapi_get_com_retry(
-                    f"https://instagram-looter2.p.rapidapi.com/profile?username={handle_limpo}",
-                    headers=headers,
-                )
-            except requests.exceptions.Timeout:
-                return {"erro": "A API do Instagram demorou demais pra responder (timeout). Tenta de novo em instantes."}
-            except requests.exceptions.RequestException as e:
-                return {"erro": f"Falha ao conectar na API do Instagram: {e}"}
-            data = r.json()
-            user_data = data
-            if isinstance(data, dict):
-                if "data" in data:   user_data = data["data"]
-                elif "user" in data: user_data = data["user"]
-
-            if not user_data or "message" in user_data:
-                return {"erro": user_data.get("message", "Perfil não encontrado")}
-
-            seg         = int(user_data.get("follower_count") or user_data.get("edge_followed_by", {}).get("count") or 0)
-            total_posts = int(user_data.get("media_count") or user_data.get("edge_owner_to_timeline_media", {}).get("count") or 0)
-            pk          = str(user_data.get("pk") or user_data.get("id") or "").strip()
-
-            posts_data = []
-            if pk:
-                for endpoint in [
-                    f"https://instagram-looter2.p.rapidapi.com/user-feeds?id={pk}&count=12&allow_restricted_media=false",
-                    f"https://instagram-looter2.p.rapidapi.com/user-medias?id={pk}&count=12",
-                ]:
-                    try:
-                        rp    = _rapidapi_get_com_retry(endpoint, headers=headers)
-                        pr    = rp.json()
-                        items = pr if isinstance(pr, list) else pr.get("items", [])
-                        if items:
-                            for p in items[:12]:
-                                likes    = int(p.get("like_count") or 0)
-                                comments = int(p.get("comment_count") or 0)
-
-                                thumb = ""
-                                thumb_hd = ""
-                                if p.get("image_versions2"):
-                                    cands = p["image_versions2"].get("candidates", [])
-                                    if cands:
-                                        cands_sorted = sorted(cands, key=lambda c: c.get("width", 0), reverse=True)
-                                        thumb_hd = cands_sorted[0].get("url", "")
-                                        thumb = cands_sorted[-1].get("url", "")
-                                        if len(cands_sorted) == 1:
-                                            thumb = thumb_hd
-                                    else:
-                                        thumb_hd = ""
-                                        thumb = ""
-
-                                if not thumb_hd:
-                                    thumb_hd = (
-                                        p.get("display_url")
-                                        or p.get("thumbnail_src")
-                                        or p.get("image_url")
-                                        or ""
-                                    )
-
-                                if p.get("display_resources"):
-                                    resources = sorted(
-                                        p["display_resources"],
-                                        key=lambda r: r.get("config_width", 0),
-                                        reverse=True
-                                    )
-                                    if resources:
-                                        thumb_hd = resources[0].get("src", "") or thumb_hd
-
-                                if not thumb_hd:
-                                    thumb_hd = thumb
-
-                                if not thumb:
-                                    thumb = thumb_hd
-
-                                if p.get("thumbnail_url") and not thumb:
-                                    thumb = p["thumbnail_url"]
-                                    if not thumb_hd:
-                                        thumb_hd = thumb
-
-                                caption  = ""
-                                if p.get("caption"):
-                                    caption = (
-                                        p["caption"].get("text", "")
-                                        if isinstance(p["caption"], dict)
-                                        else str(p["caption"])
-                                    )[:500]
-                                taken_at = p.get("taken_at", 0)
-                                date_str = ""
-                                if taken_at:
-                                    try:
-                                        date_str = datetime.datetime.fromtimestamp(taken_at).strftime("%d/%m/%Y")
-                                    except Exception:
-                                        pass
-                                shortcode = p.get("code") or p.get("shortcode") or ""
-                                post_url  = f"https://www.instagram.com/p/{shortcode}/" if shortcode else ""
-
-                                media_type = p.get("media_type", 1)
-                                is_reel = media_type == 2
-
-                                video_url = ""
-                                if is_reel:
-                                    video_url = (
-                                        p.get("video_url")
-                                        or (p.get("video_versions") or [{}])[0].get("url", "")
-                                        or ""
-                                    )
-
-                                carousel_imgs = []
-                                carousel_imgs_hd = []
-
-                                if media_type == 8:
-                                    for slide in (p.get("carousel_media") or []):
-                                        cands = slide.get("image_versions2", {}).get("candidates", [])
-                                        url_hd     = cands[0].get("url", "") if cands else ""
-                                        url_thumb  = cands[-1].get("url", "") if cands else url_hd
-                                        url_display = slide.get("display_uri", "")
-
-                                        escolhida_hd    = url_hd or url_display
-                                        escolhida_thumb = url_thumb or url_display or url_hd
-
-                                        if escolhida_hd:
-                                            carousel_imgs_hd.append(escolhida_hd)
-                                        if escolhida_thumb:
-                                            carousel_imgs.append(escolhida_thumb)
-
-                                    if not carousel_imgs and thumb:
-                                        carousel_imgs = [thumb]
-                                    if not carousel_imgs_hd and thumb_hd:
-                                        carousel_imgs_hd = [thumb_hd]
-
-                                posts_data.append({
-                                    "likes":          likes,
-                                    "comments":       comments,
-                                    "thumb":          thumb,
-                                    "thumb_hd":       thumb_hd,
-                                    "display_url":    p.get("display_url") or p.get("thumbnail_src") or p.get("image_url") or thumb_hd,
-                                    "caption":        caption,
-                                    "date":           date_str,
-                                    "is_video":       is_reel,
-                                    "media_type":     media_type,
-                                    "video_url":      video_url,
-                                    "post_url":       post_url,
-                                    "shortcode":      shortcode,
-                                    "carousel_imgs":  carousel_imgs,
-                                    "carousel_imgs_hd": carousel_imgs_hd,
-                                    "_raw": {
-                                        k: v for k, v in p.items()
-                                        if k not in ("carousel_media", "video_versions", "image_versions2")
-                                    },
-                                    "_raw_image_versions2": {
-                                        "candidates": [
-                                            {"width": c.get("width"), "height": c.get("height"), "url": c.get("url", "")[:80] + "..."}
-                                            for c in (p.get("image_versions2") or {}).get("candidates", [])
-                                        ]
-                                    },
-                                    "_raw_display_resources": p.get("display_resources", []),
-                                })
-                            break
-                    except Exception:
-                        continue
-
-            # Guarda contra "sucesso fantasma": a API às vezes responde 200
-            # com um perfil válido mas sem follower_count/media_count e sem
-            # nenhum post (perfil privado, endpoint instável, etc). Sem essa
-            # checagem isso virava um resultado "ok" com seguidores=0 e
-            # posts=0 — a atividade "Coleta de redes sociais" marcava
-            # Concluído e listava o perfil como coletado com sucesso, mas na
-            # prática nenhum dado real chegou (perfil ficava com 0/0 e "Sem
-            # postagens disponíveis" na tela). Agora isso conta como erro,
-            # pra notificação refletir a realidade e o usuário saber que
-            # precisa tentar coletar de novo.
-            if seg == 0 and total_posts == 0 and not posts_data:
-                return {"erro": "A API não retornou dados para este perfil (perfil privado, incorreto ou instabilidade momentânea). Tente coletar novamente."}
-
-            if posts_data:
-                eng_medio = sum(p["likes"] + p["comments"] for p in posts_data) / len(posts_data)
-                eng_pct   = round(eng_medio / seg * 100, 2) if seg > 0 else 0.0
-            else:
-                eng_pct   = 3.0 if seg <= 10_000 else (2.0 if seg <= 50_000 else (1.5 if seg <= 100_000 else 1.0))
-                eng_medio = round(seg * eng_pct / 100, 1)
-
-            _profile_pic_raw = (
-                user_data.get("profile_pic_url_hd")
-                or user_data.get("profile_pic_url")
-                or user_data.get("hd_profile_pic_url_info", {}).get("url", "")
-                or ""
-            )
-
-            if not _profile_pic_raw and posts_data:
-                try:
-                    raw = posts_data[0].get("_raw", {})
-                    _profile_pic_raw = (
-                        raw.get("user", {}).get("profile_pic_url_hd", "")
-                        or raw.get("user", {}).get("profile_pic_url", "")
-                        or raw.get("caption", {}).get("user", {}).get("profile_pic_url_hd", "")
-                        or raw.get("caption", {}).get("user", {}).get("profile_pic_url", "")
-                        or ""
-                    )
-                except Exception:
-                    pass
-
-            profile_pic = _profile_pic_raw
-
-            if profile_pic:
-                try:
-                    import requests as _req
-                    import base64 as _b64
-                    _r = _req.get(profile_pic, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
-                    if _r.status_code == 200:
-                        _mime = _r.headers.get("content-type", "image/jpeg").split(";")[0]
-                        profile_pic = f"data:{_mime};base64,{_b64.b64encode(_r.content).decode()}"
-                except Exception:
-                    pass
-
-            _bio_links = user_data.get("bio_links") or []
-            _all_urls = [
-                link.get("url", "") for link in _bio_links if link.get("url", "")
-            ]
-            if not _all_urls and user_data.get("external_url"):
-                _all_urls = [user_data["external_url"]]
-            _external_url = " | ".join(_all_urls)
-
-            return {
-                "handle":       "@" + handle_limpo,
-                "nome_exibido": user_data.get("full_name") or user_data.get("username", handle_limpo),
-                "seguidores":   seg,
-                "seguindo":     int(user_data.get("following_count") or 0),
-                "total_posts":  total_posts,
-                "bio":          (user_data.get("biography") or ""),
-                "external_url": _external_url,
-                "is_verified":  user_data.get("is_verified", False),
-                "eng_medio":    round(eng_medio, 1),
-                "eng_pct":      eng_pct,
-                "posts":        posts_data,
-                "fonte":        "rapidapi",
-                "erro":         None,
-                "profile_pic":  profile_pic,
-            }
-        except Exception as e:
-            return {"erro": str(e)}
-
-    _RAPIDAPI_CACHE_TTL = 1800  # 30 min
-
-    def coletar_rapidapi(handle: str) -> dict:
-        # Cache manual por handle em session_state (em vez de
-        # @st.cache_data) de propósito: só grava no cache quando a
-        # coleta dá certo (erro is None). Assim, um timeout pontual da
-        # RapidAPI não fica "preso" no cache por 30 min pro mesmo
-        # handle — e, diferente de um @st.cache_data.clear() global,
-        # isso não afeta o cache de outros handles já coletados com
-        # sucesso.
-        import time
-        cache = st.session_state.setdefault("_cache_rapidapi", {})
-        agora = time.time()
-        entrada = cache.get(handle)
-        if entrada and (agora - entrada["ts"]) < _RAPIDAPI_CACHE_TTL:
-            return entrada["dados"]
-
-        resultado = _coletar_rapidapi_sem_cache(handle)
-        if not resultado.get("erro"):
-            cache[handle] = {"ts": agora, "dados": resultado}
-        return resultado
-
+    # (coleta_rapidapi, _coletar_rapidapi_sem_cache, _rapidapi_get_com_retry
+    # e _RAPIDAPI_CACHE_TTL agora vivem em escopo de módulo, ver acima)
     def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
         score = 0
         criterios = []
@@ -22216,6 +22293,8 @@ html, body { background: transparent; overflow: hidden; }
 
             for _pos, _a in enumerate(_todas_atividades):
                 _ui = dict(_ATIVIDADE_STATUS_UI.get(_a.get("status"), _ATIVIDADE_STATUS_UI["pendente"]))
+                if _a.get("status") == "concluido" and (_a.get("detalhes") or {}).get("com_erro"):
+                    _ui = dict(_ATIVIDADE_STATUS_UI["concluido_com_erro"])
                 if _a.get("status") == "erro" and _a.get("lida"):
                     # Erro já marcado como lido (via "Marcar como lidas" na
                     # barra de ações) — continua no histórico, só deixa de
@@ -22260,11 +22339,16 @@ html, body { background: transparent; overflow: hidden; }
                 # "em_andamento" aqui nunca fica "esperando o usuário"
                 # por mais do que esse intervalo, mesmo que a thread
                 # original tenha morrido (ex: reinício do servidor).
+                _pode_refazer_redes = (
+                    _a.get("tipo") == "coleta_redes"
+                    and bool((_a.get("detalhes") or {}).get("com_erro"))
+                    and _a.get("status") in ("erro", "concluido")
+                )
                 _pode_refazer = (
                     _a.get("tipo") in ("migracao_midia", "transcricao_video")
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
-                )
+                ) or _pode_refazer_redes
                 _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
                 _progresso_ativ = _progresso_atividade(_a)
                 _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
@@ -22695,6 +22779,12 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast(f"Refazendo a transcrição de {_empresa_ref}...", icon="🔄")
                         else:
                             st.toast(f"Nenhum vídeo de {_empresa_ref} pendente de transcrição.", icon="⚠️")
+                    elif _tipo_ref == "coleta_redes":
+                        _empresas_erro_ref = list(((_atividade_ref.get("detalhes") or {}).get("com_erro") or {}).keys())
+                        if _empresas_erro_ref and refazer_coleta_redes(st.session_state.user.id, _rid, _empresas_erro_ref):
+                            st.toast(f"Tentando de novo: {', '.join(_empresas_erro_ref)}...", icon="🔄")
+                        else:
+                            st.toast("Nenhum perfil com erro pra tentar de novo.", icon="⚠️")
                     else:
                         if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
                             st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")

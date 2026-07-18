@@ -8242,9 +8242,9 @@ function setHeightGeral(isOpen) {{
                             _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da média'
 
                     return (
-                        '<div style="margin-top:6px;">'
-                        f'<div style="display:flex;width:100%;box-sizing:border-box;align-items:center;justify-content:center;gap:3px;background:{cor}14;'
-                        f'padding:4px 6px;border-radius:7px;">'
+                        '<div style="margin-top:8px;">'
+                        '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0;"/>'
+                        f'<div style="display:flex;width:100%;box-sizing:border-box;align-items:center;justify-content:center;gap:3px;">'
                         + _icone_svg +
                         f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
                         f'{_texto}</span></div></div>'

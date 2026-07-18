@@ -7793,13 +7793,13 @@ function setHeightGeral(isOpen) {{
                     cor = "#15803d" if acima else "#b45309"
                     if acima:
                         _seta_svg = (
-                            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
                             f'style="flex-shrink:0;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
                         )
                     else:
                         _seta_svg = (
-                            f'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
+                            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
                             f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
                             f'style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
                         )

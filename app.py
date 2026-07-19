@@ -8239,7 +8239,7 @@ function setHeightGeral(isOpen) {{
                         elif pct == -100:
                             _texto = "Nenhum, vs. média dos concorrentes"
                         else:
-                            _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da média'
+                            _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da&nbsp;média'
 
                     _icone_badge = (
                         f'<div style="width:18px;height:18px;min-width:18px;border-radius:50%;background:{cor};'

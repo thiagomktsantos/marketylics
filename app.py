@@ -8166,9 +8166,9 @@ function setHeightGeral(isOpen) {{
                 def stat_item(icon_path, icon_color, icon_bg, valor, valor_color, label):
                     return (
                         f'<div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex:1;min-width:0;">'
-                        f'<div style="width:44px;height:44px;border-radius:50%;background:{icon_bg};'
+                        f'<div style="width:44px;height:44px;border-radius:50%;background:{icon_color};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
-                        f'<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="{icon_color}" '
+                        f'<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
                         f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{icon_path}</svg>'
                         f'</div>'
                         f'<div style="font-size:18px;font-weight:800;color:{valor_color};line-height:1;">{valor}</div>'
@@ -8244,9 +8244,10 @@ function setHeightGeral(isOpen) {{
                     return (
                         '<div style="margin-top:8px;">'
                         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0;"/>'
-                        f'<div style="display:flex;width:100%;box-sizing:border-box;align-items:center;justify-content:center;gap:3px;">'
+                        f'<div style="display:flex;flex-direction:column;width:100%;box-sizing:border-box;'
+                        f'align-items:center;justify-content:center;gap:3px;text-align:center;">'
                         + _icone_svg +
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:center;">'
                         f'{_texto}</span></div></div>'
                     )
 

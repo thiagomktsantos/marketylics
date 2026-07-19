@@ -8357,9 +8357,9 @@ function setHeightGeral(isOpen) {{
 
                 tipo_donuts = (
                     '<div style="display:flex;align-items:center;">'
-                    + make_donut_svg(m["pct_foto"], d["cor"], "Fotos",     m["n_fotos"])
-                    + make_donut_svg(m["pct_vid"],  d["cor"], "Reels",     m["n_videos"])
-                    + make_donut_svg(m["pct_carr"], d["cor"], "Carrossel", m["n_carrossel"])
+                    + make_donut_svg(m["pct_foto"], "#1d4ed8", "Fotos",     m["n_fotos"])
+                    + make_donut_svg(m["pct_vid"],  "#1d4ed8", "Reels",     m["n_videos"])
+                    + make_donut_svg(m["pct_carr"], "#1d4ed8", "Carrossel", m["n_carrossel"])
                     + '</div>'
                 )
 
@@ -8917,7 +8917,7 @@ body {{ padding-bottom:8px; }}
 .col-title-ads    {{ background:#fff; color:#8b5cf6; border-left:3px solid #9a71f7; }}
 .col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
-.col-ads    {{ border-left:2px solid #f9731620; padding-left:8px; margin-left:-8px; }}
+.col-ads    {{ border-left:2px solid #9a71f720; padding-left:8px; margin-left:-8px; }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;

@@ -8216,23 +8216,23 @@ function setHeightGeral(isOpen) {{
                         cor = "#6b7280"
                         _texto = "Na média"
                         _icone_svg = (
-                            f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
-                            f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                            f'style="flex-shrink:0;"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>'
+                            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
+                            'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+                            '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>'
                         )
                     else:
                         cor = "#15803d" if acima else "#b45309"
                         if acima:
                             _icone_svg = (
-                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
-                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                                f'style="flex-shrink:0;"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
+                                '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
+                                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+                                '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>'
                             )
                         else:
                             _icone_svg = (
-                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="{cor}" '
-                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round" '
-                                f'style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
+                                '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
+                                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+                                '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>'
                             )
                         if pct == 100:
                             _texto = "O dobro da média"
@@ -8241,13 +8241,18 @@ function setHeightGeral(isOpen) {{
                         else:
                             _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da média'
 
+                    _icone_badge = (
+                        f'<div style="width:18px;height:18px;min-width:18px;border-radius:50%;background:{cor};'
+                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">{_icone_svg}</div>'
+                    )
+
                     return (
                         '<div style="margin-top:8px;">'
                         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0;"/>'
-                        f'<div style="display:flex;flex-direction:column;width:100%;box-sizing:border-box;'
-                        f'align-items:center;justify-content:center;gap:3px;text-align:center;">'
-                        + _icone_svg +
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:center;">'
+                        f'<div style="display:flex;width:100%;box-sizing:border-box;'
+                        f'align-items:center;justify-content:center;gap:5px;">'
+                        + _icone_badge +
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
                         f'{_texto}</span></div></div>'
                     )
 

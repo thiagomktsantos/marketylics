@@ -8249,11 +8249,11 @@ function setHeightGeral(isOpen) {{
                     return (
                         '<div style="margin-top:8px;">'
                         '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 8px 0;"/>'
-                        f'<div style="display:flex;width:100%;box-sizing:border-box;'
-                        f'align-items:center;justify-content:center;gap:5px;">'
+                        '<div style="display:flex;justify-content:center;width:100%;box-sizing:border-box;">'
+                        f'<div style="display:flex;align-items:center;gap:5px;width:78px;">'
                         + _icone_badge +
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:center;max-width:64px;">'
-                        f'{_texto}</span></div></div>'
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;width:54px;">'
+                        f'{_texto}</span></div></div></div>'
                     )
 
                 _outros_seg    = _outros_valores("seguidores", int)

@@ -8252,7 +8252,7 @@ function setHeightGeral(isOpen) {{
                         f'<div style="display:flex;width:100%;box-sizing:border-box;'
                         f'align-items:center;justify-content:center;gap:5px;">'
                         + _icone_badge +
-                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:left;">'
+                        f'<span style="font-size:9px;font-weight:700;color:{cor};line-height:1.15;text-align:center;max-width:64px;">'
                         f'{_texto}</span></div></div>'
                     )
 
@@ -8274,10 +8274,10 @@ function setHeightGeral(isOpen) {{
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:nowrap;">'
-                    + ('<div style="flex:1;">' + stat_item(path_seg,  "#6b7280", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
+                    + ('<div style="flex:1;">' + stat_item(path_seg,  "#3a9fd6", "#f3f4f6", m["seg"],     "#111827", "Seguid.")  + seg_ctx_html    + '</div>')
                     + ('<div style="flex:1;">' + stat_item(path_eng,  "#3a9fd6", "#e0f2fe", m["eng"],     "#3a9fd6", "Engaj.%")  + eng_ctx_html    + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_post, "#e1306c", "#fce7f3", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
-                    + ('<div style="flex:1;">' + stat_item(path_enm,  "#22c55e", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post") + engmed_ctx_html + '</div>')
+                    + ('<div style="flex:1;">' + stat_item(path_post, "#3a9fd6", "#fce7f3", m["posts"],   "#374151", "Posts")    + post_ctx_html   + '</div>')
+                    + ('<div style="flex:1;">' + stat_item(path_enm,  "#3a9fd6", "#f0fdf4", m["eng_med"], "#374151", "Eng/Post") + engmed_ctx_html + '</div>')
                     + '</div></div>'
                 )
 
@@ -8407,9 +8407,9 @@ function setHeightGeral(isOpen) {{
 
                 formato_donuts = (
                     '<div style="display:flex;align-items:center;">'
-                    + make_donut_svg(round(a["video"]     / total_ads * 100), d["cor"], "Vídeo",     a["video"])
-                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), d["cor"], "Imagem",    a["imagem"])
-                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), d["cor"], "Carrossel", a["carrossel"])
+                    + make_donut_svg(round(a["video"]     / total_ads * 100), "#8b5cf6", "Vídeo",     a["video"])
+                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), "#8b5cf6", "Imagem",    a["imagem"])
+                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), "#8b5cf6", "Carrossel", a["carrossel"])
                     + '</div>'
                 )
                 ads_formato_block = (
@@ -8518,34 +8518,7 @@ function setHeightGeral(isOpen) {{
                     + ads_dest_content + '</div>'
                 )
 
-                # ── Insight da IA (Anúncios) ─────────────────────────────
-                # Mesmo espírito do painel "Insight da IA" do Resumo
-                # Executivo, só que focado no que dá pra melhorar na
-                # estratégia de anúncios especificamente.
-                _score_ads_info = calcular_score_ads(a)
-                _faltando_ads = _score_ads_info.get("faltando", [])
-                _dono_ads_txt = "Seus anúncios estão" if d["badge_lbl"] == "Minha Empresa" else f'Os anúncios de {d["nome"]} estão'
-                if _faltando_ads:
-                    _sugestao_ads = " e ".join(_faltando_ads[:2]).lower()
-                    _texto_insight_ads = (
-                        f'{_dono_ads_txt} classificados como "{_score_ads_info["classificacao"]}" '
-                        f'({_score_ads_info["score"]}/100). Para evoluir, foque em: {_sugestao_ads}.'
-                    )
-                else:
-                    _texto_insight_ads = (
-                        f'{_dono_ads_txt} classificados como "{_score_ads_info["classificacao"]}" '
-                        f'({_score_ads_info["score"]}/100) — todos os critérios avaliados estão OK. '
-                        'Continue monitorando o desempenho para manter esse nível.'
-                    )
-                ads_insight_block = (
-                    '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#c2410c;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">'
-                    f'{_SVG_ICONE_ROBO} Insight da IA</div>'
-                    f'<div style="font-size:12px;color:#7c2d12;line-height:1.6;">{_texto_insight_ads}</div>'
-                    '</div>'
-                )
-
-                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block + ads_insight_block
+                ads_block_html = ads_formato_block + ads_tipos_block + ads_plat_block + ads_dest_block
             else:
                 ads_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'

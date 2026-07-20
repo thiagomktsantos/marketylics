@@ -2019,6 +2019,12 @@ _PARES_PROGRESSO_POR_TIPO = {
     "reprocessamento_midia": ("processadas", "total"),
     "reconciliacao_midia":   ("corrigidos", "verificados"),
     "retentativa_midia":     ("recuperadas", "verificadas"),
+    # "coleta_ads" NÃO entra aqui: em vez de uma barra agregada única,
+    # esse tipo ganhou uma barra POR EMPRESA (ver 'por_empresa' nos
+    # detalhes, gravado por _executar_busca_background, e o bloco de
+    # renderização "_notif_empresa_html" na página de notificações) —
+    # faz mais sentido pro usuário ver o andamento de cada empresa da
+    # coleta individualmente do que um único "X de Y" agregado.
 }
 
 def _progresso_atividade(atividade: dict):
@@ -2089,7 +2095,26 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
-        texto = f"Coletadas: {', '.join(d.get('coletadas', [])) or '—'}."
+        coletadas_d = d.get("coletadas", [])
+        # Enquanto está "em_andamento", mostra progresso de verdade (quantas
+        # empresas já foram processadas de quantas no total) em vez de só
+        # aparecer algo depois que TODAS terminassem — antes disso o card
+        # ficava com o rótulo genérico "Coleta de anúncios" a coleta
+        # inteira, sem nenhum sinal de avanço mesmo com várias empresas na
+        # fila (ver _executar_busca_background, que agora atualiza a
+        # atividade a cada empresa processada).
+        if atividade.get("status") == "em_andamento":
+            total_d = d.get("total") or len(d.get("empresas") or [])
+            concluidas_d = d.get("concluidas", len(coletadas_d) + len(erros_d))
+            texto = f"{concluidas_d} de {total_d} empresas processadas"
+            if coletadas_d:
+                texto += f" — coletadas: {', '.join(coletadas_d)}"
+            if erros_d:
+                texto += f" — com erro: {', '.join(erros_d.keys())}"
+            texto += ". · Rodando agora."
+            path, _cor = _ICONE_INFO
+            return _svg_icone(path, "currentColor", 14), texto
+        texto = f"Coletadas: {', '.join(coletadas_d) or '—'}."
         if erros_d:
             texto += f" Com erro: {', '.join(erros_d.keys())}."
             path, _cor = _ICONE_AVISO
@@ -2099,8 +2124,24 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo == "coleta_redes" and ("coletados" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
-        total_posts = d.get("total_posts", 0)
         nomes_ok = d.get("coletados", [])
+        # Mesmo padrão do coleta_ads: enquanto está "em_andamento", mostra
+        # quantos perfis já foram processados de quantos no total, em vez
+        # de só aparecer algo quando TODOS já tivessem terminado (ver
+        # _coletar_redes_background, que agora atualiza a atividade a
+        # cada perfil processado).
+        if atividade.get("status") == "em_andamento":
+            total_d = d.get("total") or len(d.get("empresas") or [])
+            concluidas_d = d.get("concluidas", len(nomes_ok) + len(erros_d))
+            texto = f"{concluidas_d} de {total_d} perfis processados"
+            if nomes_ok:
+                texto += f" — coletados: {', '.join(nomes_ok)}"
+            if erros_d:
+                texto += f" — com erro: {', '.join(erros_d.keys())}"
+            texto += ". · Rodando agora."
+            path, _cor = _ICONE_INFO
+            return _svg_icone(path, "currentColor", 14), texto
+        total_posts = d.get("total_posts", 0)
         texto = f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
         # Info de "posts novos" (antes era uma notificação própria, "X novos
         # posts detectados", que aparecia logo acima desta — redundante,
@@ -11763,32 +11804,77 @@ elif st.session_state.pagina == "ads":
 
             erros = {}
             novos = {}
+            _nomes_empresas = [x["nome"] for x in empresas]
+            _total_empresas = len(_nomes_empresas)
+            _processadas = 0
+            # Status por empresa pra desenhar uma barra individual por
+            # empresa no card (em vez de só um "X de Y" agregado pro lote
+            # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
+            # (chamando a Apify agora), "ok" (coletada), "cache" (pulada
+            # por já ter cache fresco) ou "erro" (com a mensagem).
+            _status_por_empresa = {nome: {"status": "pendente"} for nome in _nomes_empresas}
+
+            def _grava_progresso():
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresas": _nomes_empresas,
+                    "total": _total_empresas,
+                    "concluidas": _processadas,
+                    "coletadas": list(novos.keys()),
+                    "com_erro": dict(erros),
+                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
+                })
 
             for e in empresas:
                 ck = e["nome"]
                 entrada_cache = cache_atual.get(ck, {})
+                _pula = False
                 if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
-                    continue
+                    _pula = True
+
+                if not _pula:
+                    # Marca "rodando" ANTES de chamar a Apify (que pode
+                    # demorar segundos/minutos) — sem isso, o card ficava
+                    # sem nenhum sinal de qual empresa está sendo coletada
+                    # agora enquanto a chamada não termina.
+                    _status_por_empresa[ck] = {"status": "rodando"}
+                    _grava_progresso()
 
                 # O ads_id (quando a empresa já tem um configurado) vem pronto
                 # dentro de query_values, montado na thread principal antes de
                 # chamar executar_busca — não dá pra ler st.session_state aqui
                 # dentro, já que essa função roda numa thread separada.
-                query = query_values.get(ck, "").strip()
-                if not query:
-                    continue
+                query = query_values.get(ck, "").strip() if not _pula else ""
+                if not _pula and not query:
+                    _pula = True
 
-                ads, raw, erro = buscar_ads_apify(query)
-                if erro:
-                    erros[ck] = erro
+                if _pula:
+                    _status_por_empresa[ck] = {"status": "cache"}
                 else:
-                    novos[ck] = {
-                        "data":  ads,
-                        "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "nome":  ck,
-                        "query": query,
-                        "_raw":  raw,
-                    }
+                    ads, raw, erro = buscar_ads_apify(query)
+                    if erro:
+                        erros[ck] = erro
+                        _status_por_empresa[ck] = {"status": "erro", "msg": erro}
+                    else:
+                        novos[ck] = {
+                            "data":  ads,
+                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "nome":  ck,
+                            "query": query,
+                            "_raw":  raw,
+                        }
+                        _status_por_empresa[ck] = {"status": "ok"}
+
+                # Progresso incremental — sem isso, o card ficava mostrando só
+                # o rótulo genérico "Coleta de anúncios" do início ao fim,
+                # porque os detalhes só eram gravados de uma vez só, quando
+                # TODAS as empresas já tinham terminado. Grava a cada empresa
+                # processada (sucesso, erro OU pulada por cache fresco) pra
+                # a barra de cada empresa e o texto do card atualizarem em
+                # tempo real — contar também as puladas garante que o total
+                # bata no final, mesmo quando alguma empresa é pulada por já
+                # ter cache fresco.
+                _processadas += 1
+                _grava_progresso()
 
             cache_mergeado = merge_ads(cache_atual, novos)
 
@@ -11802,8 +11888,12 @@ elif st.session_state.pagina == "ads":
 
             _status_final = "erro" if (erros and not novos) else "concluido"
             atualizar_atividade(atividade_id, _status_final, {
+                "empresas": _nomes_empresas,
+                "total": _total_empresas,
+                "concluidas": _processadas,
                 "coletadas": list(novos.keys()),
                 "com_erro": erros,
+                "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
         except Exception as e:
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
@@ -18260,9 +18350,43 @@ function setHeight(isOpen) {{
         try:
             import datetime as _dt_redes_bg
             resultados_lista = []
+            _nomes_todas_redes = [e["nome"] for e in todas]
+            _total_todas_redes = len(_nomes_todas_redes)
+            # Status por perfil pra desenhar uma barra individual por
+            # empresa no card (mesmo padrão do coleta_ads — ver
+            # _executar_busca_background): "pendente", "rodando",
+            # "ok" ou "erro" (com a mensagem).
+            _status_por_empresa_redes = {nome: {"status": "pendente"} for nome in _nomes_todas_redes}
+
+            def _grava_progresso_redes():
+                _ok_ate_agora = [r["nome"] for r in resultados_lista if not r.get("erro")]
+                _erro_ate_agora = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresas": _nomes_todas_redes,
+                    "total": _total_todas_redes,
+                    "concluidas": len(resultados_lista),
+                    "coletados": _ok_ate_agora,
+                    "com_erro": _erro_ate_agora,
+                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa_redes.items()},
+                })
+
             for e in todas:
+                _nome_e = e["nome"]
+                # Marca "rodando" ANTES de chamar o RapidAPI (que pode
+                # demorar) — sem isso, o card não tinha nenhum sinal de
+                # qual perfil está sendo coletado agora enquanto a
+                # chamada não retorna.
+                _status_por_empresa_redes[_nome_e] = {"status": "rodando"}
+                _grava_progresso_redes()
+
                 r_col = coletar_rapidapi(e["instagram"])
-                resultados_lista.append({**e, **(r_col or {"erro": "Sem resposta"})})
+                _resultado_item = {**e, **(r_col or {"erro": "Sem resposta"})}
+                resultados_lista.append(_resultado_item)
+                if _resultado_item.get("erro"):
+                    _status_por_empresa_redes[_nome_e] = {"status": "erro", "msg": _resultado_item["erro"]}
+                else:
+                    _status_por_empresa_redes[_nome_e] = {"status": "ok"}
+                _grava_progresso_redes()
 
             supabase.table("ci_dados").update({
                 "metricas_redes": {
@@ -18284,10 +18408,14 @@ function setHeight(isOpen) {{
             # rodar), então ficavam redundantes lado a lado no sino.
             _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
             atualizar_atividade(atividade_id, _status_final_redes, {
+                "empresas": _nomes_todas_redes,
+                "total": _total_todas_redes,
+                "concluidas": len(resultados_lista),
                 "coletados": _nomes_ok_redes,
                 "com_erro": _com_erro_redes,
                 "total_posts": _total_posts_redes,
                 "por_empresa_novos": _novos_por_empresa,
+                "por_empresa": {k: dict(v) for k, v in _status_por_empresa_redes.items()},
             })
 
             # Checkin: essa coleta pode ter trazido Reels novos (ou Reels
@@ -22529,6 +22657,50 @@ html, body { background: transparent; overflow: hidden; }
                         </div>
                     """
 
+                # Barra de andamento POR EMPRESA (coleta_ads e coleta_redes,
+                # que sempre lidam com um lote de empresas de uma vez) — em
+                # vez de um "X de Y" agregado só, o usuário vê o andamento de
+                # cada empresa individualmente: aguardando / coletando
+                # agora / coletada / já em cache / erro (com o motivo).
+                # Ver 'por_empresa', gravado incrementalmente por
+                # _executar_busca_background / _coletar_redes_background a
+                # cada empresa processada.
+                _empresa_rows_html = ""
+                if _a.get("tipo") in ("coleta_ads", "coleta_redes"):
+                    _por_empresa_ativ = _detalhes_dict_ativ.get("por_empresa") or {}
+                    if _por_empresa_ativ:
+                        _linhas_empresa_html = []
+                        for _nome_emp, _info_emp in _por_empresa_ativ.items():
+                            _nome_emp_safe = (
+                                str(_nome_emp).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            )
+                            _info_emp = _info_emp if isinstance(_info_emp, dict) else {"status": _info_emp}
+                            _status_emp = _info_emp.get("status", "pendente")
+                            _msg_emp = (_info_emp.get("msg") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            if _status_emp == "ok":
+                                _pct_emp, _cor_emp, _label_emp, _classe_emp = 100, "#22c55e", "Coletado", ""
+                            elif _status_emp == "cache":
+                                _pct_emp, _cor_emp, _label_emp, _classe_emp = 100, "#3a9fd6", "Já atualizado", ""
+                            elif _status_emp == "erro":
+                                _pct_emp, _cor_emp, _classe_emp = 100, "#ef4444", ""
+                                _label_emp = f"Erro: {_msg_emp}" if _msg_emp else "Erro"
+                            elif _status_emp == "rodando":
+                                _pct_emp, _cor_emp, _label_emp, _classe_emp = 100, "#3a9fd6", "Coletando agora…", "is-rodando"
+                            else:
+                                _pct_emp, _cor_emp, _label_emp, _classe_emp = 0, "#d1d5db", "Aguardando", ""
+                            _linhas_empresa_html.append(f"""
+                                <div class="notif-empresa-row">
+                                    <div class="notif-empresa-top">
+                                        <span class="notif-empresa-name">{_nome_emp_safe}</span>
+                                        <span class="notif-empresa-status" style="color:{_cor_emp}">{_label_emp}</span>
+                                    </div>
+                                    <div class="notif-empresa-track">
+                                        <div class="notif-empresa-fill {_classe_emp}" style="width:{_pct_emp}%;background:{_cor_emp}"></div>
+                                    </div>
+                                </div>
+                            """)
+                        _empresa_rows_html = f'<div class="notif-empresa-list">{"".join(_linhas_empresa_html)}</div>'
+
                 _corpo_html = ""
                 if _tem_detalhe:
                     _corpo_html += "<div class=\"notif-body-inner\">"
@@ -22539,7 +22711,7 @@ html, body { background: transparent; overflow: hidden; }
                             f'<div>{_detalhe_safe}{_mais_info_html}</div>'
                             f'</div>'
                         )
-                    _corpo_html += _progresso_html
+                    _corpo_html += _empresa_rows_html or _progresso_html
                     if _pode_refazer:
                         _refazer_svg = _svg_icone(
                             "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
@@ -22676,6 +22848,34 @@ html, body { background: transparent; overflow: hidden; }
     }
     .notif-progress-pct {
         font-size:12.5px; font-weight:800; color:#1f2937;
+    }
+    .notif-empresa-list {
+        margin-top:10px; display:flex; flex-direction:column; gap:10px;
+    }
+    .notif-empresa-row {}
+    .notif-empresa-top {
+        display:flex; justify-content:space-between; align-items:baseline;
+        margin-bottom:4px; gap:8px;
+    }
+    .notif-empresa-name {
+        font-size:12.5px; font-weight:700; color:#374151; white-space:nowrap;
+        overflow:hidden; text-overflow:ellipsis;
+    }
+    .notif-empresa-status {
+        font-size:11.5px; font-weight:700; white-space:nowrap; flex-shrink:0;
+    }
+    .notif-empresa-track {
+        width:100%; height:6px; border-radius:5px; background:#eef1f5; overflow:hidden;
+    }
+    .notif-empresa-fill { height:100%; border-radius:5px; transition:width 0.3s ease; }
+    .notif-empresa-fill.is-rodando {
+        background-image: linear-gradient(90deg, transparent 0%, #3a9fd6 50%, transparent 100%);
+        background-size: 200% 100%;
+        animation: notifEmpresaPulse 1.1s ease-in-out infinite;
+    }
+    @keyframes notifEmpresaPulse {
+        0%   { background-position: 150% 0; }
+        100% { background-position: -50% 0; }
     }
     .btn-excluir {
         display:flex; align-items:center; justify-content:center;

@@ -4771,6 +4771,47 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
             continue
         entry = cache_atual.get(empresa)
         if not entry:
+            # BUG CORRIGIDO: antes, quando a empresa não era encontrada no
+            # ads_cache na hora de montar o lote de retry, a atividade era
+            # simplesmente pulada — sem log, sem erro, sem nenhum sinal.
+            # Ela continuava "em_andamento" com o mesmo 'aviso' de antes, e
+            # a cada novo ciclo de 15s do fragment da sidebar o retry
+            # detectava de novo que ela estava "travada" (heartbeat velho),
+            # tentava de novo, caía direto neste mesmo miss, e assim pra
+            # sempre — o card ficava preso mostrando "vamos tentar de novo
+            # automaticamente" por horas, mesmo com a aba aberta, porque
+            # nada nunca marcava isso como erro nem tentava de outro jeito.
+            # Agora: conta quantas vezes seguidas isso aconteceu pra essa
+            # atividade e, depois de algumas, desiste visivelmente (status
+            # "erro" de verdade, com motivo explicado) em vez de girar pra
+            # sempre sem chance real de progresso. Enquanto isso não bate
+            # o teto, também regrava 'ultima_tentativa_em' — sem isso, o
+            # próximo ciclo de 15s acharia de novo que já passou tempo
+            # demais (heartbeat/tentativa antigos) e martelaria a mesma
+            # query de ads_cache a cada 15s à toa.
+            _detalhes_atuais = alvo.get("detalhes") or {}
+            _tentativas_cache_ausente = _detalhes_atuais.get("tentativas_cache_ausente", 0) + 1
+            print(
+                f"[retry_migracao] empresa '{empresa}' (atividade {alvo['id']}, user {user_id}) "
+                f"não encontrada em ads_cache — tentativa {_tentativas_cache_ausente}"
+            )
+            if _tentativas_cache_ausente >= 3:
+                atualizar_atividade(alvo["id"], "erro", {
+                    **_detalhes_atuais,
+                    "empresa": empresa,
+                    "motivo": (
+                        f"Não encontramos mais os dados de '{empresa}' no cache pra continuar "
+                        f"essa migração — a empresa pode ter sido removida ou renomeada. Faça uma "
+                        f"nova coleta dela e clique em 'Refazer' pra tentar migrar de novo."
+                    ),
+                })
+            else:
+                atualizar_atividade(alvo["id"], "em_andamento", {
+                    **_detalhes_atuais,
+                    "empresa": empresa,
+                    "tentativas_cache_ausente": _tentativas_cache_ausente,
+                    "ultima_tentativa_em": _agora_iso(),
+                })
             continue
         atualizar_atividade(alvo["id"], "em_andamento", {"empresa": empresa})
         tarefas.append((empresa, entry, alvo["id"]))

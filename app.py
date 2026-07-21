@@ -179,25 +179,22 @@ _SVG_ICONE_PONTO = (
 # ---------------------------------------------------
 
 _SVG_ICONE_IMAGENS_ALT = (
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/>'
-    '<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fff">'
+    '<path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z'
+    'M8.5 13.5l2.5 3.01L14.5 12l4.5 6H5z"/>'
     '</svg>'
 )
 
 _SVG_ICONE_TRANSCRICAO = (
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 '
-    '8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fff">'
+    '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>'
     '</svg>'
 )
 
 _SVG_ICONE_TRANSCRICAO_PENDENTE = (
-    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" '
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fbbf24">'
+    '<path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.48 10-10S17.53 2 12 2zm4.2 14.2L11 13V7h1.5v5.2'
+    'l4.5 2.7-.8 1.3z"/>'
     '</svg>'
 )
 

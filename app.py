@@ -14842,7 +14842,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:pointer;display:flex;align-items:center;gap:4px">
-        🖼️ +{len(_imgs_dyn_alt)}
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg> +{len(_imgs_dyn_alt)}
     </div>"""
                             imgs_badge_script = f"""
 <script>
@@ -14899,7 +14899,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        💬 Transcrição
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> Transcrição
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = """
@@ -14908,7 +14908,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px">
-        ⏳ Transcrevendo…
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Transcrevendo…
     </div>"""
                         else:
                             transcricao_badge_html = ""
@@ -14920,6 +14920,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
      data-modal-fallback="{vid_fallback_modal_esc}">
     <video id="vid_{uid}"
         src="{vid_thumb_esc}"
+        {f'poster="{img_primary}"' if img_primary else ''}
         style="width:100%;height:100%;object-fit:cover;display:block"
         preload="metadata"
         muted
@@ -15028,7 +15029,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
         <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
-    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;">🔍 VER CRIATIVOS</div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>
     {origem_badge_img_html}
 </div>
 <script>

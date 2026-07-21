@@ -14142,7 +14142,14 @@ Amostra dos anúncios:
             if ia_ind_ghost_css:
                 st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
 
-            page_pic_empresa = ads_list[0].get("page_profile_picture", "") or "" if ads_list else ""
+            page_pic_empresa = next(
+                (
+                    (a.get("page_profile_picture") or "").strip()
+                    for a in ads_list
+                    if (a.get("page_profile_picture") or "").strip().startswith("http")
+                ),
+                "",
+            )
 
             if page_pic_empresa:
                 avatar_empresa_html = (
@@ -14593,6 +14600,25 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
+                # Foto de perfil de fallback: nem todo anúncio antigo tem
+                # "page_profile_picture" salva (o campo só passou a ser
+                # capturado depois, ou a captura falhou naquela época).
+                # Como a foto de perfil da página é a MESMA pra todos os
+                # anúncios de uma empresa, em vez de cair pro círculo com
+                # a inicial só porque aquele anúncio específico não tem o
+                # campo, usamos a primeira foto válida encontrada entre
+                # TODOS os anúncios da empresa (ads_list, não só ads_f, pra
+                # não perder o fallback quando o filtro atual esconde o
+                # único anúncio que tinha a foto).
+                _page_pic_fallback = next(
+                    (
+                        (a.get("page_profile_picture") or "").strip()
+                        for a in ads_list
+                        if (a.get("page_profile_picture") or "").strip().startswith("http")
+                    ),
+                    "",
+                )
+
                 n_video     = sum(1 for a in ads_f if "Vídeo"     in a["formato"])
                 n_imagem    = sum(1 for a in ads_f if "Imagem"    in a["formato"])
                 n_carrossel = sum(1 for a in ads_f if "Carrossel" in a["formato"])
@@ -14696,7 +14722,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    page_pic    = ad.get("page_profile_picture") or ""
+                    page_pic    = (ad.get("page_profile_picture") or "").strip() or _page_pic_fallback
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
 
@@ -14707,82 +14733,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     body_safe  = body_clean.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                     title_safe = title_clean.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                     desc_safe  = _truncar(desc_clean, 120).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
-
-                    _raw_item = next(
-                        (r for r in cache_entry.get("_raw", []) if str(r.get("adArchiveID") or r.get("ad_archive_id") or r.get("id") or "") == str(ad.get("id",""))),
-                        {}
-                    )
-                    _snapshot_raw = _raw_item.get("snapshot") or {}
-                    _cards_raw    = _snapshot_raw.get("cards") or []
-
-                    def _safe_url(v):
-                        if not v: return None
-                        if isinstance(v, str) and v.startswith("http"): return v
-                        return None
-
-                    debug_keys = {
-                        "id":                            ad.get("id", ""),
-                        "page_id":                       ad.get("page_id", ""),
-                        "page_name":                     ad.get("page_name", ""),
-                        "formato":                       ad.get("formato", ""),
-                        "plataformas":                   ad.get("plataformas", []),
-                        "data_raw":                      ad.get("data_raw", ""),
-                        "impressoes":                    ad.get("impressoes", ""),
-                        "is_dynamic":                    ad.get("is_dynamic", False),
-                        "ativo":                         ad.get("ativo", True),
-                        "cta":                           cta,
-                        "snapshot_url":                  _safe_url(snap_url),
-                        "ad_snapshot_url":               _safe_url(_raw_item.get("adSnapshotURL") or _raw_item.get("ad_snapshot_url")),
-                        "link_url":                      _safe_url(_raw_item.get("link_url") or _snapshot_raw.get("link_url")),
-                        "website_url":                   _safe_url(_raw_item.get("website_url") or _snapshot_raw.get("website_url")),
-                        "destination_url":               _safe_url(_raw_item.get("destination_url") or _snapshot_raw.get("destination_url")),
-                        "caption":                       ad.get("caption") or _snapshot_raw.get("caption"),
-                        "image_url":                     _safe_url(_raw_item.get("image_url")),
-                        "original_image_url":            _safe_url(_raw_item.get("original_image_url")),
-                        "resized_image_url":             _safe_url(_raw_item.get("resized_image_url")),
-                        "thumbnail_url":                 _safe_url(_raw_item.get("thumbnail_url")),
-                        "preview_image_url":             _safe_url(_raw_item.get("preview_image_url")),
-                        "full_picture":                  _safe_url(_raw_item.get("full_picture")),
-                        "snapshot.image_url":            _safe_url(_snapshot_raw.get("image_url")),
-                        "snapshot.original_image_url":   _safe_url(_snapshot_raw.get("original_image_url")),
-                        "snapshot.resized_image_url":    _safe_url(_snapshot_raw.get("resized_image_url")),
-                        "snapshot.thumbnail_url":        _safe_url(_snapshot_raw.get("thumbnail_url")),
-                        "snapshot.background_image":     _safe_url(_snapshot_raw.get("background_image")),
-                        "video_hd_url":                  _safe_url(_raw_item.get("video_hd_url") or _snapshot_raw.get("video_hd_url")),
-                        "video_sd_url":                  _safe_url(_raw_item.get("video_sd_url") or _snapshot_raw.get("video_sd_url")),
-                        "video_url":                     _safe_url(_raw_item.get("video_url")    or _snapshot_raw.get("video_url")),
-                        "videos_normalizados [0..3]":    videos[:4] if videos else [],
-                        "images_normalizadas [0..3]":    images[:4] if images else [],
-                        "cards_count":                   len(_cards_raw),
-                        "cards[0].link_url":             _safe_url(_cards_raw[0].get("link_url"))            if _cards_raw else None,
-                        "cards[0].image_url":            _safe_url(_cards_raw[0].get("image_url"))           if _cards_raw else None,
-                        "cards[0].original_image_url":   _safe_url(_cards_raw[0].get("original_image_url")) if _cards_raw else None,
-                        "cards[0].video_hd_url":         _safe_url(_cards_raw[0].get("video_hd_url"))       if _cards_raw else None,
-                        "cards[0].video_sd_url":         _safe_url(_cards_raw[0].get("video_sd_url"))       if _cards_raw else None,
-                        "cards[0].thumbnail_url":        _safe_url(_cards_raw[0].get("thumbnail_url"))      if _cards_raw else None,
-                        "cards[0].body":                 _cards_raw[0].get("body")                          if _cards_raw else None,
-                        "cards[0].title":                _cards_raw[0].get("title")                         if _cards_raw else None,
-                        "cards[0].cta_type":             _cards_raw[0].get("cta_type")                      if _cards_raw else None,
-                        "cards[1].image_url":            _safe_url(_cards_raw[1].get("image_url"))          if len(_cards_raw) > 1 else None,
-                        "cards[1].original_image_url":   _safe_url(_cards_raw[1].get("original_image_url")) if len(_cards_raw) > 1 else None,
-                        "cards[1].video_hd_url":         _safe_url(_cards_raw[1].get("video_hd_url"))       if len(_cards_raw) > 1 else None,
-                        "body_len":                      len(body),
-                        "title_len":                     len(title),
-                        "ad_creative_bodies":            _raw_item.get("ad_creative_bodies"),
-                        "ad_creative_link_titles":       _raw_item.get("ad_creative_link_titles"),
-                        "ad_creative_link_descriptions": _raw_item.get("ad_creative_link_descriptions"),
-                        "snapshot.body":                 _snapshot_raw.get("body"),
-                        "snapshot.title":                _snapshot_raw.get("title"),
-                        "snapshot.link_description":     _snapshot_raw.get("link_description"),
-                        "n_imagens_raw":                 len(images),
-                        "n_videos_raw":                  len(videos),
-                        "page_profile_picture":          _safe_url(ad.get("page_profile_picture")),
-                        "snapshot.page_profile_picture_url": _safe_url(_snapshot_raw.get("page_profile_picture_url")),
-                    }
-
-                    debug_keys["__RAW_COMPLETO__"] = _raw_item if _raw_item else "NÃO ENCONTRADO NO _raw"
-                    debug_json_str = _json.dumps(debug_keys, ensure_ascii=False, indent=2)
-                    debug_json_html = debug_json_str.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
                     img_thumb_url = images[1] if len(images) > 1 else (images[0] if images else "")
                     img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
@@ -15160,11 +15110,7 @@ function imgFallback_{uid}(img){{
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_ads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
-    <details style="margin:6px 10px 10px 10px;font-size:11px">
-        <summary style="cursor:pointer;color:#9ca3af;user-select:none">🐛 Dados brutos (debug)</summary>
-        <pre style="max-height:260px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;
-                    border-radius:6px;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-all">{debug_json_html}</pre>
-    </details>
+
 </div>
 <script>
 window.__PLATS_{uid}__ = {plat_js};

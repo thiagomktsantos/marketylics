@@ -8617,15 +8617,24 @@ function setHeightGeral(isOpen) {{
         if empresas_cards_data:
             _d0 = empresas_cards_data[0]
 
-            _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg)
+            _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg, contagem_txt)
             if _d0["tem_redes"]:
+                _qtd_posts_ring = _d0["redes"].get("n_total_tp", 0)
+                _txt_redes_ring = f'{_qtd_posts_ring} post{"s" if _qtd_posts_ring != 1 else ""} analisado{"s" if _qtd_posts_ring != 1 else ""}'
                 _areas.append(("Redes Sociais", _d0["redes"]["score_val"],
-                                _d0["redes"]["score_faltando"], "#3b82f6"))
+                                _d0["redes"]["score_faltando"], "#3b82f6", _txt_redes_ring))
             if _d0["seo_status_ok"]:
-                _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e"))
+                _qtd_sitemap_ring = _d0.get("sitemap_total", 0) or 0
+                _txt_site_ring = (
+                    f'{_qtd_sitemap_ring} página{"s" if _qtd_sitemap_ring != 1 else ""} no sitemap'
+                    if _qtd_sitemap_ring else "Site analisado"
+                )
+                _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e", _txt_site_ring))
             if _d0["tem_ads"]:
                 _ads_score_info = calcular_score_ads(_d0["ads"])
-                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6"))
+                _qtd_ads_ring = _d0["ads"].get("total", 0) or 0
+                _txt_ads_ring = f'{_qtd_ads_ring} anúncio{"s" if _qtd_ads_ring != 1 else ""} ativo{"s" if _qtd_ads_ring != 1 else ""}'
+                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _txt_ads_ring))
             else:
                 _ads_score_info = None
 
@@ -8759,7 +8768,7 @@ function setHeightGeral(isOpen) {{
                 }
 
                 _area_rings_html = ""
-                for _lbl, _sc, _falt, _cor_area in _areas:
+                for _lbl, _sc, _falt, _cor_area, _cnt_txt in _areas:
                     if _sc >= 91:   _area_txt = "Excelente"
                     elif _sc >= 81: _area_txt = "Muito bom"
                     elif _sc >= 60: _area_txt = "Bom"
@@ -8768,9 +8777,17 @@ function setHeightGeral(isOpen) {{
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
                     _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
+                    # Hover no anel: mostra a contagem bruta por trás do score
+                    # (posts analisados / páginas no sitemap / anúncios
+                    # ativos) — sem precisar clicar em nada pra entender de
+                    # onde veio o número.
+                    _svg_com_tip = (
+                        f'<div class="ring-tip-wrap">{_svg_only}'
+                        f'<div class="tip">{_cnt_txt}</div></div>'
+                    )
                     _area_rings_html += (
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:84px;flex-shrink:0;">'
-                        + _svg_only +
+                        + _svg_com_tip +
                         '<div>'
                         f'<div style="font-size:12px;font-weight:800;color:#1a2e4a;line-height:1.25;">{_lbl}</div>'
                         f'<div style="font-size:11px;font-weight:800;"><span style="color:{_cor_area};font-size:15px;">{_sc}</span><span style="color:#9ca3af;font-weight:600;">/100</span></div>'
@@ -8805,7 +8822,7 @@ function setHeightGeral(isOpen) {{
                 # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
                 _oportunidades_top = []
-                for _lbl, _sc, _falt, _cor_a in _areas_ordenadas:
+                for _lbl, _sc, _falt, _cor_a, _cnt_ignora in _areas_ordenadas:
                     if _falt:
                         _oportunidades_top.append((_lbl, _falt[0], _cor_a))
                     if len(_oportunidades_top) >= 3:
@@ -8915,6 +8932,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     border:5px solid transparent; border-top-color:#1a2e4a;
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
+.ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
+.ring-tip-wrap .tip {{
+    display:none; position:absolute; top:78px; left:50%; transform:translateX(-50%);
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:7px 11px; font-size:11px;
+    font-weight:700; line-height:1.4; white-space:nowrap; z-index:9999;
+    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
+}}
+.ring-tip-wrap .tip::after {{
+    content:''; position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    border:5px solid transparent; border-bottom-color:#1a2e4a;
+}}
+.ring-tip-wrap:hover .tip {{ display:block; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>

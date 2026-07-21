@@ -14833,7 +14833,16 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # resto do card (ver wrapEl.addEventListener acima):
                         # o array vai numa variável JS separada, dentro de um
                         # <script>, e o clique é ligado via addEventListener.
-                        _imgs_dyn_alt = [u for u in images[:4] if u]
+                        # Exclui a própria capa do vídeo (video_preview_image_url,
+                        # que entra misturada na lista geral de imagens do
+                        # anúncio) — sem isso, quando o anúncio dinâmico não
+                        # tinha NENHUMA imagem realmente alternativa, o badge
+                        # "+1" aparecia e o modal só reexibia a mesma thumb já
+                        # visível no card (parecia quebrado/redundante).
+                        _imgs_dyn_alt = [
+                            u for u in images[:4]
+                            if u and u not in (img_thumb_url, img_primary)
+                        ]
                         if _imgs_dyn_alt:
                             _imgs_dyn_js = _json.dumps(_imgs_dyn_alt, ensure_ascii=True)
                             imgs_badge_html = f"""

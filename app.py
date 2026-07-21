@@ -199,6 +199,30 @@ _SVG_ICONE_TRANSCRICAO_PENDENTE = (
 )
 
 # ---------------------------------------------------
+#  ÍCONES SVG — MÉTRICAS DO CARD DE REDES (curtidas, comentários,
+#  engajamento), no lugar dos emojis ❤️ 💬 ⚡.
+# ---------------------------------------------------
+
+_SVG_ICONE_CURTIDA = (
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="#ef4444">'
+    '<path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09'
+    'C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_COMENTARIO_POST = (
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="#ec4899">'
+    '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_ENGAJAMENTO = (
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="#f59e0b">'
+    '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
+    '</svg>'
+)
+
+# ---------------------------------------------------
 #  SUPABASE
 # ---------------------------------------------------
 
@@ -20095,16 +20119,17 @@ function buildGrid(posts) {{
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
             : '<div class="thumb-fallback" onclick="openModalByIdx(' + idx + ')"><span style="font-size:28px">' + iconFallback + '</span><span style="font-size:11px;color:#9ca3af;margin-top:4px">Sem imagem</span></div>' + dotsHtml;
+        var verCriativoBadge = '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>';
         var card = document.createElement('div');
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =
             '<div class="thumb-wrap" id="tw_' + idx + '" onclick="openModalByIdx(' + idx + ')">' + thumbInner
-            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + '</div>'
+            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + verCriativoBadge + '</div>'
             + '<div class="metrics-row">'
             + '<div class="metric-cell"><span class="metric-cell-val" style="font-size:11px;font-weight:700">' + (p.date || '—') + '</span></div>'
-            + '<div class="metric-cell"><span class="metric-cell-lbl">❤️</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'
-            + '<div class="metric-cell"><span class="metric-cell-lbl">💬</span><span class="metric-cell-val">' + fmtNum(p.comments||0) + '</span></div>'
-            + '<div class="metric-cell"><span class="metric-cell-lbl">⚡</span><span class="metric-cell-val eng">' + fmtNum(engTotal) + '</span></div>'
+            + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_CURTIDA}</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'
+            + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_COMENTARIO_POST}</span><span class="metric-cell-val">' + fmtNum(p.comments||0) + '</span></div>'
+            + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_ENGAJAMENTO}</span><span class="metric-cell-val eng">' + fmtNum(engTotal) + '</span></div>'
             + '</div>'
             + '<div class="card-caption-wrap">'
             + (hasCaption ? '<div class="card-caption" id="cap_' + idx + '">' + p.caption + '</div><button class="ver-copy-btn" id="vcb_' + idx + '" onclick="toggleCopy(' + idx + ')">ver mais</button>' : '<span class="no-caption">Sem legenda</span>')

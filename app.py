@@ -8438,8 +8438,8 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
                     '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
                     '<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-                    f'{_SVG_ICONE_CHECK} Tem bio +20<br>{_SVG_ICONE_CHECK} Proposta de valor +20<br>{_SVG_ICONE_CHECK} Posicionamento +20<br>'
-                    f'{_SVG_ICONE_CHECK} Link na bio +15<br>{_SVG_ICONE_CHECK} CTA na bio +15<br>{_SVG_ICONE_CHECK} Engajamento ≥3% +10'
+                    f'{_SVG_ICONE_CHECK_BOLA} Tem bio +20<br>{_SVG_ICONE_CHECK_BOLA} Proposta de valor +20<br>{_SVG_ICONE_CHECK_BOLA} Posicionamento +20<br>'
+                    f'{_SVG_ICONE_CHECK_BOLA} Link na bio +15<br>{_SVG_ICONE_CHECK_BOLA} CTA na bio +15<br>{_SVG_ICONE_CHECK_BOLA} Engajamento ≥3% +10'
                     '</div></div></div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
@@ -8791,27 +8791,19 @@ function setHeightGeral(isOpen) {{
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
                     _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
-                    # Hover no anel: mostra a SOMA dos pontos de cada
-                    # critério até chegar no score (não só o número final) —
-                    # uma linha por critério, com check verde/x cinza, mais
-                    # uma linha de total no final que bate com o score
-                    # exibido embaixo do anel.
-                    _linhas_crit_ring = []
-                    for _cr in _crit_ring:
-                        _cor_cr = "#22c55e" if _cr.get("ok") else "#94a3b8"
-                        _marca_cr = "✓" if _cr.get("ok") else "–"
-                        _linhas_crit_ring.append(
-                            f'<div style="display:flex;justify-content:space-between;gap:14px;">'
-                            f'<span style="color:{_cor_cr};">{_marca_cr} {_cr.get("label","")}</span>'
-                            f'<span style="color:{_cor_cr};font-weight:800;">{_cr.get("pts",0)}</span>'
-                            f'</div>'
-                        )
-                    _linhas_crit_ring.append(
-                        f'<div style="display:flex;justify-content:space-between;gap:14px;margin-top:5px;'
-                        f'padding-top:5px;border-top:1px solid rgba(255,255,255,0.25);font-weight:800;">'
-                        f'<span>Total</span><span>{_sc}/100</span></div>'
+                    # Hover no anel: mesmo padrão visual do "Como é calculado"
+                    # usado no Score de SEO e no Score de Perfil — cabeçalho +
+                    # uma linha por critério com a bolinha verde de check (SVG)
+                    # e o peso de cada um, em vez do layout antigo (✓/– com
+                    # coluna de pontos à direita e linha de "Total" separada).
+                    _linhas_crit_ring = [
+                        f'{_SVG_ICONE_CHECK_BOLA} {_cr.get("label","")} +{_cr.get("peso", _cr.get("pts", 0))}<br>'
+                        for _cr in _crit_ring
+                    ]
+                    _tip_crit_ring = (
+                        '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
+                        + "".join(_linhas_crit_ring)
                     )
-                    _tip_crit_ring = "".join(_linhas_crit_ring)
                     _svg_com_tip = (
                         f'<div class="ring-tip-wrap">{_svg_only}'
                         f'<div class="tip">{_tip_crit_ring}</div></div>'
@@ -9071,7 +9063,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
         floatTip.style.cssText = [
             'display:none', 'position:absolute', 'background:#1a2e4a', 'color:#fff',
             'border-radius:8px', 'padding:10px 12px', 'font-size:11px', 'font-weight:600',
-            'line-height:1.6', 'width:190px', 'text-align:left', 'z-index:999999',
+            'line-height:1.8', 'width:200px', 'text-align:left', 'z-index:999999',
             "box-shadow:0 4px 16px rgba(0,0,0,0.25)", 'pointer-events:none',
             "font-family:'DM Sans',sans-serif"
         ].join(';');
@@ -9282,7 +9274,7 @@ function buildSeoColumn(d,colEl) {{
         +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
         +'<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
         +'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
-        +'✅ Title +20<br>✅ H1 +20<br>✅ Meta Desc. +20<br>✅ Seções (H2) +20<br>✅ Sitemap +20'
+        +'{_SVG_ICONE_CHECK_BOLA} Title +20<br>{_SVG_ICONE_CHECK_BOLA} H1 +20<br>{_SVG_ICONE_CHECK_BOLA} Meta Desc. +20<br>{_SVG_ICONE_CHECK_BOLA} Seções (H2) +20<br>{_SVG_ICONE_CHECK_BOLA} Sitemap +20'
         +'</div></div>'
         +'</div>'
         +'</div>'

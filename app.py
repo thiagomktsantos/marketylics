@@ -13857,8 +13857,10 @@ window.addEventListener('load', syncHeight);
 
             if emp_item["tipo"] == "minha":
                 configured_page = emp.get("ads_id","").strip()
+                _ads_page_pic_salva = (emp.get("ads_page_pic","") or "").strip()
             else:
                 configured_page = concs[emp_item["idx"]].get("ads_id","").strip()
+                _ads_page_pic_salva = (concs[emp_item["idx"]].get("ads_page_pic","") or "").strip()
 
             if ck in st.session_state.ads_erro:
                 st.error(f"Erro: {st.session_state.ads_erro[ck]}")
@@ -14166,7 +14168,7 @@ Amostra dos anúncios:
             if ia_ind_ghost_css:
                 st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
 
-            page_pic_empresa = next(
+            page_pic_empresa = _ads_page_pic_salva if _ads_page_pic_salva.startswith("http") else next(
                 (
                     (a.get("page_profile_picture") or "").strip()
                     for a in ads_list
@@ -14630,11 +14632,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # Como a foto de perfil da página é a MESMA pra todos os
                 # anúncios de uma empresa, em vez de cair pro círculo com
                 # a inicial só porque aquele anúncio específico não tem o
-                # campo, usamos a primeira foto válida encontrada entre
+                # campo, priorizamos a logo já salva na própria empresa
+                # (_ads_page_pic_salva — configurada uma vez em "Editar
+                # empresa"/"Salvar ID" e por isso a fonte mais confiável) e,
+                # se ela não existir, caímos pra primeira foto válida entre
                 # TODOS os anúncios da empresa (ads_list, não só ads_f, pra
                 # não perder o fallback quando o filtro atual esconde o
                 # único anúncio que tinha a foto).
-                _page_pic_fallback = next(
+                _page_pic_fallback = _ads_page_pic_salva if _ads_page_pic_salva.startswith("http") else next(
                     (
                         (a.get("page_profile_picture") or "").strip()
                         for a in ads_list
@@ -14746,7 +14751,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    page_pic    = (ad.get("page_profile_picture") or "").strip() or _page_pic_fallback
+                    page_pic    = _page_pic_fallback or (ad.get("page_profile_picture") or "").strip()
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
 
@@ -20087,12 +20092,6 @@ function buildGrid(posts) {{
         var idx        = p.jp;
         var hasCaption = !!(p.caption && p.caption.trim());
         var mediaType  = p.media_type || 1;
-        var typeLbl    = mediaType === 8 ? 'Carrossel' : (mediaType === 2 ? 'Vídeo' : 'Foto');
-        var badgeColor = mediaType === 8 ? '#7c3aed'   : (mediaType === 2 ? '#e1306c' : '#0ea5e9');
-        var badgeIcon;
-        if (mediaType === 2) {{ badgeIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>'; }}
-        else if (mediaType === 8) {{ badgeIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="16" y1="2" x2="16" y2="22"/></svg>'; }}
-        else {{ badgeIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="white"/><polyline points="21 15 16 10 5 21"/></svg>'; }}
         var thumbUrl     = (p.thumb  || '').trim();
         var engTotal     = (p.likes||0) + (p.comments||0);
         var igUrl        = p.ig_url || '#';
@@ -20124,7 +20123,7 @@ function buildGrid(posts) {{
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =
             '<div class="thumb-wrap" id="tw_' + idx + '" onclick="openModalByIdx(' + idx + ')">' + thumbInner
-            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + verCriativoBadge + '</div>'
+            + transcBadge + verCriativoBadge + '</div>'
             + '<div class="metrics-row">'
             + '<div class="metric-cell"><span class="metric-cell-val" style="font-size:11px;font-weight:700">' + (p.date || '—') + '</span></div>'
             + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_CURTIDA}</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'

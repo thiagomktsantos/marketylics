@@ -174,6 +174,34 @@ _SVG_ICONE_PONTO = (
 )
 
 # ---------------------------------------------------
+#  ÍCONES SVG — BIBLIOTECA DE ADS. Badges sobre a thumb do vídeo
+#  (imagens alternativas do anúncio dinâmico e transcrição do áudio).
+# ---------------------------------------------------
+
+_SVG_ICONE_IMAGENS_ALT = (
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/>'
+    '<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_TRANSCRICAO = (
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 '
+    '8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'
+    '</svg>'
+)
+
+_SVG_ICONE_TRANSCRICAO_PENDENTE = (
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'
+    '</svg>'
+)
+
+# ---------------------------------------------------
 #  SUPABASE
 # ---------------------------------------------------
 
@@ -14851,7 +14879,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:pointer;display:flex;align-items:center;gap:4px">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg> +{len(_imgs_dyn_alt)}
+        {_SVG_ICONE_IMAGENS_ALT} +{len(_imgs_dyn_alt)}
     </div>"""
                             imgs_badge_script = f"""
 <script>
@@ -14908,7 +14936,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg> Transcrição
+        {_SVG_ICONE_TRANSCRICAO} Transcrição
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = """
@@ -14917,7 +14945,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Transcrevendo…
+        {_SVG_ICONE_TRANSCRICAO_PENDENTE} Transcrevendo…
     </div>"""
                         else:
                             transcricao_badge_html = ""

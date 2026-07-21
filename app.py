@@ -8955,17 +8955,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
-.ring-tip-wrap .tip {{
-    display:none; position:absolute; top:78px; left:50%; transform:translateX(-50%);
-    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
-    font-weight:600; line-height:1.6; width:190px; text-align:left; z-index:9999;
-    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
-}}
-.ring-tip-wrap .tip::after {{
-    content:''; position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
-    border:5px solid transparent; border-bottom-color:#1a2e4a;
-}}
-.ring-tip-wrap:hover .tip {{ display:block; }}
+.ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>
@@ -9053,16 +9043,70 @@ function syncH() {{
 }}
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
-// O tooltip dos anéis (`.ring-tip-wrap .tip`) é position:absolute, então o
-// ResizeObserver acima (que olha o tamanho "em fluxo" do body) não pega
-// quando ele aparece/some no hover — o iframe fica com a altura antiga e
-// corta o tooltip embaixo, ficando por trás do conteúdo seguinte da
-// página. Recalcula a altura (com scrollHeight, que SIM enxerga o
-// overflow do tooltip) logo que o mouse entra/sai de cada anel.
-document.querySelectorAll('.ring-tip-wrap').forEach(function(w) {{
-    w.addEventListener('mouseenter', function() {{ setTimeout(syncH, 20); }});
-    w.addEventListener('mouseleave', function() {{ setTimeout(syncH, 20); }});
-}});
+
+// Tooltip dos anéis: um iframe SEMPRE corta qualquer conteúdo que passe da
+// borda dele, mesmo redimensionando o iframe depois — não dá pra confiar
+// em "crescer o iframe no hover". A solução é renderizar o tooltip direto
+// no documento PAI (a página de verdade), posicionado por coordenadas via
+// JS — o mesmo truque que `irParaAreaPrioritaria()` já usa pra clicar num
+// botão da sidebar de dentro do iframe. O `.tip` de cada anel some do CSS
+// (display:none sempre) e serve só de "molde" com o conteúdo pronto — no
+// hover, clonamos esse HTML pra dentro de uma div única, anexada no body
+// do pai, posicionada logo abaixo do anel.
+(function() {{
+    var doc = window.parent.document;
+    var floatTip = null;
+    function getFloatTip() {{
+        if (floatTip && doc.body.contains(floatTip)) return floatTip;
+        floatTip = doc.createElement('div');
+        floatTip.style.cssText = [
+            'display:none', 'position:absolute', 'background:#1a2e4a', 'color:#fff',
+            'border-radius:8px', 'padding:10px 12px', 'font-size:11px', 'font-weight:600',
+            'line-height:1.6', 'width:190px', 'text-align:left', 'z-index:999999',
+            "box-shadow:0 4px 16px rgba(0,0,0,0.25)", 'pointer-events:none',
+            "font-family:'DM Sans',sans-serif"
+        ].join(';');
+        var seta = doc.createElement('div');
+        seta.style.cssText = [
+            'position:absolute', 'bottom:100%', 'left:50%', 'transform:translateX(-50%)',
+            'border:5px solid transparent', 'border-bottom-color:#1a2e4a'
+        ].join(';');
+        floatTip.appendChild(seta);
+        var conteudo = doc.createElement('div');
+        conteudo.className = 'conteudo';
+        floatTip.appendChild(conteudo);
+        doc.body.appendChild(floatTip);
+        return floatTip;
+    }}
+    function achaMeuIframe() {{
+        var iframes = doc.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {{
+            try {{ if (iframes[i].contentWindow === window) return iframes[i]; }} catch (e) {{}}
+        }}
+        return null;
+    }}
+    document.querySelectorAll('.ring-tip-wrap').forEach(function(w) {{
+        var tipEl = w.querySelector('.tip');
+        if (!tipEl) return;
+        w.addEventListener('mouseenter', function() {{
+            var ifr = achaMeuIframe();
+            if (!ifr) return;
+            var ifrRect = ifr.getBoundingClientRect();
+            var wRect = w.getBoundingClientRect();
+            var scrollX = (doc.defaultView.scrollX || doc.documentElement.scrollLeft || 0);
+            var scrollY = (doc.defaultView.scrollY || doc.documentElement.scrollTop || 0);
+            var ft = getFloatTip();
+            ft.querySelector('.conteudo').innerHTML = tipEl.innerHTML;
+            ft.style.top = (ifrRect.top + wRect.bottom + scrollY + 6) + 'px';
+            ft.style.left = (ifrRect.left + wRect.left + wRect.width / 2 + scrollX) + 'px';
+            ft.style.transform = 'translateX(-50%)';
+            ft.style.display = 'block';
+        }});
+        w.addEventListener('mouseleave', function() {{
+            if (floatTip) floatTip.style.display = 'none';
+        }});
+    }});
+}})();
 </script>
 </body></html>
 """

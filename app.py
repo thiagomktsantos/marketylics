@@ -14746,7 +14746,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    page_pic    = (ad.get("page_profile_picture") or "").strip() or _page_pic_fallback
+                    # Antes usava o link salvo em CADA anúncio individualmente,
+                    # e só caía pro fallback quando o campo vinha vazio. Só que
+                    # anúncios antigos costumam ter esse campo preenchido com um
+                    # link do Meta que já expirou (não vazio, só quebrado) — daí
+                    # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
+                    # usa sempre o MESMO link do cabeçalho (page_pic_empresa),
+                    # que já é a primeira foto válida entre todos os anúncios
+                    # da empresa — foto de perfil da página é uma só pra todos.
+                    page_pic    = page_pic_empresa or _page_pic_fallback
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
 

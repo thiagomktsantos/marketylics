@@ -14418,21 +14418,23 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     padding: 0 14px !important;
                     font-family: 'DM Sans', sans-serif !important;
                     font-size: 14px !important;
-                    color: #111827 !important;
+                    color: #374151 !important;
                     transition: border-color 0.15s !important;
                 }}
-                .st-key-{filtros_key} div[data-baseweb="select"] {{
+                .st-key-{filtros_key} div[data-baseweb="select"],
+                .st-key-{filtros_key} div[data-baseweb="select"] > div:first-child {{
                     background-color: #fafafa !important;
                     border: 1px solid #e5e7eb !important;
                     border-radius: 8px !important;
                     height: 40px !important;
                     min-height: 40px !important;
+                    width: 100% !important;
+                    box-sizing: border-box !important;
                     display: flex !important;
                     align-items: center !important;
                     padding: 0 10px !important;
                     box-shadow: none !important;
                     transition: border-color 0.15s !important;
-                    box-sizing: border-box !important;
                 }}
                 .st-key-{filtros_key} div[data-baseweb="select"] * {{
                     background: transparent !important;
@@ -14448,7 +14450,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     padding: 0 !important;
                     font-family: 'DM Sans', sans-serif !important;
                     font-size: 14px !important;
-                    color: #6b7280 !important;
+                    color: #374151 !important;
                 }}
                 .st-key-{filtros_key} div[data-baseweb="select"] input {{
                     caret-color: transparent !important;

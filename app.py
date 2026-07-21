@@ -14421,7 +14421,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     color: #111827 !important;
                     transition: border-color 0.15s !important;
                 }}
-                .st-key-{filtros_key} div[data-baseweb="select"] > div {{
+                .st-key-{filtros_key} div[data-baseweb="select"] > div,
+                .st-key-{filtros_key} div[data-testid="stSelectbox"] div:has(input[role="combobox"]) {{
                     background-color: #fafafa !important;
                     border: 1px solid #e5e7eb !important;
                     border-radius: 8px !important;
@@ -14434,11 +14435,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     box-shadow: none !important;
                     transition: border-color 0.15s !important;
                 }}
-                .st-key-{filtros_key} div[data-baseweb="select"] > div > div {{
-                    background: transparent !important;
-                    border: none !important;
-                    padding: 0 !important;
-                }}
                 .st-key-{filtros_key} div[data-testid="stSelectbox"] input[role="combobox"] {{
                     background: transparent !important;
                     border: none !important;
@@ -14449,8 +14445,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     font-family: 'DM Sans', sans-serif !important;
                     font-size: 14px !important;
                     color: #6b7280 !important;
-                }}
-                .st-key-{filtros_key} div[data-baseweb="select"] input {{
                     caret-color: transparent !important;
                     cursor: pointer !important;
                 }}

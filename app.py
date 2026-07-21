@@ -80,6 +80,19 @@ _SVG_ICONE_CHECK = (
     '</svg>'
 )
 
+# Bolinha verde preenchida com check branco — versão em SVG do emoji "✅",
+# usada nos hovers "Como é calculado" (Score de SEO, Score de Perfil, anéis
+# de Redes Sociais/Site/Anúncios) pra manter o mesmo padrão visual em vez
+# de misturar emoji com ícone vetorial.
+_SVG_ICONE_CHECK_BOLA = (
+    '<span style="display:inline-flex;align-items:center;justify-content:center;'
+    'width:13px;height:13px;min-width:13px;border-radius:50%;background:#22c55e;'
+    'vertical-align:-2px;margin-right:2px;">'
+    '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+    'stroke-width="4" stroke-linecap="round" stroke-linejoin="round">'
+    '<polyline points="20 6 9 17 4 12"/></svg></span>'
+)
+
 _SVG_ICONE_ERRO = (
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
     'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '

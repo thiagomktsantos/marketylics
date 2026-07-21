@@ -9053,6 +9053,16 @@ function syncH() {{
 }}
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
 setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
+// O tooltip dos anéis (`.ring-tip-wrap .tip`) é position:absolute, então o
+// ResizeObserver acima (que olha o tamanho "em fluxo" do body) não pega
+// quando ele aparece/some no hover — o iframe fica com a altura antiga e
+// corta o tooltip embaixo, ficando por trás do conteúdo seguinte da
+// página. Recalcula a altura (com scrollHeight, que SIM enxerga o
+// overflow do tooltip) logo que o mouse entra/sai de cada anel.
+document.querySelectorAll('.ring-tip-wrap').forEach(function(w) {{
+    w.addEventListener('mouseenter', function() {{ setTimeout(syncH, 20); }});
+    w.addEventListener('mouseleave', function() {{ setTimeout(syncH, 20); }});
+}});
 </script>
 </body></html>
 """

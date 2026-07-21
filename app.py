@@ -13857,10 +13857,8 @@ window.addEventListener('load', syncHeight);
 
             if emp_item["tipo"] == "minha":
                 configured_page = emp.get("ads_id","").strip()
-                _ads_page_pic_salva = (emp.get("ads_page_pic","") or "").strip()
             else:
                 configured_page = concs[emp_item["idx"]].get("ads_id","").strip()
-                _ads_page_pic_salva = (concs[emp_item["idx"]].get("ads_page_pic","") or "").strip()
 
             if ck in st.session_state.ads_erro:
                 st.error(f"Erro: {st.session_state.ads_erro[ck]}")
@@ -14168,7 +14166,7 @@ Amostra dos anúncios:
             if ia_ind_ghost_css:
                 st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
 
-            page_pic_empresa = _ads_page_pic_salva if _ads_page_pic_salva.startswith("http") else next(
+            page_pic_empresa = next(
                 (
                     (a.get("page_profile_picture") or "").strip()
                     for a in ads_list
@@ -14632,14 +14630,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # Como a foto de perfil da página é a MESMA pra todos os
                 # anúncios de uma empresa, em vez de cair pro círculo com
                 # a inicial só porque aquele anúncio específico não tem o
-                # campo, priorizamos a logo já salva na própria empresa
-                # (_ads_page_pic_salva — configurada uma vez em "Editar
-                # empresa"/"Salvar ID" e por isso a fonte mais confiável) e,
-                # se ela não existir, caímos pra primeira foto válida entre
+                # campo, usamos a primeira foto válida encontrada entre
                 # TODOS os anúncios da empresa (ads_list, não só ads_f, pra
                 # não perder o fallback quando o filtro atual esconde o
                 # único anúncio que tinha a foto).
-                _page_pic_fallback = _ads_page_pic_salva if _ads_page_pic_salva.startswith("http") else next(
+                _page_pic_fallback = next(
                     (
                         (a.get("page_profile_picture") or "").strip()
                         for a in ads_list
@@ -14751,7 +14746,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    page_pic    = _page_pic_fallback or (ad.get("page_profile_picture") or "").strip()
+                    page_pic    = (ad.get("page_profile_picture") or "").strip() or _page_pic_fallback
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
 
@@ -19691,8 +19686,8 @@ body{{padding-bottom:8px;}}
 }}
 .metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; }}
 .metric-cell:last-child {{ border-right:none; }}
-.metric-cell-lbl {{ font-size:13px; margin-bottom:2px; margin-right:4px; line-height:1; display:inline-flex; align-items:center; vertical-align:middle; }}
-.metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; vertical-align:middle; }}
+.metric-cell-lbl {{ font-size:13px; margin-bottom:2px; line-height:1; }}
+.metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; }}
 .metric-cell-val.eng {{ color:#3a9fd6; }}
 .card-caption-wrap {{ padding:10px 12px 8px; flex:1; }}
 .card-caption {{
@@ -20092,6 +20087,12 @@ function buildGrid(posts) {{
         var idx        = p.jp;
         var hasCaption = !!(p.caption && p.caption.trim());
         var mediaType  = p.media_type || 1;
+        var typeLbl    = mediaType === 8 ? 'Carrossel' : (mediaType === 2 ? 'Vídeo' : 'Foto');
+        var badgeColor = mediaType === 8 ? '#7c3aed'   : (mediaType === 2 ? '#e1306c' : '#0ea5e9');
+        var badgeIcon;
+        if (mediaType === 2) {{ badgeIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21"/></svg>'; }}
+        else if (mediaType === 8) {{ badgeIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="8" y1="2" x2="8" y2="22"/><line x1="16" y1="2" x2="16" y2="22"/></svg>'; }}
+        else {{ badgeIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="white"/><polyline points="21 15 16 10 5 21"/></svg>'; }}
         var thumbUrl     = (p.thumb  || '').trim();
         var engTotal     = (p.likes||0) + (p.comments||0);
         var igUrl        = p.ig_url || '#';
@@ -20118,12 +20119,12 @@ function buildGrid(posts) {{
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
             : '<div class="thumb-fallback" onclick="openModalByIdx(' + idx + ')"><span style="font-size:28px">' + iconFallback + '</span><span style="font-size:11px;color:#9ca3af;margin-top:4px">Sem imagem</span></div>' + dotsHtml;
-        var verCriativoBadge = p.is_video ? '' : '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVO</div>';
+        var verCriativoBadge = '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>';
         var card = document.createElement('div');
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =
             '<div class="thumb-wrap" id="tw_' + idx + '" onclick="openModalByIdx(' + idx + ')">' + thumbInner
-            + transcBadge + verCriativoBadge + '</div>'
+            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + verCriativoBadge + '</div>'
             + '<div class="metrics-row">'
             + '<div class="metric-cell"><span class="metric-cell-val" style="font-size:11px;font-weight:700">' + (p.date || '—') + '</span></div>'
             + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_CURTIDA}</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'

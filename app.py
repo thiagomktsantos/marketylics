@@ -20088,9 +20088,9 @@ function buildGrid(posts) {{
         var transcBadge = '';
         if (p.is_video && p.transcricao_status === 'pronta') {{
             var tTxt = (p.transcricao_texto || '').replace(/"/g, '&quot;');
-            transcBadge = '<div class="transcricao-badge pronta" data-texto="' + tTxt + '" onmouseenter="mostrarTranscricaoTip(event)" onmouseleave="esconderTranscricaoTip()" onclick="event.stopPropagation()">💬 Transcrição</div>';
+            transcBadge = '<div class="transcricao-badge pronta" data-texto="' + tTxt + '" onmouseenter="mostrarTranscricaoTip(event)" onmouseleave="esconderTranscricaoTip()" onclick="event.stopPropagation()">{_SVG_ICONE_TRANSCRICAO} Transcrição</div>';
         }} else if (p.is_video && p.transcricao_status === 'pendente') {{
-            transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve" onclick="event.stopPropagation()">⏳ Transcrevendo…</div>';
+            transcBadge = '<div class="transcricao-badge pendente" title="Áudio ainda sendo transcrito — aparece em breve" onclick="event.stopPropagation()">{_SVG_ICONE_TRANSCRICAO_PENDENTE} Transcrevendo…</div>';
         }}
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml

@@ -8864,6 +8864,22 @@ function setHeightGeral(isOpen) {{
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )
 
+                # ── CTA do insight: manda direto pra página da área mais
+                # fraca (a mesma que o texto acima já recomendou priorizar)
+                # em vez de um "ver todos os insights" genérico que levaria
+                # pra página de Insights (estratégias por concorrente —
+                # assunto diferente, sem relação com pendências por área).
+                # Ver 'irParaAreaPrioritaria()' no <script> logo abaixo.
+                _MAPA_AREA_PAGINA_CTA = {
+                    "Redes Sociais": ("redes", "Redes"),
+                    "Site":          ("sites", "Site"),
+                    "Anúncios":      ("ads",   "Anúncios"),
+                }
+                _pagina_prioritaria_cta, _label_prioritaria_cta = _MAPA_AREA_PAGINA_CTA.get(
+                    _pior[0], ("geral", _pior[0])
+                )
+                _cta_insight_txt = f"Ver oportunidades em {_label_prioritaria_cta}"
+
                 resumo_executivo_html = f"""
 <!DOCTYPE html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -8899,6 +8915,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     border:5px solid transparent; border-top-color:#1a2e4a;
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
+.insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>
 <div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
@@ -8952,13 +8969,30 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
     </div>
     <div style="font-size:12.5px;color:#374151;line-height:1.7;">{_insight_txt}</div>
-    <div style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
-      Ver todos os insights
+    <div class="insight-cta" onclick="irParaAreaPrioritaria()" style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
+      {_cta_insight_txt}
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
   </div>
 </div>
 <script>
+function irParaAreaPrioritaria() {{
+    // Mesmo truque já usado no menu lateral (função `nav()` no topbar) e
+    // nos botões fantasma de excluir/refazer: os botões ocultos da
+    // sidebar (um por página, ver `paginas` na renderização da sidebar)
+    // têm como texto visível a própria chave da página ("sites", "ads",
+    // "redes"...) — clicar neles aciona a navegação real do Streamlit.
+    // Precisa ser reimplementado aqui (em vez de chamar `nav()` direto)
+    // porque este card roda num iframe separado do topbar, então funções
+    // JS de um não enxergam o outro.
+    var alvo = '{_pagina_prioritaria_cta}';
+    var doc = window.parent.document;
+    var btns = doc.querySelectorAll('[data-testid="stSidebar"] button');
+    for (var i = 0; i < btns.length; i++) {{
+        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\s+/g, ' ').trim();
+        if (txt === alvo) {{ btns[i].click(); return; }}
+    }}
+}}
 function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');

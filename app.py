@@ -19686,8 +19686,8 @@ body{{padding-bottom:8px;}}
 }}
 .metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; }}
 .metric-cell:last-child {{ border-right:none; }}
-.metric-cell-lbl {{ font-size:13px; margin-bottom:2px; line-height:1; }}
-.metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; }}
+.metric-cell-lbl {{ font-size:13px; margin-bottom:2px; margin-right:4px; line-height:1; display:inline-flex; align-items:center; vertical-align:middle; }}
+.metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; vertical-align:middle; }}
 .metric-cell-val.eng {{ color:#3a9fd6; }}
 .card-caption-wrap {{ padding:10px 12px 8px; flex:1; }}
 .card-caption {{
@@ -20119,7 +20119,7 @@ function buildGrid(posts) {{
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
             : '<div class="thumb-fallback" onclick="openModalByIdx(' + idx + ')"><span style="font-size:28px">' + iconFallback + '</span><span style="font-size:11px;color:#9ca3af;margin-top:4px">Sem imagem</span></div>' + dotsHtml;
-        var verCriativoBadge = '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>';
+        var verCriativoBadge = p.is_video ? '' : '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVO</div>';
         var card = document.createElement('div');
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =

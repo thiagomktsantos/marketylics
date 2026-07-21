@@ -8089,11 +8089,11 @@ function setHeightGeral(isOpen) {{
     box-shadow: 0 6px 20px rgba(0,0,0,0.28); pointer-events: none;
     font-family: 'DM Sans', sans-serif; text-align: left;
 }
-.oport-wrap .oport-tip::after {
-    content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-    border: 6px solid transparent; border-bottom-color: #1a2e4a;
-}
-.oport-wrap:hover .oport-tip { display: block; }
+/* Sem ':hover { display:block }' aqui de propósito: este tooltip agora é
+   clonado e exibido por JS, direto no documento pai (ver o listener de
+   'mouseover' delegado logo abaixo) — assim ele escapa do 'overflow:hidden'
+   de '.empresa-card' e do corte do iframe. O elemento original (.oport-tip)
+   só serve de molde escondido com o conteúdo pronto. */
 .score-tooltip-wrap { position:relative; display:inline-flex; align-items:center; }
 .score-tooltip-wrap .tip {
     display:none; position:absolute; bottom:22px; left:50%; transform:translateX(-50%);
@@ -8101,11 +8101,7 @@ function setHeightGeral(isOpen) {{
     line-height:1.8; width:200px; z-index:9999; white-space:normal;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
 }
-.score-tooltip-wrap .tip::after {
-    content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%);
-    border:5px solid transparent; border-top-color:#1a2e4a;
-}
-.score-tooltip-wrap:hover .tip { display:block; }
+/* Mesmo motivo do .oport-tip acima: sem ':hover' aqui, exibido via JS. */
 .q-badge {
     width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
     align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
@@ -9370,6 +9366,83 @@ function syncH() {{
         try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-57px';break;}}}}catch(e){{}}
     }}
 }}
+// Tooltips flutuantes: aqui tem DOIS níveis de corte — o iframe em si, e
+// cada '.empresa-card' tem 'overflow:hidden' próprio (pra arredondar as
+// bordas do card). Um tooltip position:absolute dentro do card nunca
+// escapa nenhum dos dois. Solução: desenhar o tooltip direto no
+// documento PAI (a página de verdade), fora do iframe e do card. Usa
+// delegação de evento (mouseover/mouseout no 'document') em vez de
+// addEventListener por elemento, porque os cards — e os tooltips dentro
+// deles — só existem depois que buildCards()/buildSeoColumn() rodam,
+// ou seja, depois deste script já ter sido executado.
+(function() {{
+    var doc = window.parent.document;
+    var floatTip = null;
+    function getFloatTip() {{
+        if (floatTip && doc.body.contains(floatTip)) return floatTip;
+        floatTip = doc.createElement('div');
+        floatTip.style.cssText = [
+            'display:none', 'position:absolute', 'background:#1a2e4a', 'color:#fff',
+            'border-radius:8px', 'padding:10px 14px', 'font-size:11px', 'line-height:1.8',
+            'max-width:230px', 'min-width:170px', 'text-align:left', 'z-index:999999',
+            'box-shadow:0 6px 20px rgba(0,0,0,0.28)', 'pointer-events:none',
+            "font-family:'DM Sans',sans-serif"
+        ].join(';');
+        var seta = doc.createElement('div');
+        seta.className = 'seta';
+        floatTip.appendChild(seta);
+        var conteudo = doc.createElement('div');
+        conteudo.className = 'conteudo';
+        floatTip.appendChild(conteudo);
+        doc.body.appendChild(floatTip);
+        return floatTip;
+    }}
+    function achaMeuIframe() {{
+        var iframes = doc.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {{
+            try {{ if (iframes[i].contentWindow === window) return iframes[i]; }} catch (e) {{}}
+        }}
+        return null;
+    }}
+    document.addEventListener('mouseover', function(ev) {{
+        var wrap = ev.target.closest('.score-tooltip-wrap, .oport-wrap');
+        if (!wrap || wrap._tipAberto) return;
+        var tipEl = wrap.querySelector('.tip, .oport-tip');
+        if (!tipEl) return;
+        var ifr = achaMeuIframe();
+        if (!ifr) return;
+        wrap._tipAberto = true;
+        var ifrRect = ifr.getBoundingClientRect();
+        var wRect = wrap.getBoundingClientRect();
+        var scrollX = (doc.defaultView.scrollX || doc.documentElement.scrollLeft || 0);
+        var scrollY = (doc.defaultView.scrollY || doc.documentElement.scrollTop || 0);
+        var ft = getFloatTip();
+        ft.querySelector('.conteudo').innerHTML = tipEl.innerHTML;
+        var seta = ft.querySelector('.seta');
+        // '.score-tooltip-wrap' abre pra CIMA (era bottom:22px no CSS
+        // original) e '.oport-wrap' abre pra BAIXO — mantém o mesmo
+        // sentido na versão flutuante, com a setinha apontando pro badge.
+        if (wrap.classList.contains('score-tooltip-wrap')) {{
+            ft.style.top = (ifrRect.top + wRect.top + scrollY - 8) + 'px';
+            ft.style.left = (ifrRect.left + wRect.left + wRect.width / 2 + scrollX) + 'px';
+            ft.style.transform = 'translate(-50%, -100%)';
+            seta.style.cssText = 'position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2e4a;';
+        }} else {{
+            ft.style.top = (ifrRect.top + wRect.bottom + scrollY + 8) + 'px';
+            ft.style.left = (ifrRect.left + wRect.left + wRect.width / 2 + scrollX) + 'px';
+            ft.style.transform = 'translateX(-50%)';
+            seta.style.cssText = 'position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:#1a2e4a;';
+        }}
+        ft.style.display = 'block';
+    }});
+    document.addEventListener('mouseout', function(ev) {{
+        var wrap = ev.target.closest('.score-tooltip-wrap, .oport-wrap');
+        if (!wrap) return;
+        if (wrap.contains(ev.relatedTarget)) return;  // saiu só pra um filho, não fecha
+        wrap._tipAberto = false;
+        if (floatTip) floatTip.style.display = 'none';
+    }});
+}})();
 buildCards();
 if(window.ResizeObserver)new ResizeObserver(syncH).observe(document.body);
 window.addEventListener('load',syncH);

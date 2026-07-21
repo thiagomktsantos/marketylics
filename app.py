@@ -7294,9 +7294,9 @@ elif st.session_state.pagina == "geral":
 
         if bio and len(bio.strip()) > 10:
             score += 20
-            criterios.append({"label": "Tem bio", "ok": True})
+            criterios.append({"label": "Tem bio", "ok": True, "pts": 20, "peso": 20})
         else:
-            criterios.append({"label": "Tem bio", "ok": False})
+            criterios.append({"label": "Tem bio", "ok": False, "pts": 0, "peso": 20})
 
         palavras_valor = [
             "crescimento", "resultado", "apoio", "solução", "transforma", "aumenta",
@@ -7306,15 +7306,15 @@ elif st.session_state.pagina == "geral":
         tem_valor = any(p in bio.lower() for p in palavras_valor)
         if tem_valor:
             score += 20
-            criterios.append({"label": "Proposta de valor clara", "ok": True})
+            criterios.append({"label": "Proposta de valor clara", "ok": True, "pts": 20, "peso": 20})
         else:
-            criterios.append({"label": "Proposta de valor clara", "ok": False})
+            criterios.append({"label": "Proposta de valor clara", "ok": False, "pts": 0, "peso": 20})
 
         if ext_url:
             score += 15
-            criterios.append({"label": "Link na bio", "ok": True})
+            criterios.append({"label": "Link na bio", "ok": True, "pts": 15, "peso": 15})
         else:
-            criterios.append({"label": "Link na bio", "ok": False})
+            criterios.append({"label": "Link na bio", "ok": False, "pts": 0, "peso": 15})
 
         palavras_nicho = [
             "escola", "empresa", "marca", "negócio", "empreendedor", "coach",
@@ -7324,9 +7324,9 @@ elif st.session_state.pagina == "geral":
         tem_nicho = any(p in bio.lower() for p in palavras_nicho)
         if tem_nicho:
             score += 20
-            criterios.append({"label": "Posicionamento da marca", "ok": True})
+            criterios.append({"label": "Posicionamento da marca", "ok": True, "pts": 20, "peso": 20})
         else:
-            criterios.append({"label": "Posicionamento da marca", "ok": False})
+            criterios.append({"label": "Posicionamento da marca", "ok": False, "pts": 0, "peso": 20})
 
         palavras_cta = [
             "saiba mais", "clique", "acesse", "entre", "inscreva", "baixe",
@@ -7336,18 +7336,22 @@ elif st.session_state.pagina == "geral":
         tem_cta = any(p in bio.lower() for p in palavras_cta)
         if tem_cta:
             score += 15
-            criterios.append({"label": "CTA na bio", "ok": True})
+            criterios.append({"label": "CTA na bio", "ok": True, "pts": 15, "peso": 15})
         else:
-            criterios.append({"label": "CTA na bio", "ok": False})
+            criterios.append({"label": "CTA na bio", "ok": False, "pts": 0, "peso": 15})
 
+        # "Diferenciação no mercado" é o único critério com crédito parcial
+        # (5 de 10 pontos quando o engajamento é mediano) — por isso guarda
+        # os pontos ganhos à parte de "ok", pra o hover do anel (que soma
+        # 'pts' de cada critério) bater exatamente com o score exibido.
         if eng_pct >= 3.0:
             score += 10
-            criterios.append({"label": "Diferenciação no mercado", "ok": True})
+            criterios.append({"label": "Diferenciação no mercado", "ok": True, "pts": 10, "peso": 10})
         elif eng_pct >= 1.5:
             score += 5
-            criterios.append({"label": "Diferenciação no mercado", "ok": False})
+            criterios.append({"label": "Diferenciação no mercado", "ok": False, "pts": 5, "peso": 10})
         else:
-            criterios.append({"label": "Diferenciação no mercado", "ok": False})
+            criterios.append({"label": "Diferenciação no mercado", "ok": False, "pts": 0, "peso": 10})
 
         if score >= 91:
             classificacao, classificacao_icon = "Excelente", _SVG_ICONE_EXCELENTE
@@ -7416,6 +7420,11 @@ elif st.session_state.pagina == "geral":
 
         pesos = [20, 20, 15, 15, 15, 15]
         score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
+        # Pontos/peso por critério, pro hover do anel mostrar a soma exata
+        # que chega no score (mesmo padrão do calcular_score_bio).
+        for _p, _c in zip(pesos, criterios):
+            _c["pts"] = _p if _c["ok"] else 0
+            _c["peso"] = _p
 
         if score >= 91:
             classificacao, icon, cor = "Excelente", _SVG_ICONE_EXCELENTE, "#22c55e"
@@ -8215,6 +8224,11 @@ function setHeightGeral(isOpen) {{
                 {"label": "Seções (H2)", "ok": bool(seo.get("h2s"))},
                 {"label": "Sitemap",     "ok": sitemap.get("status") == "ok"},
             ]
+            # 5 itens, 20 pontos cada (100/5) — pro hover do anel de Site
+            # mostrar a soma exata que chega no score.
+            for _c_seo in seo_items_check:
+                _c_seo["pts"] = 20 if _c_seo["ok"] else 0
+                _c_seo["peso"] = 20
             seo_faltando = [c["label"] for c in seo_items_check if not c["ok"]]
 
             ads_entry = ads_cache.get(e["nome"],{})
@@ -8229,7 +8243,7 @@ function setHeightGeral(isOpen) {{
                 "site": site_url, "ig": e.get("instagram","") or "",
                 "seo_status_ok": seo_status_ok, "seo_score_val": seo_score_val,
                 "seo_score_lbl": seo_score_lbl, "seo_score_icon": seo_score_icon, "seo_score_cor": seo_score_cor,
-                "seo_faltando": seo_faltando,
+                "seo_faltando": seo_faltando, "seo_criterios": seo_items_check,
                 "seo_title": seo.get("title",""), "seo_desc": seo.get("description",""),
                 "seo_h1": seo.get("h1",""), "seo_h2s": seo.get("h2s",[]),
                 "seo_extraido_em": seo.get("extraido_em",""), "seo_contato": seo.get("contato",{}),
@@ -8617,24 +8631,15 @@ function setHeightGeral(isOpen) {{
         if empresas_cards_data:
             _d0 = empresas_cards_data[0]
 
-            _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg, contagem_txt)
+            _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg, criterios_com_pts)
             if _d0["tem_redes"]:
-                _qtd_posts_ring = _d0["redes"].get("n_total_tp", 0)
-                _txt_redes_ring = f'{_qtd_posts_ring} post{"s" if _qtd_posts_ring != 1 else ""} analisado{"s" if _qtd_posts_ring != 1 else ""}'
                 _areas.append(("Redes Sociais", _d0["redes"]["score_val"],
-                                _d0["redes"]["score_faltando"], "#3b82f6", _txt_redes_ring))
+                                _d0["redes"]["score_faltando"], "#3b82f6", _d0["redes"]["score_criterios"]))
             if _d0["seo_status_ok"]:
-                _qtd_sitemap_ring = _d0.get("sitemap_total", 0) or 0
-                _txt_site_ring = (
-                    f'{_qtd_sitemap_ring} página{"s" if _qtd_sitemap_ring != 1 else ""} no sitemap'
-                    if _qtd_sitemap_ring else "Site analisado"
-                )
-                _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e", _txt_site_ring))
+                _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e", _d0["seo_criterios"]))
             if _d0["tem_ads"]:
                 _ads_score_info = calcular_score_ads(_d0["ads"])
-                _qtd_ads_ring = _d0["ads"].get("total", 0) or 0
-                _txt_ads_ring = f'{_qtd_ads_ring} anúncio{"s" if _qtd_ads_ring != 1 else ""} ativo{"s" if _qtd_ads_ring != 1 else ""}'
-                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _txt_ads_ring))
+                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _ads_score_info["criterios"]))
             else:
                 _ads_score_info = None
 
@@ -8768,7 +8773,7 @@ function setHeightGeral(isOpen) {{
                 }
 
                 _area_rings_html = ""
-                for _lbl, _sc, _falt, _cor_area, _cnt_txt in _areas:
+                for _lbl, _sc, _falt, _cor_area, _crit_ring in _areas:
                     if _sc >= 91:   _area_txt = "Excelente"
                     elif _sc >= 81: _area_txt = "Muito bom"
                     elif _sc >= 60: _area_txt = "Bom"
@@ -8777,13 +8782,30 @@ function setHeightGeral(isOpen) {{
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
                     _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
-                    # Hover no anel: mostra a contagem bruta por trás do score
-                    # (posts analisados / páginas no sitemap / anúncios
-                    # ativos) — sem precisar clicar em nada pra entender de
-                    # onde veio o número.
+                    # Hover no anel: mostra a SOMA dos pontos de cada
+                    # critério até chegar no score (não só o número final) —
+                    # uma linha por critério, com check verde/x cinza, mais
+                    # uma linha de total no final que bate com o score
+                    # exibido embaixo do anel.
+                    _linhas_crit_ring = []
+                    for _cr in _crit_ring:
+                        _cor_cr = "#22c55e" if _cr.get("ok") else "#94a3b8"
+                        _marca_cr = "✓" if _cr.get("ok") else "–"
+                        _linhas_crit_ring.append(
+                            f'<div style="display:flex;justify-content:space-between;gap:14px;">'
+                            f'<span style="color:{_cor_cr};">{_marca_cr} {_cr.get("label","")}</span>'
+                            f'<span style="color:{_cor_cr};font-weight:800;">{_cr.get("pts",0)}</span>'
+                            f'</div>'
+                        )
+                    _linhas_crit_ring.append(
+                        f'<div style="display:flex;justify-content:space-between;gap:14px;margin-top:5px;'
+                        f'padding-top:5px;border-top:1px solid rgba(255,255,255,0.25);font-weight:800;">'
+                        f'<span>Total</span><span>{_sc}/100</span></div>'
+                    )
+                    _tip_crit_ring = "".join(_linhas_crit_ring)
                     _svg_com_tip = (
                         f'<div class="ring-tip-wrap">{_svg_only}'
-                        f'<div class="tip">{_cnt_txt}</div></div>'
+                        f'<div class="tip">{_tip_crit_ring}</div></div>'
                     )
                     _area_rings_html += (
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;width:84px;flex-shrink:0;">'
@@ -8935,8 +8957,8 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{
     display:none; position:absolute; top:78px; left:50%; transform:translateX(-50%);
-    background:#1a2e4a; color:#fff; border-radius:8px; padding:7px 11px; font-size:11px;
-    font-weight:700; line-height:1.4; white-space:nowrap; z-index:9999;
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
+    font-weight:600; line-height:1.6; width:190px; text-align:left; z-index:9999;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
 }}
 .ring-tip-wrap .tip::after {{

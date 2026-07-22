@@ -9007,6 +9007,125 @@ function setHeightGeral(isOpen) {{
                 )
                 _cta_insight_txt = f"Ver oportunidades em {_label_prioritaria_cta}"
 
+                # ── Card "Classificação do concorrente": quando a empresa
+                # selecionada (_d0) é um concorrente (e não a própria empresa
+                # do usuário), o painel da direita deixa de mostrar o
+                # "Insight da IA" (que fala em 2ª pessoa, "sua presença...")
+                # e passa a mostrar um veredito rápido de ameaça competitiva:
+                # nível de concorrência + checklist de sinais fortes, no
+                # mesmo espírito do card de referência solicitado.
+                if not _is_minha_d0_insight:
+                    def _area_por_label(_lbl_busca):
+                        for _a in _areas:
+                            if _a[0] == _lbl_busca:
+                                return _a
+                        return None
+
+                    _area_ads_conc   = _area_por_label("Anúncios")
+                    _area_redes_conc = _area_por_label("Redes Sociais")
+
+                    _conc_item_estrategia = bool(_area_ads_conc and _area_ads_conc[1] >= 60)
+                    _conc_item_presenca   = bool(_area_redes_conc and _area_redes_conc[1] >= 60)
+
+                    _conc_item_discurso = False
+                    if _area_ads_conc and len(_area_ads_conc) > 4:
+                        for _crit_a in _area_ads_conc[4]:
+                            if _crit_a.get("label") == "Comunica benefícios claros" and _crit_a.get("ok"):
+                                _conc_item_discurso = True
+                                break
+                    if not _conc_item_discurso and _d0["seo_status_ok"]:
+                        _conc_item_discurso = _d0["seo_score_val"] >= 60
+
+                    _conc_item_midia = bool(_d0["tem_ads"] and (_d0["ads"] or {}).get("total", 0) >= 5)
+
+                    if _score_geral >= 70:
+                        _conc_nivel, _conc_grad = "ALTA", "linear-gradient(135deg,#f43f5e,#dc2626)"
+                        _conc_desc = "Esse concorrente representa uma ameaça relevante para seu mercado."
+                    elif _score_geral >= 40:
+                        _conc_nivel, _conc_grad = "MÉDIA", "linear-gradient(135deg,#f59e0b,#ea580c)"
+                        _conc_desc = "Esse concorrente representa uma ameaça moderada para seu mercado."
+                    else:
+                        _conc_nivel, _conc_grad = "BAIXA", "linear-gradient(135deg,#22c55e,#16a34a)"
+                        _conc_desc = "Esse concorrente ainda não representa uma ameaça significativa para seu mercado."
+
+                    _conc_itens = [
+                        ("Estratégia bem definida",     _conc_item_estrategia, "#22c55e"),
+                        ("Presença ativa e contínua",   _conc_item_presenca,   "#8b5cf6"),
+                        ("Discurso claro e persuasivo", _conc_item_discurso,   "#1a2e4a"),
+                        ("Alto investimento em mídia",  _conc_item_midia,      "#0ea5e9"),
+                    ]
+                    _conc_itens_html = ""
+                    for _lbl_ci, _ok_ci, _cor_ci in _conc_itens:
+                        if _ok_ci:
+                            _bola_ci = (
+                                f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                                f'width:22px;height:22px;min-width:22px;border-radius:50%;background:{_cor_ci};">'
+                                f'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+                                f'<polyline points="20 6 9 17 4 12"/></svg></span>'
+                            )
+                            _txt_style_ci = "color:#374151;font-weight:600;"
+                        else:
+                            _bola_ci = (
+                                '<span style="display:inline-flex;align-items:center;justify-content:center;'
+                                'width:22px;height:22px;min-width:22px;border-radius:50%;background:#e5e7eb;">'
+                                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
+                                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
+                                '<line x1="6" y1="12" x2="18" y2="12"/></svg></span>'
+                            )
+                            _txt_style_ci = "color:#9ca3af;font-weight:600;"
+                        _conc_itens_html += (
+                            f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;">'
+                            f'{_bola_ci}<div style="font-size:12.5px;{_txt_style_ci}">{_lbl_ci}</div></div>'
+                        )
+
+                    # Pré-seleciona esse concorrente na página de Insights,
+                    # pro botão "Ver comparação detalhada" já abrir focado
+                    # nele (mesmo índice usado pelo seletor de lá — a lista
+                    # de lá não inclui "Minha Empresa", por isso o -1).
+                    st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
+
+                    _painel_direita_html = f"""
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+    <div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente (geral)</div>
+        <div class="score-tooltip-wrap"><div class="q-badge">?</div>
+          <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença, discurso e investimento em mídia desse concorrente.</div>
+        </div>
+      </div>
+      <div style="background:{_conc_grad};border-radius:10px;padding:10px 14px;text-align:center;margin-bottom:14px;">
+        <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
+      </div>
+      <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-bottom:4px;">{_conc_desc}</div>
+      <div>{_conc_itens_html}</div>
+    </div>
+    <div class="insight-cta" onclick="irParaInsightsConcorrente()" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:700;color:#008ac7;cursor:pointer;background:#f0f8ff;border-radius:10px;padding:10px 0;">
+      Ver comparação detalhada
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </div>
+"""
+                else:
+                    _painel_direita_html = f"""
+  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+    <div>
+      <div style="display:flex;align-items:center;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+          Insight da IA
+        </div>
+      </div>
+      <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
+    </div>
+    <div style="font-size:12.5px;color:#374151;line-height:1.7;">{_insight_txt}</div>
+    <div class="insight-cta" onclick="irParaAreaPrioritaria()" style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
+      {_cta_insight_txt}
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+  </div>
+"""
+
                 resumo_executivo_html = f"""
 <!DOCTYPE html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -9087,24 +9206,22 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
     </div>
   </div>
-  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
-    <div>
-      <div style="display:flex;align-items:center;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
-          Insight da IA
-        </div>
-      </div>
-      <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
-    </div>
-    <div style="font-size:12.5px;color:#374151;line-height:1.7;">{_insight_txt}</div>
-    <div class="insight-cta" onclick="irParaAreaPrioritaria()" style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
-      {_cta_insight_txt}
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
-  </div>
+  {_painel_direita_html}
 </div>
 <script>
+function irParaInsightsConcorrente() {{
+    // Mesmo truque do irParaAreaPrioritaria() logo abaixo: clica no botão
+    // fantasma da sidebar que leva pra página de Insights. O concorrente
+    // certo já foi pré-selecionado em Python (st.session_state.insights_target_idx)
+    // no momento em que este card foi montado, então a página abre focada
+    // direto no concorrente que estava sendo visto aqui no Dashboard Geral.
+    var doc = window.parent.document;
+    var btns = doc.querySelectorAll('[data-testid="stSidebar"] button');
+    for (var i = 0; i < btns.length; i++) {{
+        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\s+/g, ' ').trim();
+        if (txt === 'insights') {{ btns[i].click(); return; }}
+    }}
+}}
 function irParaAreaPrioritaria() {{
     // Mesmo truque já usado no menu lateral (função `nav()` no topbar) e
     // nos botões fantasma de excluir/refazer: os botões ocultos da

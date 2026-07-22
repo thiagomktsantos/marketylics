@@ -6816,6 +6816,20 @@ document.addEventListener('DOMContentLoaded', ajustarAltura);
 window.addEventListener('load', ajustarAltura);
 setTimeout(ajustarAltura, 300);
 setTimeout(ajustarAltura, 800);
+// A altura calculada logo no load podia sair diferente entre a primeira
+// visita (fonte DM Sans ainda carregando, métrica de texto provisória com
+// a fonte padrão do navegador) e um retorno à página (fonte já em cache),
+// o que fazia a margem abaixo do card mudar de uma visita pra outra. Com
+// ResizeObserver + document.fonts.ready, qualquer mudança real de altura
+// do card (troca de fonte, imagem, etc.) reajusta o iframe na hora, então
+// o resultado fica igual sempre.
+if (document.fonts && document.fonts.ready) {{
+    document.fonts.ready.then(ajustarAltura);
+}}
+var card_el = document.getElementById('card');
+if (window.ResizeObserver && card_el) {{
+    new ResizeObserver(ajustarAltura).observe(card_el);
+}}
 </script>
 </body>
 </html>

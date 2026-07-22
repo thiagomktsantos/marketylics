@@ -15072,6 +15072,19 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         _carousel_imgs_ad = ad.get("carousel_images") or []
                         if _e_carrossel and len(_carousel_imgs_ad) > 1:
                             main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
+                        elif _e_carrossel and len(images) > 1:
+                            # Anúncio Carrossel salvo em cache ANTES dessa
+                            # correção (ou cujos cards não trouxeram os campos
+                            # esperados) ainda não tem "carousel_images". Nesse
+                            # caso, melhor mostrar todas as imagens da lista
+                            # genérica (mesmo que 1 ou 2 sejam a mesma foto em
+                            # qualidade diferente) do que cair na heurística de
+                            # índice 0/2 abaixo, que colapsava pra 1 imagem só.
+                            _legacy_carousel_srcs = []
+                            for _limg in images[:10]:
+                                if _limg and _limg not in _legacy_carousel_srcs:
+                                    _legacy_carousel_srcs.append(_limg)
+                            main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs, ensure_ascii=True)
                         else:
                             # Usa images_b64 (versão permanente/migrada) em vez de
                             # `images` cru: a URL original da Meta expira, então o

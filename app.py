@@ -9058,23 +9058,35 @@ function setHeightGeral(isOpen) {{
                          "Discurso claro e persuasivo", "Alto investimento em mídia"],
                         [_conc_item_estrategia, _conc_item_presenca, _conc_item_discurso, _conc_item_midia],
                     ) if not orig]
-                    # Lista vertical limpa, sem ícone de check — ordena os sinais
-                    # identificados primeiro (destaque escuro), os não
-                    # identificados depois (texto apagado), sem misturar cores
-                    # por item pra manter visual mais sóbrio que o grid anterior.
+                    # Lista simples (ícone + rótulo, sem caixa) — mesmo padrão
+                    # visual já usado nos outros checklists do app (círculo
+                    # verde com check pra item identificado, círculo cinza
+                    # pro que ainda não foi).
+                    _icon_ok_ci = (
+                        '<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;'
+                        'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                        '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" '
+                        'stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>'
+                    )
+                    _icon_off_ci = (
+                        '<div style="width:18px;height:18px;border-radius:50%;background:#e5e7eb;'
+                        'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
+                        '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" '
+                        'stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>'
+                    )
                     _conc_itens_html = ""
                     for _lbl_ci in _conc_itens_ok:
                         _conc_itens_html += (
-                            f'<div style="background:#f8fafc;border:1px solid #eef0f3;border-radius:10px;'
-                            f'padding:10px 14px;font-size:12.5px;font-weight:600;color:#1a2e4a;">{_lbl_ci}</div>'
+                            '<div style="display:flex;align-items:center;gap:8px;">'
+                            f'{_icon_ok_ci}<div style="font-size:12.5px;font-weight:700;color:#1a2e4a;">{_lbl_ci}</div></div>'
                         )
                     for _lbl_ci in _conc_itens_off:
                         _conc_itens_html += (
-                            f'<div style="background:#fbfbfb;border:1px solid #f2f2f2;border-radius:10px;'
-                            f'padding:10px 14px;font-size:12.5px;font-weight:500;color:#b0b6c0;">{_lbl_ci}</div>'
+                            '<div style="display:flex;align-items:center;gap:8px;">'
+                            f'{_icon_off_ci}<div style="font-size:12.5px;font-weight:700;color:#9ca3af;">{_lbl_ci}</div></div>'
                         )
                     _conc_itens_html = (
-                        '<div style="display:flex;flex-direction:column;gap:8px;">'
+                        '<div style="display:flex;flex-direction:column;gap:10px;">'
                         f'{_conc_itens_html}</div>'
                     )
 
@@ -9315,7 +9327,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=430, scrolling=False)
+                components.html(resumo_executivo_html, height=410, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

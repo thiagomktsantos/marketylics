@@ -9059,25 +9059,35 @@ function setHeightGeral(isOpen) {{
                         if _ok_ci:
                             _bola_ci = (
                                 f'<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                f'width:22px;height:22px;min-width:22px;border-radius:50%;background:{_cor_ci};">'
-                                f'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" '
+                                f'width:20px;height:20px;min-width:20px;border-radius:50%;background:{_cor_ci};">'
+                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
                                 f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
                                 f'<polyline points="20 6 9 17 4 12"/></svg></span>'
                             )
+                            _card_style_ci = "background:#f8fafc;border:1px solid #e5e7eb;"
                             _txt_style_ci = "color:#374151;font-weight:600;"
                         else:
                             _bola_ci = (
                                 '<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                'width:22px;height:22px;min-width:22px;border-radius:50%;background:#e5e7eb;">'
-                                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
+                                'width:20px;height:20px;min-width:20px;border-radius:50%;background:#e5e7eb;">'
+                                '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
                                 'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
                                 '<line x1="6" y1="12" x2="18" y2="12"/></svg></span>'
                             )
+                            _card_style_ci = "background:#fbfbfb;border:1px solid #f0f0f0;"
                             _txt_style_ci = "color:#9ca3af;font-weight:600;"
+                        # Cada sinal vira um mini-card com borda própria (em vez
+                        # de uma linha solta) — fica compacto em grid 2x2 e não
+                        # deixa o painel mais alto que a área reservada pra ele.
                         _conc_itens_html += (
-                            f'<div style="display:flex;align-items:center;gap:10px;padding:7px 0;">'
-                            f'{_bola_ci}<div style="font-size:12.5px;{_txt_style_ci}">{_lbl_ci}</div></div>'
+                            f'<div style="{_card_style_ci}border-radius:10px;padding:8px 10px;'
+                            f'display:flex;align-items:center;gap:8px;min-width:0;">'
+                            f'{_bola_ci}<div style="font-size:11px;line-height:1.25;{_txt_style_ci}">{_lbl_ci}</div></div>'
                         )
+                    _conc_itens_html = (
+                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                        f'{_conc_itens_html}</div>'
+                    )
 
                     # Pré-seleciona esse concorrente na página de Insights,
                     # pro botão "Ver comparação detalhada" já abrir focado
@@ -9086,20 +9096,21 @@ function setHeightGeral(isOpen) {{
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
     <div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente (geral)</div>
         <div class="score-tooltip-wrap"><div class="q-badge">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença, discurso e investimento em mídia desse concorrente.</div>
         </div>
       </div>
-      <div style="background:{_conc_grad};border-radius:10px;padding:10px 14px;text-align:center;margin-bottom:14px;">
+      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin-bottom:12px;">
         <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
       </div>
-      <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-bottom:4px;">{_conc_desc}</div>
+      <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;">{_conc_desc}</div>
       <div>{_conc_itens_html}</div>
     </div>
+
     <div class="insight-cta" onclick="irParaInsightsConcorrente()" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:700;color:#008ac7;cursor:pointer;background:#f0f8ff;border-radius:10px;padding:10px 0;">
       Ver comparação detalhada
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -9315,7 +9326,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=340, scrolling=False)
+                components.html(resumo_executivo_html, height=400, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

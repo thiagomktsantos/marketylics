@@ -15045,7 +15045,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
         <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
-    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
     {origem_badge_img_html}
 </div>
 <script>

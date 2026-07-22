@@ -6890,6 +6890,17 @@ elif st.session_state.pagina == "cad":
         visibility: hidden !important;
         display: block !important;
     }
+    /* Aproxima o grid de concorrentes da barra acima dele. Antes isso era
+       feito mutando "iframes[i].style.marginTop" direto por JS de dentro do
+       componente — só que essa mutação é aplicada no DOM node do iframe por
+       fora do controle do React/Streamlit, então se esse mesmo node fosse
+       reaproveitado por outro componente ao trocar de página (ex.: voltar
+       pra "Minha Empresa"), a margem negativa ficava "grudada" nele e a
+       página seguinte herdava o espaçamento errado. Aplicando via CSS
+       escopado no container (recriado do zero a cada execução do script),
+       a margem nunca vaza pra outro componente.
+    */
+    .st-key-conc_grid_wrap { margin-top: -15px; }
     </style>
     """, unsafe_allow_html=True)
  
@@ -7093,7 +7104,9 @@ function triggerAdicionar() {
         n_rows     = (len(concorrentes) + 1) // 2
         est_height = 40 + n_rows * 320
  
-        components.html(f"""<!DOCTYPE html>
+        _wrap_conc_grid = st.container(key="conc_grid_wrap")
+        with _wrap_conc_grid:
+            components.html(f"""<!DOCTYPE html>
 <html>
 <head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -7232,7 +7245,6 @@ body {{ padding-bottom: 8px; }}
             try {{
                 if (iframes[i].contentWindow === window) {{
                     iframes[i].style.height = (h + 12) + 'px';
-                    iframes[i].style.marginTop = '-15px';
                     break;
                 }}
             }} catch(e) {{}}

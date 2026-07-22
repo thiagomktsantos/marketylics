@@ -1078,6 +1078,13 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             )
             for url_idx, u in enumerate(ad.get("images") or []):
                 tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad))
+            # "carousel_images" (1 imagem por card do carrossel, sem as
+            # duplicatas boa/ruim que "images" carrega) também precisa virar
+            # link permanente — sem isso, anúncios novos ficariam certos por
+            # ora mas com URL crua da Meta, que expira em algumas semanas e
+            # quebraria o modal do carrossel mais pra frente.
+            for url_idx, u in enumerate(ad.get("carousel_images") or []):
+                tarefas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
                 tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad))
             # Foto de perfil da página — é a mesma URL pra todo anúncio
@@ -15078,8 +15085,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # qualidade ruim no lugar do segundo.
                         _e_carrossel = "Carrossel" in (ad.get("formato") or "")
                         _carousel_imgs_ad = ad.get("carousel_images") or []
+                        _metodo_carrossel = "n/a"
                         if _e_carrossel and len(_carousel_imgs_ad) > 1:
                             main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
+                            _metodo_carrossel = "carousel_images (por card, correto)"
                         elif _e_carrossel and len(images) > 1:
                             # Anúncio Carrossel salvo em cache ANTES dessa
                             # correção (ou cujos cards não trouxeram os campos
@@ -15101,13 +15110,33 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 if "stp=" in _limg:
                                     continue
                                 _legacy_carousel_srcs.append(_limg)
-                            if len(_legacy_carousel_srcs) <= 1:
+                            _dedup_geral = []
+                            for _limg in images[:20]:
+                                if _limg and _limg not in _dedup_geral:
+                                    _dedup_geral.append(_limg)
+                            if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
+                                # O filtro "stp=" não removeu nada — sinal de
+                                # que essas imagens já foram migradas pro R2
+                                # antes dessa correção existir (nomes de
+                                # arquivo viram hash aleatório, perdem o "stp=").
+                                # Nesses casos, como a extração sempre insere
+                                # original_image_url ANTES de resized_image_url
+                                # pra cada card, a lista final fica em pares
+                                # (boa, ruim, boa, ruim...) na ordem dos cards —
+                                # então os índices pares (0, 2, 4...) tendem a
+                                # ser as versões boas. Não é garantido (é uma
+                                # aposta educada pra dado antigo sem outra
+                                # pista), mas é bem melhor que mostrar as 2x
+                                # imagens juntas.
+                                _legacy_carousel_srcs = _dedup_geral[::2]
+                                _metodo_carrossel = "índice par (mídia já migrada, sem stp=)"
+                            elif len(_legacy_carousel_srcs) <= 1:
                                 # Nenhuma imagem "sem stp=" sobrou (raro) — melhor
                                 # mostrar tudo deduplicado do que nada.
-                                _legacy_carousel_srcs = []
-                                for _limg in images[:20]:
-                                    if _limg and _limg not in _legacy_carousel_srcs:
-                                        _legacy_carousel_srcs.append(_limg)
+                                _legacy_carousel_srcs = _dedup_geral
+                                _metodo_carrossel = "sem filtro (nada sobrou ao filtrar stp=)"
+                            else:
+                                _metodo_carrossel = "filtro stp= (mídia ainda com link cru da Meta)"
                             main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs[:10], ensure_ascii=True)
                         else:
                             # Usa images_b64 (versão permanente/migrada) em vez de
@@ -15124,6 +15153,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         if _e_carrossel:
                             _debug_diag = {
                                 "formato": ad.get("formato"),
+                                "metodo_usado": _metodo_carrossel,
                                 "tem_carousel_images_no_dict": bool(ad.get("carousel_images")),
                                 "qtd_carousel_images": len(_carousel_imgs_ad),
                                 "carousel_images": _carousel_imgs_ad,

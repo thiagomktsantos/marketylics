@@ -8399,6 +8399,7 @@ function setHeightGeral(isOpen) {{
                         # Empatado com a média: "0% acima/abaixo" soa estranho,
                         # então usa um texto neutro com um ícone de "igual".
                         cor = "#6b7280"
+                        cor_bg = "#6b7280"
                         _texto = "Na média"
                         _icone_svg = (
                             '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
@@ -8407,6 +8408,12 @@ function setHeightGeral(isOpen) {{
                         )
                     else:
                         cor = "#15803d" if acima else "#b45309"
+                        # Fundo do círculo do ícone: mesmas cores usadas no
+                        # Score de SEO (verde #22c55e do check, laranja #f59e0b
+                        # do "melhoria sugerida") — o texto ao lado continua
+                        # com a cor de sempre (#15803d/#b45309), só o fundo do
+                        # SVG muda.
+                        cor_bg = "#22c55e" if acima else "#f59e0b"
                         if acima:
                             _icone_svg = (
                                 '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" '
@@ -8427,7 +8434,7 @@ function setHeightGeral(isOpen) {{
                             _texto = f'{abs(pct)}% {"acima" if acima else "abaixo"} da&nbsp;média'
 
                     _icone_badge = (
-                        f'<div style="width:18px;height:18px;min-width:18px;border-radius:50%;background:{cor};'
+                        f'<div style="width:18px;height:18px;min-width:18px;border-radius:50%;background:{cor_bg};'
                         f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">{_icone_svg}</div>'
                     )
 

@@ -15023,17 +15023,39 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                     elif img_primary:
                         all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)
-                        # Usa images_b64 (versão permanente/migrada) em vez de
-                        # `images` cru: a URL original da Meta expira, então o
-                        # modal (que antes usava `images`) parava de carregar
-                        # mesmo quando o thumb (que já usava images_b64) ainda
-                        # aparecia normalmente — mesma imagem, fonte diferente.
-                        _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
-                        _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
-                        main_modal_imgs_js = _json.dumps(
-                            [img for img in [_modal_src_0, _modal_src_2] if img],
-                            ensure_ascii=True
-                        )
+                        # A lógica abaixo (pegar só índice 0 e 2, e comparar a
+                        # proporção pra descartar duplicata) foi criada pros
+                        # anúncios "Dinâmico"/formato Imagem, que às vezes têm
+                        # 2 recortes (quadrado + vertical) da MESMA arte — daí
+                        # faz sentido colapsar pra 1 se forem parecidos. Só
+                        # que esse mesmo bloco também atende anúncios
+                        # Carrossel de verdade, cujas "images" são fotos
+                        # DIFERENTES (uma por card do carrossel) — usar só
+                        # índice 0/2 e ainda colapsar por proporção parecida
+                        # (comum entre slides de um mesmo carrossel) fazia o
+                        # modal mostrar só 1 imagem mesmo quando o anúncio
+                        # tinha várias. Pra Carrossel, manda TODAS as imagens
+                        # dos slides pro modal em vez de aplicar essa heurística.
+                        _e_carrossel = "Carrossel" in (ad.get("formato") or "")
+                        if _e_carrossel and len(images) > 1:
+                            _carrossel_srcs = []
+                            for _ci in range(min(len(images), 10)):
+                                _csrc = (images_b64[_ci] if _ci < len(images_b64) else "") or images[_ci]
+                                if _csrc and _csrc not in _carrossel_srcs:
+                                    _carrossel_srcs.append(_csrc)
+                            main_modal_imgs_js = _json.dumps(_carrossel_srcs, ensure_ascii=True)
+                        else:
+                            # Usa images_b64 (versão permanente/migrada) em vez de
+                            # `images` cru: a URL original da Meta expira, então o
+                            # modal (que antes usava `images`) parava de carregar
+                            # mesmo quando o thumb (que já usava images_b64) ainda
+                            # aparecia normalmente — mesma imagem, fonte diferente.
+                            _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
+                            _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
+                            main_modal_imgs_js = _json.dumps(
+                                [img for img in [_modal_src_0, _modal_src_2] if img],
+                                ensure_ascii=True
+                            )
                         # Mesmo selo de origem que o card de vídeo já tem —
                         # antes só existia lá, então cards de imagem (como os
                         # de anúncio "Dinâmico") ficavam sem indicar se o link
@@ -15195,7 +15217,9 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
     closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
     closeBtn.onclick = closeModal;
 
-    if (hqImgs.length <= 1) {
+    if (hqImgs.length > 2) {
+        renderSlider(hqImgs);
+    } else if (hqImgs.length <= 1) {
         renderGrid(hqImgs);
     } else {
         var results = [];
@@ -15224,6 +15248,75 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
             };
             tmp.src = src || '';
         });
+    }
+
+    // Carrossel de verdade (3+ slides): uma imagem grande por vez, com setas
+    // e bolinhas de navegação — em vez do grid de 2 colunas (pensado só pra
+    // comparar 2 recortes da mesma arte), que ficava espremido/estranho com
+    // várias fotos diferentes.
+    function renderSlider(imgs) {
+        var idx = 0;
+        var stage = doc.createElement('div');
+        stage.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;';
+
+        var cell = doc.createElement('div');
+        cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-width:280px;';
+        var imgEl = doc.createElement('img');
+        imgEl.style.cssText = 'display:block;max-width:min(80vw,760px);max-height:74vh;width:auto;height:auto;object-fit:contain;';
+        imgEl.onerror = function() {
+            cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:32px;">Imagem não disponível</div>';
+        };
+        cell.appendChild(imgEl);
+
+        var counter = doc.createElement('div');
+        counter.style.cssText = 'position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;font-family:DM Sans,sans-serif;white-space:nowrap;';
+
+        var dotsWrap = doc.createElement('div');
+        dotsWrap.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;';
+
+        function render() {
+            imgEl.src = imgs[idx] || '';
+            counter.textContent = (idx + 1) + ' / ' + imgs.length;
+            dotsWrap.innerHTML = '';
+            imgs.forEach(function(_, d) {
+                var dot = doc.createElement('div');
+                dot.style.cssText = 'width:' + (d === idx ? '18px' : '6px') + ';height:6px;border-radius:3px;background:' + (d === idx ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)') + ';transition:all 0.2s;';
+                dotsWrap.appendChild(dot);
+            });
+        }
+
+        function nav(dir) {
+            idx = (idx + dir + imgs.length) % imgs.length;
+            render();
+        }
+
+        var prev = doc.createElement('button');
+        prev.innerHTML = '&#8249;';
+        prev.style.cssText = 'position:absolute;left:-46px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;';
+        prev.onclick = function(e) { e.stopPropagation(); nav(-1); };
+
+        var next = doc.createElement('button');
+        next.innerHTML = '&#8250;';
+        next.style.cssText = 'position:absolute;right:-46px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;';
+        next.onclick = function(e) { e.stopPropagation(); nav(1); };
+
+        stage.appendChild(cell);
+        stage.appendChild(counter);
+        stage.appendChild(dotsWrap);
+        stage.appendChild(prev);
+        stage.appendChild(next);
+
+        window.parent.__adsModalKbFn = function(e) {
+            if (e.key === 'ArrowLeft')  nav(-1);
+            if (e.key === 'ArrowRight') nav(1);
+        };
+        doc.addEventListener('keydown', window.parent.__adsModalKbFn);
+
+        render();
+        box.appendChild(closeBtn);
+        box.appendChild(stage);
+        overlay.appendChild(box);
+        doc.body.appendChild(overlay);
     }
 
     function renderGrid(imgs) {
@@ -15525,6 +15618,10 @@ function closeModal() {{
     if (window.parent.__adsModalEscFn) {{
         doc.removeEventListener('keydown', window.parent.__adsModalEscFn);
         window.parent.__adsModalEscFn = null;
+    }}
+    if (window.parent.__adsModalKbFn) {{
+        doc.removeEventListener('keydown', window.parent.__adsModalKbFn);
+        window.parent.__adsModalKbFn = null;
     }}
 }}
 

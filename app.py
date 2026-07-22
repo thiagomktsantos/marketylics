@@ -9144,7 +9144,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
         floatTip = doc.createElement('div');
         floatTip.style.cssText = [
             'display:none', 'position:absolute', 'background:#1a2e4a', 'color:#fff',
-            'border-radius:8px', 'padding:10px 12px', 'font-size:11px', 'font-weight:600',
+            'border-radius:8px', 'padding:10px 12px', 'font-size:11px', 'font-weight:400',
             'line-height:1.8', 'width:200px', 'text-align:left', 'z-index:999999',
             "box-shadow:0 4px 16px rgba(0,0,0,0.25)", 'pointer-events:none',
             "font-family:'DM Sans',sans-serif"

@@ -15122,7 +15122,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 ensure_ascii=True
                             )
                         if _e_carrossel:
-                            _debug_json = _json.dumps(ad.get("debug_cards") or [], ensure_ascii=False, indent=2)
+                            _debug_diag = {
+                                "formato": ad.get("formato"),
+                                "tem_carousel_images_no_dict": bool(ad.get("carousel_images")),
+                                "qtd_carousel_images": len(_carousel_imgs_ad),
+                                "carousel_images": _carousel_imgs_ad,
+                                "qtd_images_generico": len(images),
+                                "images_generico": images,
+                                "main_modal_imgs_js_final": _json.loads(main_modal_imgs_js),
+                            }
+                            _debug_json = (
+                                "==== DIAGNÓSTICO (o que o código calculou) ====\n"
+                                + _json.dumps(_debug_diag, ensure_ascii=False, indent=2)
+                                + "\n\n==== CARDS CRUS (como vieram da Apify/Meta) ====\n"
+                                + _json.dumps(ad.get("debug_cards") or [], ensure_ascii=False, indent=2)
+                            )
                             _debug_json_html = (
                                 _debug_json.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                             )

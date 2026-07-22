@@ -19692,9 +19692,9 @@ body{{padding-bottom:8px;}}
     display:grid; grid-template-columns:1.6fr 1.2fr 1.2fr 1.2fr;
     border-bottom:1px solid #f3f4f6; background:#fafbfc;
 }}
-.metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; }}
+.metric-cell {{ padding:8px 10px; text-align:center; border-right:1px solid #f3f4f6; display:flex; align-items:center; justify-content:center; gap:5px; }}
 .metric-cell:last-child {{ border-right:none; }}
-.metric-cell-lbl {{ font-size:13px; margin-bottom:2px; line-height:1; }}
+.metric-cell-lbl {{ font-size:13px; line-height:1; display:inline-flex; align-items:center; }}
 .metric-cell-val {{ font-size:13px; font-weight:800; color:#111827; }}
 .metric-cell-val.eng {{ color:#3a9fd6; }}
 .card-caption-wrap {{ padding:10px 12px 8px; flex:1; }}
@@ -20127,12 +20127,25 @@ function buildGrid(posts) {{
         var thumbInner = thumbUrl
             ? '<img id="pimg_' + idx + '" src="' + thumbUrl + '" loading="lazy" alt="" />' + playOverlay + dotsHtml
             : '<div class="thumb-fallback" onclick="openModalByIdx(' + idx + ')"><span style="font-size:28px">' + iconFallback + '</span><span style="font-size:11px;color:#9ca3af;margin-top:4px">Sem imagem</span></div>' + dotsHtml;
-        var verCriativoBadge = '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> VER CRIATIVOS</div>';
+        // "Ver criativo(s)" não aparece em vídeo (não tem criativo estático pra
+        // ver à parte); em foto fica no singular, em carrossel no plural (várias
+        // imagens dentro do mesmo post).
+        var verCriativoBadge = '';
+        if (mediaType !== 2) {{
+            var verCriativoLbl = mediaType === 8 ? 'VER CRIATIVOS' : 'VER CRIATIVO';
+            verCriativoBadge = '<div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> ' + verCriativoLbl + '</div>';
+        }}
+        // Badge de tipo (canto do thumb) — removido pra Vídeo e Foto (a foto já
+        // fala por si e o vídeo já tem o ícone de play); mantido só pra
+        // Carrossel, onde ele ajuda a indicar que tem mais de uma mídia.
+        var zoomBadge = mediaType === 8
+            ? '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>'
+            : '';
         var card = document.createElement('div');
         card.className = 'post-card'; card.id = 'pcard_' + idx;
         card.innerHTML =
             '<div class="thumb-wrap" id="tw_' + idx + '" onclick="openModalByIdx(' + idx + ')">' + thumbInner
-            + '<div class="zoom-badge" style="background:' + badgeColor + 'cc">' + badgeIcon + ' ' + typeLbl + '</div>' + transcBadge + verCriativoBadge + '</div>'
+            + zoomBadge + transcBadge + verCriativoBadge + '</div>'
             + '<div class="metrics-row">'
             + '<div class="metric-cell"><span class="metric-cell-val" style="font-size:11px;font-weight:700">' + (p.date || '—') + '</span></div>'
             + '<div class="metric-cell"><span class="metric-cell-lbl">{_SVG_ICONE_CURTIDA}</span><span class="metric-cell-val">' + fmtNum(p.likes||0) + '</span></div>'

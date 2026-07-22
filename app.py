@@ -15084,15 +15084,31 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             # Anúncio Carrossel salvo em cache ANTES dessa
                             # correção (ou cujos cards não trouxeram os campos
                             # esperados) ainda não tem "carousel_images". Nesse
-                            # caso, melhor mostrar todas as imagens da lista
-                            # genérica (mesmo que 1 ou 2 sejam a mesma foto em
-                            # qualidade diferente) do que cair na heurística de
-                            # índice 0/2 abaixo, que colapsava pra 1 imagem só.
+                            # caso, usa a lista genérica "images" — só que ela
+                            # traz, pra CADA card, tanto a "original_image_url"
+                            # (qualidade cheia) quanto a "resized_image_url"
+                            # (comprimida/redimensionada) como URLs diferentes
+                            # entre si, então a dedup por igualdade exata não
+                            # pega esse par como duplicata — sobra a mesma foto
+                            # 2x, uma boa e uma ruim. A Meta sempre marca a
+                            # versão redimensionada com o parâmetro "stp=" na
+                            # URL (ex.: "stp=dst-jpg_s600x600_tt6"), então filtra
+                            # essa variante fora e fica só com a versão cheia.
                             _legacy_carousel_srcs = []
-                            for _limg in images[:10]:
-                                if _limg and _limg not in _legacy_carousel_srcs:
-                                    _legacy_carousel_srcs.append(_limg)
-                            main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs, ensure_ascii=True)
+                            for _limg in images[:20]:
+                                if not _limg or _limg in _legacy_carousel_srcs:
+                                    continue
+                                if "stp=" in _limg:
+                                    continue
+                                _legacy_carousel_srcs.append(_limg)
+                            if len(_legacy_carousel_srcs) <= 1:
+                                # Nenhuma imagem "sem stp=" sobrou (raro) — melhor
+                                # mostrar tudo deduplicado do que nada.
+                                _legacy_carousel_srcs = []
+                                for _limg in images[:20]:
+                                    if _limg and _limg not in _legacy_carousel_srcs:
+                                        _legacy_carousel_srcs.append(_limg)
+                            main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs[:10], ensure_ascii=True)
                         else:
                             # Usa images_b64 (versão permanente/migrada) em vez de
                             # `images` cru: a URL original da Meta expira, então o

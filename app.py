@@ -11810,6 +11810,34 @@ elif st.session_state.pagina == "ads":
         videos = _extract_videos(item)
         copy   = _extract_copy(item)
 
+        # Uma imagem por CARD do carrossel — usado só quando o anúncio é
+        # Carrossel de verdade (ver "carousel_images" no dict retornado).
+        # Por quê não reaproveitar "images" aqui: aquela lista junta vários
+        # campos possíveis (image_url, original_image_url, resized_image_url,
+        # thumbnail_url...) tanto do anúncio quanto de CADA card, tudo numa
+        # bolsa só — pra um card só, isso pode gerar 2+ entradas na lista que
+        # são a MESMA foto em qualidades/tamanhos diferentes (ex.: original
+        # nítida + resized menor/comprimida). No modal do carrossel isso
+        # aparecia como "slide 2" repetindo a foto do slide 1, só que com
+        # qualidade pior. Aqui pega só a MELHOR opção disponível por card,
+        # então cada posição da lista é garantidamente um slide diferente.
+        carousel_images = []
+        for _card in cards:
+            if not isinstance(_card, dict):
+                continue
+            _card_img = (
+                _card.get("original_image_url")
+                or _card.get("resized_image_url")
+                or _card.get("image_url")
+                or _card.get("thumbnail_url")
+                or _card.get("picture")
+                or _card.get("video_preview_image_url")
+                or ""
+            )
+            _card_img = _card_img.strip() if isinstance(_card_img, str) else ""
+            if _card_img and _card_img.startswith("http") and _card_img not in carousel_images:
+                carousel_images.append(_card_img)
+
         plats_raw = (
             item.get("publisher_platform")
             or item.get("publisherPlatform")
@@ -11902,6 +11930,7 @@ elif st.session_state.pagina == "ads":
             "caption":              copy["caption"],
             "images":               images,
             "images_b64":           images_b64,
+            "carousel_images":      carousel_images,
             "videos":               videos,
             "snapshot_url":         snap_url,
             "data_inicio":          start_fmt,
@@ -15027,23 +15056,22 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # proporção pra descartar duplicata) foi criada pros
                         # anúncios "Dinâmico"/formato Imagem, que às vezes têm
                         # 2 recortes (quadrado + vertical) da MESMA arte — daí
-                        # faz sentido colapsar pra 1 se forem parecidos. Só
-                        # que esse mesmo bloco também atende anúncios
-                        # Carrossel de verdade, cujas "images" são fotos
-                        # DIFERENTES (uma por card do carrossel) — usar só
-                        # índice 0/2 e ainda colapsar por proporção parecida
-                        # (comum entre slides de um mesmo carrossel) fazia o
-                        # modal mostrar só 1 imagem mesmo quando o anúncio
-                        # tinha várias. Pra Carrossel, manda TODAS as imagens
-                        # dos slides pro modal em vez de aplicar essa heurística.
+                        # faz sentido colapsar pra 1 se forem parecidos. Já
+                        # pros anúncios Carrossel de verdade, usa-se a lista
+                        # "carousel_images" — montada por CARD do carrossel lá
+                        # na normalização, uma única URL (a de melhor
+                        # qualidade disponível) por card. Não dá pra usar
+                        # "images"/"images_b64" por índice aqui: essas listas
+                        # juntam vários campos possíveis (original, resized,
+                        # thumbnail...) tanto do anúncio quanto de cada card
+                        # numa bolsa só, então o índice 1, por exemplo, podia
+                        # ser só a MESMA foto do card 1 num tamanho pior, não
+                        # o card 2 — o modal "repetia" o primeiro slide com
+                        # qualidade ruim no lugar do segundo.
                         _e_carrossel = "Carrossel" in (ad.get("formato") or "")
-                        if _e_carrossel and len(images) > 1:
-                            _carrossel_srcs = []
-                            for _ci in range(min(len(images), 10)):
-                                _csrc = (images_b64[_ci] if _ci < len(images_b64) else "") or images[_ci]
-                                if _csrc and _csrc not in _carrossel_srcs:
-                                    _carrossel_srcs.append(_csrc)
-                            main_modal_imgs_js = _json.dumps(_carrossel_srcs, ensure_ascii=True)
+                        _carousel_imgs_ad = ad.get("carousel_images") or []
+                        if _e_carrossel and len(_carousel_imgs_ad) > 1:
+                            main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
                         else:
                             # Usa images_b64 (versão permanente/migrada) em vez de
                             # `images` cru: a URL original da Meta expira, então o
@@ -15211,7 +15239,7 @@ function openModalHQ(hqImgs, allImgs, snapUrl) {
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
     overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
     var box = doc.createElement('div');
-    box.style.cssText = 'background:transparent;border-radius:16px;overflow:hidden;position:relative;padding:40px 24px 24px;min-width:320px;max-width:min(92vw,900px);';
+    box.style.cssText = 'background:transparent;border-radius:16px;position:relative;padding:40px 24px 24px;min-width:320px;max-width:min(92vw,900px);';
     var closeBtn = doc.createElement('button');
     closeBtn.textContent = '✕';
     closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';

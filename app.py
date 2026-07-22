@@ -9040,52 +9040,41 @@ function setHeightGeral(isOpen) {{
 
                     if _score_geral >= 70:
                         _conc_nivel, _conc_grad = "ALTA", "linear-gradient(135deg,#f43f5e,#dc2626)"
-                        _conc_desc = "Esse concorrente representa uma ameaça relevante para seu mercado."
+                        _conc_desc = "Ameaça relevante para seu mercado."
                     elif _score_geral >= 40:
                         _conc_nivel, _conc_grad = "MÉDIA", "linear-gradient(135deg,#f59e0b,#ea580c)"
-                        _conc_desc = "Esse concorrente representa uma ameaça moderada para seu mercado."
+                        _conc_desc = "Ameaça moderada para seu mercado."
                     else:
                         _conc_nivel, _conc_grad = "BAIXA", "linear-gradient(135deg,#22c55e,#16a34a)"
-                        _conc_desc = "Esse concorrente ainda não representa uma ameaça significativa para seu mercado."
+                        _conc_desc = "Ainda sem ameaça significativa para seu mercado."
 
-                    _conc_itens = [
-                        ("Estratégia bem definida",     _conc_item_estrategia, "#22c55e"),
-                        ("Presença ativa e contínua",   _conc_item_presenca,   "#8b5cf6"),
-                        ("Discurso claro e persuasivo", _conc_item_discurso,   "#1a2e4a"),
-                        ("Alto investimento em mídia",  _conc_item_midia,      "#0ea5e9"),
-                    ]
+                    _conc_itens_ok  = [t for t, orig in zip(
+                        ["Estratégia bem definida", "Presença ativa e contínua",
+                         "Discurso claro e persuasivo", "Alto investimento em mídia"],
+                        [_conc_item_estrategia, _conc_item_presenca, _conc_item_discurso, _conc_item_midia],
+                    ) if orig]
+                    _conc_itens_off = [t for t, orig in zip(
+                        ["Estratégia bem definida", "Presença ativa e contínua",
+                         "Discurso claro e persuasivo", "Alto investimento em mídia"],
+                        [_conc_item_estrategia, _conc_item_presenca, _conc_item_discurso, _conc_item_midia],
+                    ) if not orig]
+                    # Lista vertical limpa, sem ícone de check — ordena os sinais
+                    # identificados primeiro (destaque escuro), os não
+                    # identificados depois (texto apagado), sem misturar cores
+                    # por item pra manter visual mais sóbrio que o grid anterior.
                     _conc_itens_html = ""
-                    for _lbl_ci, _ok_ci, _cor_ci in _conc_itens:
-                        if _ok_ci:
-                            _bola_ci = (
-                                f'<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                f'width:20px;height:20px;min-width:20px;border-radius:50%;background:{_cor_ci};">'
-                                f'<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" '
-                                f'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
-                                f'<polyline points="20 6 9 17 4 12"/></svg></span>'
-                            )
-                            _card_style_ci = "background:#f8fafc;border:1px solid #e5e7eb;"
-                            _txt_style_ci = "color:#374151;font-weight:600;"
-                        else:
-                            _bola_ci = (
-                                '<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                'width:20px;height:20px;min-width:20px;border-radius:50%;background:#e5e7eb;">'
-                                '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" '
-                                'stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'
-                                '<line x1="6" y1="12" x2="18" y2="12"/></svg></span>'
-                            )
-                            _card_style_ci = "background:#fbfbfb;border:1px solid #f0f0f0;"
-                            _txt_style_ci = "color:#9ca3af;font-weight:600;"
-                        # Cada sinal vira um mini-card com borda própria (em vez
-                        # de uma linha solta) — fica compacto em grid 2x2 e não
-                        # deixa o painel mais alto que a área reservada pra ele.
+                    for _lbl_ci in _conc_itens_ok:
                         _conc_itens_html += (
-                            f'<div style="{_card_style_ci}border-radius:10px;padding:8px 10px;'
-                            f'display:flex;align-items:center;gap:8px;min-width:0;">'
-                            f'{_bola_ci}<div style="font-size:11px;line-height:1.25;{_txt_style_ci}">{_lbl_ci}</div></div>'
+                            f'<div style="background:#f8fafc;border:1px solid #eef0f3;border-radius:10px;'
+                            f'padding:10px 14px;font-size:12.5px;font-weight:600;color:#1a2e4a;">{_lbl_ci}</div>'
+                        )
+                    for _lbl_ci in _conc_itens_off:
+                        _conc_itens_html += (
+                            f'<div style="background:#fbfbfb;border:1px solid #f2f2f2;border-radius:10px;'
+                            f'padding:10px 14px;font-size:12.5px;font-weight:500;color:#b0b6c0;">{_lbl_ci}</div>'
                         )
                     _conc_itens_html = (
-                        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+                        '<div style="display:flex;flex-direction:column;gap:8px;">'
                         f'{_conc_itens_html}</div>'
                     )
 
@@ -9099,7 +9088,7 @@ function setHeightGeral(isOpen) {{
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
     <div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
-        <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente (geral)</div>
+        <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
         <div class="score-tooltip-wrap"><div class="q-badge">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença, discurso e investimento em mídia desse concorrente.</div>
         </div>
@@ -9326,7 +9315,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=400, scrolling=False)
+                components.html(resumo_executivo_html, height=430, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

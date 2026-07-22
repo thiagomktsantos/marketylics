@@ -11828,12 +11828,6 @@ elif st.session_state.pagina == "ads":
         # aparecia como "slide 2" repetindo a foto do slide 1, só que com
         # qualidade pior. Aqui pega só a MELHOR opção disponível por card,
         # então cada posição da lista é garantidamente um slide diferente.
-        # DEBUG TEMPORÁRIO: guarda os cards crus (como vieram da Apify/Meta),
-        # sem transformação nenhuma, pra investigar por que a extração de
-        # imagem por card está repetindo a mesma foto em qualidade diferente.
-        # Pode ser removido depois que o bug for resolvido.
-        debug_cards_raw = cards
-
         carousel_images = []
         for _card in cards:
             if not isinstance(_card, dict):
@@ -11944,7 +11938,6 @@ elif st.session_state.pagina == "ads":
             "images":               images,
             "images_b64":           images_b64,
             "carousel_images":      carousel_images,
-            "debug_cards":          debug_cards_raw,
             "videos":               videos,
             "snapshot_url":         snap_url,
             "data_inicio":          start_fmt,
@@ -14815,7 +14808,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    debug_panel_html = ""
                     # Antes usava o link salvo em CADA anúncio individualmente,
                     # e só caía pro fallback quando o campo vinha vazio. Só que
                     # anúncios antigos costumam ter esse campo preenchido com um
@@ -15150,34 +15142,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 [img for img in [_modal_src_0, _modal_src_2] if img],
                                 ensure_ascii=True
                             )
-                        if _e_carrossel:
-                            _debug_diag = {
-                                "formato": ad.get("formato"),
-                                "metodo_usado": _metodo_carrossel,
-                                "tem_carousel_images_no_dict": bool(ad.get("carousel_images")),
-                                "qtd_carousel_images": len(_carousel_imgs_ad),
-                                "carousel_images": _carousel_imgs_ad,
-                                "qtd_images_generico": len(images),
-                                "images_generico": images,
-                                "main_modal_imgs_js_final": _json.loads(main_modal_imgs_js),
-                            }
-                            _debug_json = (
-                                "==== DIAGNÓSTICO (o que o código calculou) ====\n"
-                                + _json.dumps(_debug_diag, ensure_ascii=False, indent=2)
-                                + "\n\n==== CARDS CRUS (como vieram da Apify/Meta) ====\n"
-                                + _json.dumps(ad.get("debug_cards") or [], ensure_ascii=False, indent=2)
-                            )
-                            _debug_json_html = (
-                                _debug_json.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                            )
-                            debug_panel_html = f"""
-    <button onclick="toggleDebug('{uid}')" style="margin-top:6px;font-size:10px;font-weight:700;
-            background:#1f2937;color:#fbbf24;border:none;border-radius:6px;padding:4px 8px;cursor:pointer">
-        🐞 Ver dados brutos (debug)
-    </button>
-    <pre id="debug_{uid}" style="display:none;white-space:pre-wrap;word-break:break-all;font-size:10px;
-         background:#0a0a0a;color:#4ade80;padding:10px;border-radius:8px;max-height:340px;overflow:auto;
-         margin-top:6px">{_debug_json_html}</pre>"""
                         # Mesmo selo de origem que o card de vídeo já tem —
                         # antes só existia lá, então cards de imagem (como os
                         # de anúncio "Dinâmico") ficavam sem indicar se o link
@@ -15312,7 +15276,6 @@ function imgFallback_{uid}(img){{
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_ads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
-    {debug_panel_html}
 </div>
 <script>
 window.__PLATS_{uid}__ = {plat_js};

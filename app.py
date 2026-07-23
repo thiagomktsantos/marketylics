@@ -9633,7 +9633,7 @@ function syncH() {{
     // valor a partir do que já está aplicado — nunca reseta pra 0px no
     // meio do caminho, que era o que fazia a seção 'pular' visivelmente
     // a cada nova tentativa de recálculo.
-    if(thisIframe.style.marginTop===''){{ thisIframe.style.marginTop='-70px'; }}
+    if(thisIframe.style.marginTop===''){{ thisIframe.style.marginTop='-80px'; }}
     var margemAtual=parseFloat(thisIframe.style.marginTop)||0;
     var thisTop=thisIframe.getBoundingClientRect().top;
     // Acha geometricamente o iframe cujo bottom é o mais próximo (e
@@ -9654,7 +9654,7 @@ function syncH() {{
         // Trava de segurança: nunca passa de -70px nem vira positiva,
         // não importa o que a medição dê. Na pior hipótese sobra uma
         // folguinha — nunca mais sobrepõe a seção de cima.
-        if(novaMargem<-70) novaMargem=-70;
+        if(novaMargem<-80) novaMargem=-80;
         if(novaMargem>0) novaMargem=0;
         thisIframe.style.marginTop=novaMargem+'px';
     }}

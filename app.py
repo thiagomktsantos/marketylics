@@ -9031,7 +9031,6 @@ function setHeightGeral(isOpen) {{
                     _data_estrategia = bool(_area_ads_conc)
                     _data_presenca   = bool(_area_redes_conc)
                     _data_discurso   = bool(_area_ads_conc) or bool(_d0["seo_status_ok"])
-                    _data_midia      = bool(_d0["tem_ads"])
 
                     _conc_item_estrategia = bool(_area_ads_conc and _area_ads_conc[1] >= 60)
                     _conc_item_presenca   = bool(_area_redes_conc and _area_redes_conc[1] >= 60)
@@ -9045,8 +9044,6 @@ function setHeightGeral(isOpen) {{
                     if not _conc_item_discurso and _d0["seo_status_ok"]:
                         _conc_item_discurso = _d0["seo_score_val"] >= 60
 
-                    _conc_item_midia = bool(_d0["tem_ads"] and (_d0["ads"] or {}).get("total", 0) >= 5)
-
                     if _score_geral >= 70:
                         _conc_nivel, _conc_grad = "ALTA", "linear-gradient(135deg,#f43f5e,#dc2626)"
                         _conc_desc = "Ameaça relevante para seu mercado."
@@ -9057,11 +9054,14 @@ function setHeightGeral(isOpen) {{
                         _conc_nivel, _conc_grad = "BAIXA", "linear-gradient(135deg,#22c55e,#16a34a)"
                         _conc_desc = "Ainda sem ameaça significativa para seu mercado."
 
+                    # Só 3 sinais — os que têm dado sólido e recorrente por
+                    # trás (estratégia de anúncios, presença em redes,
+                    # discurso/comunicação). "Volume de anúncios" foi
+                    # removido: não é um sinal relevante por si só.
                     _conc_itens_base = [
                         ("Estratégia bem definida",     _conc_item_estrategia, _data_estrategia),
                         ("Presença ativa e contínua",   _conc_item_presenca,   _data_presenca),
                         ("Discurso claro e persuasivo", _conc_item_discurso,   _data_discurso),
-                        ("Volume de anúncios ativos",   _conc_item_midia,      _data_midia),
                     ]
                     _conc_itens_ok  = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and ok]
                     _conc_itens_off = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and not ok]
@@ -9114,7 +9114,7 @@ function setHeightGeral(isOpen) {{
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
         <div class="conc-tooltip-wrap"><div class="q-badge">?</div>
-          <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença, discurso e volume de anúncios desse concorrente.</div>
+          <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença e discurso desse concorrente.</div>
         </div>
       </div>
       <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin-bottom:12px;">
@@ -9351,7 +9351,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=410, scrolling=False)
+                components.html(resumo_executivo_html, height=390, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

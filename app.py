@@ -9627,17 +9627,19 @@ function syncH() {{
     }}
     if(!thisIframe) return;
     thisIframe.style.height=(h+8)+'px';
-    // Fecha o vão até o card "Resumo Executivo" acima com base na
-    // distância REAL medida agora — em vez de um valor fixo "no chute"
-    // (que quebra sempre que o card anterior muda de altura) ou de
-    // 'iframes[i-1]' por índice de DOM (frágil: a página tem vários
-    // outros iframes ocultos — modais, menus etc. — que podem entrar
-    // no meio da lista e não são necessariamente o card logo acima).
-    // Em vez disso, acha geometricamente o iframe cujo bottom é o mais
-    // próximo (e ainda acima) do topo deste, que é o card de verdade
-    // logo acima na tela, não importa a posição dele na lista do DOM.
-    thisIframe.style.marginTop='0px';
+    // Começa já com -70px assim que o iframe aparece (sem esperar medir
+    // nada), pra não mostrar o vão grande por nem que seja um instante.
+    // Nas próximas chamadas (os setTimeout mais abaixo), REFINA esse
+    // valor a partir do que já está aplicado — nunca reseta pra 0px no
+    // meio do caminho, que era o que fazia a seção 'pular' visivelmente
+    // a cada nova tentativa de recálculo.
+    if(thisIframe.style.marginTop===''){{ thisIframe.style.marginTop='-70px'; }}
+    var margemAtual=parseFloat(thisIframe.style.marginTop)||0;
     var thisTop=thisIframe.getBoundingClientRect().top;
+    // Acha geometricamente o iframe cujo bottom é o mais próximo (e
+    // ainda acima) do topo deste — é o card de verdade logo acima na
+    // tela, não importa a posição dele na lista de iframes do DOM (a
+    // página tem vários outros iframes ocultos — modais, menus etc.).
     var prevIframe=null, melhorBottom=-Infinity;
     for(var k=0;k<iframes.length;k++){{
         if(iframes[k]===thisIframe) continue;
@@ -9646,15 +9648,15 @@ function syncH() {{
     }}
     if(prevIframe){{
         var desiredGap=16;
-        var gap=thisTop-melhorBottom;
-        var ajuste=gap-desiredGap;
-        // Trava de segurança: nunca puxa mais que 70px pra cima, não
-        // importa o que a medição dê. Isso evita que qualquer erro de
-        // medição (ex.: pegar o iframe errado, ou o card de cima ainda
-        // mudando de tamanho) jogue esta seção por cima da de cima —
-        // na pior das hipóteses sobra um pouco de espaço, nunca sobrepõe.
-        if(ajuste>70) ajuste=70;
-        thisIframe.style.marginTop=(ajuste>0?('-'+ajuste+'px'):'0px');
+        var gapAtual=thisTop-melhorBottom;
+        var ajusteAdicional=gapAtual-desiredGap;
+        var novaMargem=margemAtual-ajusteAdicional;
+        // Trava de segurança: nunca passa de -70px nem vira positiva,
+        // não importa o que a medição dê. Na pior hipótese sobra uma
+        // folguinha — nunca mais sobrepõe a seção de cima.
+        if(novaMargem<-70) novaMargem=-70;
+        if(novaMargem>0) novaMargem=0;
+        thisIframe.style.marginTop=novaMargem+'px';
     }}
 }}
 // Tooltips flutuantes: aqui tem DOIS níveis de corte — o iframe em si, e

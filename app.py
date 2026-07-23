@@ -9648,17 +9648,13 @@ function syncH() {{
         var desiredGap=16;
         var gap=thisTop-melhorBottom;
         var ajuste=gap-desiredGap;
+        // Trava de segurança: nunca puxa mais que 70px pra cima, não
+        // importa o que a medição dê. Isso evita que qualquer erro de
+        // medição (ex.: pegar o iframe errado, ou o card de cima ainda
+        // mudando de tamanho) jogue esta seção por cima da de cima —
+        // na pior das hipóteses sobra um pouco de espaço, nunca sobrepõe.
+        if(ajuste>70) ajuste=70;
         thisIframe.style.marginTop=(ajuste>0?('-'+ajuste+'px'):'0px');
-        // O card de cima ("Resumo Executivo") tem o próprio syncH interno,
-        // que ainda pode encolher/crescer ele em atrasos diferentes dos
-        // nossos — sem isso, se ele mudar de tamanho DEPOIS da nossa
-        // última tentativa, o vão calculado fica desatualizado e a folga
-        // volta a aparecer (ou vira sobreposição). Observando o elemento
-        // dele direto, recalculamos toda vez que ele realmente mudar.
-        if(window.ResizeObserver && !thisIframe._prevObs){{
-            thisIframe._prevObs=true;
-            new ResizeObserver(function(){{ syncH(); }}).observe(prevIframe);
-        }}
     }}
 }}
 // Tooltips flutuantes: aqui tem DOIS níveis de corte — o iframe em si, e

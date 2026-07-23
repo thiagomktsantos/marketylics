@@ -8196,8 +8196,8 @@ function setHeightGeral(isOpen) {{
 }
 /* Mesmo motivo do .oport-tip acima: sem ':hover' aqui, exibido via JS. */
 .q-badge {
-    width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
-    align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
+    width:14px; height:14px; border-radius:50%; background:transparent; border:1px solid #cbd5e1;
+    display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#9ca3af;
     cursor:default; flex-shrink:0; margin-left:5px;
 }
 """
@@ -8460,9 +8460,8 @@ function setHeightGeral(isOpen) {{
 
                 stats_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:10px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">'
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;white-space:nowrap;">Principais Métricas</div>'
-                    '<div style="font-size:11px;font-weight:700;color:#3a9fd6;white-space:nowrap;flex-shrink:0;">Ver detalhes</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
                     '<div style="display:flex;gap:4px;align-items:flex-start;flex-wrap:nowrap;">'
@@ -9195,8 +9194,8 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }}
 .conc-tooltip-wrap:hover .tip {{ display:block; }}
 .q-badge {{
-    width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
-    align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;
+    width:14px; height:14px; border-radius:50%; background:transparent; border:1px solid #cbd5e1;
+    display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#9ca3af;
     cursor:default; flex-shrink:0; margin-left:5px;
 }}
 .oport-tip-wrap {{ position:relative; display:inline-flex; align-items:center; cursor:default; }}
@@ -9216,7 +9215,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>
-<div style="display:flex;gap:16px;margin-top:16px;align-items:flex-start;">
+<div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
@@ -9622,7 +9621,7 @@ function syncH() {{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
     var iframes=window.parent.document.querySelectorAll('iframe');
     for(var i=0;i<iframes.length;i++){{
-        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-57px';break;}}}}catch(e){{}}
+        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-120px';break;}}}}catch(e){{}}
     }}
 }}
 // Tooltips flutuantes: aqui tem DOIS níveis de corte — o iframe em si, e

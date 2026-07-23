@@ -9081,17 +9081,30 @@ function setHeightGeral(isOpen) {{
                         '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" '
                         'stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>'
                     )
+                    # Tooltip de cada sinal — explica o critério por trás do
+                    # rótulo (mesmo padrão do "?" do título do card, mas com
+                    # "i" pra indicar "info" em vez de "como é calculado").
+                    _conc_tooltips = {
+                        "Estratégia bem definida":     "Score de Anúncios desse concorrente igual ou acima de 60.",
+                        "Presença ativa e contínua":   "Score de Redes Sociais desse concorrente igual ou acima de 60.",
+                        "Discurso claro e persuasivo": "Anúncios comunicam benefícios claros ou Score de SEO igual ou acima de 60.",
+                    }
+
+                    def _conc_item_row(_lbl_ci, _icon_html, _cor_lbl):
+                        _tip_txt = _conc_tooltips.get(_lbl_ci, "")
+                        return (
+                            '<div style="display:flex;align-items:center;gap:8px;">'
+                            f'{_icon_html}<div style="font-size:12.5px;font-weight:700;color:{_cor_lbl};">{_lbl_ci}</div>'
+                            '<div class="conc-tooltip-wrap"><div class="q-badge">i</div>'
+                            f'<div class="tip">{_tip_txt}</div></div>'
+                            '</div>'
+                        )
+
                     _conc_itens_html = ""
                     for _lbl_ci in _conc_itens_ok:
-                        _conc_itens_html += (
-                            '<div style="display:flex;align-items:center;gap:8px;">'
-                            f'{_icon_ok_ci}<div style="font-size:12.5px;font-weight:700;color:#1a2e4a;">{_lbl_ci}</div></div>'
-                        )
+                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_ok_ci, "#1a2e4a")
                     for _lbl_ci in _conc_itens_off:
-                        _conc_itens_html += (
-                            '<div style="display:flex;align-items:center;gap:8px;">'
-                            f'{_icon_off_ci}<div style="font-size:12.5px;font-weight:700;color:#9ca3af;">{_lbl_ci}</div></div>'
-                        )
+                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_off_ci, "#9ca3af")
                     if not _conc_itens_ok and not _conc_itens_off:
                         _conc_itens_html = (
                             '<div style="font-size:12px;color:#9ca3af;line-height:1.5;">'
@@ -9101,6 +9114,7 @@ function setHeightGeral(isOpen) {{
                         '<div style="display:flex;flex-direction:column;gap:10px;">'
                         f'{_conc_itens_html}</div>'
                     )
+
 
                     # Pré-seleciona esse concorrente na página de Insights,
                     # pro botão "Ver comparação detalhada" já abrir focado
@@ -9202,7 +9216,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>
-<div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
+<div style="display:flex;gap:16px;margin-top:16px;align-items:flex-start;">
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
     <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
     <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
@@ -18791,19 +18805,19 @@ function setHeight(isOpen) {{
             criterios.append({"label": "Diferenciação no mercado", "ok": False})
 
         if score >= 91:
-            classificacao, classificacao_icon = "Excelente", "🏆"
+            classificacao, classificacao_icon = "Excelente", _SVG_ICONE_EXCELENTE
             cor_classe, bg_classe, brd_classe = "#22c55e", "#f0fdf4", "#bbf7d0"
         elif score >= 81:
-            classificacao, classificacao_icon = "Muito bom", "👍"
+            classificacao, classificacao_icon = "Muito bom", _SVG_ICONE_BOM
             cor_classe, bg_classe, brd_classe = "#3b82f6", "#eff6ff", "#bfdbfe"
         elif score >= 60:
-            classificacao, classificacao_icon = "Bom", "👍"
+            classificacao, classificacao_icon = "Bom", _SVG_ICONE_BOM
             cor_classe, bg_classe, brd_classe = "#60a5fa", "#eff6ff", "#bfdbfe"
         elif score >= 40:
-            classificacao, classificacao_icon = "Regular", "⚠️"
+            classificacao, classificacao_icon = "Regular", _SVG_ICONE_REGULAR
             cor_classe, bg_classe, brd_classe = "#f59e0b", "#fffbeb", "#fde68a"
         else:
-            classificacao, classificacao_icon = "Precisa melhorar", "📝"
+            classificacao, classificacao_icon = "Precisa melhorar", _SVG_ICONE_PRECISA_MELHORAR
             cor_classe, bg_classe, brd_classe = "#ef4444", "#fef2f2", "#fecaca"
 
         oportunidades = sum(1 for c in criterios if not c["ok"])

@@ -9101,7 +9101,7 @@ function setHeightGeral(isOpen) {{
     <div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
         <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
-        <div class="score-tooltip-wrap"><div class="q-badge">?</div>
+        <div class="conc-tooltip-wrap"><div class="q-badge">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença, discurso e investimento em mídia desse concorrente.</div>
         </div>
       </div>
@@ -9156,6 +9156,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     border:5px solid transparent; border-bottom-color:#1a2e4a;
 }}
 .score-tooltip-wrap:hover .tip {{ display:block; }}
+.conc-tooltip-wrap {{ position:relative; display:inline-flex; align-items:center; }}
+.conc-tooltip-wrap .tip {{
+    display:none; position:absolute; top:22px; right:-6px; left:auto; transform:none;
+    background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
+    line-height:1.8; width:200px; z-index:9999; white-space:normal;
+    box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
+}}
+.conc-tooltip-wrap .tip::after {{
+    content:''; position:absolute; bottom:100%; right:14px; left:auto; transform:none;
+    border:5px solid transparent; border-bottom-color:#1a2e4a;
+}}
+.conc-tooltip-wrap:hover .tip {{ display:block; }}
 .q-badge {{
     width:14px; height:14px; border-radius:50%; background:#e5e7eb; display:inline-flex;
     align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#9ca3af;

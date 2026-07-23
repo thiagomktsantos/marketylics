@@ -9619,9 +9619,31 @@ function buildCards() {{
 }}
 function syncH() {{
     var h=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-    var iframes=window.parent.document.querySelectorAll('iframe');
+    var doc=window.parent.document;
+    var iframes=doc.querySelectorAll('iframe');
     for(var i=0;i<iframes.length;i++){{
-        try{{if(iframes[i].contentWindow===window){{iframes[i].style.height=(h+8)+'px';iframes[i].style.marginTop='-120px';break;}}}}catch(e){{}}
+        try{{
+            if(iframes[i].contentWindow===window){{
+                var thisIframe=iframes[i];
+                thisIframe.style.height=(h+8)+'px';
+                // Fecha o vão até o card "Resumo Executivo" (iframe anterior)
+                // com base na distância REAL entre os dois, medida agora —
+                // em vez de um valor fixo "no chute", que quebra sempre que
+                // o card anterior muda de altura (ex.: painel direita mais
+                // alto que a coluna esquerda, ou lista de oportunidades
+                // maior/menor). Zera a margem antes de medir, senão a
+                // margem já aplicada anteriormente distorce a medição.
+                thisIframe.style.marginTop='0px';
+                var prevIframe=iframes[i-1];
+                if(prevIframe){{
+                    var desiredGap=16;
+                    var gap=thisIframe.getBoundingClientRect().top - prevIframe.getBoundingClientRect().bottom;
+                    var ajuste=gap-desiredGap;
+                    thisIframe.style.marginTop=(ajuste>0?('-'+ajuste+'px'):'0px');
+                }}
+                break;
+            }}
+        }}catch(e){{}}
     }}
 }}
 // Tooltips flutuantes: aqui tem DOIS níveis de corte — o iframe em si, e

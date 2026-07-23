@@ -9024,6 +9024,15 @@ function setHeightGeral(isOpen) {{
                     _area_ads_conc   = _area_por_label("Anúncios")
                     _area_redes_conc = _area_por_label("Redes Sociais")
 
+                    # Cada item só entra na lista se existir dado de verdade
+                    # pra julgá-lo — senão ele ficaria marcado como "não
+                    # identificado" mesmo quando na real não há como saber
+                    # (ex.: concorrente sem anúncios coletados ainda).
+                    _data_estrategia = bool(_area_ads_conc)
+                    _data_presenca   = bool(_area_redes_conc)
+                    _data_discurso   = bool(_area_ads_conc) or bool(_d0["seo_status_ok"])
+                    _data_midia      = bool(_d0["tem_ads"])
+
                     _conc_item_estrategia = bool(_area_ads_conc and _area_ads_conc[1] >= 60)
                     _conc_item_presenca   = bool(_area_redes_conc and _area_redes_conc[1] >= 60)
 
@@ -9048,16 +9057,14 @@ function setHeightGeral(isOpen) {{
                         _conc_nivel, _conc_grad = "BAIXA", "linear-gradient(135deg,#22c55e,#16a34a)"
                         _conc_desc = "Ainda sem ameaça significativa para seu mercado."
 
-                    _conc_itens_ok  = [t for t, orig in zip(
-                        ["Estratégia bem definida", "Presença ativa e contínua",
-                         "Discurso claro e persuasivo", "Alto investimento em mídia"],
-                        [_conc_item_estrategia, _conc_item_presenca, _conc_item_discurso, _conc_item_midia],
-                    ) if orig]
-                    _conc_itens_off = [t for t, orig in zip(
-                        ["Estratégia bem definida", "Presença ativa e contínua",
-                         "Discurso claro e persuasivo", "Alto investimento em mídia"],
-                        [_conc_item_estrategia, _conc_item_presenca, _conc_item_discurso, _conc_item_midia],
-                    ) if not orig]
+                    _conc_itens_base = [
+                        ("Estratégia bem definida",     _conc_item_estrategia, _data_estrategia),
+                        ("Presença ativa e contínua",   _conc_item_presenca,   _data_presenca),
+                        ("Discurso claro e persuasivo", _conc_item_discurso,   _data_discurso),
+                        ("Alto investimento em mídia",  _conc_item_midia,      _data_midia),
+                    ]
+                    _conc_itens_ok  = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and ok]
+                    _conc_itens_off = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and not ok]
                     # Lista simples (ícone + rótulo, sem caixa) — mesmo padrão
                     # visual já usado nos outros checklists do app (círculo
                     # verde com check pra item identificado, círculo cinza
@@ -9084,6 +9091,11 @@ function setHeightGeral(isOpen) {{
                         _conc_itens_html += (
                             '<div style="display:flex;align-items:center;gap:8px;">'
                             f'{_icon_off_ci}<div style="font-size:12.5px;font-weight:700;color:#9ca3af;">{_lbl_ci}</div></div>'
+                        )
+                    if not _conc_itens_ok and not _conc_itens_off:
+                        _conc_itens_html = (
+                            '<div style="font-size:12px;color:#9ca3af;line-height:1.5;">'
+                            'Ainda não há dados suficientes desse concorrente para avaliar esses sinais.</div>'
                         )
                     _conc_itens_html = (
                         '<div style="display:flex;flex-direction:column;gap:10px;">'

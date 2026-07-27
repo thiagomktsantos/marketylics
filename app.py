@@ -9085,9 +9085,10 @@ function setHeightGeral(isOpen) {{
                     def _conc_item_row(_lbl_ci, _icon_html, _cor_lbl):
                         _tip_txt = _conc_tooltips.get(_lbl_ci, "")
                         return (
-                            '<div style="display:flex;align-items:center;gap:8px;">'
-                            f'{_icon_html}<div style="font-size:12.5px;font-weight:700;color:{_cor_lbl};">{_lbl_ci}</div>'
-                            '<div class="conc-tooltip-wrap"><div class="q-badge">i</div>'
+                            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+                            f'<div style="display:flex;align-items:center;gap:8px;">{_icon_html}'
+                            f'<div style="font-size:12.5px;font-weight:700;color:{_cor_lbl};">{_lbl_ci}</div></div>'
+                            '<div class="conc-tooltip-wrap"><div class="q-badge" style="margin-left:0;">i</div>'
                             f'<div class="tip">{_tip_txt}</div></div>'
                             '</div>'
                         )
@@ -9123,10 +9124,10 @@ function setHeightGeral(isOpen) {{
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença e discurso desse concorrente.</div>
         </div>
       </div>
-      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin-bottom:12px;">
+      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin-bottom:6px;">
         <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
       </div>
-      <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;">{_conc_desc}</div>
+      <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;text-align:center;">{_conc_desc}</div>
       <div>{_conc_itens_html}</div>
     </div>
 

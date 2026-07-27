@@ -29,14 +29,8 @@ st.set_page_config(
 _SVG_ICONE_EXCELENTE = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:14px;height:14px;min-width:14px;flex-shrink:0;vertical-align:-2px;">'
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>'
-    '<path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>'
-    '<path d="M4 22h16"/>'
-    '<path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>'
-    '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>'
-    '<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>'
+    '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" stroke="none">'
+    '<path d="M2.5.5A.5.5 0 0 1 3 0h10a.5.5 0 0 1 .5.5c0 .538-.012 1.05-.034 1.536a3 3 0 1 1-1.133 5.89c-.79 1.865-1.878 2.777-2.833 3.011v2.173l1.425.356c.194.048.377.135.537.255L13.3 15.1a.5.5 0 0 1-.3.9H3a.5.5 0 0 1-.3-.9l1.838-1.379c.16-.12.343-.207.537-.255L6.5 13.11v-2.173c-.955-.234-2.043-1.146-2.833-3.012a3 3 0 1 1-1.132-5.89A33.076 33.076 0 0 1 2.5.5zm.099 2.54a2 2 0 0 0 .72 3.935c-.333-1.05-.588-2.346-.72-3.935zm10.083 3.935a2 2 0 0 0 .72-3.935c-.133 1.59-.388 2.885-.72 3.935z"/>'
     '</svg></span>'
 )
 
@@ -51,21 +45,16 @@ _SVG_ICONE_BOM = (
 _SVG_ICONE_REGULAR = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:14px;height:14px;min-width:14px;flex-shrink:0;vertical-align:-2px;">'
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>'
-    '<line x1="12" y1="9" x2="12" y2="13"/>'
-    '<line x1="12" y1="17" x2="12.01" y2="17"/>'
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">'
+    '<path d="M1 21h22L12 2 1 21Zm12-3h-2v-2h2v2Zm0-4h-2v-4h2v4Z"/>'
     '</svg></span>'
 )
 
 _SVG_ICONE_PRECISA_MELHORAR = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:14px;height:14px;min-width:14px;flex-shrink:0;vertical-align:-2px;">'
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
-    '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">'
+    '<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/>'
     '</svg></span>'
 )
 

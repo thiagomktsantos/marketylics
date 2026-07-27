@@ -8129,9 +8129,35 @@ function setHeightGeral(isOpen) {{
             for url in candidatos:
                 if not url or not isinstance(url, str): continue
                 url = url.strip()
-                dominio = _re.sub(r'^https?://','',url).split('/')[0].split('?')[0].replace('www.','').strip()
+                dominio = _re.sub(r'^https?://','',url).split('/')[0].split('?')[0].replace('www.','').strip().lower()
                 if dominio and '.' in dominio and 'facebook.com' not in dominio and 'fb.com' not in dominio and 'fbcdn' not in dominio:
                     return dominio
+            # Fallback: quando nenhum candidato tem formato de domínio (ex.:
+            # caption só "WhatsApp", sem "." — a Meta às vezes devolve um
+            # rótulo em vez de URL), mas o texto indica claramente que o
+            # destino é o WhatsApp, agrupa no mesmo domínio já usado pelos
+            # anúncios que têm link completo (api.whatsapp.com). Sem isso
+            # esses anúncios ficavam de fora da contagem de destinos.
+            for url in candidatos:
+                if isinstance(url, str) and 'whatsapp' in url.lower():
+                    return "api.whatsapp.com"
+            # Mesmo caso do WhatsApp, agora pro Messenger/Facebook: um link
+            # completo tipo "facebook.com/messages/t/..." cai no domínio
+            # "facebook.com" e é descartado no loop acima (propositalmente,
+            # pra não contar o próprio permalink do anúncio no Facebook como
+            # se fosse um "destino"). Aqui a gente só resgata os casos que
+            # são claramente um CTA de Messenger — link com "/messages/",
+            # "m.me" ou caption igual a "facebook"/"facebook.com" sozinho
+            # (rótulo puro, sem path) — e agrupa no mesmo bucket do fb.me,
+            # já que ambos levam ao mesmo destino (conversa no Messenger).
+            # Um facebook.com genérico (ex.: link da própria página/post)
+            # continua fora da contagem, pra não inflar o ranking.
+            for url in candidatos:
+                if not isinstance(url, str): continue
+                low = url.strip().lower()
+                if not low: continue
+                if 'm.me' in low or '/messages/' in low or low in ('facebook', 'facebook.com', 'www.facebook.com'):
+                    return "fb.me"
             return ""
 
         contagens = {"beneficio":0,"prova_social":0,"urgencia":0,"cta_direto":0}

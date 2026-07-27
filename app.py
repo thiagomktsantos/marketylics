@@ -9119,11 +9119,12 @@ function setHeightGeral(isOpen) {{
   <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
     <div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
-        <div style="font-size:14px;font-weight:800;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
+        <div style="font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
         <div class="conc-tooltip-wrap"><div class="q-badge">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença e discurso desse concorrente.</div>
         </div>
       </div>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;">
       <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin-bottom:6px;">
         <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
       </div>

@@ -8183,7 +8183,7 @@ function setHeightGeral(isOpen) {{
             "urgencia": contagens["urgencia"],   "cta_direto": contagens["cta_direto"],
             "video": midia["video"], "imagem": midia["imagem"], "carrossel": midia["carrossel"],
             "plataformas": plat_count,
-            "destinos": sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:3],
+            "destinos": sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:10],
         }
 
     seo_cache = st.session_state.get("seo_cache", {})
@@ -8699,12 +8699,16 @@ function setHeightGeral(isOpen) {{
                 destinos = a.get("destinos", [])
                 if destinos:
                     dest_max  = max(v for _, v in destinos) or 1
-                    dest_rows = ""
-                    for dom, cnt in destinos:
+
+                    def _dest_row_html(dom, cnt):
                         pct = round(cnt / dest_max * 100)
-                        dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
+                        _dom_low = dom.lower()
+                        if "whatsapp" in _dom_low or "wa.me" in _dom_low:
+                            dom_display = "WhatsApp"
+                        else:
+                            dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
                         _icone_dest, _cor_dest = _icone_destino(dom)
-                        dest_rows += (
+                        return (
                             '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                             f'<div style="width:22px;height:22px;border-radius:50%;background:{_cor_dest};color:#fff;'
                             'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
@@ -8716,6 +8720,26 @@ function setHeightGeral(isOpen) {{
                             f'<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
                             f'<div style="height:100%;width:{pct}%;background:{_cor_dest};border-radius:3px;"></div></div>'
                             '</div></div>'
+                        )
+
+                    _LIMITE_DEST_VISIVEL = 3
+                    _dest_visiveis = destinos[:_LIMITE_DEST_VISIVEL]
+                    _dest_extras   = destinos[_LIMITE_DEST_VISIVEL:]
+                    dest_rows = "".join(_dest_row_html(dom, cnt) for dom, cnt in _dest_visiveis)
+
+                    if _dest_extras:
+                        _dest_uid = re.sub(r'[^a-z0-9]+', '_', d["nome"].lower()).strip('_')
+                        dest_rows += (
+                            f'<div id="dest_extra_{_dest_uid}" style="display:none;">'
+                            + "".join(_dest_row_html(dom, cnt) for dom, cnt in _dest_extras)
+                            + '</div>'
+                            f'<button id="dest_btn_{_dest_uid}" onclick="'
+                            f"var m=document.getElementById('dest_extra_{_dest_uid}');"
+                            f"var b=document.getElementById('dest_btn_{_dest_uid}');"
+                            "if(m.style.display==='none'){m.style.display='block';b.textContent='Ver menos';}"
+                            "else{m.style.display='none';b.textContent='Ver mais';}"
+                            '" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:11px;'
+                            'cursor:pointer;padding:0;margin-top:2px;">Ver mais</button>'
                         )
                     ads_dest_content = dest_rows
                 else:

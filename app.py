@@ -9723,10 +9723,10 @@ function syncH() {{
         var gapAtual=thisTop-melhorBottom;
         var ajusteAdicional=gapAtual-desiredGap;
         var novaMargem=margemAtual-ajusteAdicional;
-        // Trava de segurança: nunca passa de -70px nem vira positiva,
+        // Trava de segurança: nunca passa de -95px nem vira positiva,
         // não importa o que a medição dê. Na pior hipótese sobra uma
         // folguinha — nunca mais sobrepõe a seção de cima.
-        if(novaMargem<-80) novaMargem=-80;
+        if(novaMargem<-95) novaMargem=-95;
         if(novaMargem>0) novaMargem=0;
         thisIframe.style.marginTop=novaMargem+'px';
     }}

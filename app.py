@@ -18104,8 +18104,8 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 .sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
 </style>
 <div class="wrap">
-    <div class="titulo">Biblioteca de Ads</div>
-    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
+    <div class="titulo">Biblioteca de Ads Google</div>
+    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
 </div>
 """, height=104 if _ultima_ts else 78)
  
@@ -18616,12 +18616,31 @@ setHeight(false);
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_gads_id(e)]
     _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_gads_id(e) and e["nome"] not in _ids_coletados]
 
+    _SVG_ROLDANA_ALERTA = (
+        '<span style="display:inline-flex;align-items:center;gap:3px;font-weight:700;">'
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+        'style="vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="12" cy="12" r="3"/>'
+        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 '
+        '1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 '
+        '0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 '
+        '4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 '
+        '1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A'
+        '1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+        '</svg>Configuração</span>'
+    )
+
     if _empresas_sem_config:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
-        st.info(
-            f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
-            f"Vá em **Configuração** para adicionar o ID da página."
-        )
+        st.markdown(f"""
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
+                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;">
+            <strong>{_nomes}</strong>
+            {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
+            Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+        </div>
+        """, unsafe_allow_html=True)
     if _empresas_sem_dados:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
         st.info(
@@ -18629,6 +18648,9 @@ setHeight(false);
             f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
             f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
         )
+
+    if _empresas_sem_config or _empresas_sem_dados:
+        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)
@@ -19016,6 +19038,12 @@ function triggerTab(label) {{
             gads_id     = emp.get("gads_id","") if is_minha else concs[e["idx"]].get("gads_id","")
             page_pic   = emp.get("gads_page_pic","") if is_minha else concs[e["idx"]].get("gads_page_pic","")
             has_id     = bool(gads_id.strip())
+            # Empresa/concorrente já tem nome e domínio cadastrados em "Minha
+            # Empresa" / "Concorrentes" mesmo sem ter configurado o Google
+            # Ads ainda — usa isso como sugestão inicial no campo em vez de
+            # deixar em branco, pra economizar um passo de quem for buscar.
+            _dominio_conhecido = emp.get("site","") if is_minha else concs[e["idx"]].get("url","")
+            gads_id_sugestao   = gads_id or _dominio_conhecido or e["nome"]
             is_editing = (editando_empresa == e["nome"])
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
             av_txt     = gerar_avatar(e["nome"])
@@ -19154,7 +19182,7 @@ function triggerTab(label) {{
                             <input
                                 id="cfg_input_{ci}"
                                 type="text"
-                                value="{gads_id}"
+                                value="{gads_id_sugestao}"
                                 placeholder="Ex: Nike, nike.com ou AR16735076323512287233"
                                 style="width:100%;height:42px;border:1.5px solid #e5e7eb;
                                        border-radius:8px;padding:0 14px;font-size:14px;

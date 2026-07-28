@@ -5048,7 +5048,7 @@ with st.sidebar:
     logo_white_b64 = get_logo_white_base64()
     logo_white_src = f"data:image/png;base64,{logo_white_b64}" if logo_white_b64 else ""
 
-    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "insights", "sair", "notificacoes", "perfil_menu", "perfil"]
+    paginas = ["home", "cad", "geral", "redes", "sites", "ads", "google_ads", "insights", "sair", "notificacoes", "perfil_menu", "perfil"]
     for p in paginas:
         if st.button(p, key=f"_hidden_{p}"):
             if p == "sair":

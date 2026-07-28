@@ -5402,7 +5402,7 @@ setInterval(function() {{
 
     if st.session_state.get("mostrar_perfil_menu"):
         with st.container(border=True):
-            editar_clicado = st.button("Editar dados", key="_perfil_menu_editar", use_container_width=True)
+            editar_clicado = st.button("Dados da conta", key="_perfil_menu_editar", use_container_width=True)
             sair_clicado = st.button("Sair", key="_perfil_menu_sair", use_container_width=True)
 
             components.html("""
@@ -5422,12 +5422,12 @@ html, body { background: transparent; overflow: hidden; font-family: 'DM Sans', 
 .menu-btn.danger:hover { border-color: #e05252; }
 .menu-btn svg { flex-shrink: 0; }
 </style>
-<button class="menu-btn" onclick="triggerPerfilBtn('Editar dados')">
+<button class="menu-btn" onclick="triggerPerfilBtn('Dados da conta')">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 20h9"/>
         <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>
     </svg>
-    Editar dados
+    Dados da conta
 </button>
 <button class="menu-btn danger" onclick="triggerPerfilBtn('Sair')">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5ab3ec" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -22053,7 +22053,7 @@ html, body { background: transparent; overflow: hidden; }
 .sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
 <div id="wrap">
-    <div class="titulo">Meu Perfil</div>
+    <div class="titulo">Dados da conta</div>
     <div class="sub">Suas informações pessoais e o plano da sua conta.</div>
 </div>
 <script>
@@ -22081,7 +22081,9 @@ html, body { background: transparent; overflow: hidden; }
     _plano_atual_perfil = obter_plano_usuario()
     _PLANO_LABELS_PERFIL = {"free": "FREE", "starter": "STARTER", "pro": "PRO", "agencia": "BUSINESS"}
 
-    aba_perfil_dados, aba_perfil_uso, aba_perfil_plano = st.tabs(["Meus dados", "Uso do plano", "Plano"])
+    aba_perfil_dados, aba_perfil_notif, aba_perfil_uso, aba_perfil_plano = st.tabs(
+        ["Meus dados", "Notificações e automações", "Uso do plano", "Plano"]
+    )
 
     with aba_perfil_dados:
         with st.form("form_perfil_dados"):
@@ -22119,68 +22121,58 @@ html, body { background: transparent; overflow: hidden; }
                     if atualizar_senha_usuario(nova_senha):
                         st.toast("Senha alterada!", icon="✅")
 
-        with st.container(border=True):
-            st.markdown("**Biblioteca de Arquivos Permanente**")
-            st.caption(
-                "Anúncios salvos aqui continuam acessíveis mesmo depois que o link original do "
-                "Facebook expira. Essas ações rodam em background — acompanhe o resultado no sino "
-                "de notificações."
-            )
-            if st.button("🗜️ Otimizar espaço da Biblioteca de Arquivos Permanente", key="_btn_reprocessar_midia"):
-                iniciar_reprocessamento_midia_background(st.session_state.user.id)
-                st.toast("Otimização iniciada — acompanhe no sino de notificações.", icon="🗜️")
+    with aba_perfil_notif:
+        _meta_usuario_notif = (getattr(st.session_state.user, "user_metadata", None) or {}) if st.session_state.get("user") else {}
 
-            st.caption(
-                "Se algum anúncio ainda estiver mostrando o link original do Facebook mesmo depois "
-                "de já ter sido salvo na Biblioteca de Arquivos Permanente, use o botão abaixo pra reconectar."
-            )
-            if st.button("🔗 Reconectar anúncios já salvos", key="_btn_reconciliar_midia"):
-                iniciar_reconciliacao_midia_background(st.session_state.user.id)
-                st.toast("Reconexão iniciada — acompanhe no sino de notificações.", icon="🔗")
+        st.markdown("**Notificações**")
+        st.caption("Escolha quais atividades devem gerar um alerta no sino de notificações.")
 
-            _n_pendentes_retry = contar_midias_pendentes_retentativa(st.session_state.user.id) if st.session_state.user else 0
-            st.caption(
-                f"Anúncios (imagens/vídeos) que falharam ao salvar ficam registrados e são "
-                f"tentados de novo automaticamente a cada coleta, até um teto de "
-                f"{MAX_TENTATIVAS_MIDIA} tentativas. Você também pode forçar uma nova tentativa agora"
-                + (f" ({_n_pendentes_retry} pendente{'s' if _n_pendentes_retry != 1 else ''})." if _n_pendentes_retry else ".")
-            )
-            if st.button("🔁 Tentar salvar anúncios pendentes", key="_btn_retentar_midia"):
-                iniciar_retentativa_midias_background(st.session_state.user.id)
-                st.toast("Nova tentativa iniciada — acompanhe no sino de notificações.", icon="🔁")
+        notif_erros = st.toggle(
+            "Avisar quando uma atividade em background falhar",
+            value=_meta_usuario_notif.get("notif_erros", True),
+            key="_toggle_notif_erros",
+        )
+        notif_concluidas = st.toggle(
+            "Avisar quando uma atividade em background terminar com sucesso",
+            value=_meta_usuario_notif.get("notif_concluidas", True),
+            key="_toggle_notif_concluidas",
+        )
+        notif_email = st.toggle(
+            "Também receber um resumo por e-mail",
+            value=_meta_usuario_notif.get("notif_email", False),
+            key="_toggle_notif_email",
+        )
 
-            st.caption(
-                "As verificações acima só olham se o link **já é** da Biblioteca de Arquivos "
-                "Permanente — não confirmam se o arquivo continua acessível lá. Use o botão abaixo "
-                "pra checar de verdade e reparar links que quebraram depois de já terem sido salvos."
-            )
-            if st.button("🩺 Verificar se os links salvos ainda funcionam", key="_btn_reparar_links"):
-                iniciar_reparo_links_quebrados(st.session_state.user.id)
-                st.toast("Verificação iniciada — acompanhe no sino de notificações.", icon="🩺")
+        st.markdown("**Automações**")
+        st.caption("Ações que a plataforma pode executar sozinha, sem precisar de um clique seu.")
 
-            with st.expander("Ver por que alguns anúncios não foram salvos"):
-                try:
-                    _res_falhas = (
-                        supabase.table("midias_falhas")
-                        .select("empresa, tipo, tentativas, ultimo_erro, atualizado_em")
-                        .eq("user_id", st.session_state.user.id)
-                        .order("tentativas", desc=True)
-                        .limit(30)
-                        .execute()
-                    )
-                    _falhas_lista = _res_falhas.data or []
-                except Exception:
-                    _falhas_lista = []
+        auto_retentativa_midia = st.toggle(
+            "Tentar salvar mídias pendentes automaticamente a cada nova coleta",
+            value=_meta_usuario_notif.get("auto_retentativa_midia", True),
+            key="_toggle_auto_retentativa_midia",
+        )
+        auto_coleta_agendada = st.toggle(
+            "Rodar coleta agendada automaticamente (diária)",
+            value=_meta_usuario_notif.get("auto_coleta_agendada", False),
+            key="_toggle_auto_coleta_agendada",
+            disabled=_plano_atual_perfil not in ("pro", "agencia"),
+            help=None if _plano_atual_perfil in ("pro", "agencia") else "Disponível a partir do plano PRO.",
+        )
 
-                if not _falhas_lista:
-                    st.caption("Nenhuma falha registrada no momento.")
-                else:
-                    for _f in _falhas_lista:
-                        st.caption(
-                            f"**{_f.get('empresa','')}** ({_f.get('tipo','')}) — "
-                            f"{_f.get('tentativas',0)}x tentativas — "
-                            f"_{_f.get('ultimo_erro','') or 'sem detalhe'}_"
-                        )
+        if st.button("Salvar preferências", type="primary", key="_btn_salvar_notif_automacoes"):
+            try:
+                res = supabase.auth.update_user({"data": {
+                    "notif_erros": notif_erros,
+                    "notif_concluidas": notif_concluidas,
+                    "notif_email": notif_email,
+                    "auto_retentativa_midia": auto_retentativa_midia,
+                    "auto_coleta_agendada": auto_coleta_agendada,
+                }})
+                if res.user:
+                    st.session_state.user = res.user
+                st.toast("Preferências salvas!", icon="✅")
+            except Exception as e:
+                st.toast(f"Erro ao salvar preferências: {e}", icon="⚠️")
 
     with aba_perfil_uso:
         import math as _math_uso

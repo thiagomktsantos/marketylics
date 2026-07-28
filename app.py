@@ -9213,11 +9213,6 @@ function setHeightGeral(isOpen) {{
       <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;text-align:center;">{_conc_desc}</div>
       <div>{_conc_itens_html}</div>
     </div>
-
-    <div class="insight-cta" onclick="irParaInsightsConcorrente()" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:700;color:#008ac7;cursor:pointer;background:#f0f8ff;border-radius:10px;padding:10px 0;">
-      Ver comparação detalhada
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-    </div>
   </div>
 """
                 else:

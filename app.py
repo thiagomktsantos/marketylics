@@ -9207,11 +9207,11 @@ function setHeightGeral(isOpen) {{
         </div>
       </div>
       <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;">
-      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin:10px 0 6px 0;">
+      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin:20px 0 6px 0;">
         <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
       </div>
       <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;text-align:center;">{_conc_desc}</div>
-      <div style="margin-top:10px;">{_conc_itens_html}</div>
+      <div style="margin-top:18px;">{_conc_itens_html}</div>
     </div>
   </div>
 """

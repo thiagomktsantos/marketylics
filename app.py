@@ -5342,8 +5342,13 @@ body {{
         <span class="nav-arrow"><i class="fa-solid fa-chevron-right"></i></span>
     </a>
     <a class="nav-item {'active' if pagina_atual == 'ads' else ''}" onclick="nav('ads')">
-        <span class="nav-icon"><i class="fa-solid fa-rectangle-ad"></i></span>
-        <span class="nav-label">Biblioteca de Ads</span>
+        <span class="nav-icon"><i class="fa-brands fa-facebook"></i></span>
+        <span class="nav-label">Meta Ads</span>
+        <span class="nav-arrow"><i class="fa-solid fa-chevron-right"></i></span>
+    </a>
+    <a class="nav-item {'active' if pagina_atual == 'google_ads' else ''}" onclick="nav('google_ads')">
+        <span class="nav-icon"><i class="fa-brands fa-google"></i></span>
+        <span class="nav-label">Google Ads</span>
         <span class="nav-arrow"><i class="fa-solid fa-chevron-right"></i></span>
     </a>
     <a class="nav-item {'active' if pagina_atual == 'insights' else ''}" onclick="nav('insights')">
@@ -17084,6 +17089,5251 @@ setTimeout(syncH, 600);
         for stk, _, _ in subtabs_ads_def:
             if st.button(f"ads_analise_sub_{stk}", key=f"btn_ads_analise_sub_{stk}"):
                 st.session_state.ads_analise_subtab = stk
+                st.rerun()
+                
+
+# ---------------------------------------------------
+# PAGINA - GOOGLE ADS (Google Ads Transparency Center via Apify)
+# ---------------------------------------------------
+
+elif st.session_state.pagina == "google_ads":
+
+    import datetime as _dt
+    import json as _json
+    import base64 as _b64
+    import time as _time
+
+    emp   = st.session_state.dados["minha_empresa"]
+    concs = st.session_state.dados["concorrentes"]
+
+    CACHE_TTL_HORAS = 24
+    APIFY_ACTOR_ID  = "automation-lab~google-ads-scraper"
+
+    def carregar_cache_ads(forcar: bool = False) -> dict:
+        if not forcar and st.session_state.get("gads_cache"):
+            return st.session_state.gads_cache
+        try:
+            res = (
+                supabase.table("ci_dados")
+                .select("gads_cache")
+                .eq("user_id", st.session_state.user.id)
+                .execute()
+            )
+            if res.data and res.data[0].get("gads_cache"):
+                return res.data[0]["gads_cache"]
+        except Exception:
+            pass
+        return {}
+
+    def merge_ads(cache_existente: dict, novos: dict) -> dict:
+        resultado = dict(cache_existente)
+        for nome_empresa, novo_entry in novos.items():
+            novos_ads = novo_entry.get("data", [])
+            # Mapa id -> anúncio novo. Cada coleta nova é tratada como a
+            # fonte da verdade pra qualquer anúncio que já existia: o
+            # anunciante pode ter editado o texto, trocado a mídia (imagem
+            # ou vídeo) ou mudado o status sem trocar o código do anúncio,
+            # e a coleta antiga não pode "vencer" a coleta atual. Por isso
+            # o anúncio é substituído por completo — não só o campo
+            # "ativo" — sempre que o mesmo id volta a aparecer.
+            novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
+            novos_sem_id = [a for a in novos_ads if not a.get("id")]
+
+            entry_existente = resultado.get(nome_empresa, {})
+            gads_anteriores = entry_existente.get("data", [])
+
+            gads_atualizados = []
+            ids_processados = set()
+            for ad in gads_anteriores:
+                ad_id = str(ad.get("id", ""))
+                if ad_id and ad_id in novos_por_id:
+                    # já existia e voltou nessa coleta -> substitui pelos
+                    # dados frescos (texto, mídia, status etc.)
+                    ad_atualizado = dict(novos_por_id[ad_id])
+                    ad_atualizado["ativo"] = True
+                    gads_atualizados.append(ad_atualizado)
+                    ids_processados.add(ad_id)
+                else:
+                    # não apareceu nessa coleta -> mantém o histórico, mas
+                    # marca como inativo quando dava pra saber (tinha id
+                    # pra comparar contra a coleta nova)
+                    ad["ativo"] = False if ad_id else ad.get("ativo", True)
+                    gads_atualizados.append(ad)
+
+            # anúncios com id que não existiam antes -> entram como novos
+            for ad_id, ad in novos_por_id.items():
+                if ad_id not in ids_processados:
+                    ad_novo = dict(ad)
+                    ad_novo["ativo"] = True
+                    gads_atualizados.append(ad_novo)
+
+            # anúncios sem id (raro) -> não dá pra comparar, sempre entram
+            for ad in novos_sem_id:
+                ad_novo = dict(ad)
+                ad_novo["ativo"] = True
+                gads_atualizados.append(ad_novo)
+
+            resultado[nome_empresa] = {
+                **novo_entry,
+                "data": gads_atualizados,
+                "ts": novo_entry.get("ts", entry_existente.get("ts", "")),
+                "ts_historico": entry_existente.get("ts", ""),
+            }
+        return resultado
+
+    def cache_esta_fresco(ts_str: str) -> bool:
+        if not ts_str:
+            return False
+        try:
+            ts = _dt.datetime.strptime(ts_str, "%d/%m/%Y %H:%M")
+            return (_dt.datetime.now() - ts).total_seconds() < CACHE_TTL_HORAS * 3600
+        except Exception:
+            return False
+
+    def _url_para_base64(url: str) -> str:
+        if not url or not url.startswith("http"):
+            return ""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://adstransparency.google.com/",
+            }
+            r = requests.get(url, headers=headers, timeout=10, stream=True)
+            if r.status_code != 200:
+                return ""
+            ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+            if not ct.startswith("image/"):
+                ct = "image/jpeg"
+            data = _b64.b64encode(r.content).decode("utf-8")
+            return f"data:{ct};base64,{data}"
+        except Exception:
+            return ""
+
+    def _truncar(txt, n=160):
+        if not txt:
+            return ""
+        txt = str(txt).strip()
+        return txt[:n] + "…" if len(txt) > n else txt
+
+    def _is_dynamic(txt):
+        if not txt:
+            return False
+        return bool(re.search(r'\{\{[^}]+\}\}', txt))
+
+    def _clean_dynamic(txt):
+        if not txt:
+            return ""
+        cleaned = re.sub(r'\{\{[^}]+\}\}', '', txt).strip()
+        lines = [l.strip() for l in cleaned.split('\n') if l.strip()]
+        return ' '.join(lines)
+
+    def _dias_ativo(start_raw: str) -> str:
+        if not start_raw:
+            return ""
+        try:
+            ts_int = int(str(start_raw).strip())
+            if ts_int > 10**9:
+                dto = _dt.datetime.utcfromtimestamp(ts_int)
+            else:
+                raise ValueError
+        except (ValueError, OSError):
+            try:
+                dto = _dt.datetime.strptime(str(start_raw)[:10], "%Y-%m-%d")
+            except Exception:
+                return str(start_raw)[:10]
+        data_fmt = f"{dto.day:02d}/{dto.month:02d}/{dto.year}"
+        dias = (_dt.datetime.now() - dto).days
+        if dias == 0:
+            dias_str = "hoje"
+        elif dias == 1:
+            dias_str = "1 dia ativo"
+        else:
+            dias_str = f"{dias} dias ativo"
+        return f"{data_fmt} ({dias_str})"
+
+    def _extract_images(ad: dict) -> list:
+        imgs = []
+        seen = set()
+        def add(url):
+            url = (url or "").strip()
+            if url and url not in seen and url.startswith("http"):
+                seen.add(url); imgs.append(url)
+        snapshot = ad.get("snapshot") or {}
+        cards    = snapshot.get("cards") or []
+        for k in ("image_url", "original_image_url", "resized_image_url",
+                  "thumbnail_url", "preview_image_url", "full_picture"):
+            add(ad.get(k))
+        for k in ("image_url", "original_image_url", "resized_image_url",
+                  "thumbnail_url", "background_image"):
+            add(snapshot.get(k))
+        for obj in (snapshot.get("images") or []):
+            if isinstance(obj, dict):
+                add(obj.get("resized_image_url"))
+                add(obj.get("original_image_url"))
+                add(obj.get("watermarked_resized_image_url"))
+                add(obj.get("image_url"))
+                add(obj.get("url"))
+                add(obj.get("src"))
+            elif isinstance(obj, str):
+                add(obj)
+        for obj in (snapshot.get("videos") or []):
+            if isinstance(obj, dict):
+                add(obj.get("video_preview_image_url"))
+        for card in cards:
+            if not isinstance(card, dict): continue
+            add(card.get("original_image_url"))
+            add(card.get("resized_image_url"))
+            add(card.get("image_url"))
+            add(card.get("thumbnail_url"))
+            add(card.get("picture"))
+            add(card.get("video_preview_image_url"))
+        for obj in (ad.get("creative_images") or []):
+            if isinstance(obj, dict):
+                for k in ("original_image_url", "image_url", "url"):
+                    add(obj.get(k))
+            elif isinstance(obj, str):
+                add(obj)
+        for obj in (ad.get("images") or []):
+            if isinstance(obj, dict):
+                for k in ("original_image_url", "resized_image_url", "image_url", "url", "src"):
+                    add(obj.get(k))
+            elif isinstance(obj, str):
+                add(obj)
+        return imgs
+
+    def _extract_copy(ad: dict) -> dict:
+        snapshot = ad.get("snapshot") or {}
+        cards    = snapshot.get("cards") or []
+
+        def first_str(val):
+            if isinstance(val, list):
+                for v in val:
+                    if v and isinstance(v, str) and v.strip():
+                        return v.strip()
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            if isinstance(val, dict) and val.get("text"):
+                return val["text"].strip()
+            return ""
+
+        snapshot_body_raw = snapshot.get("body") or {}
+        snapshot_body_text = (
+            snapshot_body_raw.get("text")
+            if isinstance(snapshot_body_raw, dict)
+            else snapshot_body_raw
+        ) or ""
+
+        body  = (first_str(ad.get("ad_creative_bodies"))
+                 or snapshot_body_text
+                 or first_str(ad.get("body"))
+                 or first_str(ad.get("message"))
+                 or first_str(snapshot.get("message")))
+        title = (first_str(ad.get("ad_creative_link_titles"))
+                 or first_str(snapshot.get("title"))
+                 or first_str(ad.get("title"))
+                 or first_str(snapshot.get("link_title")))
+        desc  = (first_str(ad.get("ad_creative_link_descriptions"))
+                 or first_str(snapshot.get("link_description"))
+                 or first_str(ad.get("description"))
+                 or first_str(snapshot.get("description")))
+        cta   = (first_str(ad.get("cta_type"))
+                 or first_str(snapshot.get("cta_type"))
+                 or first_str(ad.get("call_to_action_type")))
+        caption = (first_str(snapshot.get("caption"))
+                   or first_str(ad.get("caption")))
+
+        if (not body or _is_dynamic(body)) and cards:
+            for card in cards:
+                if isinstance(card, dict):
+                    v = first_str(card.get("body") or card.get("message") or "")
+                    if v and not _is_dynamic(v):
+                        body = v
+                        break
+            if not title or _is_dynamic(title):
+                for card in cards:
+                    if isinstance(card, dict):
+                        v = first_str(card.get("title") or "")
+                        if v and not _is_dynamic(v):
+                            title = v
+                            break
+
+        if title and body and (title in body or body.startswith(title)):
+            title = ""
+        if desc and body and (
+            desc.strip() == body.strip()
+            or desc.strip() in body.strip()
+            or body.strip() in desc.strip()
+            or desc.strip()[:80] in body.strip()
+            or body.strip()[:80] in desc.strip()
+            or body.strip()[:120] in desc.strip()
+            or desc.strip()[:120] in body.strip()
+        ):
+            desc = ""
+        if desc and body:
+            _desc_words = set(desc.strip().lower().split())
+            _body_words = set(body.strip().lower().split())
+            if _desc_words and _body_words:
+                _overlap = len(_desc_words & _body_words) / max(len(_desc_words), 1)
+                if _overlap > 0.6:
+                    desc = ""
+        if desc and title and desc.strip() == title.strip():
+            desc = ""
+        if title and body:
+            title = ""
+
+        return {"body": body, "title": title, "desc": desc, "cta": cta, "caption": caption}
+
+    def _extract_videos(ad: dict) -> list:
+        vids = []
+        seen = set()
+        snapshot = ad.get("snapshot") or {}
+        cards    = snapshot.get("cards") or []
+
+        def add(url):
+            url = (url or "").strip()
+            if url and url not in seen and url.startswith("http"):
+                seen.add(url); vids.append(url)
+
+        for k in ("video_hd_url", "video_sd_url", "video_url"):
+            add(ad.get(k))
+            add(snapshot.get(k))
+        for obj in (snapshot.get("videos") or []):
+            if isinstance(obj, dict):
+                add(obj.get("video_sd_url"))
+                add(obj.get("video_hd_url"))
+                add(obj.get("video_url"))
+        for card in cards:
+            if isinstance(card, dict):
+                for k in ("video_hd_url", "video_sd_url", "video_url"):
+                    add(card.get(k))
+        for v in (ad.get("videos") or []):
+            if isinstance(v, str):
+                add(v)
+            elif isinstance(v, dict):
+                add(v.get("video_sd_url"))
+                add(v.get("video_hd_url"))
+
+        sd = [u for u in vids if any(x in u.lower() for x in ("sd", "360", "480", "_sd", "m412"))]
+        hd = [u for u in vids if u not in sd]
+        return sd + hd
+
+    def _normalizar_item_apify(item: dict) -> dict:
+        # Formato do actor "automation-lab/google-ads-scraper" (Google Ads
+        # Transparency Center): cada item já vem achatado (sem "snapshot"
+        # aninhado como no Meta). Campos documentados: advertiserId,
+        # advertiserName, isVerified, creativeId, adFormat (Text/Image/
+        # Video), firstShown, lastShown, previewUrl, imageUrl, region.
+        #
+        # IMPORTANTE — limitação real da fonte de dados: o Google Ads
+        # Transparency Center (ao contrário da Meta Ad Library) não expõe
+        # o texto do anúncio (headline/descrição), URL de vídeo nem
+        # impressões via essa API pública. Por isso body/title/description/
+        # cta/impressoes ficam vazios de propósito — não é um bug de
+        # mapeamento, é o que a fonte oferece. Quem quiser o texto do
+        # anúncio precisa abrir o "previewUrl" manualmente.
+        ad_id     = str(item.get("creativeId") or item.get("id") or "")
+        page_id   = str(item.get("advertiserId") or "")
+        page_name = item.get("advertiserName") or ""
+        verificado = bool(item.get("isVerified"))
+
+        raw_format = (item.get("adFormat") or "").strip().lower()
+        if raw_format == "video":
+            fmt = "Vídeo"
+        elif raw_format == "image":
+            fmt = "Imagem"
+        else:
+            fmt = "Texto"
+
+        image_url = (item.get("imageUrl") or "").strip()
+        images = [image_url] if (fmt == "Imagem" and image_url.startswith("http")) else []
+
+        images_b64 = []
+        if images:
+            b64 = _url_para_base64(images[0])
+            images_b64.append(b64 if b64 else images[0])
+
+        first_shown = item.get("firstShown") or ""
+        last_shown  = item.get("lastShown") or ""
+        start_fmt   = _dias_ativo(str(first_shown)) if first_shown else ""
+
+        snap_url = item.get("previewUrl") or (
+            f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
+            if page_id and ad_id else ""
+        )
+
+        regiao = (item.get("region") or "").upper()
+
+        return {
+            "id":                   ad_id,
+            "page_name":            page_name,
+            "page_id":              page_id,
+            "page_profile_picture": "",
+            "body":                 "",
+            "body_raw":             "",
+            "title":                "",
+            "description":          "",
+            "cta":                  "",
+            "caption":              "",
+            "images":               images,
+            "images_b64":           images_b64,
+            "carousel_images":      [],
+            "videos":               [],
+            "snapshot_url":         snap_url,
+            "data_inicio":          start_fmt,
+            "data_raw":             str(first_shown),
+            "data_fim_raw":         str(last_shown),
+            "impressoes":           "",
+            "baixo_volume":         False,
+            "plataformas":          [regiao] if regiao else [],
+            "formato":              fmt,
+            "is_dynamic":           False,
+            "verificado":           verificado,
+            "regiao":               regiao,
+        }
+
+    def _apify_run_sync(search_term: str, limit: int = 100) -> tuple:
+        api_token = st.secrets.get("APIFY_TOKEN", "")
+        if not api_token:
+            return [], [], "APIFY_TOKEN não configurada nos secrets."
+
+        run_url = (
+            f"https://api.apify.com/v2/acts/{APIFY_ACTOR_ID}/runs"
+            f"?token={api_token}"
+        )
+
+        termo = search_term.strip()
+
+        # O actor "automation-lab/google-ads-scraper" aceita 3 formas de
+        # busca (searchTerms / domains / advertiserIds). Detecta
+        # automaticamente qual usar a partir do texto digitado:
+        #  - "AR" + dígitos  -> ID do anunciante (formato do Google, ex.
+        #    "AR16735076323512287233" — visto na URL da Transparency Center)
+        #  - tem ponto e não tem espaço -> domínio (ex. "nike.com")
+        #  - qualquer outra coisa -> nome do anunciante
+        payload = {"maxAds": limit, "region": "BR"}
+        if termo.upper().startswith("AR") and termo[2:].isdigit():
+            payload["advertiserIds"] = [termo]
+        elif "." in termo and " " not in termo:
+            payload["domains"] = [termo]
+        else:
+            payload["searchTerms"] = [termo]
+
+        try:
+            r_start = requests.post(run_url, json=payload, timeout=30)
+            r_start.raise_for_status()
+            run_data = r_start.json()
+        except Exception as e:
+            return [], [], f"Erro ao iniciar run Apify: {e}"
+
+        run_id     = run_data.get("data", {}).get("id") or run_data.get("id")
+        dataset_id = run_data.get("data", {}).get("defaultDatasetId") or run_data.get("defaultDatasetId")
+
+        if not run_id:
+            return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
+
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
+        deadline   = _time.time() + 180
+        status     = "RUNNING"
+        while _time.time() < deadline:
+            try:
+                r_st   = requests.get(status_url, timeout=15)
+                jdata  = r_st.json().get("data", {})
+                status = jdata.get("status", "RUNNING")
+                if not dataset_id:
+                    dataset_id = jdata.get("defaultDatasetId") or dataset_id
+            except Exception:
+                pass
+            if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+                break
+            _time.sleep(5)
+
+        if status != "SUCCEEDED":
+            return [], [], f"Run Apify terminou com status: {status}"
+        if not dataset_id:
+            return [], [], "Apify não retornou dataset ID."
+
+        items_url = (
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+            f"?token={api_token}&limit={limit}&clean=true"
+        )
+        try:
+            r_items = requests.get(items_url, timeout=30)
+            r_items.raise_for_status()
+            raw_items = r_items.json()
+        except Exception as e:
+            return [], [], f"Erro ao ler dataset Apify: {e}"
+
+        if not isinstance(raw_items, list):
+            raw_items = raw_items.get("items", []) if isinstance(raw_items, dict) else []
+        if not raw_items:
+            return [], [], None
+
+        gads_normalizados = [_normalizar_item_apify(item) for item in raw_items]
+        return gads_normalizados, raw_items[:100], None
+
+    def buscar_gads_apify(query: str, limit: int = 100) -> tuple:
+        return _apify_run_sync(query.strip(), limit=limit)
+
+    def _render_loader(placeholder, progresso: list, total: int, atual: int, finalizado: bool = False):
+        progresso_pct = int((atual / total) * 100) if total else 100
+        if finalizado:
+            texto_status = "Busca concluída"
+            subtexto     = f"{atual}/{total} empresas processadas"
+        else:
+            texto_status = "Buscando anúncios..."
+            subtexto     = f"Processando {atual} de {total} empresas"
+
+        itens_html = ""
+        for item in progresso:
+            status = item.get("status", "")
+            nome   = item.get("nome", "")
+            msg    = item.get("msg", "")
+            count  = item.get("count")
+            if status == "loading":
+                icone = "⏳"; cor_txt = "#f59e0b"; bg = "#1a3a2a"; brd = "#f59e0b22"
+            elif status == "done":
+                icone = "✅"; cor_txt = "#22c55e"; bg = "#0f2a1a"; brd = "#22c55e33"
+            elif status == "error":
+                icone = "❌"; cor_txt = "#f87171"; bg = "#2a0f0f"; brd = "#f8717133"
+            elif status == "cache":
+                icone = "🗂️"; cor_txt = "#3a9fd6"; bg = "#0e2240"; brd = "#3a9fd633"
+            else:
+                icone = "•"; cor_txt = "#9ca3af"; bg = "#1a2535"; brd = "#ffffff11"
+            count_str = f'<span style="font-size:13px;font-weight:800;color:{cor_txt}">{count} anúncios</span>' if count is not None else "<span></span>"
+            nome_safe = str(nome or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+            msg_safe  = str(msg or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"','&quot;')
+            itens_html += f"""
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;
+                        background:{bg};border:1px solid {brd};margin-bottom:8px">
+                <span style="font-size:17px;flex-shrink:0">{icone}</span>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#f1f5f9">{nome_safe}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:2px">{msg_safe}</div>
+                </div>
+                {count_str}
+            </div>"""
+
+        barra_cor = "#22c55e" if finalizado else "#3a9fd6"
+        spinner   = '' if finalizado else '<div style="width:22px;height:22px;border:2.5px solid #1e3a5f;border-top-color:#3a9fd6;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>'
+        check     = '<div style="width:28px;height:28px;border-radius:50%;background:#22c55e22;border:1.5px solid #22c55e;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">✅</div>' if finalizado else ''
+        fechar_js = "setTimeout(function(){var m=document.getElementById('gads_loader_modal');if(m){m.style.opacity='0';m.style.transition='opacity 0.4s';setTimeout(function(){var m=document.getElementById('gads_loader_modal');if(m)m.remove();},400);}},1500);" if finalizado else ""
+
+        placeholder.markdown(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+@keyframes fadeIn {{from{{opacity:0;transform:scale(0.96)}}to{{opacity:1;transform:scale(1)}}}}
+@keyframes spin   {{to{{transform:rotate(360deg)}}}}
+#gads_loader_modal{{position:fixed;inset:0;background:rgba(5,15,30,0.75);backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;
+    animation:fadeIn 0.2s ease;transition:opacity 0.4s;font-family:'DM Sans',sans-serif;}}
+#gads_loader_box{{background:#0e1e35;border:1px solid #1e3a5f;border-radius:18px;padding:28px;
+    width:min(92vw,460px);box-shadow:0 24px 64px rgba(0,0,0,0.5),0 0 0 1px rgba(58,159,214,0.1);}}
+</style>
+<div id="gads_loader_modal"><div id="gads_loader_box">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        {spinner}{check}
+        <div>
+            <div style="font-size:16px;font-weight:800;color:#f1f5f9;letter-spacing:-0.2px">{texto_status}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">{subtexto}</div>
+        </div>
+        <div style="margin-left:auto;font-size:13px;font-weight:800;color:{'#22c55e' if finalizado else '#3a9fd6'}">{progresso_pct}%</div>
+    </div>
+    <div style="background:#07111f;border-radius:8px;height:5px;margin-bottom:20px;overflow:hidden">
+        <div style="height:100%;width:{progresso_pct}%;background:linear-gradient(90deg,#1d6fa8,{barra_cor});border-radius:8px;transition:width 0.4s ease;{'box-shadow:0 0 8px #22c55e66' if finalizado else ''}"></div>
+    </div>
+    <div>{itens_html}</div>
+    {'<div style="text-align:center;margin-top:16px;font-size:12px;color:#475569;font-weight:600">Fechando automaticamente...</div>' if finalizado else ''}
+</div></div>
+<script>{fechar_js}</script>
+""", unsafe_allow_html=True)
+
+    def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
+        """Roda a coleta de verdade (chamadas à Apify) numa thread — não
+        pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
+        thread principal do Streamlit. Por isso não usa `_render_loader`
+        nem lê `st.session_state` pro cache atual — busca direto do
+        Supabase, que é seguro de qualquer thread."""
+        try:
+            res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+            cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
+
+            erros = {}
+            novos = {}
+            _nomes_empresas = [x["nome"] for x in empresas]
+            _total_empresas = len(_nomes_empresas)
+            _processadas = 0
+            # Status por empresa pra desenhar uma barra individual por
+            # empresa no card (em vez de só um "X de Y" agregado pro lote
+            # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
+            # (chamando a Apify agora), "ok" (coletada), "cache" (pulada
+            # por já ter cache fresco) ou "erro" (com a mensagem).
+            _status_por_empresa = {nome: {"status": "pendente"} for nome in _nomes_empresas}
+
+            def _grava_progresso():
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresas": _nomes_empresas,
+                    "total": _total_empresas,
+                    "concluidas": _processadas,
+                    "coletadas": list(novos.keys()),
+                    "com_erro": dict(erros),
+                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
+                })
+
+            for e in empresas:
+                ck = e["nome"]
+                entrada_cache = cache_atual.get(ck, {})
+                _pula = False
+                if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
+                    _pula = True
+
+                if not _pula:
+                    # Marca "rodando" ANTES de chamar a Apify (que pode
+                    # demorar segundos/minutos) — sem isso, o card ficava
+                    # sem nenhum sinal de qual empresa está sendo coletada
+                    # agora enquanto a chamada não termina.
+                    _status_por_empresa[ck] = {"status": "rodando"}
+                    _grava_progresso()
+
+                # O gads_id (quando a empresa já tem um configurado) vem pronto
+                # dentro de query_values, montado na thread principal antes de
+                # chamar executar_busca — não dá pra ler st.session_state aqui
+                # dentro, já que essa função roda numa thread separada.
+                query = query_values.get(ck, "").strip() if not _pula else ""
+                if not _pula and not query:
+                    _pula = True
+
+                if _pula:
+                    _status_por_empresa[ck] = {"status": "cache"}
+                else:
+                    ads, raw, erro = buscar_gads_apify(query)
+                    if erro:
+                        erros[ck] = erro
+                        _status_por_empresa[ck] = {"status": "erro", "msg": erro}
+                    else:
+                        novos[ck] = {
+                            "data":  ads,
+                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "nome":  ck,
+                            "query": query,
+                            "_raw":  raw,
+                        }
+                        _status_por_empresa[ck] = {"status": "ok"}
+
+                # Progresso incremental — sem isso, o card ficava mostrando só
+                # o rótulo genérico "Coleta de anúncios" do início ao fim,
+                # porque os detalhes só eram gravados de uma vez só, quando
+                # TODAS as empresas já tinham terminado. Grava a cada empresa
+                # processada (sucesso, erro OU pulada por cache fresco) pra
+                # a barra de cada empresa e o texto do card atualizarem em
+                # tempo real — contar também as puladas garante que o total
+                # bata no final, mesmo quando alguma empresa é pulada por já
+                # ter cache fresco.
+                _processadas += 1
+                _grava_progresso()
+
+            cache_mergeado = merge_ads(cache_atual, novos)
+
+            # Save rápido: mantém os links originais do provedor (ainda
+            # válidos por bem mais que 1 dia). A troca pelos links
+            # permanentes do R2 acontece depois, em background também.
+            salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            if novos:
+                iniciar_migracao_midia_background(user_id, novos)
+            iniciar_retentativa_midias_background(user_id)
+
+            _status_final = "erro" if (erros and not novos) else "concluido"
+            atualizar_atividade(atividade_id, _status_final, {
+                "empresas": _nomes_empresas,
+                "total": _total_empresas,
+                "concluidas": _processadas,
+                "coletadas": list(novos.keys()),
+                "com_erro": erros,
+                "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
+            })
+        except Exception as e:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+
+    def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
+        _permitido, _motivo_bloqueio = verificar_pode_executar_acao(st.session_state.user.id, "coleta_ads")
+        if not _permitido:
+            st.warning(f"🚫 {_motivo_bloqueio}")
+            return
+
+        _nomes_empresas = ", ".join(e["nome"] for e in empresas)
+        _atividade_id = criar_atividade(
+            st.session_state.user.id,
+            "coleta_ads",
+            f"Coleta de anúncios: {_nomes_empresas}",
+            {"empresas": [e["nome"] for e in empresas]},
+        )
+        try:
+            supabase.rpc("incrementar_uso_organizacao", {
+                "p_user_id": st.session_state.user.id,
+                "p_tipo_acao": "coleta_ads",
+                "p_delta": 1,
+            }).execute()
+        except Exception:
+            pass
+
+        threading.Thread(
+            target=_executar_busca_background,
+            args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
+            daemon=True,
+        ).start()
+
+        # Marca que tem uma coleta rodando — a página usa isso pra mostrar
+        # um aviso em vez de fingir que os dados já estão atualizados.
+        st.session_state["_coleta_gads_em_andamento"] = True
+        st.rerun()
+
+    def _ultima_atividade_coleta_ads(user_id: str):
+        """Busca a atividade `coleta_ads` mais recente direto no banco.
+        Serve de fonte da verdade pra sincronizar a tela, em vez de
+        depender só da flag de sessão `_coleta_gads_em_andamento` — que se
+        perde se o usuário sair da aba Ads, recarregar a página, ou o
+        polling em JS falhar por qualquer motivo."""
+        try:
+            res = (
+                supabase.table("atividades")
+                .select("id, status, criado_em")
+                .eq("user_id", user_id)
+                .eq("tipo", "coleta_ads")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception:
+            return None
+
+    def _atividades_migracao_midia_recentes(user_id: str, limite: int = 20):
+        """Lista as atividades `migracao_midia` mais recentes. Diferente
+        de `coleta_ads`, a migração de mídia (troca do link original do
+        pelo link permanente do R2) cria UMA atividade POR
+        EMPRESA e elas podem terminar em momentos diferentes — por isso
+        aqui é preciso olhar várias, não só a última."""
+        try:
+            res = (
+                supabase.table("atividades")
+                .select("id, status")
+                .eq("user_id", user_id)
+                .eq("tipo", "migracao_midia")
+                .order("criado_em", desc=True)
+                .limit(limite)
+                .execute()
+            )
+            return res.data or []
+        except Exception:
+            return []
+
+    if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
+        st.session_state.gads_cache = carregar_cache_ads()
+    if "gads_erro" not in st.session_state:
+        st.session_state.gads_erro = {}
+
+    # Verificação de segurança: roda uma vez por sessão (não a cada
+    # rerun) procurando qualquer anúncio — de qualquer coleta, antiga ou
+    # recente — que ainda esteja com o link original do provedor em vez
+    # do R2. Cobre casos que a migração pontual de uma coleta específica
+    # não pega (falha silenciosa antiga, mídia coletada antes desse
+    # pipeline existir, etc.).
+    if not st.session_state.get("_verificacao_pendentes_feita") and st.session_state.get("user"):
+        threading.Thread(
+            target=verificar_e_migrar_pendentes,
+            args=(st.session_state.user.id,),
+            daemon=True,
+        ).start()
+        st.session_state["_verificacao_pendentes_feita"] = True
+
+    # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
+    # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
+    # `_coleta_gads_em_andamento` estivesse True — e essa flag só existia
+    # porque um botão-fantasma era clicado via JS a cada ~4s enquanto a
+    # aba Ads ficasse montada. Se o usuário saísse da aba, recarregasse a
+    # página, ou o rerun automático falhasse por qualquer motivo enquanto
+    # a coleta ainda rodava em background, a flag se perdia (ou nunca era
+    # setada de novo) e `gads_cache` ficava travado pra sempre na versão
+    # antiga — mesmo com o merge/migração já concluído certinho no banco
+    # (é isso que fazia "Baixar JSON" e "Últ. busca" mostrarem dado velho).
+    #
+    # Agora essa checagem roda em TODO render da página, comparando o id
+    # da atividade mais recente com o último id que a sessão já processou
+    # — independente do valor da flag. Isso garante que, assim que a
+    # página é renderizada de novo (mesmo que só porque o usuário voltou
+    # pra aba ou recarregou), o cache é ressincronizado com o Supabase.
+    _ultima_atividade_ads = None
+    if st.session_state.get("user"):
+        _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
+
+    if "_gads_ultima_atividade_id_vista" not in st.session_state:
+        # Primeira renderização dessa sessão: `gads_cache` acabou de ser
+        # carregado fresco do banco (bloco acima), então já está em dia
+        # com essa atividade — só marca a "baseline", sem forçar reload.
+        st.session_state["_gads_ultima_atividade_id_vista"] = (
+            _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
+        )
+        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "em_andamento"):
+            # Chegou na página com uma coleta já rodando (ex: iniciada
+            # antes de um refresh) — garante que o polling seja retomado.
+            st.session_state["_coleta_gads_em_andamento"] = True
+    elif _ultima_atividade_ads and _ultima_atividade_ads.get("id") != st.session_state["_gads_ultima_atividade_id_vista"]:
+        if _ultima_atividade_ads.get("status") in ("concluido", "erro"):
+            # Atividade nova (que a sessão ainda não tinha visto) já
+            # terminou — busca os dados direto do Supabase, ignorando
+            # qualquer coisa que já estivesse em `gads_cache`, libera o
+            # botão de novo e atualiza a tela automaticamente.
+            st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_gads_ultima_atividade_id_vista"] = _ultima_atividade_ads["id"]
+            st.session_state["_coleta_gads_em_andamento"] = False
+            st.rerun()
+        else:
+            # Nova coleta detectada e ainda rodando — mantém o polling
+            # ativo mesmo que a flag local tivesse se perdido.
+            st.session_state["_coleta_gads_em_andamento"] = True
+
+    # ── Sincronização resiliente pra migração de mídia (links do R2) ──
+    # A coleta em si (`coleta_ads`) salva rápido com os links originais
+    # original; a troca pelos links permanentes do R2 acontece DEPOIS,
+    # numa atividade separada (`migracao_midia`, uma por empresa, cada
+    # uma terminando num momento diferente). O bloco acima só observava
+    # `coleta_ads` — por isso a coleta podia aparecer "concluída" e até
+    # atualizar "Últ. busca", mas os anúncios continuavam com os links
+    # antigos até a sessão recarregar o cache por qualquer outro motivo.
+    # Aqui a gente rastreia os ids de migração já vistos e força reload
+    # assim que qualquer uma nova aparece concluída/com erro.
+    _migracoes_midia = []
+    if st.session_state.get("user"):
+        _migracoes_midia = _atividades_migracao_midia_recentes(st.session_state.user.id)
+
+    _migracoes_finalizadas_ids = {
+        m["id"] for m in _migracoes_midia if m.get("status") in ("concluido", "erro")
+    }
+    _migracao_em_andamento = any(
+        m.get("status") in ("pendente", "em_andamento") for m in _migracoes_midia
+    )
+
+    if "_gads_migracao_ids_vistos" not in st.session_state:
+        # Primeira renderização dessa sessão: `gads_cache` já foi carregado
+        # fresco do banco, então já reflete essas migrações — só marca a
+        # baseline, sem forçar reload.
+        st.session_state["_gads_migracao_ids_vistos"] = set(_migracoes_finalizadas_ids)
+    else:
+        _novas_migracoes_finalizadas = _migracoes_finalizadas_ids - st.session_state["_gads_migracao_ids_vistos"]
+        if _novas_migracoes_finalizadas:
+            st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+            st.session_state["_gads_migracao_ids_vistos"] |= _novas_migracoes_finalizadas
+            st.rerun()
+
+    # Guarda se há uma coleta rodando em background pra essa sessão — usado
+    # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
+    # (sem clique) enquanto o processo não termina.
+    _coleta_em_andamento = bool(st.session_state.get("_coleta_gads_em_andamento"))
+
+    # Mantém o polling automático (timer JS) rodando não só enquanto a
+    # busca em si está ativa, mas também enquanto sobrar migração de
+    # mídia pendente — senão a troca de link acontece "silenciosa" e só
+    # aparece na tela na próxima ação manual do usuário.
+    _precisa_polling_ads = _coleta_em_andamento or _migracao_em_andamento
+
+    if _coleta_em_andamento and _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
+        # Cobre o caso em que a atividade mais recente já era a mesma
+        # id vista antes (ex: sessão nova mas ficou marcada como em
+        # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
+        # sem um id novo pra comparar.
+        st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+        st.session_state["_gads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
+        st.session_state["_coleta_gads_em_andamento"] = False
+        _coleta_em_andamento = False
+        _precisa_polling_ads = _coleta_em_andamento or _migracao_em_andamento
+        st.rerun()
+
+    if _precisa_polling_ads:
+        # Botão-fantasma (oculto): usado só pra receber o clique disparado
+        # automaticamente pelo timer em JS logo abaixo, que verifica de
+        # tempos em tempos se a coleta e/ou a migração de mídia já
+        # terminaram — sem exigir nenhuma ação do usuário nem mostrar
+        # avisos na tela.
+        st.button("_gads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
+        st.markdown("""
+        <style>
+        .st-key-_btn_verificar_coleta_ads {
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }
+        .stElementContainer:has(.st-key-_btn_verificar_coleta_ads) {
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        components.html("""
+        <script>
+        setTimeout(function() {
+            var btns = window.parent.document.querySelectorAll('button');
+            for (var i = 0; i < btns.length; i++) {
+                var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
+                if (txt === '_gads_verificar_coleta_trigger_') { btns[i].click(); return; }
+            }
+        }, 4000);
+        </script>
+        """, height=0)
+
+    def empresa_tem_gads_id(e: dict) -> bool:
+        if e["tipo"] == "minha":
+            return bool(emp.get("gads_id", "").strip())
+        else:
+            cd = concs[e["idx"]]
+            return bool(cd.get("gads_id", "").strip())
+
+    todas_empresas = []
+    if emp.get("nome"):
+        todas_empresas.append({"nome": emp["nome"], "tipo": "minha", "idx": 0})
+    for i, c in enumerate(concs):
+        if c.get("nome"):
+            todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
+
+    if not st.session_state.get("gads_empresa_ativa"):
+        _emps_conf_init = [e for e in todas_empresas if (
+            emp.get("gads_id","").strip() if e["tipo"] == "minha" else concs[e["idx"]].get("gads_id","").strip()
+        )]
+        if _emps_conf_init:
+            st.session_state.gads_empresa_ativa = _emps_conf_init[0]["nome"]
+        elif todas_empresas:
+            st.session_state.gads_empresa_ativa = todas_empresas[0]["nome"]
+
+    if "gads_onboarding_empresa" not in st.session_state:
+        st.session_state.gads_onboarding_empresa = None
+    if "gads_onboarding_paginas" not in st.session_state:
+        st.session_state.gads_onboarding_paginas = []
+    if "gads_onboarding_termo" not in st.session_state:
+        st.session_state.gads_onboarding_termo = ""
+    if "gads_editando_empresa" not in st.session_state:
+        st.session_state.gads_editando_empresa = None
+    if "gads_aba_conteudo" not in st.session_state:
+        st.session_state.gads_aba_conteudo = {}
+    if "gads_main_tab" not in st.session_state:
+        st.session_state.gads_main_tab = "empresas"
+    if "gads_config_empresa_selecionada" not in st.session_state:
+        st.session_state.gads_config_empresa_selecionada = None
+    if "gads_analises_salvas" not in st.session_state:
+        st.session_state.gads_analises_salvas = []
+
+    def safe_key(s):
+        return re.sub(r"[^a-zA-Z0-9_]", "_", s)
+
+    def salvar_gads_id(e: dict, gads_id: str, page_pic: str = ""):
+        if e["tipo"] == "minha":
+            st.session_state.dados["minha_empresa"]["gads_id"] = gads_id
+            if page_pic:
+                st.session_state.dados["minha_empresa"]["gads_page_pic"] = page_pic
+        else:
+            st.session_state.dados["concorrentes"][e["idx"]]["gads_id"] = gads_id
+            if page_pic:
+                st.session_state.dados["concorrentes"][e["idx"]]["gads_page_pic"] = page_pic
+        salvar_empresa_e_concorrentes()
+
+    def buscar_anunciantes_google(termo: str) -> list:
+        ads, _, erro = _apify_run_sync(termo, limit=20)
+        if erro or not ads:
+            return []
+        paginas = {}
+        for ad in ads:
+            pid  = ad.get("page_id", "") or ""
+            nome = ad.get("page_name", "") or ""
+            pic  = ad.get("page_profile_picture", "") or ""
+            if nome and nome not in paginas:
+                paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
+            if nome in paginas:
+                paginas[nome]["total_ads"] += 1
+                if not paginas[nome]["profile_picture"] and pic:
+                    paginas[nome]["profile_picture"] = pic
+        return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+
+    # ══════════════════════════════════════════════════════════════════
+    # CABEÇALHO DA PÁGINA
+    # ══════════════════════════════════════════════════════════════════
+
+    _ultima_ts = ""
+    _emp_ativa_ts_ref = st.session_state.get("gads_empresa_ativa", "")
+    if st.session_state.gads_cache:
+        # Prioridade 1: timestamp da própria empresa selecionada — é o que
+        # o usuário espera ver ao lado do botão "Buscar / Atualizar" dela.
+        # Antes o código pegava o MIN (mais antigo) entre TODAS as empresas
+        # do cache, sem filtrar pela selecionada: se qualquer outra empresa
+        # monitorada estivesse desatualizada há dias, "Últ. busca" ficava
+        # preso nela mesmo depois de rodar uma coleta nova pra empresa atual.
+        _entry_ativa = st.session_state.gads_cache.get(_emp_ativa_ts_ref, {}) if _emp_ativa_ts_ref else {}
+        _ultima_ts = _entry_ativa.get("ts", "")
+
+        if not _ultima_ts:
+            # Fallback: nenhuma coleta registrada pra empresa ativa ainda —
+            # mostra a coleta mais recente do cache geral. Usa parsing de
+            # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
+            # não ordena corretamente como texto.
+            def _parse_ts_ads(s):
+                try:
+                    return _dt.datetime.strptime(s, "%d/%m/%Y %H:%M")
+                except Exception:
+                    return _dt.datetime.min
+            _tss = [v.get("ts", "") for v in st.session_state.gads_cache.values() if v.get("ts")]
+            if _tss:
+                _ultima_ts = max(_tss, key=_parse_ts_ads)
+
+    h1_col, h2_col = st.columns([5, 5])
+
+    with h1_col:
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+@font-face {{
+    font-family: 'Animo';
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/63946b2d891db6b45cc75a45550b7aa5fe67244a/utils/Animo-font.otf') format('opentype');
+}}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ background: transparent; overflow: hidden; height: 100%; }}
+.wrap {{
+    display: flex; flex-direction: column; justify-content: center;
+    height: 100%;
+}}
+.titulo {{
+    font-family: 'Animo', 'DM Sans', sans-serif;
+    font-size: 32px; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+}}
+.sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
+</style>
+<div class="wrap">
+    <div class="titulo">Biblioteca de Ads</div>
+    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
+</div>
+""", height=104 if _ultima_ts else 78)
+ 
+    with h2_col:
+        # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
+        _emp_dd_ghost_css_parts = []
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _sk_h = safe_key(_e_h["nome"])
+            _k_h = f"gads_header_emp_{_sk_h}_{_ci_h}"
+            _emp_dd_ghost_css_parts.append(f"""
+            .st-key-{_k_h} {{
+                position:fixed !important; top:-9999px !important; left:-9999px !important;
+                width:0 !important; height:0 !important; overflow:hidden !important;
+                opacity:0 !important; pointer-events:none !important; display:none !important;
+            }}
+            .stElementContainer:has(.st-key-{_k_h}) {{
+                display:none !important; height:0 !important; min-height:0 !important;
+                max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+            }}
+            """)
+        _k_comp_h = "gads_header_emp_comparativo"
+        _emp_dd_ghost_css_parts.append(f"""
+        .st-key-{_k_comp_h},
+        .st-key-gads_buscar_header_btn,
+        .st-key-gads_limpar_cache_btn {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+        }}
+        .stElementContainer:has(.st-key-{_k_comp_h}),
+        .stElementContainer:has(.st-key-gads_buscar_header_btn),
+        .stElementContainer:has(.st-key-gads_limpar_cache_btn) {{
+            display:none !important; height:0 !important; min-height:0 !important;
+            max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+        }}
+        .st-key-_gads_ghost_tab_configuracao_,
+        .st-key-_gads_ghost_tab_empresas_,
+        .st-key-_gads_ghost_tab_analise_ {{ display: none !important; }}
+        .stElementContainer:has(.st-key-_gads_ghost_tab_configuracao_),
+        .stElementContainer:has(.st-key-_gads_ghost_tab_empresas_),
+        .stElementContainer:has(.st-key-_gads_ghost_tab_analise_) {{ display: none !important; }}
+        """)
+        st.markdown(f"<style>{''.join(_emp_dd_ghost_css_parts)}</style>", unsafe_allow_html=True)
+ 
+        if "gads_empresa_ativa" not in st.session_state:
+            st.session_state.gads_empresa_ativa = ""
+ 
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _sk_h = safe_key(_e_h["nome"])
+            _k_h = f"gads_header_emp_{_sk_h}_{_ci_h}"
+            if st.button(f"hdemp_{_sk_h}", key=_k_h):
+                st.session_state.gads_empresa_ativa = _e_h["nome"]
+                st.session_state.gads_main_tab = "empresas"
+                st.rerun()
+ 
+        if st.button("hdemp_comparativo", key=_k_comp_h):
+            if gemini_model is None:
+                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+            elif not st.session_state.gads_cache:
+                st.toast("Busque os anúncios das empresas antes de gerar a análise comparativa.", icon="⚠️")
+            else:
+                import datetime as _dt_gads_h
+                resumo_gads_h = "\n\n".join([
+                    f"Empresa: {empresa}\nAnúncios:\n" + "\n".join([
+                        f"  - {ad.get('titulo','')}: {ad.get('descricao','')[:120]}"
+                        for ad in ads[:8]
+                    ])
+                    for empresa, ads in st.session_state.gads_cache.items()
+                ])
+                try:
+                    with st.spinner("Gerando análise comparativa..."):
+                        resp_h = gerar_com_ia(f"""
+Você é especialista em marketing digital e tráfego pago.
+Compare os anúncios das empresas abaixo e faça uma análise comparativa estratégica em português.
+
+{resumo_gads_h}
+
+Responda com:
+### Visão Geral Comparativa
+Comparação resumida das empresas em termos de estratégia de anúncios.
+
+### Quem se Destaca e Por Quê
+Destaque a empresa com melhor estratégia e explique os motivos.
+
+### Pontos Fortes de Cada Empresa
+Para cada empresa, 1-2 pontos fortes nos anúncios.
+
+### Oportunidades Identificadas
+2-3 oportunidades estratégicas para as empresas com menor desempenho.
+
+### Recomendações Finais
+3 ações concretas para melhorar a performance geral dos anúncios.
+
+Seja direto, objetivo e baseado nos dados fornecidos.
+""")
+                    st.session_state.gads_analises_salvas = st.session_state.get("gads_analises_salvas", [])
+                    st.session_state.gads_analises_salvas.append({
+                        "titulo": f"Comparativo Geral — {_dt_gads_h.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_gads_h.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp_h.text,
+                        "tipo": "comparativo_ads",
+                        "empresas": list(st.session_state.gads_cache.keys()),
+                    })
+                    salvar_gads_analises()
+                    st.toast("Análise comparativa gerada! Veja em Análise de IA.", icon="✅")
+                except Exception as e:
+                    st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
+            st.rerun()
+ 
+        # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
+        gerar_btn_gads_header = st.button("gads_buscar_header_trigger", key="gads_buscar_header_btn")
+ 
+        # Ghost: limpar cache
+        if st.session_state.gads_cache:
+            if st.button("gads_limpar_cache", key="gads_limpar_cache_btn"):
+                st.session_state.gads_cache = {}
+                st.session_state.gads_erro = {}
+                try:
+                    supabase.table("ci_dados").update({"gads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
+                except Exception:
+                    pass
+                st.toast("Cache limpo!", icon="🗑️")
+                st.rerun()
+
+        # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
+        _djs = "[]"
+        _fn = ""
+        if _ultima_ts:
+            _d = {k: v for k, v in st.session_state.gads_cache.items()}
+            _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+            _fn = f'dados_gads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
+ 
+        _emp_ativa_nome = st.session_state.get("gads_empresa_ativa", "")
+        _emp_ativa_obj  = next((e for e in todas_empresas if e["nome"] == _emp_ativa_nome), None)
+        _comp_active    = (_emp_ativa_nome == "__comparativo__")
+        _n_dd_items     = len(todas_empresas) + 1
+ 
+        if _emp_ativa_obj:
+            _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
+            _gads_id_h    = emp.get("gads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_id","")
+            _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
+            _badge_bg_h  = "#f0fdf4"        if _is_minha_h else "#eff6ff"
+            _badge_col_h = "#15803d"        if _is_minha_h else "#1d4ed8"
+            _badge_brd_h = "#bbf7d0"        if _is_minha_h else "#bfdbfe"
+            _page_pic_h  = emp.get("gads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_page_pic","")
+            _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
+            _av_h        = gerar_avatar(_emp_ativa_nome)
+            _sub_h       = f"ID: {_gads_id_h}" if _gads_id_h and _gads_id_h.upper().startswith("AR") else (f"@{_gads_id_h}" if _gads_id_h else "Não configurado")
+            _av_html_h = (
+                '<div style="width:34px;height:34px;border-radius:10px;background:#dbeafe;'
+                'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                'stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
+                '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
+                '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
+                '</svg></div>'
+            )
+            _selected_html = f"""
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                {_av_html_h}
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
+                </div>
+                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
+            </div>"""
+        elif _comp_active:
+            _selected_html = """
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                <div style="width:34px;height:34px;border-radius:50%;background:#0e2a47;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏆</div>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:700;color:#111827">Análise Comparativa</div>
+                    <div style="font-size:11px;color:#9ca3af">Comparar todos os perfis</div>
+                </div>
+            </div>"""
+        else:
+            _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
+ 
+        _dropdown_items = ""
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            _is_m     = _e_h["tipo"] == "minha"
+            _gads_id_d = emp.get("gads_id","") if _is_m else concs[_e_h["idx"]].get("gads_id","")
+            _pp_d     = emp.get("gads_page_pic","") if _is_m else concs[_e_h["idx"]].get("gads_page_pic","")
+            _cor_d    = get_minha_empresa_color() if _is_m else get_concorrente_color(_e_h["idx"])
+            _av_d     = gerar_avatar(_e_h["nome"])
+            _sub_d    = f"ID: {_gads_id_d}" if _gads_id_d and _gads_id_d.upper().startswith("AR") else (f"@{_gads_id_d}" if _gads_id_d else "Não configurado")
+            _badge_txt_d = "Minha empresa" if _is_m else "Concorrente"
+            _is_active_d = (_e_h["nome"] == _emp_ativa_nome)
+            _sk_h2       = safe_key(_e_h["nome"])
+            _ghost_lbl_d = f"hdemp_{_sk_h2}"
+            _av_item_html = (
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                'stroke-linecap="round" stroke-linejoin="round" width="16" height="16">'
+                '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
+                '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
+                '</svg>'
+            )
+            _dropdown_items += f"""
+            <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
+                <div class="dd-icon">{_av_item_html}</div>
+                <div class="dd-info">
+                    <span class="dd-nome">{_e_h["nome"]}</span>
+                </div>
+                <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
+            </div>"""
+ 
+        _dropdown_items += f"""
+        <div class="dd-item{' selected' if _comp_active else ''}" onclick="triggerGhost('hdemp_comparativo');closeDropdown()">
+            <div class="dd-icon" style="background:#224161;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="dd-info">
+                <span class="dd-nome" style="color:#31a2f0;">Análise Comparativa</span>
+                <div class="dd-handle">Comparar todos os perfis</div>
+            </div>
+        </div>"""
+ 
+        if _coleta_em_andamento:
+            _btn_coletar_html = (
+                '<button class="ctrl-btn btn-coletar btn-coletar-loading" disabled>'
+                '<span class="btn-coletar-spinner"></span> Buscando anúncios...</button>'
+            )
+        else:
+            _btn_coletar_html = (
+                '<button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">'
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+                'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
+                '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
+                'Buscar / Atualizar Anúncios</button>'
+            )
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }}
+ 
+.ctrl-box {{
+    background:#d2dde9; border-radius:14px;
+    padding:14px 16px; display:flex;
+    gap:12px; align-items:center; position:relative; overflow:visible;
+    width:100%; box-sizing:border-box;
+}}
+.col-select {{ position:relative; display:flex; align-items:center; flex:1; min-width:0; overflow:visible; }}
+ 
+.dd-wrap {{ position:relative; width:100%; }}
+.dd-trigger {{
+    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    padding:8px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%;
+}}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
+.dd-arrow.open {{ transform:rotate(180deg); }}
+ 
+.dd-list {{
+    position:absolute; top:calc(100% + 6px); left:0; width:100%;
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.12); z-index:50;
+    max-height:320px; overflow-y:auto; display:none; padding:6px; box-sizing:border-box;
+}}
+.dd-list.open {{ display:block; }}
+.dd-item {{
+    background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:all 0.15s; margin-bottom:6px;
+}}
+.dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
+.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item:last-child:hover {{ background:#17406a; border-color:#17406a; box-shadow:none; }}
+.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
+.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #3b82f6; }}
+.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
+.dd-info {{ flex:1; min-width:0; }}
+.dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
+.dd-handle {{ font-size:11px; color:#9ca3af; }}
+.dd-item:last-child .dd-handle {{ color:#94a3b8; }}
+.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }}
+.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
+.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+ 
+.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
+.ctrl-btn {{
+    width:100%; height:44px; border-radius:10px; border:none;
+    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    transition:all 0.15s; white-space:nowrap; padding:0 14px;
+}}
+.btn-coletar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 12px; min-width:200px; }}
+.btn-coletar:hover {{ background:#1a3f6a; }}
+.btn-coletar-loading {{ background:#3a5170; cursor:not-allowed; opacity:0.85; }}
+.btn-coletar-loading:hover {{ background:#3a5170; }}
+.btn-coletar-spinner {{
+    width:14px; height:14px; border-radius:50%; flex-shrink:0;
+    border:2px solid rgba(255,255,255,0.35); border-top-color:#fff;
+    animation:btnColetarSpin 0.8s linear infinite;
+}}
+@keyframes btnColetarSpin {{ to {{ transform:rotate(360deg); }} }}
+ 
+.row-coleta {{
+    gap:6px; font-size:12px; color:#6b7280; font-family:'DM Sans',sans-serif;
+    flex-wrap:nowrap; white-space:nowrap; text-align:center; display:flex; justify-content:center;
+}}
+.link-btn {{ font-size:11px; color:#6b7280; cursor:pointer; text-underline-offset:3px; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; }}
+.link-btn:hover {{ text-decoration:underline; color:#374151; }}
+.sep {{ color:#d1d5db; font-size:12px; }}
+.clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
+.clear-btn:hover {{ text-decoration:underline; color:#374151; }}
+</style>
+ 
+<div class="ctrl-box">
+    <div class="col-select">
+        <div class="dd-wrap" id="dd-wrap">
+            <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
+                {_selected_html}
+                <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="dd-list" id="dd-list">{_dropdown_items}</div>
+        </div>
+    </div>
+    <div class="col-btns">
+        {_btn_coletar_html}
+        {f'''<div class="row-coleta">
+            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
+            <span class="sep">|</span>
+            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+        </div>''' if _ultima_ts else ''}
+    </div>
+</div>
+ 
+<script>
+var DADOS_JSON = '{_djs}';
+var FILENAME   = '{_fn}';
+var ULTIMA     = '{_ultima_ts}';
+ 
+function toggleDropdown(){{
+    var m = document.getElementById('dd-list'); var ar = document.getElementById('dd-arrow');
+    var bd = document.getElementById('dd-trigger-badge');
+    var open = m.classList.contains('open');
+    if(open){{ m.classList.remove('open'); ar.classList.remove('open'); if(bd) bd.style.display='none'; }}
+    else{{ m.classList.add('open'); ar.classList.add('open'); if(bd) bd.style.display='inline-flex'; }}
+    setHeight(!open);
+}}
+function closeDropdown(){{
+    document.getElementById('dd-list').classList.remove('open');
+    document.getElementById('dd-arrow').classList.remove('open');
+    var bd = document.getElementById('dd-trigger-badge');
+    if(bd) bd.style.display='none';
+    setHeight(false);
+}}
+document.addEventListener('click', function(e){{
+    var wrap = document.getElementById('dd-wrap');
+    if (wrap && !wrap.contains(e.target)) closeDropdown();
+}});
+ 
+function triggerGhost(label){{
+    var btns=window.parent.document.querySelectorAll('button');
+    for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
+}}
+function triggerBuscar(){{ triggerGhost('gads_buscar_header_trigger'); }}
+function triggerLimpar() {{
+    abrirConfirmacao(
+        '🗑️ Limpar cache de anúncios',
+        'Tem certeza que deseja limpar todos os anúncios coletados? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, limpar',
+        function() {{ triggerGhost('gads_limpar_cache'); }}
+    );
+}}
+
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+ 
+function abrirModal() {{
+    window.fechar = function() {{
+        var o = window.parent.document.getElementById('raw_modal_overlay');
+        if (o) o.remove();
+        if (window.parent.__rawEsc) {{
+            window.parent.document.removeEventListener('keydown', window.parent.__rawEsc);
+            window.parent.__rawEsc = null;
+        }}
+    }};
+    var doc = window.parent.document;
+    var old = doc.getElementById('raw_modal_overlay');
+    if (old) old.remove();
+    var D; try {{ D = JSON.parse(DADOS_JSON); }} catch(e) {{ D = []; }}
+    var Dstr = JSON.stringify(D, null, 2);
+    var ov = doc.createElement('div');
+    ov.id = 'raw_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if(e.target===ov) fechar(); }};
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;position:relative;width:min(95vw,1100px);max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+    hdr.innerHTML = '<div><div style="font-size:15px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📦 Cache de Anúncios</div>'
+        + '<div style="font-size:12px;color:#8b949e;margin-top:2px;">Última busca: ' + ULTIMA + '</div></div>'
+        + '<div style="display:flex;gap:10px;">'
+        + '<button id="raw_copy_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">📋 Copiar</button>'
+        + '<button id="raw_down_btn" style="padding:7px 16px;border:1px solid #1e395e;border-radius:8px;background:#0e1e35;color:#22c45e;font-size:13px;font-weight:600;cursor:pointer;">⬇️ Baixar JSON</button>'
+        + '<button id="raw_close_btn" style="width:34px;height:34px;border-radius:50%;background:#0e1e35;border:1px solid #1e395e;color:#22c45e;font-size:18px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;">✕</button>'
+        + '</div>';
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;white-space:pre;max-height:calc(88vh - 80px);';
+    pre.textContent = Dstr;
+    box.appendChild(hdr); box.appendChild(pre); ov.appendChild(box); doc.body.appendChild(ov);
+    doc.getElementById('raw_close_btn').addEventListener('click', window.fechar);
+    doc.getElementById('raw_copy_btn').addEventListener('click', function() {{
+        var b = doc.getElementById('raw_copy_btn');
+        try {{
+            var ta = doc.createElement('textarea');
+            ta.value = Dstr; ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+            doc.body.appendChild(ta); ta.focus(); ta.select(); doc.execCommand('copy'); doc.body.removeChild(ta);
+            b.textContent = '✅ Copiado!'; setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000);
+        }} catch(e) {{ b.textContent = '❌ Erro'; setTimeout(function() {{ b.textContent = '📋 Copiar'; }}, 2000); }}
+    }});
+    doc.getElementById('raw_down_btn').addEventListener('click', function() {{
+        var a = doc.createElement('a');
+        a.href = URL.createObjectURL(new Blob([Dstr], {{type:'application/json'}}));
+        a.download = FILENAME; a.click();
+    }});
+    window.parent.__rawEsc = function(e) {{ if(e.key==='Escape') window.fechar(); }};
+    doc.addEventListener('keydown', window.parent.__rawEsc);
+}}
+ 
+function setHeight(isOpen) {{
+    var listH = isOpen ? Math.min(({_n_dd_items} * 64) + 70 + 28, 330) : 0;
+    var extra = ULTIMA ? 26 : 0;
+    var h = 86 + extra + (isOpen ? listH + 10 : 0);
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = h + 'px';
+            iframes[i].style.zIndex = isOpen ? '9999' : '1';
+            iframes[i].style.overflow = 'visible';
+            var parent = iframes[i].parentElement;
+            var depth = 0;
+            while (parent && depth < 8) {{
+                parent.style.overflow = isOpen ? 'visible' : '';
+                parent.style.zIndex  = isOpen ? '9999' : '';
+                var isBlockContainer = parent.getAttribute &&
+                    (parent.getAttribute('data-testid') === 'stVerticalBlock' ||
+                     parent.getAttribute('data-testid') === 'stHorizontalBlock');
+                parent = parent.parentElement;
+                depth++;
+                if (isBlockContainer) break;
+            }}
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+ 
+setHeight(false);
+</script>
+""", height=104 if _ultima_ts else 78, scrolling=False)
+
+    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin-top:10px;padding:5px 0;'/>", unsafe_allow_html=True)
+
+    _ids_coletados       = set(st.session_state.gads_cache.keys())
+    _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_gads_id(e)]
+    _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_gads_id(e) and e["nome"] not in _ids_coletados]
+
+    if _empresas_sem_config:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
+        st.info(
+            f"⚙️ **{_nomes}** {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}. "
+            f"Vá em **Configuração** para adicionar o ID da página."
+        )
+    if _empresas_sem_dados:
+        _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
+        st.info(
+            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'} "
+            f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
+            f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
+        )
+
+    # ══════════════════════════════════════════════════════════════════
+    # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)
+    # ══════════════════════════════════════════════════════════════════
+
+    st.markdown("""
+    <style>
+    .st-key-_gads_ghost_tab_configuracao_,
+    .st-key-_gads_ghost_tab_empresas_,
+    .st-key-_gads_ghost_tab_analise_ {
+        position: fixed !important; top: -9999px !important; left: -9999px !important;
+        width: 0 !important; height: 0 !important; overflow: hidden !important;
+        opacity: 0 !important; pointer-events: none !important;
+        visibility: hidden !important; display: none !important;
+    }
+    .stElementContainer:has(.st-key-_gads_ghost_tab_configuracao_),
+    .stElementContainer:has(.st-key-_gads_ghost_tab_empresas_),
+    .stElementContainer:has(.st-key-_gads_ghost_tab_analise_) {
+        display: none !important; height: 0 !important; min-height: 0 !important;
+        max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    if st.button("tab_cfg", key="_gads_ghost_tab_configuracao_"):
+        st.session_state.gads_main_tab = "configuracao"
+        st.session_state.gads_config_empresa_selecionada = None
+        st.rerun()
+    if st.button("tab_emp", key="_gads_ghost_tab_empresas_"):
+        st.session_state.gads_main_tab = "empresas"
+        st.rerun()
+    if st.button("tab_ia", key="_gads_ghost_tab_analise_"):
+        st.session_state.gads_main_tab = "analise"
+        st.rerun()
+
+    # Ghost para lápis de empresa
+    lapiz_ghost_css_parts = []
+    for ci, e in enumerate(todas_empresas):
+        sk = safe_key(e["nome"])
+        lapiz_key = f"_gads_lapiz_{sk}_{ci}_"
+        lapiz_ghost_css_parts.append(f"""
+        .st-key-{lapiz_key.strip('_')} {{
+            position: fixed !important; top: -9999px !important; left: -9999px !important;
+            width: 0 !important; height: 0 !important; overflow: hidden !important;
+            opacity: 0 !important; pointer-events: none !important; visibility: hidden !important; display: none !important;
+        }}
+        .stElementContainer:has(.st-key-{lapiz_key.strip('_')}) {{
+            display: none !important; height: 0 !important; min-height: 0 !important;
+            max-height: 0 !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important;
+        }}
+        """)
+    if lapiz_ghost_css_parts:
+        st.markdown(f"<style>{''.join(lapiz_ghost_css_parts)}</style>", unsafe_allow_html=True)
+
+    lapiz_triggers = {}
+    for ci, e in enumerate(todas_empresas):
+        sk = safe_key(e["nome"])
+        lapiz_key = f"_gads_lapiz_{sk}_{ci}_"
+        if st.button(f"lapiz_{sk}", key=lapiz_key.strip('_')):
+            st.session_state.gads_main_tab = "configuracao"
+            st.session_state.gads_config_empresa_selecionada = e["nome"]
+            st.session_state.gads_editando_empresa = e["nome"]
+            st.rerun()
+        lapiz_triggers[ci] = lapiz_key
+
+    # ── Calcular dados
+    main_tab              = st.session_state.gads_main_tab
+    empresas_configuradas = [e for e in todas_empresas if empresa_tem_gads_id(e)]
+    empresas_sem_config   = [e for e in todas_empresas if not empresa_tem_gads_id(e)]
+    n_configuradas        = len(empresas_configuradas)
+    n_sem_config          = len(empresas_sem_config)
+
+    # ── Processar busca do cabeçalho
+    if gerar_btn_gads_header:
+        query_values_header = {}
+        for e in todas_empresas:
+            if empresa_tem_gads_id(e):
+                ck = e["nome"]
+                gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
+                query_values_header[ck] = gads_id_salvo
+        if query_values_header:
+            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=False)
+        else:
+            st.warning("Configure pelo menos uma empresa antes de buscar.")
+
+    # ══════════════════════════════════════════════════════════════════
+    # BARRA DE NAVEGAÇÃO PRINCIPAL — 3 abas
+    # ══════════════════════════════════════════════════════════════════
+
+    _n_analises = len(st.session_state.get("gads_analises_salvas", []))
+
+    components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
+.nav-bar {{
+    display:grid; grid-template-columns:auto 1fr 1fr; gap:12px; width:100%;
+}}
+.nav-item {{
+    background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+    padding:16px 20px; cursor:pointer;
+    display:flex; align-items:center; gap:14px;
+    transition:all 0.15s; position:relative; overflow:hidden;
+}}
+.nav-item.icon-only {{
+    padding:16px 22px; justify-content:center;
+}}
+.nav-item:hover {{ border-color:#3a9fd6; box-shadow:0 2px 12px rgba(58,159,214,0.12); }}
+.nav-item.active {{
+    background:#0e2a47; border-color:#0e2a47;
+    box-shadow:0 4px 20px rgba(14,42,71,0.22);
+}}
+.nav-item.active::after {{
+    content:''; position:absolute; bottom:0; left:0; right:0; height:3px;
+    background:linear-gradient(90deg,#3a9fd6,#2ecc71);
+    border-radius:0 0 14px 14px;
+}}
+.nav-icon {{
+    width:40px; height:40px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; background:#f3f4f6; transition:background 0.15s;
+}}
+.nav-item.active .nav-icon {{ background:rgba(255,255,255,0.12); }}
+.nav-icon svg {{ width:20px; height:20px; }}
+.nav-content {{ flex:1; min-width:0; }}
+.nav-title {{ font-size:15px; font-weight:700; color:#1a2e4a; display:block; margin-bottom:2px; }}
+.nav-item.active .nav-title {{ color:#ffffff; }}
+.nav-sub {{ font-size:12px; color:#9ca3af; }}
+.nav-item.active .nav-sub {{ color:rgba(255,255,255,0.55); }}
+.nav-right {{ display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0; }}
+.count-badge {{
+    min-width:26px; height:26px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; padding:0 5px;
+    background:#e5e7eb; color:#6b7280;
+}}
+.count-badge.has {{ background:#3a9fd6; color:#fff; }}
+.nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
+.nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
+</style>
+<div class="nav-bar">
+    <div class="nav-item icon-only {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')" title="Configuração">
+        <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'configuracao' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </div>
+    </div>
+    <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
+        <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'empresas' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+            </svg>
+        </div>
+        <div class="nav-content">
+            <span class="nav-title">Empresas configuradas</span>
+            <span class="nav-sub">Gerencie empresas cadastradas</span>
+        </div>
+    </div>
+    <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
+        <div class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'analise' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+        </div>
+        <div class="nav-content">
+            <span class="nav-title">Análise de IA</span>
+            <span class="nav-sub">Visualize análises inteligentes</span>
+        </div>
+        <div class="nav-right">
+            <div class="count-badge {'has' if _n_analises > 0 else ''}">{_n_analises}</div>
+        </div>
+    </div>
+</div>
+<script>
+function triggerTab(label) {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
+}}
+(function() {{
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = '90px';
+            iframes[i].style.marginTop = '0px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}})();
+</script>
+""", height=90, scrolling=False)
+
+    # ── Correção de gap entre iframes (mesma técnica da página Redes) ──
+    st.markdown("""
+    <style>
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) + [data-testid="stElementContainer"]:has(iframe) {
+        margin-top: 0 !important;
+    }
+    [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] iframe) {
+        gap: 0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    if not todas_empresas:
+        st.info("Cadastre sua empresa e concorrentes para usar esta funcionalidade.")
+        st.stop()
+
+    if not st.secrets.get("APIFY_TOKEN", ""):
+        st.warning("Configure `APIFY_TOKEN` no secrets.toml para usar esta funcionalidade.")
+
+# ══════════════════════════════════════════════════════════════════
+# ABA: CONFIGURAÇÃO — Cards de empresa
+# ══════════════════════════════════════════════════════════════════
+
+    if main_tab == "configuracao":
+
+        editando_empresa   = st.session_state.gads_editando_empresa
+        onboarding_empresa = st.session_state.gads_onboarding_empresa
+        onboarding_paginas = st.session_state.gads_onboarding_paginas
+
+        # ── Recupera valores via query_params
+        for ci in range(len(todas_empresas)):
+            qk = f"_cfg_val_{ci}"
+            if qk in st.query_params:
+                st.session_state[f"cfg_val_temp_{ci}"] = st.query_params[qk]
+
+        # ── CSS ocultar ghost buttons
+        all_ghost_css = "".join([f"""
+        .st-key-cfg_ghost_edit_{ci},
+        .st-key-cfg_ghost_cancel_{ci},
+        .st-key-cfg_do_buscar_{ci},
+        .st-key-cfg_do_salvar_{ci} {{
+            position:fixed!important;top:-9999px!important;left:-9999px!important;
+            width:0!important;height:0!important;overflow:hidden!important;
+            opacity:0!important;pointer-events:none!important;display:none!important;
+        }}
+        .stElementContainer:has(.st-key-cfg_ghost_edit_{ci}),
+        .stElementContainer:has(.st-key-cfg_ghost_cancel_{ci}),
+        .stElementContainer:has(.st-key-cfg_do_buscar_{ci}),
+        .stElementContainer:has(.st-key-cfg_do_salvar_{ci}) {{
+            display:none!important;height:0!important;min-height:0!important;
+            max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
+        }}
+        """ for ci in range(len(todas_empresas))])
+
+        # CSS ocultar ghost buttons do "Usar página"
+        usar_ghost_css_parts = []
+        for ci, e in enumerate(todas_empresas):
+            for pi in range(8):
+                sk_e = safe_key(e["nome"])
+                k = f"cfg_usar_pg_{sk_e}_{ci}_{pi}"
+                usar_ghost_css_parts.append(f"""
+                .st-key-{k} {{
+                    position:fixed!important;top:-9999px!important;left:-9999px!important;
+                    width:0!important;height:0!important;overflow:hidden!important;
+                    opacity:0!important;pointer-events:none!important;display:none!important;
+                }}
+                .stElementContainer:has(.st-key-{k}) {{
+                    display:none!important;height:0!important;min-height:0!important;
+                    max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
+                }}
+                """)
+
+        st.markdown(f"<style>{all_ghost_css}{''.join(usar_ghost_css_parts)}</style>", unsafe_allow_html=True)
+
+        # ── Ghost triggers principais
+        ghost_edit      = {}
+        ghost_cancel    = {}
+        ghost_do_buscar = {}
+        ghost_do_salvar = {}
+
+        for ci, e in enumerate(todas_empresas):
+            ghost_edit[ci]      = st.button(f"edit_{ci}",      key=f"cfg_ghost_edit_{ci}")
+            ghost_cancel[ci]    = st.button(f"cancel_{ci}",    key=f"cfg_ghost_cancel_{ci}")
+            ghost_do_buscar[ci] = st.button(f"do_buscar_{ci}", key=f"cfg_do_buscar_{ci}")
+            ghost_do_salvar[ci] = st.button(f"do_salvar_{ci}", key=f"cfg_do_salvar_{ci}")
+
+        # ── Ghost triggers "Usar página"
+        ghost_usar_pg = {}
+        for ci, e in enumerate(todas_empresas):
+            ghost_usar_pg[ci] = {}
+            for pi in range(8):
+                sk_e = safe_key(e["nome"])
+                k = f"cfg_usar_pg_{sk_e}_{ci}_{pi}"
+                ghost_usar_pg[ci][pi] = st.button(f"usar_pg_{ci}_{pi}", key=k)
+
+        # ── Processar ações
+        for ci, e in enumerate(todas_empresas):
+            if ghost_edit[ci]:
+                st.session_state.gads_editando_empresa   = e["nome"]
+                st.session_state.gads_onboarding_empresa = None
+                st.session_state.gads_onboarding_paginas = []
+                st.rerun()
+
+            if ghost_cancel[ci]:
+                st.session_state.gads_editando_empresa   = None
+                st.session_state.gads_onboarding_empresa = None
+                st.session_state.gads_onboarding_paginas = []
+                for k in list(st.query_params.keys()):
+                    if k.startswith("_cfg_val_"):
+                        del st.query_params[k]
+                st.rerun()
+
+            if ghost_do_buscar[ci]:
+                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                if val:
+                    st.session_state.gads_onboarding_empresa = e["nome"]
+                    st.session_state.gads_editando_empresa   = e["nome"]
+                    paginas = buscar_anunciantes_google(val)
+                    st.session_state.gads_onboarding_paginas = paginas
+                    qk = f"_cfg_val_{ci}"
+                    if qk in st.query_params:
+                        del st.query_params[qk]
+                    st.rerun()
+
+            if ghost_do_salvar[ci]:
+                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                if val:
+                    salvar_gads_id(e, val)
+                    st.session_state.gads_editando_empresa   = None
+                    st.session_state.gads_onboarding_empresa = None
+                    st.session_state.gads_onboarding_paginas = []
+                    qk = f"_cfg_val_{ci}"
+                    if qk in st.query_params:
+                        del st.query_params[qk]
+                    st.toast(f"{e['nome']} salvo!", icon="✅")
+                    st.rerun()
+
+            # Processar "Usar página" da lista de resultados
+            if onboarding_empresa == e["nome"] and onboarding_paginas:
+                e_ob = e
+                for pi, pg in enumerate(onboarding_paginas[:8]):
+                    if ghost_usar_pg[ci].get(pi):
+                        salvar_gads_id(
+                            e_ob,
+                            pg.get("page_id") or pg.get("nome", ""),
+                            pg.get("profile_picture", ""),
+                        )
+                        st.session_state.gads_editando_empresa   = None
+                        st.session_state.gads_onboarding_empresa = None
+                        st.session_state.gads_onboarding_paginas = []
+                        st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
+                        st.rerun()
+
+        # ── INFO BOX
+        st.markdown("""
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
+                    padding:11px 16px;font-size:13px;color:#0369a1;
+                    display:flex;align-items:flex-start;gap:10px;
+                    line-height:1.6;margin-top:-65px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0369a1"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 style="flex-shrink:0;margin-top:2px">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+                Clique em <strong>✏️ Editar</strong> em cada empresa para configurar.
+                Cole o <strong>nome do anunciante</strong>, o <strong>domínio</strong> (ex.
+                nike.com) ou o <strong>ID do anunciante</strong> no Google Ads (formato
+                "AR..."), depois clique em <strong>Buscar anunciantes</strong> para encontrar
+                ou <strong>Salvar ID</strong> para salvar diretamente.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Monta HTML dos cards
+        cards_html = ""
+        for ci, e in enumerate(todas_empresas):
+            is_minha   = e["tipo"] == "minha"
+            gads_id     = emp.get("gads_id","") if is_minha else concs[e["idx"]].get("gads_id","")
+            page_pic   = emp.get("gads_page_pic","") if is_minha else concs[e["idx"]].get("gads_page_pic","")
+            has_id     = bool(gads_id.strip())
+            is_editing = (editando_empresa == e["nome"])
+            cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
+            av_txt     = gerar_avatar(e["nome"])
+            badge_lbl  = "Minha empresa" if is_minha else "Concorrente"
+            badge_bg   = "#f0fdf4" if is_minha else "#eff6ff"
+            badge_col  = "#15803d" if is_minha else "#1d4ed8"
+            badge_brd  = "#bbf7d0" if is_minha else "#bfdbfe"
+            id_bg      = "#f0fdf4" if has_id else "#f3f4f6"
+            id_brd     = "#bbf7d0" if has_id else "#e5e7eb"
+            id_fw      = "600"     if has_id else "400"
+            id_color   = "#15803d" if has_id else "#9ca3af"
+            id_ff      = "monospace" if has_id else "inherit"
+            id_text    = gads_id if has_id else "Não configurado"
+
+            if page_pic and page_pic.startswith("http"):
+                av_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;'
+                    f'flex-shrink:0;border:2px solid #e5e7eb">'
+                    f'<img src="{page_pic}" style="width:100%;height:100%;object-fit:cover;display:block"'
+                    f' onerror="this.parentElement.style.background=\'{cor}\';'
+                    f'this.parentElement.innerHTML=\'<div style=&quot;display:flex;align-items:center;'
+                    f'justify-content:center;width:100%;height:100%;font-size:15px;font-weight:700;'
+                    f'color:#fff&quot;>{av_txt}</div>\'" /></div>'
+                )
+            else:
+                av_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;background:{cor};'
+                    f'display:flex;align-items:center;justify-content:center;font-size:15px;'
+                    f'font-weight:700;color:#fff;flex-shrink:0">{av_txt}</div>'
+                )
+
+            border_style = (
+                "border:2px solid #3a9fd6;box-shadow:0 0 0 3px rgba(58,159,214,0.12);"
+                if is_editing else "border:1px solid #e5e7eb;"
+            )
+
+            # Bloco de resultados encontrados (dentro do card, após os botões)
+            resultados_block = ""
+            if is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
+                pgs_html = ""
+                for pi, pg in enumerate(onboarding_paginas[:8]):
+                    initial = (pg.get("nome","P") or "P")[0].upper()
+                    pic_pg  = pg.get("profile_picture","")
+                    thumb_html = (
+                        f'<img src="{pic_pg}" style="width:32px;height:32px;border-radius:50%;'
+                        f'object-fit:cover;display:block" onerror="this.style.display=\'none\'" />'
+                        if pic_pg and pic_pg.startswith("http")
+                        else f'<span style="font-size:13px;font-weight:700;color:#6b7280">{initial}</span>'
+                    )
+                    sk_e = safe_key(e["nome"])
+                    ghost_label = f"usar_pg_{ci}_{pi}"
+                    pgs_html += f"""
+                    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                background:#f9fafb;border:1px solid #e5e7eb;border-radius:9px;
+                                margin-bottom:6px;">
+                        <div style="width:32px;height:32px;border-radius:50%;background:#e5e7eb;
+                                    display:flex;align-items:center;justify-content:center;
+                                    flex-shrink:0;overflow:hidden;">
+                            {thumb_html}
+                        </div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:13px;font-weight:700;color:#111827;
+                                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                {pg.get("nome","—")}
+                            </div>
+                            <div style="font-size:11px;color:#9ca3af;font-family:monospace;margin-top:1px;">
+                                ID: {pg.get("page_id","—")}
+                            </div>
+                        </div>
+                        <span style="font-size:12px;font-weight:600;color:#3a9fd6;flex-shrink:0;margin-right:8px;">
+                            {pg.get("total_ads",0)} ads
+                        </span>
+                        <button onclick="triggerGhost('{ghost_label}')"
+                            style="padding:7px 16px;border:none;border-radius:7px;background:#0e2a47;
+                                   color:#fff;font-size:12px;font-weight:700;cursor:pointer;
+                                   font-family:'DM Sans',sans-serif;flex-shrink:0;transition:background 0.12s;"
+                            onmouseover="this.style.background='#1a3a5c'"
+                            onmouseout="this.style.background='#0e2a47'">
+                            Usar
+                        </button>
+                    </div>"""
+
+                resultados_block = f"""
+                <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                             stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <span style="font-size:11px;font-weight:700;color:#0369a1;
+                                     text-transform:uppercase;letter-spacing:0.5px;">
+                            {len(onboarding_paginas[:8])} página(s) encontrada(s)
+                        </span>
+                    </div>
+                    {pgs_html}
+                </div>"""
+
+            if is_editing:
+                cards_html += f"""
+                <div class="card" style="{border_style}" id="card_wrap_{ci}">
+                    <div class="card-header">
+                        {av_html}
+                        <div style="flex:1;min-width:0">
+                            <div class="nome">{e["nome"]}</div>
+                            <div style="display:inline-flex;align-items:center;gap:5px;
+                                        background:{badge_bg};color:{badge_col};
+                                        border:1px solid {badge_brd};
+                                        padding:3px 10px;border-radius:20px;
+                                        font-size:11px;font-weight:700;margin-top:4px">
+                                {badge_lbl}
+                            </div>
+                        </div>
+                        <span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;
+                                     padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;
+                                     flex-shrink:0;">✏️ Editando</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="border-radius:8px;padding:10px 14px;
+                                    display:flex;align-items:center;gap:10px;
+                                    background:{id_bg};border:1px solid {id_brd}">
+                            <span style="font-size:16px;flex-shrink:0">{"✅" if has_id else "⬜"}</span>
+                            <div style="min-width:0;flex:1">
+                                <div style="font-size:10px;font-weight:700;color:#9ca3af;
+                                            text-transform:uppercase;letter-spacing:0.6px;
+                                            margin-bottom:3px">ID / Nome do anunciante</div>
+                                <div style="font-weight:{id_fw};color:{id_color};
+                                            font-family:{id_ff};font-size:13px;
+                                            overflow:hidden;text-overflow:ellipsis;
+                                            white-space:nowrap">{id_text}</div>
+                            </div>
+                        </div>
+                        <div class="edit-section">
+                            <div style="font-size:11px;font-weight:700;color:#9ca3af;
+                                        text-transform:uppercase;letter-spacing:0.8px;
+                                        margin-bottom:8px">Nome, domínio ou ID do anunciante no Google Ads</div>
+                            <input
+                                id="cfg_input_{ci}"
+                                type="text"
+                                value="{gads_id}"
+                                placeholder="Ex: Nike, nike.com ou AR16735076323512287233"
+                                style="width:100%;height:42px;border:1.5px solid #e5e7eb;
+                                       border-radius:8px;padding:0 14px;font-size:14px;
+                                       font-family:'DM Sans',sans-serif;color:#111827;
+                                       background:#fafafa;outline:none;
+                                       margin-bottom:12px;display:block;box-sizing:border-box;"
+                                onfocus="this.style.borderColor='#3a9fd6';this.style.background='#fff'"
+                                onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
+                            />
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                <button class="btn-buscar" id="btn_buscar_{ci}" onclick="handleBuscar({ci})">
+                                    🔍 Buscar anunciantes
+                                </button>
+                                <button class="btn-salvar" id="btn_salvar_{ci}" onclick="handleSalvar({ci})">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                         stroke="currentColor" stroke-width="2"
+                                         stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                                        <polyline points="17 21 17 13 7 13 7 21"/>
+                                        <polyline points="7 3 7 8 15 8"/>
+                                    </svg>
+                                    Salvar ID
+                                </button>
+                            </div>
+                            {resultados_block}
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="cancel-btn" onclick="triggerGhost('cancel_{ci}')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.5"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                            Cancelar
+                        </button>
+                    </div>
+                </div>"""
+            else:
+                cards_html += f"""
+                <div class="card" style="{border_style}">
+                    <div class="card-header">
+                        {av_html}
+                        <div style="flex:1;min-width:0">
+                            <div class="nome">{e["nome"]}</div>
+                            <div style="display:inline-flex;align-items:center;gap:5px;
+                                        background:{badge_bg};color:{badge_col};
+                                        border:1px solid {badge_brd};
+                                        padding:3px 10px;border-radius:20px;
+                                        font-size:11px;font-weight:700;margin-top:4px">
+                                {badge_lbl}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div style="border-radius:8px;padding:10px 14px;
+                                    display:flex;align-items:center;gap:10px;
+                                    background:{id_bg};border:1px solid {id_brd}">
+                            <span style="font-size:16px;flex-shrink:0">{"✅" if has_id else "⬜"}</span>
+                            <div style="min-width:0;flex:1">
+                                <div style="font-size:10px;font-weight:700;color:#9ca3af;
+                                            text-transform:uppercase;letter-spacing:0.6px;
+                                            margin-bottom:3px">ID / Nome do anunciante</div>
+                                <div style="font-weight:{id_fw};color:{id_color};
+                                            font-family:{id_ff};font-size:13px;
+                                            overflow:hidden;text-overflow:ellipsis;
+                                            white-space:nowrap">{id_text}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button class="edit-btn" onclick="triggerGhost('edit_{ci}')">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                            Editar
+                        </button>
+                    </div>
+                </div>"""
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+@keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+.outer {{ background:#d2dde9; border:1px solid #cbd5e1; border-radius:16px; padding:16px; }}
+.cards-grid {{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }}
+.card {{ background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }}
+.card-header {{ display:flex; align-items:center; gap:12px; padding:16px 16px 12px; }}
+.card-body {{ padding:0 16px 14px; display:flex; flex-direction:column; gap:12px; }}
+.edit-section {{ padding-top:12px; border-top:1px solid #f3f4f6; }}
+.nome {{ font-size:14px; font-weight:700; color:#1a2e4a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.card-footer {{ border-top:1px solid #f3f4f6; padding:0; }}
+.edit-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
+    font-size:13px; font-weight:600; color:#6b7280; cursor:pointer;
+    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
+    justify-content:center; gap:7px; transition:background 0.12s; }}
+.edit-btn:hover {{ background:#f9fafb; color:#111827; }}
+.cancel-btn {{ width:100%; padding:10px 0; background:#fff; border:none; outline:none;
+    font-size:13px; font-weight:600; color:#9ca3af; cursor:pointer;
+    font-family:'DM Sans',sans-serif; display:flex; align-items:center;
+    justify-content:center; gap:6px; transition:all 0.12s; }}
+.cancel-btn:hover {{ background:#fef2f2; color:#dc2626; }}
+.btn-buscar {{ display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:10px 0; border:1.5px solid #3a9fd6; border-radius:8px;
+    background:#eff6ff; font-size:13px; font-weight:700; color:#1d4ed8;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
+.btn-buscar:hover:not(:disabled) {{ background:#dbeafe; }}
+.btn-buscar:disabled {{ opacity:0.65; cursor:not-allowed; }}
+.btn-salvar {{ display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:10px 0; border:none; border-radius:8px;
+    background:#0e2a47; font-size:13px; font-weight:700; color:#fff;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
+.btn-salvar:hover:not(:disabled) {{ background:#1a3a5c; }}
+.btn-salvar:disabled {{ opacity:0.65; cursor:not-allowed; }}
+</style>
+<div class="outer">
+    <div class="cards-grid">{cards_html}</div>
+</div>
+<script>
+var SPINNER = '<svg style="animation:spin 0.8s linear infinite;display:inline-block;vertical-align:middle;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+
+function triggerGhost(label) {{
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === String(label)) {{ b.click(); return; }}
+    }}
+}}
+
+function saveValToURL(ci, val) {{
+    var url = new URL(window.parent.location.href);
+    url.searchParams.set('_cfg_val_' + ci, val);
+    window.parent.history.replaceState({{}}, '', url);
+}}
+
+function handleBuscar(ci) {{
+    var inp = document.getElementById('cfg_input_' + ci);
+    var val = (inp || {{}}).value || '';
+    if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
+
+    var btn = document.getElementById('btn_buscar_' + ci);
+    var btnS = document.getElementById('btn_salvar_' + ci);
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = SPINNER + ' &nbsp;Buscando...';
+        btn.style.background = '#f0f9ff';
+        btn.style.color = '#0369a1';
+        btn.style.borderColor = '#7dd3fc';
+    }}
+    if (btnS) {{ btnS.disabled = true; }}
+
+    saveValToURL(ci, val);
+    setTimeout(function() {{ triggerGhost('do_buscar_' + ci); }}, 300);
+}}
+
+function handleSalvar(ci) {{
+    var inp = document.getElementById('cfg_input_' + ci);
+    var val = (inp || {{}}).value || '';
+    if (!val.trim()) {{ alert('Digite um ID ou nome antes de salvar.'); return; }}
+
+    var btn = document.getElementById('btn_salvar_' + ci);
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = SPINNER + ' &nbsp;Salvando...';
+    }}
+
+    saveValToURL(ci, val);
+    setTimeout(function() {{ triggerGhost('do_salvar_' + ci); }}, 300);
+}}
+
+function syncHeight() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight);
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{
+            if (iframes[i].contentWindow === window) {{
+                iframes[i].style.height = (h + 32) + 'px';
+                iframes[i].style.marginTop = '-8px';
+                iframes[i].style.overflow = 'visible';
+                break;
+            }}
+        }} catch(ex) {{}}
+    }}
+}}
+
+if (window.ResizeObserver) {{
+    new ResizeObserver(function() {{ syncHeight(); }}).observe(document.body);
+    new ResizeObserver(function() {{ syncHeight(); }}).observe(document.documentElement);
+}}
+document.addEventListener('DOMContentLoaded', syncHeight);
+window.addEventListener('load', syncHeight);
+[100, 300, 600, 1000, 1500].forEach(function(t) {{ setTimeout(syncHeight, t); }});
+</script>
+""", height=700, scrolling=False)
+
+    # ══════════════════════════════════════════════════════════════════
+    # ABA: EMPRESAS CONFIGURADAS — Cards estilo imagem 2
+    # ══════════════════════════════════════════════════════════════════
+    elif main_tab == "empresas":
+
+        if not empresas_configuradas:
+            st.markdown("""
+            <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;
+                        padding:48px 32px;text-align:center;margin-top:8px'>
+                <div style='font-size:32px;margin-bottom:12px'>⚙️</div>
+                <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhuma página configurada</div>
+                <div style='font-size:14px;color:#9ca3af'>Clique em <b>Configuração</b> acima para configurar suas páginas.</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.stop()
+
+        query_values = {}
+        for e in empresas_configuradas:
+            ck = e["nome"]
+            gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
+            query_values[ck] = gads_id_salvo
+
+        # ── Ghost buttons de conteúdo por empresa ─────────────────────────
+        conteudo_tab_ghost_css = []
+        for e in empresas_configuradas:
+            sk = safe_key(e["nome"])
+            for tab_name in ["anuncios", "analise"]:
+                k = f"btn_conteudo_{sk}_{tab_name}"
+                conteudo_tab_ghost_css.append(f"""
+                .st-key-{k} {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:0 !important; height:0 !important; overflow:hidden !important;
+                    opacity:0 !important; pointer-events:none !important; display:none !important;
+                }}
+                .stElementContainer:has(.st-key-{k}) {{
+                    display:none !important; height:0 !important; min-height:0 !important;
+                    max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
+                }}
+                """)
+        if conteudo_tab_ghost_css:
+            st.markdown(f"<style>{''.join(conteudo_tab_ghost_css)}</style>", unsafe_allow_html=True)
+
+        for e in empresas_configuradas:
+            sk = safe_key(e["nome"])
+            ck = e["nome"]
+            for tab_name in ["anuncios", "analise"]:
+                btn_key = f"btn_conteudo_{sk}_{tab_name}"
+                if st.button(f"tab_{sk}_{tab_name}", key=btn_key):
+                    st.session_state.gads_aba_conteudo[ck] = tab_name
+                    st.rerun()
+
+        # ── Dados e helpers ──────────────────────────────────────────
+        empresas_com_dados = [
+            e for e in empresas_configuradas
+            if e["nome"] in st.session_state.gads_cache or e["nome"] in st.session_state.gads_erro
+        ]
+
+        # ── Plataformas SVG JS ────────────────────────────────────────
+        def _plat_svg_js(uid: str) -> str:
+            return f"""
+(function(){{
+    var plats={{}};
+    try {{ plats = window.__PLATS_{uid}__; }} catch(e) {{ return; }}
+    var C = '#9ca3af';
+    var SVGS = {{
+        "facebook": '<svg width="12" height="12" viewBox="0 0 24 24" fill="'+C+'"><path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>',
+        "instagram": '<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" fill="'+C+'"/><circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>',
+        "messenger": '<svg width="13" height="13" viewBox="0 0 24 24" fill="'+C+'"><path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.975 12-11.111S18.627 0 12 0zm1.191 14.963l-3.055-3.26-5.963 3.26L10.732 8.4l3.131 3.259L19.752 8.4l-6.561 6.563z"/></svg>',
+        "whatsapp":  '<svg width="13" height="13" viewBox="0 0 24 24" fill="'+C+'"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>',
+        "audience_network": '<svg width="13" height="13" viewBox="0 0 24 24" fill="'+C+'"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>',
+        "threads": '<svg width="13" height="13" viewBox="0 0 192 192" fill="'+C+'"><path d="M141.537 88.988a66.667 66.667 0 00-2.518-1.143c-1.482-27.307-16.403-42.94-41.457-43.1h-.34c-14.986 0-27.449 6.396-35.12 18.036l13.779 9.452c5.73-8.695 14.724-10.548 21.348-10.548h.229c8.249.053 14.474 2.452 18.503 7.129 2.932 3.405 4.893 8.111 5.864 14.05-7.314-1.243-15.224-1.626-23.68-1.14-23.82 1.371-39.134 15.264-38.105 34.568.522 9.792 5.4 18.216 13.735 23.719 7.047 4.652 16.124 6.927 25.557 6.412 12.458-.683 22.231-5.436 29.049-14.127 5.178-6.6 8.453-15.153 9.899-25.93 5.937 3.583 10.337 8.298 12.767 13.966 4.132 9.635 4.373 25.468-8.546 38.376-11.319 11.308-24.925 16.2-45.488 16.351-22.809-.169-40.06-7.484-51.275-21.742C35.236 139.966 29.808 120.682 29.605 96c.203-24.682 5.63-43.966 16.133-57.317C56.954 24.425 74.204 17.11 97.013 16.94c22.975.17 40.526 7.52 52.171 21.847 5.71 7.026 10.015 15.86 12.853 26.162l16.147-4.308c-3.44-12.68-8.853-23.606-16.219-32.668C147.036 9.607 125.202.195 97.07 0h-.113C68.882.195 47.292 9.642 32.788 28.08 19.882 44.485 13.224 67.315 13.001 96v.027c.224 28.686 6.882 51.516 19.788 67.92C47.292 182.358 68.882 191.805 96.957 192h.114c24.92-.173 42.433-6.695 56.854-21.101 18.941-18.925 18.352-42.444 12.139-56.924-4.51-10.507-13.192-19.01-24.527-24.987zm-45.458 43.051c-10.443.588-21.287-4.098-26.698-11.76-3.28-4.626-3.27-9.498.028-13.062 3.853-4.194 10.08-6.386 17.537-6.386.799 0 1.609.024 2.427.074 9.335.539 16.788 3.712 20.91 8.931 2.653 3.367 3.604 7.573 2.733 12.094-1.765 9.151-10.228 9.867-16.937 10.109z"/></svg>'
+    }};
+    var el = document.getElementById('plat_icons_{uid}');
+    if (!el) return;
+    if (!plats || plats.length === 0) {{ el.innerHTML='<span style="color:#9ca3af;font-size:12px">—</span>'; return; }}
+    el.innerHTML = plats.map(function(p) {{
+        var key = p.toLowerCase().replace(' ','_').replace('-','_');
+        var svg = SVGS[key] || '';
+        return '<span class="plat-badge" title="'+p+'">'+(svg||('<span style="font-size:10px;color:#9ca3af">'+p[0].toUpperCase()+'</span>'))+'</span>';
+    }}).join('');
+}})();
+"""
+
+        # ══════════════════════════════════════════════════════════════
+        # FUNÇÃO PRINCIPAL: render_gads_empresa
+        # ══════════════════════════════════════════════════════════════
+        def render_gads_empresa(emp_item):
+            ck       = emp_item["nome"]
+            nome     = emp_item["nome"]
+            is_minha = emp_item["tipo"] == "minha"
+            cor_av   = get_minha_empresa_color() if is_minha else get_concorrente_color(emp_item["idx"])
+            avatar   = gerar_avatar(nome)
+            sk       = safe_key(nome)
+            chave_ia_criativos = f"ia_gads_criativos_{sk}"
+            chave_ia_copys     = f"ia_gads_copys_{sk}"
+            chave_ia_geral     = f"ia_gads_geral_{sk}"
+
+            if emp_item["tipo"] == "minha":
+                configured_page = emp.get("gads_id","").strip()
+            else:
+                configured_page = concs[emp_item["idx"]].get("gads_id","").strip()
+
+            if ck in st.session_state.gads_erro:
+                st.error(f"Erro: {st.session_state.gads_erro[ck]}")
+                return
+
+            cache_entry = st.session_state.gads_cache.get(ck)
+            if not cache_entry:
+                st.info("Sem dados. Configure a página e clique em Buscar.")
+                return
+
+            gads_list_raw = cache_entry["data"]
+            ts           = cache_entry["ts"]
+            query        = cache_entry.get("query","")
+
+            if configured_page:
+                if configured_page.upper().startswith("AR"):
+                    filtered = [a for a in gads_list_raw if str(a.get("page_id","")).strip() == configured_page]
+                    gads_list = filtered if filtered else gads_list_raw
+                else:
+                    configured_lower = configured_page.lower()
+                    exact = [a for a in gads_list_raw if (a.get("page_name") or "").strip().lower() == configured_lower]
+                    if exact:
+                        gads_list = exact
+                    else:
+                        partial = [a for a in gads_list_raw
+                                   if configured_lower in (a.get("page_name") or "").strip().lower()
+                                   or (a.get("page_name") or "").strip().lower() in configured_lower]
+                        gads_list = partial if partial else gads_list_raw
+            else:
+                gads_list = gads_list_raw
+
+            # Ghost buttons para análise IA
+            ia_analise_ghost_css = []
+            for _gk in [f"btn_ia_anuncios_{sk}", f"btn_ia_geral_{sk}"]:
+                ia_analise_ghost_css.append(f"""
+                .st-key-{_gk} {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    opacity:0 !important;
+                }}
+                .stElementContainer:has(.st-key-{_gk}) {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    overflow:hidden !important; margin:0 !important; padding:0 !important;
+                }}
+                """)
+            st.markdown(f"<style>{''.join(ia_analise_ghost_css)}</style>", unsafe_allow_html=True)
+
+            if st.button(f"ia_anuncios_{sk}", key=f"btn_ia_anuncios_{sk}"):
+                if gemini_model is None:
+                    st.session_state[chave_ia_criativos] = "Configure GEMINI_API_KEY nos secrets."
+                else:
+                    _migracao_em_andamento = migracao_midia_em_andamento(
+                        st.session_state.user.id if st.session_state.get("user") else None, nome
+                    )
+                    if _migracao_em_andamento:
+                        st.toast(
+                            "Os vídeos dessa coleta ainda estão sendo processados em segundo "
+                            "plano (compressão/transcrição). A análise vai rodar mesmo assim, mas "
+                            "alguns vídeos podem ficar de fora ou ser transcritos mais devagar. "
+                            "Acompanhe no sino de notificações e, se puder, espere terminar pra "
+                            "uma análise mais completa.",
+                            icon="⏳",
+                        )
+                    n_vid = sum(1 for a in gads_list if "Vídeo" in a["formato"])
+                    n_img = sum(1 for a in gads_list if "Imagem" in a["formato"])
+                    n_car = sum(1 for a in gads_list if "Carrossel" in a["formato"])
+                    _ph_ads = st.empty()
+                    _render_modal_redes_ia("gerando", f"Anúncios — {nome}", 40, _ph_ads)
+                    try:
+                        import google.generativeai as genai
+                        import requests as _req
+                        import base64 as _b64
+
+                        # Monta partes do prompt: texto + imagens reais
+                        parts = []
+
+                        resumo_completo = "\n".join([
+                            f"- Anúncio {i+1}: Formato={a.get('formato','—')} | "
+                            f"Plataformas={', '.join(a.get('plataformas') or [])} | "
+                            f"Body={_truncar(a.get('body','') or '—', 120)} | "
+                            f"CTA={a.get('cta','') or '—'} | "
+                            f"Dias ativo={_dias_ativo(a.get('data_raw','')) if a.get('data_raw') else (a.get('data_inicio','') or '—')} | "
+                            f"Impressões={a.get('impressoes','') or '—'}"
+                            for i, a in enumerate(gads_list[:15])
+                        ])
+
+                        parts.append(f"""Você é especialista em mídia paga, copywriting e design de anúncios digitais.
+Analise os anúncios de "{nome}" em português com base nos dados, imagens reais e transcrições de vídeo abaixo.
+
+Empresa: {nome} | Total: {len(gads_list)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis
+
+Dados dos anúncios:
+{resumo_completo}
+
+Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (quando disponíveis):""")
+
+                        # Envia até 6 imagens reais para o Gemini
+                        imgs_enviadas = 0
+                        for i, a in enumerate(gads_list[:15]):
+                            if imgs_enviadas >= 6:
+                                break
+                            imgs = a.get("images") or []
+                            if not imgs:
+                                continue
+                            img_url = imgs[0]
+                            try:
+                                headers = {
+                                    "User-Agent": "Mozilla/5.0",
+                                    "Referer": "https://adstransparency.google.com/",
+                                }
+                                r = _req.get(img_url, headers=headers, timeout=8, stream=True)
+                                if r.status_code == 200:
+                                    ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                                    if not ct.startswith("image/"):
+                                        ct = "image/jpeg"
+                                    img_data = _b64.b64encode(r.content).decode("utf-8")
+                                    parts.append(f"\nAnúncio {i+1} ({a.get('formato','')}):")
+                                    parts.append({
+                                        "inline_data": {
+                                            "mime_type": ct,
+                                            "data": img_data,
+                                        }
+                                    })
+                                    imgs_enviadas += 1
+                            except Exception:
+                                continue
+
+                        # Vídeos não são enviados pro Gemini — em vez disso, manda a
+                        # transcrição do áudio (via Whisper) como texto. Diferente das
+                        # imagens (que custam tokens multimodais e por isso têm teto
+                        # baixo), transcrição é só texto — então cobre todos os vídeos
+                        # dentro dos mesmos 15 anúncios já usados no resumo, e não um
+                        # número fixo pequeno (senão empresas só-de-vídeo, como uma que
+                        # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
+                        vids_transcritos = 0
+                        _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
+                        for i, a in enumerate(gads_list[:15]):
+                            vids = a.get("videos") or []
+                            if not vids:
+                                continue
+                            transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
+                            if transcricao_vid:
+                                parts.append(
+                                    f"\nTranscrição do áudio do vídeo do Anúncio {i+1}: "
+                                    f"{_truncar(transcricao_vid, 600)}"
+                                )
+                                vids_transcritos += 1
+
+                        parts.append("""
+---
+### 🎨 Estilo Visual e Mix de Formatos
+### ✍️ Tom de Voz e Principais Mensagens
+### 📣 Padrão de CTAs
+### ⏱️ Tempo de Veiculação e Impressões
+### ✅ Pontos Fortes (3 pontos)
+### ⚠️ O que Melhorar (2 pontos)
+### 💡 Recomendações Práticas (3 ações concretas)""")
+
+                        # Converte parts para formato Gemini multimodal
+                        gemini_parts = []
+                        for p in parts:
+                            if isinstance(p, str):
+                                gemini_parts.append(p)
+                            elif isinstance(p, dict) and "inline_data" in p:
+                                gemini_parts.append(p)
+
+                        resp = gerar_com_ia(gemini_parts)
+
+                        _total_gads_considerados = len(gads_list[:15])
+                        _nota_escopo = (
+                            f"\n\n---\n_📊 Base da análise: {_total_gads_considerados} de {len(gads_list)} "
+                            f"anúncios (os primeiros da lista) · {imgs_enviadas} imagem(ns) analisada(s) "
+                            f"visualmente · {vids_transcritos} vídeo(s) transcrito(s) por áudio (Whisper)._"
+                        )
+                        if _migracao_em_andamento:
+                            _nota_escopo += (
+                                "\n_⏳ Atenção: a migração de mídia dessa empresa ainda estava em "
+                                "andamento quando essa análise rodou — alguns vídeos podem não ter "
+                                "entrado ou ter uma transcrição parcial. Recomendamos gerar de novo "
+                                "depois que a migração terminar (veja o sino de notificações)._"
+                            )
+                        texto_relatorio = resp.text + _nota_escopo
+
+                        st.session_state[chave_ia_criativos] = texto_relatorio
+                        import datetime as _dt_ads
+                        st.session_state.gads_analises_salvas = [
+                            a for a in st.session_state.gads_analises_salvas
+                            if not (a.get("tipo") == "anuncio_completo" and a.get("empresa") == nome)
+                        ]
+                        st.session_state.gads_analises_salvas.append({
+                            "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "relatorio": texto_relatorio,
+                            "tipo": "anuncio_completo",
+                            "empresa": nome,
+                        })
+                        _render_modal_redes_ia("concluido", f"Anúncios — {nome}", 100, _ph_ads)
+                        salvar_gads_analises()
+                        st.session_state.gads_main_tab = "analise"
+                        import time as _t_ads; _t_ads.sleep(1.2)
+                        _ph_ads.empty()
+                        st.rerun()
+                    except Exception as ex:
+                        _ph_ads.empty()
+                        st.session_state[chave_ia_criativos] = f"Erro: {ex}"
+                        st.rerun()
+
+            if st.button(f"ia_geral_{sk}", key=f"btn_ia_geral_{sk}"):
+                if gemini_model is None:
+                    st.session_state[chave_ia_geral] = "Configure GEMINI_API_KEY nos secrets."
+                else:
+                    resumo = "\n".join([
+                        f"- [{a['formato']}] Título: {_truncar(a.get('title',''),60) or '—'} | Copy: {_truncar(a.get('body',''),100) or '—'}"
+                        for a in gads_list[:15]
+                    ])
+                    n_vid = sum(1 for a in gads_list if "Vídeo" in a["formato"])
+                    n_img = sum(1 for a in gads_list if "Imagem" in a["formato"])
+                    n_car = sum(1 for a in gads_list if "Carrossel" in a["formato"])
+                    n_dyn = sum(1 for a in gads_list if a.get("is_dynamic"))
+                    _ph_ads = st.empty()
+                    _render_modal_redes_ia("gerando", f"Estratégia — {nome}", 40, _ph_ads)
+                    try:
+                        resp = gerar_com_ia(f"""Você é especialista em mídia paga e marketing digital.
+Analise os anúncios de "{nome}" e gere um relatório estratégico completo em português.
+
+Empresa: {nome} | Total: {len(gads_list)} | {n_img} imagens | {n_vid} vídeos | {n_car} carrosseis | {n_dyn} dinâmicos
+
+Amostra dos anúncios:
+{resumo}
+
+---
+### 🎯 Estratégia de Mídia
+### ✍️ Padrões de Copy e Mensagem
+### 🎨 Análise de Formatos
+### 📊 Estimativa de Investimento e Alcance
+### ⚠️ Pontos de Atenção
+### 💡 Oportunidades Competitivas (3 ações concretas)""")
+                        st.session_state[chave_ia_geral] = resp.text
+                        import datetime as _dt_ads
+                        st.session_state.gads_analises_salvas = [
+                            a for a in st.session_state.gads_analises_salvas
+                            if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
+                        ]
+                        st.session_state.gads_analises_salvas.append({
+                            "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "relatorio": resp.text,
+                            "tipo": "estrategia",
+                            "empresa": nome,
+                        })
+                        _render_modal_redes_ia("concluido", f"Estratégia — {nome}", 100, _ph_ads)
+                        salvar_gads_analises()
+                        st.session_state.gads_main_tab = "analise"
+                        import time as _t_ads; _t_ads.sleep(1.2)
+                        _ph_ads.empty()
+                        st.rerun()
+                    except Exception as ex:
+                        _ph_ads.empty()
+                        st.session_state[chave_ia_geral] = f"Erro: {ex}"
+                        st.rerun()
+
+            # DEBUG TEMPORÁRIO — abra o console do navegador (F12) e veja os logs
+            import streamlit.components.v1 as _comp_debug
+            _comp_debug.html(f"""
+<script>
+(function() {{
+    var sk = '{sk}';
+    var keys = ['btn_ia_copys_' + sk, 'btn_ia_geral_' + sk, 'btn_ia_criativos_' + sk];
+    console.log('=== DEBUG GHOST BUTTONS ===');
+    keys.forEach(function(k) {{
+        var el = window.parent.document.querySelector('.st-key-' + k + ' button');
+        console.log('Seletor CSS .st-key-' + k + ' button:', el ? 'ENCONTRADO ✅' : 'NÃO ENCONTRADO ❌');
+        if (el) {{
+            console.log('  textContent:', JSON.stringify(el.textContent.trim()));
+            console.log('  pointer-events:', window.parent.getComputedStyle(el).pointerEvents);
+            console.log('  display:', window.parent.getComputedStyle(el).display);
+            console.log('  visibility:', window.parent.getComputedStyle(el).visibility);
+        }}
+    }});
+    var allBtns = Array.from(window.parent.document.querySelectorAll('button'))
+        .map(function(b) {{ return b.textContent.replace(/\\s+/g,' ').trim(); }})
+        .filter(function(t) {{ return t.includes('ia_') || t.includes('copys') || t.includes('geral'); }});
+    console.log('Botões com ia_/copys/geral:', allBtns);
+}})();
+</script>
+""", height=0)
+
+            # Ghost buttons análise individual por anúncio
+            ia_ind_ghost_css = []
+            for j in range(len(gads_list) if 'gads_list' in dir() else 0):
+                _gk_ind = f"btn_ia_ind_{sk}_{j}"
+                ia_ind_ghost_css.append(f"""
+                .st-key-{_gk_ind} {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    opacity:0 !important;
+                }}
+                .stElementContainer:has(.st-key-{_gk_ind}) {{
+                    position:fixed !important; top:-9999px !important; left:-9999px !important;
+                    width:1px !important; height:1px !important;
+                    overflow:hidden !important; margin:0 !important; padding:0 !important;
+                }}
+                """)
+            if ia_ind_ghost_css:
+                st.markdown(f"<style>{''.join(ia_ind_ghost_css)}</style>", unsafe_allow_html=True)
+
+            page_pic_empresa = next(
+                (
+                    (a.get("page_profile_picture") or "").strip()
+                    for a in gads_list
+                    if (a.get("page_profile_picture") or "").strip().startswith("http")
+                ),
+                "",
+            )
+
+            if page_pic_empresa:
+                avatar_empresa_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid #e5e7eb;">'
+                    f'<img src="{page_pic_empresa}" style="width:100%;height:100%;object-fit:cover;display:block" '
+                    f'onerror="this.parentElement.style.background=\'{cor_av}\';this.parentElement.innerHTML=\'<div style=&quot;display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:16px;font-weight:700;color:#fff&quot;>{avatar}</div>\'" /></div>'
+                )
+            else:
+                avatar_empresa_html = (
+                    f'<div style="width:44px;height:44px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0">{avatar}</div>'
+                )
+
+            badge_bg  = "#eff6ff" if is_minha else "#f3f4f6"
+            badge_txt = "#1d4ed8" if is_minha else "#6b7280"
+            badge_brd = "#bfdbfe" if is_minha else "#e5e7eb"
+            badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
+
+            import urllib.parse as _urlparse
+            if configured_page and configured_page.upper().startswith("AR"):
+                lib_url = f"https://adstransparency.google.com/advertiser/{configured_page}?region=BR"
+            elif query:
+                lib_url = f"https://adstransparency.google.com/?region=BR&query={_urlparse.quote(query)}"
+            else:
+                lib_url = ""
+
+            page_display = configured_page if configured_page else "—"
+            lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Google Ads Transparency Center</a>' if lib_url else ""
+
+            # ── Calcular insights rápidos dos anúncios ──────────────
+            _palavras_beneficio = [
+                "resultado", "transforma", "melhora", "aumenta", "economiza",
+                "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
+                "benefício", "vantagem", "desconto", "grátis", "gratuito", "oferta",
+                "promoção", "exclusivo", "garanta", "aproveite",
+            ]
+            _palavras_prova = [
+                "cliente", "avaliação", "depoimento", "aprovado", "testado",
+                "recomend", "anos de", "cases", "resultado real", "história",
+                "prova", "satisf", "mais de", "mil cliente", "atendemos",
+                "confiança", "parceiro",
+            ]
+            _palavras_urgencia = [
+                "últimas", "último", "vagas", "hoje", "agora", "limitado",
+                "por tempo", "não perca", "corra", "só até", "encerra",
+                "prazo", "urgente", "restam",
+            ]
+            _palavras_cta = [
+                "clique", "acesse", "saiba mais", "fale conosco", "solicite",
+                "cadastre", "entre em contato", "whatsapp", "ligue", "agende",
+                "compre", "adquira", "inscreva",
+            ]
+
+            def _conta_tipo(lista, palavras):
+                count = 0
+                for _a in lista:
+                    _txt = ((_a.get("body") or "") + " " + (_a.get("title") or "")).lower()
+                    if any(p in _txt for p in palavras):
+                        count += 1
+                return count
+
+            _n_beneficio = _conta_tipo(gads_list, _palavras_beneficio)
+            _n_prova     = _conta_tipo(gads_list, _palavras_prova)
+            _n_urgencia  = _conta_tipo(gads_list, _palavras_urgencia)
+            _n_cta       = _conta_tipo(gads_list, _palavras_cta)
+            _n_video_ins = sum(1 for _a in gads_list if "Vídeo" in _a.get("formato", ""))
+            _n_carrossel_ins = sum(1 for _a in gads_list if "Carrossel" in _a.get("formato", ""))
+
+            # Monta chips de insights
+            _insight_chips = []
+            if _n_beneficio > 0:
+                _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
+            if _n_prova > 0:
+                _insight_chips.append(("⭐", f"{_n_prova} com prova social", "#1d4ed8", "#eff6ff", "#bfdbfe"))
+            if _n_urgencia > 0:
+                _insight_chips.append(("⚡", f"{_n_urgencia} com urgência", "#92400e", "#fffbeb", "#fde68a"))
+            if _n_cta > 0:
+                _insight_chips.append(("📣", f"{_n_cta} com CTA direto", "#6d28d9", "#f5f3ff", "#ddd6fe"))
+            if _n_video_ins > 0:
+                _insight_chips.append(("🎬", f"{_n_video_ins} em vídeo", "#0e7490", "#ecfeff", "#a5f3fc"))
+            if _n_carrossel_ins > 0:
+                _insight_chips.append(("🖼️", f"{_n_carrossel_ins} carrossel", "#9333ea", "#faf5ff", "#e9d5ff"))
+
+            _chips_html = "".join([
+                f'<div style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;'
+                f'color:{cor};background:{bg};border:1px solid {brd};padding:5px 12px;border-radius:20px;white-space:nowrap;">'
+                f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="{cor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                f' {label}</div>'
+                for icon, label, cor, bg, brd in _insight_chips
+            ]) if _insight_chips else '<span style="font-size:13px;color:#9ca3af;">Gere análises para ver insights detalhados.</span>'
+
+            components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.header-box {{
+    background:#fff; border:1px solid #e5e7eb;
+    border-bottom:none; border-radius:12px 12px 0 0;
+    overflow:hidden;
+}}
+.inner {{ display:flex; align-items:center; gap:16px; padding:16px 20px; }}
+.divider {{ width:1px; height:40px; background:#e5e7eb; }}
+.count-box {{ text-align:center; min-width:56px; }}
+.count-num {{ font-size:22px; font-weight:800; color:#111827; line-height:1; }}
+.count-lbl {{ font-size:12px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }}
+.btn-card {{
+    display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
+    background:#fff; color:#111827; border:1.5px solid #e5e7eb;
+    padding:10px 18px; border-radius:10px; text-decoration:none;
+    white-space:nowrap; transition:all 0.15s; font-family:'DM Sans',sans-serif;
+    min-width:180px; cursor:pointer;
+}}
+.btn-card:hover {{ border-color:#3a9fd6; background:#f0f9ff; }}
+.btn-icon {{
+    display:flex; align-items:center; justify-content:center;
+    background-color:#f3f4f6; padding:8px; border-radius:5px; flex-shrink:0;
+}}
+.btn-label {{ font-size:13px; font-weight:700; color:#111827; line-height:1.3; }}
+.btn-sub {{ font-size:11px; font-weight:400; color:#747a87; }}
+</style>
+<div class="header-box">
+    <div class="inner">
+        <div style="flex-shrink:0">{avatar_empresa_html}</div>
+        <div style="flex:1;min-width:0">
+            <div style="font-size:17px;font-weight:700;color:#111827">{nome}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:13px;color:#6b7280">Página: {page_display}</span>
+            </div>
+        </div>
+        <div class="divider" style="margin-right:20px"></div>
+        <div class="count-box">
+            <div class="count-num">{len(gads_list)}</div>
+            <div class="count-lbl">anúncios</div>
+        </div>
+        <div class="divider" style="margin:0 20px"></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_anuncios_{sk}')">
+                <span style="display:flex;align-items:center;gap:7px;">
+                    <span class="btn-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg>
+                    </span>
+                    <span style="display:flex;flex-direction:column;gap:0px;">
+                        <span class="btn-label">Analisar anúncios</span>
+                        <span class="btn-sub">Copies, CTAs e padrões de texto</span>
+                    </span>
+                </span>
+            </a>
+            <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_geral_{sk}')">
+                <span style="display:flex;align-items:center;gap:7px;">
+                    <span class="btn-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/><path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/></svg>
+                    </span>
+                    <span style="display:flex;flex-direction:column;gap:0px;">
+                        <span class="btn-label">Analisar estratégia</span>
+                        <span class="btn-sub">Formatos, mix de mídia e insights</span>
+                    </span>
+                </span>
+            </a>
+        </div>
+    </div>
+</div>
+<script>
+function triggerIA(key) {{
+    var levels = [window.parent, window.parent.parent, window.top];
+    for (var li = 0; li < levels.length; li++) {{
+        try {{
+            var doc = levels[li].document;
+            var el = doc.querySelector('.st-key-' + key + ' button');
+            if (el) {{ el.click(); return; }}
+        }} catch(e) {{}}
+    }}
+}}
+function syncH() {{
+    var h = document.body.scrollHeight;
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 4) + 'px';
+            frames[i].style.marginTop = '0px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+window.addEventListener('load', syncH);
+setTimeout(syncH, 100);
+setTimeout(syncH, 400);
+</script>
+""", height=120, scrolling=False)
+
+            for j, ad_ind in enumerate(gads_list):
+                if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):
+                    chave_ind = f"ia_ad_result_{sk}_{j}"
+                    if gemini_model is None:
+                        st.session_state[chave_ind] = "Configure GEMINI_API_KEY nos secrets."
+                    else:
+                        _ph_ind = st.empty()
+                        _render_modal_redes_ia("gerando", f"Anúncio {j+1} — {nome}", 40, _ph_ind)
+                        try:
+                            import datetime as _dt_ads
+                            _vids_ind = ad_ind.get("videos") or []
+                            _migracao_em_andamento_ind = migracao_midia_em_andamento(
+                                st.session_state.user.id if st.session_state.get("user") else None, nome
+                            ) if _vids_ind else False
+                            _transcricao_ind = (
+                                obter_transcricao_video(
+                                    _vids_ind[0],
+                                    st.session_state.user.id if st.session_state.get("user") else None,
+                                )
+                                if _vids_ind else ""
+                            )
+                            resp_ind = gerar_com_ia(f"""Você é especialista em mídia paga e copywriting.
+Analise este anúncio de "{nome}" e dê feedback estratégico em português.
+
+Formato: {ad_ind.get('formato','')}
+Plataformas: {', '.join(ad_ind.get('plataformas') or [])}
+Data início: {ad_ind.get('data_inicio','')}
+Impressões: {ad_ind.get('impressoes','')}
+Body: {ad_ind.get('body','') or '—'}
+Título: {ad_ind.get('title','') or '—'}
+CTA: {ad_ind.get('cta','') or '—'}
+Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_transcricao_ind, 800) if _transcricao_ind else '—'}
+
+### 🎯 Objetivo do Anúncio
+### ✍️ Análise do Copy
+### 🎨 Análise do Criativo
+### 📊 Desempenho Estimado
+### 💡 Sugestões de Melhoria (2 ações concretas)""")
+                            texto_relatorio_ind = resp_ind.text
+                            if _vids_ind and not _transcricao_ind:
+                                if _migracao_em_andamento_ind:
+                                    texto_relatorio_ind += (
+                                        "\n\n---\n_⏳ Este anúncio tem vídeo, mas a migração de mídia "
+                                        "dessa empresa ainda está em andamento em segundo plano — a "
+                                        "transcrição ainda não ficou pronta. Tente analisar de novo "
+                                        "depois que ela terminar (veja o sino de notificações)._"
+                                    )
+                                else:
+                                    texto_relatorio_ind += (
+                                        "\n\n---\n_⚠️ Este anúncio tem vídeo, mas não foi possível "
+                                        "transcrever o áudio (vídeo sem áudio, link indisponível, ou "
+                                        "modelo Whisper não carregado) — a análise do criativo se baseou "
+                                        "só nos dados de texto._"
+                                    )
+                            st.session_state[chave_ind] = texto_relatorio_ind
+                            st.session_state.gads_analises_salvas = [
+                                a for a in st.session_state.gads_analises_salvas
+                                if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
+                            ]
+                            st.session_state.gads_analises_salvas.append({
+                                "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "relatorio": texto_relatorio_ind,
+                                "tipo": "anuncio_ind",
+                                "empresa": nome,
+                                "ad_idx": j,
+                            })
+                            _render_modal_redes_ia("concluido", f"Anúncio {j+1} — {nome}", 100, _ph_ind)
+                            salvar_gads_analises()
+                            st.session_state.gads_main_tab = "analise"
+                            st.session_state.gads_analise_subtab = "anuncio_ind"
+                            import time as _t_ads; _t_ads.sleep(1.2)
+                            _ph_ind.empty()
+                            st.rerun()
+                        except Exception as ex_ind:
+                            _ph_ind.empty()
+                            st.session_state[chave_ind] = f"Erro: {ex_ind}"
+                            st.rerun()
+
+            aba_conteudo_atual = st.session_state.gads_aba_conteudo.get(ck, "anuncios")
+
+            # ── ABA: ANÚNCIOS ─────────────────────────────────────────
+            if aba_conteudo_atual == "anuncios":
+
+                col_key = f"gads_cols_{sk}"
+                if col_key not in st.session_state:
+                    st.session_state[col_key] = 4
+
+                n_cols_atual = st.session_state.get(col_key, 4)
+                filtros_key = f"filtros_{sk}"
+
+                st.markdown(f"""
+                <style>
+                @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+                .st-key-{filtros_key} {{ margin-top: -25px !important; }}
+                .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
+                    background: #ffffff !important;
+                    border: 1px solid #e5e7eb !important;
+                    border-radius: 0 0 12px 12px !important;
+                    padding: 20px 20px !important;
+                    gap: 8px !important;
+                    align-items: center !important;
+                }}
+                .st-key-{filtros_key} div[data-testid="stTextInput"] input {{
+                    background-color: #fafafa !important;
+                    border: 1px solid #f0f4f8 !important;
+                    border-radius: 8px !important;
+                    height: 40px !important;
+                    padding: 0 14px !important;
+                    font-family: 'DM Sans', sans-serif !important;
+                    font-size: 14px !important;
+                    color: #374151 !important;
+                    transition: border-color 0.15s !important;
+                }}
+                .st-key-{filtros_key} div[data-baseweb="select"],
+                .st-key-{filtros_key} div[data-baseweb="select"] > div:first-child {{
+                    background-color: #fafafa !important;
+                    border: 1px solid #e5e7eb !important;
+                    border-radius: 8px !important;
+                    height: 40px !important;
+                    min-height: 40px !important;
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    padding: 0 10px !important;
+                    box-shadow: none !important;
+                    transition: border-color 0.15s !important;
+                }}
+                .st-key-{filtros_key} div[data-baseweb="select"] * {{
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    border-radius: 0 !important;
+                }}
+                .st-key-{filtros_key} div[data-baseweb="select"] div,
+                .st-key-{filtros_key} div[data-baseweb="select"] span,
+                .st-key-{filtros_key} div[data-baseweb="select"] input {{
+                    height: auto !important;
+                    min-height: 0 !important;
+                    padding: 0 !important;
+                    font-family: 'DM Sans', sans-serif !important;
+                    font-size: 14px !important;
+                    color: #374151 !important;
+                }}
+                .st-key-{filtros_key} div[data-baseweb="select"] input {{
+                    caret-color: transparent !important;
+                    cursor: pointer !important;
+                }}
+                .st-key-gads_toggle_cols_{sk} button {{
+                    height: 40px !important;
+                    width: 40px !important;
+                    min-width: 40px !important;
+                    max-width: 40px !important;
+                    padding: 4px !important;
+                    border: 1px solid #e5e7eb !important;
+                    border-radius: 8px !important;
+                    background: #ffffff !important;
+                }}
+                </style>
+                """, unsafe_allow_html=True)
+
+                import unicodedata as _ud
+                def _limpar_formato(s):
+                    return ''.join(c for c in s if _ud.category(c) not in ('So','Sm','Sk','Mn')).strip()
+                formatos_disponiveis = sorted(set(_limpar_formato(a["formato"]) for a in gads_list))
+
+                chave_criativo_ads = f"ia_gads_criativos_{sk}"
+                chave_copy_ads     = f"ia_gads_copys_{sk}"
+                chave_geral_ads    = f"ia_gads_geral_{sk}"
+                tem_criativo_ads   = bool(st.session_state.get(chave_criativo_ads, ""))
+                tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
+                tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
+
+                with st.container(key=filtros_key):
+                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])
+                    with fcol1:
+                        busca_texto = st.text_input(
+                            "Pesquisar no copy",
+                            placeholder="Pesquisar no copy…",
+                            key=f"gads_busca_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol2:
+                        filtro_fmt = st.selectbox(
+                            "Tipo",
+                            ["Tipo (todos)"] + formatos_disponiveis,
+                            key=f"gads_fmt_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol3:
+                        plats_todas = sorted(set(p for a in gads_list for p in (a["plataformas"] or [])))
+                        filtro_plat = st.selectbox(
+                            "Plataforma",
+                            ["Plataforma (todas)"] + [p.capitalize() for p in plats_todas],
+                            key=f"gads_plat_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol4:
+                        filtro_status = st.selectbox(
+                            "Status",
+                            ["Status (todos)", "Ativos", "Inativos (histórico)"],
+                            key=f"gads_status_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol5:
+                        filtro_ordem = st.selectbox(
+                            "Ordenar",
+                            ["Mais recentes", "Mais tempo ativo"],
+                            key=f"gads_ordem_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol6:
+                        icon_url = (
+                            "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/3-Columns.png"
+                            if n_cols_atual == 4
+                            else "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/4-Columns.png"
+                        )
+                        toggle_cols = st.button(
+                            f"![col]({icon_url})",
+                            key=f"gads_toggle_cols_{sk}",
+                            use_container_width=False,
+                            help="Alternar 3/4 colunas",
+                        )
+                        if toggle_cols:
+                            st.session_state[col_key] = 3 if n_cols_atual == 4 else 4
+                            st.rerun()
+
+                gads_f = gads_list
+                if busca_texto:
+                    q = busca_texto.lower()
+                    gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
+                if filtro_fmt != "Tipo (todos)":
+                    gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
+                if filtro_plat != "Plataforma (todas)":
+                    gads_f = [a for a in gads_f if filtro_plat.lower() in (a["plataformas"] or [])]
+                if filtro_status == "Ativos":
+                    gads_f = [a for a in gads_f if a.get("ativo", True)]
+                elif filtro_status == "Inativos (histórico)":
+                    gads_f = [a for a in gads_f if not a.get("ativo", True)]
+
+                def _parse_ts(a):
+                    raw = str(a.get("data_raw", "") or "").strip()
+                    try:
+                        ts = int(raw)
+                        return ts if ts > 10**8 else 0
+                    except Exception:
+                        try:
+                            return int(_dt.datetime.strptime(raw[:10], "%Y-%m-%d").timestamp())
+                        except Exception:
+                            return 0
+
+                if filtro_ordem == "Mais recentes":
+                    gads_f = sorted(gads_f, key=_parse_ts, reverse=True)
+                else:
+                    gads_f = sorted(gads_f, key=_parse_ts, reverse=False)
+
+                if not gads_f:
+                    st.warning("Nenhum anúncio com os filtros aplicados.")
+                    return
+
+                # Foto de perfil de fallback: nem todo anúncio antigo tem
+                # "page_profile_picture" salva (o campo só passou a ser
+                # capturado depois, ou a captura falhou naquela época).
+                # Como a foto de perfil da página é a MESMA pra todos os
+                # anúncios de uma empresa, em vez de cair pro círculo com
+                # a inicial só porque aquele anúncio específico não tem o
+                # campo, usamos a primeira foto válida encontrada entre
+                # TODOS os anúncios da empresa (gads_list, não só gads_f, pra
+                # não perder o fallback quando o filtro atual esconde o
+                # único anúncio que tinha a foto).
+                _page_pic_fallback = next(
+                    (
+                        (a.get("page_profile_picture") or "").strip()
+                        for a in gads_list
+                        if (a.get("page_profile_picture") or "").strip().startswith("http")
+                    ),
+                    "",
+                )
+
+                n_video     = sum(1 for a in gads_f if "Vídeo"     in a["formato"])
+                n_imagem    = sum(1 for a in gads_f if "Imagem"    in a["formato"])
+                n_carrossel = sum(1 for a in gads_f if "Carrossel" in a["formato"])
+                n_dynamic   = sum(1 for a in gads_f if a.get("is_dynamic"))
+                n_ativos    = sum(1 for a in gads_f if a.get("ativo", True))
+                n_inativos  = sum(1 for a in gads_f if not a.get("ativo", True))
+
+                stats_cards = []
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
+                if n_inativos > 0:
+                    stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#6b7280">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Imagens</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_video}</div><div class="stat-lbl">Vídeos</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_carrossel}</div><div class="stat-lbl">Carrossel</div></div>')
+                if n_dynamic > 0:
+                    stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_dynamic}</div><div class="stat-lbl">Dinâmicos</div></div>')
+
+                cta_labels = {
+                    "LEARN_MORE":"Saiba Mais","SIGN_UP":"Cadastre-se","CONTACT_US":"Fale Conosco",
+                    "GET_QUOTE":"Solicitar Orçamento","BOOK_TRAVEL":"Reservar",
+                    "WHATSAPP_MESSAGE":"Enviar Mensagem","SEND_WHATSAPP_MESSAGE":"WhatsApp",
+                    "MESSAGE_PAGE":"Enviar Mensagem","SHOP_NOW":"Comprar Agora","DOWNLOAD":"Baixar",
+                    "WATCH_MORE":"Ver Mais","APPLY_NOW":"Candidatar-se","GET_OFFER":"Ver Oferta",
+                    "SUBSCRIBE":"Assinar","CALL_NOW":"Ligar Agora","SEND_MESSAGE":"Enviar Mensagem",
+                    "GET_DIRECTIONS":"Como Chegar","BUY_NOW":"Comprar","DONATE":"Doar",
+                    "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
+                }
+
+                # Transcrições já salvas dos vídeos, buscadas em lote (uma
+                # query só) pra alimentar o badge "💬 Transcrição" do card.
+                # Só lê o que já está pronto na tabela `midias` — NÃO chama
+                # obter_transcricao_video aqui, porque essa função roda o
+                # Whisper na hora como fallback quando não acha nada salvo,
+                # o que travaria a tela inteira esperando transcrever um por
+                # um. Um vídeo recém-migrado, então, fica sem o badge até a
+                # fila separada (_transcrever_pendentes_background) terminar
+                # de processar ele — nada quebra, só demora a aparecer.
+                #
+                # `transcricao` tem 3 estados possíveis na linha de `midias`
+                # (ver baixar_e_persistir_midia/_transcrever_pendentes_background):
+                #   NULL       → vídeo migrado, mas a fila de transcrição
+                #                ainda não chegou nele (badge "⏳ Transcrevendo…")
+                #   ""         → fila já tentou, não achou fala nenhuma
+                #                (vídeo mudo, só música, erro de áudio etc.)
+                #                — tratado como "nunca vai ter", sem badge
+                #   com texto  → transcrição pronta (badge "💬 Transcrição")
+                # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
+                # migrou pro R2 — também sem badge nenhum.
+                _urls_video_cards = list({
+                    u for ad in gads_f for u in (ad.get("videos") or [])[:1] if u
+                })
+                _mapa_transcricoes = {}          # url -> texto pronto (não vazio)
+                _urls_transcricao_pendente = set()  # url -> já migrado, transcrição ainda NULL
+                if _urls_video_cards:
+                    try:
+                        _res_transc = (
+                            supabase.table("midias")
+                            .select("url_cdn, transcricao")
+                            .in_("url_cdn", _urls_video_cards)
+                            .execute()
+                        )
+                        for _row in (_res_transc.data or []):
+                            _url_row = _row.get("url_cdn")
+                            _val_transc = _row.get("transcricao")
+                            if _val_transc is None:
+                                _urls_transcricao_pendente.add(_url_row)
+                            else:
+                                _txt_transc = _val_transc.strip()
+                                if _txt_transc:
+                                    _mapa_transcricoes[_url_row] = _txt_transc
+                                # "" (tentou, sem fala) fica de fora dos dois —
+                                # de propósito, pra não mostrar badge nenhum.
+                    except Exception:
+                        pass  # sem transcrição em lote não pode travar a tela — badge só some
+
+                def _escapar_tooltip(s: str) -> str:
+                    return (
+                        s.replace("&", "&amp;").replace('"', "&quot;")
+                         .replace("<", "&lt;").replace(">", "&gt;")
+                         .replace("\n", " ")
+                    )
+
+                all_cards_html = []
+
+                for j, ad in enumerate(gads_f):
+                    snap_url    = ad.get("snapshot_url") or ""
+                    images      = ad.get("images") or []
+                    images_b64  = ad.get("images_b64") or []
+                    videos      = ad.get("videos") or []
+                    is_dyn      = ad.get("is_dynamic", False)
+                    baixo_vol   = ad.get("baixo_volume", False)
+                    ad_id       = ad.get("id","")
+                    ad_id_short = ad_id
+                    plats       = ad.get("plataformas") or []
+                    plat_js     = _json.dumps([p.lower() for p in plats])
+                    data_raw_ad = ad.get("data_raw","")
+                    data_inicio = _dias_ativo(data_raw_ad) if data_raw_ad else ad.get("data_inicio","")
+                    impressoes  = ad.get("impressoes","")
+                    body        = ad.get("body") or ""
+                    title       = ad.get("title") or ""
+                    desc        = ad.get("description") or ""
+                    cta         = ad.get("cta") or ""
+                    uid         = f"{sk}_{j}"
+                    # Antes usava o link salvo em CADA anúncio individualmente,
+                    # e só caía pro fallback quando o campo vinha vazio. Só que
+                    # anúncios antigos costumam ter esse campo preenchido com um
+                    # link do Meta que já expirou (não vazio, só quebrado) — daí
+                    # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
+                    # usa sempre o MESMO link do cabeçalho (page_pic_empresa),
+                    # que já é a primeira foto válida entre todos os anúncios
+                    # da empresa — foto de perfil da página é uma só pra todos.
+                    page_pic    = page_pic_empresa or _page_pic_fallback
+
+                    snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
+
+                    body_clean  = re.sub(r'\n{2,}', '\n', body.strip())
+                    title_clean = title.strip()
+                    desc_clean  = desc.strip()
+
+                    body_safe  = body_clean.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                    title_safe = title_clean.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                    desc_safe  = _truncar(desc_clean, 120).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+
+                    img_thumb_url = images[1] if len(images) > 1 else (images[0] if images else "")
+                    img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
+
+                    img_fallbacks = []
+                    if img_thumb_url and img_thumb_url not in img_fallbacks:
+                        img_fallbacks.append(img_thumb_url)
+                    if images_b64 and images_b64[0] not in img_fallbacks:
+                        img_fallbacks.append(images_b64[0])
+                    img_fallbacks.extend([u for u in images if u not in img_fallbacks])
+                    srcs_js = _json.dumps(img_fallbacks)
+
+                    if videos:
+                        vid_sd = next((v for v in videos if any(x in v.lower() for x in ("sd","360","480","_sd"))), "")
+                        vid_hd = next((v for v in videos if v != vid_sd), "")
+                        vid_thumb      = vid_sd or vid_hd or videos[0]
+                        vid_modal      = vid_hd or vid_sd or videos[0]
+                        vid_fallback_modal = vid_sd if vid_sd and vid_sd != vid_modal else ""
+
+                        vid_thumb_esc          = vid_thumb.replace("'","").replace('"',"")
+                        vid_modal_esc          = vid_modal.replace("'","").replace('"',"")
+                        vid_fallback_modal_esc = vid_fallback_modal.replace("'","").replace('"',"") if vid_fallback_modal else ""
+                        snap_url_safe_vid      = snap_url_safe
+
+                        # Badge de origem da mídia: se já foi migrada pro nosso
+                        # R2 mostra um ícone de "armazenado" (permanente); senão
+                        # mostra um relógio avisando que é o link original da
+                        # Meta e pode expirar a qualquer momento.
+                        _vid_e_do_r2 = bool(R2_PUBLIC_BASE) and vid_modal.startswith(R2_PUBLIC_BASE)
+                        if _vid_e_do_r2:
+                            origem_badge_html = """
+    <div title="Vídeo armazenado permanentemente — não expira"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+        </svg>
+    </div>"""
+                        else:
+                            origem_badge_html = """
+    <div title="Vídeo original da Meta — pode expirar a qualquer momento"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v5l3 3"/>
+        </svg>
+    </div>"""
+
+                        # Badge "🖼️ +N": anúncios Dinâmicos costumam vir com
+                        # imagens alternativas junto do vídeo (Meta testa
+                        # combinações de criativo), mas o card sempre priorizava
+                        # o vídeo e escondia essas imagens de vez — nenhum lugar
+                        # da tela dava pra vê-las. Aqui expõe um botão que abre
+                        # elas num modal à parte, sem interferir no clique
+                        # normal do card (que continua abrindo o vídeo).
+                        #
+                        # O clique NÃO vai num onclick="" inline com o JSON das
+                        # imagens embutido direto (era assim antes e não
+                        # funcionava): esse JSON tem aspas duplas dentro dele
+                        # (cada URL vem entre "..."), e colocar isso dentro de
+                        # um atributo HTML também delimitado por aspas duplas
+                        # (onclick="...") faz o navegador fechar o atributo na
+                        # primeira aspa que aparecer no meio do array — o
+                        # onclick ficava truncado/quebrado e o clique não fazia
+                        # nada. A correção segue o mesmo padrão já usado pro
+                        # resto do card (ver wrapEl.addEventListener acima):
+                        # o array vai numa variável JS separada, dentro de um
+                        # <script>, e o clique é ligado via addEventListener.
+                        # Exclui a própria capa do vídeo (video_preview_image_url,
+                        # que entra misturada na lista geral de imagens do
+                        # anúncio) — sem isso, quando o anúncio dinâmico não
+                        # tinha NENHUMA imagem realmente alternativa, o badge
+                        # "+1" aparecia e o modal só reexibia a mesma thumb já
+                        # visível no card (parecia quebrado/redundante).
+                        _imgs_dyn_alt = [
+                            u for u in images[:4]
+                            if u and u not in (img_thumb_url, img_primary)
+                        ]
+                        if _imgs_dyn_alt:
+                            _imgs_dyn_js = _json.dumps(_imgs_dyn_alt, ensure_ascii=True)
+                            imgs_badge_html = f"""
+    <div id="imgsbadge_{uid}"
+         title="Este anúncio dinâmico também tem {len(_imgs_dyn_alt)} imagem(ns) alternativa(s) — clique pra ver"
+         style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:pointer;display:flex;align-items:center;gap:4px">
+        {_SVG_ICONE_IMAGENS_ALT} +{len(_imgs_dyn_alt)}
+    </div>"""
+                            imgs_badge_script = f"""
+<script>
+(function(){{
+    var ALT_IMGS_{uid} = {_imgs_dyn_js};
+    var SNAP_ALT_{uid} = '{snap_url_safe_vid}';
+    var badgeEl_{uid} = document.getElementById('imgsbadge_{uid}');
+    if (badgeEl_{uid}) {{
+        badgeEl_{uid}.addEventListener('click', function(e) {{
+            e.stopPropagation();
+            openImagesModal(ALT_IMGS_{uid}, SNAP_ALT_{uid});
+        }});
+    }}
+}})();
+</script>"""
+                        else:
+                            imgs_badge_html = ""
+                            imgs_badge_script = ""
+
+                        # Badge "💬 Transcrição": mostra o texto falado do
+                        # vídeo (Whisper) num tooltip customizado ao passar o
+                        # mouse — usamos um elemento próprio (via JS) em vez
+                        # do atributo `title` nativo do navegador, que é lento
+                        # pra aparecer, corta em uma linha e não é confiável
+                        # dentro do iframe. Só aparece quando já foi
+                        # transcrito e salvo em `midias` (ver
+                        # _mapa_transcricoes acima — não dispara transcrição
+                        # nova aqui, só lê o que já está pronto, pra não
+                        # travar a tela renderizando os cards).
+                        #
+                        # Se ainda não tem texto pronto, mas o vídeo já está
+                        # migrado e só aguardando a fila de transcrição (linha
+                        # em `midias` com transcricao NULL — ver
+                        # _urls_transcricao_pendente acima), mostra um badge
+                        # diferente avisando que é passageiro, em vez de
+                        # simplesmente esconder tudo (o que antes deixava
+                        # "sem transcrição ainda" indistinguível de "nunca vai
+                        # ter transcrição").
+                        _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
+                        _transcricao_esta_pendente = (
+                            not _transcricao_txt
+                            and (vid_thumb in _urls_transcricao_pendente or vid_modal in _urls_transcricao_pendente)
+                        )
+                        if _transcricao_txt:
+                            _transcricao_tt = _escapar_tooltip(_transcricao_txt[:1200])
+                            if len(_transcricao_txt) > 1200:
+                                _transcricao_tt += "…"
+                            transcricao_badge_html = f"""
+    <div data-texto="{_transcricao_tt}"
+         onmouseenter="mostrarTranscricaoTip(event)"
+         onmouseleave="esconderTranscricaoTip()"
+         onclick="event.stopPropagation()"
+         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        {_SVG_ICONE_TRANSCRICAO} Transcrição
+    </div>"""
+                        elif _transcricao_esta_pendente:
+                            transcricao_badge_html = """
+    <div title="Vídeo já salvo — a transcrição ainda está sendo processada e aparece em breve"
+         onclick="event.stopPropagation()"
+         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px">
+        {_SVG_ICONE_TRANSCRICAO_PENDENTE} Transcrevendo…
+    </div>"""
+                        else:
+                            transcricao_badge_html = ""
+
+                        media_block = f"""
+<div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
+     id="vwrap_{uid}"
+     data-modal-src="{vid_modal_esc}"
+     data-modal-fallback="{vid_fallback_modal_esc}">
+    <video id="vid_{uid}"
+        src="{vid_thumb_esc}"
+        {f'poster="{img_primary}"' if img_primary else ''}
+        style="width:100%;height:100%;object-fit:cover;display:block"
+        preload="metadata"
+        muted
+        playsinline
+        onloadedmetadata="this.currentTime=2.5"
+        onerror="vidFallback_{uid}(this)">
+    </video>
+    <div id="vid_overlay_{uid}" style="position:absolute;inset:0;display:flex;align-items:center;
+         justify-content:center;pointer-events:none">
+        <div style="width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,0.55);
+                    display:flex;align-items:center;justify-content:center;
+                    box-shadow:0 2px 12px rgba(0,0,0,0.5);border: 2px solid #ffffff !important;">
+            <svg width="22" height="22" viewBox="0 0 54 54" fill="none">
+                <polygon points="18,12 44,27 18,42" fill="white"/>
+            </svg>
+        </div>
+    </div>
+    {origem_badge_html}
+    {imgs_badge_html}
+    {transcricao_badge_html}
+</div>
+<script>
+(function(){{
+    var wrapEl  = document.getElementById('vwrap_{uid}');
+    var thumbEl = document.getElementById('vid_{uid}');
+    var _tried  = false;
+    var snapUrl = '{snap_url_safe_vid}';
+
+    function vidFallback_{uid}(v) {{
+        if (!_tried) {{
+            _tried = true;
+        }} else if (snapUrl && wrapEl) {{
+            wrapEl.innerHTML =
+                '<div style="position:absolute;inset:0;background:linear-gradient(135deg,#0f1f35,#1a3a5c);'
+                + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer"'
+                + ' onclick="window.open(\\'' + snapUrl + '\\',\\'_blank\\')">'
+                + '<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.15);'
+                + 'display:flex;align-items:center;justify-content:center;border: 2px solid #ffffff !important;">'
+                + '<svg width="22" height="22" viewBox="0 0 54 54" fill="none">'
+                + '<polygon points="18,12 44,27 18,42" fill="white"/></svg></div>'
+                + '<span style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:600">▶ Ver no Ad Library</span>'
+                + '</div>';
+        }}
+    }}
+
+    window['vidFallback_{uid}'] = vidFallback_{uid};
+
+    if (wrapEl) {{
+        wrapEl.addEventListener('click', function() {{
+            var modalSrc = wrapEl.getAttribute('data-modal-src');
+            var fallback = wrapEl.getAttribute('data-modal-fallback');
+            openModal(modalSrc || fallback, snapUrl, true);
+        }});
+    }}
+}})();
+</script>
+{imgs_badge_script}"""
+
+                    elif img_primary:
+                        all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)
+                        # A lógica abaixo (pegar só índice 0 e 2, e comparar a
+                        # proporção pra descartar duplicata) foi criada pros
+                        # anúncios "Dinâmico"/formato Imagem, que às vezes têm
+                        # 2 recortes (quadrado + vertical) da MESMA arte — daí
+                        # faz sentido colapsar pra 1 se forem parecidos. Já
+                        # pros anúncios Carrossel de verdade, usa-se a lista
+                        # "carousel_images" — montada por CARD do carrossel lá
+                        # na normalização, uma única URL (a de melhor
+                        # qualidade disponível) por card. Não dá pra usar
+                        # "images"/"images_b64" por índice aqui: essas listas
+                        # juntam vários campos possíveis (original, resized,
+                        # thumbnail...) tanto do anúncio quanto de cada card
+                        # numa bolsa só, então o índice 1, por exemplo, podia
+                        # ser só a MESMA foto do card 1 num tamanho pior, não
+                        # o card 2 — o modal "repetia" o primeiro slide com
+                        # qualidade ruim no lugar do segundo.
+                        _e_carrossel = "Carrossel" in (ad.get("formato") or "")
+                        _carousel_imgs_ad = ad.get("carousel_images") or []
+                        _metodo_carrossel = "n/a"
+                        if _e_carrossel and len(_carousel_imgs_ad) > 1:
+                            main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
+                            _metodo_carrossel = "carousel_images (por card, correto)"
+                        elif _e_carrossel and len(images) > 1:
+                            # Anúncio Carrossel salvo em cache ANTES dessa
+                            # correção (ou cujos cards não trouxeram os campos
+                            # esperados) ainda não tem "carousel_images". Nesse
+                            # caso, usa a lista genérica "images" — só que ela
+                            # traz, pra CADA card, tanto a "original_image_url"
+                            # (qualidade cheia) quanto a "resized_image_url"
+                            # (comprimida/redimensionada) como URLs diferentes
+                            # entre si, então a dedup por igualdade exata não
+                            # pega esse par como duplicata — sobra a mesma foto
+                            # 2x, uma boa e uma ruim. A Meta sempre marca a
+                            # versão redimensionada com o parâmetro "stp=" na
+                            # URL (ex.: "stp=dst-jpg_s600x600_tt6"), então filtra
+                            # essa variante fora e fica só com a versão cheia.
+                            _legacy_carousel_srcs = []
+                            for _limg in images[:20]:
+                                if not _limg or _limg in _legacy_carousel_srcs:
+                                    continue
+                                if "stp=" in _limg:
+                                    continue
+                                _legacy_carousel_srcs.append(_limg)
+                            _dedup_geral = []
+                            for _limg in images[:20]:
+                                if _limg and _limg not in _dedup_geral:
+                                    _dedup_geral.append(_limg)
+                            if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
+                                # O filtro "stp=" não removeu nada — sinal de
+                                # que essas imagens já foram migradas pro R2
+                                # antes dessa correção existir (nomes de
+                                # arquivo viram hash aleatório, perdem o "stp=").
+                                # Nesses casos, como a extração sempre insere
+                                # original_image_url ANTES de resized_image_url
+                                # pra cada card, a lista final fica em pares
+                                # (boa, ruim, boa, ruim...) na ordem dos cards —
+                                # então os índices pares (0, 2, 4...) tendem a
+                                # ser as versões boas. Não é garantido (é uma
+                                # aposta educada pra dado antigo sem outra
+                                # pista), mas é bem melhor que mostrar as 2x
+                                # imagens juntas.
+                                _legacy_carousel_srcs = _dedup_geral[::2]
+                                _metodo_carrossel = "índice par (mídia já migrada, sem stp=)"
+                            elif len(_legacy_carousel_srcs) <= 1:
+                                # Nenhuma imagem "sem stp=" sobrou (raro) — melhor
+                                # mostrar tudo deduplicado do que nada.
+                                _legacy_carousel_srcs = _dedup_geral
+                                _metodo_carrossel = "sem filtro (nada sobrou ao filtrar stp=)"
+                            else:
+                                _metodo_carrossel = "filtro stp= (mídia ainda com link cru da Meta)"
+                            main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs[:10], ensure_ascii=True)
+                        else:
+                            # Usa images_b64 (versão permanente/migrada) em vez de
+                            # `images` cru: a URL original da Meta expira, então o
+                            # modal (que antes usava `images`) parava de carregar
+                            # mesmo quando o thumb (que já usava images_b64) ainda
+                            # aparecia normalmente — mesma imagem, fonte diferente.
+                            _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
+                            _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
+                            main_modal_imgs_js = _json.dumps(
+                                [img for img in [_modal_src_0, _modal_src_2] if img],
+                                ensure_ascii=True
+                            )
+                        # Mesmo selo de origem que o card de vídeo já tem —
+                        # antes só existia lá, então cards de imagem (como os
+                        # de anúncio "Dinâmico") ficavam sem indicar se o link
+                        # é permanente (R2) ou o original da Meta.
+                        _img_e_do_r2 = bool(R2_PUBLIC_BASE) and img_thumb_url.startswith(R2_PUBLIC_BASE)
+                        if _img_e_do_r2:
+                            origem_badge_img_html = """
+    <div title="Imagem armazenada permanentemente — não expira"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="3"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+        </svg>
+    </div>"""
+                        else:
+                            origem_badge_img_html = """
+    <div title="Imagem original da Meta — pode expirar a qualquer momento"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
+                background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
+                cursor:help;z-index:3">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/>
+        </svg>
+    </div>"""
+                        media_block = f"""
+<div class="media-block img-block" id="mwrap_{uid}" style="position:relative;cursor:pointer">
+    <img id="mimg_{uid}" src="{img_primary}" loading="lazy"
+        style="width:100%;height:100%;object-fit:cover;display:block;"
+        onerror="imgFallback_{uid}(this)" />
+    <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
+        <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
+    </div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
+    {origem_badge_img_html}
+</div>
+<script>
+var _srcs_{uid} = {srcs_js};
+var _idx_{uid} = 0;
+(function(){{
+    var IMGS_{uid} = {all_imgs_js};
+    var MAIN_IMGS_{uid} = {main_modal_imgs_js};
+    var SNAP_{uid} = '{snap_url.replace("'","").replace('"',"")}';
+    var wrap = document.getElementById('mwrap_{uid}');
+    if (wrap) {{
+        wrap.addEventListener('click', function() {{
+            openModalHQ(MAIN_IMGS_{uid}, IMGS_{uid}, SNAP_{uid});
+        }});
+    }}
+}})();
+function imgFallback_{uid}(img){{
+    _idx_{uid}++;
+    if(_idx_{uid} < _srcs_{uid}.length){{ img.src = _srcs_{uid}[_idx_{uid}]; }}
+    else{{ img.style.display='none'; var e=document.getElementById('merr_{uid}'); if(e) e.style.display='flex'; }}
+}}
+</script>"""
+
+                    else:
+                        _sv = snap_url.replace("'", "")
+                        _nm_onclick = f'onclick="openModal(\'\',\'{_sv}\',false)"' if snap_url else ""
+                        _nm_color   = "#fff" if snap_url else "#c4c4c4"
+                        _nm_label   = "Ver criativo no Ad Library →" if snap_url else "Sem criativo"
+                        media_block = (
+                            f'<div class="media-block no-media-block" {_nm_onclick} style="{"cursor:pointer;" if snap_url else ""}">'
+                            f'<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.2">'
+                            f'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'
+                            f'<polyline points="21 15 16 10 5 21"/></svg>'
+                            f'<span style="font-size:12px;color:{_nm_color};font-weight:600;margin-top:8px;">{_nm_label}</span>'
+                            f'</div>'
+                        )
+
+                    cta_display = cta_labels.get(cta.upper() if cta else "", cta)
+                    is_ativo    = ad.get("ativo", True)
+                    card_opacity = "1" if is_ativo else "0.72"
+
+                    status_dot_html = '<div class="status-dot">Ativo</div>' if is_ativo else '<div class="status-dot-inactive">Inativo</div>'
+                    baixo_vol_badge = '<span class="badge-small">Baixo volume</span>' if baixo_vol else ""
+
+                    page_avatar_html = (
+                        f'<div class="page-avatar" style="overflow:hidden;padding:0">'
+                        f'<img src="{page_pic}" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:50%"'
+                        f' onerror="this.parentElement.style.background=\'{cor_av}\';this.parentElement.innerHTML=\'{avatar}\'" />'
+                        f'</div>'
+                    ) if page_pic and page_pic.startswith("http") else f'<div class="page-avatar">{avatar}</div>'
+
+                    data_inicio_html = (
+                        f'<div class="meta-row"><span class="meta-label">Veic. iniciada:</span><span>{data_inicio}</span></div>'
+                    ) if data_inicio else ""
+
+                    if body_safe and len(body_clean) > 80:
+                        short_b = body_safe[:80]
+                        rest_b  = body_safe[80:]
+                        body_display = (
+                            f'<div class="copy-body">{short_b}'
+                            f'<span style="color:#9ca3af;font-size:13px" id="ell_{uid}">... </span>'
+                            f'<span id="cm_{uid}" style="display:none">{rest_b}</span>'
+                            f'<button id="cb_{uid}" onclick="var m=document.getElementById(\'cm_{uid}\');var b=document.getElementById(\'cb_{uid}\');var e=document.getElementById(\'ell_{uid}\');if(m.style.display===\'none\'){{m.style.display=\'inline\';b.textContent=\'ver menos\';if(e)e.style.display=\'none\'}}else{{m.style.display=\'none\';b.textContent=\'ver mais\';if(e)e.style.display=\'inline\'}}" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-left:3px;">ver mais</button></div>'
+                        )
+                    elif body_safe:
+                        body_display = f'<div class="copy-body">{body_safe}</div>'
+                    else:
+                        body_display = ""
+
+                    card_html = f"""
+<div class="card" style="opacity:{card_opacity}" id="card_{uid}">
+    <div class="status-bar">
+        <div style="display:flex;align-items:center;gap:6px">{status_dot_html}{baixo_vol_badge}</div>
+        <div style="display:flex;align-items:center;gap:6px">{'<span class="ad-id">ID: ' + ad_id_short + '</span>' if ad_id_short else ''}</div>
+    </div>
+    <div class="meta-info">
+        {data_inicio_html}
+        <div class="meta-row"><span class="meta-label">Plataformas:</span><span id="plat_icons_{uid}" class="plat-icons"></span></div>
+        {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
+    </div>
+    <div class="copy-section" style="position:relative">
+        {'<div class="dyn-float">Dinâmico</div>' if is_dyn else ''}
+        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div><div class="page-sponsored">Patrocinado</div></div></div>
+        {body_display}
+        {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
+        {'<div class="no-copy">Sem copy disponível.</div>' if not body_safe and not title_safe else ''}
+    </div>
+    {media_block}
+    <div class="cta-footer">
+        <span class="cta-domain">{ad.get("caption") or (snap_url.replace("https://","").split("/")[0] if snap_url else "")}</span>
+        <a href="{snap_url or '#'}" target="_blank" class="cta-btn" {'style="pointer-events:none;opacity:0.4"' if not snap_url else ''}>{cta_display or "Ver detalhes"}</a>
+    </div>
+    <div class="card-footer-btns">
+        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
+        <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
+    </div>
+</div>
+<script>
+window.__PLATS_{uid}__ = {plat_js};
+{_plat_svg_js(uid)}
+</script>"""
+                    all_cards_html.append(card_html)
+
+                cards_joined = "\n".join(all_cards_html)
+                n_cols = st.session_state.get(col_key, 4)
+
+                _js_modal_hq = """
+function openModalHQ(hqImgs, allImgs, snapUrl) {
+    var doc = window.parent.document;
+    var old = doc.getElementById('gads_modal_overlay');
+    if (old) old.remove();
+    var overlay = doc.createElement('div');
+    overlay.id = 'gads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
+    overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:transparent;border-radius:16px;position:relative;padding:40px 24px 24px;min-width:320px;max-width:min(92vw,900px);';
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+
+    if (hqImgs.length > 2) {
+        renderSlider(hqImgs);
+    } else if (hqImgs.length <= 1) {
+        renderGrid(hqImgs);
+    } else {
+        var results = [];
+        var done    = 0;
+        hqImgs.slice(0, 2).forEach(function(src, i) {
+            var tmp = new window.parent.Image();
+            tmp.onload = function() {
+                results.push({ src: src, ratio: this.naturalHeight / (this.naturalWidth || 1) });
+                done++;
+                if (done === hqImgs.slice(0,2).length) {
+                    results.sort(function(a, b) { return a.ratio - b.ratio; });
+                    var srcs = results.map(function(r) { return r.src; });
+                    var diff = Math.abs(results[0].ratio - results[1].ratio);
+                    var maxR = Math.max(results[0].ratio, results[1].ratio) || 1;
+                    if ((diff / maxR) < 0.15) { srcs = [srcs[0]]; }
+                    renderGrid(srcs);
+                }
+            };
+            tmp.onerror = function() {
+                results.push({ src: src, ratio: i === 0 ? 0 : 999 });
+                done++;
+                if (done === hqImgs.slice(0,2).length) {
+                    results.sort(function(a, b) { return a.ratio - b.ratio; });
+                    renderGrid(results.map(function(r) { return r.src; }));
+                }
+            };
+            tmp.src = src || '';
+        });
+    }
+
+    // Carrossel de verdade (3+ slides): uma imagem grande por vez, com setas
+    // e bolinhas de navegação — em vez do grid de 2 colunas (pensado só pra
+    // comparar 2 recortes da mesma arte), que ficava espremido/estranho com
+    // várias fotos diferentes.
+    function renderSlider(imgs) {
+        var idx = 0;
+        var stage = doc.createElement('div');
+        stage.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;';
+
+        var cell = doc.createElement('div');
+        cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-width:280px;';
+        var imgEl = doc.createElement('img');
+        imgEl.style.cssText = 'display:block;max-width:min(80vw,760px);max-height:74vh;width:auto;height:auto;object-fit:contain;';
+        imgEl.onerror = function() {
+            cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:32px;">Imagem não disponível</div>';
+        };
+        cell.appendChild(imgEl);
+
+        var counter = doc.createElement('div');
+        counter.style.cssText = 'position:absolute;top:-30px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.55);color:#fff;font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;font-family:DM Sans,sans-serif;white-space:nowrap;';
+
+        var dotsWrap = doc.createElement('div');
+        dotsWrap.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:5px;';
+
+        function render() {
+            imgEl.src = imgs[idx] || '';
+            counter.textContent = (idx + 1) + ' / ' + imgs.length;
+            dotsWrap.innerHTML = '';
+            imgs.forEach(function(_, d) {
+                var dot = doc.createElement('div');
+                dot.style.cssText = 'width:' + (d === idx ? '18px' : '6px') + ';height:6px;border-radius:3px;background:' + (d === idx ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.4)') + ';transition:all 0.2s;';
+                dotsWrap.appendChild(dot);
+            });
+        }
+
+        function nav(dir) {
+            idx = (idx + dir + imgs.length) % imgs.length;
+            render();
+        }
+
+        var prev = doc.createElement('button');
+        prev.innerHTML = '&#8249;';
+        prev.style.cssText = 'position:absolute;left:-46px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;';
+        prev.onclick = function(e) { e.stopPropagation(); nav(-1); };
+
+        var next = doc.createElement('button');
+        next.innerHTML = '&#8250;';
+        next.style.cssText = 'position:absolute;right:-46px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:26px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;';
+        next.onclick = function(e) { e.stopPropagation(); nav(1); };
+
+        stage.appendChild(cell);
+        stage.appendChild(counter);
+        stage.appendChild(dotsWrap);
+        stage.appendChild(prev);
+        stage.appendChild(next);
+
+        window.parent.__gadsModalKbFn = function(e) {
+            if (e.key === 'ArrowLeft')  nav(-1);
+            if (e.key === 'ArrowRight') nav(1);
+        };
+        doc.addEventListener('keydown', window.parent.__gadsModalKbFn);
+
+        render();
+        box.appendChild(closeBtn);
+        box.appendChild(stage);
+        overlay.appendChild(box);
+        doc.body.appendChild(overlay);
+    }
+
+    function renderGrid(imgs) {
+        var grid = doc.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:' + (imgs.length > 1 ? '1.4fr 1fr' : 'auto') + ';gap:14px;align-items:start;justify-content:center;';
+        imgs.forEach(function(src) {
+            var cell  = doc.createElement('div');
+            cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;';
+            var imgEl = doc.createElement('img');
+            imgEl.style.cssText = 'display:block;width:100%;height:auto;object-fit:contain;max-height:65vh;';
+            imgEl.onerror = function() {
+                cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:32px;">Imagem não disponível</div>';
+            };
+            imgEl.src = src || '';
+            cell.appendChild(imgEl);
+            grid.appendChild(cell);
+        });
+        box.appendChild(closeBtn);
+        box.appendChild(grid);
+        overlay.appendChild(box);
+        doc.body.appendChild(overlay);
+    }
+
+    window.parent.__gadsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
+    doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
+}
+
+function openImagesModal(imgs, snapUrl) {
+    var doc = window.parent.document;
+    var old = doc.getElementById('gads_modal_overlay');
+    if (old) old.remove();
+
+    var overlay = doc.createElement('div');
+    overlay.id = 'gads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
+    overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:transparent;border-radius:16px;position:relative;padding:44px 24px 24px;max-width:min(92vw,900px);';
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1.5px solid #22c45e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+
+    var label = doc.createElement('div');
+    label.textContent = 'Imagens alternativas deste anúncio dinâmico';
+    label.style.cssText = 'color:#fff;font-size:13px;font-weight:600;text-align:center;margin-bottom:14px;font-family:DM Sans,sans-serif;';
+
+    var grid = doc.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;';
+    (imgs || []).forEach(function(src) {
+        var cell = doc.createElement('div');
+        cell.style.cssText = 'background:#0a0a0a;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:120px;';
+        var imgEl = doc.createElement('img');
+        imgEl.style.cssText = 'display:block;width:100%;height:auto;max-height:55vh;object-fit:contain;';
+        imgEl.onerror = function() {
+            cell.innerHTML = '<div style="color:#555;font-size:12px;font-family:DM Sans,sans-serif;text-align:center;padding:24px;">Imagem não disponível' +
+                (snapUrl ? '<br><a href="' + snapUrl + '" target="_blank" style="color:#3a9fd6">Ver no Ad Library →</a>' : '') + '</div>';
+        };
+        imgEl.src = src || '';
+        cell.appendChild(imgEl);
+        grid.appendChild(cell);
+    });
+
+    box.appendChild(closeBtn);
+    box.appendChild(label);
+    box.appendChild(grid);
+    overlay.appendChild(box);
+    doc.body.appendChild(overlay);
+
+    window.parent.__gadsModalEscFn = function(e) { if (e.key === 'Escape') closeModal(); };
+    doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
+}
+
+function mostrarTranscricaoTip(ev) {
+    if (window.__transcTipHideTimer) { clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }
+    var el = ev.currentTarget;
+    var texto = el.getAttribute('data-texto') || '';
+    if (!texto) return;
+    var old = document.getElementById('transc_tip_flutuante');
+    if (old) old.remove();
+    // Usa o documento LOCAL do iframe (não window.parent.document) e
+    // position:fixed — assim o tooltip escapa do overflow:hidden do
+    // .card/.media-block sem precisar traduzir coordenadas entre o
+    // iframe e a página pai (o que os modais fazem, mas eles cobrem a
+    // tela inteira; aqui precisamos de um balão posicionado perto do
+    // badge, então fica mais simples e correto ficar dentro do iframe).
+    var rect = el.getBoundingClientRect();
+    var tip = document.createElement('div');
+    tip.id = 'transc_tip_flutuante';
+    tip.textContent = texto;
+    // pointer-events:auto (em vez de none) + os listeners abaixo são o
+    // que permite passar o mouse do badge pro balão pra rolar um texto
+    // longo sem ele sumir no meio do caminho — antes, com pointer-events
+    // none, o mouse "atravessava" o balão, contava como se tivesse saído
+    // do badge, e escondia o tooltip bem na hora de tentar ler/rolar.
+    tip.style.cssText = 'position:fixed;z-index:999999;max-width:240px;max-height:200px;overflow-y:auto;' +
+        'background:#111;color:#fff;font-size:11px;line-height:1.5;padding:10px 12px;border-radius:8px;' +
+        'box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:"DM Sans",sans-serif;pointer-events:auto;' +
+        'white-space:pre-wrap;';
+    tip.addEventListener('mouseenter', function() {
+        if (window.__transcTipHideTimer) { clearTimeout(window.__transcTipHideTimer); window.__transcTipHideTimer = null; }
+    });
+    tip.addEventListener('mouseleave', function() { esconderTranscricaoTip(); });
+    document.body.appendChild(tip);
+    var tipRect = tip.getBoundingClientRect();
+    var top  = rect.bottom + 6;
+    var left = rect.right - tipRect.width;
+    if (left < 6) left = 6;
+    if (top + tipRect.height > window.innerHeight - 6) { top = rect.top - tipRect.height - 6; }
+    if (top < 6) top = 6;
+    tip.style.top  = top + 'px';
+    tip.style.left = left + 'px';
+}
+
+function esconderTranscricaoTip() {
+    // Pequeno atraso antes de remover: dá tempo do mouse entrar no
+    // próprio balão (mostrarTranscricaoTip cancela esse timer) sem o
+    // tooltip desaparecer no instante em que o cursor sai do badge.
+    if (window.__transcTipHideTimer) clearTimeout(window.__transcTipHideTimer);
+    window.__transcTipHideTimer = setTimeout(function() {
+        var old = document.getElementById('transc_tip_flutuante');
+        if (old) old.remove();
+        window.__transcTipHideTimer = null;
+    }, 200);
+}
+"""
+
+                components.html(f"""
+<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;overflow:visible;}}
+body{{padding-bottom:4px;min-height:0;}}
+.stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
+.stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
+.stat-lbl-green{{color:#15803d;}}
+.stat-num{{font-size:22px;font-weight:800;}}
+.stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
+.ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
+.card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
+.status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;border-bottom:1px solid #f0f2f5;background:#fafbfc;flex-wrap:wrap;gap:4px;}}
+.status-dot{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1aab40;}}
+.status-dot::before{{content:'';width:7px;height:7px;border-radius:50%;background:#1aab40;flex-shrink:0;}}
+.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#6b7280;}}
+.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#d1d5db;flex-shrink:0;}}
+.ad-id{{font-size:9px;color:#8a8d91;font-family:monospace;}}
+.badge-small{{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
+.meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
+.meta-row{{display:flex;align-items:center;gap:5px;font-size:11px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
+.meta-row:last-child{{margin-bottom:0;}}
+.meta-label{{font-size:11px;color:#65676b;font-weight:700;flex-shrink:0;}}
+.plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
+.plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
+.copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
+.page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
+.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}}
+.page-name{{font-size:12px;font-weight:700;color:#050505;}}
+.page-sponsored{{font-size:10px;color:#65676b;}}
+.copy-body{{font-size:13px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-title{{font-size:13px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-desc{{font-size:11px;color:#65676b;margin-top:2px;}}
+.no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
+.media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;}}
+.img-block{{height:230px;background:#f0f2f5;}}
+.video-thumb-block{{height:230px;}}
+.no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}
+.cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}
+.cta-domain{{font-size:10px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
+.card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
+.card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
+.footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
+.footer-btn.ia-btn{{border-radius:0 0 10px 0;}}
+.lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;}}
+.debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:11px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
+.debug-btn:hover{{background:#fef3c7;}}
+.debug-block{{border-top:1px solid #fde68a;background:#fffbeb;}}
+.debug-header{{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;font-size:11px;font-weight:700;color:#92400e;cursor:pointer;}}
+.debug-pre{{font-family:monospace;font-size:10px;color:#374151;padding:8px 12px;overflow-x:auto;white-space:pre;background:#fffbeb;max-height:180px;overflow-y:auto;border-top:1px solid #fde68a;}}
+</style>
+</head>
+<body>
+
+<div class="stats-row">{"".join(stats_cards)}</div>
+
+<div class="ads-grid">{cards_joined}</div>
+
+<script>
+function openModal(mediaSrc, snapUrl, isVideo) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('gads_modal_overlay');
+    if (old) old.remove();
+
+    var overlay = doc.createElement('div');
+    overlay.id = 'gads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.onclick = function(e) {{ if (e.target === overlay) closeModal(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#111;border-radius:16px;overflow:hidden;position:relative;display:inline-flex;flex-direction:column;align-items:center;max-width:min(88vw,860px);max-height:90vh;';
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+
+    var content = doc.createElement('div');
+    content.id = 'gads_modal_content';
+
+    box.appendChild(closeBtn);
+    box.appendChild(content);
+    overlay.appendChild(box);
+    doc.body.appendChild(overlay);
+
+    window.parent.__gadsModalEscFn = function(e) {{ if (e.key === 'Escape') closeModal(); }};
+    doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
+
+    if (isVideo) {{
+        var isDirectVideo = mediaSrc && (mediaSrc.indexOf('.mp4') !== -1 || mediaSrc.indexOf('fbcdn') !== -1);
+        if (isDirectVideo) {{
+            var vid = doc.createElement('video');
+            vid.id = 'gads_modal_video';
+            vid.src = mediaSrc;
+            vid.controls = true;
+            vid.autoplay = true;
+            vid.playsInline = true;
+            vid.style.cssText = 'display:block;max-width:min(84vw,820px);max-height:min(82vh,700px);width:auto;height:auto;border-radius:10px;background:#000;outline:none;';
+            vid.onerror = function() {{
+                content.innerHTML = '';
+                if (snapUrl) {{
+                    var wrap = doc.createElement('div');
+                    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:16px;padding:48px 40px;min-width:280px;font-family:DM Sans,sans-serif;';
+                    var btn = doc.createElement('a');
+                    btn.href = snapUrl; btn.target = '_blank';
+                    btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1877F2;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;text-decoration:none;';
+                    btn.textContent = '↗ Abrir no Ad Library';
+                    wrap.appendChild(btn);
+                    content.appendChild(wrap);
+                }}
+            }};
+            content.appendChild(vid);
+        }} else {{
+            var wrap = doc.createElement('div');
+            wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:16px;padding:48px 40px;min-width:280px;font-family:DM Sans,sans-serif;';
+            if (snapUrl) {{
+                var btn = doc.createElement('a');
+                btn.href = snapUrl; btn.target = '_blank';
+                btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1877F2;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;text-decoration:none;';
+                btn.textContent = '↗ Abrir vídeo no Ad Library';
+                wrap.appendChild(btn);
+            }}
+            content.appendChild(wrap);
+        }}
+    }} else {{
+        if (!mediaSrc && snapUrl) {{ window.parent.open(snapUrl, '_blank'); closeModal(); return; }}
+        if (!mediaSrc) {{ closeModal(); return; }}
+
+        var loading = doc.createElement('div');
+        loading.style.cssText = 'padding:40px;color:rgba(255,255,255,0.6);font-size:14px;text-align:center;font-family:DM Sans,sans-serif;';
+        loading.textContent = 'Carregando…';
+        content.appendChild(loading);
+
+        var tmp = new window.parent.Image();
+        tmp.onload = function() {{
+            content.innerHTML = '';
+            var img = doc.createElement('img');
+            img.style.cssText = 'display:block;max-width:min(84vw,820px);max-height:min(82vh,820px);width:auto;height:auto;object-fit:contain;border-radius:10px;';
+            img.src = mediaSrc;
+            content.appendChild(img);
+        }};
+        tmp.onerror = function() {{
+            content.innerHTML = '';
+            if (snapUrl) {{ window.parent.open(snapUrl, '_blank'); closeModal(); }}
+            else {{
+                var msg = doc.createElement('div');
+                msg.style.cssText = 'color:#aaa;font-size:14px;padding:32px;text-align:center;font-family:DM Sans,sans-serif;';
+                msg.textContent = 'Imagem não disponível.';
+                content.appendChild(msg);
+            }}
+        }};
+        tmp.src = mediaSrc;
+    }}
+}}
+
+{_js_modal_hq}
+
+function closeModal() {{
+    var doc = window.parent.document;
+    var vid = doc.getElementById('gads_modal_video');
+    if (vid) {{ vid.pause(); vid.src = ''; }}
+    var overlay = doc.getElementById('gads_modal_overlay');
+    if (overlay) overlay.remove();
+    if (window.parent.__gadsModalEscFn) {{
+        doc.removeEventListener('keydown', window.parent.__gadsModalEscFn);
+        window.parent.__gadsModalEscFn = null;
+    }}
+    if (window.parent.__gadsModalKbFn) {{
+        doc.removeEventListener('keydown', window.parent.__gadsModalKbFn);
+        window.parent.__gadsModalKbFn = null;
+    }}
+}}
+
+document.addEventListener('keydown', function(e) {{ if (e.key === 'Escape') closeModal(); }});
+function toggleDebug(uid) {{
+    var el = document.getElementById('debug_' + uid);
+    if (!el) return;
+    el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+    setTimeout(syncHeight, 50);
+}}
+function analisarAd(uid, j) {{
+    var key = 'btn_ia_ind_{sk}_' + j;
+    var el = window.parent.document.querySelector('.st-key-' + key + ' button');
+    if (el) {{ el.click(); return; }}
+    var label = 'ia_ind_{sk}_' + j;
+    var btns = window.parent.document.querySelectorAll('button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
+        if (txt === label) {{ b.click(); return; }}
+    }}
+}}
+function syncHeight() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.minHeight = '0';
+            frames[i].style.marginTop = '0px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+document.querySelectorAll('img,video').forEach(function(el) {{
+    el.addEventListener('load',    function() {{ setTimeout(syncHeight, 30); }});
+    el.addEventListener('loadedmetadata', function() {{ setTimeout(syncHeight, 30); }});
+    el.addEventListener('error',   function() {{ setTimeout(syncHeight, 30); }});
+}});
+if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+document.addEventListener('DOMContentLoaded', syncHeight);
+window.addEventListener('load', syncHeight);
+setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight, 1500);
+</script>
+</body></html>
+""", height=100, scrolling=False)
+
+        # ── Renderização final: chamada APÓS as definições das funções ──
+        if not empresas_com_dados:
+            st.markdown("""
+            <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
+                <div style='font-size:32px;margin-bottom:12px'>📢</div>
+                <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
+                <div style='font-size:14px;color:#9ca3af'>Configure as páginas e clique em <b>Buscar / Atualizar</b>.</div>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            _emp_ativa_key = st.session_state.get("gads_empresa_ativa", "")
+            _emp_render = next((e for e in empresas_com_dados if e["nome"] == _emp_ativa_key), None)
+            if _emp_render is None:
+                _emp_render = empresas_com_dados[0]
+                st.session_state.gads_empresa_ativa = _emp_render["nome"]
+            render_gads_empresa(_emp_render)
+
+    # ══════════════════════════════════════════════════════════════════
+    # ABA: ANÁLISE DE IA (resumo comparativo) — Ads
+    # ══════════════════════════════════════════════════════════════════
+    elif main_tab == "analise":
+ 
+        if not st.session_state.gads_cache and not st.session_state.get("gads_analises_salvas"):
+            st.info("Busque anúncios primeiro na aba **Empresas configuradas** para ver análises aqui.")
+            st.stop()
+ 
+        import json as _json_analises
+        import re as _re_md
+ 
+        # ── Gerar comparativo se flag ativa ────────────────────────
+        if st.session_state.pop("gads_gerar_comparativo", False):
+            if gemini_model is None:
+                st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
+            elif not st.session_state.gads_cache:
+                st.toast("Nenhum anúncio disponível para comparar.", icon="⚠️")
+            else:
+                import datetime as _dt_ads
+                resumo_ads = "\n\n".join([
+                    f"Empresa: {empresa}\nAnúncios:\n" + "\n".join([
+                        f"  - {ad.get('titulo','')}: {ad.get('descricao','')[:120]}"
+                        for ad in ads[:8]
+                    ])
+                    for empresa, ads in st.session_state.gads_cache.items()
+                ])
+                _ph_comp_ads = st.empty()
+                try:
+                    resp = gerar_com_ia(f"""
+Você é especialista em marketing digital e tráfego pago.
+Compare os anúncios das empresas abaixo e faça uma análise comparativa estratégica em português.
+ 
+{resumo_ads}
+ 
+Responda com:
+### Visão Geral Comparativa
+Comparação resumida das empresas em termos de estratégia de anúncios.
+ 
+### Quem se Destaca e Por Quê
+Destaque a empresa com melhor estratégia e explique os motivos.
+ 
+### Pontos Fortes de Cada Empresa
+Para cada empresa, 1-2 pontos fortes nos anúncios.
+ 
+### Oportunidades Identificadas
+2-3 oportunidades estratégicas para as empresas com menor desempenho.
+ 
+### Recomendações Finais
+3 ações concretas para melhorar a performance geral dos anúncios.
+ 
+Seja direto, objetivo e baseado nos dados fornecidos.
+""")
+                    import datetime as _dt_ads2
+                    st.session_state.gads_analises_salvas = st.session_state.get("gads_analises_salvas", [])
+                    st.session_state.gads_analises_salvas.append({
+                        "titulo": f"Comparativo Geral — {_dt_ads2.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _dt_ads2.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "relatorio": resp.text,
+                        "tipo": "comparativo_ads",
+                        "empresas": list(st.session_state.gads_cache.keys()),
+                    })
+                    salvar_gads_analises()
+                    import time as _t_comp_ads; _t_comp_ads.sleep(1.0)
+                    _ph_comp_ads.empty()
+                    st.session_state.gads_analise_subtab = "comparativo_ads"
+                    st.rerun()
+                except Exception as e:
+                    _ph_comp_ads.empty()
+                    st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
+ 
+        analises_gads_para_rm = st.session_state.get("gads_analises_salvas", [])
+        analises_ads = analises_gads_para_rm
+        acoes_rm_ads = {}
+        for i in range(len(analises_gads_para_rm)):
+            acoes_rm_ads[f"rm_{i}"] = st.button(f"_rm_gads_analise_{i}_", key=f"btn_rm_gads_analise_{i}")
+
+        rm_css_ads = "\n".join([
+            f".st-key-btn_rm_gads_analise_{i} {{ display: none !important; }}"
+            f".stElementContainer:has(.st-key-btn_rm_gads_analise_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
+            for i in range(len(analises_gads_para_rm))
+        ])
+        st.markdown(f"<style>{rm_css_ads}</style>", unsafe_allow_html=True)
+
+        for i in range(len(analises_gads_para_rm) - 1, -1, -1):
+            if acoes_rm_ads.get(f"rm_{i}"):
+                st.session_state.gads_analises_salvas.pop(i)
+                salvar_gads_analises()
+                st.rerun()
+ 
+        ICON_SVG_ADS = {
+            "megaphone": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',
+            "search":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+            "chart":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
+            "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
+            "target":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+            "star":      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+            "lightbulb": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>',
+            "compass":   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
+            "rocket":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+            "clipboard": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>',
+            "clock":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        }
+ 
+        subtabs_gads_def = [
+            ("anuncio_completo", ICON_SVG_ADS["megaphone"], "Anúncios"),
+            ("anuncio_ind",      ICON_SVG_ADS["search"],   "Individual"),
+            ("estrategia",       ICON_SVG_ADS["chart"],    "Estratégia"),
+            ("comparativo_ads",  ICON_SVG_ADS["trophy"],   "Comparativo"),
+        ]
+ 
+        if "gads_analise_subtab" not in st.session_state:
+            st.session_state.gads_analise_subtab = "anuncio_completo"
+ 
+        subtab_gads_ativa = st.session_state.gads_analise_subtab
+ 
+        contagens_ads = {
+            stk: len([a for a in analises_ads if a.get("tipo") == stk])
+            for stk, _, _ in subtabs_gads_def
+        }
+ 
+        # ── Barra de subtabs ────────────────────────────────────────
+        components.html(f"""
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
+.tabs-wrap {{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    width:100%;
+}}
+.tab-pill {{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px 8px; border-radius:10px; cursor:pointer;
+    border:1.5px solid #e5e7eb; background:#fff; text-decoration:none;
+    font-size:13px; font-weight:600; color:#6b7280;
+    transition:all 0.15s; white-space:nowrap;
+    font-family:'DM Sans',sans-serif; line-height:1; width:100%;
+}}
+.tab-pill svg {{ display:block; width:16px; height:16px; }}
+.tab-icon {{
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:16px; height:16px; color:#6b7280;
+    transition:color 0.15s;
+}}
+.tab-pill:hover {{ border-color:#3a9fd6; color:#1d4ed8; background:#eff6ff; }}
+.tab-pill:hover .tab-icon {{ color:#1d4ed8; }}
+.tab-pill.active {{ background:#0e2a47; border-color:#0e2a47; color:#fff; }}
+.tab-pill.active .tab-icon {{ color:#fff; }}
+.tab-badge {{
+    font-size:11px; font-weight:800; padding:2px 8px; border-radius:20px;
+    background:#e5e7eb; color:#6b7280; line-height:1.4; flex-shrink:0;
+}}
+.tab-pill.active .tab-badge {{ background:rgba(255,255,255,0.15); color:#fff; }}
+.tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+.tab-pill.active .tab-badge.has {{ background:#3a9fd6; color:#fff; }}
+</style>
+<div class="tabs-wrap">
+{''.join([
+    f'''<a class="tab-pill {'active' if subtab_gads_ativa == stk else ''}"
+        href="javascript:void(0)"
+        onclick="(function(){{var btns=window.parent.document.querySelectorAll('button');for(var b of btns){{var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='gads_analise_sub_{stk}'){{b.click();return;}}}}}})()"
+    ><span class="tab-icon">{icon}</span>{lbl} <span class="tab-badge {'has' if contagens_ads.get(stk,0) > 0 else ''}">{contagens_ads.get(stk,0)}</span></a>'''
+    for stk, icon, lbl in subtabs_gads_def
+])}
+</div>
+<script>
+function syncHeightTabs() {{
+    var h = document.body.scrollHeight;
+    var iframes = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {{
+        try {{ if (iframes[i].contentWindow === window) {{
+            iframes[i].style.height = h + 'px';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+syncHeightTabs();
+if (window.ResizeObserver) new ResizeObserver(syncHeightTabs).observe(document.body);
+document.addEventListener('DOMContentLoaded', syncHeightTabs);
+window.addEventListener('load', syncHeightTabs);
+setTimeout(syncHeightTabs, 100);
+setTimeout(syncHeightTabs, 300);
+setTimeout(syncHeightTabs, 800);
+</script>
+""", height=52, scrolling=False)
+ 
+        lista_gads_ativa = [a for a in analises_ads if a.get("tipo") == subtab_gads_ativa]
+ 
+        icons_gads_map = {
+            "anuncio_completo": ICON_SVG_ADS["megaphone"],
+            "anuncio_ind":      ICON_SVG_ADS["search"],
+            "estrategia":       ICON_SVG_ADS["chart"],
+            "comparativo_ads":  ICON_SVG_ADS["trophy"],
+        }
+        labels_gads_map = {
+            "anuncio_completo": "Anúncios",
+            "anuncio_ind":      "Individual",
+            "estrategia":       "Estratégia",
+            "comparativo_ads":  "Comparativo",
+        }
+        icon_ativo_ads  = icons_gads_map.get(subtab_gads_ativa, ICON_SVG_ADS["clipboard"])
+        label_ativo_ads = labels_gads_map.get(subtab_gads_ativa, "")
+ 
+        def _md_to_html_ads(txt):
+            if not txt: return ""
+            import re as _re
+ 
+            txt = txt.replace("&", "&amp;")
+            txt = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
+            txt = _re.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^## (.+)$',  r'<h2>\1</h2>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^# (.+)$',   r'<h1>\1</h1>', txt, flags=_re.MULTILINE)
+            txt = _re.sub(r'^---+$', '<hr>', txt, flags=_re.MULTILINE)
+ 
+            def _apply_inline(s):
+                return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
+ 
+            def _get_ol_match(line):
+                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+ 
+            def _get_ul_match(line):
+                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+ 
+            lines = txt.split('\n')
+            output = []
+            list_stack = []
+ 
+            def close_until(target_indent):
+                while list_stack and list_stack[-1][1] >= target_indent:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
+ 
+            def close_all():
+                while list_stack:
+                    tag, _ = list_stack.pop()
+                    output.append(f'</{tag}>')
+ 
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                if not line.strip():
+                    i += 1
+                    continue
+                stripped = line.strip()
+                if _re.match(r'^\s*<(h[123]|hr)', line):
+                    close_all()
+                    output.append(stripped)
+                    i += 1
+                    continue
+                m_ol = _get_ol_match(line)
+                if m_ol:
+                    item_indent = len(m_ol.group(1))
+                    content     = _apply_inline(m_ol.group(3))
+                    close_until(item_indent + 1)
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ol':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ol':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
+                        output.append('<ol>')
+                        list_stack.append(('ol', item_indent))
+                    output.append(f'<li>{content}</li>')
+                    i += 1
+                    continue
+                m_ul = _get_ul_match(line)
+                if m_ul:
+                    item_indent = len(m_ul.group(1))
+                    content     = _apply_inline(m_ul.group(2))
+                    close_until(item_indent + 1)
+                    if not list_stack or list_stack[-1][1] < item_indent or list_stack[-1][0] != 'ul':
+                        if list_stack and list_stack[-1][1] == item_indent and list_stack[-1][0] != 'ul':
+                            tag, _ = list_stack.pop()
+                            output.append(f'</{tag}>')
+                        output.append('<ul>')
+                        list_stack.append(('ul', item_indent))
+                    output.append(f'<li>{content}</li>')
+                    i += 1
+                    continue
+                close_all()
+                output.append(f'<p>{_apply_inline(stripped)}</p>')
+                i += 1
+ 
+            close_all()
+            html = '\n'.join(output)
+ 
+            # ── FIX 1: regex de emoji ampliado ───────────────────────
+            # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
+            # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
+            # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
+            # pois ficava no "buraco" entre \u21FF (fim das setas) e \u2600
+            # (início do bloco de símbolos diversos).
+            _EMOJI_RE_ADS = _re.compile(
+                "["
+                "\U0001F1E6-\U0001FAFF"
+                "\U00002300-\U000023FF"
+                "\U00002600-\U000027BF"
+                "\U00002190-\U000021FF"
+                "\U00002B00-\U00002BFF"
+                "\uFE0F\u200d\u2022"
+                "]+",
+                flags=_re.UNICODE
+            )
+ 
+            def _limpar_titulo_ads(hdr_txt):
+                # remove tags HTML remanescentes
+                limpo = _re.sub(r'<[^>]+>', '', hdr_txt)
+                # remove emojis/pictogramas — o ícone já aparece à esquerda do card
+                limpo = _EMOJI_RE_ADS.sub('', limpo)
+                # remove espaços/pontuação que ficam sobrando após remover o emoji
+                limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
+                return limpo.strip()
+ 
+            # ── FIX 2: matching por palavra inteira (\b...\b) ────────
+            # Antes, o teste era `any(w in t for w in [...])`, ou seja,
+            # substring simples. Isso é arriscado: se uma keyword curta
+            # como "cta" for adicionada a uma lista, ela "casaria" com
+            # qualquer título contendo a palavra "CTAs" (ex.: "Padrão de
+            # CTAs"), mesmo sem nenhuma relação com a categoria pretendida.
+            # Usando \b (word boundary), "cta" só bate com a palavra "cta"
+            # isolada, não com "ctas" no plural.
+            def _match_palavra_ads(texto, palavras):
+                for p in palavras:
+                    if _re.search(r'\b' + _re.escape(p) + r'\b', texto):
+                        return True
+                return False
+ 
+            def _get_icon_for_title_ads(title_clean):
+                t = title_clean.lower()
+                if _match_palavra_ads(t, ['visão', 'visao', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
+                    return ICON_SVG_ADS['target'], '#dbeafe'
+                if _match_palavra_ads(t, ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                    return ICON_SVG_ADS['compass'], '#ede9fe'
+                if _match_palavra_ads(t, ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferencial', 'diferenciais', 'diferenciação', 'diferenciacao']):
+                    return ICON_SVG_ADS['star'], '#ccfbf1'
+                if _match_palavra_ads(t, ['melhorar', 'melhoria', 'melhorias', 'atenção', 'atencao', 'fraqueza', 'fraquezas', 'gap', 'gaps', 'limitação', 'limitacao', 'limitações', 'limitacoes', 'inconsistência', 'inconsistencia']):
+                    return ICON_SVG_ADS['lightbulb'], '#fef3c7'
+                if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                    return ICON_SVG_ADS['rocket'], '#e0f2fe'
+                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
+                if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
+                    return ICON_SVG_ADS['chart'], '#e2e8f0'
+                if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
+                    return ICON_SVG_ADS['megaphone'], '#fce7f3'
+                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
+                if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
+                    return ICON_SVG_ADS['target'], '#fee2e2'
+                if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
+                    return ICON_SVG_ADS['trophy'], '#fef9c3'
+                if _match_palavra_ads(t, ['sugerida', 'sugerido', 'recomenda', 'recomendação', 'recomendacao', 'recomendações', 'recomendacoes', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugestão', 'sugestao', 'sugestões', 'sugestoes', 'exemplo']):
+                    return ICON_SVG_ADS['clipboard'], '#f1f5f9'
+                return ICON_SVG_ADS['clipboard'], '#f1f5f9'
+ 
+            def _get_title_color_ads(title_clean):
+                t = title_clean.lower()
+                if _match_palavra_ads(t, ['visão', 'visao', 'geral', 'panorama', 'resumo', 'sobre', 'identidade']):
+                    return '#1d4ed8'
+                if _match_palavra_ads(t, ['posicionamento', 'público', 'publico', 'persona', 'segmento', 'nicho', 'audiência', 'audiencia']):
+                    return '#6d28d9'
+                if _match_palavra_ads(t, ['forte', 'positivo', 'destaque', 'funciona', 'qualidade', 'diferencial', 'diferenciais', 'diferenciação', 'diferenciacao']):
+                    return '#0f766e'
+                if _match_palavra_ads(t, ['melhorar', 'melhoria', 'melhorias', 'atenção', 'atencao', 'fraqueza', 'fraquezas', 'gap', 'gaps', 'limitação', 'limitacao', 'limitações', 'limitacoes', 'inconsistência', 'inconsistencia']):
+                    return '#b45309'
+                if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
+                    return '#0369a1'
+                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
+                if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
+                    return '#334155'
+                if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
+                    return '#be185d'
+                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
+                if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
+                    return '#b91c1c'
+                if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
+                    return '#a16207'
+                if _match_palavra_ads(t, ['sugerida', 'sugerido', 'recomenda', 'recomendação', 'recomendacao', 'recomendações', 'recomendacoes', 'ações', 'acoes', 'próximos', 'proximos', 'plano', 'sugestão', 'sugestao', 'sugestões', 'sugestoes', 'exemplo']):
+                    return '#475569'
+                return '#475569'
+ 
+            def _wrap_section_ads(html_str):
+                import re as _r2
+ 
+                def _limpar_titulo_gads_local(hdr_txt):
+                    return _limpar_titulo_ads(hdr_txt)
+ 
+                partes = _r2.split(r'(<h[23][^>]*>.*?</h[23]>)', html_str, flags=_r2.DOTALL)
+                output_parts = []
+                i2 = 0
+                while i2 < len(partes):
+                    parte = partes[i2]
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    if m_hdr:
+                        hdr_txt       = m_hdr.group(2)
+                        hdr_txt_clean = _limpar_titulo_gads_local(hdr_txt)
+                        conteudo      = partes[i2 + 1] if i2 + 1 < len(partes) else ""
+                        i2 += 1
+                        icon_svg, icon_bg = _get_icon_for_title_ads(hdr_txt_clean)
+                        title_color = _get_title_color_ads(hdr_txt_clean)
+                        caixa = (
+                            f'<div class="sec-card">'
+                            f'  <div class="sec-icon-wrap" style="background:{icon_bg};color:{title_color};">{icon_svg}</div>'
+                            f'  <div class="sec-body">'
+                            f'    <div class="sec-title" style="color:{title_color};">{hdr_txt_clean.upper()}</div>'
+                            f'    <div class="sec-divider" style="background:{title_color}33;"></div>'
+                            f'    <div class="sec-content">{conteudo}</div>'
+                            f'  </div>'
+                            f'</div>'
+                        )
+                        output_parts.append(caixa)
+                    else:
+                        output_parts.append(parte)
+                    i2 += 1
+                return ''.join(output_parts)
+ 
+            import re as _re_promote
+            html = _re_promote.sub(
+                r'<p><strong>([^<]+?):?</strong></p>',
+                r'<h3>\1</h3>',
+                html
+            )
+            html = _wrap_section_ads(html)
+            return html
+ 
+        relatorios_ads      = {str(i): _md_to_html_ads(a.get("relatorio","")) for i, a in enumerate(analises_ads)}
+        relatorios_gads_json = _json_analises.dumps(relatorios_ads, ensure_ascii=False)
+        relatorios_raw_ads  = {str(i): a.get("relatorio","") for i, a in enumerate(analises_ads)}
+        relatorios_raw_json = _json_analises.dumps(relatorios_raw_ads, ensure_ascii=False)
+ 
+        if lista_gads_ativa:
+            lista_rev_ads      = list(reversed(lista_gads_ativa))
+            reversed_first_ads = lista_rev_ads[0] if lista_rev_ads else None
+            reversed_last_ads  = lista_rev_ads[-1] if lista_rev_ads else None
+ 
+            cards_gads_html = ""
+            for a in lista_rev_ads:
+                idx_real = analises_ads.index(a)
+                icon_a   = icons_gads_map.get(a.get("tipo",""), ICON_SVG_ADS["clipboard"])
+                titulo_a = a.get("titulo","—").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                nome_arq = titulo_a.replace(" ","_").replace("/","_").replace("(","").replace(")","").replace(".","")
+ 
+                cards_gads_html += f"""
+<div class="card-row" style="border-radius:{'14px 14px 0 0' if a == reversed_first_ads else ('0 0 14px 14px' if a == reversed_last_ads else '0')};overflow:hidden;">
+    <div class="card-hdr" data-idx="{idx_real}">
+        <span class="card-hdr-icon">{icon_a}</span>
+        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+        <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+        </button>
+        <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
+            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+                   justify-content:center;cursor:pointer;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+            </svg>
+        </button>
+        <span class="btn-chevron" data-idx="{idx_real}"
+              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        </span>
+    </div>
+    <div id="rb_{idx_real}" style="display:none;border-top:1px solid #f3f4f6;">
+        <div style="padding:16px 18px;">
+            <div id="rr_{idx_real}" style="font-size:14px;color:#374151;line-height:1.8;word-break:break-word;"></div>
+        </div>
+        <div class="card-footer">
+            <button class="btn-dl" data-idx="{idx_real}" data-filename="{nome_arq}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Baixar .txt
+            </button>
+            <button class="btn-del" data-idx="{idx_real}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+                Excluir
+            </button>
+        </div>
+    </div>
+</div>"""
+ 
+            ANALISES_ADS_CSS = """
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:visible; }
+body { padding-bottom:8px; }
+ 
+.card-hdr-icon {
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink:0; width:20px; height:20px; color:#cbd5e1;
+}
+.card-hdr-icon svg { width:18px; height:18px; }
+ 
+.sec-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin: 0 0 12px 0;
+}
+.sec-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.sec-icon-wrap svg { width: 22px; height: 22px; }
+.sec-body { flex: 1; min-width: 0; }
+.sec-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.sec-divider {
+    height: 1.5px;
+    border-radius: 2px;
+    margin-bottom: 12px;
+}
+.sec-content { font-size: 14px; color: #374151; line-height: 1.75; }
+.sec-content p { margin: 0 0 8px; }
+.sec-content strong { font-weight: 700; color: #111827; }
+.sec-content em { font-style: italic; }
+ 
+.sec-content ol {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+    counter-reset: sec-counter;
+}
+.sec-content ol > li {
+    position: relative;
+    padding-left: 36px;
+    margin-bottom: 10px;
+    line-height: 1.65;
+    counter-increment: sec-counter;
+}
+.sec-content ol > li::before {
+    content: counter(sec-counter);
+    position: absolute;
+    left: 0; top: 1px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: #64748b;
+    color: #fff;
+    font-size: 12px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
+.sec-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 6px 0 0 0;
+}
+.sec-content ul > li {
+    position: relative;
+    padding-left: 20px;
+    margin-bottom: 8px;
+    line-height: 1.65;
+}
+.sec-content ul > li::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
+}
+ 
+.card-row {
+    border-bottom: 1px solid #f3f4f6;
+    background: #dde5ed;
+}
+.card-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    cursor: pointer;
+    background-color: #17406a;
+    transition: background 0.15s;
+}
+.card-hdr:hover { background-color: #21719c; }
+ 
+.card-footer {
+    display: flex;
+    gap: 10px;
+    padding: 12px 18px;
+    background: #91a49b;
+    border-top: 1px solid #dde5ed;
+    align-items: center;
+}
+.btn-dl {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 16px; border-radius: 10px;
+    border: 1.5px solid #e5e7eb; background: #fff;
+    font-size: 13px; font-weight: 700; color: #374151;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+}
+.btn-dl:hover { border-color: #3a9fd6; background: #eff6ff; color: #1d4ed8; }
+.btn-del {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 10px 18px; border-radius: 10px;
+    border: 1.5px solid #fecaca; background: #fef2f2;
+    font-size: 13px; font-weight: 700; color: #dc2626;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.15s; white-space: nowrap;
+}
+.btn-del:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
+ 
+#smb_ads h1, #smb_ads h2, #smb_ads h3 {
+    font-size: 16px; font-weight: 800; color: #0f1f35;
+    margin: 18px 0 8px; padding-bottom: 6px;
+    border-bottom: 2px solid #e5e7eb; text-transform: uppercase;
+}
+#smb_ads p  { margin: 0 0 10px; line-height: 1.75; }
+#smb_ads ul { margin: 6px 0 14px 24px; }
+#smb_ads li { margin: 0 0 4px; line-height: 1.65; }
+#smb_ads li::marker { color: #00c162; }
+#smb_ads hr { display: none; }
+#smb_ads .sec-card { border: 1px solid #e5e7eb; }
+ 
+#smb_ads ol {
+    margin: 5px 0 15px 5px;
+    list-style: none;
+    counter-reset: meu-contador;
+}
+#smb_ads ol > li {
+    line-height: 1.6; position: relative;
+    padding-left: 35px; margin-bottom: 15px;
+    counter-increment: meu-contador;
+}
+#smb_ads ol > li::before {
+    content: counter(meu-contador);
+    position: absolute; left: 0; top: 0;
+    background-color: #64748b; color: #ffffff;
+    border-radius: 50%; width: 25px; height: 25px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: bold;
+}
+"""
+ 
+            components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+{ANALISES_ADS_CSS}
+</style>
+ 
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+    {cards_gads_html}
+</div>
+ 
+<script>
+var RELS     = {relatorios_gads_json};
+var RELS_RAW = {relatorios_raw_json};
+ 
+function syncH() {{
+    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var frames = window.parent.document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {{
+        try {{ if (frames[i].contentWindow === window) {{
+            frames[i].style.height = (h + 8) + 'px';
+            frames[i].style.marginTop = '0';
+            break;
+        }} }} catch(e) {{}}
+    }}
+}}
+ 
+function toggleAds(idx) {{
+    var b = document.getElementById('rb_' + idx);
+    var r = document.getElementById('rr_' + idx);
+    var chevrons = document.querySelectorAll('.btn-chevron[data-idx="' + idx + '"]');
+    if (!b) return;
+    var open = b.style.display !== 'none';
+    b.style.display = open ? 'none' : 'block';
+    chevrons.forEach(function(c) {{ c.style.transform = open ? '' : 'rotate(180deg)'; }});
+    if (!open && r && !r.dataset.loaded) {{
+        r.innerHTML = RELS[String(idx)] || '';
+        r.dataset.loaded = '1';
+    }}
+    setTimeout(syncH, 100);
+}}
+ 
+function abrirModal(idx) {{
+    var doc  = window.parent.document;
+    var html = RELS[String(idx)] || '';
+    var raw  = RELS_RAW[String(idx)] || '';
+    var old  = doc.getElementById('gads_analise_modal_overlay');
+    if (old) old.remove();
+ 
+    var ov = doc.createElement('div');
+    ov.id = 'gads_analise_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:flex-start;justify-content:center;padding:32px 24px;overflow-y:auto;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) fecharModal(); }});
+ 
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:16px;overflow:hidden;width:min(95vw,860px);'
+        + 'display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,0.4);';
+ 
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:16px 24px;'
+        + 'background:#0e2a47;flex-shrink:0;gap:12px;';
+ 
+    var titleEl = doc.createElement('div');
+    titleEl.style.cssText = 'font-size:15px;font-weight:700;color:#fff;flex:1;min-width:0;'
+        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    titleEl.textContent = 'Análise completa';
+ 
+    var rawBtn = doc.createElement('button');
+    rawBtn.id = 'gads_modal_raw_btn';
+    rawBtn.textContent = 'Ver texto original';
+    rawBtn.style.cssText = 'padding:6px 14px;border:1px solid rgba(255,255,255,0.3);border-radius:6px;'
+        + 'background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;'
+        + 'font-family:DM Sans,sans-serif;white-space:nowrap;';
+    rawBtn.addEventListener('click', function() {{ toggleModalView(html, raw); }});
+ 
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.12);'
+        + 'border:1px solid rgba(255,255,255,0.25);color:#fff;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;';
+    closeBtn.addEventListener('click', fecharModal);
+ 
+    hdr.appendChild(titleEl);
+    hdr.appendChild(rawBtn);
+    hdr.appendChild(closeBtn);
+ 
+    var body = doc.createElement('div');
+    body.id = 'smb_ads';
+    body.style.cssText = 'padding:28px 32px;font-size:14px;color:#374151;line-height:1.85;'
+        + 'overflow-y:auto;max-height:75vh;word-break:break-word;';
+    body.innerHTML = html || '<p style="color:#9ca3af">Sem conteúdo.</p>';
+ 
+    box.appendChild(hdr);
+    box.appendChild(body);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+ 
+    window.__gadsAnaliseModalShowingRaw = false;
+ 
+    window.parent.__gadsAnaliseModalEsc = function(e) {{ if (e.key === 'Escape') fecharModal(); }};
+    doc.addEventListener('keydown', window.parent.__gadsAnaliseModalEsc);
+}}
+ 
+function toggleModalView(html, raw) {{
+    var doc  = window.parent.document;
+    var body = doc.getElementById('smb_ads');
+    var btn  = doc.getElementById('gads_modal_raw_btn');
+    if (!body || !btn) return;
+    window.__gadsAnaliseModalShowingRaw = !window.__gadsAnaliseModalShowingRaw;
+    if (window.__gadsAnaliseModalShowingRaw) {{
+        body.style.cssText += ';font-family:monospace;white-space:pre-wrap;font-size:12.5px;background:#0d1117;color:#e6edf3;';
+        body.textContent = raw;
+        btn.textContent  = 'Ver formatado';
+    }} else {{
+        body.style.fontFamily = ''; body.style.whiteSpace = '';
+        body.style.fontSize   = '14px'; body.style.background = '#fff'; body.style.color = '#374151';
+        body.innerHTML  = html;
+        btn.textContent = 'Ver texto original';
+    }}
+}}
+ 
+function fecharModal() {{
+    var doc = window.parent.document;
+    var ov  = doc.getElementById('gads_analise_modal_overlay');
+    if (ov) ov.remove();
+    if (window.parent.__gadsAnaliseModalEsc) {{
+        doc.removeEventListener('keydown', window.parent.__gadsAnaliseModalEsc);
+        window.parent.__gadsAnaliseModalEsc = null;
+    }}
+}}
+ 
+function abrirRaw(idx) {{
+    var doc = window.parent.document;
+    var raw = RELS_RAW[String(idx)] || '';
+    var old = doc.getElementById('gads_raw_overlay');
+    if (old) old.remove();
+ 
+    var ov = doc.createElement('div');
+    ov.id = 'gads_raw_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999999;'
+        + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.addEventListener('click', function(e) {{ if (e.target === ov) ov.remove(); }});
+ 
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0d1117;border-radius:16px;overflow:hidden;width:min(95vw,1000px);'
+        + 'max-height:88vh;display:flex;flex-direction:column;border:1px solid #1e395e;';
+ 
+    var hdr = doc.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 22px;'
+        + 'border-bottom:1px solid #1e395e;background:#0e1e35;flex-shrink:0;';
+ 
+    var info = doc.createElement('div');
+    info.innerHTML = '<div style="font-size:14px;font-weight:700;color:#e6edf3;font-family:DM Sans,sans-serif;">📄 Texto original</div>'
+        + '<div style="font-size:11px;color:#8b949e;margin-top:2px;">Markdown bruto</div>';
+ 
+    var btnsWrap = doc.createElement('div');
+    btnsWrap.style.cssText = 'display:flex;gap:8px;';
+ 
+    var copyBtn = doc.createElement('button');
+    copyBtn.textContent = '📋 Copiar';
+    copyBtn.style.cssText = 'padding:6px 14px;border:1px solid #1e395e;border-radius:7px;background:#0e1e35;'
+        + 'color:#22c45e;font-size:12px;font-weight:700;cursor:pointer;';
+    copyBtn.addEventListener('click', function() {{
+        var ta = doc.createElement('textarea');
+        ta.value = raw;
+        ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        doc.body.appendChild(ta); ta.focus(); ta.select();
+        try {{ doc.execCommand('copy'); copyBtn.textContent = '✅ Copiado!'; }}
+        catch(e) {{ copyBtn.textContent = '❌ Erro'; }}
+        doc.body.removeChild(ta);
+        setTimeout(function() {{ copyBtn.textContent = '📋 Copiar'; }}, 2000);
+    }});
+ 
+    var closeRaw = doc.createElement('button');
+    closeRaw.textContent = '✕';
+    closeRaw.style.cssText = 'width:32px;height:32px;border-radius:50%;background:#0e1e35;'
+        + 'border:1px solid #1e395e;color:#22c45e;font-size:17px;cursor:pointer;'
+        + 'display:flex;align-items:center;justify-content:center;';
+    closeRaw.addEventListener('click', function() {{ ov.remove(); }});
+ 
+    btnsWrap.appendChild(copyBtn);
+    btnsWrap.appendChild(closeRaw);
+    hdr.appendChild(info);
+    hdr.appendChild(btnsWrap);
+ 
+    var pre = doc.createElement('pre');
+    pre.style.cssText = 'flex:1;overflow-y:auto;overflow-x:auto;padding:20px 24px;font-size:12.5px;'
+        + 'line-height:1.7;color:#e6edf3;font-family:monospace;background:#0d1117;margin:0;'
+        + 'white-space:pre-wrap;word-break:break-word;';
+    pre.textContent = raw;
+ 
+    box.appendChild(hdr);
+    box.appendChild(pre);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+ 
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+ 
+function excluirAnalise(idx) {{
+    abrirConfirmacao(
+        '🗑️ Excluir análise',
+        'Tem certeza que deseja excluir esta análise? Esta ação não pode ser desfeita.',
+        '#ef4444',
+        'Sim, excluir',
+        function() {{
+            var chave = 'btn_rm_gads_analise_' + idx;
+            var doc = window.parent.document;
+            var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+            if (porClasse) {{ porClasse.click(); return; }}
+            var btns = doc.querySelectorAll('button');
+            for (var b of btns) {{
+                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+                if (txt === '_rm_gads_analise_' + idx + '_') {{ b.click(); return; }}
+            }}
+        }}
+    );
+}}
+ 
+function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('confirm_modal_overlay');
+    if (old) old.remove();
+ 
+    var ov = doc.createElement('div');
+    ov.id = 'confirm_modal_overlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+ 
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+ 
+    var icone = doc.createElement('div');
+    icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+    icone.textContent = '⚠️';
+ 
+    var tit = doc.createElement('div');
+    tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+    tit.textContent = titulo;
+ 
+    var msg = doc.createElement('div');
+    msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+    msg.textContent = mensagem;
+ 
+    var btnsRow = doc.createElement('div');
+    btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+ 
+    var cancelBtn = doc.createElement('button');
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    cancelBtn.onclick = function() {{ ov.remove(); }};
+ 
+    var confirmBtn = doc.createElement('button');
+    confirmBtn.textContent = labelBtn;
+    confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+    confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+ 
+    btnsRow.appendChild(cancelBtn);
+    btnsRow.appendChild(confirmBtn);
+    box.appendChild(icone);
+    box.appendChild(tit);
+    box.appendChild(msg);
+    box.appendChild(btnsRow);
+    ov.appendChild(box);
+    doc.body.appendChild(ov);
+ 
+    var escFn = function(e) {{ if (e.key === 'Escape') {{ ov.remove(); doc.removeEventListener('keydown', escFn); }} }};
+    doc.addEventListener('keydown', escFn);
+}}
+ 
+document.addEventListener('click', function(e) {{
+    var fs = e.target.closest('.btn-fullscreen');
+    if (fs) {{ e.stopPropagation(); abrirModal(parseInt(fs.dataset.idx)); return; }}
+ 
+    var rv = e.target.closest('.btn-raw');
+    if (rv) {{ e.stopPropagation(); abrirRaw(parseInt(rv.dataset.idx)); return; }}
+ 
+    var dl = e.target.closest('.btn-dl');
+    if (dl) {{
+        e.stopPropagation();
+        var raw = RELS_RAW[String(dl.dataset.idx)] || '';
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([raw], {{type:'text/plain'}}));
+        a.download = dl.dataset.filename + '.txt';
+        a.click();
+        return;
+    }}
+ 
+    var ex = e.target.closest('.btn-del');
+    if (ex) {{
+        e.stopPropagation();
+        excluirAnalise(parseInt(ex.dataset.idx));
+        return;
+    }}
+ 
+    var hdr = e.target.closest('.card-hdr');
+    if (hdr && !e.target.closest('button')) {{
+        toggleAds(parseInt(hdr.dataset.idx));
+        return;
+    }}
+ 
+    var ch = e.target.closest('.btn-chevron');
+    if (ch) {{ toggleAds(parseInt(ch.dataset.idx)); return; }}
+}});
+ 
+(function() {{
+    var cards = document.querySelectorAll('[id^="rb_"]');
+    if (cards.length === 1) {{
+        var m = cards[0].id.match(/rb_(\d+)/);
+        if (m) setTimeout(function() {{ toggleAds(parseInt(m[1])); }}, 150);
+    }}
+}})();
+ 
+if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+setTimeout(syncH, 200);
+setTimeout(syncH, 600);
+</script>
+""", height=100, scrolling=False)
+ 
+        else:
+            btn_vazio_html = ""
+            if subtab_gads_ativa == "comparativo_ads":
+                btn_vazio_html = """
+<button onclick="(function(){var btns=window.parent.document.querySelectorAll('button');for(var b of btns){var t=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();if(t==='ia_comparativo'){b.click();return;}}})()"
+    style="margin-top:4px;padding:10px 22px;border-radius:8px;border:none;
+           background:#0e2a47;font-size:14px;font-weight:700;color:#fff;
+           cursor:pointer;font-family:'DM Sans',sans-serif;">
+    ⚡ Gerar Comparativo
+</button>"""
+            else:
+                btn_vazio_html = '<div style="font-size:13px;color:#9ca3af;">Vá em <b>Empresas configuradas</b> para gerar.</div>'
+ 
+            st.markdown(f"""
+            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                        text-align:center;background:#fff;margin-top:8px;
+                        display:flex;flex-direction:column;align-items:center;gap:10px;">
+                <div style="width:40px;height:40px;color:#94a3b8;opacity:0.6;
+                    display:flex;align-items:center;justify-content:center;margin:0 auto;">{icon_ativo_ads}</div>
+                <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_ativo_ads.lower()} ainda.</div>
+                {btn_vazio_html}
+            </div>
+            """, unsafe_allow_html=True)
+ 
+        # ── Ghost buttons subtabs ───────────────────────────────────
+        ghost_subtabs_css_ads = ", ".join([
+            f".st-key-btn_gads_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_gads_analise_sub_{stk})"
+            for stk, _, _ in subtabs_gads_def
+        ])
+        st.markdown(f"""
+        <style>
+        {ghost_subtabs_css_ads} {{
+            position:fixed !important; top:-9999px !important; left:-9999px !important;
+            width:0 !important; height:0 !important; overflow:hidden !important;
+            opacity:0 !important; pointer-events:none !important; display:none !important;
+            min-height:0 !important; max-height:0 !important; padding:0 !important; margin:0 !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+ 
+        for stk, _, _ in subtabs_gads_def:
+            if st.button(f"gads_analise_sub_{stk}", key=f"btn_gads_analise_sub_{stk}"):
+                st.session_state.gads_analise_subtab = stk
                 st.rerun()
                 
 # ---------------------------------------------------

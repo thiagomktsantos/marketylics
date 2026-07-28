@@ -9198,7 +9198,7 @@ function setHeightGeral(isOpen) {{
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
     <div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
         <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
@@ -9217,7 +9217,7 @@ function setHeightGeral(isOpen) {{
 """
                 else:
                     _painel_direita_html = f"""
-  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
     <div>
       <div style="display:flex;align-items:center;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">

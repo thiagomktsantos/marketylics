@@ -2312,22 +2312,43 @@ def _ultima_execucao_acao(user_id: str, tipo_acao: str):
         return None
 
 def _contar_execucoes_mes(user_id: str, tipo_acao: str) -> int:
+    """Lê o contador já pronto em `uso_organizacao` (O(1), incrementado
+    atomicamente por registrar_execucao_acao) em vez de fazer COUNT(*)
+    ao vivo em `atividades` toda vez — mais rápido à medida que o
+    histórico de atividades cresce."""
     try:
         import datetime as _dt
-        inicio_mes = _dt.datetime.now().replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
+        mes_atual = _dt.datetime.now().replace(day=1).date().isoformat()
         res = (
-            supabase.table("atividades")
-            .select("id", count="exact")
+            supabase.table("uso_organizacao")
+            .select("quantidade")
             .eq("user_id", user_id)
-            .eq("tipo", tipo_acao)
-            .gte("criado_em", inicio_mes)
+            .eq("tipo_acao", tipo_acao)
+            .eq("mes", mes_atual)
             .execute()
         )
-        return res.count or 0
-    except Exception:
+        if res.data:
+            return res.data[0].get("quantidade", 0)
         return 0
+    except Exception:
+        # se a tabela/RPC ainda não existir (migração não rodada), cai
+        # pro comportamento antigo — nunca bloqueia por causa disso.
+        try:
+            import datetime as _dt
+            inicio_mes = _dt.datetime.now().replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            ).isoformat()
+            res = (
+                supabase.table("atividades")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("tipo", tipo_acao)
+                .gte("criado_em", inicio_mes)
+                .execute()
+            )
+            return res.count or 0
+        except Exception:
+            return 0
 
 def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
     """Confere cooldown (anti-abuso) e cota mensal (custo) antes de deixar
@@ -2357,7 +2378,8 @@ def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
     return True, ""
 
 def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
-    """Grava a execução na tabela atividades (conta pra cooldown/cota)."""
+    """Grava a execução na tabela atividades (histórico/cooldown) E
+    incrementa o contador rápido em uso_organizacao (cota mensal)."""
     if not user_id:
         return
     try:
@@ -2370,6 +2392,14 @@ def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
         }).execute()
     except Exception:
         pass
+    try:
+        supabase.rpc("incrementar_uso_organizacao", {
+            "p_user_id": user_id,
+            "p_tipo_acao": tipo_acao,
+            "p_delta": 1,
+        }).execute()
+    except Exception:
+        pass  # se a função ainda não existir (migração não rodada), não quebra nada
 
 class _RespostaBloqueada:
     """Objeto-substituto com atributo .text — mesma interface da resposta
@@ -12492,6 +12522,14 @@ elif st.session_state.pagina == "ads":
             f"Coleta de anúncios: {_nomes_empresas}",
             {"empresas": [e["nome"] for e in empresas]},
         )
+        try:
+            supabase.rpc("incrementar_uso_organizacao", {
+                "p_user_id": st.session_state.user.id,
+                "p_tipo_acao": "coleta_ads",
+                "p_delta": 1,
+            }).execute()
+        except Exception:
+            pass
 
         threading.Thread(
             target=_executar_busca_background,
@@ -19141,6 +19179,14 @@ function setHeight(isOpen) {{
         _id_ativ_coleta_redes = criar_atividade(
             st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"
         )
+        try:
+            supabase.rpc("incrementar_uso_organizacao", {
+                "p_user_id": st.session_state.user.id,
+                "p_tipo_acao": "coleta_redes",
+                "p_delta": 1,
+            }).execute()
+        except Exception:
+            pass
         threading.Thread(
             target=_coletar_redes_background,
             args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),

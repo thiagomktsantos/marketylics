@@ -18635,7 +18635,8 @@ setHeight(false);
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
         st.markdown(f"""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
-                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;">
+                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
+                    margin-bottom:16px;">
             <strong>{_nomes}</strong>
             {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
             Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
@@ -18643,14 +18644,16 @@ setHeight(false);
         """, unsafe_allow_html=True)
     if _empresas_sem_dados:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
-        st.info(
-            f"📡 **{_nomes}** {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'} "
-            f"mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados. "
-            f"Clique em **Buscar / Atualizar Anúncios** para incluí-las."
-        )
-
-    if _empresas_sem_config or _empresas_sem_dados:
-        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
+                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
+                    margin-bottom:16px;">
+            📡 <strong>{_nomes}</strong>
+            {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'}
+            mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados.
+            Clique em <strong>Buscar / Atualizar Anúncios</strong> para incluí-las.
+        </div>
+        """, unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════
     # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)

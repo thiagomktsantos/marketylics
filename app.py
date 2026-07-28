@@ -8704,7 +8704,9 @@ function setHeightGeral(isOpen) {{
                         pct = round(cnt / dest_max * 100)
                         _dom_low = dom.lower()
                         if "whatsapp" in _dom_low or "wa.me" in _dom_low:
-                            dom_display = "WhatsApp"
+                            dom_display = "whatsapp"
+                        elif "fb.me" in _dom_low or "facebook" in _dom_low:
+                            dom_display = "facebook"
                         else:
                             dom_display = dom if len(dom) <= 28 else dom[:25] + "…"
                         _icone_dest, _cor_dest = _icone_destino(dom)

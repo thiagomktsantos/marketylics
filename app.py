@@ -4962,6 +4962,32 @@ def verificar_e_migrar_pendentes(user_id: str) -> int:
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes EXCEÇÃO: {e!r}", flush=True)
         return 0
 
+def verificar_e_migrar_pendentes_google(user_id: str) -> int:
+    """Equivalente a verificar_e_migrar_pendentes, mas pro Google Ads —
+    lê `gads_cache` (não `ads_cache`) e passa plataforma="Google Ads"
+    pra migração, pra não misturar com a atividade de Meta Ads de uma
+    empresa com o mesmo nome nas duas fontes.
+
+    Existia um bug real aqui: a varredura de segurança da aba de Google
+    Ads chamava por engano a função do Meta (que só olha `ads_cache`),
+    então imagens do Google que nunca foram migradas na primeira
+    tentativa — e por isso nunca caíram em `midias_falhas` — ficavam
+    órfãs pra sempre: nem a migração pontual da coleta pegava (já tinha
+    passado), nem a retentativa (só olha o que já está em
+    midias_falhas), nem essa varredura (olhava a tabela errada)."""
+    try:
+        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+        gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        pendentes = encontrar_ads_com_link_original(gads_cache)
+        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
+        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
+        if pendentes:
+            iniciar_migracao_midia_background(user_id, pendentes, plataforma="Google Ads")
+        return total_ads_pendentes
+    except Exception as e:
+        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google EXCEÇÃO: {e!r}", flush=True)
+        return 0
+
 def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
     """As varreduras normais só olham se a URL É do R2 (pelo prefixo) —
     não confirmam se o arquivo realmente existe lá. Se um objeto sumir
@@ -18742,13 +18768,13 @@ elif st.session_state.pagina == "google_ads":
     # do R2. Cobre casos que a migração pontual de uma coleta específica
     # não pega (falha silenciosa antiga, mídia coletada antes desse
     # pipeline existir, etc.).
-    if not st.session_state.get("_verificacao_pendentes_feita") and st.session_state.get("user"):
+    if not st.session_state.get("_verificacao_pendentes_feita_google") and st.session_state.get("user"):
         threading.Thread(
-            target=verificar_e_migrar_pendentes,
+            target=verificar_e_migrar_pendentes_google,
             args=(st.session_state.user.id,),
             daemon=True,
         ).start()
-        st.session_state["_verificacao_pendentes_feita"] = True
+        st.session_state["_verificacao_pendentes_feita_google"] = True
 
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
     # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão

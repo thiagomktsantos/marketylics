@@ -6153,13 +6153,17 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                     ad_limpo.pop("images_b64", None)
 
         if not dados_limpos:
+            print(f"[GADS_CACHE] nada pra mesclar (dados_limpos vazio) — user_id={user_id}", flush=True)
             return  # nada novo pra mesclar (ex: todas as empresas vieram de erro)
 
-        supabase.rpc("mesclar_gads_cache", {
+        print(f"[GADS_CACHE] chamando RPC mesclar_gads_cache — user_id={user_id} — empresas={list(dados_limpos.keys())}", flush=True)
+        _res_rpc = supabase.rpc("mesclar_gads_cache", {
             "p_user_id": user_id,
             "p_novos_dados": dados_limpos,
         }).execute()
+        print(f"[GADS_CACHE] RPC concluída — chaves retornadas={list((_res_rpc.data or {}).keys()) if isinstance(_res_rpc.data, dict) else _res_rpc.data}", flush=True)
     except Exception as e:
+        print(f"[GADS_CACHE] ERRO ao chamar RPC mesclar_gads_cache: {e!r}", flush=True)
         st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
 
 # ---------------------------------------------------
@@ -18564,6 +18568,8 @@ elif st.session_state.pagina == "google_ads":
                 # ter cache fresco.
                 _processadas += 1
                 _grava_progresso()
+
+            print(f"[GADS_COLETA] fim do loop — novos={list(novos.keys())} — erros={list(erros.keys())}", flush=True)
 
             # Save rápido: manda só o DELTA dessa coleta (`novos`), não o
             # cache inteiro remesclado em Python — `salvar_cache_gads` já

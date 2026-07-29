@@ -17295,6 +17295,52 @@ elif st.session_state.pagina == "google_ads":
                 continue
         return ""
 
+    def _extrair_preview_google(preview_url: str) -> dict:
+        """O `previewUrl` do Google Ads Transparency Center não é uma
+        página — é um endpoint .js (content.js?...&responseCallback=...)
+        feito pra ser injetado via <script> dentro da própria Central de
+        Transparência. Mas o corpo desse JS já vem com o preview pronto:
+        uma chamada `previewservice.insertPreviewImageContent(containerId,
+        imgId, 'https://...', largura, altura)` com a URL da imagem/
+        thumbnail, e — quando o anúncio é de vídeo — essa thumbnail é do
+        YouTube (`https://i.ytimg.com/vi/<ID>/hqdefault.jpg`), com o ID
+        do vídeo embutido no próprio path. Ou seja, dá pra pegar a imagem
+        E o vídeo do YouTube sem precisar de headless browser: só baixar
+        o .js (é texto puro, não precisa executar) e aplicar regex.
+        """
+        resultado = {"image_url": "", "youtube_id": "", "youtube_url": ""}
+        if not preview_url or not preview_url.startswith("http"):
+            return resultado
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Referer": "https://adstransparency.google.com/",
+            }
+            r = requests.get(preview_url, headers=headers, timeout=15)
+            if r.status_code != 200 or not r.text:
+                return resultado
+            texto = r.text
+
+            # previewservice.insertPreviewImageContent('containerId', 'imgId', 'https://...', largura, altura)
+            m_img = re.search(
+                r"previewservice\.insertPreviewImageContent\([^,]+,\s*'[^']*',\s*'(https?://[^']+)'",
+                texto,
+            )
+            if m_img:
+                resultado["image_url"] = m_img.group(1)
+
+            # ID do vídeo do YouTube embutido na própria URL da thumbnail
+            # (regex separado, direto no texto todo, funciona mesmo se a
+            # chamada acima não bater)
+            m_yt = re.search(r"i\.ytimg\.com/vi/([a-zA-Z0-9_-]{11})/", texto)
+            if m_yt:
+                vid = m_yt.group(1)
+                resultado["youtube_id"] = vid
+                resultado["youtube_url"] = f"https://www.youtube.com/watch?v={vid}"
+        except Exception:
+            pass
+        return resultado
+
     def _truncar(txt, n=160):
         if not txt:
             return ""
@@ -17531,12 +17577,38 @@ elif st.session_state.pagina == "google_ads":
             fmt = "Texto"
 
         image_url = (item.get("imageUrl") or "").strip()
+
+        # O `previewUrl` (endpoint .js do preview, ver _extrair_preview_google
+        # acima) já vem com o thumbnail pronto e, quando o anúncio é de
+        # vídeo, com o ID do vídeo do YouTube embutido na URL da própria
+        # thumbnail. Só vale a pena baixar esse .js quando falta algo que
+        # só ele tem: imagem (quando o Apify não trouxe `imageUrl`) ou
+        # confirmação/vídeo de um anúncio já marcado como "Vídeo" — assim
+        # não gasta uma requisição extra à toa pros anúncios de imagem/
+        # texto que já vieram completos.
+        _preview_url_raw = item.get("previewUrl") or ""
+        _preview_info = {}
+        if _preview_url_raw and (not image_url or raw_format == "video"):
+            _preview_info = _extrair_preview_google(_preview_url_raw)
+            if not image_url and _preview_info.get("image_url"):
+                image_url = _preview_info["image_url"]
+
         images = [image_url] if image_url.startswith("http") else []
 
         images_b64 = []
         if images:
             b64 = _url_para_base64(images[0])
             images_b64.append(b64 if b64 else images[0])
+
+        # Se o previewUrl revelou um ID do YouTube, isso é bem mais valioso
+        # que o thumbnail estático: vira o vídeo do anúncio de verdade
+        # (jogado em "videos", igual já se faz no Meta Ads) e confirma o
+        # formato como "Vídeo" mesmo que o campo adFormat não tenha vindo
+        # certo do Apify.
+        youtube_url = _preview_info.get("youtube_url") or ""
+        videos = [youtube_url] if youtube_url else []
+        if youtube_url:
+            fmt = "Vídeo"
 
         first_shown = item.get("firstShown") or ""
         last_shown  = item.get("lastShown") or ""
@@ -17555,7 +17627,7 @@ elif st.session_state.pagina == "google_ads":
             f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
             if page_id and ad_id else ""
         )
-        snap_url = _human_page_url or (item.get("previewUrl") or "")
+        snap_url = _human_page_url or _preview_url_raw
 
         regiao = (item.get("region") or "").upper()
 
@@ -17573,7 +17645,7 @@ elif st.session_state.pagina == "google_ads":
             "images":               images,
             "images_b64":           images_b64,
             "carousel_images":      [],
-            "videos":               [],
+            "videos":               videos,
             "snapshot_url":         snap_url,
             "data_inicio":          start_fmt,
             "data_raw":             str(first_shown),

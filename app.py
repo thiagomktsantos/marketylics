@@ -8,6 +8,8 @@ import re
 import unicodedata
 import trafilatura
 import requests
+import subprocess
+import sys
 from supabase import create_client, Client
 
 # ---------------------------------------------------
@@ -19,6 +21,50 @@ st.set_page_config(
     page_icon="https://raw.githubusercontent.com/thiagomktsantos/marketylics/231a39c102b672fbb803b0ecf335febdd119d3b1/images/favicon.jpg",
     layout="wide"
 )
+
+# ---------------------------------------------------
+# PLAYWRIGHT — GARANTE O CHROMIUM INSTALADO
+# ---------------------------------------------------
+# Usado como último recurso pra achar a imagem de criativos do Google Ads
+# (ver _extrair_imagem_pagina_google, na aba Google Ads): abre a página
+# humana da Central de Transparência com um navegador headless de
+# verdade, porque ela é uma SPA em Angular e não tem nada de criativo no
+# HTML puro.
+#
+# O detalhe que quebra isso no Streamlit Community Cloud: o `pip install
+# playwright` (via requirements.txt) só instala o pacote Python — o
+# BINÁRIO do Chromium (o navegador em si, ~150MB) precisa ser baixado à
+# parte com `playwright install chromium`, e a plataforma não roda esse
+# comando sozinha. Sem isso, `sync_playwright().chromium.launch()` falha
+# com "Executable doesn't exist", o `try/except` da função engole o erro
+# silenciosamente, e a imagem simplesmente nunca aparece — foi
+# exatamente isso que estava acontecendo.
+#
+# `st.cache_resource` garante que esse download só roda UMA VEZ por
+# contêiner (na primeira vez que o app sobe depois de um deploy/restart),
+# não em todo rerun da página — senão toda interação ficaria lenta.
+# Ainda falta o outro lado da dependência: as bibliotecas de sistema
+# (libnss3, libatk etc.) que o Chromium precisa pra rodar, que vêm de um
+# `packages.txt` na raiz do repo (a plataforma instala isso com root
+# antes do app subir — ver arquivo packages.txt enviado junto).
+@st.cache_resource(show_spinner=False)
+def _garantir_chromium_playwright() -> bool:
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+            capture_output=True,
+            timeout=300,
+        )
+        return True
+    except Exception:
+        # Não derruba o app se falhar — o fallback de imagem via página
+        # humana (camada 3) simplesmente continua indisponível; as
+        # outras 2 camadas (imageUrl e previewUrl) seguem funcionando
+        # normalmente de qualquer jeito.
+        return False
+
+_garantir_chromium_playwright()
 
 # ---------------------------------------------------
 #  ÍCONES SVG — CLASSIFICAÇÃO DE SCORE (Excelente / Muito bom / Bom /

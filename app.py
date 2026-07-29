@@ -17517,7 +17517,7 @@ elif st.session_state.pagina == "google_ads":
             fmt = "Texto"
 
         image_url = (item.get("imageUrl") or "").strip()
-        images = [image_url] if (fmt == "Imagem" and image_url.startswith("http")) else []
+        images = [image_url] if image_url.startswith("http") else []
 
         images_b64 = []
         if images:
@@ -20873,7 +20873,7 @@ function imgFallback_{uid}(img){{
                         _sv = snap_url.replace("'", "")
                         _nm_onclick = f'onclick="openModal(\'\',\'{_sv}\',false)"' if snap_url else ""
                         _nm_color   = "#fff" if snap_url else "#c4c4c4"
-                        _nm_label   = "Ver criativo no Ad Library →" if snap_url else "Sem criativo"
+                        _nm_label   = "Ver criativo na Central de Transparência →" if snap_url else "Sem criativo"
                         media_block = (
                             f'<div class="media-block no-media-block" {_nm_onclick} style="{"cursor:pointer;" if snap_url else ""}">'
                             f'<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.2">'
@@ -20923,15 +20923,15 @@ function imgFallback_{uid}(img){{
     </div>
     <div class="meta-info">
         {data_inicio_html}
-        <div class="meta-row"><span class="meta-label">Plataformas:</span><span id="plat_icons_{uid}" class="plat-icons"></span></div>
+        <div class="meta-row"><span class="meta-label">Região:</span><span>{", ".join(plats) if plats else "—"}</span></div>
         {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
     </div>
     <div class="copy-section" style="position:relative">
         {'<div class="dyn-float">Dinâmico</div>' if is_dyn else ''}
-        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div><div class="page-sponsored">Patrocinado</div></div></div>
+        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div><div class="page-sponsored">{'✓ Anunciante verificado' if ad.get("verificado") else 'Google Ads'}</div></div></div>
         {body_display}
         {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
-        {'<div class="no-copy">Sem copy disponível.</div>' if not body_safe and not title_safe else ''}
+        {'<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>' if not body_safe and not title_safe else ''}
     </div>
     {media_block}
     <div class="cta-footer">
@@ -20939,14 +20939,10 @@ function imgFallback_{uid}(img){{
         <a href="{snap_url or '#'}" target="_blank" class="cta-btn" {'style="pointer-events:none;opacity:0.4"' if not snap_url else ''}>{cta_display or "Ver detalhes"}</a>
     </div>
     <div class="card-footer-btns">
-        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver no Ad Library</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
+        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver na Central de Transparência</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
-</div>
-<script>
-window.__PLATS_{uid}__ = {plat_js};
-{_plat_svg_js(uid)}
-</script>"""
+</div>"""
                     all_cards_html.append(card_html)
 
                 cards_joined = "\n".join(all_cards_html)

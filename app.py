@@ -17528,10 +17528,20 @@ elif st.session_state.pagina == "google_ads":
         last_shown  = item.get("lastShown") or ""
         start_fmt   = _dias_ativo(str(first_shown)) if first_shown else ""
 
-        snap_url = item.get("previewUrl") or (
+        # `previewUrl` NÃO é uma página navegável — é um endpoint .js com
+        # callback (content.js?...&responseCallback=fletchCallbackXXX),
+        # feito pra ser injetado dentro da própria Central de Transparência
+        # via <script>, não pra ser aberto direto no navegador. Abrir ele
+        # numa aba nova só mostra o texto cru do JS. A página humana
+        # (/advertiser/.../creative/...) sempre existe quando temos
+        # page_id + ad_id, então ela é a fonte preferida pros links/modal;
+        # o previewUrl só entra como último recurso se por algum motivo
+        # não der pra montar a página humana.
+        _human_page_url = (
             f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
             if page_id and ad_id else ""
         )
+        snap_url = _human_page_url or (item.get("previewUrl") or "")
 
         regiao = (item.get("region") or "").upper()
 
@@ -20284,8 +20294,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     with fcol3:
                         plats_todas = sorted(set(p for a in gads_list for p in (a["plataformas"] or [])))
                         filtro_plat = st.selectbox(
-                            "Plataforma",
-                            ["Plataforma (todas)"] + [p.capitalize() for p in plats_todas],
+                            "Região",
+                            ["Região (todas)"] + [p.capitalize() for p in plats_todas],
                             key=f"gads_plat_{sk}",
                             label_visibility="collapsed",
                         )
@@ -20325,7 +20335,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
-                if filtro_plat != "Plataforma (todas)":
+                if filtro_plat != "Região (todas)":
                     gads_f = [a for a in gads_f if filtro_plat.lower() in (a["plataformas"] or [])]
                 if filtro_status == "Ativos":
                     gads_f = [a for a in gads_f if a.get("ativo", True)]
@@ -20371,10 +20381,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "",
                 )
 
-                n_video     = sum(1 for a in gads_f if "Vídeo"     in a["formato"])
-                n_imagem    = sum(1 for a in gads_f if "Imagem"    in a["formato"])
-                n_carrossel = sum(1 for a in gads_f if "Carrossel" in a["formato"])
-                n_dynamic   = sum(1 for a in gads_f if a.get("is_dynamic"))
+                n_video     = sum(1 for a in gads_f if "Vídeo"  in a["formato"])
+                n_imagem    = sum(1 for a in gads_f if "Imagem" in a["formato"])
+                n_texto     = sum(1 for a in gads_f if "Texto"  in a["formato"])
                 n_ativos    = sum(1 for a in gads_f if a.get("ativo", True))
                 n_inativos  = sum(1 for a in gads_f if not a.get("ativo", True))
 
@@ -20384,9 +20393,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#6b7280">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Imagens</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_video}</div><div class="stat-lbl">Vídeos</div></div>')
-                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_carrossel}</div><div class="stat-lbl">Carrossel</div></div>')
-                if n_dynamic > 0:
-                    stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_dynamic}</div><div class="stat-lbl">Dinâmicos</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_texto}</div><div class="stat-lbl">Texto</div></div>')
 
                 cta_labels = {
                     "LEARN_MORE":"Saiba Mais","SIGN_UP":"Cadastre-se","CONTACT_US":"Fale Conosco",
@@ -20871,7 +20878,7 @@ function imgFallback_{uid}(img){{
 
                     else:
                         _sv = snap_url.replace("'", "")
-                        _nm_onclick = f'onclick="openModal(\'\',\'{_sv}\',false)"' if snap_url else ""
+                        _nm_onclick = f'onclick="openModalEmbedGads(\'{_sv}\')"' if snap_url else ""
                         _nm_color   = "#fff" if snap_url else "#c4c4c4"
                         _nm_label   = "Ver criativo na Central de Transparência →" if snap_url else "Sem criativo"
                         media_block = (
@@ -21258,6 +21265,56 @@ body{{padding-bottom:4px;min-height:0;}}
 <div class="ads-grid">{cards_joined}</div>
 
 <script>
+function openModalEmbedGads(snapUrl) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('gads_modal_overlay');
+    if (old) old.remove();
+
+    var overlay = doc.createElement('div');
+    overlay.id = 'gads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.onclick = function(e) {{ if (e.target === overlay) closeModal(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#111;border-radius:16px;overflow:hidden;position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:min(90vw,820px);max-height:92vh;padding:24px 20px 20px;';
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+    box.appendChild(closeBtn);
+
+    if (snapUrl) {{
+        var frame = doc.createElement('iframe');
+        frame.src = snapUrl;
+        frame.style.cssText = 'width:min(84vw,760px);height:min(70vh,560px);border:none;border-radius:10px;background:#fff;';
+        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
+        box.appendChild(frame);
+
+        var hint = doc.createElement('div');
+        hint.style.cssText = 'color:rgba(255,255,255,0.55);font-size:11px;font-family:DM Sans,sans-serif;text-align:center;max-width:640px;';
+        hint.textContent = 'Se o criativo não carregar aqui dentro, o Google pode estar bloqueando a incorporação — use o botão abaixo para abrir direto na Central de Transparência.';
+        box.appendChild(hint);
+
+        var btn = doc.createElement('a');
+        btn.href = snapUrl; btn.target = '_blank';
+        btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1a73e8;color:#fff;padding:12px 24px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;font-family:DM Sans,sans-serif;';
+        btn.textContent = '↗ Abrir na Central de Transparência';
+        box.appendChild(btn);
+    }} else {{
+        var msg = doc.createElement('div');
+        msg.style.cssText = 'color:#aaa;font-size:14px;padding:32px;text-align:center;font-family:DM Sans,sans-serif;';
+        msg.textContent = 'Criativo não disponível.';
+        box.appendChild(msg);
+    }}
+
+    overlay.appendChild(box);
+    doc.body.appendChild(overlay);
+
+    window.parent.__gadsModalEscFn = function(e) {{ if (e.key === 'Escape') closeModal(); }};
+    doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
+}}
+
 function openModal(mediaSrc, snapUrl, isVideo) {{
     var doc = window.parent.document;
     var old = doc.getElementById('gads_modal_overlay');
@@ -21305,7 +21362,7 @@ function openModal(mediaSrc, snapUrl, isVideo) {{
                     var btn = doc.createElement('a');
                     btn.href = snapUrl; btn.target = '_blank';
                     btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1877F2;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;text-decoration:none;';
-                    btn.textContent = '↗ Abrir no Ad Library';
+                    btn.textContent = '↗ Abrir na Central de Transparência';
                     wrap.appendChild(btn);
                     content.appendChild(wrap);
                 }}
@@ -21318,7 +21375,7 @@ function openModal(mediaSrc, snapUrl, isVideo) {{
                 var btn = doc.createElement('a');
                 btn.href = snapUrl; btn.target = '_blank';
                 btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1877F2;color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;font-weight:700;text-decoration:none;';
-                btn.textContent = '↗ Abrir vídeo no Ad Library';
+                btn.textContent = '↗ Abrir vídeo na Central de Transparência';
                 wrap.appendChild(btn);
             }}
             content.appendChild(wrap);

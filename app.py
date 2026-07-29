@@ -18636,7 +18636,7 @@ setHeight(false);
         st.markdown(f"""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
-                    margin-bottom:16px;">
+                    margin-bottom:24px;">
             <strong>{_nomes}</strong>
             {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
             Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
@@ -18647,7 +18647,7 @@ setHeight(false);
         st.markdown(f"""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
-                    margin-bottom:16px;">
+                    margin-bottom:24px;">
             📡 <strong>{_nomes}</strong>
             {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'}
             mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados.
@@ -19016,7 +19016,7 @@ function triggerTab(label) {{
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:13px;color:#0369a1;
                     display:flex;align-items:flex-start;gap:10px;
-                    line-height:1.6;margin-top:16px;margin-bottom:20px">
+                    line-height:1.6;margin-top:24px;margin-bottom:20px">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0369a1"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                  style="flex-shrink:0;margin-top:2px">

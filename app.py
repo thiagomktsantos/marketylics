@@ -17295,6 +17295,78 @@ elif st.session_state.pagina == "google_ads":
                 continue
         return ""
 
+    def _extrair_imagem_pagina_google(pagina_url: str) -> str:
+        """Último recurso pra achar a imagem de um criativo do Google Ads.
+
+        A página humana da Central de Transparência
+        (adstransparency.google.com/advertiser/.../creative/...) é uma SPA
+        em Angular: o HTML cru não tem nada de criativo, ele só aparece na
+        tela depois que o JS roda no navegador e chama o backend do Google
+        — por isso um `requests.get()` simples nela não adianta (o corpo
+        vem vazio, só a casca do app). A solução é abrir essa página com
+        um navegador headless de verdade (Playwright) e escutar o tráfego
+        de rede até aparecer uma URL que bata com
+        `tpc.googlesyndication.com/archive/simgad/<id>` — é lá que o
+        Google hospeda a imagem do criativo de fato.
+
+        Só é chamado quando o `imageUrl` do Apify E o `previewUrl` (ver
+        `_extrair_preview_google`) não trouxeram nenhuma imagem — por
+        isso pode ser mais lento (abre um browser de verdade por
+        chamada), mas só roda pros casos que realmente precisam.
+        """
+        if not pagina_url or not pagina_url.startswith("http"):
+            return ""
+        achado = [""]
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                )
+                try:
+                    page = browser.new_page(
+                        user_agent=(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                        )
+                    )
+
+                    def _checar_url(u: str):
+                        if not achado[0] and "tpc.googlesyndication.com/archive/simgad/" in u:
+                            achado[0] = u
+
+                    page.on("request", lambda req: _checar_url(req.url))
+                    page.on("response", lambda resp: _checar_url(resp.url))
+
+                    try:
+                        page.goto(pagina_url, wait_until="networkidle", timeout=20000)
+                    except Exception:
+                        pass
+
+                    if not achado[0]:
+                        page.wait_for_timeout(2000)
+
+                    # fallback final: procura o link direto no HTML já
+                    # renderizado, caso ele apareça só como atributo (src/
+                    # background-image) sem gerar uma requisição nova
+                    # capturada pelos listeners acima
+                    if not achado[0]:
+                        try:
+                            html = page.content()
+                            m = re.search(
+                                r"https://tpc\.googlesyndication\.com/archive/simgad/\d+",
+                                html,
+                            )
+                            if m:
+                                achado[0] = m.group(0)
+                        except Exception:
+                            pass
+                finally:
+                    browser.close()
+        except Exception:
+            return ""
+        return achado[0]
+
     def _extrair_preview_google(preview_url: str) -> dict:
         """O `previewUrl` do Google Ads Transparency Center não é uma
         página — é um endpoint .js (content.js?...&responseCallback=...)
@@ -17578,6 +17650,16 @@ elif st.session_state.pagina == "google_ads":
 
         image_url = (item.get("imageUrl") or "").strip()
 
+        # A página humana (/advertiser/.../creative/...) sempre existe
+        # quando temos page_id + ad_id — é montada aqui em cima (antes da
+        # extração de imagem) porque agora ela também serve de último
+        # recurso pra achar a imagem, não só como link pro modal/"ver na
+        # Central de Transparência".
+        _human_page_url = (
+            f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
+            if page_id and ad_id else ""
+        )
+
         # O `previewUrl` (endpoint .js do preview, ver _extrair_preview_google
         # acima) já vem com o thumbnail pronto e, quando o anúncio é de
         # vídeo, com o ID do vídeo do YouTube embutido na URL da própria
@@ -17592,6 +17674,14 @@ elif st.session_state.pagina == "google_ads":
             _preview_info = _extrair_preview_google(_preview_url_raw)
             if not image_url and _preview_info.get("image_url"):
                 image_url = _preview_info["image_url"]
+
+        # Se nem o `imageUrl` do Apify nem o `previewUrl` deram uma
+        # imagem, o último recurso é abrir a própria página humana da
+        # Central de Transparência com um browser headless e pegar a URL
+        # `tpc.googlesyndication.com/archive/simgad/...` que o Google
+        # carrega assincronamente nela (ver _extrair_imagem_pagina_google).
+        if not image_url and _human_page_url:
+            image_url = _extrair_imagem_pagina_google(_human_page_url)
 
         images = [image_url] if image_url.startswith("http") else []
 
@@ -17618,15 +17708,11 @@ elif st.session_state.pagina == "google_ads":
         # callback (content.js?...&responseCallback=fletchCallbackXXX),
         # feito pra ser injetado dentro da própria Central de Transparência
         # via <script>, não pra ser aberto direto no navegador. Abrir ele
-        # numa aba nova só mostra o texto cru do JS. A página humana
-        # (/advertiser/.../creative/...) sempre existe quando temos
-        # page_id + ad_id, então ela é a fonte preferida pros links/modal;
-        # o previewUrl só entra como último recurso se por algum motivo
-        # não der pra montar a página humana.
-        _human_page_url = (
-            f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
-            if page_id and ad_id else ""
-        )
+        # numa aba nova só mostra o texto cru do JS. A página humana já
+        # foi montada em `_human_page_url` (lá em cima) e continua sendo a
+        # fonte preferida pros links/modal; o previewUrl só entra como
+        # último recurso se por algum motivo não der pra montar a página
+        # humana.
         snap_url = _human_page_url or _preview_url_raw
 
         regiao = (item.get("region") or "").upper()

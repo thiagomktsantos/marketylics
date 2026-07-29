@@ -1149,6 +1149,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     um com id + título, pra alimentar o "mais informações" da atividade
     no sino de notificações."""
     if r2_client is None:
+        print("[OCR-DEBUG] persistir_midias_de_ads SAIU CEDO: r2_client is None — nenhuma mídia será migrada/inserida em `midias`", flush=True)
         return dados, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
 
     from concurrent.futures import ThreadPoolExecutor
@@ -1679,8 +1680,11 @@ def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
             .or_(_FILTRO_OCR_URL_GOOGLE)
             .execute()
         )
-        return res.count or 0
-    except Exception:
+        _total_debug = res.count or 0
+        print(f"[OCR-DEBUG] _contar_ocr_pendentes user={user_id} empresa={empresa!r} -> {_total_debug}", flush=True)
+        return _total_debug
+    except Exception as e:
+        print(f"[OCR-DEBUG] _contar_ocr_pendentes EXCEÇÃO user={user_id} empresa={empresa!r}: {e!r}", flush=True)
         return 0
 
 def _empresas_com_ocr_pendente(user_id: str) -> list:
@@ -1786,16 +1790,20 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
     nenhuma imagem do Google) simplesmente não têm nada pendente e a
     função sai sem criar atividade nenhuma."""
     if not user_id or not empresa or gemini_model is None:
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r} gemini_model_is_none={gemini_model is None}", flush=True)
         return
     with _lock_ocr_pendente:
         if (user_id, empresa) in _ocr_empresas_ativas_agora:
+            print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: já tem fila ativa pra ({user_id!r}, {empresa!r})", flush=True)
             return
         _ocr_empresas_ativas_agora.add((user_id, empresa))
     total = _contar_ocr_pendentes(user_id, empresa)
     if not total:
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: total=0 pendentes pra empresa={empresa!r} (ver log de _contar_ocr_pendentes acima)", flush=True)
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard((user_id, empresa))
         return
+    print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = criar_atividade(
         user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
         {"empresa": empresa, "processadas": 0, "total": total},
@@ -1974,8 +1982,11 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
             "status": status,
             "detalhes": detalhes or {},
         }).execute()
-        return res.data[0]["id"] if res.data else None
-    except Exception:
+        _id_criado = res.data[0]["id"] if res.data else None
+        print(f"[OCR-DEBUG] criar_atividade tipo={tipo!r} titulo={titulo!r} -> id={_id_criado!r} (res.data vazio={not res.data})", flush=True)
+        return _id_criado
+    except Exception as e:
+        print(f"[OCR-DEBUG] criar_atividade EXCEÇÃO tipo={tipo!r} titulo={titulo!r}: {e!r}", flush=True)
         return None
 
 def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
@@ -6102,23 +6113,7 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
     coluna `gads_cache`, não `ads_cache`. Antes, a coleta de Google Ads
     chamava por engano a função de Meta Ads, o que fazia os anúncios do
     Google sobrescreverem o cache do Meta (e a coluna gads_cache nunca
-    era realmente escrita).
-
-    IMPORTANTE — `dados` deve ser só o DELTA dessa coleta (as empresas
-    que acabaram de ser buscadas agora), não o cache inteiro já
-    mesclado. Antes essa função recebia o cache inteiro (lido no INÍCIO
-    da thread, antes das chamadas à Apify) e regravava a coluna inteira
-    por cima no final — se duas coletas rodassem ao mesmo tempo (clique
-    duplo, "Buscar" + "Forçar atualização", duas abas do navegador),
-    cada uma lia o mesmo estado antigo, e a que terminasse por último
-    sobrescrevia a coluna inteira, APAGANDO silenciosamente as empresas
-    que a outra tinha acabado de coletar (mesmo com a atividade do sino
-    mostrando "Coletado" pra todo mundo). Por isso agora a gravação usa
-    a RPC `mesclar_gads_cache`, que faz um merge atômico no Postgres
-    (`gads_cache = gads_cache || novos_dados`) — só toca nas chaves que
-    vieram nesse delta, nunca no resto da coluna, e não depende de
-    nenhum estado lido em Python antes das chamadas à Apify.
-    """
+    era realmente escrita)."""
     try:
         user_id = user_id or st.session_state.user.id
 
@@ -6152,18 +6147,10 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 if not _imagem_precisa_de_b64_provisorio(ad_limpo):
                     ad_limpo.pop("images_b64", None)
 
-        if not dados_limpos:
-            print(f"[GADS_CACHE] nada pra mesclar (dados_limpos vazio) — user_id={user_id}", flush=True)
-            return  # nada novo pra mesclar (ex: todas as empresas vieram de erro)
-
-        print(f"[GADS_CACHE] chamando RPC mesclar_gads_cache — user_id={user_id} — empresas={list(dados_limpos.keys())}", flush=True)
-        _res_rpc = supabase.rpc("mesclar_gads_cache", {
-            "p_user_id": user_id,
-            "p_novos_dados": dados_limpos,
-        }).execute()
-        print(f"[GADS_CACHE] RPC concluída — chaves retornadas={list((_res_rpc.data or {}).keys()) if isinstance(_res_rpc.data, dict) else _res_rpc.data}", flush=True)
+        supabase.table("ci_dados").update({
+            "gads_cache": dados_limpos,
+        }).eq("user_id", user_id).execute()
     except Exception as e:
-        print(f"[GADS_CACHE] ERRO ao chamar RPC mesclar_gads_cache: {e!r}", flush=True)
         st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
 
 # ---------------------------------------------------
@@ -18569,18 +18556,12 @@ elif st.session_state.pagina == "google_ads":
                 _processadas += 1
                 _grava_progresso()
 
-            print(f"[GADS_COLETA] fim do loop — novos={list(novos.keys())} — erros={list(erros.keys())}", flush=True)
+            cache_mergeado = merge_ads(cache_atual, novos)
 
-            # Save rápido: manda só o DELTA dessa coleta (`novos`), não o
-            # cache inteiro remesclado em Python — `salvar_cache_gads` já
-            # faz o merge atômico no Postgres (RPC `mesclar_gads_cache`),
-            # o que evita a corrida entre coletas concorrentes que antes
-            # apagava empresas coletadas por outra thread (ver comentário
-            # em `salvar_cache_gads`). Mantém os links originais do
-            # provedor por enquanto (ainda válidos por bem mais que 1
-            # dia); a troca pelos links permanentes do R2 acontece depois,
-            # em background também.
-            salvar_cache_gads(novos, migrar_midia=False, user_id=user_id)
+            # Save rápido: mantém os links originais do provedor (ainda
+            # válidos por bem mais que 1 dia). A troca pelos links
+            # permanentes do R2 acontece depois, em background também.
+            salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

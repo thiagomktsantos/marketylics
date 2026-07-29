@@ -18013,7 +18013,8 @@ elif st.session_state.pagina == "google_ads":
     if "gads_aba_conteudo" not in st.session_state:
         st.session_state.gads_aba_conteudo = {}
     if "gads_main_tab" not in st.session_state:
-        st.session_state.gads_main_tab = "empresas"
+        _tem_empresa_sem_config_init = any(not empresa_tem_gads_id(e) for e in todas_empresas)
+        st.session_state.gads_main_tab = "configuracao" if _tem_empresa_sem_config_init else "empresas"
     if "gads_config_empresa_selecionada" not in st.session_state:
         st.session_state.gads_config_empresa_selecionada = None
     if "gads_analises_salvas" not in st.session_state:
@@ -19016,7 +19017,7 @@ function triggerTab(label) {{
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:13px;color:#0369a1;
                     display:flex;align-items:flex-start;gap:10px;
-                    line-height:1.6;margin-top:24px;margin-bottom:20px">
+                    line-height:1.6;margin-top:24px;margin-bottom:32px">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0369a1"
                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
                  style="flex-shrink:0;margin-top:2px">
@@ -19369,7 +19370,7 @@ function syncHeight() {{
         try {{
             if (iframes[i].contentWindow === window) {{
                 iframes[i].style.height = (h + 32) + 'px';
-                iframes[i].style.marginTop = '-8px';
+                iframes[i].style.marginTop = '4px';
                 iframes[i].style.overflow = 'visible';
                 break;
             }}

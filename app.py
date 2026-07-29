@@ -17313,7 +17313,7 @@ elif st.session_state.pagina == "google_ads":
         except Exception:
             return False
 
-    def _url_para_base64(url: str) -> str:
+    def _url_para_base64(url: str, referer_especifico: str = "", tag: str = "GADS-B64") -> str:
         if not url or not url.startswith("http"):
             return ""
         # As imagens de criativo do Google (tpc.googlesyndication.com/archive/
@@ -17322,9 +17322,18 @@ elif st.session_state.pagina == "google_ads":
         # pro CDN do que nenhum Referer. Por isso tenta em ordem: sem headers
         # nenhum primeiro (é assim que essas URLs costumam ser servidas —
         # direto, sem exigir referer), depois só com User-Agent de navegador,
-        # e só por último com o Referer da Transparency Center. Qualquer
-        # tentativa que funcione (200 + corpo não vazio) já é aceita — não
-        # precisa das outras.
+        # depois com o Referer genérico da Transparency Center e, por
+        # último — só quando o chamador passa `referer_especifico` (a
+        # própria página /advertiser/.../creative/... do anúncio) — com
+        # esse Referer exato, que é o que um navegador de verdade manda
+        # quando carrega essa imagem dentro da página do criativo. Qualquer
+        # tentativa que funcione (200 + corpo não vazio + content-type de
+        # imagem de verdade) já é aceita — não precisa das outras.
+        #
+        # Antes essa função falhava 100% em silêncio (só `return ""`), o
+        # que deixava impossível diferenciar "o CDN bloqueou" de "deu 200
+        # mas era HTML de erro/captcha disfarçado" — por isso os prints
+        # abaixo (tag [GADS-B64] por padrão).
         tentativas = [
             {},
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
@@ -17333,17 +17342,32 @@ elif st.session_state.pagina == "google_ads":
                 "Referer": "https://adstransparency.google.com/",
             },
         ]
-        for headers in tentativas:
+        if referer_especifico:
+            tentativas.append({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Referer": referer_especifico,
+            })
+        for i, headers in enumerate(tentativas):
             try:
                 r = requests.get(url, headers=headers, timeout=15)
+                ct_raw = r.headers.get("Content-Type", "")
+                print(f"[{tag}] tentativa={i} headers={list(headers.keys())} url={url} status={r.status_code} content-type={ct_raw!r} bytes={len(r.content) if r.content else 0}", flush=True)
                 if r.status_code == 200 and r.content:
-                    ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                    ct = (ct_raw or "image/jpeg").split(";")[0].strip()
                     if not ct.startswith("image/"):
-                        ct = "image/jpeg"
+                        # 200 mas corpo não é imagem (ex.: HTML de erro/
+                        # bloqueio disfarçado de 200) — rejeita, senão o
+                        # <img> do card quebra silenciosamente com um
+                        # data:URI que não é imagem nenhuma.
+                        print(f"[{tag}] tentativa={i} REJEITADA: content-type não é image/* ({ct_raw!r})", flush=True)
+                        continue
                     data = _b64.b64encode(r.content).decode("utf-8")
+                    print(f"[{tag}] SUCESSO na tentativa={i} ({len(r.content)} bytes, {ct})", flush=True)
                     return f"data:{ct};base64,{data}"
-            except Exception:
+            except Exception as e:
+                print(f"[{tag}] tentativa={i} EXCEÇÃO: {e!r}", flush=True)
                 continue
+        print(f"[{tag}] TODAS as tentativas falharam pra {url}", flush=True)
         return ""
 
     def _extrair_imagem_pagina_google(pagina_url: str) -> str:
@@ -17773,7 +17797,16 @@ elif st.session_state.pagina == "google_ads":
 
         images_b64 = []
         if images:
-            b64 = _url_para_base64(images[0])
+            b64 = _url_para_base64(images[0], referer_especifico=_human_page_url, tag=f"GADS-B64:{ad_id}")
+            if not b64:
+                # Sem base64 (CDN bloqueou todas as tentativas), o card
+                # cai pro <img src> direto na URL crua do Google — que
+                # tem boa chance de falhar no navegador do usuário por
+                # hotlink/referrer (o <img> do card usa
+                # referrerpolicy="no-referrer", que tende a ser bloqueado
+                # por esse CDN), resultando no card "sem imagem" mesmo o
+                # backend tendo achado a URL certa.
+                print(f"[GADS] ad_id={ad_id} ATENÇÃO: base64 falhou, card vai depender do <img src> direto (pode quebrar por hotlink)", flush=True)
             images_b64.append(b64 if b64 else images[0])
 
         # Se o previewUrl revelou um ID do YouTube, isso é bem mais valioso

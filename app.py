@@ -17464,6 +17464,19 @@ elif st.session_state.pagina == "google_ads":
                 vid = m_yt.group(1)
                 resultado["youtube_id"] = vid
                 resultado["youtube_url"] = f"https://www.youtube.com/watch?v={vid}"
+                # Às vezes o `insertPreviewImageContent` acima não bate
+                # (o JS do preview de vídeo pode montar a chamada de um
+                # jeito ligeiramente diferente), mas já temos o ID do
+                # vídeo — dá pra montar a URL da thumbnail na mão, sem
+                # depender do regex anterior. Isso importa: sem isso,
+                # `image_url` ficava vazio e o código caía no fallback
+                # via Playwright (página humana), que aí pegava a
+                # PRIMEIRA imagem `tpc.googlesyndication.com/archive/
+                # simgad/...` da página — que costuma ser o LOGO do
+                # anunciante (aparece em toda página de criativo dele),
+                # não o criativo de verdade.
+                if not resultado["image_url"]:
+                    resultado["image_url"] = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
         except Exception:
             pass
         return resultado
@@ -17737,7 +17750,18 @@ elif st.session_state.pagina == "google_ads":
         # Central de Transparência com um browser headless e pegar a URL
         # `tpc.googlesyndication.com/archive/simgad/...` que o Google
         # carrega assincronamente nela (ver _extrair_imagem_pagina_google).
-        if not image_url and _human_page_url:
+        #
+        # IMPORTANTE: só faz isso se o anúncio não tiver vídeo do
+        # YouTube identificado. Testado na prática: pra anúncio de
+        # vídeo, essa página costuma carregar o LOGO do anunciante (que
+        # aparece em toda página de criativo dele) como a primeira URL
+        # `tpc.googlesyndication.com/archive/simgad/...` — e como o
+        # anunciante é sempre o mesmo em todos os criativos, isso fazia
+        # vários anúncios diferentes mostrarem a MESMA imagem errada
+        # (o logo, não o criativo). Anúncio de vídeo já tem a thumbnail
+        # do YouTube (via _extrair_preview_google) — não precisa e não
+        # deve cair nesse fallback.
+        if not image_url and not _preview_info.get("youtube_url") and _human_page_url:
             print(f"[GADS] ad_id={ad_id} caindo pro fallback via página humana: {_human_page_url}", flush=True)
             image_url = _extrair_imagem_pagina_google(_human_page_url)
         elif not image_url:

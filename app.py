@@ -57,7 +57,7 @@ def _garantir_chromium_playwright() -> bool:
             timeout=300,
             text=True,
         )
-        print(f"[PLAYWRIGHT] chromium instalado com sucesso. stdout: {r.stdout[-500:]}")
+        print(f"[PLAYWRIGHT] chromium instalado com sucesso. stdout: {r.stdout[-500:]}", flush=True)
         return True
     except Exception as e:
         # Não derruba o app se falhar — o fallback de imagem via página
@@ -65,11 +65,11 @@ def _garantir_chromium_playwright() -> bool:
         # outras 2 camadas (imageUrl e previewUrl) seguem funcionando
         # normalmente de qualquer jeito.
         stderr = getattr(e, "stderr", "")
-        print(f"[PLAYWRIGHT] FALHA ao instalar chromium: {e!r} | stderr: {stderr}")
+        print(f"[PLAYWRIGHT] FALHA ao instalar chromium: {e!r} | stderr: {stderr}", flush=True)
         return False
 
 _chromium_ok = _garantir_chromium_playwright()
-print(f"[PLAYWRIGHT] _garantir_chromium_playwright() retornou: {_chromium_ok}")
+print(f"[PLAYWRIGHT] _garantir_chromium_playwright() retornou: {_chromium_ok}", flush=True)
 
 # ---------------------------------------------------
 #  ÍCONES SVG — CLASSIFICAÇÃO DE SCORE (Excelente / Muito bom / Bom /
@@ -17367,7 +17367,7 @@ elif st.session_state.pagina == "google_ads":
         """
         if not pagina_url or not pagina_url.startswith("http"):
             return ""
-        print(f"[GADS-IMG] abrindo página humana: {pagina_url}")
+        print(f"[GADS-IMG] abrindo página humana: {pagina_url}", flush=True)
         achado = [""]
         try:
             with sync_playwright() as p:
@@ -17393,7 +17393,7 @@ elif st.session_state.pagina == "google_ads":
                     try:
                         page.goto(pagina_url, wait_until="networkidle", timeout=20000)
                     except Exception as e_goto:
-                        print(f"[GADS-IMG] goto falhou/timeout: {e_goto!r}")
+                        print(f"[GADS-IMG] goto falhou/timeout: {e_goto!r}", flush=True)
 
                     if not achado[0]:
                         page.wait_for_timeout(2000)
@@ -17405,7 +17405,7 @@ elif st.session_state.pagina == "google_ads":
                     if not achado[0]:
                         try:
                             html = page.content()
-                            print(f"[GADS-IMG] HTML renderizado tem {len(html)} chars")
+                            print(f"[GADS-IMG] HTML renderizado tem {len(html)} chars", flush=True)
                             m = re.search(
                                 r"https://tpc\.googlesyndication\.com/archive/simgad/\d+",
                                 html,
@@ -17413,13 +17413,13 @@ elif st.session_state.pagina == "google_ads":
                             if m:
                                 achado[0] = m.group(0)
                         except Exception as e_html:
-                            print(f"[GADS-IMG] falha ao ler page.content(): {e_html!r}")
+                            print(f"[GADS-IMG] falha ao ler page.content(): {e_html!r}", flush=True)
                 finally:
                     browser.close()
         except Exception as e_outer:
-            print(f"[GADS-IMG] FALHA GERAL (provavelmente browser.launch): {e_outer!r}")
+            print(f"[GADS-IMG] FALHA GERAL (provavelmente browser.launch): {e_outer!r}", flush=True)
             return ""
-        print(f"[GADS-IMG] resultado final pra {pagina_url}: {achado[0] or '(vazio)'}")
+        print(f"[GADS-IMG] resultado final pra {pagina_url}: {achado[0] or '(vazio)'}", flush=True)
         return achado[0]
 
     def _extrair_preview_google(preview_url: str) -> dict:
@@ -17704,7 +17704,7 @@ elif st.session_state.pagina == "google_ads":
             fmt = "Texto"
 
         image_url = (item.get("imageUrl") or "").strip()
-        print(f"[GADS] ad_id={ad_id} page_id={page_id} raw_format={raw_format!r} imageUrl_apify={image_url!r} previewUrl_apify={item.get('previewUrl')!r}")
+        print(f"[GADS] ad_id={ad_id} page_id={page_id} raw_format={raw_format!r} imageUrl_apify={image_url!r} previewUrl_apify={item.get('previewUrl')!r}", flush=True)
 
         # A página humana (/advertiser/.../creative/...) sempre existe
         # quando temos page_id + ad_id — é montada aqui em cima (antes da
@@ -17728,7 +17728,7 @@ elif st.session_state.pagina == "google_ads":
         _preview_info = {}
         if _preview_url_raw and (not image_url or raw_format == "video"):
             _preview_info = _extrair_preview_google(_preview_url_raw)
-            print(f"[GADS] ad_id={ad_id} _extrair_preview_google retornou: {_preview_info}")
+            print(f"[GADS] ad_id={ad_id} _extrair_preview_google retornou: {_preview_info}", flush=True)
             if not image_url and _preview_info.get("image_url"):
                 image_url = _preview_info["image_url"]
 
@@ -17738,12 +17738,12 @@ elif st.session_state.pagina == "google_ads":
         # `tpc.googlesyndication.com/archive/simgad/...` que o Google
         # carrega assincronamente nela (ver _extrair_imagem_pagina_google).
         if not image_url and _human_page_url:
-            print(f"[GADS] ad_id={ad_id} caindo pro fallback via página humana: {_human_page_url}")
+            print(f"[GADS] ad_id={ad_id} caindo pro fallback via página humana: {_human_page_url}", flush=True)
             image_url = _extrair_imagem_pagina_google(_human_page_url)
         elif not image_url:
-            print(f"[GADS] ad_id={ad_id} SEM imagem e SEM _human_page_url (page_id ou ad_id vazio) — não dá pra tentar o fallback")
+            print(f"[GADS] ad_id={ad_id} SEM imagem e SEM _human_page_url (page_id ou ad_id vazio) — não dá pra tentar o fallback", flush=True)
 
-        print(f"[GADS] ad_id={ad_id} image_url FINAL: {image_url!r}")
+        print(f"[GADS] ad_id={ad_id} image_url FINAL: {image_url!r}", flush=True)
 
         images = [image_url] if image_url.startswith("http") else []
 

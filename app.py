@@ -20567,7 +20567,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
                 with st.container(key=filtros_key):
-                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])
+                    fcol1, fcol2, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 0.6])
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -20580,14 +20580,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             "Tipo",
                             ["Tipo (todos)"] + formatos_disponiveis,
                             key=f"gads_fmt_{sk}",
-                            label_visibility="collapsed",
-                        )
-                    with fcol3:
-                        plats_todas = sorted(set(p for a in gads_list for p in (a["plataformas"] or [])))
-                        filtro_plat = st.selectbox(
-                            "Região",
-                            ["Região (todas)"] + [p.capitalize() for p in plats_todas],
-                            key=f"gads_plat_{sk}",
                             label_visibility="collapsed",
                         )
                     with fcol4:
@@ -20626,8 +20618,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
-                if filtro_plat != "Região (todas)":
-                    gads_f = [a for a in gads_f if filtro_plat.lower() in (a["plataformas"] or [])]
                 if filtro_status == "Ativos":
                     gads_f = [a for a in gads_f if a.get("ativo", True)]
                 elif filtro_status == "Inativos (histórico)":
@@ -20766,6 +20756,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     plat_js     = _json.dumps([p.lower() for p in plats])
                     data_raw_ad = ad.get("data_raw","")
                     data_inicio = _dias_ativo(data_raw_ad) if data_raw_ad else ad.get("data_inicio","")
+                    data_fim_raw_ad = ad.get("data_fim_raw","")
+                    # Reaproveita _dias_ativo só pra parsear/formatar a data
+                    # (ela devolve "dd/mm/aaaa (N dias ativo)") — aqui a
+                    # gente só quer a data, o texto "dias ativo" não faz
+                    # sentido pra "última exibição".
+                    ultima_exib = (_dias_ativo(data_fim_raw_ad).split(" (")[0] if data_fim_raw_ad else "") or "—"
                     impressoes  = ad.get("impressoes","")
                     body        = ad.get("body") or ""
                     title       = ad.get("title") or ""
@@ -21221,21 +21217,17 @@ function imgFallback_{uid}(img){{
     </div>
     <div class="meta-info">
         {data_inicio_html}
-        <div class="meta-row"><span class="meta-label">Região:</span><span>{", ".join(plats) if plats else "—"}</span></div>
+        <div class="meta-row"><span class="meta-label">Última exibição:</span><span>{ultima_exib}</span></div>
         {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
     </div>
     <div class="copy-section" style="position:relative">
         {'<div class="dyn-float">Dinâmico</div>' if is_dyn else ''}
-        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div><div class="page-sponsored">{'✓ Anunciante verificado' if ad.get("verificado") else 'Google Ads'}</div></div></div>
+        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div>{'<div class="page-sponsored">✓ Anunciante verificado</div>' if ad.get("verificado") else ''}</div></div>
         {body_display}
         {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
         {'<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>' if not body_safe and not title_safe else ''}
     </div>
     {media_block}
-    <div class="cta-footer">
-        <span class="cta-domain">{ad.get("caption") or (snap_url.replace("https://","").split("/")[0] if snap_url else "")}</span>
-        <a href="{snap_url or '#'}" target="_blank" class="cta-btn" {'style="pointer-events:none;opacity:0.4"' if not snap_url else ''}>{cta_display or "Ver detalhes"}</a>
-    </div>
     <div class="card-footer-btns">
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver na Central de Transparência</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>

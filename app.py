@@ -17976,15 +17976,15 @@ elif st.session_state.pagina == "google_ads":
         # tempos em tempos se a coleta e/ou a migração de mídia já
         # terminaram — sem exigir nenhuma ação do usuário nem mostrar
         # avisos na tela.
-        st.button("_gads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
+        st.button("_gads_verificar_coleta_trigger_", key="_btn_verificar_coleta_gads")
         st.markdown("""
         <style>
-        .st-key-_btn_verificar_coleta_ads {
+        .st-key-_btn_verificar_coleta_gads {
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
             opacity:0 !important; pointer-events:none !important; display:none !important;
         }
-        .stElementContainer:has(.st-key-_btn_verificar_coleta_ads) {
+        .stElementContainer:has(.st-key-_btn_verificar_coleta_gads) {
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
         }

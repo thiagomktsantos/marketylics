@@ -2153,6 +2153,18 @@ _TIPO_ATIVIDADE_LABELS = {
         "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
         "#f5a623", "Coleta de anúncios",
     ),
+    # Tipo separado do "coleta_ads" (Meta) só na tabela `atividades` —
+    # antes os dois usavam o mesmo `tipo`, e a sincronização da tela do
+    # Google Ads acabava seguindo por engano a atividade mais recente de
+    # Meta Ads (ou vice-versa), deixando o cache em memória travado numa
+    # versão antiga mesmo com a coleta já concluída no banco. A cota
+    # mensal continua contando os dois juntos como "coleta_ads" (isso não
+    # muda), só o rastreio de "qual atividade acabou de terminar" ficou
+    # isolado por plataforma.
+    "coleta_ads_google": (
+        "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
+        "#f5a623", "Coleta de anúncios (Google Ads)",
+    ),
     "coleta_redes": (
         "M17,19H7V5H17M17,1H7C5.89,1 5,1.89 5,3V21A2,2 0 0,0 7,23H17A2,2 0 0,0 19,21V3C19,1.89 18.1,1 17,1Z",
         "#3a9fd6", "Coleta de redes sociais",
@@ -2504,7 +2516,7 @@ def _formatar_detalhes_atividade(atividade: dict):
         texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} imagens processadas."
         return _svg_icone(path, "currentColor", 14), texto
 
-    if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
+    if tipo in ("coleta_ads", "coleta_ads_google") and ("coletadas" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
         coletadas_d = d.get("coletadas", [])
         # Enquanto está "em_andamento", mostra progresso de verdade (quantas
@@ -18564,7 +18576,7 @@ elif st.session_state.pagina == "google_ads":
         _nomes_empresas = ", ".join(e["nome"] for e in empresas)
         _atividade_id = criar_atividade(
             st.session_state.user.id,
-            "coleta_ads",
+            "coleta_ads_google",
             f"{_nomes_empresas} · Coleta de anúncios (Google Ads)",
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
@@ -18589,17 +18601,26 @@ elif st.session_state.pagina == "google_ads":
         st.rerun()
 
     def _ultima_atividade_coleta_ads(user_id: str):
-        """Busca a atividade `coleta_ads` mais recente direto no banco.
-        Serve de fonte da verdade pra sincronizar a tela, em vez de
+        """Busca a atividade `coleta_ads_google` mais recente direto no
+        banco. Serve de fonte da verdade pra sincronizar a tela, em vez de
         depender só da flag de sessão `_coleta_gads_em_andamento` — que se
         perde se o usuário sair da aba Ads, recarregar a página, ou o
-        polling em JS falhar por qualquer motivo."""
+        polling em JS falhar por qualquer motivo.
+
+        IMPORTANTE: usa o tipo `coleta_ads_google`, diferente do
+        `coleta_ads` usado pela página de Meta Ads. Antes os dois
+        compartilhavam o mesmo `tipo`, então essa consulta podia trazer a
+        atividade mais recente de Meta Ads em vez da de Google Ads (ou
+        vice-versa na outra página) — a tela achava que não tinha nada
+        novo pra sincronizar e o `gads_cache` da sessão ficava travado
+        numa versão antiga, mesmo com a coleta já concluída no banco
+        (era isso que fazia os concorrentes recém-coletados não aparecerem)."""
         try:
             res = (
                 supabase.table("atividades")
                 .select("id, status, criado_em")
                 .eq("user_id", user_id)
-                .eq("tipo", "coleta_ads")
+                .eq("tipo", "coleta_ads_google")
                 .order("criado_em", desc=True)
                 .limit(1)
                 .execute()
@@ -29704,7 +29725,7 @@ html, body { background: transparent; overflow: hidden; }
                 # _executar_busca_background / _coletar_redes_background a
                 # cada empresa processada.
                 _empresa_rows_html = ""
-                if _a.get("tipo") in ("coleta_ads", "coleta_redes"):
+                if _a.get("tipo") in ("coleta_ads", "coleta_ads_google", "coleta_redes"):
                     _por_empresa_ativ = _detalhes_dict_ativ.get("por_empresa") or {}
                     if _por_empresa_ativ:
                         _linhas_empresa_html = []

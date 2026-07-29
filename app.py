@@ -1602,6 +1602,208 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 
 
 # ---------------------------------------------------
+#  OCR DE IMAGENS DO GOOGLE ADS — o Google Ads Transparency Center não
+#  expõe texto do anúncio (headline/descrição) via API pública, nem
+#  pros anúncios de formato "Texto" (ver comentário em
+#  _normalizar_item_apify, na aba Google Ads): tudo chega como imagem
+#  crua. Esta fila roda OCR via Gemini Vision sobre as imagens JÁ
+#  MIGRADAS pro R2 (link permanente, nunca expira), pra pelo menos
+#  mostrar o texto visível no criativo em vez de deixar o card sem
+#  nenhuma copy.
+#
+#  Mesmo padrão desacoplado da transcrição de vídeo acima: roda DEPOIS
+#  da migração, numa fila própria (ver iniciar_ocr_pendente_background
+#  chamada em _migrar_midia_background), pra não segurar os workers de
+#  download/upload da migração com uma chamada de IA por imagem.
+#
+#  REQUER MIGRAÇÃO NO BANCO — a coluna abaixo ainda não existe:
+#      ALTER TABLE midias ADD COLUMN ocr_texto text;
+#  (mesma convenção 3-estados da coluna `transcricao`: NULL = ainda não
+#  processado, "" = processado e não achou texto, com texto = pronto)
+
+_lock_ocr_pendente = threading.Lock()
+
+@st.cache_resource
+def _get_ocr_empresas_ativas_agora() -> set:
+    return set()
+
+_ocr_empresas_ativas_agora = _get_ocr_empresas_ativas_agora()  # (user_id, empresa) — evita 2 filas de OCR rodando pra mesma empresa ao mesmo tempo
+
+_FILTRO_OCR_URL_GOOGLE = "url_origem.ilike.%googlesyndication.com%,url_origem.ilike.%googleusercontent.com%"
+
+def _extrair_texto_ocr_imagem(url_imagem: str) -> str:
+    """Baixa a imagem (já no nosso R2) e pede pro Gemini transcrever o
+    texto visível no criativo (headline, descrição, CTA). Devolve ""
+    (nunca None) em qualquer falha ou quando não há texto nenhum —
+    mesma convenção da transcrição de vídeo: string vazia = "já tentei,
+    não achei nada", pra não voltar pra fila pra sempre."""
+    if gemini_model is None:
+        return ""
+    try:
+        r = requests.get(url_imagem, timeout=20)
+        r.raise_for_status()
+        ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+        if not ct.startswith("image/"):
+            ct = "image/jpeg"
+        img_b64 = base64.b64encode(r.content).decode("utf-8")
+        prompt = (
+            "Esta é a imagem de um anúncio do Google Ads. Transcreva "
+            "EXATAMENTE o texto visível nela (headline, corpo/descrição "
+            "e botão de call-to-action), na ordem em que aparece, um "
+            "trecho por linha. Não descreva a imagem, não traduza, não "
+            "invente nada que não esteja escrito de verdade. Se não "
+            "houver nenhum texto legível, responda só: SEM_TEXTO"
+        )
+        resp = gemini_model.generate_content([
+            prompt,
+            {"inline_data": {"mime_type": ct, "data": img_b64}},
+        ])
+        texto = (getattr(resp, "text", "") or "").strip()
+        if texto.upper().startswith("SEM_TEXTO"):
+            return ""
+        return texto
+    except Exception:
+        return ""
+
+def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
+    """Quantas imagens do Google Ads dessa empresa já foram migradas
+    (estão em `midias`) mas ainda não têm ocr_texto salvo (NULL)."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .eq("tipo", "imagem")
+            .is_("ocr_texto", "null")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .execute()
+        )
+        return res.count or 0
+    except Exception:
+        return 0
+
+def _empresas_com_ocr_pendente(user_id: str) -> list:
+    """Equivalente a _empresas_com_transcricao_pendente, mas pra fila de
+    OCR — usada pelo auto-retry da sidebar (a cada 15s)."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("empresa")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .is_("ocr_texto", "null")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .limit(2000)
+            .execute()
+        )
+        return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
+    except Exception:
+        return []
+
+def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
+    """Processa a fila de OCR de UMA empresa até esvaziar — mesmo padrão
+    (e mesma correção de loop infinito) de _transcrever_pendentes_background:
+    cada linha só é tentada UMA VEZ por execução desta thread; sucesso ou
+    falha, ela não volta pra fila até a próxima chamada."""
+    _chave_ativa = (user_id, empresa)
+    processadas = 0
+    total = _contar_ocr_pendentes(user_id, empresa)
+    _ids_tentados_neste_run = set()
+    _ids_falharam = []
+    try:
+        while True:
+            try:
+                _query = (
+                    supabase.table("midias")
+                    .select("id, url_cdn")
+                    .eq("user_id", user_id)
+                    .eq("empresa", empresa)
+                    .eq("tipo", "imagem")
+                    .is_("ocr_texto", "null")
+                    .or_(_FILTRO_OCR_URL_GOOGLE)
+                )
+                if _ids_tentados_neste_run:
+                    _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
+                res = _query.limit(5).execute()
+            except Exception:
+                break
+            pendentes = res.data or []
+            if not pendentes:
+                break
+            total_real = processadas + _contar_ocr_pendentes(user_id, empresa)
+            if total_real > total:
+                total = total_real
+            for midia in pendentes:
+                _ids_tentados_neste_run.add(midia["id"])
+                texto = _extrair_texto_ocr_imagem(midia["url_cdn"])
+                try:
+                    supabase.table("midias").update({"ocr_texto": texto or ""}).eq("id", midia["id"]).execute()
+                except Exception:
+                    _ids_falharam.append(str(midia["id"]))
+                processadas += 1
+                if atividade_id:
+                    atualizar_atividade(atividade_id, "em_andamento", {
+                        "empresa": empresa,
+                        "processadas": processadas,
+                        "total": max(total, processadas),
+                        "ultimo_heartbeat_em": _agora_iso(),
+                    })
+        if atividade_id:
+            if _ids_falharam:
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresa": empresa,
+                    "processadas": processadas,
+                    "total": max(total, processadas),
+                    "aviso": (
+                        f"{len(_ids_falharam)} de {processadas} imagens tiveram erro ao "
+                        f"salvar o texto extraído no banco — clique 'Refazer' pra tentar "
+                        f"de novo."
+                    ),
+                })
+            else:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "empresa": empresa,
+                    "processadas": processadas,
+                    "total": max(total, processadas),
+                })
+    except Exception as e:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {
+                "empresa": empresa, "motivo": str(e),
+                "processadas": processadas, "total": max(total, processadas),
+            })
+    finally:
+        with _lock_ocr_pendente:
+            _ocr_empresas_ativas_agora.discard(_chave_ativa)
+
+def iniciar_ocr_pendente_background(user_id: str, empresa: str):
+    """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
+    das imagens do Google Ads dessa empresa que já foram migradas pro R2
+    mas ainda não têm texto extraído. Mesmo padrão de
+    iniciar_transcricao_pendente_background — chamada logo depois da
+    migração terminar, sem bloquear quem chamou. Empresas só-Meta (sem
+    nenhuma imagem do Google) simplesmente não têm nada pendente e a
+    função sai sem criar atividade nenhuma."""
+    if not user_id or not empresa or gemini_model is None:
+        return
+    with _lock_ocr_pendente:
+        if (user_id, empresa) in _ocr_empresas_ativas_agora:
+            return
+        _ocr_empresas_ativas_agora.add((user_id, empresa))
+    total = _contar_ocr_pendentes(user_id, empresa)
+    if not total:
+        with _lock_ocr_pendente:
+            _ocr_empresas_ativas_agora.discard((user_id, empresa))
+        return
+    atividade_id = criar_atividade(
+        user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
+        {"empresa": empresa, "processadas": 0, "total": total},
+    )
+    threading.Thread(target=_ocr_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
+
+
+# ---------------------------------------------------
 #  TRANSCRIÇÃO DE REELS (REDES SOCIAIS) — mesmo padrão dos vídeos de
 #  Anúncios acima, mas adaptado: aqui não existe uma tabela `midias` por
 #  vídeo — os posts de Redes Sociais vivem inteiros dentro do JSON
@@ -1991,6 +2193,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M12,22C6.48,22 2,17.52 2,12C2,6.48 6.48,2 12,2C17.52,2 22,6.48 22,12C22,17.52 17.52,22 12,22M13,7H11V13L16.25,16.15L17,14.92L13,12.5V7Z",
         "#2ecc71", "Novos posts em redes sociais",
     ),
+    "ocr_gads": (
+        "M4,4H10V10H4V4M20,4V10H14V4H20M14,20V14H20V20H14M4,20V14H10V20H4M4,4",
+        "#f5a623", "Extraindo texto dos anúncios do Google Ads (OCR)",
+    ),
 }
 
 # Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
@@ -2218,6 +2424,7 @@ _PARES_PROGRESSO_POR_TIPO = {
     "reprocessamento_midia": ("processadas", "total"),
     "reconciliacao_midia":   ("corrigidos", "verificados"),
     "retentativa_midia":     ("recuperadas", "verificadas"),
+    "ocr_gads":              ("processadas", "total"),
     # "coleta_ads" NÃO entra aqui: em vez de uma barra agregada única,
     # esse tipo ganhou uma barra POR EMPRESA (ver 'por_empresa' nos
     # detalhes, gravado por _executar_busca_background, e o bloco de
@@ -2290,6 +2497,11 @@ def _formatar_detalhes_atividade(atividade: dict):
         economia = d.get("economizado_mb", 0)
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["reprocessamento_midia"]
         texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} anúncios otimizados — {economia}MB economizados."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "ocr_gads" and "processadas" in d:
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["ocr_gads"]
+        texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} imagens processadas."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "coleta_ads" and ("coletadas" in d or "com_erro" in d):
@@ -4387,6 +4599,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         # correspondente pra essa mesma empresa.
         iniciar_transcricao_pendente_background(user_id, empresa)
 
+        # Mesma lógica acima, mas pra OCR das imagens do Google Ads (ver
+        # bloco "OCR DE IMAGENS DO GOOGLE ADS" acima) — empresas sem
+        # nenhuma imagem do Google simplesmente não têm nada pendente e
+        # a função retorna sem criar atividade nenhuma.
+        iniciar_ocr_pendente_background(user_id, empresa)
+
         # Atualização atômica: troca só os anúncios migrados (por id),
         # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
         # Python. Isso evita a corrida entre migrações concorrentes de
@@ -4807,6 +5025,44 @@ def _resetar_falhas_midia_empresa(user_id: str, empresa: str) -> int:
     except Exception:
         return 0
 
+def _resetar_falhas_midia_usuario(user_id: str) -> int:
+    """Igual a `_resetar_falhas_midia_empresa`, mas pra TODAS as empresas
+    do usuário de uma vez — usado pelo "Refazer" da atividade
+    `retentativa_midia`, que não é por empresa (ela varre `midias_falhas`
+    do usuário inteiro). Sem isso, mídias que já bateram no teto de
+    MAX_TENTATIVAS_MIDIA ficam excluídas da consulta pra sempre (ver
+    _tentar_novamente_midias_background), e a atividade reporta "nenhuma
+    mídia pendente de retentativa" mesmo com anúncios do Google ainda sem
+    link permanente no R2 — o clique manual é o usuário pedindo pra
+    tentar de novo mesmo sabendo que já esgotou as tentativas automáticas."""
+    try:
+        res = (
+            supabase.table("midias_falhas")
+            .delete()
+            .eq("user_id", user_id)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
+def refazer_retentativa_midia(user_id: str, atividade_id: str) -> bool:
+    """Refazer pra atividades `retentativa_midia`: zera o teto de
+    tentativas de todas as mídias falhas do usuário e roda a retentativa
+    de novo, reaproveitando a MESMA atividade (mesmo padrão de
+    refazer_migracao_midia)."""
+    try:
+        _resetar_falhas_midia_usuario(user_id)
+        atualizar_atividade(atividade_id, "em_andamento", {})
+        threading.Thread(
+            target=_tentar_novamente_midias_background,
+            args=(user_id, atividade_id),
+            daemon=True,
+        ).start()
+        return True
+    except Exception:
+        return False
+
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
     anúncios que já estão salvos no ads_cache (não precisa recoletar).
@@ -4862,6 +5118,30 @@ def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> 
     atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
     threading.Thread(
         target=_transcrever_pendentes_background,
+        args=(user_id, empresa, atividade_id),
+        daemon=True,
+    ).start()
+    return True
+
+def refazer_ocr_gads(user_id: str, empresa: str, atividade_id: str) -> bool:
+    """Equivalente a refazer_transcricao_video, mas pra atividades
+    `ocr_gads`: usado pelo botão "🔄 Refazer" quando o OCR de uma empresa
+    terminou como 'erro' (ex: falha ao salvar o texto extraído no
+    banco). Devolve False sem religar nada se não sobrou nenhuma imagem
+    pendente dessa empresa."""
+    if not user_id or not empresa:
+        return False
+    total = _contar_ocr_pendentes(user_id, empresa)
+    if not total:
+        atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "processadas": 0, "total": 0})
+        return False
+    with _lock_ocr_pendente:
+        if (user_id, empresa) in _ocr_empresas_ativas_agora:
+            return True
+        _ocr_empresas_ativas_agora.add((user_id, empresa))
+    atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "processadas": 0, "total": total})
+    threading.Thread(
+        target=_ocr_pendentes_background,
         args=(user_id, empresa, atividade_id),
         daemon=True,
     ).start()
@@ -12770,7 +13050,7 @@ elif st.session_state.pagina == "ads":
         _atividade_id = criar_atividade(
             st.session_state.user.id,
             "coleta_ads",
-            f"Coleta de anúncios (Meta Ads): {_nomes_empresas}",
+            f"{_nomes_empresas} · Coleta de anúncios (Meta Ads)",
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Meta Ads"},
         )
         try:
@@ -18285,7 +18565,7 @@ elif st.session_state.pagina == "google_ads":
         _atividade_id = criar_atividade(
             st.session_state.user.id,
             "coleta_ads",
-            f"Coleta de anúncios (Google Ads): {_nomes_empresas}",
+            f"{_nomes_empresas} · Coleta de anúncios (Google Ads)",
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
         try:
@@ -20919,6 +21199,46 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     except Exception:
                         pass  # sem transcrição em lote não pode travar a tela — badge só some
 
+                # Texto extraído por OCR das imagens (ver bloco "OCR DE
+                # IMAGENS DO GOOGLE ADS"), buscado em lote pelo mesmo
+                # motivo/padrão da transcrição acima — só lê o que já
+                # está pronto em `midias.ocr_texto`, nunca chama o Gemini
+                # na hora (isso travaria a tela renderizando os cards).
+                # Mesmos 3 estados: NULL = ainda não processado (mostra
+                # "Extraindo texto…"), "" = processado sem achar texto
+                # (mantém a mensagem antiga de "não disponibilizado"),
+                # com texto = pronto (mostra no lugar da copy).
+                _urls_img_cards = list({
+                    (ad.get("images") or [""])[0] for ad in gads_f if (ad.get("images") or [""])[0]
+                })
+                _mapa_ocr = {}            # url -> texto extraído (não vazio)
+                _urls_ocr_pendente = set()  # url -> já migrada, ocr ainda NULL
+                if _urls_img_cards:
+                    try:
+                        _res_ocr = (
+                            supabase.table("midias")
+                            .select("url_cdn, ocr_texto")
+                            .in_("url_cdn", _urls_img_cards)
+                            .execute()
+                        )
+                        for _row in (_res_ocr.data or []):
+                            _url_row = _row.get("url_cdn")
+                            _val_ocr = _row.get("ocr_texto")
+                            if _val_ocr is None:
+                                _urls_ocr_pendente.add(_url_row)
+                            else:
+                                _txt_ocr = _val_ocr.strip()
+                                if _txt_ocr:
+                                    _mapa_ocr[_url_row] = _txt_ocr
+                    except Exception:
+                        pass  # sem OCR em lote não pode travar a tela — só some o texto
+
+                def _escapar_html_ocr(s: str) -> str:
+                    return (
+                        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                         .replace("\n", "<br>")
+                    )
+
                 def _escapar_tooltip(s: str) -> str:
                     return (
                         s.replace("&", "&amp;").replace('"', "&quot;")
@@ -21394,6 +21714,32 @@ function imgFallback_{uid}(img){{
                     else:
                         body_display = ""
 
+                    # Sem copy nenhuma vinda da API (comum no Google Ads —
+                    # ver comentário em _normalizar_item_apify): tenta
+                    # preencher com o texto extraído por OCR da própria
+                    # imagem do criativo (ver bloco "OCR DE IMAGENS DO
+                    # GOOGLE ADS"). Deixa claro que é texto extraído
+                    # automaticamente (pode ter erro de leitura), não a
+                    # copy oficial do anúncio.
+                    _img_principal_ad = images[0] if images else ""
+                    _ocr_txt_ad = _mapa_ocr.get(_img_principal_ad, "") if _img_principal_ad else ""
+                    _ocr_pendente_ad = bool(_img_principal_ad) and _img_principal_ad in _urls_ocr_pendente
+                    if not body_safe and not title_safe:
+                        if _ocr_txt_ad:
+                            no_copy_html = (
+                                '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
+                                '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                'text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">'
+                                'Texto extraído da imagem (OCR)</div>'
+                                f'{_escapar_html_ocr(_ocr_txt_ad)}</div>'
+                            )
+                        elif _ocr_pendente_ad:
+                            no_copy_html = '<div class="no-copy">Extraindo texto da imagem via OCR…</div>'
+                        else:
+                            no_copy_html = '<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>'
+                    else:
+                        no_copy_html = ""
+
                     card_html = f"""
 <div class="card" style="opacity:{card_opacity}" id="card_{uid}">
     <div class="status-bar">
@@ -21410,7 +21756,7 @@ function imgFallback_{uid}(img){{
         <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div>{'<div class="page-sponsored">✓ Anunciante verificado</div>' if ad.get("verificado") else ''}</div></div>
         {body_display}
         {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
-        {'<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>' if not body_safe and not title_safe else ''}
+        {no_copy_html}
     </div>
     {media_block}
     <div class="card-footer-btns">
@@ -28070,6 +28416,36 @@ html, body { background: transparent; overflow: hidden; }
             except Exception as e:
                 st.toast(f"Erro ao salvar preferências: {e}", icon="⚠️")
 
+        st.markdown("**Extração de texto (OCR) — Google Ads**")
+        st.caption(
+            "O Google Ads Transparency Center não entrega o texto do anúncio (nem "
+            "nos de formato 'Texto') — só a imagem. A partir de agora, toda coleta "
+            "nova já roda OCR automaticamente nessas imagens. Anúncios coletados "
+            "ANTES dessa função existir não passaram por isso ainda; use o botão "
+            "abaixo pra processar o que já está salvo."
+        )
+        _qtd_ocr_pendente_perfil = 0
+        try:
+            _empresas_ocr_pend = _empresas_com_ocr_pendente(st.session_state.user.id)
+            for _emp_ocr_pend in _empresas_ocr_pend:
+                _qtd_ocr_pendente_perfil += _contar_ocr_pendentes(st.session_state.user.id, _emp_ocr_pend)
+        except Exception:
+            _empresas_ocr_pend = []
+        if _qtd_ocr_pendente_perfil:
+            st.caption(f"{_qtd_ocr_pendente_perfil} imagem(ns) do Google Ads ainda sem texto extraído.")
+        if st.button(
+            "Extrair texto (OCR) dos anúncios já coletados",
+            key="_btn_ocr_backfill_perfil",
+            disabled=not _empresas_ocr_pend,
+        ):
+            for _emp_ocr_pend in _empresas_ocr_pend:
+                iniciar_ocr_pendente_background(st.session_state.user.id, _emp_ocr_pend)
+            st.toast(
+                f"Extraindo texto de {len(_empresas_ocr_pend)} empresa(s) — acompanhe no sino de notificações.",
+                icon="🔄",
+            )
+            st.rerun()
+
     with aba_perfil_uso:
         import math as _math_uso
 
@@ -29214,11 +29590,12 @@ html, body { background: transparent; overflow: hidden; }
                     and bool((_a.get("detalhes") or {}).get("com_erro"))
                     and _a.get("status") in ("erro", "concluido")
                 )
+                _pode_refazer_retentativa = _a.get("tipo") == "retentativa_midia"
                 _pode_refazer = (
-                    _a.get("tipo") in ("migracao_midia", "transcricao_video")
+                    _a.get("tipo") in ("migracao_midia", "transcricao_video", "ocr_gads")
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
-                ) or _pode_refazer_redes
+                ) or _pode_refazer_redes or _pode_refazer_retentativa
                 _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
                 _progresso_ativ = _progresso_atividade(_a)
                 _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
@@ -29721,12 +30098,22 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast(f"Refazendo a transcrição de {_empresa_ref}...", icon="🔄")
                         else:
                             st.toast(f"Nenhum vídeo de {_empresa_ref} pendente de transcrição.", icon="⚠️")
+                    elif _tipo_ref == "ocr_gads":
+                        if _empresa_ref and refazer_ocr_gads(st.session_state.user.id, _empresa_ref, _rid):
+                            st.toast(f"Refazendo a extração de texto (OCR) de {_empresa_ref}...", icon="🔄")
+                        else:
+                            st.toast(f"Nenhuma imagem de {_empresa_ref} pendente de OCR.", icon="⚠️")
                     elif _tipo_ref == "coleta_redes":
                         _empresas_erro_ref = list(((_atividade_ref.get("detalhes") or {}).get("com_erro") or {}).keys())
                         if _empresas_erro_ref and refazer_coleta_redes(st.session_state.user.id, _rid, _empresas_erro_ref):
                             st.toast(f"Tentando de novo: {', '.join(_empresas_erro_ref)}...", icon="🔄")
                         else:
                             st.toast("Nenhum perfil com erro pra tentar de novo.", icon="⚠️")
+                    elif _tipo_ref == "retentativa_midia":
+                        if refazer_retentativa_midia(st.session_state.user.id, _rid):
+                            st.toast("Tentando de novo — mídias que já tinham esgotado o limite de tentativas voltaram a ser tentadas...", icon="🔄")
+                        else:
+                            st.toast("Não consegui reiniciar a retentativa — tenta de novo.", icon="⚠️")
                     else:
                         if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
                             st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")

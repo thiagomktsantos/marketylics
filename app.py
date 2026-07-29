@@ -17265,21 +17265,35 @@ elif st.session_state.pagina == "google_ads":
     def _url_para_base64(url: str) -> str:
         if not url or not url.startswith("http"):
             return ""
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        # As imagens de criativo do Google (tpc.googlesyndication.com/archive/
+        # simgad/...) às vezes bloqueiam ou falham dependendo dos headers
+        # enviados — um Referer "forjado" pode inclusive ser mais suspeito
+        # pro CDN do que nenhum Referer. Por isso tenta em ordem: sem headers
+        # nenhum primeiro (é assim que essas URLs costumam ser servidas —
+        # direto, sem exigir referer), depois só com User-Agent de navegador,
+        # e só por último com o Referer da Transparency Center. Qualquer
+        # tentativa que funcione (200 + corpo não vazio) já é aceita — não
+        # precisa das outras.
+        tentativas = [
+            {},
+            {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
+            {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Referer": "https://adstransparency.google.com/",
-            }
-            r = requests.get(url, headers=headers, timeout=10, stream=True)
-            if r.status_code != 200:
-                return ""
-            ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
-            if not ct.startswith("image/"):
-                ct = "image/jpeg"
-            data = _b64.b64encode(r.content).decode("utf-8")
-            return f"data:{ct};base64,{data}"
-        except Exception:
-            return ""
+            },
+        ]
+        for headers in tentativas:
+            try:
+                r = requests.get(url, headers=headers, timeout=15)
+                if r.status_code == 200 and r.content:
+                    ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
+                    if not ct.startswith("image/"):
+                        ct = "image/jpeg"
+                    data = _b64.b64encode(r.content).decode("utf-8")
+                    return f"data:{ct};base64,{data}"
+            except Exception:
+                continue
+        return ""
 
     def _truncar(txt, n=160):
         if not txt:
@@ -20846,7 +20860,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     </div>"""
                         media_block = f"""
 <div class="media-block img-block" id="mwrap_{uid}" style="position:relative;cursor:pointer">
-    <img id="mimg_{uid}" src="{img_primary}" loading="lazy"
+    <img id="mimg_{uid}" src="{img_primary}" loading="lazy" referrerpolicy="no-referrer"
         style="width:100%;height:100%;object-fit:cover;display:block;"
         onerror="imgFallback_{uid}(this)" />
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">

@@ -908,12 +908,25 @@ def _limpar_falha_midia(user_id: str, url_origem: str) -> None:
         pass
 
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
-                              tipo: str = "imagem", ad_id: str = None) -> str:
-    """Baixa a mídia de url_origem (link do Facebook/Instagram, que expira)
-    e sobe pro Cloudflare R2. Retorna a URL permanente pra usar no lugar
-    da original. Se o R2 não estiver configurado, o plano não permitir,
-    ou o download falhar por qualquer motivo, devolve a própria
-    url_origem — nunca quebra o fluxo existente."""
+                              tipo: str = "imagem", ad_id: str = None,
+                              referer_hint: str = "") -> str:
+    """Baixa a mídia de url_origem (link do Facebook/Instagram/Google, que
+    expira) e sobe pro Cloudflare R2. Retorna a URL permanente pra usar no
+    lugar da original. Se o R2 não estiver configurado, o plano não
+    permitir, ou o download falhar por qualquer motivo, devolve a própria
+    url_origem — nunca quebra o fluxo existente.
+
+    `referer_hint`: URL da página do anúncio (ex.: snapshot_url do Google
+    Ads), usada como último recurso de Referer quando a mídia é do Google.
+    Sem isso, essa função usava um Referer fixo de facebook.com pra
+    QUALQUER mídia — certo pra imagem/vídeo da Meta, mas errado pra
+    imagem do Google (tpc.googlesyndication.com): um Referer de
+    facebook.com numa URL do Google é mais suspeito pro CDN do que
+    nenhum Referer, e o download vinha falhando silenciosamente (a
+    mídia nunca migrava pro R2, ficava com o link cru do Google, que
+    depois falha de novo no <img> do navegador por hotlink/referrer —
+    resultado: card sem imagem mesmo quando a coleta achou a URL certa
+    e conseguiu baixar ela em outra etapa, como o base64 pra IA)."""
     if not url_origem or not url_origem.startswith("http"):
         return url_origem
     if R2_PUBLIC_BASE and url_origem.startswith(R2_PUBLIC_BASE):
@@ -941,15 +954,49 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         pass  # se a checagem falhar, segue tentando normalmente
 
     try:
-        _headers_download = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Referer": "https://www.facebook.com/",
-            "Accept": "*/*",
-        }
-        resp = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
+        _user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+        _e_midia_google = "googlesyndication.com" in url_origem or "googleusercontent.com" in url_origem
+
+        if _e_midia_google:
+            # CDN do Google (tpc.googlesyndication.com) — igual em
+            # _url_para_base64 (aba Google Ads): um Referer forjado pode
+            # ser mais suspeito pro CDN do que nenhum Referer, então tenta
+            # em ordem, da tentativa mais "limpa" (sem headers) até a mais
+            # específica (a própria página do criativo, quando temos).
+            _tentativas_headers = [
+                {},
+                {"User-Agent": _user_agent},
+                {"User-Agent": _user_agent, "Referer": "https://adstransparency.google.com/"},
+            ]
+            if referer_hint:
+                _tentativas_headers.append({"User-Agent": _user_agent, "Referer": referer_hint})
+        else:
+            # Meta/Instagram (comportamento original) — o link expira, mas
+            # é servido pelo CDN da Meta esperando um Referer de facebook.com.
+            _tentativas_headers = [
+                {"User-Agent": _user_agent, "Referer": "https://www.facebook.com/", "Accept": "*/*"},
+            ]
+
+        resp = None
+        for _headers_download in _tentativas_headers:
+            try:
+                _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
+            except Exception:
+                continue
+            _ct_tentativa = (_tentativa.headers.get("content-type", "") or "").split(";")[0].strip()
+            if _tentativa.status_code == 200 and _tentativa.content and (
+                not _e_midia_google or _ct_tentativa.startswith(("image/", "video/"))
+            ):
+                resp = _tentativa
+                break
+        if resp is None:
+            # Nenhuma tentativa deu certo — mantém o comportamento antigo
+            # (levanta com a última resposta) pra cair no except abaixo e
+            # devolver a url_origem sem quebrar o fluxo.
+            resp = requests.get(url_origem, timeout=15, stream=True, headers=_tentativas_headers[-1])
         resp.raise_for_status()
         conteudo = resp.content
         content_type = (
@@ -1099,7 +1146,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     import threading
 
     resultado = {}
-    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id, titulo_ad)
+    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id, titulo_ad, referer_hint)
 
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
@@ -1118,24 +1165,30 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
                 or (ad.get("body") or "").strip()[:60]
                 or (f"Anúncio {ad_id}" if ad_id else "Anúncio sem título")
             )
+            # snapshot_url = página do criativo (Central de Transparência
+            # do Google, quando é um anúncio do Google Ads) — usada como
+            # Referer de último recurso em baixar_e_persistir_midia, pra
+            # imagens do Google que só carregam com o Referer exato da
+            # página do próprio anúncio (ver comentário na função).
+            _referer_hint_ad = ad.get("snapshot_url") or ""
             for url_idx, u in enumerate(ad.get("images") or []):
-                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad))
+                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
             # "carousel_images" (1 imagem por card do carrossel, sem as
             # duplicatas boa/ruim que "images" carrega) também precisa virar
             # link permanente — sem isso, anúncios novos ficariam certos por
             # ora mas com URL crua da Meta, que expira em algumas semanas e
             # quebraria o modal do carrossel mais pra frente.
             for url_idx, u in enumerate(ad.get("carousel_images") or []):
-                tarefas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad))
+                tarefas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
-                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad))
+                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad, _referer_hint_ad))
             # Foto de perfil da página — é a mesma URL pra todo anúncio
             # dessa empresa, mas o dedupe por hash já evita subir de novo;
             # sem isso, esse campo nunca passava pelo R2 e continuava
             # dependendo do link do Facebook, que expira.
             _foto_perfil = ad.get("page_profile_picture")
             if _foto_perfil:
-                tarefas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad))
+                tarefas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
 
     if not tarefas:
         return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
@@ -1177,8 +1230,8 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
         })
 
     def _processar(t):
-        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad = t
-        nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id)
+        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint = t
+        nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id, referer_hint)
         # "não migrado" = a URL não mudou E não é porque já era do R2
         # (nesse caso o não-mudou é intencional, não uma falha)
         ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)

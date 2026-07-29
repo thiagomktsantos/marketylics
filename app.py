@@ -2239,6 +2239,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M4,4H10V10H4V4M20,4V10H14V4H20M14,20V14H20V20H14M4,20V14H10V20H4M4,4",
         "#f5a623", "Extraindo texto dos anúncios do Google Ads (OCR)",
     ),
+    "verificacao_pendentes_gads": (
+        "M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.5L20.5,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z",
+        "#3a9fd6", "Verificando anúncios do Google Ads pendentes de migração",
+    ),
 }
 
 # Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
@@ -4962,6 +4966,45 @@ def verificar_e_migrar_pendentes(user_id: str) -> int:
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes EXCEÇÃO: {e!r}", flush=True)
         return 0
 
+def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = None) -> int:
+    """Corpo de verificar_e_migrar_pendentes_google, mas já recebendo o
+    atividade_id criado ANTES de começar (ver
+    iniciar_verificacao_pendentes_google_background) — assim o card
+    aparece no sino como "em andamento" desde o primeiro instante, em
+    vez de só surgir (ou não) depois que a varredura já decidiu se tem
+    algo pra migrar. Sem isso, enquanto uma imagem ficava com o selo de
+    relógio (link ainda não permanente) e sem OCR, não existia NENHUM
+    sinal no sino explicando o porquê — parecia que nada estava
+    acontecendo."""
+    try:
+        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+        gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        pendentes = encontrar_ads_com_link_original(gads_cache)
+        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
+        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
+        if pendentes:
+            iniciar_migracao_midia_background(user_id, pendentes, plataforma="Google Ads")
+            if atividade_id:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "empresas": list(pendentes.keys()),
+                    "total_anuncios": total_ads_pendentes,
+                    "aviso": (
+                        f"{total_ads_pendentes} anúncio(s) em {len(pendentes)} empresa(s) "
+                        f"ainda com link original — enviados pra migração agora "
+                        f"(acompanhe abaixo)."
+                    ),
+                })
+        elif atividade_id:
+            atualizar_atividade(atividade_id, "concluido", {
+                "aviso": "Nenhum anúncio do Google Ads pendente de migração — tudo já está com link permanente.",
+            })
+        return total_ads_pendentes
+    except Exception as e:
+        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google EXCEÇÃO: {e!r}", flush=True)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+        return 0
+
 def verificar_e_migrar_pendentes_google(user_id: str) -> int:
     """Equivalente a verificar_e_migrar_pendentes, mas pro Google Ads —
     lê `gads_cache` (não `ads_cache`) e passa plataforma="Google Ads"
@@ -4974,19 +5017,29 @@ def verificar_e_migrar_pendentes_google(user_id: str) -> int:
     tentativa — e por isso nunca caíram em `midias_falhas` — ficavam
     órfãs pra sempre: nem a migração pontual da coleta pegava (já tinha
     passado), nem a retentativa (só olha o que já está em
-    midias_falhas), nem essa varredura (olhava a tabela errada)."""
-    try:
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
-        pendentes = encontrar_ads_com_link_original(gads_cache)
-        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
-        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
-        if pendentes:
-            iniciar_migracao_midia_background(user_id, pendentes, plataforma="Google Ads")
-        return total_ads_pendentes
-    except Exception as e:
-        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google EXCEÇÃO: {e!r}", flush=True)
-        return 0
+    midias_falhas), nem essa varredura (olhava a tabela errada).
+
+    Mantida sem atividade própria (chamada direta, sem card no sino) —
+    use iniciar_verificacao_pendentes_google_background pra rodar com
+    card visível desde o início."""
+    return _verificar_e_migrar_pendentes_google_bg(user_id, atividade_id=None)
+
+def iniciar_verificacao_pendentes_google_background(user_id: str):
+    """Cria a atividade no sino ANTES de disparar a thread — o card
+    aparece imediatamente como "em andamento" (mesmo padrão de
+    iniciar_retentativa_midias_background), pra o usuário ver que a
+    checagem está rolando enquanto o selo de relógio/ausência de OCR
+    ainda aparece no card, em vez de ficar sem nenhuma explicação até
+    (ou a menos que) a varredura ache algo pra migrar."""
+    atividade_id = criar_atividade(
+        user_id, "verificacao_pendentes_gads",
+        "Verificando anúncios do Google Ads pendentes de migração", {}
+    )
+    threading.Thread(
+        target=_verificar_e_migrar_pendentes_google_bg,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
 
 def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
     """As varreduras normais só olham se a URL É do R2 (pelo prefixo) —
@@ -18769,11 +18822,7 @@ elif st.session_state.pagina == "google_ads":
     # não pega (falha silenciosa antiga, mídia coletada antes desse
     # pipeline existir, etc.).
     if not st.session_state.get("_verificacao_pendentes_feita_google") and st.session_state.get("user"):
-        threading.Thread(
-            target=verificar_e_migrar_pendentes_google,
-            args=(st.session_state.user.id,),
-            daemon=True,
-        ).start()
+        iniciar_verificacao_pendentes_google_background(st.session_state.user.id)
         st.session_state["_verificacao_pendentes_feita_google"] = True
 
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──

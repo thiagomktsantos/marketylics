@@ -1999,12 +1999,20 @@ _ICONE_AVISO  = ("M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z", "#e0
 _ICONE_INFO   = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M13,17H11V11H13V17M13,9H11V7H13V9Z", "#3a9fd6")
 _ICONE_OK     = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z", "#2ecc71")
 
-def _atividade_migracao_aberta_id(user_id: str, empresa: str):
+def _atividade_migracao_aberta_id(user_id: str, empresa: str, plataforma: str = None):
     """Acha o id de uma atividade migracao_midia ainda aberta (pendente/
     em_andamento) pra essa empresa específica, se existir. Devolve None
     se não tem nenhuma. Serve de base tanto pra migracao_midia_em_
     andamento() (só quer saber se existe uma rodando agora) quanto pra
-    quem precisa saber especificamente se há algo em aberto."""
+    quem precisa saber especificamente se há algo em aberto.
+
+    `plataforma` ("Meta Ads"/"Google Ads") filtra pra não misturar a
+    migração de uma empresa que existe nas DUAS fontes (nome igual em
+    Meta Ads e Google Ads) numa única atividade — sem isso, a barra de
+    progresso de uma acabava "emprestada" pra outra. Registros antigos
+    (de antes dessa distinção existir) não têm essa chave nos detalhes;
+    são tratados como "Meta Ads" (é a plataforma original do app, e é
+    de onde vieram todos os registros anteriores a essa mudança)."""
     if not user_id:
         return None
     try:
@@ -2018,13 +2026,17 @@ def _atividade_migracao_aberta_id(user_id: str, empresa: str):
             .execute()
         )
         for a in (res.data or []):
-            if (a.get("detalhes") or {}).get("empresa") == empresa:
-                return a["id"]
+            _d = a.get("detalhes") or {}
+            if _d.get("empresa") != empresa:
+                continue
+            if plataforma and _d.get("plataforma", "Meta Ads") != plataforma:
+                continue
+            return a["id"]
         return None
     except Exception:
         return None
 
-def _atividade_migracao_mais_recente_id(user_id: str, empresa: str):
+def _atividade_migracao_mais_recente_id(user_id: str, empresa: str, plataforma: str = None):
     """Acha a atividade migracao_midia mais recente dessa empresa,
     NÃO importa o status (concluído, erro, em andamento...). Usada na
     hora de decidir se cria uma atividade nova ou se reaproveita uma
@@ -2035,7 +2047,12 @@ def _atividade_migracao_mais_recente_id(user_id: str, empresa: str):
     atividades em 'pendente'/'em_andamento', então qualquer empresa que
     já tivesse fechado como 'concluído' uma vez ganhava um card NOVO na
     próxima vez que precisasse migrar mais alguma coisa, em vez de só
-    'empurrar' a mesma pra frente de novo."""
+    'empurrar' a mesma pra frente de novo.
+
+    `plataforma`: mesmo motivo do parâmetro em _atividade_migracao_
+    aberta_id — sem isso, uma empresa com o mesmo nome em Meta Ads e
+    Google Ads compartilhava a mesma atividade/card de migração entre
+    as duas plataformas."""
     if not user_id:
         return None
     try:
@@ -2049,8 +2066,12 @@ def _atividade_migracao_mais_recente_id(user_id: str, empresa: str):
             .execute()
         )
         for a in (res.data or []):
-            if (a.get("detalhes") or {}).get("empresa") == empresa:
-                return a["id"]
+            _d = a.get("detalhes") or {}
+            if _d.get("empresa") != empresa:
+                continue
+            if plataforma and _d.get("plataforma", "Meta Ads") != plataforma:
+                continue
+            return a["id"]
         return None
     except Exception:
         return None
@@ -2149,17 +2170,22 @@ def _extrair_empresa_do_titulo_migracao(titulo: str):
     progresso sem a chave 'empresa' apagava esse dado do registro,
     mesmo com a atividade ainda bem identificada pelo título. O título é
     montado sempre no mesmo formato em iniciar_migracao_midia_background
-    ('{empresa} · Salvando anúncios na Biblioteca de Arquivos
-    Permanente' — formato novo, padronizado 'Empresa · Ação'; registros
-    criados antes dessa padronização usam o formato antigo 'Salvando
-    anúncios de {empresa} na Biblioteca de Arquivos Permanente', então
-    tenta os dois), então dá pra extrair de volta com segurança. Sem esse
-    fallback, uma atividade antiga fica com o botão de continuar
-    escondido pra sempre (só se resolveria na próxima vez que algo
-    regravasse os detalhes) — com ele, a tela se autocorrige na hora,
-    sem precisar esperar nenhuma nova escrita no banco."""
+    ('{empresa} · Salvando anúncios do {plataforma} na Biblioteca de
+    Arquivos Permanente' — formato atual, com a plataforma; formatos
+    anteriores, sem a plataforma ('{empresa} · Salvando anúncios na
+    Biblioteca de Arquivos Permanente') ou ainda mais antigos
+    ('Salvando anúncios de {empresa} na Biblioteca de Arquivos
+    Permanente'), também são tentados), então dá pra extrair de volta
+    com segurança. Sem esse fallback, uma atividade antiga fica com o
+    botão de continuar escondido pra sempre (só se resolveria na
+    próxima vez que algo regravasse os detalhes) — com ele, a tela se
+    autocorrige na hora, sem precisar esperar nenhuma nova escrita no
+    banco."""
     if not titulo:
         return None
+    m = _re_ativ.match(r"^(.+) · Salvando anúncios do (?:Meta Ads|Google Ads) na Biblioteca de Arquivos Permanente$", titulo)
+    if m:
+        return m.group(1)
     m = _re_ativ.match(r"^(.+) · Salvando anúncios na Biblioteca de Arquivos Permanente$", titulo)
     if m:
         return m.group(1)
@@ -4569,28 +4595,39 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
             except Exception as e:
                 atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
 
-def iniciar_migracao_midia_background(user_id: str, novos: dict):
+def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str = "Meta Ads"):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
     a página. As empresas são processadas uma de cada vez (não em
     paralelo) — ver _migrar_todas_empresas_sequencial.
 
+    `plataforma` ("Meta Ads" ou "Google Ads") entra no título e nos
+    detalhes da atividade — sem isso não dava pra saber, só olhando o
+    sino de notificações, se um card "Salvando anúncios na Biblioteca
+    de Arquivos Permanente" era do Meta ou do Google, e pior: duas
+    empresas com o mesmo nome em plataformas diferentes acabavam
+    compartilhando a MESMA atividade (ver _atividade_migracao_mais_
+    recente_id), misturando o progresso de uma migração com o da outra.
+
     Antes de criar uma atividade nova, verifica se já existe QUALQUER
-    atividade migracao_midia pra essa mesma empresa (não importa o
-    status) e reaproveita o id — assim ela vira só um "empurrão" na
-    mesma notificação em vez de um card novo. Antes disso só reaproveitava
-    quando a atividade estava pendente/em_andamento; se ela já tivesse
-    fechado como 'concluído' e a empresa voltasse a ter mídia pendente
-    depois (nova coleta, ou uma varredura achando itens antigos), o sino
-    ganhava um card duplicado pra sempre 'em andamento' em vez de
-    continuar atualizando o mesmo."""
+    atividade migracao_midia pra essa mesma empresa NESSA MESMA
+    plataforma (não importa o status) e reaproveita o id — assim ela
+    vira só um "empurrão" na mesma notificação em vez de um card novo.
+    Antes disso só reaproveitava quando a atividade estava pendente/
+    em_andamento; se ela já tivesse fechado como 'concluído' e a
+    empresa voltasse a ter mídia pendente depois (nova coleta, ou uma
+    varredura achando itens antigos), o sino ganhava um card duplicado
+    pra sempre 'em andamento' em vez de continuar atualizando o
+    mesmo."""
     tarefas = []
     for empresa, entry in novos.items():
-        atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa)
+        atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa, plataforma)
         if atividade_id:
-            atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
+            atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "plataforma": plataforma})
         else:
             atividade_id = criar_atividade(
-                user_id, "migracao_midia", f"{empresa} · Salvando anúncios na Biblioteca de Arquivos Permanente", {"empresa": empresa}
+                user_id, "migracao_midia",
+                f"{empresa} · Salvando anúncios do {plataforma} na Biblioteca de Arquivos Permanente",
+                {"empresa": empresa, "plataforma": plataforma},
             )
         tarefas.append((empresa, entry, atividade_id))
 
@@ -12733,8 +12770,8 @@ elif st.session_state.pagina == "ads":
         _atividade_id = criar_atividade(
             st.session_state.user.id,
             "coleta_ads",
-            f"Coleta de anúncios: {_nomes_empresas}",
-            {"empresas": [e["nome"] for e in empresas]},
+            f"Coleta de anúncios (Meta Ads): {_nomes_empresas}",
+            {"empresas": [e["nome"] for e in empresas], "plataforma": "Meta Ads"},
         )
         try:
             supabase.rpc("incrementar_uso_organizacao", {
@@ -18248,8 +18285,8 @@ elif st.session_state.pagina == "google_ads":
         _atividade_id = criar_atividade(
             st.session_state.user.id,
             "coleta_ads",
-            f"Coleta de anúncios: {_nomes_empresas}",
-            {"empresas": [e["nome"] for e in empresas]},
+            f"Coleta de anúncios (Google Ads): {_nomes_empresas}",
+            {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
         try:
             supabase.rpc("incrementar_uso_organizacao", {

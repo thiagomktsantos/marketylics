@@ -18504,6 +18504,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         _emp_dd_ghost_css_parts.append(f"""
         .st-key-{_k_comp_h},
         .st-key-gads_buscar_header_btn,
+        .st-key-gads_forcar_header_btn,
         .st-key-gads_limpar_cache_btn {{
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
@@ -18511,6 +18512,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         }}
         .stElementContainer:has(.st-key-{_k_comp_h}),
         .stElementContainer:has(.st-key-gads_buscar_header_btn),
+        .stElementContainer:has(.st-key-gads_forcar_header_btn),
         .stElementContainer:has(.st-key-gads_limpar_cache_btn) {{
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
@@ -18591,6 +18593,16 @@ Seja direto, objetivo e baseado nos dados fornecidos.
  
         # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
         gerar_btn_gads_header = st.button("gads_buscar_header_trigger", key="gads_buscar_header_btn")
+
+        # Ghost: força uma atualização de verdade, ignorando o cache de 24h
+        # (carregar_cache_ads/cache_esta_fresco). O botão normal "Buscar /
+        # Atualizar Anúncios" chama executar_busca(forcar=False) — se já
+        # tem cache fresco pra empresa, ele só reaproveita o que já está
+        # salvo (não rechama a Apify, não reprocessa imagem nenhuma). Esse
+        # aqui existe pra quando o usuário precisa mesmo de um dado novo
+        # (ex.: depois de um fix na extração de imagem) sem precisar
+        # limpar o cache inteiro primeiro.
+        gerar_btn_gads_forcar = st.button("gads_forcar_header_trigger", key="gads_forcar_header_btn")
  
         # Ghost: limpar cache
         if st.session_state.gads_cache:
@@ -18805,6 +18817,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
+            <button class="clear-btn" onclick="triggerForcar()" title="forçar atualização (ignora cache de 24h)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+            <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
@@ -18854,6 +18868,15 @@ function triggerGhost(label, tentativas){{
     console.warn('[gads] Não encontrei o botão-fantasma "' + label + '". Botões visíveis no parent:', candidatos);
 }}
 function triggerBuscar(){{ triggerGhost('gads_buscar_header_trigger'); }}
+function triggerForcar() {{
+    abrirConfirmacao(
+        '🔄 Forçar atualização',
+        'Isso vai buscar os anúncios de novo pra todas as empresas configuradas, mesmo que o cache ainda esteja fresco (dentro de 24h). Pode demorar um pouco mais. Continuar?',
+        '#1a73e8',
+        'Sim, forçar',
+        function() {{ triggerGhost('gads_forcar_header_trigger'); }}
+    );
+}}
 function triggerLimpar() {{
     abrirConfirmacao(
         '🗑️ Limpar cache de anúncios',
@@ -19124,6 +19147,19 @@ setHeight(false);
                 query_values_header[ck] = gads_id_salvo
         if query_values_header:
             executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=False)
+        else:
+            st.warning("Configure pelo menos uma empresa antes de buscar.")
+
+    # ── Processar FORÇAR atualização do cabeçalho (ignora cache de 24h)
+    if gerar_btn_gads_forcar:
+        query_values_header = {}
+        for e in todas_empresas:
+            if empresa_tem_gads_id(e):
+                ck = e["nome"]
+                gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
+                query_values_header[ck] = gads_id_salvo
+        if query_values_header:
+            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=True)
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
 

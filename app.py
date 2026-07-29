@@ -18815,8 +18815,13 @@ elif st.session_state.pagina == "google_ads":
     if "gads_aba_conteudo" not in st.session_state:
         st.session_state.gads_aba_conteudo = {}
     if "gads_main_tab" not in st.session_state:
-        _tem_empresa_sem_config_init = any(not empresa_tem_gads_id(e) for e in todas_empresas)
-        st.session_state.gads_main_tab = "configuracao" if _tem_empresa_sem_config_init else "empresas"
+        # Antes usava any() — bastava UMA empresa sem configurar (de várias)
+        # pra cair na aba de Configuração por padrão, mesmo com outras já
+        # configuradas e com dados. Só faz sentido abrir direto em
+        # Configuração quando NENHUMA empresa tem ID configurado ainda
+        # (usuário novo, nada pra ver na lista de anúncios mesmo).
+        _nenhuma_empresa_configurada_init = todas_empresas and all(not empresa_tem_gads_id(e) for e in todas_empresas)
+        st.session_state.gads_main_tab = "configuracao" if _nenhuma_empresa_configurada_init else "empresas"
     if "gads_config_empresa_selecionada" not in st.session_state:
         st.session_state.gads_config_empresa_selecionada = None
     if "gads_analises_salvas" not in st.session_state:

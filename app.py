@@ -13217,9 +13217,20 @@ document.addEventListener('click', function(e){{
     if (wrap && !wrap.contains(e.target)) closeDropdown();
 }});
  
-function triggerGhost(label){{
+function triggerGhost(label, tentativas){{
+    tentativas = tentativas || 0;
     var btns=window.parent.document.querySelectorAll('button');
-    for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
+    var candidatos = [];
+    for(var b of btns){{
+        var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
+        candidatos.push(txt);
+        if(txt===String(label)){{ b.click(); return; }}
+    }}
+    if (tentativas < 10) {{
+        setTimeout(function(){{ triggerGhost(label, tentativas + 1); }}, 150);
+        return;
+    }}
+    console.warn('[ads] Não encontrei o botão-fantasma "' + label + '". Botões visíveis no parent:', candidatos);
 }}
 function triggerBuscar(){{ triggerGhost('ads_buscar_header_trigger'); }}
 function triggerLimpar() {{
@@ -18462,9 +18473,23 @@ document.addEventListener('click', function(e){{
     if (wrap && !wrap.contains(e.target)) closeDropdown();
 }});
  
-function triggerGhost(label){{
+function triggerGhost(label, tentativas){{
+    tentativas = tentativas || 0;
     var btns=window.parent.document.querySelectorAll('button');
-    for(var b of btns){{var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();if(txt===String(label)){{b.click();return;}}}}
+    var candidatos = [];
+    for(var b of btns){{
+        var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
+        candidatos.push(txt);
+        if(txt===String(label)){{ b.click(); return; }}
+    }}
+    // Não achou o botão-fantasma. Pode ser que o Streamlit ainda não
+    // tenha terminado de renderizar ele nessa rodada — tenta de novo
+    // por até ~1.5s antes de desistir e avisar no console.
+    if (tentativas < 10) {{
+        setTimeout(function(){{ triggerGhost(label, tentativas + 1); }}, 150);
+        return;
+    }}
+    console.warn('[gads] Não encontrei o botão-fantasma "' + label + '". Botões visíveis no parent:', candidatos);
 }}
 function triggerBuscar(){{ triggerGhost('gads_buscar_header_trigger'); }}
 function triggerLimpar() {{

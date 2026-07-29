@@ -6385,13 +6385,28 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
             return
 
         recuperadas = 0
+        esgotadas_google = 0
+        esgotadas_meta = 0
         for f in pendentes:
             url_antiga = f["url_origem"]
             nova_url = baixar_e_persistir_midia(
                 url_antiga, user_id, f["empresa"], f.get("tipo", "imagem"), f.get("ad_id")
             )
             if nova_url == url_antiga:
-                continue  # continua falhando — baixar_e_persistir_midia já incrementou a tentativa
+                # continua falhando — baixar_e_persistir_midia já incrementou a
+                # tentativa. Se essa foi a última chance (teto atingido), conta
+                # aqui pra reportar de forma visível no card da atividade —
+                # antes isso ficava mudo: o card fechava como "concluído" sem
+                # nenhum aviso, e a mídia ficava pra sempre com o selo de
+                # relógio (link não permanente) sem o usuário saber que já
+                # esgotamos as tentativas.
+                _tentativas_agora = (f.get("tentativas", 0) or 0) + 1
+                if _tentativas_agora >= MAX_TENTATIVAS_MIDIA:
+                    if "googlesyndication.com" in url_antiga or "googleusercontent.com" in url_antiga:
+                        esgotadas_google += 1
+                    else:
+                        esgotadas_meta += 1
+                continue
 
             # sucesso: baixar_e_persistir_midia já limpou o registro de
             # falha; falta só apontar o ads_cache pra URL nova no R2.
@@ -6405,10 +6420,27 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
             except Exception:
                 pass
 
-        atualizar_atividade(atividade_id, "concluido", {
+        _detalhes_final = {
             "verificadas": len(pendentes),
             "recuperadas": recuperadas,
-        })
+        }
+        _avisos = []
+        if esgotadas_google:
+            _avisos.append(
+                f"{esgotadas_google} imagem(ns)/vídeo(s) do Google Ads não puderam ser salvos "
+                f"permanentemente após {MAX_TENTATIVAS_MIDIA} tentativas — o CDN do Google "
+                f"bloqueou o download. Continuam com o link original (selo de relógio no card)."
+            )
+        if esgotadas_meta:
+            _avisos.append(
+                f"{esgotadas_meta} mídia(s) do Meta Ads não puderam ser salvas permanentemente "
+                f"após {MAX_TENTATIVAS_MIDIA} tentativas."
+            )
+        if _avisos:
+            _detalhes_final["aviso"] = " ".join(_avisos)
+            atualizar_atividade(atividade_id, "concluido_com_erro", _detalhes_final)
+        else:
+            atualizar_atividade(atividade_id, "concluido", _detalhes_final)
     except Exception as e:
         atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
@@ -21702,7 +21734,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     </div>"""
                         else:
                             origem_badge_img_html = """
-    <div title="Imagem original da Meta — pode expirar a qualquer momento"
+    <div title="Ainda com o link original do Google — estamos tentando salvar essa imagem permanentemente em segundo plano (veja o sino de notificações)"
          onclick="event.stopPropagation()"
          style="position:absolute;bottom:7px;left:7px;width:22px;height:22px;border-radius:50%;
                 background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;
@@ -21733,7 +21765,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
+         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -21743,7 +21775,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             ocr_badge_img_html = f"""
     <div title="Imagem já salva — o texto ainda está sendo extraído e aparece em breve"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
+         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px">
         {_SVG_ICONE_OCR_PENDENTE} Extraindo texto…

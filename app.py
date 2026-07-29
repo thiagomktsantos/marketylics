@@ -5611,6 +5611,45 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
     except Exception as e:
         st.toast(f"Erro ao salvar cache de ads: {e}", icon="⚠️")
 
+def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None):
+    """Equivalente a `salvar_cache_ads`, mas pro Google Ads — grava na
+    coluna `gads_cache`, não `ads_cache`. Antes, a coleta de Google Ads
+    chamava por engano a função de Meta Ads, o que fazia os anúncios do
+    Google sobrescreverem o cache do Meta (e a coluna gads_cache nunca
+    era realmente escrita)."""
+    try:
+        user_id = user_id or st.session_state.user.id
+
+        dados_limpos = {}
+        for empresa, entry in dados.items():
+            entry_limpa = dict(entry)
+            ads_limpos = []
+            for ad in entry.get("data", []):
+                ad_limpo = dict(ad)
+                ad_limpo.pop("images_b64", None)
+                ad_limpo.pop("video_thumb", None)
+                ads_limpos.append(ad_limpo)
+            entry_limpa["data"] = ads_limpos
+            dados_limpos[empresa] = entry_limpa
+
+        if migrar_midia:
+            try:
+                dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
+                if _stats_midia.get("nao_migrados"):
+                    st.toast(
+                        f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
+                        f"foram migradas pro R2 (ficaram com o link original).",
+                        icon="⚠️",
+                    )
+            except Exception as e_midia:
+                st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+
+        supabase.table("ci_dados").update({
+            "gads_cache": dados_limpos,
+        }).eq("user_id", user_id).execute()
+    except Exception as e:
+        st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
+
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
 # ---------------------------------------------------
@@ -17759,7 +17798,7 @@ elif st.session_state.pagina == "google_ads":
             # Save rápido: mantém os links originais do provedor (ainda
             # válidos por bem mais que 1 dia). A troca pelos links
             # permanentes do R2 acontece depois, em background também.
-            salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

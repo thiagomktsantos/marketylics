@@ -12911,7 +12911,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 .sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
 </style>
 <div class="wrap">
-    <div class="titulo">Biblioteca de Ads Meta</div>
+    <div class="titulo">Biblioteca de Meta Ads</div>
     <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
 </div>
 """, height=104 if _ultima_ts else 78)
@@ -18177,7 +18177,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 .sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
 </style>
 <div class="wrap">
-    <div class="titulo">Biblioteca de Ads Google</div>
+    <div class="titulo">Biblioteca de Google Ads</div>
     <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
 </div>
 """, height=104 if _ultima_ts else 78)
@@ -19605,6 +19605,18 @@ window.addEventListener('load', syncHeight);
                         gads_list = partial if partial else gads_list_raw
             else:
                 gads_list = gads_list_raw
+
+            _gads_raw_debug = cache_entry.get("_raw", []) or []
+            with st.expander(f"🐛 Debug — dados brutos da API ({len(_gads_raw_debug)} itens)"):
+                st.caption(
+                    "Retorno bruto do Apify (Google Ads Transparency Center), antes de "
+                    "qualquer normalização — útil pra ver exatamente quais campos a fonte "
+                    "está enviando para cada anúncio."
+                )
+                if _gads_raw_debug:
+                    st.json(_gads_raw_debug)
+                else:
+                    st.caption("Sem dados brutos salvos para essa empresa (coleta antiga, antes do debug ser adicionado).")
 
             # Ghost buttons para análise IA
             ia_analise_ghost_css = []

@@ -4625,7 +4625,42 @@ def _migracao_empresa_esta_ativa_agora(user_id: str, empresa: str) -> bool:
     with _lock_migracao_empresa_ativa:
         return (user_id, empresa) in _migracoes_empresa_ativas_agora
 
-def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None):
+# ── RPCs por plataforma ──
+# `ads_cache` (Meta) e `gads_cache` (Google) são colunas jsonb separadas
+# na tabela `ci_dados`. Cada uma tem seu próprio par de RPCs no Supabase
+# pra fazer a escrita atômica (por id de anúncio, ou por substituição de
+# URL) sem ler-e-regravar a coluna inteira em Python. Esse mapeamento
+# existe porque antes só existia a versão de Meta (`..._no_ads_cache`) —
+# ela era chamada incondicionalmente pra QUALQUER plataforma, o que fazia
+# a migração do Google Ads parecer "concluída" (o upload pro R2 realmente
+# acontecia) mas nunca gravar a URL nova em `gads_cache`, deixando a
+# aba de Google pra sempre com o link original (selo de relógio).
+_RPC_ATUALIZAR_CACHE = {
+    "Meta Ads": "atualizar_ads_no_cache",
+    "Google Ads": "atualizar_gads_no_cache",
+}
+_RPC_SUBSTITUIR_URL_CACHE = {
+    "Meta Ads": "substituir_url_no_ads_cache",
+    "Google Ads": "substituir_url_no_gads_cache",
+}
+
+def _rpc_atualizar_cache(plataforma: str) -> str:
+    return _RPC_ATUALIZAR_CACHE.get(plataforma, "atualizar_ads_no_cache")
+
+def _rpc_substituir_url_cache(plataforma: str) -> str:
+    return _RPC_SUBSTITUIR_URL_CACHE.get(plataforma, "substituir_url_no_ads_cache")
+
+def _plataforma_da_url(url: str) -> str:
+    """Quando a origem (migração pontual) não é conhecida — caso da
+    reconciliação e da retentativa, que trabalham a partir das tabelas
+    `midias`/`midias_falhas` e não guardam a plataforma — infere pelo
+    domínio da própria URL original. Mesma heurística que já era usada
+    só pra fins de log em _tentar_novamente_midias_background."""
+    if url and ("googlesyndication.com" in url or "googleusercontent.com" in url):
+        return "Google Ads"
+    return "Meta Ads"
+
+def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_id: str = None, plataforma: str = "Meta Ads"):
     _chave_ativa = (user_id, empresa)
     with _lock_migracao_empresa_ativa:
         _migracoes_empresa_ativas_agora.add(_chave_ativa)
@@ -4674,7 +4709,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "motivo": "nenhum anúncio com id pra atualizar"})
             return
 
-        res = supabase.rpc("atualizar_ads_no_cache", {
+        res = supabase.rpc(_rpc_atualizar_cache(plataforma), {
             "p_user_id": user_id,
             "p_empresa": empresa,
             "p_atualizacoes": atualizacoes,
@@ -4846,10 +4881,10 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     fila segue pras próximas em vez de ficar parada pra sempre."""
     from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
-    for empresa, entry, atividade_id in tarefas:
+    for empresa, entry, atividade_id, plataforma in tarefas:
         limite_segundos = _estimar_timeout_migracao(entry)
         with _TPE(max_workers=1) as executor:
-            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id)
+            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id, plataforma)
             try:
                 future.result(timeout=limite_segundos)
             except _TimeoutErr:
@@ -4896,7 +4931,7 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
                 f"{empresa} · Salvando anúncios do {plataforma} na Biblioteca de Arquivos Permanente",
                 {"empresa": empresa, "plataforma": plataforma},
             )
-        tarefas.append((empresa, entry, atividade_id))
+        tarefas.append((empresa, entry, atividade_id, plataforma))
 
     print(f"[MIGR-DEBUG] iniciar_migracao_midia_background: {len(tarefas)} empresa(s) na fila -> {[t[0] for t in tarefas]} (plataforma={plataforma!r})", flush=True)
     if tarefas:
@@ -5190,16 +5225,23 @@ def refazer_retentativa_midia(user_id: str, atividade_id: str) -> bool:
     except Exception:
         return False
 
-def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> bool:
+def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataforma: str = "Meta Ads") -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
-    anúncios que já estão salvos no ads_cache (não precisa recoletar).
+    anúncios que já estão salvos no cache (não precisa recoletar).
     Reaproveita a MESMA atividade em vez de criar uma nova a cada
     tentativa — senão cada "Refazer" clicado acumula um registro de
     "erro" (a tentativa anterior, substituída) que não é uma falha de
-    verdade, só polui a contagem do resumo."""
+    verdade, só polui a contagem do resumo.
+
+    `plataforma` decide se a busca é em `ads_cache` (Meta) ou
+    `gads_cache` (Google) — sem isso, clicar "Refazer" numa migração
+    travada do Google Ads sempre devolvia False (a empresa nunca é
+    encontrada em `ads_cache`, que é a coluna do Meta), como se a
+    empresa tivesse sumido do banco."""
     try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        coluna = "gads_cache" if plataforma == "Google Ads" else "ads_cache"
+        res = supabase.table("ci_dados").select(coluna).eq("user_id", user_id).execute()
+        cache_atual = (res.data[0].get(coluna) or {}) if res.data else {}
         entry = cache_atual.get(empresa)
         if not entry:
             return False
@@ -5212,10 +5254,10 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str) -> boo
         # nada.
         _resetar_falhas_midia_empresa(user_id, empresa)
 
-        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa})
+        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "plataforma": plataforma})
         threading.Thread(
             target=_migrar_midia_background,
-            args=(user_id, empresa, entry, atividade_id),
+            args=(user_id, empresa, entry, atividade_id, plataforma),
             daemon=True,
         ).start()
         return True
@@ -5459,13 +5501,26 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         return False
 
     try:
-        res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
+        res_cache = supabase.table("ci_dados").select("ads_cache, gads_cache").eq("user_id", user_id).execute()
         cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
+        gcache_atual = (res_cache.data[0].get("gads_cache") or {}) if res_cache.data else {}
     except Exception:
         return False
 
     tarefas = []
     for alvo in candidatas:
+        # "plataforma" só existe nos detalhes de atividades criadas depois
+        # dessa distinção existir (ver iniciar_migracao_midia_background) —
+        # atividades antigas sem esse campo são tratadas como Meta Ads, que
+        # era a única plataforma antes disso. Sem separar por plataforma
+        # aqui, uma migração travada de Google Ads nunca era encontrada
+        # (ela está em `gads_cache`, não em `ads_cache`) e acabava sendo
+        # marcada como "erro" por engano depois de algumas tentativas
+        # (ver o bloco "BUG CORRIGIDO" abaixo) — não porque a empresa
+        # tivesse sumido de verdade, e sim porque a busca olhava a coluna
+        # errada.
+        plataforma_alvo = (alvo.get("detalhes") or {}).get("plataforma") or "Meta Ads"
+        cache_da_plataforma = gcache_atual if plataforma_alvo == "Google Ads" else cache_atual
         empresa = (alvo.get("detalhes") or {}).get("empresa")
         if not empresa:
             # Registro antigo sem 'empresa' nos detalhes (ver
@@ -5477,7 +5532,7 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
             empresa = _extrair_empresa_do_titulo_migracao(alvo.get("titulo") or "")
         if not empresa:
             continue
-        entry = cache_atual.get(empresa)
+        entry = cache_da_plataforma.get(empresa)
         if not entry:
             # BUG CORRIGIDO: antes, quando a empresa não era encontrada no
             # ads_cache na hora de montar o lote de retry, a atividade era
@@ -5521,8 +5576,8 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
                     "ultima_tentativa_em": _agora_iso(),
                 })
             continue
-        atualizar_atividade(alvo["id"], "em_andamento", {"empresa": empresa})
-        tarefas.append((empresa, entry, alvo["id"]))
+        atualizar_atividade(alvo["id"], "em_andamento", {"empresa": empresa, "plataforma": plataforma_alvo})
+        tarefas.append((empresa, entry, alvo["id"], plataforma_alvo))
 
     if not tarefas:
         return False
@@ -6407,7 +6462,7 @@ def _reconciliar_midia_background(user_id: str, atividade_id: str):
             if not url_origem or not url_cdn or url_origem == url_cdn:
                 continue
             try:
-                resultado = supabase.rpc("substituir_url_no_ads_cache", {
+                resultado = supabase.rpc(_rpc_substituir_url_cache(_plataforma_da_url(url_origem)), {
                     "p_user_id": user_id,
                     "p_url_antiga": url_origem,
                     "p_url_nova": url_cdn,
@@ -6490,7 +6545,7 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
             # sucesso: baixar_e_persistir_midia já limpou o registro de
             # falha; falta só apontar o ads_cache pra URL nova no R2.
             try:
-                supabase.rpc("substituir_url_no_ads_cache", {
+                supabase.rpc(_rpc_substituir_url_cache(_plataforma_da_url(url_antiga)), {
                     "p_user_id": user_id,
                     "p_url_antiga": url_antiga,
                     "p_url_nova": nova_url,
@@ -30338,10 +30393,12 @@ html, body { background: transparent; overflow: hidden; }
                         else:
                             st.toast("Não consegui reiniciar a retentativa — tenta de novo.", icon="⚠️")
                     else:
-                        if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid):
+                        _plataforma_ref = (_atividade_ref.get("detalhes") or {}).get("plataforma") if _atividade_ref else None
+                        _plataforma_ref = _plataforma_ref or "Meta Ads"
+                        if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid, _plataforma_ref):
                             st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                         else:
-                            st.toast(f"Não achei {_empresa_ref} no ads_cache pra refazer.", icon="⚠️")
+                            st.toast(f"Não achei {_empresa_ref} no cache pra refazer.", icon="⚠️")
                     st.rerun()
 
             # Exclusão de notificações — agora feita direto pelo ícone de lixeira

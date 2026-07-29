@@ -19474,12 +19474,24 @@ setHeight(false);
     if _empresas_sem_config:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
         st.markdown(f"""
-        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
-                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
-                    margin-bottom:24px;">
-            <strong>{_nomes}</strong>
-            {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
-            Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+        <div style="display:flex;align-items:flex-start;gap:12px;
+                    background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);
+                    border:1px solid #fde68a;border-left:4px solid #f59e0b;
+                    border-radius:12px;padding:14px 18px;margin-bottom:24px;">
+            <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;
+                        background:#f59e0b;display:flex;align-items:center;
+                        justify-content:center;margin-top:1px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 9v4"/><path d="M12 17h.01"/>
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                </svg>
+            </div>
+            <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
+                <strong>{_nomes}</strong>
+                {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
+                Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+            </div>
         </div>
         """, unsafe_allow_html=True)
     if _empresas_sem_dados:
@@ -20371,18 +20383,6 @@ window.addEventListener('load', syncHeight);
                         gads_list = partial if partial else gads_list_raw
             else:
                 gads_list = gads_list_raw
-
-            _gads_raw_debug = cache_entry.get("_raw", []) or []
-            with st.expander(f"🐛 Debug — dados brutos da API ({len(_gads_raw_debug)} itens)"):
-                st.caption(
-                    "Retorno bruto do Apify (Google Ads Transparency Center), antes de "
-                    "qualquer normalização — útil pra ver exatamente quais campos a fonte "
-                    "está enviando para cada anúncio."
-                )
-                if _gads_raw_debug:
-                    st.json(_gads_raw_debug)
-                else:
-                    st.caption("Sem dados brutos salvos para essa empresa (coleta antiga, antes do debug ser adicionado).")
 
             # Ghost buttons para análise IA
             ia_analise_ghost_css = []
@@ -21760,7 +21760,7 @@ function imgFallback_{uid}(img){{
     </div>
     {media_block}
     <div class="card-footer-btns">
-        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank">Ver na Central de Transparência</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
+        {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank" style="text-align:center">Ver na Central</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>
     </div>
 </div>"""

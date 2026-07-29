@@ -2719,6 +2719,18 @@ def salvar_ads_analises():
     except Exception as e:
         st.toast(f"Erro ao salvar análises de ads: {e}", icon="⚠️")
 
+def salvar_gads_analises():
+    """Persiste apenas gads_analises_salvas (update parcial). Faltava —
+    era chamada em vários pontos da aba Google Ads mas nunca tinha sido
+    definida, o que quebraria com NameError ao gerar uma Análise de IA
+    de Google Ads."""
+    try:
+        supabase.table("ci_dados").update({
+            "gads_analises_salvas": st.session_state.get("gads_analises_salvas", []),
+        }).eq("user_id", st.session_state.user.id).execute()
+    except Exception as e:
+        st.toast(f"Erro ao salvar análises de Google Ads: {e}", icon="⚠️")
+
 # ---------------------------------------------------
 # ESTADO DA SESSÃO
 # ---------------------------------------------------

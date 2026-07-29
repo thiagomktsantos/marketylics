@@ -981,18 +981,27 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             ]
 
         resp = None
-        for _headers_download in _tentativas_headers:
+        for _i_tent, _headers_download in enumerate(_tentativas_headers):
             try:
                 _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
-            except Exception:
+            except Exception as _e_tent:
+                print(f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} EXCEÇÃO: {_e_tent!r}", flush=True)
                 continue
             _ct_tentativa = (_tentativa.headers.get("content-type", "") or "").split(";")[0].strip()
+            print(
+                f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} "
+                f"url={url_origem} status={_tentativa.status_code} content-type={_ct_tentativa!r} "
+                f"bytes={len(_tentativa.content) if _tentativa.content else 0}",
+                flush=True,
+            )
             if _tentativa.status_code == 200 and _tentativa.content and (
                 not _e_midia_google or _ct_tentativa.startswith(("image/", "video/"))
             ):
                 resp = _tentativa
+                print(f"[MIDIA-DL:{ad_id}] SUCESSO na tentativa={_i_tent}", flush=True)
                 break
         if resp is None:
+            print(f"[MIDIA-DL:{ad_id}] TODAS as {len(_tentativas_headers)} tentativas falharam pra {url_origem} — mantém link original", flush=True)
             # Nenhuma tentativa deu certo — mantém o comportamento antigo
             # (levanta com a última resposta) pra cair no except abaixo e
             # devolver a url_origem sem quebrar o fluxo.
@@ -4357,8 +4366,16 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         # Python. Isso evita a corrida entre migrações concorrentes de
         # empresas diferentes e nunca perde anúncios históricos que não
         # vieram nessa coleta específica.
+        _ads_migrado_empresa = migrado.get(empresa, {}).get("data", [])
+        for _ad_mig in _ads_migrado_empresa:
+            # Só descarta o base64 provisório quando a imagem já virou um
+            # link permanente do R2 — enquanto sobrar link cru do Google
+            # sem migrar, o card depende desse base64 pra mostrar alguma
+            # coisa (ver _imagem_precisa_de_b64_provisorio).
+            if not _imagem_precisa_de_b64_provisorio(_ad_mig):
+                _ad_mig.pop("images_b64", None)
         atualizacoes = {
-            str(ad["id"]): ad for ad in migrado.get(empresa, {}).get("data", []) if ad.get("id")
+            str(ad["id"]): ad for ad in _ads_migrado_empresa if ad.get("id")
         }
         if not atualizacoes:
             atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "motivo": "nenhum anúncio com id pra atualizar"})
@@ -5665,6 +5682,36 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 # FUNÇÃO salvar_cache_ads 
 # ---------------------------------------------------
  
+def _imagem_precisa_de_b64_provisorio(ad: dict) -> bool:
+    """True quando o anúncio é do Google Ads e a imagem AINDA não foi
+    migrada pra um link permanente do R2 — nesses casos o `images_b64`
+    (base64 já baixado com sucesso durante a coleta) precisa ser mantido
+    no cache, porque é a ÚNICA fonte que o card consegue renderizar de
+    verdade.
+
+    Isso não é necessário pro Meta: o link cru do Facebook/Instagram
+    carrega direto no <img> do navegador sem problema (a Meta não bloqueia
+    hotlink de referrer vazio), então o card mostra o link original
+    normalmente enquanto a migração pro R2 não termina — exatamente como
+    o usuário espera que funcione.
+
+    Já o CDN do Google (tpc.googlesyndication.com) bloqueia esse mesmo
+    tipo de carregamento direto do navegador (o <img> do card usa
+    referrerpolicy="no-referrer", e não dá pra forjar um Referer
+    específico só de HTML/CSS) — então, sem o base64 como imagem
+    provisória, o card do Google fica sem imagem nenhuma até a migração
+    terminar, mesmo quando a coleta já baixou a imagem certa com
+    sucesso (é exatamente o bug relatado: o backend acha e baixa a
+    imagem, mas o card mostra 'Ver criativo →' até a migração rodar)."""
+    imgs = ad.get("images") or []
+    if not imgs:
+        return False
+    if not any(("googlesyndication.com" in u or "googleusercontent.com" in u) for u in imgs):
+        return False  # não é imagem do Google — Meta não precisa desse fallback
+    if R2_PUBLIC_BASE and all(u.startswith(R2_PUBLIC_BASE) for u in imgs):
+        return False  # já migrado — não precisa mais do base64
+    return True
+
 def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None):
     try:
         # `user_id` deve ser passado explicitamente quando essa função é
@@ -5681,12 +5728,9 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         dados_limpos = {}
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
-            ads_limpos = []
-            for ad in entry.get("data", []):
-                ad_limpo = dict(ad)
-                ad_limpo.pop("images_b64", None)
+            ads_limpos = [dict(ad) for ad in entry.get("data", [])]
+            for ad_limpo in ads_limpos:
                 ad_limpo.pop("video_thumb", None)
-                ads_limpos.append(ad_limpo)
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
 
@@ -5709,6 +5753,15 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             except Exception as e_midia:
                 st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
 
+        # Só descarta o base64 depois de saber o resultado final da
+        # migração (acima) — se ainda sobrou link cru do Google sem
+        # migrar, o card depende desse base64 pra mostrar alguma coisa
+        # (ver _imagem_precisa_de_b64_provisorio).
+        for entry_limpa in dados_limpos.values():
+            for ad_limpo in entry_limpa.get("data", []):
+                if not _imagem_precisa_de_b64_provisorio(ad_limpo):
+                    ad_limpo.pop("images_b64", None)
+
         supabase.table("ci_dados").update({
             "ads_cache": dados_limpos,
         }).eq("user_id", user_id).execute()
@@ -5727,12 +5780,9 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         dados_limpos = {}
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
-            ads_limpos = []
-            for ad in entry.get("data", []):
-                ad_limpo = dict(ad)
-                ad_limpo.pop("images_b64", None)
+            ads_limpos = [dict(ad) for ad in entry.get("data", [])]
+            for ad_limpo in ads_limpos:
                 ad_limpo.pop("video_thumb", None)
-                ads_limpos.append(ad_limpo)
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
 
@@ -5747,6 +5797,15 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                     )
             except Exception as e_midia:
                 st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+
+        # Só descarta o base64 depois de saber o resultado final da
+        # migração (acima) — se ainda sobrou link cru do Google sem
+        # migrar, o card depende desse base64 pra mostrar alguma coisa
+        # (ver _imagem_precisa_de_b64_provisorio).
+        for entry_limpa in dados_limpos.values():
+            for ad_limpo in entry_limpa.get("data", []):
+                if not _imagem_precisa_de_b64_provisorio(ad_limpo):
+                    ad_limpo.pop("images_b64", None)
 
         supabase.table("ci_dados").update({
             "gads_cache": dados_limpos,

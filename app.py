@@ -6102,7 +6102,23 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
     coluna `gads_cache`, não `ads_cache`. Antes, a coleta de Google Ads
     chamava por engano a função de Meta Ads, o que fazia os anúncios do
     Google sobrescreverem o cache do Meta (e a coluna gads_cache nunca
-    era realmente escrita)."""
+    era realmente escrita).
+
+    IMPORTANTE — `dados` deve ser só o DELTA dessa coleta (as empresas
+    que acabaram de ser buscadas agora), não o cache inteiro já
+    mesclado. Antes essa função recebia o cache inteiro (lido no INÍCIO
+    da thread, antes das chamadas à Apify) e regravava a coluna inteira
+    por cima no final — se duas coletas rodassem ao mesmo tempo (clique
+    duplo, "Buscar" + "Forçar atualização", duas abas do navegador),
+    cada uma lia o mesmo estado antigo, e a que terminasse por último
+    sobrescrevia a coluna inteira, APAGANDO silenciosamente as empresas
+    que a outra tinha acabado de coletar (mesmo com a atividade do sino
+    mostrando "Coletado" pra todo mundo). Por isso agora a gravação usa
+    a RPC `mesclar_gads_cache`, que faz um merge atômico no Postgres
+    (`gads_cache = gads_cache || novos_dados`) — só toca nas chaves que
+    vieram nesse delta, nunca no resto da coluna, e não depende de
+    nenhum estado lido em Python antes das chamadas à Apify.
+    """
     try:
         user_id = user_id or st.session_state.user.id
 
@@ -6136,9 +6152,13 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 if not _imagem_precisa_de_b64_provisorio(ad_limpo):
                     ad_limpo.pop("images_b64", None)
 
-        supabase.table("ci_dados").update({
-            "gads_cache": dados_limpos,
-        }).eq("user_id", user_id).execute()
+        if not dados_limpos:
+            return  # nada novo pra mesclar (ex: todas as empresas vieram de erro)
+
+        supabase.rpc("mesclar_gads_cache", {
+            "p_user_id": user_id,
+            "p_novos_dados": dados_limpos,
+        }).execute()
     except Exception as e:
         st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
 
@@ -18545,12 +18565,16 @@ elif st.session_state.pagina == "google_ads":
                 _processadas += 1
                 _grava_progresso()
 
-            cache_mergeado = merge_ads(cache_atual, novos)
-
-            # Save rápido: mantém os links originais do provedor (ainda
-            # válidos por bem mais que 1 dia). A troca pelos links
-            # permanentes do R2 acontece depois, em background também.
-            salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            # Save rápido: manda só o DELTA dessa coleta (`novos`), não o
+            # cache inteiro remesclado em Python — `salvar_cache_gads` já
+            # faz o merge atômico no Postgres (RPC `mesclar_gads_cache`),
+            # o que evita a corrida entre coletas concorrentes que antes
+            # apagava empresas coletadas por outra thread (ver comentário
+            # em `salvar_cache_gads`). Mantém os links originais do
+            # provedor por enquanto (ainda válidos por bem mais que 1
+            # dia); a troca pelos links permanentes do R2 acontece depois,
+            # em background também.
+            salvar_cache_gads(novos, migrar_midia=False, user_id=user_id)
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

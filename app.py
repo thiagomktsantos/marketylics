@@ -1788,6 +1788,31 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 
 _lock_ocr_pendente = threading.Lock()
 
+# Limitador de ritmo GLOBAL pras chamadas ao Gemini nesta fila de OCR —
+# cada empresa roda numa thread própria (ver iniciar_ocr_pendente_
+# background), então várias empresas em paralelo podem somar mais
+# chamadas por minuto do que a cota do Gemini aguenta (fácil de estourar
+# no tier grátis). Sem isso, uma rajada de várias empresas pendentes ao
+# mesmo tempo (ex: depois de um reset em massa) faz TODAS as chamadas
+# tomarem 429/rate-limit de uma vez, e como cada falha volta pra fila
+# como "pendente" (ver correção em _extrair_ocr_estruturado_imagem), o
+# resultado era um ciclo de erro constante em vez de processar aos
+# poucos. `_MIN_INTERVALO_OCR_GEMINI_SEG` serializa as chamadas com um
+# espaçamento mínimo entre elas, não importa quantas threads estejam
+# tentando ao mesmo tempo.
+_lock_ocr_gemini_ritmo = threading.Lock()
+_ultima_chamada_ocr_gemini = [0.0]
+_MIN_INTERVALO_OCR_GEMINI_SEG = 4.0
+
+def _aguardar_ritmo_ocr_gemini():
+    import time as _time_ritmo
+    with _lock_ocr_gemini_ritmo:
+        _agora = _time_ritmo.time()
+        _espera = _MIN_INTERVALO_OCR_GEMINI_SEG - (_agora - _ultima_chamada_ocr_gemini[0])
+        if _espera > 0:
+            _time_ritmo.sleep(_espera)
+        _ultima_chamada_ocr_gemini[0] = _time_ritmo.time()
+
 @st.cache_resource
 def _get_ocr_empresas_ativas_agora() -> set:
     return set()
@@ -1865,10 +1890,31 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
             "escrito de verdade na imagem. Campos sem texto legível ficam "
             "com string vazia (\"\") ou lista vazia ([] pra sitelinks)."
         )
-        resp = gemini_model.generate_content([
-            prompt,
-            {"inline_data": {"mime_type": ct, "data": img_b64}},
-        ])
+        resp = None
+        for _tentativa_gemini in range(2):
+            _aguardar_ritmo_ocr_gemini()
+            try:
+                resp = gemini_model.generate_content([
+                    prompt,
+                    {"inline_data": {"mime_type": ct, "data": img_b64}},
+                ])
+                break
+            except Exception as _e_gemini:
+                _msg_erro = str(_e_gemini)
+                _e_rate_limit = "429" in _msg_erro or "quota" in _msg_erro.lower() or "resourceexhausted" in _msg_erro.lower()
+                print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem tentativa={_tentativa_gemini} rate_limit={_e_rate_limit} EXCEÇÃO: {_e_gemini!r}", flush=True)
+                if _e_rate_limit and _tentativa_gemini == 0:
+                    # Só vale a pena tentar de novo na hora quando é
+                    # especificamente rate-limit (a causa mais comum de
+                    # falha em rajada) — outros erros (imagem inválida,
+                    # bloqueio de segurança etc.) não se resolvem com uma
+                    # segunda tentativa imediata.
+                    import time as _time_retry_gemini
+                    _time_retry_gemini.sleep(8)
+                    continue
+                raise
+        if resp is None:
+            return None
         bruto = (getattr(resp, "text", "") or "").strip()
         if bruto.startswith("```"):
             bruto = re.sub(r"^```(?:json)?\s*|\s*```$", "", bruto, flags=re.IGNORECASE).strip()
@@ -2165,11 +2211,15 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard((user_id, empresa))
         return
-    print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
-    atividade_id = criar_atividade(
-        user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
-        {"empresa": empresa, "processadas": 0, "total": total},
-    )
+    print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
+    atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
+    if atividade_id:
+        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "processadas": 0, "total": total})
+    else:
+        atividade_id = criar_atividade(
+            user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
+            {"empresa": empresa, "processadas": 0, "total": total},
+        )
     threading.Thread(target=_ocr_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
 
 
@@ -2721,6 +2771,34 @@ def _atividade_transcricao_mais_recente_id(user_id: str, empresa: str):
             .select("id, detalhes")
             .eq("user_id", user_id)
             .eq("tipo", "transcricao_video")
+            .order("criado_em", desc=True)
+            .limit(50)
+            .execute()
+        )
+        for a in (res.data or []):
+            if (a.get("detalhes") or {}).get("empresa") == empresa:
+                return a["id"]
+        return None
+    except Exception:
+        return None
+
+def _atividade_ocr_mais_recente_id(user_id: str, empresa: str):
+    """Igual a _atividade_migracao_mais_recente_id/_atividade_transcricao_
+    mais_recente_id, mas pra `ocr_gads`: acha a atividade mais recente
+    dessa empresa, não importa o status. Usada em iniciar_ocr_pendente_
+    background pra reaproveitar o mesmo card em vez de criar um NOVO
+    toda vez que a função é chamada — sem isso, cada chamada (verificação
+    de segurança, botão manual, reset de OCR antiga) criava uma
+    atividade nova pra mesma empresa, enchendo o sino de cards
+    duplicados "Kedu · Extraindo texto..." repetidos."""
+    if not user_id:
+        return None
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("id, detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "ocr_gads")
             .order("criado_em", desc=True)
             .limit(50)
             .execute()

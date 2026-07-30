@@ -3,7 +3,6 @@ import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
-import pandas as pd
 import re
 import unicodedata
 import trafilatura
@@ -1788,30 +1787,65 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 
 _lock_ocr_pendente = threading.Lock()
 
-# Limitador de ritmo GLOBAL pras chamadas ao Gemini nesta fila de OCR —
-# cada empresa roda numa thread própria (ver iniciar_ocr_pendente_
-# background), então várias empresas em paralelo podem somar mais
-# chamadas por minuto do que a cota do Gemini aguenta (fácil de estourar
-# no tier grátis). Sem isso, uma rajada de várias empresas pendentes ao
-# mesmo tempo (ex: depois de um reset em massa) faz TODAS as chamadas
-# tomarem 429/rate-limit de uma vez, e como cada falha volta pra fila
-# como "pendente" (ver correção em _extrair_ocr_estruturado_imagem), o
-# resultado era um ciclo de erro constante em vez de processar aos
-# poucos. `_MIN_INTERVALO_OCR_GEMINI_SEG` serializa as chamadas com um
-# espaçamento mínimo entre elas, não importa quantas threads estejam
-# tentando ao mesmo tempo.
-_lock_ocr_gemini_ritmo = threading.Lock()
-_ultima_chamada_ocr_gemini = [0.0]
-_MIN_INTERVALO_OCR_GEMINI_SEG = 4.0
+# ---------------------------------------------------
+# PADDLEOCR — leitor local, sem chamada de API/cota
+# ---------------------------------------------------
+# Substitui o Gemini como "leitor" da imagem: baixa a imagem e devolve o
+# texto bruto que o PaddleOCR enxergou nela (sem nenhuma tentativa de
+# separar em título/descrição/CTA/url — isso fica pra uma etapa
+# seguinte, depois de ver como o texto bruto costuma vir). Roda no
+# próprio processo, sem limite de requisições por minuto.
+_lock_paddleocr_init = threading.Lock()
+_paddleocr_instancia = [None]
 
-def _aguardar_ritmo_ocr_gemini():
-    import time as _time_ritmo
-    with _lock_ocr_gemini_ritmo:
-        _agora = _time_ritmo.time()
-        _espera = _MIN_INTERVALO_OCR_GEMINI_SEG - (_agora - _ultima_chamada_ocr_gemini[0])
-        if _espera > 0:
-            _time_ritmo.sleep(_espera)
-        _ultima_chamada_ocr_gemini[0] = _time_ritmo.time()
+def _get_paddleocr():
+    """Cria (uma única vez, na primeira chamada) e reaproveita a
+    instância do PaddleOCR — o carregamento do modelo é pesado, então
+    não dá pra recriar a cada imagem."""
+    if _paddleocr_instancia[0] is None:
+        with _lock_paddleocr_init:
+            if _paddleocr_instancia[0] is None:
+                from paddleocr import PaddleOCR
+                _paddleocr_instancia[0] = PaddleOCR(use_angle_cls=True, lang="pt", show_log=False)
+    return _paddleocr_instancia[0]
+
+def _extrair_texto_paddleocr(url_imagem: str):
+    """Baixa a imagem (já no nosso R2) e devolve o texto bruto lido pelo
+    PaddleOCR, uma linha por trecho detectado, na ordem em que o motor
+    encontrou (de cima pra baixo, geralmente).
+
+    Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
+    (download da imagem falhou, PaddleOCR não conseguiu processar etc.)
+    — mesma convenção da função antiga: quem chama trata None como
+    'tenta de novo depois' e não grava nada no banco.
+
+    Devolve "" (string vazia) quando a extração RODOU normalmente mas a
+    imagem genuinamente não tinha nenhum texto legível."""
+    try:
+        import numpy as _np_ocr
+        import cv2 as _cv2_ocr
+        r = requests.get(url_imagem, timeout=20)
+        r.raise_for_status()
+        _arr = _np_ocr.frombuffer(r.content, dtype=_np_ocr.uint8)
+        _img = _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
+        if _img is None:
+            print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
+            return None
+        _ocr = _get_paddleocr()
+        _resultado = _ocr.ocr(_img, cls=True)
+        if not _resultado or not _resultado[0]:
+            return ""
+        _linhas = []
+        for _bloco in _resultado[0]:
+            _texto = (_bloco[1][0] or "").strip()
+            if _texto:
+                _linhas.append(_texto)
+        texto_bruto = "\n".join(_linhas)
+        print(f"[OCR-DEBUG] _extrair_texto_paddleocr OK url={url_imagem!r} linhas={len(_linhas)}", flush=True)
+        return texto_bruto
+    except Exception as e:
+        print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (exceção): {e!r}", flush=True)
+        return None
 
 @st.cache_resource
 def _get_ocr_empresas_ativas_agora() -> set:
@@ -1827,115 +1861,36 @@ _OCR_GADS_CAMPOS_VAZIO = {
 }
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str):
-    """Baixa a imagem (já no nosso R2) e pede pro Gemini extrair, de forma
-    ESTRUTURADA e sabendo que é a imagem de um anúncio do Google Ads, os
-    campos: título (headline), descrição, URL exibida, URL final (destino),
-    CTA e sitelinks.
+    """ETAPA 1 (básico): baixa a imagem (já no nosso R2) e usa o
+    PaddleOCR (local, sem cota/API) pra ler o texto bruto dela.
 
-    Devolve um dict com todas as chaves (algumas vazias quando o campo
-    genuinamente não existe na imagem) quando a extração RODOU de
-    verdade — isso vale mesmo se TODOS os campos vierem vazios (imagem
-    sem nenhum texto legível, o que existe mas é raro).
+    Por enquanto NÃO separa em título/descrição/CTA/url/sitelinks — todo
+    o texto bruto lido pelo PaddleOCR vai pro campo 'descricao', só pra
+    manter compatibilidade com o resto do fluxo (banco, card, badge) que
+    já espera esse formato de dict. A separação em campos fica pra uma
+    próxima etapa, depois de avaliar como o texto bruto costuma vir.
+
+    Devolve um dict com todas as chaves (algumas vazias) quando a
+    extração RODOU de verdade — isso vale mesmo se a imagem não tiver
+    nenhum texto legível (dict com tudo vazio).
 
     Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
-    — download da imagem falhou, Gemini não respondeu, a resposta não
-    veio em JSON válido, etc. Antes, qualquer uma dessas falhas virava
-    silenciosamente um dict vazio, IDÊNTICO ao caso "olhei a imagem e não
-    tinha texto" — e como `ocr_texto=""` conta como "já processado" na
-    convenção 3-estados (ver comentário no topo do bloco), uma imagem que
-    só falhou por uma instabilidade de rede/API ficava marcada como
-    'processada, sem texto' PRA SEMPRE: nem a verificação de segurança
-    nem o botão 'Refazer' nunca mais tentavam de novo, mesmo a imagem
-    tendo texto visível (foi o que aconteceu com os anúncios do print —
-    a verificação disse 'tudo certo' porque essas linhas já tinham
-    `ocr_texto` preenchido, só que com uma string vazia por causa de uma
-    falha, não porque a imagem realmente não tinha texto).
-
-    Quem chama essa função deve tratar None como 'tenta de novo depois'
-    — não grava nada no banco, deixando `ocr_texto` como NULL (pendente)
-    pra essa imagem voltar pra fila na próxima passada."""
-    if gemini_model is None:
+    — download da imagem falhou, PaddleOCR não conseguiu processar etc.
+    Quem chama essa função trata None como 'tenta de novo depois' — não
+    grava nada no banco, deixando `ocr_texto` como NULL (pendente) pra
+    essa imagem voltar pra fila na próxima passada (ver docstring
+    original mais completa no histórico do arquivo)."""
+    texto_bruto = _extrair_texto_paddleocr(url_imagem)
+    if texto_bruto is None:
         return None
-    try:
-        import json as _json_ocr
-        r = requests.get(url_imagem, timeout=20)
-        r.raise_for_status()
-        ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
-        if not ct.startswith("image/"):
-            ct = "image/jpeg"
-        img_b64 = base64.b64encode(r.content).decode("utf-8")
-        prompt = (
-            "Esta é a imagem de um anúncio do Google Ads (Rede de Pesquisa "
-            "ou Display, capturado da Central de Transparência de Anúncios "
-            "do Google). Extraia EXATAMENTE o texto visível nela e organize "
-            "nos seguintes campos:\n"
-            "- titulo: a headline/título principal do anúncio\n"
-            "- descricao: o corpo/texto descritivo do anúncio (se houver)\n"
-            "- url_exibida: a URL mostrada no anúncio (geralmente em verde "
-            "ou cinza, perto do título — ex: www.site.com.br/pagina)\n"
-            "- url_final: a URL de destino/final do anúncio, SOMENTE se "
-            "estiver visível e for diferente da url_exibida (senão deixe "
-            "vazia)\n"
-            "- cta: o texto do botão de chamada pra ação (ex: 'Saiba mais', "
-            "'Comprar agora', 'Entre em contato'), se houver um botão "
-            "visível\n"
-            "- sitelinks: lista com os links/atalhos extras que aparecem "
-            "abaixo do anúncio principal (ex: nomes de seções ou páginas "
-            "adicionais), se houver\n\n"
-            "Responda SOMENTE com um JSON válido, sem markdown, sem crases "
-            "e sem nenhum texto antes ou depois, exatamente neste formato:\n"
-            '{"titulo":"","descricao":"","url_exibida":"","url_final":"",'
-            '"cta":"","sitelinks":[]}\n\n'
-            "Não traduza, não resuma, não invente nada que não esteja "
-            "escrito de verdade na imagem. Campos sem texto legível ficam "
-            "com string vazia (\"\") ou lista vazia ([] pra sitelinks)."
-        )
-        resp = None
-        for _tentativa_gemini in range(2):
-            _aguardar_ritmo_ocr_gemini()
-            try:
-                resp = gemini_model.generate_content([
-                    prompt,
-                    {"inline_data": {"mime_type": ct, "data": img_b64}},
-                ])
-                break
-            except Exception as _e_gemini:
-                _msg_erro = str(_e_gemini)
-                _e_rate_limit = "429" in _msg_erro or "quota" in _msg_erro.lower() or "resourceexhausted" in _msg_erro.lower()
-                print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem tentativa={_tentativa_gemini} rate_limit={_e_rate_limit} EXCEÇÃO: {_e_gemini!r}", flush=True)
-                if _e_rate_limit and _tentativa_gemini == 0:
-                    # Só vale a pena tentar de novo na hora quando é
-                    # especificamente rate-limit (a causa mais comum de
-                    # falha em rajada) — outros erros (imagem inválida,
-                    # bloqueio de segurança etc.) não se resolvem com uma
-                    # segunda tentativa imediata.
-                    import time as _time_retry_gemini
-                    _time_retry_gemini.sleep(8)
-                    continue
-                raise
-        if resp is None:
-            return None
-        bruto = (getattr(resp, "text", "") or "").strip()
-        if bruto.startswith("```"):
-            bruto = re.sub(r"^```(?:json)?\s*|\s*```$", "", bruto, flags=re.IGNORECASE).strip()
-        dados = _json_ocr.loads(bruto)
-        if not isinstance(dados, dict):
-            print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (resposta não é um objeto JSON) url={url_imagem!r} bruto={bruto[:200]!r}", flush=True)
-            return None
-        _sitelinks = dados.get("sitelinks") or []
-        if not isinstance(_sitelinks, list):
-            _sitelinks = []
-        return {
-            "titulo":       (dados.get("titulo") or "").strip(),
-            "descricao":    (dados.get("descricao") or "").strip(),
-            "url_exibida":  (dados.get("url_exibida") or "").strip(),
-            "url_final":    (dados.get("url_final") or "").strip(),
-            "cta":          (dados.get("cta") or "").strip(),
-            "sitelinks":    [s.strip() for s in _sitelinks if isinstance(s, str) and s.strip()],
-        }
-    except Exception as e:
-        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (não confirmado que a imagem não tem texto) url={url_imagem!r}: {e!r}", flush=True)
-        return None
+    return {
+        "titulo":       "",
+        "descricao":    texto_bruto,
+        "url_exibida":  "",
+        "url_final":    "",
+        "cta":          "",
+        "sitelinks":    [],
+    }
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
     """True se algum campo veio preenchido — usado pra decidir se o
@@ -2197,8 +2152,8 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
     migração terminar, sem bloquear quem chamou. Empresas só-Meta (sem
     nenhuma imagem do Google) simplesmente não têm nada pendente e a
     função sai sem criar atividade nenhuma."""
-    if not user_id or not empresa or gemini_model is None:
-        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r} gemini_model_is_none={gemini_model is None}", flush=True)
+    if not user_id or not empresa:
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r}", flush=True)
         return
     with _lock_ocr_pendente:
         if (user_id, empresa) in _ocr_empresas_ativas_agora:

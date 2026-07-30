@@ -10671,12 +10671,62 @@ function setHeightGeral(isOpen) {{
                             f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}</div>'
                             f'</div></div>'
                         )
-                    _oport_html = "".join(_oport_rows)
+                    # ── Paginação: 2 oportunidades por página, com bolinhas de
+                    # navegação abaixo da lista. Como o card roda num iframe
+                    # isolado (ver comentário de syncH()/irParaAreaPrioritaria()
+                    # logo abaixo), a troca de página é 100% client-side via JS
+                    # — sem round-trip com o Streamlit. ──
+                    _OPORT_POR_PAGINA = 2
+                    _oport_paginas = []
+                    for _p_ini in range(0, len(_oport_rows), _OPORT_POR_PAGINA):
+                        _idx_pag = _p_ini // _OPORT_POR_PAGINA
+                        _display_pag = "block" if _idx_pag == 0 else "none"
+                        _oport_paginas.append(
+                            f'<div class="oport-page" style="display:{_display_pag};">'
+                            + "".join(_oport_rows[_p_ini:_p_ini + _OPORT_POR_PAGINA]) +
+                            '</div>'
+                        )
+                    _oport_html = "".join(_oport_paginas)
+
+                    _total_paginas_op = len(_oport_paginas)
+                    if _total_paginas_op > 1:
+                        _dots_op_html = "".join(
+                            f'<div class="oport-dot" onclick="oportIrPagina({_i})" '
+                            f'style="width:6px;height:6px;border-radius:50%;cursor:pointer;'
+                            f'transition:background .15s;background:{"#2e65b7" if _i == 0 else "#d1d9e6"};"></div>'
+                            for _i in range(_total_paginas_op)
+                        )
+                        _seta_esq_svg = (
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" '
+                            'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                            '<polyline points="15 18 9 12 15 6"/></svg>'
+                        )
+                        _seta_dir_svg = (
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" '
+                            'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                            '<polyline points="9 18 15 12 9 6"/></svg>'
+                        )
+                        _oport_pagina_html = (
+                            '<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-top:8px;">'
+                            f'<div onclick="oportMudarPagina(-1)" style="cursor:pointer;display:flex;align-items:center;padding:2px;">{_seta_esq_svg}</div>'
+                            f'<div style="display:flex;gap:5px;">{_dots_op_html}</div>'
+                            f'<div onclick="oportMudarPagina(1)" style="cursor:pointer;display:flex;align-items:center;padding:2px;">{_seta_dir_svg}</div>'
+                            '</div>'
+                        )
+                    else:
+                        _oport_pagina_html = ""
+
+                    _oport_count_badge_html = (
+                        '<div style="margin-left:6px;padding:1px 7px;border-radius:8px;background:#eaf1fb;'
+                        f'color:#2e65b7;font-size:11px;font-weight:800;">{len(_oportunidades_top)}</div>'
+                    )
                 else:
                     _oport_html = (
                         '<div style="font-size:12px;color:#22c55e;font-weight:700;padding:8px 0;">'
                         f'{_SVG_ICONE_CHECK} Nenhuma pendência crítica identificada no momento.</div>'
                     )
+                    _oport_pagina_html = ""
+                    _oport_count_badge_html = ""
 
                 # ── Insight da IA: texto-guia baseado na área mais fraca e mais forte ──
                 # "Sua" só cabe quando a empresa selecionada é a do próprio
@@ -10953,9 +11003,10 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       <div>
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Oportunidades prioritárias</div>
-          <div style="width:14px;height:14px;margin-left:5px;flex-shrink:0;"></div>
+          {_oport_count_badge_html}
         </div>
         {_oport_html}
+        {_oport_pagina_html}
       </div>
     </div>
   </div>
@@ -10991,6 +11042,28 @@ function irParaAreaPrioritaria() {{
         var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\s+/g, ' ').trim();
         if (txt === alvo) {{ btns[i].click(); return; }}
     }}
+}}
+var _oportPaginaAtual = 0;
+function oportAtualizarPagina() {{
+    var paginas = document.querySelectorAll('.oport-page');
+    for (var i = 0; i < paginas.length; i++) {{
+        paginas[i].style.display = (i === _oportPaginaAtual) ? 'block' : 'none';
+    }}
+    var dots = document.querySelectorAll('.oport-dot');
+    for (var j = 0; j < dots.length; j++) {{
+        dots[j].style.background = (j === _oportPaginaAtual) ? '#2e65b7' : '#d1d9e6';
+    }}
+    setTimeout(syncH, 30);
+}}
+function oportMudarPagina(delta) {{
+    var total = document.querySelectorAll('.oport-page').length;
+    if (total === 0) return;
+    _oportPaginaAtual = (_oportPaginaAtual + delta + total) % total;
+    oportAtualizarPagina();
+}}
+function oportIrPagina(n) {{
+    _oportPaginaAtual = n;
+    oportAtualizarPagina();
 }}
 function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);

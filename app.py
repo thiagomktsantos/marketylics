@@ -936,6 +936,18 @@ def _e_url_youtube(url: str) -> bool:
     i.ytimg.com (thumbnail, essa sim é uma imagem de verdade)."""
     return bool(url) and bool(_REGEX_YOUTUBE.search(url))
 
+def _caminho_cookies_youtube() -> str | None:
+    """Caminho do arquivo cookies.txt (formato Netscape) de uma conta
+    Google logada, usado pra contornar o bloqueio de PO Token do
+    YouTube em IPs de datacenter. Configurável via env var
+    YT_COOKIES_FILE; por padrão procura 'youtube_cookies.txt' na raiz
+    do projeto. Devolve None se o arquivo não existir (nesse caso o
+    download simplesmente falha com 403 de novo, e a checagem de
+    migração pendente tenta de novo depois — sem quebrar o fluxo)."""
+    import os
+    caminho = os.environ.get("YT_COOKIES_FILE", "youtube_cookies.txt")
+    return caminho if os.path.isfile(caminho) else None
+
 def _baixar_video_youtube(url_origem: str, ad_id: str = None):
     """Baixa o vídeo de verdade do YouTube via yt-dlp — a página
     /watch?v=... devolvida por requests.get é só HTML, não dá pra baixar
@@ -947,6 +959,15 @@ def _baixar_video_youtube(url_origem: str, ad_id: str = None):
     reduzir ele em seguida. Precisa do ffmpeg (já usado em
     _comprimir_video/_transcrever_video_whisper) pra juntar vídeo+áudio
     quando vêm em streams separados.
+
+    Usa cookies de uma conta YouTube logada (ver
+    _caminho_cookies_youtube) pra contornar o bloqueio de PO Token que
+    IPs de datacenter tomam do YouTube — sem cookies, o cliente
+    android/ios/mweb sozinho não é suficiente e cai em 403. Os cookies
+    expiram periodicamente; quando isso acontecer, os vídeos voltam a
+    cair no 'nao_migrados' da migração, e a checagem de pendências já
+    existente vai tentar migrar de novo assim que o arquivo for
+    renovado — não precisa de nenhum reprocessamento manual.
 
     Devolve (conteudo_bytes, content_type) em caso de sucesso, ou
     (None, None) se o yt-dlp não estiver instalado ou a extração falhar
@@ -987,6 +1008,14 @@ def _baixar_video_youtube(url_origem: str, ad_id: str = None):
                     },
                 },
             }
+
+            cookies_path = _caminho_cookies_youtube()
+            if cookies_path:
+                ydl_opts["cookiefile"] = cookies_path
+                print(f"[MIDIA-DL:{ad_id}] usando cookies do YouTube ({cookies_path})", flush=True)
+            else:
+                print(f"[MIDIA-DL:{ad_id}] cookies do YouTube não encontrados (YT_COOKIES_FILE) — tentando sem cookies, pode cair em 403", flush=True)
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url_origem])
 

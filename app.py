@@ -1765,10 +1765,19 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 #  chamada em _migrar_midia_background), pra não segurar os workers de
 #  download/upload da migração com uma chamada de IA por imagem.
 #
-#  REQUER MIGRAÇÃO NO BANCO — a coluna abaixo ainda não existe:
+#  REQUER MIGRAÇÃO NO BANCO — as colunas abaixo ainda não existem:
 #      ALTER TABLE midias ADD COLUMN ocr_texto text;
+#      ALTER TABLE midias ADD COLUMN ocr_estruturado jsonb;
 #  (mesma convenção 3-estados da coluna `transcricao`: NULL = ainda não
-#  processado, "" = processado e não achou texto, com texto = pronto)
+#  processado, "" (ocr_texto) / NULL (ocr_estruturado) = processado e não
+#  achou texto, com texto = pronto)
+#
+#  `ocr_texto` guarda a versão "achatada" (uma linha por trecho) — usada
+#  no badge/tooltip do card e como fallback pra imagens processadas antes
+#  desta migração, que só têm texto corrido, sem os campos separados.
+#  `ocr_estruturado` guarda o JSON com os campos reconhecendo que é um
+#  anúncio do Google (titulo, descricao, url_exibida, url_final, cta,
+#  sitelinks) — usado pra exibir o texto formatado no card.
 
 _lock_ocr_pendente = threading.Lock()
 
@@ -1780,15 +1789,23 @@ _ocr_empresas_ativas_agora = _get_ocr_empresas_ativas_agora()  # (user_id, empre
 
 _FILTRO_OCR_URL_GOOGLE = "url_origem.ilike.%googlesyndication.com%,url_origem.ilike.%googleusercontent.com%"
 
-def _extrair_texto_ocr_imagem(url_imagem: str) -> str:
-    """Baixa a imagem (já no nosso R2) e pede pro Gemini transcrever o
-    texto visível no criativo (headline, descrição, CTA). Devolve ""
-    (nunca None) em qualquer falha ou quando não há texto nenhum —
-    mesma convenção da transcrição de vídeo: string vazia = "já tentei,
-    não achei nada", pra não voltar pra fila pra sempre."""
+_OCR_GADS_CAMPOS_VAZIO = {
+    "titulo": "", "descricao": "", "url_exibida": "", "url_final": "",
+    "cta": "", "sitelinks": [],
+}
+
+def _extrair_ocr_estruturado_imagem(url_imagem: str) -> dict:
+    """Baixa a imagem (já no nosso R2) e pede pro Gemini extrair, de forma
+    ESTRUTURADA e sabendo que é a imagem de um anúncio do Google Ads, os
+    campos: título (headline), descrição, URL exibida, URL final (destino),
+    CTA e sitelinks. Devolve sempre um dict com todas as chaves (vazias
+    quando não há o campo) — nunca None, mesma convenção anterior (campos
+    vazios = "já tentei, não achei nada", pra não voltar pra fila pra
+    sempre)."""
     if gemini_model is None:
-        return ""
+        return dict(_OCR_GADS_CAMPOS_VAZIO)
     try:
+        import json as _json_ocr
         r = requests.get(url_imagem, timeout=20)
         r.raise_for_status()
         ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
@@ -1796,23 +1813,82 @@ def _extrair_texto_ocr_imagem(url_imagem: str) -> str:
             ct = "image/jpeg"
         img_b64 = base64.b64encode(r.content).decode("utf-8")
         prompt = (
-            "Esta é a imagem de um anúncio do Google Ads. Transcreva "
-            "EXATAMENTE o texto visível nela (headline, corpo/descrição "
-            "e botão de call-to-action), na ordem em que aparece, um "
-            "trecho por linha. Não descreva a imagem, não traduza, não "
-            "invente nada que não esteja escrito de verdade. Se não "
-            "houver nenhum texto legível, responda só: SEM_TEXTO"
+            "Esta é a imagem de um anúncio do Google Ads (Rede de Pesquisa "
+            "ou Display, capturado da Central de Transparência de Anúncios "
+            "do Google). Extraia EXATAMENTE o texto visível nela e organize "
+            "nos seguintes campos:\n"
+            "- titulo: a headline/título principal do anúncio\n"
+            "- descricao: o corpo/texto descritivo do anúncio (se houver)\n"
+            "- url_exibida: a URL mostrada no anúncio (geralmente em verde "
+            "ou cinza, perto do título — ex: www.site.com.br/pagina)\n"
+            "- url_final: a URL de destino/final do anúncio, SOMENTE se "
+            "estiver visível e for diferente da url_exibida (senão deixe "
+            "vazia)\n"
+            "- cta: o texto do botão de chamada pra ação (ex: 'Saiba mais', "
+            "'Comprar agora', 'Entre em contato'), se houver um botão "
+            "visível\n"
+            "- sitelinks: lista com os links/atalhos extras que aparecem "
+            "abaixo do anúncio principal (ex: nomes de seções ou páginas "
+            "adicionais), se houver\n\n"
+            "Responda SOMENTE com um JSON válido, sem markdown, sem crases "
+            "e sem nenhum texto antes ou depois, exatamente neste formato:\n"
+            '{"titulo":"","descricao":"","url_exibida":"","url_final":"",'
+            '"cta":"","sitelinks":[]}\n\n'
+            "Não traduza, não resuma, não invente nada que não esteja "
+            "escrito de verdade na imagem. Campos sem texto legível ficam "
+            "com string vazia (\"\") ou lista vazia ([] pra sitelinks)."
         )
         resp = gemini_model.generate_content([
             prompt,
             {"inline_data": {"mime_type": ct, "data": img_b64}},
         ])
-        texto = (getattr(resp, "text", "") or "").strip()
-        if texto.upper().startswith("SEM_TEXTO"):
-            return ""
-        return texto
+        bruto = (getattr(resp, "text", "") or "").strip()
+        if bruto.startswith("```"):
+            bruto = re.sub(r"^```(?:json)?\s*|\s*```$", "", bruto, flags=re.IGNORECASE).strip()
+        dados = _json_ocr.loads(bruto)
+        if not isinstance(dados, dict):
+            return dict(_OCR_GADS_CAMPOS_VAZIO)
+        _sitelinks = dados.get("sitelinks") or []
+        if not isinstance(_sitelinks, list):
+            _sitelinks = []
+        return {
+            "titulo":       (dados.get("titulo") or "").strip(),
+            "descricao":    (dados.get("descricao") or "").strip(),
+            "url_exibida":  (dados.get("url_exibida") or "").strip(),
+            "url_final":    (dados.get("url_final") or "").strip(),
+            "cta":          (dados.get("cta") or "").strip(),
+            "sitelinks":    [s.strip() for s in _sitelinks if isinstance(s, str) and s.strip()],
+        }
     except Exception:
+        return dict(_OCR_GADS_CAMPOS_VAZIO)
+
+def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
+    """True se algum campo veio preenchido — usado pra decidir se o
+    resultado conta como 'achou texto' (mesmo critério que antes era só
+    `texto.strip()` não-vazio)."""
+    if not d:
+        return False
+    return bool(
+        d.get("titulo") or d.get("descricao") or d.get("url_exibida")
+        or d.get("url_final") or d.get("cta") or d.get("sitelinks")
+    )
+
+def _achatar_ocr_estruturado(d: dict) -> str:
+    """Reduz o dict estruturado pra uma string 'uma linha por trecho' —
+    mantém compatibilidade com o badge/tooltip do card e com o texto
+    salvo em `ocr_texto` (usado também como fallback pra linhas antigas
+    processadas antes desta migração pra JSON)."""
+    if not d:
         return ""
+    linhas = []
+    for campo in ("titulo", "descricao", "url_exibida", "cta"):
+        v = (d.get(campo) or "").strip()
+        if v:
+            linhas.append(v)
+    for sl in (d.get("sitelinks") or []):
+        if sl:
+            linhas.append(sl)
+    return "\n".join(linhas)
 
 def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
     """Quantas imagens do Google Ads dessa empresa já foram migradas
@@ -1888,9 +1964,17 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 total = total_real
             for midia in pendentes:
                 _ids_tentados_neste_run.add(midia["id"])
-                texto = _extrair_texto_ocr_imagem(midia["url_cdn"])
+                import json as _json_ocr_fila
+                _estruturado = _extrair_ocr_estruturado_imagem(midia["url_cdn"])
+                texto = _achatar_ocr_estruturado(_estruturado)
                 try:
-                    supabase.table("midias").update({"ocr_texto": texto or ""}).eq("id", midia["id"]).execute()
+                    supabase.table("midias").update({
+                        "ocr_texto": texto or "",
+                        "ocr_estruturado": (
+                            _json_ocr_fila.dumps(_estruturado, ensure_ascii=False)
+                            if _ocr_estruturado_tem_conteudo(_estruturado) else None
+                        ),
+                    }).eq("id", midia["id"]).execute()
                 except Exception:
                     _ids_falharam.append(str(midia["id"]))
                 processadas += 1
@@ -21672,13 +21756,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 _urls_img_cards = list({
                     (ad.get("images") or [""])[0] for ad in gads_f if (ad.get("images") or [""])[0]
                 })
-                _mapa_ocr = {}            # url -> texto extraído (não vazio)
+                _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
+                _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
                 _urls_ocr_pendente = set()  # url -> já migrada, ocr ainda NULL
                 if _urls_img_cards:
                     try:
+                        import json as _json_ocr_cards
                         _res_ocr = (
                             supabase.table("midias")
-                            .select("url_cdn, ocr_texto")
+                            .select("url_cdn, ocr_texto, ocr_estruturado")
                             .in_("url_cdn", _urls_img_cards)
                             .execute()
                         )
@@ -21691,6 +21777,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _txt_ocr = _val_ocr.strip()
                                 if _txt_ocr:
                                     _mapa_ocr[_url_row] = _txt_ocr
+                                _val_estr = _row.get("ocr_estruturado")
+                                if _val_estr:
+                                    try:
+                                        _mapa_ocr_estruturado[_url_row] = (
+                                            _val_estr if isinstance(_val_estr, dict)
+                                            else _json_ocr_cards.loads(_val_estr)
+                                        )
+                                    except Exception:
+                                        pass  # linha com JSON inválido — cai pro fallback de texto corrido
                     except Exception:
                         pass  # sem OCR em lote não pode travar a tela — só some o texto
 
@@ -22223,10 +22318,56 @@ function imgFallback_{uid}(img){{
                     # automaticamente (pode ter erro de leitura), não a
                     # copy oficial do anúncio.
                     _img_principal_ad = images[0] if images else ""
+                    _ocr_estr_ad = _mapa_ocr_estruturado.get(_img_principal_ad) if _img_principal_ad else None
                     _ocr_txt_ad = _mapa_ocr.get(_img_principal_ad, "") if _img_principal_ad else ""
                     _ocr_pendente_ad = bool(_img_principal_ad) and _img_principal_ad in _urls_ocr_pendente
                     if not body_safe and not title_safe:
-                        if _ocr_txt_ad:
+                        if _ocr_estr_ad:
+                            # OCR estruturado (sabendo que é um anúncio do
+                            # Google): título, descrição, url exibida, url
+                            # final (só se diferente), CTA e sitelinks —
+                            # cada campo no seu próprio bloco em vez de um
+                            # texto corrido só.
+                            _campos_ocr_html = []
+                            if _ocr_estr_ad.get("titulo"):
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:13px;font-weight:700;color:#050505;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
+                                )
+                            if _ocr_estr_ad.get("descricao"):
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:13px;color:#374151;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
+                                )
+                            if _ocr_estr_ad.get("url_exibida"):
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:11px;color:#006621;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["url_exibida"])}</div>'
+                                )
+                            if _ocr_estr_ad.get("url_final") and _ocr_estr_ad.get("url_final") != _ocr_estr_ad.get("url_exibida"):
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:10.5px;color:#9ca3af;margin-bottom:4px">Destino: {_escapar_html_ocr(_ocr_estr_ad["url_final"])}</div>'
+                                )
+                            if _ocr_estr_ad.get("cta"):
+                                _campos_ocr_html.append(
+                                    '<div style="display:inline-block;font-size:11px;font-weight:700;color:#3a9fd6;'
+                                    'border:1px solid #cfe8fb;border-radius:14px;padding:2px 10px;margin-bottom:4px">'
+                                    f'{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
+                                )
+                            if _ocr_estr_ad.get("sitelinks"):
+                                _sitelinks_txt = " · ".join(_escapar_html_ocr(s) for s in _ocr_estr_ad["sitelinks"])
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:11px;color:#3a9fd6;margin-top:2px">{_sitelinks_txt}</div>'
+                                )
+                            no_copy_html = (
+                                '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
+                                '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
+                                'Texto extraído da imagem (OCR)</div>'
+                                + "".join(_campos_ocr_html) +
+                                '</div>'
+                            )
+                        elif _ocr_txt_ad:
+                            # Linha antiga, migrada antes do OCR virar
+                            # estruturado — só tem o texto corrido salvo em
+                            # `ocr_texto`, sem os campos separados.
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
@@ -22255,11 +22396,13 @@ function imgFallback_{uid}(img){{
     <div class="copy-section" style="position:relative">
         {'<div class="dyn-float">Dinâmico</div>' if is_dyn else ''}
         <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div>{'<div class="page-sponsored">✓ Anunciante verificado</div>' if ad.get("verificado") else ''}</div></div>
+    </div>
+    {media_block}
+    <div class="copy-section">
         {body_display}
         {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
         {no_copy_html}
     </div>
-    {media_block}
     <div class="card-footer-btns">
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank" style="text-align:center">Ver na Central</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>

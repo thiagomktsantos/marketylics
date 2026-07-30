@@ -5354,6 +5354,89 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataf
     except Exception:
         return False
 
+def reparar_e_refazer_migracao(user_id: str, empresa: str, atividade_id: str, plataforma: str = "Google Ads") -> dict:
+    """Repara uma migração que fechou como "sucesso" mas na verdade salvou
+    lixo no R2 (ex.: página de erro/bloqueio do CDN disfarçada de imagem —
+    bug do fallback sem validação de content-type em
+    baixar_e_persistir_midia, já corrigido pra downloads NOVOS, mas que
+    não conserta sozinho o que já foi salvo).
+
+    Só clicar "Refazer" (refazer_migracao_midia) NÃO resolve esses casos:
+    o campo images/videos do anúncio, no cache (ads_cache/gads_cache), já
+    foi sobrescrito com a URL do R2 (o lixo). Como url_origem já começa
+    com R2_PUBLIC_BASE, baixar_e_persistir_midia bate no early-return
+    "já é uma mídia nossa no R2 — nada a fazer" e nunca tenta baixar de
+    novo.
+
+    Passos:
+    1. Acha em `midias` os registros corrompidos desta empresa (mime_type
+       que não é image/* nem video/* — o próprio content-type que a
+       validação deveria ter barrado).
+    2. Pra cada um, devolve a referência no cache do link do R2 (lixo) de
+       volta pro url_origem original, salvo em `midias.url_origem` —
+       usando a mesma RPC que a reconciliação já usa
+       (substituir_url_no_ads_cache / substituir_url_no_gads_cache),
+       então a escrita é atômica e não corre risco de sobrescrever
+       migrações concorrentes de outra empresa.
+    3. Só então apaga a linha corrompida de `midias` (e, melhor esforço,
+       o objeto no R2) — nessa ordem, se o passo 2 falhar a linha
+       corrompida continua lá (nada pior do que já estava) em vez de
+       apagar e deixar o cache apontando pra um R2 que não existe mais.
+    4. Reseta midias_falhas da empresa (mesmo que refazer_migracao_midia
+       já faz) e dispara a migração de novo — agora com url_origem
+       restaurado, o download de verdade acontece, com o código já
+       corrigido.
+
+    Devolve um resumo (quantos corrompidos achados, quantos reparados,
+    falhas por item) pra log/depuração. Não levanta exceção pra fora —
+    qualquer erro vira entrada em "falhas"."""
+    falhas = []
+    try:
+        corrompidas = (
+            supabase.table("midias")
+            .select("id, url_origem, url_cdn, storage_key, tipo, mime_type")
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .execute()
+        ).data or []
+    except Exception as e:
+        return {"total_corrompidas": 0, "reparados": 0, "falhas": [f"erro ao consultar midias: {e!r}"], "refazer_disparado": False}
+
+    corrompidas = [
+        m for m in corrompidas
+        if not (m.get("mime_type") or "").startswith(("image/", "video/"))
+    ]
+
+    reparados = 0
+    for m in corrompidas:
+        try:
+            supabase.rpc(_rpc_substituir_url_cache(plataforma), {
+                "p_user_id": user_id,
+                "p_url_antiga": m["url_cdn"],
+                "p_url_nova": m["url_origem"],
+            }).execute()
+
+            supabase.table("midias").delete().eq("id", m["id"]).execute()
+
+            if r2_client is not None and m.get("storage_key"):
+                try:
+                    r2_client.delete_object(Bucket=R2_BUCKET, Key=m["storage_key"])
+                except Exception:
+                    pass  # best-effort — não bloqueia o reparo por isso
+
+            reparados += 1
+        except Exception as e:
+            falhas.append(f"id={m.get('id')} url_origem={m.get('url_origem')!r}: {e!r}")
+
+    ok = refazer_migracao_midia(user_id, empresa, atividade_id, plataforma=plataforma)
+
+    return {
+        "total_corrompidas": len(corrompidas),
+        "reparados": reparados,
+        "falhas": falhas,
+        "refazer_disparado": ok,
+    }
+
 def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> bool:
     """Equivalente a refazer_migracao_midia, mas pra atividades
     `transcricao_video`: usado pelo botão "🔄 Refazer" no sino quando uma
@@ -29893,6 +29976,7 @@ html, body { background: transparent; overflow: hidden; }
         else:
             _n_ativ = len(_todas_atividades)
             _refazer_ids = []
+            _reparar_ids = []
             _excluir_ids = []
             _cards_notif_html = ""
             # Acumulador de altura real, card a card (em vez de "n * 92px
@@ -29964,11 +30048,28 @@ html, body { background: transparent; overflow: hidden; }
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
                 ) or _pode_refazer_redes or _pode_refazer_retentativa
+                # "Reparar e refazer" — diferente de "Refazer" (só aparece em
+                # status "erro"), esse botão existe pra migrações que
+                # CONCLUÍRAM (status "concluido") mas cujo resultado pode
+                # estar corrompido — ex.: o bug do fallback sem validação de
+                # content-type em baixar_e_persistir_midia, que salvava uma
+                # página de erro/bloqueio do CDN disfarçada de mídia e
+                # fechava em "100%". É manual porque não dá pra saber, só
+                # olhando a atividade, se ela está mesmo corrompida (isso
+                # exige consultar `midias`) — o usuário aciona quando
+                # desconfia (ver reparar_e_refazer_migracao).
+                _pode_reparar = (
+                    _a.get("tipo") == "migracao_midia"
+                    and bool(_empresa_ativ)
+                    and _a.get("status") == "concluido"
+                )
                 _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
                 _progresso_ativ = _progresso_atividade(_a)
-                _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or bool(_progresso_ativ)
+                _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or _pode_reparar or bool(_progresso_ativ)
                 if _pode_refazer:
                     _refazer_ids.append(_id_ativ)
+                if _pode_reparar:
+                    _reparar_ids.append(_id_ativ)
                 _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
                 # Cards com uma migração ou transcrição realmente rodando
@@ -30127,6 +30228,20 @@ html, body { background: transparent; overflow: hidden; }
                             f'<button class="btn-refazer" data-idx="{_id_ativ}">'
                             f'<span class="btn-refazer-icon">{_refazer_svg}</span>Refazer</button>'
                         )
+                    if _pode_reparar:
+                        # Mesmo ícone de "erro" (triângulo de alerta) já usado
+                        # em _ATIVIDADE_STATUS_UI — reaproveitado aqui de
+                        # propósito, pra sinalizar visualmente que essa ação
+                        # é diferente de um "Refazer" comum (desconfia do
+                        # resultado, não só repete a tentativa).
+                        _reparar_svg = _svg_icone(
+                            "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
+                            "#b45309", 14,
+                        )
+                        _corpo_html += (
+                            f'<button class="btn-reparar" data-idx="{_id_ativ}">'
+                            f'<span class="btn-reparar-icon">{_reparar_svg}</span>Reparar e refazer</button>'
+                        )
                     _corpo_html += "</div>"
 
                 _estilo_body_aberto = ' style="display:block"' if _rodando_agora_ativ else ""
@@ -30238,6 +30353,16 @@ html, body { background: transparent; overflow: hidden; }
     .btn-refazer-icon { display:flex; align-items:center; }
     .btn-refazer-icon svg { display:block; }
     .btn-refazer:hover .btn-refazer-icon svg { fill:#1d4ed8; }
+    .btn-reparar {
+        margin-top:10px; margin-left:8px; padding:8px 16px; border-radius:8px; border:1.5px solid #fde68a;
+        background:#fffbeb; font-size:13px; font-weight:700; color:#b45309; cursor:pointer;
+        font-family:'DM Sans',sans-serif; transition:all 0.15s;
+        display:inline-flex; align-items:center; gap:6px;
+    }
+    .btn-reparar:hover { border-color:#f59e0b; background:#fef3c7; color:#92400e; }
+    .btn-reparar-icon { display:flex; align-items:center; }
+    .btn-reparar-icon svg { display:block; }
+    .btn-reparar:hover .btn-reparar-icon svg { fill:#92400e; }
     .notif-progress-wrap { margin-top:10px; }
     .notif-progress-track {
         width:100%; height:7px; border-radius:5px; background:#eef1f5; overflow:hidden;
@@ -30400,6 +30525,28 @@ html, body { background: transparent; overflow: hidden; }
         doc.addEventListener('keydown', escFn);
     }}
 
+    function clicarBotaoReparar(idx) {{
+        var doc = window.parent.document;
+        var chave = 'btn_reparar_ativ_' + idx;
+        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+        if (porClasse) {{ porClasse.click(); return; }}
+        var btns = doc.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            if (txt === '_reparar_ativ_' + idx + '_') {{ b.click(); return; }}
+        }}
+    }}
+
+    function repararNotif(idx) {{
+        abrirConfirmacao(
+            'Reparar e refazer',
+            'Isso verifica se essa migração salvou algo corrompido (ex.: um bloqueio do CDN salvo como se fosse a mídia), corrige as referências e tenta baixar de novo. Pode levar alguns minutos.',
+            '#b45309',
+            'Sim, reparar e refazer',
+            function() {{ clicarBotaoReparar(idx); }}
+        );
+    }}
+
     function excluirNotif(idx) {{
         abrirConfirmacao(
             'Excluir notificação',
@@ -30419,6 +30566,9 @@ html, body { background: transparent; overflow: hidden; }
 
         var rf = e.target.closest('.btn-refazer');
         if (rf) {{ e.stopPropagation(); refazerNotif(rf.dataset.idx); return; }}
+
+        var rp = e.target.closest('.btn-reparar');
+        if (rp) {{ e.stopPropagation(); repararNotif(rp.dataset.idx); return; }}
 
         var hdr = e.target.closest('.notif-hdr.has-detail');
         if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
@@ -30489,6 +30639,47 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                         else:
                             st.toast(f"Não achei {_empresa_ref} no cache pra refazer.", icon="⚠️")
+                    st.rerun()
+
+            _acoes_reparar = {}
+            with _wrap_ghost_cards_notif:
+                for _rid in _reparar_ids:
+                    _acoes_reparar[_rid] = st.button(f"_reparar_ativ_{_rid}_", key=f"btn_reparar_ativ_{_rid}")
+
+            for _rid in _reparar_ids:
+                if _acoes_reparar.get(_rid):
+                    _atividade_rep = next((x for x in _todas_atividades if x["id"] == _rid), None)
+                    _empresa_rep = (_atividade_rep.get("detalhes") or {}).get("empresa") if _atividade_rep else None
+                    if not _empresa_rep:
+                        _empresa_rep = _extrair_empresa_do_titulo_migracao(_atividade_rep.get("titulo") or "") if _atividade_rep else None
+                    _plataforma_rep = (_atividade_rep.get("detalhes") or {}).get("plataforma") if _atividade_rep else None
+                    _plataforma_rep = _plataforma_rep or "Meta Ads"
+                    if _empresa_rep:
+                        # Roda na hora (não numa thread em segundo plano) —
+                        # ao contrário de refazer_migracao_midia, aqui a
+                        # parte de reparo (query + RPC + delete por item
+                        # corrompido) precisa terminar ANTES de disparar a
+                        # migração de novo, senão ela ainda bateria no
+                        # early-return "já é uma mídia nossa no R2". Pra um
+                        # punhado de itens corrompidos isso é rápido; com
+                        # spinner pra não parecer travado.
+                        with st.spinner(f"Verificando e reparando a migração de {_empresa_rep}..."):
+                            _resultado_reparo = reparar_e_refazer_migracao(
+                                st.session_state.user.id, _empresa_rep, _rid, _plataforma_rep
+                            )
+                        _n_corrompidas = _resultado_reparo.get("total_corrompidas", 0)
+                        if _n_corrompidas == 0:
+                            st.toast(f"Não achei nada corrompido em {_empresa_rep} — a migração parece legítima.", icon="✅")
+                        elif _resultado_reparo.get("refazer_disparado"):
+                            st.toast(
+                                f"{_resultado_reparo.get('reparados', 0)} de {_n_corrompidas} itens corrompidos "
+                                f"de {_empresa_rep} corrigidos — refazendo a migração agora...",
+                                icon="🛠️",
+                            )
+                        else:
+                            st.toast(f"Reparei {_resultado_reparo.get('reparados', 0)} itens de {_empresa_rep}, mas não consegui disparar a migração de novo.", icon="⚠️")
+                    else:
+                        st.toast("Não consegui identificar a empresa dessa atividade.", icon="⚠️")
                     st.rerun()
 
             # Exclusão de notificações — agora feita direto pelo ícone de lixeira

@@ -1936,6 +1936,75 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
     except Exception:
         return []
 
+def _contar_ocr_formato_antigo(user_id: str) -> int:
+    """Quantas imagens do Google Ads já têm `ocr_texto` preenchido mas
+    NO FORMATO ANTIGO — texto corrido, salvo antes do OCR virar
+    estruturado (título/descrição/url_exibida/url_final/cta/sitelinks
+    em `ocr_estruturado`). É a mesma linha que hoje cai no fallback "Linha
+    antiga" do card (ver _formatar bloco em torno de `_ocr_txt_ad` na aba
+    Google Ads) — texto corrido sem os campos separados."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .not_.is_("ocr_texto", "null")
+            .is_("ocr_estruturado", "null")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .execute()
+        )
+        return res.count or 0
+    except Exception as e:
+        print(f"[OCR-DEBUG] _contar_ocr_formato_antigo EXCEÇÃO user={user_id}: {e!r}", flush=True)
+        return 0
+
+def resetar_ocr_formato_antigo(user_id: str) -> int:
+    """Zera `ocr_texto` (volta pra NULL = 'pendente', mesma convenção
+    3-estados de sempre) de toda imagem do Google Ads que já tem texto
+    extraído mas ainda no FORMATO ANTIGO (texto corrido, sem
+    `ocr_estruturado`) — criado antes do OCR virar estruturado. Depois de
+    zerado, essas imagens voltam a cair na fila normal de OCR (mesmo
+    critério de `_contar_ocr_pendentes`: `ocr_texto IS NULL`) e são
+    reprocessadas já no formato novo, com título/descrição/url/cta/
+    sitelinks separados.
+
+    Não mexe em linhas que já estão no formato novo (`ocr_estruturado`
+    preenchido) nem nas que nunca foram processadas (`ocr_texto` NULL) —
+    essas já entram no formato novo na primeira passada, sem precisar de
+    reset. Devolve quantas linhas foram resetadas (0 = nada no formato
+    antigo pra reprocessar)."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("id, empresa")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .not_.is_("ocr_texto", "null")
+            .is_("ocr_estruturado", "null")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .limit(5000)
+            .execute()
+        )
+        linhas = res.data or []
+        if not linhas:
+            return 0
+        ids = [r["id"] for r in linhas]
+        empresas = sorted({r["empresa"] for r in linhas if r.get("empresa")})
+        # PostgREST não garante um "update em lote" seguro com listas muito
+        # grandes de ids na mesma query — quebra em blocos de 200 pra não
+        # estourar o tamanho da URL/payload.
+        for i in range(0, len(ids), 200):
+            bloco = ids[i:i + 200]
+            supabase.table("midias").update({"ocr_texto": None}).in_("id", bloco).execute()
+        print(f"[OCR-DEBUG] resetar_ocr_formato_antigo: {len(ids)} imagem(ns) resetada(s) em {empresas}", flush=True)
+        for empresa in empresas:
+            iniciar_ocr_pendente_background(user_id, empresa)
+        return len(ids)
+    except Exception as e:
+        print(f"[OCR-DEBUG] resetar_ocr_formato_antigo EXCEÇÃO user={user_id}: {e!r}", flush=True)
+        return 0
+
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
     """Processa a fila de OCR de UMA empresa até esvaziar — mesmo padrão
     (e mesma correção de loop infinito) de _transcrever_pendentes_background:
@@ -29225,6 +29294,37 @@ html, body { background: transparent; overflow: hidden; }
                 icon="🔄",
             )
             st.rerun()
+
+        # OCRs salvos ANTES do texto virar estruturado (título/descrição/
+        # url/cta/sitelinks separados) — hoje aparecem no card como texto
+        # corrido, no formato antigo. Botão separado do de cima porque a
+        # ação é diferente: não é "processar o que nunca foi processado",
+        # é "jogar fora o que já foi processado no formato velho e
+        # reprocessar no novo" (reseta ocr_texto pra NULL e reenvia pra
+        # fila normal de OCR).
+        try:
+            _qtd_ocr_formato_antigo = _contar_ocr_formato_antigo(st.session_state.user.id)
+        except Exception:
+            _qtd_ocr_formato_antigo = 0
+        if _qtd_ocr_formato_antigo:
+            st.caption(
+                f"{_qtd_ocr_formato_antigo} imagem(ns) com OCR salvo no formato antigo "
+                f"(texto corrido, sem título/descrição/CTA separados)."
+            )
+            if st.button(
+                "Refazer OCRs antigas no novo formato",
+                key="_btn_ocr_refazer_formato_antigo_perfil",
+            ):
+                _n_resetadas = resetar_ocr_formato_antigo(st.session_state.user.id)
+                if _n_resetadas:
+                    st.toast(
+                        f"{_n_resetadas} OCR(s) antiga(s) enviada(s) pra reprocessar no novo formato "
+                        f"— acompanhe no sino de notificações.",
+                        icon="🔄",
+                    )
+                else:
+                    st.toast("Nenhuma OCR no formato antigo pra reprocessar.", icon="⚠️")
+                st.rerun()
 
     with aba_perfil_uso:
         import math as _math_uso

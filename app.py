@@ -1828,35 +1828,191 @@ def _get_easyocr():
                 _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False)
     return _easyocr_instancia[0]
 
+def _baixar_imagem_cv2(url_imagem: str):
+    """Baixa a imagem (já no nosso R2) e devolve o array BGR decodificado
+    (formato que o OpenCV/EasyOCR esperam), ou None se o download ou a
+    decodificação falharem."""
+    import numpy as _np_ocr
+    import cv2 as _cv2_ocr
+    r = requests.get(url_imagem, timeout=20)
+    r.raise_for_status()
+    _arr = _np_ocr.frombuffer(r.content, dtype=_np_ocr.uint8)
+    return _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
+
+def _ocr_texto_bruto(img_bgr, reader) -> str:
+    """Lê TODO o texto da imagem sem nenhuma tentativa de estruturar —
+    usado como fallback quando `_estruturar_anuncio_google_ads` não
+    reconhece o padrão de cores esperado (ex: anúncio de imagem/Display,
+    em vez de anúncio de texto)."""
+    resultado = reader.readtext(img_bgr, detail=1)
+    if not resultado:
+        return ""
+    linhas = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
+    return "\n".join(linhas)
+
+_REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
+
+def _detectar_bandas_texto(img_bgr):
+    """Varre a imagem linha a linha (sem OCR) e agrupa em 'bandas'
+    horizontais de texto, cada uma classificada pela cor média dos
+    pixels não-brancos:
+    - 'azul'      → título/link clicável (headline do anúncio ou de um
+                    sitelink) — o Google Ads sempre usa azul aqui.
+    - 'cinza'     → descrição, URL exibida, ou o rótulo "Patrocinado".
+    - 'separador' → linha divisória fina (~2px) entre sitelinks.
+    - 'misto'     → ícone colorido + texto (ex: botão "Enviar
+                    mensagem" do WhatsApp) — tratado como possível CTA.
+    Essa classificação por cor é bem mais confiável que tentar adivinhar
+    a estrutura só pelo texto (validado nos prints reais do Google Ads:
+    título sempre azul, descrição/URL sempre cinza uniforme)."""
+    import numpy as _np_bandas
+    img_rgb = img_bgr[:, :, ::-1]
+    altura_total, _largura, _c = img_rgb.shape
+    nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
+    linhas = []
+    for y in range(altura_total):
+        mask = nao_branco[y]
+        n = int(mask.sum())
+        if n > 3:
+            pix = img_rgb[y][mask]
+            linhas.append((y, n, float(pix[:, 0].mean()), float(pix[:, 1].mean()), float(pix[:, 2].mean())))
+    bandas_brutas = []
+    atual = []
+    y_ant = None
+    for y, n, r, g, b in linhas:
+        if y_ant is not None and y - y_ant > 3:
+            if atual:
+                bandas_brutas.append(atual)
+            atual = []
+        atual.append((y, n, r, g, b))
+        y_ant = y
+    if atual:
+        bandas_brutas.append(atual)
+    bandas = []
+    for banda in bandas_brutas:
+        y_min, y_max = banda[0][0], banda[-1][0]
+        peso_total = sum(x[1] for x in banda)
+        r = sum(x[2] * x[1] for x in banda) / peso_total
+        g = sum(x[3] * x[1] for x in banda) / peso_total
+        b = sum(x[4] * x[1] for x in banda) / peso_total
+        altura = y_max - y_min + 1
+        if altura <= 3 and r > 190:
+            classe = "separador"
+        elif b > r + 15 and b > 150:
+            classe = "azul"
+        elif abs(r - g) < 15 and abs(g - b) < 15:
+            classe = "cinza"
+        else:
+            classe = "misto"
+        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
+    return bandas
+
+def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
+    """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
+    pixels) em vez da imagem inteira — mais rápido e evita misturar
+    texto de faixas vizinhas quando há fragmentos detectados fora de
+    ordem."""
+    altura_total = img_bgr.shape[0]
+    y0 = max(0, y_min - 4)
+    y1 = min(altura_total, y_max + 5)
+    recorte = img_bgr[y0:y1, :]
+    resultado = reader.readtext(recorte, detail=1)
+    if not resultado:
+        return ""
+    resultado.sort(key=lambda item: item[0][0][0])
+    return " ".join((t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip())
+
+def _estruturar_anuncio_google_ads(img_bgr, reader):
+    """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
+    Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
+    sitelinks, sem depender de nenhuma IA generativa. Cobre tanto o
+    anúncio simples (título + descrição + URL) quanto o anúncio com
+    sitelinks expandidos (vários pares título+descrição depois do
+    anúncio principal, separados por linhas divisórias finas).
+
+    Devolve None quando a imagem não tem NENHUM texto detectável (nem
+    título nem descrição) — nesse caso quem chama deve cair no fallback
+    de texto bruto, porque provavelmente não é um anúncio de texto
+    padrão (ex: anúncio de Display/imagem)."""
+    bandas = _detectar_bandas_texto(img_bgr)
+    bandas_texto = [b for b in bandas if b["classe"] != "separador"]
+    if not bandas_texto:
+        return None
+
+    resultado = {
+        "titulo": "", "descricao": "", "url_exibida": "", "url_final": "",
+        "cta": "", "sitelinks": [],
+    }
+
+    idx = 0
+    primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
+    if _REGEX_PATROCINADO.match(primeiro_texto.strip()):
+        idx = 1
+
+    if idx < len(bandas_texto):
+        texto_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"])
+        resultado["url_exibida"] = texto_dominio.strip()
+        idx += 1
+
+    pares = []  # [[titulo, [linhas_descricao]], ...]
+    par_atual = None
+    while idx < len(bandas_texto):
+        banda = bandas_texto[idx]
+        texto = _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip()
+        if banda["classe"] == "azul":
+            if par_atual is not None:
+                pares.append(par_atual)
+            par_atual = [texto, []]
+        elif banda["classe"] == "cinza":
+            if par_atual is not None:
+                par_atual[1].append(texto)
+            # texto cinza sem nenhum título azul aberto antes: raro
+            # nesse ponto do fluxo (já passamos da linha da URL) —
+            # ignora em vez de adivinhar onde encaixar.
+        else:  # "misto" — ícone + texto, ex: botão de contato
+            if not resultado["cta"]:
+                resultado["cta"] = texto
+        idx += 1
+    if par_atual is not None:
+        pares.append(par_atual)
+
+    if not pares:
+        return resultado if resultado["url_exibida"] else None
+
+    resultado["titulo"] = pares[0][0]
+    resultado["descricao"] = " ".join(l for l in pares[0][1] if l).strip()
+    for titulo_sl, linhas_sl in pares[1:]:
+        descricao_sl = " ".join(l for l in linhas_sl if l).strip()
+        if titulo_sl and descricao_sl:
+            resultado["sitelinks"].append(f"{titulo_sl} — {descricao_sl}")
+        elif titulo_sl:
+            resultado["sitelinks"].append(titulo_sl)
+    return resultado
+
 def _extrair_texto_paddleocr(url_imagem: str):
     """Baixa a imagem (já no nosso R2) e devolve o texto bruto lido pelo
-    EasyOCR, uma linha por trecho detectado, na ordem em que o motor
-    encontrou (de cima pra baixo, geralmente).
+    EasyOCR, uma linha por trecho detectado — usado hoje só como
+    fallback dentro de `_extrair_ocr_estruturado_imagem` (ver lá) quando
+    a estruturação por cor não reconhece o padrão de um anúncio de
+    texto.
 
     (Nome da função mantido como `_paddleocr` só por compatibilidade com
-    quem já chama — o motor por baixo agora é o EasyOCR.)
+    quem já chama — o motor por baixo é o EasyOCR.)
 
     A INFERÊNCIA em si (a parte pesada de CPU) roda serializada por
     `_lock_easyocr_execucao` — só uma imagem processando por vez em todo
     o app, mesmo com várias empresas rodando OCR ao mesmo tempo em
-    threads diferentes. O download da imagem (rede, não CPU) continua
-    acontecendo em paralelo normalmente, só a etapa de IA é que fica na
-    fila.
+    threads diferentes.
 
     Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
     (download da imagem falhou, EasyOCR não conseguiu processar etc.) —
-    mesma convenção da função antiga: quem chama trata None como 'tenta
-    de novo depois' e não grava nada no banco.
+    quem chama trata None como 'tenta de novo depois' e não grava nada
+    no banco.
 
     Devolve "" (string vazia) quando a extração RODOU normalmente mas a
     imagem genuinamente não tinha nenhum texto legível."""
     try:
-        import numpy as _np_ocr
-        import cv2 as _cv2_ocr
-        r = requests.get(url_imagem, timeout=20)
-        r.raise_for_status()
-        _arr = _np_ocr.frombuffer(r.content, dtype=_np_ocr.uint8)
-        _img = _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
+        _img = _baixar_imagem_cv2(url_imagem)
         if _img is None:
             print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
             return None
@@ -1866,17 +2022,9 @@ def _extrair_texto_paddleocr(url_imagem: str):
             if _espera > 0:
                 _time_ocr.sleep(_espera)
             _reader = _get_easyocr()
-            _resultado = _reader.readtext(_img, detail=1)
+            texto_bruto = _ocr_texto_bruto(_img, _reader)
             _ultima_chamada_ocr[0] = _time_ocr.time()
-        if not _resultado:
-            return ""
-        _linhas = []
-        for _bbox, _texto, _confianca in _resultado:
-            _texto = (_texto or "").strip()
-            if _texto:
-                _linhas.append(_texto)
-        texto_bruto = "\n".join(_linhas)
-        print(f"[OCR-DEBUG] _extrair_texto_paddleocr OK url={url_imagem!r} linhas={len(_linhas)}", flush=True)
+        print(f"[OCR-DEBUG] _extrair_texto_paddleocr OK url={url_imagem!r} linhas={len(texto_bruto.splitlines())}", flush=True)
         return texto_bruto
     except Exception as e:
         print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (exceção): {e!r}", flush=True)
@@ -1896,36 +2044,57 @@ _OCR_GADS_CAMPOS_VAZIO = {
 }
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str):
-    """ETAPA 1 (básico): baixa a imagem (já no nosso R2) e usa o
-    PaddleOCR (local, sem cota/API) pra ler o texto bruto dela.
+    """Baixa a imagem (já no nosso R2) e separa, de forma ESTRUTURADA,
+    os campos título/descrição/url_exibida/cta/sitelinks de um anúncio
+    de TEXTO do Google Ads — sem nenhuma IA generativa, só EasyOCR +
+    análise de cor (ver `_estruturar_anuncio_google_ads` e
+    `_detectar_bandas_texto` pra entender a heurística: título é sempre
+    azul, descrição/URL são sempre cinza uniforme, um traço fino
+    cinza-claro separa cada sitelink — validado nos prints reais do
+    Google Ads).
 
-    Por enquanto NÃO separa em título/descrição/CTA/url/sitelinks — todo
-    o texto bruto lido pelo PaddleOCR vai pro campo 'descricao', só pra
-    manter compatibilidade com o resto do fluxo (banco, card, badge) que
-    já espera esse formato de dict. A separação em campos fica pra uma
-    próxima etapa, depois de avaliar como o texto bruto costuma vir.
+    Se a imagem não bater com esse padrão (ex: anúncio de Display com
+    imagem, ou algum layout fora do comum), cai no fallback: todo o
+    texto bruto lido pelo EasyOCR vai pro campo 'descricao', sem tentar
+    separar nada — melhor ter o texto todo num campo só do que perder a
+    informação.
 
     Devolve um dict com todas as chaves (algumas vazias) quando a
     extração RODOU de verdade — isso vale mesmo se a imagem não tiver
     nenhum texto legível (dict com tudo vazio).
 
     Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
-    — download da imagem falhou, PaddleOCR não conseguiu processar etc.
+    — download da imagem falhou, EasyOCR não conseguiu processar etc.
     Quem chama essa função trata None como 'tenta de novo depois' — não
     grava nada no banco, deixando `ocr_texto` como NULL (pendente) pra
-    essa imagem voltar pra fila na próxima passada (ver docstring
-    original mais completa no histórico do arquivo)."""
-    texto_bruto = _extrair_texto_paddleocr(url_imagem)
-    if texto_bruto is None:
+    essa imagem voltar pra fila na próxima passada."""
+    try:
+        _img = _baixar_imagem_cv2(url_imagem)
+        if _img is None:
+            print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
+            return None
+        import time as _time_ocr_estr
+        with _lock_easyocr_execucao:
+            _espera = _MIN_INTERVALO_OCR_SEG - (_time_ocr_estr.time() - _ultima_chamada_ocr[0])
+            if _espera > 0:
+                _time_ocr_estr.sleep(_espera)
+            _reader = _get_easyocr()
+            _estruturado = _estruturar_anuncio_google_ads(_img, _reader)
+            if _estruturado is None or not (_estruturado.get("titulo") or _estruturado.get("descricao")):
+                # não reconheceu o padrão (ou não achou título/descrição
+                # de verdade) — cai pro texto bruto como fallback, sem
+                # rodar o OCR duas vezes: já temos a imagem carregada.
+                texto_bruto = _ocr_texto_bruto(_img, _reader)
+                _estruturado = {
+                    "titulo": "", "descricao": texto_bruto, "url_exibida": "",
+                    "url_final": "", "cta": "", "sitelinks": [],
+                }
+            _ultima_chamada_ocr[0] = _time_ocr_estr.time()
+        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r}", flush=True)
+        return _estruturado
+    except Exception as e:
+        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}", flush=True)
         return None
-    return {
-        "titulo":       "",
-        "descricao":    texto_bruto,
-        "url_exibida":  "",
-        "url_final":    "",
-        "cta":          "",
-        "sitelinks":    [],
-    }
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
     """True se algum campo veio preenchido — usado pra decidir se o

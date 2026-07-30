@@ -2463,6 +2463,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.5L20.5,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z",
         "#3a9fd6", "Verificando anúncios do Google Ads pendentes de migração",
     ),
+    "verificacao_ocr_pendente_gads": (
+        "M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.5L20.5,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z",
+        "#f5a623", "Verificando anúncios do Google Ads pendentes de OCR",
+    ),
 }
 
 # Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
@@ -5339,6 +5343,84 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
     )
     threading.Thread(
         target=_verificar_e_migrar_pendentes_google_bg,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+def _verificar_e_gerar_ocr_pendentes_google_bg(user_id: str, atividade_id: str = None) -> int:
+    """Equivalente a _verificar_e_migrar_pendentes_google_bg, mas pra OCR:
+    varre TODAS as empresas do usuário (não só a que acabou de coletar/
+    migrar) procurando imagens do Google Ads já migradas pro R2 mas ainda
+    sem texto extraído, e dispara `iniciar_ocr_pendente_background` pra
+    cada uma. Usa `_empresas_com_ocr_pendente`, que já filtra
+    `tipo == "imagem"` — anúncios em vídeo nunca entram nessa contagem,
+    porque o card de vídeo usa o próprio frame do `<video>` como thumb
+    (ver `encontrar_ads_com_link_original`), não faz sentido rodar OCR
+    neles.
+
+    Sem essa varredura, uma imagem que ficasse sem OCR por qualquer
+    motivo (falha silenciosa na fila, migração antiga anterior a essa
+    funcionalidade existir, etc.) ficava órfã pra sempre: a fila de OCR
+    só era acionada logo após uma migração pontual (ver
+    `iniciar_ocr_pendente_background` chamada em `_migrar_midia_background`
+    e no botão manual da aba de configurações) — nunca por uma checagem
+    de segurança geral, como já existia pros links permanentes."""
+    try:
+        empresas_pendentes = _empresas_com_ocr_pendente(user_id)
+        print(f"[OCR-DEBUG] verificar_e_gerar_ocr_pendentes_google: {len(empresas_pendentes)} empresa(s) com OCR pendente -> {empresas_pendentes}", flush=True)
+        for empresa in empresas_pendentes:
+            iniciar_ocr_pendente_background(user_id, empresa)
+        if atividade_id:
+            if empresas_pendentes:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "empresas": empresas_pendentes,
+                    "aviso": (
+                        f"{len(empresas_pendentes)} empresa(s) com imagens do Google Ads "
+                        f"sem texto extraído — OCR enviado pra rodar agora "
+                        f"(acompanhe abaixo)."
+                    ),
+                })
+            else:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "aviso": "Nenhuma imagem do Google Ads pendente de OCR — tudo já tem texto extraído.",
+                })
+        return len(empresas_pendentes)
+    except Exception as e:
+        print(f"[OCR-DEBUG] verificar_e_gerar_ocr_pendentes_google EXCEÇÃO: {e!r}", flush=True)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+        return 0
+
+_MIN_MINUTOS_ENTRE_VERIFICACOES_OCR_PENDENTE_GADS = 15
+
+def iniciar_verificacao_ocr_pendente_google_background(user_id: str):
+    """Mesmo padrão de `iniciar_verificacao_pendentes_google_background`
+    (throttle por sessão + por banco, card no sino desde o início), mas
+    pra disparar a checagem de segurança de OCR em vez de migração de
+    link. As duas rodam lado a lado, de forma independente, na mesma
+    aba de Google Ads."""
+    try:
+        _res_ultima = (
+            supabase.table("atividades")
+            .select("criado_em")
+            .eq("user_id", user_id)
+            .eq("tipo", "verificacao_ocr_pendente_gads")
+            .order("criado_em", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if _res_ultima.data:
+            _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
+            if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_OCR_PENDENTE_GADS:
+                return
+    except Exception:
+        pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
+    atividade_id = criar_atividade(
+        user_id, "verificacao_ocr_pendente_gads",
+        "Verificando anúncios do Google Ads pendentes de OCR", {}
+    )
+    threading.Thread(
+        target=_verificar_e_gerar_ocr_pendentes_google_bg,
         args=(user_id, atividade_id),
         daemon=True,
     ).start()
@@ -19229,6 +19311,17 @@ elif st.session_state.pagina == "google_ads":
     if not st.session_state.get("_verificacao_pendentes_feita_google") and st.session_state.get("user"):
         iniciar_verificacao_pendentes_google_background(st.session_state.user.id)
         st.session_state["_verificacao_pendentes_feita_google"] = True
+
+    # Mesma ideia acima, mas pra OCR: varredura de segurança (uma vez por
+    # sessão) procurando qualquer imagem (anúncios em vídeo ficam de fora
+    # — ver _empresas_com_ocr_pendente) que já esteja migrada pro R2 mas
+    # ainda sem texto extraído, de qualquer empresa/coleta. Cobre o mesmo
+    # tipo de caso que a verificação de links acima: fila de OCR que
+    # nunca rodou (falha silenciosa, migração anterior a essa
+    # funcionalidade existir, etc.).
+    if not st.session_state.get("_verificacao_ocr_pendente_feita_google") and st.session_state.get("user"):
+        iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
+        st.session_state["_verificacao_ocr_pendente_feita_google"] = True
 
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
     # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão

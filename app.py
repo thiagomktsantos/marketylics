@@ -4644,11 +4644,21 @@ if not st.session_state.logado:
 
 import threading
 
-def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> bool:
+def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str, plataforma: str = "Meta Ads") -> bool:
     """Confere, direto no banco, se a empresa ainda está configurada com
     a mesma query/ads_id usada nessa coleta. Evita gastar banda e cota
     de mídia processando uma empresa que o usuário já corrigiu ou
-    removeu logo depois de pedir a busca por engano."""
+    removeu logo depois de pedir a busca por engano.
+
+    IMPORTANTE: Meta Ads e Google Ads guardam o ID configurado em campos
+    DIFERENTES da empresa (`ads_id` pro Meta, `gads_id` pro Google — ver
+    salvar_ads_id/salvar_gads_id). Antes esta função checava sempre
+    `ads_id`, mesmo quando chamada pra uma migração de Google Ads. Numa
+    empresa com um `ads_id` (Meta) configurado, isso nunca batia com o
+    `query_usada` do Google, então TODA migração de Google Ads dessa
+    empresa era descartada como "não é mais válida" antes de sequer
+    tentar subir qualquer mídia pro R2 — mesmo a empresa nunca tendo
+    mudado de fato."""
     try:
         res = (
             supabase.table("ci_dados")
@@ -4660,13 +4670,14 @@ def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str) -> 
             return False
         row = res.data[0]
         candidatos = [row.get("minha_empresa") or {}] + (row.get("concorrentes") or [])
+        campo_id = "gads_id" if plataforma == "Google Ads" else "ads_id"
         for c in candidatos:
             if c.get("nome") != empresa_nome:
                 continue
-            ads_id_atual = (c.get("ads_id") or "").strip()
-            # nome bate; se não há ads_id configurado ou ele continua
-            # igual ao usado na coleta, a empresa segue válida
-            return (not ads_id_atual) or (ads_id_atual == query_usada)
+            id_atual = (c.get(campo_id) or "").strip()
+            # nome bate; se não há id configurado pra essa plataforma ou
+            # ele continua igual ao usado na coleta, a empresa segue válida
+            return (not id_atual) or (id_atual == query_usada)
         return False  # nome não existe mais na configuração do usuário
     except Exception:
         return True  # checagem é só economia — em dúvida, não bloqueia
@@ -4756,7 +4767,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         _migracoes_empresa_ativas_agora.add(_chave_ativa)
     print(f"[MIGR-DEBUG] _migrar_midia_background INICIOU: empresa={empresa!r} atividade_id={atividade_id!r} r2_client_is_none={r2_client is None}", flush=True)
     try:
-        if not _empresa_ainda_valida(user_id, empresa, entry.get("query", "")):
+        if not _empresa_ainda_valida(user_id, empresa, entry.get("query", ""), plataforma):
             print(f"[MIGR-DEBUG] _migrar_midia_background SAIU: empresa={empresa!r} não é mais válida (alterada/removida)", flush=True)
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa alterada/removida antes da migração"})
             return

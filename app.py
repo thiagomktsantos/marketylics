@@ -1263,7 +1263,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         _registrar_falha_midia(user_id, empresa, ad_id, tipo, url_origem, e)
         return url_origem
 
-def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None):
+def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None, plataforma: str = "Meta Ads"):
     """Percorre um dict no formato do ads_cache e substitui as URLs de
     imagens/vídeos por versões permanentes no R2, quando possível.
     Usado logo antes de salvar no Supabase, pra nunca persistir um link
@@ -1360,11 +1360,16 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
     _estado_progresso = {"concluidas": 0, "ultima_escrita": 0.0}
     INTERVALO_MIN_ESCRITA_PROGRESSO = 1.5  # segundos entre updates no banco
 
-    # Nome da empresa pra incluir em toda escrita de progresso — precisa
-    # ser regravado sempre porque atualizar_atividade substitui o dict de
-    # detalhes inteiro (não faz merge); sem isso, a primeira atualização
-    # de progresso ao vivo apagaria o campo "empresa" que o botão
-    # Continuar/Refazer depende pra saber qual empresa essa atividade é.
+    # Nome da empresa (e plataforma) pra incluir em toda escrita de
+    # progresso — precisa ser regravado sempre porque atualizar_atividade
+    # substitui o dict de detalhes inteiro (não faz merge); sem isso, a
+    # primeira atualização de progresso ao vivo apagaria os campos
+    # "empresa"/"plataforma" que o botão Continuar/Refazer E o dedup de
+    # iniciar_migracao_midia_background (_atividade_migracao_mais_
+    # recente_id) dependem pra saber qual empresa/plataforma essa
+    # atividade é — perder "plataforma" aqui fazia o dedup nunca achar
+    # essa atividade de novo (caía no default "Meta Ads") e criar um
+    # CARD NOVO pra mesma empresa a cada verificação de segurança.
     # `dados` sempre tem uma única empresa quando atividade_id é passado
     # (é assim que _migrar_midia_background chama esta função).
     _empresa_progresso = next(iter(dados), None)
@@ -1381,6 +1386,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             _estado_progresso["ultima_escrita"] = agora
         atualizar_atividade(atividade_id, "em_andamento", {
             "empresa": _empresa_progresso,
+            "plataforma": plataforma,
             "migradas": concluidas,
             "total": total_tarefas,
             "aviso": f"Migrando agora — {concluidas} de {total_tarefas} anúncios processados nesta passada.",
@@ -1423,6 +1429,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None)
             try:
                 atualizar_atividade(atividade_id, "em_andamento", {
                     "empresa": _empresa_progresso,
+                    "plataforma": plataforma,
                     "migradas": _concluidas_hb,
                     "total": total_tarefas,
                     "aviso": f"Migrando agora — {_concluidas_hb} de {total_tarefas} anúncios processados nesta passada.",
@@ -4892,10 +4899,10 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
     try:
         if not _empresa_ainda_valida(user_id, empresa, entry.get("query", ""), plataforma):
             print(f"[MIGR-DEBUG] _migrar_midia_background SAIU: empresa={empresa!r} não é mais válida (alterada/removida)", flush=True)
-            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa alterada/removida antes da migração"})
+            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "plataforma": plataforma, "motivo": "empresa alterada/removida antes da migração"})
             return
 
-        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id)
+        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id, plataforma=plataforma)
         print(f"[MIGR-DEBUG] _migrar_midia_background persistir_midias_de_ads concluiu: empresa={empresa!r} stats={stats_midia}", flush=True)
 
         # Os vídeos que acabaram de ser migrados já estão salvos no R2 e no
@@ -4930,7 +4937,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             str(ad["id"]): ad for ad in _ads_migrado_empresa if ad.get("id")
         }
         if not atualizacoes:
-            atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "motivo": "nenhum anúncio com id pra atualizar"})
+            atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "plataforma": plataforma, "motivo": "nenhum anúncio com id pra atualizar"})
             return
 
         res = supabase.rpc(_rpc_atualizar_cache(plataforma), {
@@ -4979,6 +4986,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     status_final = "erro"
                     detalhes_finais = {
                         "empresa": empresa,
+                        "plataforma": plataforma,
                         "migradas": migradas,
                         "total": total,
                         "motivo": (
@@ -5004,6 +5012,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     status_final = "erro"
                     detalhes_finais = {
                         "empresa": empresa,
+                        "plataforma": plataforma,
                         "migradas": migradas,
                         "total": total,
                         "cota_esgotada": True,
@@ -5024,13 +5033,17 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 else:
                     status_final = "em_andamento"
                     detalhes_finais = {
-                        # "empresa" precisa ser regravado aqui (e em TODO update
-                        # de detalhes desta atividade) porque atualizar_atividade
-                        # substitui o dict inteiro, não faz merge — sem isso, a
-                        # primeira atualização de progresso apaga a empresa dos
-                        # detalhes e a tela perde a referência de qual empresa
-                        # essa atividade é (o botão Continuar depende disso).
+                        # "empresa"/"plataforma" precisam ser regravados aqui
+                        # (e em TODO update de detalhes desta atividade)
+                        # porque atualizar_atividade substitui o dict inteiro,
+                        # não faz merge — sem isso, a primeira atualização de
+                        # progresso apaga esses campos, e o dedup de
+                        # iniciar_migracao_midia_background (que casa por
+                        # empresa+plataforma) nunca mais acha essa atividade,
+                        # criando um card NOVO pra mesma empresa na próxima
+                        # verificação em vez de reaproveitar este.
                         "empresa": empresa,
+                        "plataforma": plataforma,
                         "migradas": migradas,
                         "total": total,
                         "aviso": (
@@ -5056,6 +5069,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 status_final = "concluido"
                 detalhes_finais = {
                     "empresa": empresa,
+                    "plataforma": plataforma,
                     "migradas": total,
                     "total": total,
                     "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
@@ -5063,12 +5077,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 }
             else:
                 status_final = "concluido"
-                detalhes_finais = {"empresa": empresa}
+                detalhes_finais = {"empresa": empresa, "plataforma": plataforma}
             atualizar_atividade(atividade_id, status_final, detalhes_finais)
         else:
-            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": "empresa não encontrada no ads_cache no momento da atualização"})
+            atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "plataforma": plataforma, "motivo": "empresa não encontrada no ads_cache no momento da atualização"})
     except Exception as e:
-        atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
+        atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "plataforma": plataforma, "motivo": str(e)})
     finally:
         with _lock_migracao_empresa_ativa:
             _migracoes_empresa_ativas_agora.discard(_chave_ativa)
@@ -5283,13 +5297,42 @@ def verificar_e_migrar_pendentes_google(user_id: str) -> int:
     card visível desde o início."""
     return _verificar_e_migrar_pendentes_google_bg(user_id, atividade_id=None)
 
+_MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS = 15
+
 def iniciar_verificacao_pendentes_google_background(user_id: str):
     """Cria a atividade no sino ANTES de disparar a thread — o card
     aparece imediatamente como "em andamento" (mesmo padrão de
     iniciar_retentativa_midias_background), pra o usuário ver que a
     checagem está rolando enquanto o selo de relógio/ausência de OCR
     ainda aparece no card, em vez de ficar sem nenhuma explicação até
-    (ou a menos que) a varredura ache algo pra migrar."""
+    (ou a menos que) a varredura ache algo pra migrar.
+
+    O flag `_verificacao_pendentes_feita_google` na sessão só evita
+    repetir isso a cada RERUN da mesma aba — mas cada F5/nova aba/nova
+    sessão zera a sessão e essa checagem rodava nela de novo, criando
+    um card novo no sino a cada recarregada da página. Por isso, além
+    do flag de sessão, essa função também confere no BANCO se já rodou
+    uma verificação recente (< _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS
+    atrás) antes de criar outro card — assim, dar refresh na página
+    repetidas vezes num curto intervalo não enche o sino de cards
+    idênticos de "Verificando anúncios do Google Ads pendentes de
+    migração"."""
+    try:
+        _res_ultima = (
+            supabase.table("atividades")
+            .select("criado_em")
+            .eq("user_id", user_id)
+            .eq("tipo", "verificacao_pendentes_gads")
+            .order("criado_em", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if _res_ultima.data:
+            _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
+            if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS:
+                return
+    except Exception:
+        pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
     atividade_id = criar_atividade(
         user_id, "verificacao_pendentes_gads",
         "Verificando anúncios do Google Ads pendentes de migração", {}

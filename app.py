@@ -2243,6 +2243,82 @@ def resetar_ocr_formato_antigo(user_id: str) -> int:
         print(f"[OCR-DEBUG] resetar_ocr_formato_antigo EXCEÇÃO user={user_id}: {e!r}", flush=True)
         return 0
 
+def _empresas_com_imagens_google_ads(user_id: str) -> list:
+    """Todas as empresas do usuário que têm PELO MENOS UMA imagem do
+    Google Ads salva em `midias` — independente do estado do OCR (ao
+    contrário de `_empresas_com_ocr_pendente`, que só lista quem tem
+    algo pendente). Usada pro seletor do reset forçado
+    (`resetar_ocr_gads_forcado`), já que ali o usuário pode querer
+    reprocessar uma empresa mesmo com tudo "aparentemente" migrado."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("empresa")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .limit(5000)
+            .execute()
+        )
+        return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
+    except Exception:
+        return []
+
+def resetar_ocr_gads_forcado(user_id: str, empresa: str) -> int:
+    """'Botão de pânico' pro OCR do Google Ads de UMA empresa: zera
+    `ocr_texto` (e `ocr_estruturado`) de TODAS as imagens do Google Ads
+    dessa empresa, sem NENHUMA condição sobre `ocr_estruturado` — ao
+    contrário de `resetar_ocr_formato_antigo`, que só pega linhas com
+    `ocr_estruturado IS NULL`.
+
+    Por quê isso existe: encontramos linhas com `ocr_estruturado`
+    preenchido (não NULL), mas com conteúdo ERRADO — gravado por uma
+    versão mais antiga/pior de `_estruturar_anuncio_google_ads` (ex:
+    título vazio, tudo despejado em `descricao` como texto corrido,
+    mesmo o anúncio tendo um título azul claro na imagem, confirmado
+    reproduzindo a imagem real do R2 e vendo que a versão atual do
+    parser processaria ela corretamente). Como esse JSON tem conteúdo,
+    `_contar_ocr_formato_antigo`/`resetar_ocr_formato_antigo` nunca
+    enxergam essa linha — pro critério deles, ela "já está migrada".
+    Não dá pra distinguir programaticamente um `ocr_estruturado` certo
+    de um errado só olhando o JSON (os dois têm as mesmas chaves
+    preenchidas), então a correção é manual: o usuário decide
+    reprocessar uma empresa inteira do zero.
+
+    ATENÇÃO: isso gasta OCR de novo em TODAS as imagens da empresa,
+    inclusive as que já estavam certas — é uma ação explícita do
+    usuário (botão com confirmação na tela), não algo automático.
+    Devolve quantas linhas foram resetadas (0 = nenhuma imagem do
+    Google Ads encontrada pra essa empresa)."""
+    try:
+        res = (
+            supabase.table("midias")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("empresa", empresa)
+            .eq("tipo", "imagem")
+            .or_(_FILTRO_OCR_URL_GOOGLE)
+            .limit(5000)
+            .execute()
+        )
+        linhas = res.data or []
+        if not linhas:
+            print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: nenhuma imagem do Google Ads pra empresa={empresa!r}", flush=True)
+            return 0
+        ids = [r["id"] for r in linhas]
+        for i in range(0, len(ids), 200):
+            bloco = ids[i:i + 200]
+            supabase.table("midias").update({
+                "ocr_texto": None,
+                "ocr_estruturado": None,
+            }).in_("id", bloco).execute()
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r}", flush=True)
+        iniciar_ocr_pendente_background(user_id, empresa)
+        return len(ids)
+    except Exception as e:
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r}: {e!r}", flush=True)
+        return 0
+
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
     """Processa a fila de OCR de UMA empresa até esvaziar — mesmo padrão
     (e mesma correção de loop infinito) de _transcrever_pendentes_background:
@@ -29619,6 +29695,63 @@ html, body { background: transparent; overflow: hidden; }
                     )
                 else:
                     st.toast("Nenhuma OCR antiga/vazia pra reprocessar.", icon="⚠️")
+                st.rerun()
+
+        # Reset forçado por empresa — cobre o caso em que `ocr_estruturado`
+        # JÁ ESTÁ preenchido, mas com conteúdo errado (gravado por uma
+        # versão mais antiga/pior do parser por cor: título vazio, tudo
+        # despejado em `descricao` como texto corrido). O botão acima
+        # ("Refazer essas OCRs") NÃO pega esse caso — ele só enxerga
+        # `ocr_estruturado IS NULL`, e aqui o campo tem conteúdo (só que
+        # errado). Como não dá pra distinguir programaticamente um
+        # `ocr_estruturado` certo de um errado (mesmas chaves, ambos
+        # "preenchidos"), a correção é manual: o usuário escolhe a
+        # empresa e reprocessa tudo do zero, mesmo o que já estava certo.
+        _empresas_gads_perfil = []
+        try:
+            _empresas_gads_perfil = _empresas_com_imagens_google_ads(st.session_state.user.id)
+        except Exception:
+            pass
+        if _empresas_gads_perfil:
+            st.markdown("**Reprocessar OCR de uma empresa do zero**")
+            st.caption(
+                "Use isto se algum anúncio de texto do Google Ads estiver com o texto "
+                "todo achatado num bloco só (sem título/descrição separados), mesmo "
+                "depois de usar o botão acima — geralmente é OCR gravado por uma versão "
+                "mais antiga do sistema, com `ocr_estruturado` preenchido só que errado, "
+                "que os botões acima não detectam sozinhos. Isso reprocessa TODAS as "
+                "imagens do Google Ads dessa empresa, mesmo as que já estavam certas."
+            )
+            _empresa_reset_forcado = st.selectbox(
+                "Empresa",
+                options=_empresas_gads_perfil,
+                key="_select_empresa_reset_forcado_gads",
+            )
+            _confirmar_reset_forcado = st.checkbox(
+                f"Confirmo que quero reprocessar TODAS as imagens do Google Ads de "
+                f"\"{_empresa_reset_forcado}\" do zero.",
+                key="_chk_confirmar_reset_forcado_gads",
+            )
+            if st.button(
+                "Reprocessar tudo do zero",
+                key="_btn_reset_forcado_gads",
+                disabled=not _confirmar_reset_forcado,
+            ):
+                _n_reset_forcado = resetar_ocr_gads_forcado(
+                    st.session_state.user.id, _empresa_reset_forcado
+                )
+                if _n_reset_forcado:
+                    st.toast(
+                        f"{_n_reset_forcado} imagem(ns) de \"{_empresa_reset_forcado}\" "
+                        f"enviada(s) pra reprocessar do zero — acompanhe no sino de "
+                        f"notificações.",
+                        icon="🔄",
+                    )
+                else:
+                    st.toast(
+                        f"Nenhuma imagem do Google Ads encontrada pra \"{_empresa_reset_forcado}\".",
+                        icon="⚠️",
+                    )
                 st.rerun()
 
     with aba_perfil_uso:

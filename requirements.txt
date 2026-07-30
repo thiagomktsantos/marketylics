@@ -1,6 +1,7 @@
 streamlit
 google-generativeai
 trafilatura
+pandas
 supabase
 requests
 playwright>=1.44
@@ -8,7 +9,6 @@ boto3
 Pillow
 faster-whisper>=1.0.0
 yt-dlp
-paddleocr
-paddlepaddle
+easyocr
 opencv-python-headless
 numpy

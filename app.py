@@ -1801,16 +1801,36 @@ _OCR_GADS_CAMPOS_VAZIO = {
     "cta": "", "sitelinks": [],
 }
 
-def _extrair_ocr_estruturado_imagem(url_imagem: str) -> dict:
+def _extrair_ocr_estruturado_imagem(url_imagem: str):
     """Baixa a imagem (já no nosso R2) e pede pro Gemini extrair, de forma
     ESTRUTURADA e sabendo que é a imagem de um anúncio do Google Ads, os
     campos: título (headline), descrição, URL exibida, URL final (destino),
-    CTA e sitelinks. Devolve sempre um dict com todas as chaves (vazias
-    quando não há o campo) — nunca None, mesma convenção anterior (campos
-    vazios = "já tentei, não achei nada", pra não voltar pra fila pra
-    sempre)."""
+    CTA e sitelinks.
+
+    Devolve um dict com todas as chaves (algumas vazias quando o campo
+    genuinamente não existe na imagem) quando a extração RODOU de
+    verdade — isso vale mesmo se TODOS os campos vierem vazios (imagem
+    sem nenhum texto legível, o que existe mas é raro).
+
+    Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
+    — download da imagem falhou, Gemini não respondeu, a resposta não
+    veio em JSON válido, etc. Antes, qualquer uma dessas falhas virava
+    silenciosamente um dict vazio, IDÊNTICO ao caso "olhei a imagem e não
+    tinha texto" — e como `ocr_texto=""` conta como "já processado" na
+    convenção 3-estados (ver comentário no topo do bloco), uma imagem que
+    só falhou por uma instabilidade de rede/API ficava marcada como
+    'processada, sem texto' PRA SEMPRE: nem a verificação de segurança
+    nem o botão 'Refazer' nunca mais tentavam de novo, mesmo a imagem
+    tendo texto visível (foi o que aconteceu com os anúncios do print —
+    a verificação disse 'tudo certo' porque essas linhas já tinham
+    `ocr_texto` preenchido, só que com uma string vazia por causa de uma
+    falha, não porque a imagem realmente não tinha texto).
+
+    Quem chama essa função deve tratar None como 'tenta de novo depois'
+    — não grava nada no banco, deixando `ocr_texto` como NULL (pendente)
+    pra essa imagem voltar pra fila na próxima passada."""
     if gemini_model is None:
-        return dict(_OCR_GADS_CAMPOS_VAZIO)
+        return None
     try:
         import json as _json_ocr
         r = requests.get(url_imagem, timeout=20)
@@ -1854,7 +1874,8 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str) -> dict:
             bruto = re.sub(r"^```(?:json)?\s*|\s*```$", "", bruto, flags=re.IGNORECASE).strip()
         dados = _json_ocr.loads(bruto)
         if not isinstance(dados, dict):
-            return dict(_OCR_GADS_CAMPOS_VAZIO)
+            print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (resposta não é um objeto JSON) url={url_imagem!r} bruto={bruto[:200]!r}", flush=True)
+            return None
         _sitelinks = dados.get("sitelinks") or []
         if not isinstance(_sitelinks, list):
             _sitelinks = []
@@ -1866,8 +1887,9 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str) -> dict:
             "cta":          (dados.get("cta") or "").strip(),
             "sitelinks":    [s.strip() for s in _sitelinks if isinstance(s, str) and s.strip()],
         }
-    except Exception:
-        return dict(_OCR_GADS_CAMPOS_VAZIO)
+    except Exception as e:
+        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (não confirmado que a imagem não tem texto) url={url_imagem!r}: {e!r}", flush=True)
+        return None
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
     """True se algum campo veio preenchido — usado pra decidir se o
@@ -1937,12 +1959,23 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
         return []
 
 def _contar_ocr_formato_antigo(user_id: str) -> int:
-    """Quantas imagens do Google Ads já têm `ocr_texto` preenchido mas
-    NO FORMATO ANTIGO — texto corrido, salvo antes do OCR virar
-    estruturado (título/descrição/url_exibida/url_final/cta/sitelinks
-    em `ocr_estruturado`). É a mesma linha que hoje cai no fallback "Linha
-    antiga" do card (ver _formatar bloco em torno de `_ocr_txt_ad` na aba
-    Google Ads) — texto corrido sem os campos separados."""
+    """Quantas imagens do Google Ads já têm `ocr_texto` preenchido (não
+    NULL) mas `ocr_estruturado` vazio. Duas situações caem aqui, e as
+    DUAS precisam ser reprocessadas:
+
+    1) FORMATO ANTIGO — texto corrido, salvo antes do OCR virar
+       estruturado (título/descrição/url_exibida/url_final/cta/
+       sitelinks). É o fallback "Linha antiga" do card (bloco em torno
+       de `_ocr_txt_ad` na aba Google Ads).
+    2) VAZIA POR FALHA (bug já corrigido em
+       `_extrair_ocr_estruturado_imagem`, mas que já tinha gravado linhas
+       erradas antes da correção) — `ocr_texto=""` porque uma falha de
+       rede/Gemini/parsing foi tratada como "processei e não achei
+       texto", quando na verdade a imagem pode ter texto visível (era
+       exatamente o caso do card "Fale Conosco" / "Serviço de cobrança"
+       reportado pelo usuário: a verificação dizia "tudo certo" porque
+       essas linhas já tinham `ocr_texto` preenchido — só que vazio por
+       engano, não porque a imagem não tinha texto)."""
     try:
         res = (
             supabase.table("midias")
@@ -1961,19 +1994,19 @@ def _contar_ocr_formato_antigo(user_id: str) -> int:
 
 def resetar_ocr_formato_antigo(user_id: str) -> int:
     """Zera `ocr_texto` (volta pra NULL = 'pendente', mesma convenção
-    3-estados de sempre) de toda imagem do Google Ads que já tem texto
-    extraído mas ainda no FORMATO ANTIGO (texto corrido, sem
-    `ocr_estruturado`) — criado antes do OCR virar estruturado. Depois de
-    zerado, essas imagens voltam a cair na fila normal de OCR (mesmo
+    3-estados de sempre) de toda imagem do Google Ads com
+    `ocr_estruturado` vazio — cobre TANTO o formato antigo (texto
+    corrido) QUANTO as linhas vazias por falha (ver
+    `_contar_ocr_formato_antigo` pra detalhe das duas situações). Depois
+    de zerado, essas imagens voltam a cair na fila normal de OCR (mesmo
     critério de `_contar_ocr_pendentes`: `ocr_texto IS NULL`) e são
-    reprocessadas já no formato novo, com título/descrição/url/cta/
-    sitelinks separados.
+    reprocessadas já com a extração corrigida, no formato novo.
 
-    Não mexe em linhas que já estão no formato novo (`ocr_estruturado`
-    preenchido) nem nas que nunca foram processadas (`ocr_texto` NULL) —
-    essas já entram no formato novo na primeira passada, sem precisar de
-    reset. Devolve quantas linhas foram resetadas (0 = nada no formato
-    antigo pra reprocessar)."""
+    Não mexe em linhas que já estão no formato novo com conteúdo real
+    (`ocr_estruturado` preenchido) nem nas que nunca foram processadas
+    (`ocr_texto` NULL) — essas já entram no formato novo na primeira
+    passada, sem precisar de reset. Devolve quantas linhas foram
+    resetadas (0 = nada pra reprocessar)."""
     try:
         res = (
             supabase.table("midias")
@@ -2042,6 +2075,26 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 _ids_tentados_neste_run.add(midia["id"])
                 import json as _json_ocr_fila
                 _estruturado = _extrair_ocr_estruturado_imagem(midia["url_cdn"])
+                if _estruturado is None:
+                    # Falha real na extração (download, Gemini, ou parsing
+                    # da resposta) — ver docstring de
+                    # _extrair_ocr_estruturado_imagem. NÃO grava nada:
+                    # ocr_texto continua NULL (pendente de verdade), pra
+                    # essa imagem ser tentada de novo na próxima passada
+                    # da fila em vez de ficar marcada como "processada,
+                    # sem texto" pra sempre — foi exatamente isso que
+                    # fazia a verificação de segurança dizer "tudo certo"
+                    # com imagens que claramente tinham texto na tela.
+                    _ids_falharam.append(str(midia["id"]))
+                    processadas += 1
+                    if atividade_id:
+                        atualizar_atividade(atividade_id, "em_andamento", {
+                            "empresa": empresa,
+                            "processadas": processadas,
+                            "total": max(total, processadas),
+                            "ultimo_heartbeat_em": _agora_iso(),
+                        })
+                    continue
                 texto = _achatar_ocr_estruturado(_estruturado)
                 try:
                     supabase.table("midias").update({
@@ -2068,9 +2121,10 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "aviso": (
-                        f"{len(_ids_falharam)} de {processadas} imagens tiveram erro ao "
-                        f"salvar o texto extraído no banco — clique 'Refazer' pra tentar "
-                        f"de novo."
+                        f"{len(_ids_falharam)} de {processadas} imagens não puderam ser "
+                        f"processadas agora (falha de rede/IA ao ler a imagem) — "
+                        f"continuam pendentes e serão tentadas de novo automaticamente "
+                        f"(ou clique 'Refazer')."
                     ),
                 })
             else:
@@ -29295,35 +29349,39 @@ html, body { background: transparent; overflow: hidden; }
             )
             st.rerun()
 
-        # OCRs salvos ANTES do texto virar estruturado (título/descrição/
-        # url/cta/sitelinks separados) — hoje aparecem no card como texto
-        # corrido, no formato antigo. Botão separado do de cima porque a
-        # ação é diferente: não é "processar o que nunca foi processado",
-        # é "jogar fora o que já foi processado no formato velho e
-        # reprocessar no novo" (reseta ocr_texto pra NULL e reenvia pra
-        # fila normal de OCR).
+        # Duas situações caem no mesmo balde aqui — ver docstring de
+        # _contar_ocr_formato_antigo: (1) OCR salvo ANTES do texto virar
+        # estruturado (texto corrido, sem título/descrição/CTA separados)
+        # e (2) OCR gravado como "vazio" por causa de uma falha de rede/
+        # Gemini/parsing (bug já corrigido na extração, mas que já tinha
+        # gravado linhas erradas antes da correção — imagem com texto
+        # visível, mas marcada como "sem texto" pra sempre). Botão
+        # separado do de cima porque a ação é diferente: não é "processar
+        # o que nunca foi processado", é "jogar fora o que já foi
+        # processado errado/desatualizado e reprocessar do zero" (reseta
+        # ocr_texto pra NULL e reenvia pra fila normal de OCR).
         try:
             _qtd_ocr_formato_antigo = _contar_ocr_formato_antigo(st.session_state.user.id)
         except Exception:
             _qtd_ocr_formato_antigo = 0
         if _qtd_ocr_formato_antigo:
             st.caption(
-                f"{_qtd_ocr_formato_antigo} imagem(ns) com OCR salvo no formato antigo "
-                f"(texto corrido, sem título/descrição/CTA separados)."
+                f"{_qtd_ocr_formato_antigo} imagem(ns) com OCR no formato antigo (texto "
+                f"corrido) ou salvas sem texto por uma falha anterior."
             )
             if st.button(
-                "Refazer OCRs antigas no novo formato",
+                "Refazer essas OCRs",
                 key="_btn_ocr_refazer_formato_antigo_perfil",
             ):
                 _n_resetadas = resetar_ocr_formato_antigo(st.session_state.user.id)
                 if _n_resetadas:
                     st.toast(
-                        f"{_n_resetadas} OCR(s) antiga(s) enviada(s) pra reprocessar no novo formato "
+                        f"{_n_resetadas} OCR(s) enviada(s) pra reprocessar "
                         f"— acompanhe no sino de notificações.",
                         icon="🔄",
                     )
                 else:
-                    st.toast("Nenhuma OCR no formato antigo pra reprocessar.", icon="⚠️")
+                    st.toast("Nenhuma OCR antiga/vazia pra reprocessar.", icon="⚠️")
                 st.rerun()
 
     with aba_perfil_uso:

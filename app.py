@@ -926,6 +926,75 @@ def _limpar_falha_midia(user_id: str, url_origem: str) -> None:
     except Exception:
         pass
 
+_REGEX_YOUTUBE = re.compile(
+    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{6,20})"
+)
+
+def _e_url_youtube(url: str) -> bool:
+    """True se a URL for a página /watch (ou shorts, ou youtu.be) do
+    YouTube — HTML, não um arquivo de vídeo. Não confundir com
+    i.ytimg.com (thumbnail, essa sim é uma imagem de verdade)."""
+    return bool(url) and bool(_REGEX_YOUTUBE.search(url))
+
+def _baixar_video_youtube(url_origem: str, ad_id: str = None):
+    """Baixa o vídeo de verdade do YouTube via yt-dlp — a página
+    /watch?v=... devolvida por requests.get é só HTML, não dá pra baixar
+    o vídeo com um GET simples nela (foi isso que causava o bug de
+    "migração" salvando a página HTML disfarçada de vídeo no R2).
+
+    Já limita a extração a 720p (mesmo teto que _comprimir_video usa
+    depois), pra não baixar um arquivo maior do que o necessário só pra
+    reduzir ele em seguida. Precisa do ffmpeg (já usado em
+    _comprimir_video/_transcrever_video_whisper) pra juntar vídeo+áudio
+    quando vêm em streams separados.
+
+    Devolve (conteudo_bytes, content_type) em caso de sucesso, ou
+    (None, None) se o yt-dlp não estiver instalado ou a extração falhar
+    por qualquer motivo (vídeo privado/removido, bloqueio do YouTube,
+    etc.) — nunca quebra o fluxo; quem chama decide o fallback."""
+    try:
+        import yt_dlp
+    except ImportError:
+        print(f"[MIDIA-DL:{ad_id}] yt-dlp não instalado — não dá pra baixar vídeo do YouTube (ver requirements.txt)", flush=True)
+        return None, None
+
+    import tempfile
+    import os
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            saida_template = os.path.join(tmp, "video.%(ext)s")
+            ydl_opts = {
+                "format": (
+                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
+                    "best[height<=720][ext=mp4]/best[height<=720]/best"
+                ),
+                "outtmpl": saida_template,
+                "merge_output_format": "mp4",
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "socket_timeout": 20,
+                "retries": 2,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url_origem])
+
+            arquivos = [f for f in os.listdir(tmp) if f.startswith("video.")]
+            if not arquivos:
+                print(f"[MIDIA-DL:{ad_id}] yt-dlp não gerou arquivo de saída pra {url_origem}", flush=True)
+                return None, None
+
+            caminho = os.path.join(tmp, arquivos[0])
+            with open(caminho, "rb") as f:
+                conteudo = f.read()
+            content_type = mimetypes.guess_type(caminho)[0] or "video/mp4"
+            print(f"[MIDIA-DL:{ad_id}] yt-dlp OK — {len(conteudo)} bytes, content-type={content_type!r}", flush=True)
+            return conteudo, content_type
+    except Exception as e:
+        print(f"[MIDIA-DL:{ad_id}] yt-dlp EXCEÇÃO: {e!r}", flush=True)
+        return None, None
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
                               referer_hint: str = "") -> str:
@@ -978,60 +1047,81 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
         _e_midia_google = "googlesyndication.com" in url_origem or "googleusercontent.com" in url_origem
+        _e_youtube = _e_url_youtube(url_origem)
 
-        if _e_midia_google:
-            # CDN do Google (tpc.googlesyndication.com) — igual em
-            # _url_para_base64 (aba Google Ads): um Referer forjado pode
-            # ser mais suspeito pro CDN do que nenhum Referer, então tenta
-            # em ordem, da tentativa mais "limpa" (sem headers) até a mais
-            # específica (a própria página do criativo, quando temos).
-            _tentativas_headers = [
-                {},
-                {"User-Agent": _user_agent},
-                {"User-Agent": _user_agent, "Referer": "https://adstransparency.google.com/"},
-            ]
-            if referer_hint:
-                _tentativas_headers.append({"User-Agent": _user_agent, "Referer": referer_hint})
+        if _e_youtube:
+            # A página /watch?v=... (ou /shorts/..., ou youtu.be/...) do
+            # YouTube é HTML, não um arquivo de vídeo — requests.get nela
+            # nunca vai devolver bytes de vídeo. Extrai de verdade via
+            # yt-dlp (mesmo helper trata o teto de 720p); o resultado cai
+            # no mesmo fluxo de baixo (dedupe, upload, compressão em
+            # tipo=="video") igualzinho a um vídeo da Meta.
+            conteudo, content_type = _baixar_video_youtube(url_origem, ad_id)
+            if conteudo is None:
+                # yt-dlp indisponível ou extração falhou (vídeo privado/
+                # removido, bloqueio do YouTube, etc.) — não inventa um
+                # substituto: levanta pra cair no except abaixo, que
+                # registra a falha (alimenta o teto de MAX_TENTATIVAS_MIDIA,
+                # senão toda varredura tentaria o yt-dlp de novo pra
+                # sempre) e devolve a url_origem, que não expira.
+                raise RuntimeError("yt-dlp: extração de vídeo do YouTube falhou ou não está instalado")
         else:
-            # Meta/Instagram (comportamento original) — o link expira, mas
-            # é servido pelo CDN da Meta esperando um Referer de facebook.com.
-            _tentativas_headers = [
-                {"User-Agent": _user_agent, "Referer": "https://www.facebook.com/", "Accept": "*/*"},
-            ]
+            if _e_midia_google:
+                # CDN do Google (tpc.googlesyndication.com) — igual em
+                # _url_para_base64 (aba Google Ads): um Referer forjado pode
+                # ser mais suspeito pro CDN do que nenhum Referer, então tenta
+                # em ordem, da tentativa mais "limpa" (sem headers) até a mais
+                # específica (a própria página do criativo, quando temos).
+                _tentativas_headers = [
+                    {},
+                    {"User-Agent": _user_agent},
+                    {"User-Agent": _user_agent, "Referer": "https://adstransparency.google.com/"},
+                ]
+                if referer_hint:
+                    _tentativas_headers.append({"User-Agent": _user_agent, "Referer": referer_hint})
+            else:
+                # Meta/Instagram (comportamento original) — o link expira, mas
+                # é servido pelo CDN da Meta esperando um Referer de facebook.com.
+                _tentativas_headers = [
+                    {"User-Agent": _user_agent, "Referer": "https://www.facebook.com/", "Accept": "*/*"},
+                ]
 
-        resp = None
-        for _i_tent, _headers_download in enumerate(_tentativas_headers):
-            try:
-                _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
-            except Exception as _e_tent:
-                print(f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} EXCEÇÃO: {_e_tent!r}", flush=True)
-                continue
-            _ct_tentativa = (_tentativa.headers.get("content-type", "") or "").split(";")[0].strip()
-            print(
-                f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} "
-                f"url={url_origem} status={_tentativa.status_code} content-type={_ct_tentativa!r} "
-                f"bytes={len(_tentativa.content) if _tentativa.content else 0}",
-                flush=True,
+            resp = None
+            for _i_tent, _headers_download in enumerate(_tentativas_headers):
+                try:
+                    _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
+                except Exception as _e_tent:
+                    print(f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} EXCEÇÃO: {_e_tent!r}", flush=True)
+                    continue
+                _ct_tentativa = (_tentativa.headers.get("content-type", "") or "").split(";")[0].strip()
+                print(
+                    f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} "
+                    f"url={url_origem} status={_tentativa.status_code} content-type={_ct_tentativa!r} "
+                    f"bytes={len(_tentativa.content) if _tentativa.content else 0}",
+                    flush=True,
+                )
+                # Validação de content-type pra QUALQUER origem (não só
+                # Google) — sem isso, uma resposta 200 com HTML/erro no
+                # corpo (ex.: página do YouTube, ou uma página de erro
+                # genérica de qualquer CDN) passava como "sucesso" e subia
+                # pro R2 disfarçada de imagem/vídeo.
+                if _tentativa.status_code == 200 and _tentativa.content and _ct_tentativa.startswith(("image/", "video/")):
+                    resp = _tentativa
+                    print(f"[MIDIA-DL:{ad_id}] SUCESSO na tentativa={_i_tent}", flush=True)
+                    break
+            if resp is None:
+                print(f"[MIDIA-DL:{ad_id}] TODAS as {len(_tentativas_headers)} tentativas falharam pra {url_origem} — mantém link original", flush=True)
+                # Nenhuma tentativa deu certo (nem status 200+content-type
+                # válido) — levanta pra cair no except abaixo, que registra
+                # a falha (alimenta MAX_TENTATIVAS_MIDIA) e devolve a
+                # url_origem sem quebrar o fluxo.
+                raise RuntimeError(f"download falhou em todas as {len(_tentativas_headers)} tentativas (status/content-type inválido)")
+            conteudo = resp.content
+            content_type = (
+                resp.headers.get("content-type", "")
+                or mimetypes.guess_type(url_origem)[0]
+                or "application/octet-stream"
             )
-            if _tentativa.status_code == 200 and _tentativa.content and (
-                not _e_midia_google or _ct_tentativa.startswith(("image/", "video/"))
-            ):
-                resp = _tentativa
-                print(f"[MIDIA-DL:{ad_id}] SUCESSO na tentativa={_i_tent}", flush=True)
-                break
-        if resp is None:
-            print(f"[MIDIA-DL:{ad_id}] TODAS as {len(_tentativas_headers)} tentativas falharam pra {url_origem} — mantém link original", flush=True)
-            # Nenhuma tentativa deu certo — mantém o comportamento antigo
-            # (levanta com a última resposta) pra cair no except abaixo e
-            # devolver a url_origem sem quebrar o fluxo.
-            resp = requests.get(url_origem, timeout=15, stream=True, headers=_tentativas_headers[-1])
-        resp.raise_for_status()
-        conteudo = resp.content
-        content_type = (
-            resp.headers.get("content-type", "")
-            or mimetypes.guess_type(url_origem)[0]
-            or "application/octet-stream"
-        )
         hash_conteudo = hashlib.sha256(conteudo).hexdigest()
 
         # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita,

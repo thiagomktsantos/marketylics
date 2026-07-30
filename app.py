@@ -976,6 +976,16 @@ def _baixar_video_youtube(url_origem: str, ad_id: str = None):
                 "noplaylist": True,
                 "socket_timeout": 20,
                 "retries": 2,
+                # Cliente padrão do yt-dlp costuma exigir PO Token (Proof-of-Origin)
+                # pra liberar o download do stream de vídeo/áudio, e sem ele o
+                # YouTube devolve 403 Forbidden mesmo com a extração de metadados
+                # funcionando normal. android/ios/mweb ainda dispensam o token em
+                # parte dos casos, então tentamos esses como fallback antes do web.
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "mweb", "web"],
+                    },
+                },
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url_origem])

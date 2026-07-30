@@ -1805,6 +1805,18 @@ _lock_ocr_pendente = threading.Lock()
 _lock_easyocr_init = threading.Lock()
 _easyocr_instancia = [None]
 
+# Cadência GLOBAL das chamadas ao EasyOCR — cada empresa roda numa thread
+# própria (ver iniciar_ocr_pendente_background), então várias empresas
+# com OCR pendente ao mesmo tempo podiam disparar várias inferências de
+# rede neural em paralelo, somando toda a CPU/RAM do processo de uma vez
+# só — foi isso que fez o Streamlit Cloud throttlar o app. Este lock
+# serializa as chamadas ao motor (uma imagem por vez, não importa quantas
+# threads estejam tentando), e o intervalo mínimo dá um respiro pro
+# processo entre uma inferência e outra.
+_lock_easyocr_execucao = threading.Lock()
+_MIN_INTERVALO_OCR_SEG = 1.5
+_ultima_chamada_ocr = [0.0]
+
 def _get_easyocr():
     """Cria (uma única vez, na primeira chamada) e reaproveita a
     instância do EasyOCR — o carregamento do modelo é pesado, então não
@@ -1824,6 +1836,13 @@ def _extrair_texto_paddleocr(url_imagem: str):
     (Nome da função mantido como `_paddleocr` só por compatibilidade com
     quem já chama — o motor por baixo agora é o EasyOCR.)
 
+    A INFERÊNCIA em si (a parte pesada de CPU) roda serializada por
+    `_lock_easyocr_execucao` — só uma imagem processando por vez em todo
+    o app, mesmo com várias empresas rodando OCR ao mesmo tempo em
+    threads diferentes. O download da imagem (rede, não CPU) continua
+    acontecendo em paralelo normalmente, só a etapa de IA é que fica na
+    fila.
+
     Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
     (download da imagem falhou, EasyOCR não conseguiu processar etc.) —
     mesma convenção da função antiga: quem chama trata None como 'tenta
@@ -1841,8 +1860,14 @@ def _extrair_texto_paddleocr(url_imagem: str):
         if _img is None:
             print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
             return None
-        _reader = _get_easyocr()
-        _resultado = _reader.readtext(_img, detail=1)
+        import time as _time_ocr
+        with _lock_easyocr_execucao:
+            _espera = _MIN_INTERVALO_OCR_SEG - (_time_ocr.time() - _ultima_chamada_ocr[0])
+            if _espera > 0:
+                _time_ocr.sleep(_espera)
+            _reader = _get_easyocr()
+            _resultado = _reader.readtext(_img, detail=1)
+            _ultima_chamada_ocr[0] = _time_ocr.time()
         if not _resultado:
             return ""
         _linhas = []

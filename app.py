@@ -3,6 +3,7 @@ import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
+import pandas as pd
 import re
 import unicodedata
 import trafilatura
@@ -1788,36 +1789,45 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 _lock_ocr_pendente = threading.Lock()
 
 # ---------------------------------------------------
-# PADDLEOCR — leitor local, sem chamada de API/cota
+# EASYOCR — leitor local, sem chamada de API/cota
 # ---------------------------------------------------
 # Substitui o Gemini como "leitor" da imagem: baixa a imagem e devolve o
-# texto bruto que o PaddleOCR enxergou nela (sem nenhuma tentativa de
+# texto bruto que o EasyOCR enxergou nela (sem nenhuma tentativa de
 # separar em título/descrição/CTA/url — isso fica pra uma etapa
 # seguinte, depois de ver como o texto bruto costuma vir). Roda no
 # próprio processo, sem limite de requisições por minuto.
-_lock_paddleocr_init = threading.Lock()
-_paddleocr_instancia = [None]
+#
+# Trocamos o PaddleOCR pelo EasyOCR porque o `paddlepaddle` ainda não
+# publica wheel pro Python 3.14 (versão usada no Streamlit Community
+# Cloud), o que quebrava o build ("No matching distribution found for
+# paddlepaddle"). O EasyOCR depende do PyTorch, que já tem suporte
+# oficial ao Python 3.14 desde a versão 2.10.
+_lock_easyocr_init = threading.Lock()
+_easyocr_instancia = [None]
 
-def _get_paddleocr():
+def _get_easyocr():
     """Cria (uma única vez, na primeira chamada) e reaproveita a
-    instância do PaddleOCR — o carregamento do modelo é pesado, então
-    não dá pra recriar a cada imagem."""
-    if _paddleocr_instancia[0] is None:
-        with _lock_paddleocr_init:
-            if _paddleocr_instancia[0] is None:
-                from paddleocr import PaddleOCR
-                _paddleocr_instancia[0] = PaddleOCR(use_angle_cls=True, lang="pt", show_log=False)
-    return _paddleocr_instancia[0]
+    instância do EasyOCR — o carregamento do modelo é pesado, então não
+    dá pra recriar a cada imagem."""
+    if _easyocr_instancia[0] is None:
+        with _lock_easyocr_init:
+            if _easyocr_instancia[0] is None:
+                import easyocr
+                _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False)
+    return _easyocr_instancia[0]
 
 def _extrair_texto_paddleocr(url_imagem: str):
     """Baixa a imagem (já no nosso R2) e devolve o texto bruto lido pelo
-    PaddleOCR, uma linha por trecho detectado, na ordem em que o motor
+    EasyOCR, uma linha por trecho detectado, na ordem em que o motor
     encontrou (de cima pra baixo, geralmente).
 
+    (Nome da função mantido como `_paddleocr` só por compatibilidade com
+    quem já chama — o motor por baixo agora é o EasyOCR.)
+
     Devolve None quando a extração NÃO RODOU por causa de uma FALHA real
-    (download da imagem falhou, PaddleOCR não conseguiu processar etc.)
-    — mesma convenção da função antiga: quem chama trata None como
-    'tenta de novo depois' e não grava nada no banco.
+    (download da imagem falhou, EasyOCR não conseguiu processar etc.) —
+    mesma convenção da função antiga: quem chama trata None como 'tenta
+    de novo depois' e não grava nada no banco.
 
     Devolve "" (string vazia) quando a extração RODOU normalmente mas a
     imagem genuinamente não tinha nenhum texto legível."""
@@ -1831,13 +1841,13 @@ def _extrair_texto_paddleocr(url_imagem: str):
         if _img is None:
             print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
             return None
-        _ocr = _get_paddleocr()
-        _resultado = _ocr.ocr(_img, cls=True)
-        if not _resultado or not _resultado[0]:
+        _reader = _get_easyocr()
+        _resultado = _reader.readtext(_img, detail=1)
+        if not _resultado:
             return ""
         _linhas = []
-        for _bloco in _resultado[0]:
-            _texto = (_bloco[1][0] or "").strip()
+        for _bbox, _texto, _confianca in _resultado:
+            _texto = (_texto or "").strip()
             if _texto:
                 _linhas.append(_texto)
         texto_bruto = "\n".join(_linhas)

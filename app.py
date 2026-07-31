@@ -2074,6 +2074,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # de OCR dentro da mesma linha", e acabaria apagando os dois
         # igual — grudando as duas linhas numa só.
         _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
+        # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
+        # início da linha antes de checar o formato de domínio — comum
+        # quando o cabeçalho tem SÓ essa uma linha (só a URL, sem uma
+        # linha de nome de página acima dela): sem uma segunda linha
+        # "limpa" (longe do favicon) pra servir de fallback, essa única
+        # linha fica colada ao favicon/ícone, e o EasyOCR ocasionalmente
+        # devolve um símbolo/glifo espúrio do próprio ícone como se
+        # fosse o primeiro caractere do texto (ex: "●www.kedu.com.br/
+        # gestão/escolar"). Um domínio de verdade nunca começa com
+        # símbolo, então é seguro descartar esse prefixo antes do match
+        # — sem isso, o "^" do _REGEX_FORMATO_DOMINIO falhava e a linha
+        # inteira era rejeitada, sumindo com o url_exibida por completo
+        # (quando o cabeçalho tinha 2 linhas, a segunda — a URL, sem
+        # ícone ao lado — continuava passando limpa e cobria o caso).
+        _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
         # Só entra no url_exibida se a linha tiver formato de domínio/URL
         # de verdade (algo.algo, com ponto e sem espaço interno de frase).
         # Linhas de cabeçalho que são nome de página/marca (ex: "KEDU")

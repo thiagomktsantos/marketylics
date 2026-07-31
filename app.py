@@ -10686,7 +10686,7 @@ function setHeightGeral(isOpen) {{
                             + "".join(_oport_rows[_p_ini:_p_ini + _OPORT_POR_PAGINA]) +
                             '</div>'
                         )
-                    _oport_html = "".join(_oport_paginas)
+                    _oport_html = '<div class="oport-pages-wrap">' + "".join(_oport_paginas) + '</div>'
 
                     _total_paginas_op = len(_oport_paginas)
                     if _total_paginas_op > 1:
@@ -11044,6 +11044,28 @@ function irParaAreaPrioritaria() {{
     }}
 }}
 var _oportPaginaAtual = 0;
+function oportInit() {{
+    // Mede a altura natural de cada página (mesmo as escondidas, via
+    // position:absolute + visibility:hidden pra não afetar o layout
+    // durante a medição) e fixa a maior delas como altura mínima do
+    // wrapper — assim a navegação (setas/bolinhas) fica sempre na mesma
+    // posição, mesmo quando a última página tem só 1 item em vez de 2.
+    var wrap = document.querySelector('.oport-pages-wrap');
+    if (!wrap) return;
+    var paginas = document.querySelectorAll('.oport-page');
+    var maxH = 0;
+    paginas.forEach(function(p) {{
+        var prevDisplay = p.style.display, prevPos = p.style.position, prevVis = p.style.visibility;
+        p.style.position = 'absolute';
+        p.style.visibility = 'hidden';
+        p.style.display = 'block';
+        if (p.offsetHeight > maxH) maxH = p.offsetHeight;
+        p.style.position = prevPos;
+        p.style.visibility = prevVis;
+        p.style.display = prevDisplay;
+    }});
+    if (maxH > 0) wrap.style.minHeight = maxH + 'px';
+}}
 function oportAtualizarPagina() {{
     var paginas = document.querySelectorAll('.oport-page');
     for (var i = 0; i < paginas.length; i++) {{
@@ -11073,6 +11095,8 @@ function syncH() {{
     }}
 }}
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
+oportInit();
+setTimeout(oportInit,150); setTimeout(oportInit,500);
 setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 
 // Tooltip dos anéis: um iframe SEMPRE corta qualquer conteúdo que passe da

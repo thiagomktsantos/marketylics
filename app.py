@@ -1869,11 +1869,31 @@ def _detectar_bandas_texto(img_bgr):
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
+
+    # Máscara separada, só pra decidir ONDE quebrar uma banda da
+    # próxima: ignora a faixa da esquerda (~13% da largura) onde
+    # favicons/avatars circulares costumam ficar. Sem isso, um ícone
+    # redondo que fica "de pé" entre duas linhas de texto verticalmente
+    # próximas (ex: "kedu.com.br" e "www.kedu.com.br/" empilhadas do
+    # lado do favicon) preenche pixels non-white contínuos entre as
+    # duas linhas, nunca dá o gap de 3px que separaria as bandas, e as
+    # duas linhas acabam grudadas numa banda só — bug validado com uma
+    # imagem real onde a url_exibida saía com as duas linhas coladas.
+    # A classificação por cor e o texto de cada banda continuam usando
+    # a imagem inteira (`nao_branco`) normalmente; só a decisão de
+    # "essa linha tem conteúdo pra continuar a banda atual?" ignora essa
+    # faixa. Título/descrição sempre se estendem bem além dela, então
+    # não tem risco de sumir uma linha real por causa disso.
+    _x_ignorar_quebra = min(int(_largura * 0.13), 110)
+    nao_branco_quebra = nao_branco.copy()
+    nao_branco_quebra[:, :_x_ignorar_quebra] = False
+
     linhas = []
     for y in range(altura_total):
         mask = nao_branco[y]
         n = int(mask.sum())
-        if n > 3:
+        n_quebra = int(nao_branco_quebra[y].sum())
+        if n_quebra > 3:
             pix = img_rgb[y][mask]
             linhas.append((y, n, float(pix[:, 0].mean()), float(pix[:, 1].mean()), float(pix[:, 2].mean())))
     bandas_brutas = []
@@ -1911,79 +1931,16 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
-    ordem.
-
-    Uma única "banda" de cor (ver `_detectar_bandas_texto`) às vezes
-    contém MAIS DE UMA linha física de texto — por exemplo o nome da
-    página + a URL logo abaixo, ou "Enviar mensagem" empilhado sobre
-    "pelo app WhatsApp" — quando o espaço vertical entre elas é pequeno
-    demais pra abrir uma banda nova. Antes daqui a gente só ordenava os
-    fragmentos por x (esquerda->direita), o que intercalava pedaços de
-    linhas diferentes e embaralhava o texto (ex: "www.kedu.com. brl
-    KEDU" em vez de "KEDU" / "www.kedu.com.br/" em linhas separadas, ou
-    "pelo app WhatsApp Enviar mensagem" com a ordem das duas linhas
-    trocada). Agora agrupa os fragmentos em linhas pelo topo do bbox
-    (`y_topo`) antes de ordenar por x dentro de cada linha — ordem de
-    leitura de verdade (linha por linha, topo->baixo, depois
-    esquerda->direita)."""
+    ordem."""
     altura_total = img_bgr.shape[0]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     recorte = img_bgr[y0:y1, :]
     resultado = reader.readtext(recorte, detail=1)
-    itens = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
-    if not itens:
+    if not resultado:
         return ""
-
-    def _y_topo(bbox):
-        return min(p[1] for p in bbox)
-
-    def _x_esq(bbox):
-        return min(p[0] for p in bbox)
-
-    itens.sort(key=lambda it: _y_topo(it[0]))
-    alturas = [max(p[1] for p in bbox) - min(p[1] for p in bbox) for bbox, _t in itens]
-    altura_media = sum(alturas) / len(alturas) if alturas else 10
-    tolerancia = max(6.0, altura_media * 0.6)
-
-    linhas = [[itens[0]]]
-    y_ref = _y_topo(itens[0][0])
-    for item in itens[1:]:
-        y_item = _y_topo(item[0])
-        if abs(y_item - y_ref) <= tolerancia:
-            linhas[-1].append(item)
-        else:
-            linhas.append([item])
-            y_ref = y_item
-
-    partes_linhas = []
-    for linha in linhas:
-        linha.sort(key=lambda it: _x_esq(it[0]))
-        partes_linhas.append(" ".join(t for _bbox, t in linha))
-    return "\n".join(partes_linhas)
-
-_REGEX_LINHA_PARECE_URL = re.compile(
-    r"(https?://|www\.|\.com\b|\.com\.br\b|\.br\b|\.net\b|\.org\b)", re.IGNORECASE
-)
-
-def _limpar_texto_url_ocr(texto: str) -> str:
-    """O EasyOCR detecta texto por PALAVRA (bbox por fragmento), não por
-    linha inteira — o `_ocr_banda` junta esses fragmentos com espaço
-    pra reconstituir a linha, o que é correto pra frases normais mas
-    quebra URLs/domínios: "www.kedu.com.br/" nunca tem espaço no meio,
-    então um espaço inserido entre fragmentos vira "www.kedu.com. br/"
-    (ou pior, some parte do texto visualmente). Aqui a gente detecta
-    linha por linha se aquilo PARECE um domínio/URL (tem "www.",
-    "http(s)://" ou termina em ".com"/".com.br"/etc.) e, só nesse caso,
-    remove os espaços internos — linhas que não parecem URL (ex: nome
-    da página, tipo "KEDU") ficam intocadas."""
-    linhas_limpas = []
-    for linha in texto.split("\n"):
-        if _REGEX_LINHA_PARECE_URL.search(linha):
-            linhas_limpas.append(re.sub(r"\s+", "", linha))
-        else:
-            linhas_limpas.append(linha)
-    return "\n".join(linhas_limpas)
+    resultado.sort(key=lambda item: item[0][0][0])
+    return " ".join((t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip())
 
 def _estruturar_anuncio_google_ads(img_bgr, reader):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
@@ -2012,24 +1969,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     if _REGEX_PATROCINADO.match(primeiro_texto.strip()):
         idx = 1
 
-    # Bloco de cabeçalho (nome da página / domínio / URL exibida): pode
-    # vir como UMA banda só (quando as linhas ficam coladas o bastante
-    # pra `_detectar_bandas_texto` juntar tudo numa banda), mas também
-    # aparece como DUAS bandas separadas e mais espaçadas — ex: avatar +
-    # "edusummitbrasil.com.br" (nome/domínio) numa banda, e
-    # "www.edusummitbrasil.com.br/evento/educação" (URL completa) na
-    # banda seguinte. As duas vêm em cinza/preto (nunca azul — azul é
-    # reservado pro título clicável), então consome TODAS as bandas
-    # não-azuis aqui, até aparecer a primeira banda azul (o título) ou
-    # acabarem as bandas.
-    linhas_cabecalho = []
+    # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
+    # url_exibida (não só uma) — na Central de Transparência é comum
+    # aparecer o domínio curto ("kedu.com.br") numa linha e a URL
+    # completa ("www.kedu.com.br/") na linha de baixo, ambas cinza,
+    # antes do título (sempre azul) começar. Juntando as duas evita
+    # tanto perder a segunda linha (que cairia no "cinza sem título
+    # aberto → ignora" logo abaixo) quanto duplicar/misturar texto de
+    # URL dentro do campo errado.
+    _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
-        texto_linha = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
-        if texto_linha:
-            linhas_cabecalho.append(texto_linha)
+        _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+        if _txt_dominio:
+            _partes_dominio.append(_txt_dominio)
         idx += 1
-    if linhas_cabecalho:
-        resultado["url_exibida"] = _limpar_texto_url_ocr("\n".join(linhas_cabecalho))
+    resultado["url_exibida"] = " ".join(_partes_dominio)
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None
@@ -23086,10 +23040,25 @@ function imgFallback_{uid}(img){{
                                     f'{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
                                 )
                             if _ocr_estr_ad.get("sitelinks"):
-                                _sitelinks_txt = " · ".join(_escapar_html_ocr(s) for s in _ocr_estr_ad["sitelinks"])
-                                _campos_ocr_html.append(
-                                    f'<div style="font-size:11px;color:#3a9fd6;margin-top:2px">{_sitelinks_txt}</div>'
-                                )
+                                _blocos_sitelinks = []
+                                for _sl in _ocr_estr_ad["sitelinks"]:
+                                    # cada sitelink veio como "título —
+                                    # descrição" (ou só "título", sem
+                                    # descrição) — separa de volta pra
+                                    # exibir em duas linhas, título em
+                                    # destaque e descrição embaixo, em
+                                    # vez de tudo numa frase só.
+                                    if " — " in _sl:
+                                        _sl_titulo, _sl_desc = _sl.split(" — ", 1)
+                                    else:
+                                        _sl_titulo, _sl_desc = _sl, ""
+                                    _blocos_sitelinks.append(
+                                        '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
+                                        f'<div style="font-size:12px;font-weight:700;color:#3a9fd6">{_escapar_html_ocr(_sl_titulo)}</div>'
+                                        + (f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_sl_desc)}</div>' if _sl_desc else '')
+                                        + '</div>'
+                                    )
+                                _campos_ocr_html.append("".join(_blocos_sitelinks))
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'

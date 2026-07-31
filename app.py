@@ -1962,6 +1962,29 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
         partes_linhas.append(" ".join(t for _bbox, t in linha))
     return "\n".join(partes_linhas)
 
+_REGEX_LINHA_PARECE_URL = re.compile(
+    r"(https?://|www\.|\.com\b|\.com\.br\b|\.br\b|\.net\b|\.org\b)", re.IGNORECASE
+)
+
+def _limpar_texto_url_ocr(texto: str) -> str:
+    """O EasyOCR detecta texto por PALAVRA (bbox por fragmento), não por
+    linha inteira — o `_ocr_banda` junta esses fragmentos com espaço
+    pra reconstituir a linha, o que é correto pra frases normais mas
+    quebra URLs/domínios: "www.kedu.com.br/" nunca tem espaço no meio,
+    então um espaço inserido entre fragmentos vira "www.kedu.com. br/"
+    (ou pior, some parte do texto visualmente). Aqui a gente detecta
+    linha por linha se aquilo PARECE um domínio/URL (tem "www.",
+    "http(s)://" ou termina em ".com"/".com.br"/etc.) e, só nesse caso,
+    remove os espaços internos — linhas que não parecem URL (ex: nome
+    da página, tipo "KEDU") ficam intocadas."""
+    linhas_limpas = []
+    for linha in texto.split("\n"):
+        if _REGEX_LINHA_PARECE_URL.search(linha):
+            linhas_limpas.append(re.sub(r"\s+", "", linha))
+        else:
+            linhas_limpas.append(linha)
+    return "\n".join(linhas_limpas)
+
 def _estruturar_anuncio_google_ads(img_bgr, reader):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
     Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
@@ -1989,10 +2012,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     if _REGEX_PATROCINADO.match(primeiro_texto.strip()):
         idx = 1
 
-    if idx < len(bandas_texto):
-        texto_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"])
-        resultado["url_exibida"] = texto_dominio.strip()
+    # Bloco de cabeçalho (nome da página / domínio / URL exibida): pode
+    # vir como UMA banda só (quando as linhas ficam coladas o bastante
+    # pra `_detectar_bandas_texto` juntar tudo numa banda), mas também
+    # aparece como DUAS bandas separadas e mais espaçadas — ex: avatar +
+    # "edusummitbrasil.com.br" (nome/domínio) numa banda, e
+    # "www.edusummitbrasil.com.br/evento/educação" (URL completa) na
+    # banda seguinte. As duas vêm em cinza/preto (nunca azul — azul é
+    # reservado pro título clicável), então consome TODAS as bandas
+    # não-azuis aqui, até aparecer a primeira banda azul (o título) ou
+    # acabarem as bandas.
+    linhas_cabecalho = []
+    while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
+        texto_linha = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+        if texto_linha:
+            linhas_cabecalho.append(texto_linha)
         idx += 1
+    if linhas_cabecalho:
+        resultado["url_exibida"] = _limpar_texto_url_ocr("\n".join(linhas_cabecalho))
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None

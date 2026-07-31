@@ -2019,8 +2019,23 @@ def _normalizar_url_exibida(texto: str) -> str:
     """
     if not texto:
         return texto
-    texto = re.sub(r"^[wW]{2,4}\.", "www.", texto)
-    texto = re.sub(r"\.com\.?brl", ".com.br/", texto, flags=re.IGNORECASE)
+    # Normaliza o prefixo "www" mesmo quando o ponto separador some
+    # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
+    # domínio) — o lookahead garante que só mexe aqui se o que vem
+    # depois já parece início de domínio (letra/número), sem comer
+    # acidentalmente outro texto.
+    texto = re.sub(r"^[wW]{2,4}\.?(?=[a-zA-Z0-9])", "www.", texto)
+    # Recompõe o fechamento do domínio como ".com.br/" removendo o "l"
+    # colado (item 2) SE ele existir, mas sem assumir que ele sempre
+    # existe: quando o EasyOCR acerta a barra de verdade (".com.br/"),
+    # essa barra cai no grupo "resto" abaixo e não pode ser duplicada.
+    _match_combr = re.search(r"\.?com\.?br", texto, flags=re.IGNORECASE)
+    if _match_combr:
+        _antes, _resto = texto[:_match_combr.start()], texto[_match_combr.end():]
+        if _resto[:1].lower() == "l":
+            _resto = _resto[1:]
+        _resto = re.sub(r"^/+", "", _resto)  # evita barra dupla se já tinha "/"
+        texto = _antes + ".com.br/" + _resto
     # 3) barra de CAMINHO (não a de fechamento do domínio, já coberta
     # acima) colada DIRETO na palavra seguinte, sem nenhum espaço nem
     # caixa de detecção separada — ex: "gestão" + "/" + "escolar" virando
@@ -2033,6 +2048,9 @@ def _normalizar_url_exibida(texto: str) -> str:
     # então é seguro tratar esse "l" como barra sem risco de quebrar uma
     # palavra de verdade.
     texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
+    # Rede de segurança: colapsa qualquer barra dupla residual que ainda
+    # tenha sobrado por outro caminho não previsto pelas regras acima.
+    texto = re.sub(r"/{2,}", "/", texto)
     return texto
 
 def _detectar_bandas_texto(img_bgr):

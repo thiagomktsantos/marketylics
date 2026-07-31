@@ -2058,13 +2058,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         idx = 1
 
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
+    # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
     # url_exibida (não só uma) — na Central de Transparência é comum
-    # aparecer o domínio curto ("kedu.com.br") numa linha e a URL
-    # completa ("www.kedu.com.br/") na linha de baixo, ambas cinza,
-    # antes do título (sempre azul) começar. Juntando as duas evita
-    # tanto perder a segunda linha (que cairia no "cinza sem título
-    # aberto → ignora" logo abaixo) quanto duplicar/misturar texto de
-    # URL dentro do campo errado.
+    # aparecer o nome da página numa linha e/ou o domínio/URL em
+    # outra(s), todas cinza, antes do título (sempre azul) começar.
+    #
+    # Antes, só entrava aqui a linha que batesse num regex estrito de
+    # formato de domínio (algo.algo) — a ideia era filtrar fora o nome
+    # da página (ex: "KEDU"), que não tem ponto. Só que isso também
+    # descartava a URL sempre que ELA MESMA, por algum motivo de OCR
+    # (glifo do ícone colado, TLD fora do comum etc.), não batesse
+    # exatamente o regex — e quando o cabeçalho tinha só essa uma linha
+    # (sem uma segunda linha de nome pra "sobrar"), o resultado era
+    # url_exibida vazio, sem nenhuma pista de por que sumiu.
+    #
+    # Mais simples e mais robusto: não filtra nada — junta TODAS as
+    # linhas não-azuis do cabeçalho com quebra de linha, do jeito que
+    # elas aparecem (nome da página, se houver, e a URL). O pior caso
+    # passa a ser "nome da página aparece como uma linha extra em cima
+    # da URL" (cosmético), em vez de "a URL inteira desaparece".
     _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
         _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
@@ -2072,8 +2084,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br
         # /gestão /escolar" quando a barra vira uma caixa de detecção
-        # separada). Essa limpeza roda POR LINHA, antes de decidir se
-        # ela bate no formato de domínio e antes de juntar com as
+        # separada). Essa limpeza roda POR LINHA, antes de juntar com as
         # demais linhas do cabeçalho — se rodasse só uma vez no final,
         # sobre o texto já concatenado, não teria como distinguir
         # "espaço que separava duas linhas diferentes" (ex:
@@ -2082,39 +2093,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # igual — grudando as duas linhas numa só.
         _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
-        # início da linha antes de checar o formato de domínio — comum
-        # quando o cabeçalho tem SÓ essa uma linha (só a URL, sem uma
-        # linha de nome de página acima dela): sem uma segunda linha
-        # "limpa" (longe do favicon) pra servir de fallback, essa única
-        # linha fica colada ao favicon/ícone, e o EasyOCR ocasionalmente
-        # devolve um símbolo/glifo espúrio do próprio ícone como se
-        # fosse o primeiro caractere do texto (ex: "●www.kedu.com.br/
-        # gestão/escolar"). Um domínio de verdade nunca começa com
-        # símbolo, então é seguro descartar esse prefixo antes do match
-        # — sem isso, o "^" do _REGEX_FORMATO_DOMINIO falhava e a linha
-        # inteira era rejeitada, sumindo com o url_exibida por completo
-        # (quando o cabeçalho tinha 2 linhas, a segunda — a URL, sem
-        # ícone ao lado — continuava passando limpa e cobria o caso).
+        # início da linha — comum quando essa linha fica colada no
+        # favicon/ícone e o EasyOCR devolve um símbolo/glifo espúrio do
+        # próprio ícone como se fosse o primeiro caractere do texto (ex:
+        # "●www.kedu.com.br/gestão/escolar"). Puramente cosmético agora
+        # (não decide mais se a linha entra ou não), mas ainda vale a
+        # pena limpar antes de exibir.
         _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
-        _bate_dominio = bool(_txt_dominio_sem_espaco and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco))
-        # Log temporário pra diagnosticar de vez o caso "site sozinho no
-        # cabeçalho some" — mostra, linha por linha, o texto cru lido
-        # pelo OCR, o texto já limpo, e se bateu (ou não) o formato de
-        # domínio. Sem isso, só dava pra especular a partir do print da
-        # tela; com isso, o log do console mostra exatamente ONDE a
-        # linha foi perdida (banda não detectada / classe errada / OCR
-        # leu algo que não bate o formato).
         print(
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
-            f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} bate_dominio={_bate_dominio}",
+            f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r}",
             flush=True,
         )
-        # Só entra no url_exibida se a linha tiver formato de domínio/URL
-        # de verdade (algo.algo, com ponto e sem espaço interno de frase).
-        # Linhas de cabeçalho que são nome de página/marca (ex: "KEDU")
-        # não batem nesse padrão e ficam de fora, em vez de contaminar
-        # o domínio final.
-        if _bate_dominio:
+        if _txt_dominio_sem_espaco:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
         idx += 1
     # Junta as linhas já limpas/normalizadas com quebra de linha (não

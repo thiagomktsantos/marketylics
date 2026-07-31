@@ -1990,6 +1990,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             _partes_dominio.append(_txt_dominio)
         idx += 1
     resultado["url_exibida"] = " ".join(_partes_dominio)
+    # Domínio/URL de verdade nunca tem espaço em branco — remove
+    # qualquer espaço que o EasyOCR tenha inserido por engano (seja
+    # dentro de uma única caixa de detecção, ex: "kedu. com.br", seja
+    # entre duas caixas vizinhas que deveriam estar coladas). Título e
+    # descrição não passam por essa limpeza porque ali o espaço é
+    # legítimo (é frase, não domínio).
+    resultado["url_exibida"] = re.sub(r"\s+", "", resultado["url_exibida"])
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None

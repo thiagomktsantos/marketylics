@@ -1988,7 +1988,28 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
     bandas = _detectar_bandas_texto(img_bgr)
-    bandas_texto = [b for b in bandas if b["classe"] != "separador"]
+    # Não descarta os separadores — só ignora eles pro OCR. Precisamos
+    # saber se existia uma linha divisória ANTES de cada banda de texto,
+    # porque duas azuis seguidas sem descrição no meio podem significar
+    # duas coisas bem diferentes:
+    #   1) quebra de linha do MESMO título (ex: "Matrículas Privadas -
+    #      Prospecção" / "Eficiente") — aí NÃO tem separador entre elas;
+    #   2) dois sitelinks distintos, cada um sem descrição (ex: "Kedu
+    #      Bank" / "Kedu Marketing") — aí SEMPRE tem uma linha divisória
+    #      fina entre eles.
+    # Se a gente jogar fora a info do separador antes de chegar no laço
+    # de agrupamento, os dois casos ficam indistinguíveis e o caso 2
+    # acaba grudado incorretamente como se fosse o caso 1.
+    bandas_texto = []
+    _sep_pendente = False
+    for _b in bandas:
+        if _b["classe"] == "separador":
+            _sep_pendente = True
+            continue
+        _bt = dict(_b)
+        _bt["sep_antes"] = _sep_pendente
+        bandas_texto.append(_bt)
+        _sep_pendente = False
     if not bandas_texto:
         return None
 
@@ -2038,14 +2059,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         banda = bandas_texto[idx]
         texto = _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip()
         if banda["classe"] == "azul":
-            if par_atual is not None and not par_atual[1]:
+            if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
                 # banda azul consecutiva, ainda sem nenhuma linha de
-                # descrição aberta = é a QUEBRA DE LINHA do mesmo
-                # título/link (ex: "Matrículas Privadas - Prospecção" /
-                # "Eficiente" em duas bandas azuis seguidas), não um
-                # novo sitelink — o Google Ads só quebra pra um sitelink
-                # novo depois que a descrição (cinza) do anterior já
-                # apareceu. Concatena em vez de abrir um par novo.
+                # descrição aberta E sem separador entre elas = é a
+                # QUEBRA DE LINHA do mesmo título/link (ex: "Matrículas
+                # Privadas - Prospecção" / "Eficiente" em duas bandas
+                # azuis seguidas), não um novo sitelink. Se HOUVER
+                # separador entre as duas (banda["sep_antes"]), é
+                # sempre um sitelink novo — mesmo que o anterior não
+                # tenha descrição (ex: "Kedu Bank" / "Kedu Marketing").
                 par_atual[0] = (par_atual[0] + " " + texto).strip()
             else:
                 if par_atual is not None:
@@ -23082,6 +23104,16 @@ function imgFallback_{uid}(img){{
                             # cada campo no seu próprio bloco em vez de um
                             # texto corrido só.
                             _campos_ocr_html = []
+                            # Cabeçalho (domínio/site) primeiro — no anúncio
+                            # real do Google Ads o domínio/URL sempre
+                            # aparece ACIMA do título (é a primeira linha
+                            # azul), então a prévia extraída por OCR segue
+                            # a mesma ordem em vez de jogar isso depois da
+                            # descrição.
+                            if _ocr_estr_ad.get("url_exibida"):
+                                _campos_ocr_html.append(
+                                    f'<div style="font-size:11px;color:#006621;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["url_exibida"])}</div>'
+                                )
                             if _ocr_estr_ad.get("titulo"):
                                 _campos_ocr_html.append(
                                     f'<div style="font-size:13px;font-weight:700;color:#050505;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
@@ -23089,10 +23121,6 @@ function imgFallback_{uid}(img){{
                             if _ocr_estr_ad.get("descricao"):
                                 _campos_ocr_html.append(
                                     f'<div style="font-size:13px;color:#374151;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
-                                )
-                            if _ocr_estr_ad.get("url_exibida"):
-                                _campos_ocr_html.append(
-                                    f'<div style="font-size:11px;color:#006621;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["url_exibida"])}</div>'
                                 )
                             if _ocr_estr_ad.get("url_final") and _ocr_estr_ad.get("url_final") != _ocr_estr_ad.get("url_exibida"):
                                 _campos_ocr_html.append(

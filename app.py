@@ -10646,9 +10646,10 @@ function setHeightGeral(isOpen) {{
 
                 if _oportunidades_top:
                     _chevron_svg = (
-                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" '
-                        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-                        '<polyline points="9 18 15 12 9 6"/></svg>'
+                        '<svg width="15" height="15" viewBox="0 0 24 24">'
+                        '<circle cx="12" cy="12" r="12" fill="#1a2e4a"/>'
+                        '<text x="12" y="16.5" text-anchor="middle" font-size="13" font-weight="700" '
+                        'font-family="DM Sans, sans-serif" fill="#ffffff">i</text></svg>'
                     )
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
                     _oport_rows = []

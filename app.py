@@ -1869,6 +1869,22 @@ _REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
 # página/anunciante ao lado do favicon, tipo "KEDU") — essas não têm
 # ponto e não devem ser misturadas no url_exibida.
 _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
+# CTA final do anúncio (ex: botão "Enviar mensagem" do WhatsApp, "Ligar
+# agora", etc.) — layout fixo da Central de Transparência: vem depois de
+# um separador, com um ícone colorido à esquerda (ignorado na
+# classificação de cor — ver `_detectar_bandas_texto`) seguido de um
+# título curto e, na maioria das vezes, um subtítulo cinza logo abaixo
+# (ex: "pelo app WhatsApp"). Como o ícone fica fora da faixa usada pra
+# cor, essa banda chega classificada como "cinza" (não "misto"), e sem
+# esse reconhecimento por texto ela era só mais uma linha de descrição
+# grudada no sitelink anterior. Lista inicial validada com anúncios
+# reais da kedu — dá pra ir completando conforme aparecerem outros CTAs.
+_REGEX_CTA_TITULO_CONHECIDO = re.compile(
+    r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|saiba\s*mais|"
+    r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
+    r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já)$",
+    re.IGNORECASE,
+)
 
 def _normalizar_url_exibida(texto: str) -> str:
     """Corrige dois erros de leitura de caractere (não de espaçamento)

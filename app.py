@@ -1813,8 +1813,19 @@ _easyocr_instancia = [None]
 # serializa as chamadas ao motor (uma imagem por vez, não importa quantas
 # threads estejam tentando), e o intervalo mínimo dá um respiro pro
 # processo entre uma inferência e outra.
+#
+# O valor de 1.5s não foi suficiente — o app foi throttlado por uso de
+# CPU mesmo assim, porque o intervalo só cobria o "descanso" entre
+# chamadas, mas cada chamada em si (download + banda de cor + inferência
+# do EasyOCR) já consome CPU por vários segundos, e com filas de várias
+# empresas rodando em sequência isso vira uso de CPU quase contínuo.
+# Subido pra 6s de respiro mínimo entre uma imagem e a próxima (além do
+# tempo que a própria imagem leva pra processar) — mais lento pra
+# esvaziar a fila, mas dá ao processo intervalos reais de ociosidade
+# entre inferências, que é o que o limitador de CPU do Streamlit Cloud
+# está olhando. Se ainda throttlar com esse valor, subir mais.
 _lock_easyocr_execucao = threading.Lock()
-_MIN_INTERVALO_OCR_SEG = 1.5
+_MIN_INTERVALO_OCR_SEG = 6.0
 _ultima_chamada_ocr = [0.0]
 
 def _get_easyocr():

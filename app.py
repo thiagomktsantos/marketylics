@@ -2209,10 +2209,17 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
                 _time_ocr_estr.sleep(_espera)
             _reader = _get_easyocr()
             _estruturado = _estruturar_anuncio_google_ads(_img, _reader)
-            if _estruturado is None or not (_estruturado.get("titulo") or _estruturado.get("descricao")):
-                # não reconheceu o padrão (ou não achou título/descrição
-                # de verdade) — cai pro texto bruto como fallback, sem
+            if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
+                # não reconheceu o padrão (ou não achou NENHUM campo de
+                # verdade — nem título/descrição, nem sequer a
+                # url_exibida) — cai pro texto bruto como fallback, sem
                 # rodar o OCR duas vezes: já temos a imagem carregada.
+                # Antes essa checagem olhava só titulo/descricao, então
+                # um cabeçalho onde só a url_exibida foi reconhecida
+                # (sem título/descrição — ex: "apenas o site") caía nesse
+                # fallback e perdia a URL já extraída corretamente,
+                # jogando tudo cru em "descricao" em vez de manter no
+                # campo certo.
                 texto_bruto = _ocr_texto_bruto(_img, _reader)
                 _estruturado = {
                     "titulo": "", "descricao": texto_bruto, "url_exibida": "",

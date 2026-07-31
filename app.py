@@ -1998,23 +1998,29 @@ def _icone_cta_google_ads(cta_texto: str, cta_subtitulo: str) -> str:
     )
 
 def _normalizar_url_exibida(texto: str) -> str:
-    """Corrige dois erros de leitura de caractere (não de espaçamento)
-    que o EasyOCR comete com frequência no campo de URL, validados nos
-    testes reais com os anúncios da kedu:
+    """Corrige erros de leitura de caractere (não de espaçamento) que o
+    EasyOCR comete com frequência no campo de URL, validados nos testes
+    reais com os anúncios da kedu:
     1) 'www' vem com maiúsculas erradas ('WWw.', 'WW.', 'Www.') — o
        modelo confunde a barra vertical do 'w' minúsculo repetido com
        maiúscula. Como um domínio real nunca tem maiúscula aí, é seguro
        normalizar sempre pra 'www.' minúsculo.
-    2) a barra final de fechamento do domínio ('.com.br/') é lida como
-       um 'l' ('.com.brl' ou '.combrl', faltando o ponto) — o traço
-       vertical da barra é visualmente parecido com o 'l'. Restrito ao
-       padrão '.com.br' pra não arriscar mexer em outros TLDs onde a
-       heurística não foi validada.
+    2) a barra de fechamento do domínio ('.com.br/') é lida como um 'l'
+       colado direto, sem espaço ('.com.brl', faltando o ponto antes do
+       'br') — o traço vertical da barra é visualmente parecido com o
+       'l'. Roda em QUALQUER posição da string (não só no final),
+       porque depois dessa barra a URL pode continuar com mais
+       segmentos de caminho (ex: '.combrlgestão/escolar'). Restrito ao
+       padrão 'com.br' pra não arriscar mexer em outros TLDs onde a
+       heurística não foi validada. (O caso em que a barra vira uma
+       caixa de detecção SEPARADA, com espaço ao redor, já é corrigido
+       antes desta função — ver o `re.sub` logo antes de
+       `_txt_dominio_sem_espaco` em `_estruturar_anuncio_google_ads`.)
     """
     if not texto:
         return texto
     texto = re.sub(r"^[wW]{2,4}\.", "www.", texto)
-    texto = re.sub(r"\.com\.?brl$", ".com.br/", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"\.com\.?brl", ".com.br/", texto, flags=re.IGNORECASE)
     return texto
 
 def _detectar_bandas_texto(img_bgr):
@@ -2191,6 +2197,18 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
         _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+        # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA
+        # caixa de detecção (comentário logo abaixo), o EasyOCR
+        # costuma ler esse traço vertical isolado como a letra "l" —
+        # ex: "kedu.com.br l gestão l escolar" em vez de
+        # ".../gestão/escolar". Corrige ANTES de remover os espaços
+        # (senão perde a única pista de que era um caractere isolado):
+        # só troca um "l" que está sozinho, cercado de espaço (ou
+        # início/fim da linha) dos dois lados — nunca um "l" colado a
+        # outras letras (ex: o "l" do meio de "escolar" continua
+        # intacto, porque ali ele faz parte da palavra de verdade, sem
+        # espaço ao redor).
+        _txt_dominio = re.sub(r"(?<!\S)l(?!\S)", "/", _txt_dominio)
         # Domínio/URL de verdade nunca tem espaço em branco interno —
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br

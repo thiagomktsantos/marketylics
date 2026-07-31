@@ -23120,7 +23120,7 @@ function imgFallback_{uid}(img){{
                                 )
                             if _ocr_estr_ad.get("descricao"):
                                 _campos_ocr_html.append(
-                                    f'<div style="font-size:13px;color:#374151;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
+                                    f'<div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
                                 )
                             if _ocr_estr_ad.get("url_final") and _ocr_estr_ad.get("url_final") != _ocr_estr_ad.get("url_exibida"):
                                 _campos_ocr_html.append(

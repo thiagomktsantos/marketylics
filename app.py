@@ -10675,18 +10675,24 @@ function setHeightGeral(isOpen) {{
                     # navegação abaixo da lista. Como o card roda num iframe
                     # isolado (ver comentário de syncH()/irParaAreaPrioritaria()
                     # logo abaixo), a troca de página é 100% client-side via JS
-                    # — sem round-trip com o Streamlit. ──
+                    # — sem round-trip com o Streamlit.
+                    # Todas as páginas ficam empilhadas na MESMA célula de um
+                    # CSS grid (visibility:hidden nas inativas, não display:none)
+                    # — assim a altura da linha do grid sempre acompanha a
+                    # página mais alta automaticamente, sem precisar medir nada
+                    # via JS, e a navegação nunca "sobe" quando uma página tem
+                    # menos itens. ──
                     _OPORT_POR_PAGINA = 2
                     _oport_paginas = []
                     for _p_ini in range(0, len(_oport_rows), _OPORT_POR_PAGINA):
                         _idx_pag = _p_ini // _OPORT_POR_PAGINA
-                        _display_pag = "block" if _idx_pag == 0 else "none"
+                        _visib_pag = "visible" if _idx_pag == 0 else "hidden"
                         _oport_paginas.append(
-                            f'<div class="oport-page" style="display:{_display_pag};">'
+                            f'<div class="oport-page" style="grid-area:1/1;visibility:{_visib_pag};">'
                             + "".join(_oport_rows[_p_ini:_p_ini + _OPORT_POR_PAGINA]) +
                             '</div>'
                         )
-                    _oport_html = '<div class="oport-pages-wrap">' + "".join(_oport_paginas) + '</div>'
+                    _oport_html = '<div class="oport-pages-wrap" style="display:grid;">' + "".join(_oport_paginas) + '</div>'
 
                     _total_paginas_op = len(_oport_paginas)
                     if _total_paginas_op > 1:
@@ -11044,32 +11050,14 @@ function irParaAreaPrioritaria() {{
     }}
 }}
 var _oportPaginaAtual = 0;
-function oportInit() {{
-    // Mede a altura natural de cada página (mesmo as escondidas, via
-    // position:absolute + visibility:hidden pra não afetar o layout
-    // durante a medição) e fixa a maior delas como altura mínima do
-    // wrapper — assim a navegação (setas/bolinhas) fica sempre na mesma
-    // posição, mesmo quando a última página tem só 1 item em vez de 2.
-    var wrap = document.querySelector('.oport-pages-wrap');
-    if (!wrap) return;
-    var paginas = document.querySelectorAll('.oport-page');
-    var maxH = 0;
-    paginas.forEach(function(p) {{
-        var prevDisplay = p.style.display, prevPos = p.style.position, prevVis = p.style.visibility;
-        p.style.position = 'absolute';
-        p.style.visibility = 'hidden';
-        p.style.display = 'block';
-        if (p.offsetHeight > maxH) maxH = p.offsetHeight;
-        p.style.position = prevPos;
-        p.style.visibility = prevVis;
-        p.style.display = prevDisplay;
-    }});
-    if (maxH > 0) wrap.style.minHeight = maxH + 'px';
-}}
 function oportAtualizarPagina() {{
     var paginas = document.querySelectorAll('.oport-page');
     for (var i = 0; i < paginas.length; i++) {{
-        paginas[i].style.display = (i === _oportPaginaAtual) ? 'block' : 'none';
+        // visibility (não display): todas as páginas continuam ocupando
+        // a mesma célula do CSS grid, então a altura do card sempre
+        // acompanha a página mais alta — a navegação nunca se move.
+        paginas[i].style.visibility = (i === _oportPaginaAtual) ? 'visible' : 'hidden';
+        paginas[i].style.pointerEvents = (i === _oportPaginaAtual) ? 'auto' : 'none';
     }}
     var dots = document.querySelectorAll('.oport-dot');
     for (var j = 0; j < dots.length; j++) {{
@@ -11095,8 +11083,6 @@ function syncH() {{
     }}
 }}
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
-oportInit();
-setTimeout(oportInit,150); setTimeout(oportInit,500);
 setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 
 // Tooltip dos anéis: um iframe SEMPRE corta qualquer conteúdo que passe da

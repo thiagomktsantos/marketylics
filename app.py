@@ -2013,7 +2013,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
         _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
-        if _txt_dominio:
+        # Só entra no url_exibida se a linha tiver formato de domínio/URL
+        # de verdade (algo.algo, com ponto e sem espaço interno de frase).
+        # Linhas de cabeçalho que são nome de página/marca (ex: "KEDU")
+        # não batem nesse padrão e ficam de fora, em vez de contaminar
+        # o domínio final.
+        _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
+        if _txt_dominio and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco):
             _partes_dominio.append(_txt_dominio)
         idx += 1
     resultado["url_exibida"] = " ".join(_partes_dominio)

@@ -23116,7 +23116,7 @@ function imgFallback_{uid}(img){{
                                 )
                             if _ocr_estr_ad.get("titulo"):
                                 _campos_ocr_html.append(
-                                    f'<div style="font-size:13px;font-weight:700;color:#050505;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
+                                    f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
                                 )
                             if _ocr_estr_ad.get("descricao"):
                                 _campos_ocr_html.append(

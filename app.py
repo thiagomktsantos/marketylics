@@ -2021,6 +2021,18 @@ def _normalizar_url_exibida(texto: str) -> str:
         return texto
     texto = re.sub(r"^[wW]{2,4}\.", "www.", texto)
     texto = re.sub(r"\.com\.?brl", ".com.br/", texto, flags=re.IGNORECASE)
+    # 3) barra de CAMINHO (não a de fechamento do domínio, já coberta
+    # acima) colada DIRETO na palavra seguinte, sem nenhum espaço nem
+    # caixa de detecção separada — ex: "gestão" + "/" + "escolar" virando
+    # "gestãolescolar" — nesse caso o fix baseado em espaço (que roda
+    # antes desta função, em `_estruturar_anuncio_google_ads`) não tem
+    # como ajudar, porque não sobrou nenhum espaço pra detectar. Restrito
+    # a acontecer logo depois de uma palavra terminada em "ão": em
+    # português não existe palavra real onde "ão" seja seguido direto
+    # por "l" sem separador ("ão" é sempre final de sílaba/palavra),
+    # então é seguro tratar esse "l" como barra sem risco de quebrar uma
+    # palavra de verdade.
+    texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
     return texto
 
 def _detectar_bandas_texto(img_bgr):

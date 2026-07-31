@@ -2134,37 +2134,86 @@ def _detectar_bandas_texto(img_bgr):
         bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
     return bandas
 
+def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
+    """Verifica, olhando os PIXELS (não o OCR), se existe um hífen
+    isolado no intervalo horizontal [x_esq, x_dir) do `recorte_bgr` —
+    usado por `_ocr_banda` pra recuperar o "-" que separa duas
+    palavras (ex: "Privadas - Prospecção") quando o detector de texto
+    do EasyOCR (CRAFT) já descartou essa marca como ruído, por ela ser
+    curta e fina demais (ver comentário em `_ocr_banda`). Testado
+    direto nos pixels do vão entre duas caixas de palavra JÁ
+    reconhecidas — mais confiável aqui do que pedir pro EasyOCR achar
+    o hífen sozinho, porque a gente já sabe exatamente onde procurar.
+
+    Critério: um hífen é um traço FINO (poucas linhas de altura, bem
+    menor que a altura de uma letra) posicionado no MEIO vertical da
+    linha — não no topo (onde ficaria um acento/til) nem na base (onde
+    ficaria a haste de um "g"/"p"/"q"). Qualquer coisa fora desse
+    perfil (ex: sujeira de compressão JPEG espalhada, sombra de um
+    ícone vizinho) tende a não ter essa combinação específica de
+    "fino + centralizado", então não é confundida com hífen."""
+    if x_dir - x_esq < 2:
+        return False
+    import numpy as _np_hifen
+    recorte = recorte_bgr[:, x_esq:x_dir]
+    if recorte.size == 0:
+        return False
+    nao_branco = _np_hifen.any(recorte < 200, axis=2)
+    altura = nao_branco.shape[0]
+    if altura < 4:
+        return False
+    linhas_com_pixel = _np_hifen.where(nao_branco.any(axis=1))[0]
+    if len(linhas_com_pixel) == 0:
+        return False
+    y_topo, y_base = int(linhas_com_pixel.min()), int(linhas_com_pixel.max())
+    espessura = y_base - y_topo + 1
+    centro_relativo = (y_topo + y_base) / 2 / altura
+    if espessura > max(3, int(altura * 0.35)):
+        return False  # grosso/alto demais pra ser só um traço
+    if not (0.3 < centro_relativo < 0.7):
+        return False  # não está no meio vertical da linha
+    largura_pixels = int(nao_branco[y_topo:y_base + 1].any(axis=0).sum())
+    return largura_pixels >= 3  # descarta 1-2 pixels soltos (ruído)
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
     ordem.
 
-    Parâmetros de detecção mais sensíveis que o padrão do EasyOCR
-    (min_size=10, text_threshold=0.7, low_text=0.4, link_threshold=0.4)
-    — o padrão costuma perder marcas pequenas e finas, como o "-"
-    isolado no meio de um título (ex: "Matrículas Privadas -
-    Prospecção"), porque a caixa de texto de um hífen sozinho
-    (poucos px de largura, 2-3px de altura) cai abaixo desses
-    limiares e o CRAFT (detector por baixo do EasyOCR) descarta como
-    ruído antes mesmo de tentar reconhecer o caractere. Reduzir esses
-    valores É um trade-off: aumenta a chance de pegar esse tipo de
-    marca pequena, mas também aumenta o risco de "ver texto" em ruído
-    de verdade (serrilhado de anti-aliasing, sombra de ícone etc.) —
-    validar contra um lote real de anúncios antes de considerar
-    definitivo."""
+    Depois de juntar as palavras, checa cada VÃO entre duas palavras
+    reconhecidas com `_detectar_hifen_no_intervalo` — não pra achar
+    texto novo via OCR, mas pra recuperar um "-" que o detector de
+    texto do EasyOCR (CRAFT) costuma descartar como ruído por ser uma
+    marca curta e fina demais entre duas palavras (ex: "Matrículas
+    Privadas - Prospecção" perdia o hífen antes desse fix). Já
+    tentamos resolver isso baixando os limiares de detecção do
+    próprio EasyOCR (min_size/text_threshold/low_text/link_threshold)
+    e não funcionou — o CRAFT simplesmente não abre uma caixa de
+    detecção só pro hífen mesmo mais sensível, então a checagem por
+    pixel abaixo é a abordagem que realmente resolve, sem o
+    trade-off de aumentar ruído em outras partes do anúncio."""
     altura_total = img_bgr.shape[0]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     recorte = img_bgr[y0:y1, :]
-    resultado = reader.readtext(
-        recorte, detail=1,
-        min_size=3, text_threshold=0.5, low_text=0.3, link_threshold=0.3,
-    )
+    resultado = reader.readtext(recorte, detail=1)
     if not resultado:
         return ""
     resultado.sort(key=lambda item: item[0][0][0])
-    return " ".join((t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip())
+    palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
+    if not palavras:
+        return ""
+    partes = [palavras[0][1]]
+    for i in range(1, len(palavras)):
+        _bbox_prev = palavras[i - 1][0]
+        _bbox_atual = palavras[i][0]
+        x_dir_prev = int(max(p[0] for p in _bbox_prev))
+        x_esq_atual = int(min(p[0] for p in _bbox_atual))
+        if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
+            partes.append("-")
+        partes.append(palavras[i][1])
+    return " ".join(partes)
 
 def _estruturar_anuncio_google_ads(img_bgr, reader):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google

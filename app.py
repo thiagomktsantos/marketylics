@@ -10647,11 +10647,9 @@ function setHeightGeral(isOpen) {{
                 if _oportunidades_top:
                     _chevron_svg = (
                         '<svg width="22" height="22" viewBox="0 0 24 24">'
-                        '<circle cx="12" cy="12" r="12" fill="#1a2e4a"/>'
-                        '<g transform="translate(5.6,4.4) scale(0.55)" fill="none" stroke="#ffffff" '
-                        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-                        '<path d="M9 18h6"/><path d="M10 22h4"/>'
-                        '<path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A6 6 0 1 0 8 12.5c.76.76 1.23 1.52 1.41 2.5"/>'
+                        '<circle cx="12" cy="12" r="12" fill="#6b7280"/>'
+                        '<g transform="translate(6.2,6.2) scale(0.48)">'
+                        '<path fill="#ffffff" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>'
                         '</g></svg>'
                     )
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}

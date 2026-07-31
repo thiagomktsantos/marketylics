@@ -1851,6 +1851,13 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     return "\n".join(linhas)
 
 _REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
+# Formato de domínio/URL: precisa ter pelo menos um "." separando
+# letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
+# distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
+# linha que É a URL exibida das linhas que NÃO são (ex: nome da
+# página/anunciante ao lado do favicon, tipo "KEDU") — essas não têm
+# ponto e não devem ser misturadas no url_exibida.
+_REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
 
 def _normalizar_url_exibida(texto: str) -> str:
     """Corrige dois erros de leitura de caractere (não de espaçamento)

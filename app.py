@@ -1870,20 +1870,25 @@ def _detectar_bandas_texto(img_bgr):
     altura_total, _largura, _c = img_rgb.shape
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
 
-    # Máscara separada, só pra decidir ONDE quebrar uma banda da
-    # próxima: ignora a faixa da esquerda (~13% da largura) onde
-    # favicons/avatars circulares costumam ficar. Sem isso, um ícone
-    # redondo que fica "de pé" entre duas linhas de texto verticalmente
-    # próximas (ex: "kedu.com.br" e "www.kedu.com.br/" empilhadas do
-    # lado do favicon) preenche pixels non-white contínuos entre as
-    # duas linhas, nunca dá o gap de 3px que separaria as bandas, e as
-    # duas linhas acabam grudadas numa banda só — bug validado com uma
-    # imagem real onde a url_exibida saía com as duas linhas coladas.
-    # A classificação por cor e o texto de cada banda continuam usando
-    # a imagem inteira (`nao_branco`) normalmente; só a decisão de
-    # "essa linha tem conteúdo pra continuar a banda atual?" ignora essa
-    # faixa. Título/descrição sempre se estendem bem além dela, então
-    # não tem risco de sumir uma linha real por causa disso.
+    # Máscara separada, usada tanto pra decidir ONDE quebrar uma banda
+    # quanto pra CLASSIFICAR a cor dela: ignora a faixa da esquerda
+    # (~13% da largura) onde favicons/avatars circulares costumam
+    # ficar. Dois problemas que isso evita:
+    # 1) Quebra: um ícone redondo "de pé" entre duas linhas de texto
+    #    verticalmente próximas (ex: "kedu.com.br" e "www.kedu.com.br/"
+    #    empilhadas do lado do favicon) preenche pixels non-white
+    #    contínuos entre as duas linhas, nunca dá o gap de 3px que
+    #    separaria as bandas, e elas acabam grudadas numa banda só.
+    # 2) Cor: um ícone/avatar azul ou colorido que divide a MESMA linha
+    #    de um texto preto/cinza (ex: nome da página ao lado do avatar)
+    #    entra na média de cor da banda e pode empurrar a classificação
+    #    pra "azul" mesmo sendo texto normal — que aí vira "título"
+    #    por engano.
+    # Ambos validados com imagens reais. O texto de cada banda continua
+    # sendo lido (via OCR) na largura inteira depois — só a decisão de
+    # "onde quebra" e "que cor é essa banda" ignora essa faixa. Título/
+    # descrição sempre se estendem bem além dela, então não tem risco
+    # de uma linha real sumir ou trocar de classe por causa disso.
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
     nao_branco_quebra[:, :_x_ignorar_quebra] = False
@@ -1892,9 +1897,10 @@ def _detectar_bandas_texto(img_bgr):
     for y in range(altura_total):
         mask = nao_branco[y]
         n = int(mask.sum())
-        n_quebra = int(nao_branco_quebra[y].sum())
+        mask_quebra = nao_branco_quebra[y]
+        n_quebra = int(mask_quebra.sum())
         if n_quebra > 3:
-            pix = img_rgb[y][mask]
+            pix = img_rgb[y][mask_quebra]
             linhas.append((y, n, float(pix[:, 0].mean()), float(pix[:, 1].mean()), float(pix[:, 2].mean())))
     bandas_brutas = []
     atual = []
@@ -1991,9 +1997,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         banda = bandas_texto[idx]
         texto = _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip()
         if banda["classe"] == "azul":
-            if par_atual is not None:
-                pares.append(par_atual)
-            par_atual = [texto, []]
+            if par_atual is not None and not par_atual[1]:
+                # banda azul consecutiva, ainda sem nenhuma linha de
+                # descrição aberta = é a QUEBRA DE LINHA do mesmo
+                # título/link (ex: "Matrículas Privadas - Prospecção" /
+                # "Eficiente" em duas bandas azuis seguidas), não um
+                # novo sitelink — o Google Ads só quebra pra um sitelink
+                # novo depois que a descrição (cinza) do anterior já
+                # apareceu. Concatena em vez de abrir um par novo.
+                par_atual[0] = (par_atual[0] + " " + texto).strip()
+            else:
+                if par_atual is not None:
+                    pares.append(par_atual)
+                par_atual = [texto, []]
         elif banda["classe"] == "cinza":
             if par_atual is not None:
                 par_atual[1].append(texto)
@@ -2014,10 +2030,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     resultado["descricao"] = " ".join(l for l in pares[0][1] if l).strip()
     for titulo_sl, linhas_sl in pares[1:]:
         descricao_sl = " ".join(l for l in linhas_sl if l).strip()
-        if titulo_sl and descricao_sl:
-            resultado["sitelinks"].append(f"{titulo_sl} — {descricao_sl}")
-        elif titulo_sl:
-            resultado["sitelinks"].append(titulo_sl)
+        if titulo_sl:
+            resultado["sitelinks"].append({"titulo": titulo_sl, "descricao": descricao_sl})
     return resultado
 
 def _extrair_texto_paddleocr(url_imagem: str):
@@ -2151,7 +2165,17 @@ def _achatar_ocr_estruturado(d: dict) -> str:
         if v:
             linhas.append(v)
     for sl in (d.get("sitelinks") or []):
-        if sl:
+        if not sl:
+            continue
+        if isinstance(sl, dict):
+            if sl.get("titulo"):
+                linhas.append(sl["titulo"])
+            if sl.get("descricao"):
+                linhas.append(sl["descricao"])
+        else:
+            # formato antigo (string única "título — descrição"),
+            # mantido só pra não quebrar linhas já salvas no banco antes
+            # dessa migração pra dict.
             linhas.append(sl)
     return "\n".join(linhas)
 
@@ -23042,16 +23066,18 @@ function imgFallback_{uid}(img){{
                             if _ocr_estr_ad.get("sitelinks"):
                                 _blocos_sitelinks = []
                                 for _sl in _ocr_estr_ad["sitelinks"]:
-                                    # cada sitelink veio como "título —
-                                    # descrição" (ou só "título", sem
-                                    # descrição) — separa de volta pra
-                                    # exibir em duas linhas, título em
-                                    # destaque e descrição embaixo, em
-                                    # vez de tudo numa frase só.
-                                    if " — " in _sl:
+                                    if isinstance(_sl, dict):
+                                        _sl_titulo = _sl.get("titulo") or ""
+                                        _sl_desc = _sl.get("descricao") or ""
+                                    elif " — " in _sl:
+                                        # formato antigo, string única
+                                        # salva antes da migração pra
+                                        # dict — mantido só de fallback.
                                         _sl_titulo, _sl_desc = _sl.split(" — ", 1)
                                     else:
                                         _sl_titulo, _sl_desc = _sl, ""
+                                    if not _sl_titulo:
+                                        continue
                                     _blocos_sitelinks.append(
                                         '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
                                         f'<div style="font-size:12px;font-weight:700;color:#3a9fd6">{_escapar_html_ocr(_sl_titulo)}</div>'

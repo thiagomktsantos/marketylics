@@ -1911,16 +1911,56 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
-    ordem."""
+    ordem.
+
+    Uma única "banda" de cor (ver `_detectar_bandas_texto`) às vezes
+    contém MAIS DE UMA linha física de texto — por exemplo o nome da
+    página + a URL logo abaixo, ou "Enviar mensagem" empilhado sobre
+    "pelo app WhatsApp" — quando o espaço vertical entre elas é pequeno
+    demais pra abrir uma banda nova. Antes daqui a gente só ordenava os
+    fragmentos por x (esquerda->direita), o que intercalava pedaços de
+    linhas diferentes e embaralhava o texto (ex: "www.kedu.com. brl
+    KEDU" em vez de "KEDU" / "www.kedu.com.br/" em linhas separadas, ou
+    "pelo app WhatsApp Enviar mensagem" com a ordem das duas linhas
+    trocada). Agora agrupa os fragmentos em linhas pelo topo do bbox
+    (`y_topo`) antes de ordenar por x dentro de cada linha — ordem de
+    leitura de verdade (linha por linha, topo->baixo, depois
+    esquerda->direita)."""
     altura_total = img_bgr.shape[0]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     recorte = img_bgr[y0:y1, :]
     resultado = reader.readtext(recorte, detail=1)
-    if not resultado:
+    itens = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
+    if not itens:
         return ""
-    resultado.sort(key=lambda item: item[0][0][0])
-    return " ".join((t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip())
+
+    def _y_topo(bbox):
+        return min(p[1] for p in bbox)
+
+    def _x_esq(bbox):
+        return min(p[0] for p in bbox)
+
+    itens.sort(key=lambda it: _y_topo(it[0]))
+    alturas = [max(p[1] for p in bbox) - min(p[1] for p in bbox) for bbox, _t in itens]
+    altura_media = sum(alturas) / len(alturas) if alturas else 10
+    tolerancia = max(6.0, altura_media * 0.6)
+
+    linhas = [[itens[0]]]
+    y_ref = _y_topo(itens[0][0])
+    for item in itens[1:]:
+        y_item = _y_topo(item[0])
+        if abs(y_item - y_ref) <= tolerancia:
+            linhas[-1].append(item)
+        else:
+            linhas.append([item])
+            y_ref = y_item
+
+    partes_linhas = []
+    for linha in linhas:
+        linha.sort(key=lambda it: _x_esq(it[0]))
+        partes_linhas.append(" ".join(t for _bbox, t in linha))
+    return "\n".join(partes_linhas)
 
 def _estruturar_anuncio_google_ads(img_bgr, reader):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google

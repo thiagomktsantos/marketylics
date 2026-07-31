@@ -2046,8 +2046,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     }
 
     idx = 0
+    print(
+        f"[OCR-DEBUG] bandas_texto totais={len(bandas_texto)} -> "
+        + str([(i, b['y_min'], b['y_max'], b['classe'], b.get('sep_antes')) for i, b in enumerate(bandas_texto)]),
+        flush=True,
+    )
     primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
-    if _REGEX_PATROCINADO.match(primeiro_texto.strip()):
+    _eh_patrocinado = bool(_REGEX_PATROCINADO.match(primeiro_texto.strip()))
+    print(f"[OCR-DEBUG] primeira banda bruto={primeiro_texto.strip()!r} eh_patrocinado={_eh_patrocinado}", flush=True)
+    if _eh_patrocinado:
         idx = 1
 
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
@@ -2089,12 +2096,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # (quando o cabeçalho tinha 2 linhas, a segunda — a URL, sem
         # ícone ao lado — continuava passando limpa e cobria o caso).
         _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
+        _bate_dominio = bool(_txt_dominio_sem_espaco and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco))
+        # Log temporário pra diagnosticar de vez o caso "site sozinho no
+        # cabeçalho some" — mostra, linha por linha, o texto cru lido
+        # pelo OCR, o texto já limpo, e se bateu (ou não) o formato de
+        # domínio. Sem isso, só dava pra especular a partir do print da
+        # tela; com isso, o log do console mostra exatamente ONDE a
+        # linha foi perdida (banda não detectada / classe errada / OCR
+        # leu algo que não bate o formato).
+        print(
+            f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
+            f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} bate_dominio={_bate_dominio}",
+            flush=True,
+        )
         # Só entra no url_exibida se a linha tiver formato de domínio/URL
         # de verdade (algo.algo, com ponto e sem espaço interno de frase).
         # Linhas de cabeçalho que são nome de página/marca (ex: "KEDU")
         # não batem nesse padrão e ficam de fora, em vez de contaminar
         # o domínio final.
-        if _txt_dominio_sem_espaco and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco):
+        if _bate_dominio:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
         idx += 1
     # Junta as linhas já limpas/normalizadas com quebra de linha (não

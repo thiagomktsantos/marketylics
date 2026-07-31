@@ -2138,12 +2138,29 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
-    ordem."""
+    ordem.
+
+    Parâmetros de detecção mais sensíveis que o padrão do EasyOCR
+    (min_size=10, text_threshold=0.7, low_text=0.4, link_threshold=0.4)
+    — o padrão costuma perder marcas pequenas e finas, como o "-"
+    isolado no meio de um título (ex: "Matrículas Privadas -
+    Prospecção"), porque a caixa de texto de um hífen sozinho
+    (poucos px de largura, 2-3px de altura) cai abaixo desses
+    limiares e o CRAFT (detector por baixo do EasyOCR) descarta como
+    ruído antes mesmo de tentar reconhecer o caractere. Reduzir esses
+    valores É um trade-off: aumenta a chance de pegar esse tipo de
+    marca pequena, mas também aumenta o risco de "ver texto" em ruído
+    de verdade (serrilhado de anti-aliasing, sombra de ícone etc.) —
+    validar contra um lote real de anúncios antes de considerar
+    definitivo."""
     altura_total = img_bgr.shape[0]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     recorte = img_bgr[y0:y1, :]
-    resultado = reader.readtext(recorte, detail=1)
+    resultado = reader.readtext(
+        recorte, detail=1,
+        min_size=3, text_threshold=0.5, low_text=0.3, link_threshold=0.3,
+    )
     if not resultado:
         return ""
     resultado.sort(key=lambda item: item[0][0][0])

@@ -2042,7 +2042,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
 
     resultado = {
         "titulo": "", "descricao": "", "url_exibida": "", "url_final": "",
-        "cta": "", "sitelinks": [],
+        "cta": "", "cta_subtitulo": "", "sitelinks": [],
     }
 
     idx = 0
@@ -2092,10 +2092,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None
+    # True assim que a gente reconhece a banda do título do CTA (via
+    # _REGEX_CTA_TITULO_CONHECIDO ou classe "misto") — enquanto estiver
+    # ligado, a(s) próxima(s) banda(s) cinza são tratadas como o
+    # SUBTÍTULO do CTA (ex: "pelo app WhatsApp"), não como mais uma
+    # linha de descrição do sitelink anterior.
+    _cta_aberto = False
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
         texto = _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip()
         if banda["classe"] == "azul":
+            _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
                 # banda azul consecutiva, ainda sem nenhuma linha de
                 # descrição aberta E sem separador entre elas = é a
@@ -2111,14 +2118,31 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                     pares.append(par_atual)
                 par_atual = [texto, []]
         elif banda["classe"] == "cinza":
-            if par_atual is not None:
+            if _cta_aberto:
+                # subtítulo do CTA (ex: "pelo app WhatsApp") — não é
+                # descrição de sitelink.
+                resultado["cta_subtitulo"] = (resultado["cta_subtitulo"] + " " + texto).strip()
+            elif not resultado["cta"] and _REGEX_CTA_TITULO_CONHECIDO.match(texto):
+                # CTA final do anúncio (ex: "Enviar mensagem" do
+                # WhatsApp) que perdeu a classificação "misto" porque o
+                # ícone colorido ficou fora da faixa usada pra cor (ver
+                # comentário acima de _REGEX_CTA_TITULO_CONHECIDO). Sem
+                # este reconhecimento por texto, essa banda virava só
+                # mais uma linha de descrição grudada no sitelink
+                # anterior, em vez de aparecer separada — o modelo real
+                # do Google Ads sempre mostra esse CTA com uma linha
+                # divisória própria antes dele.
+                resultado["cta"] = texto
+                _cta_aberto = True
+            elif par_atual is not None:
                 par_atual[1].append(texto)
-            # texto cinza sem nenhum título azul aberto antes: raro
-            # nesse ponto do fluxo (já passamos da linha da URL) —
-            # ignora em vez de adivinhar onde encaixar.
+            # texto cinza sem nenhum título azul aberto antes nem CTA
+            # reconhecido: raro nesse ponto do fluxo (já passamos da
+            # linha da URL) — ignora em vez de adivinhar onde encaixar.
         else:  # "misto" — ícone + texto, ex: botão de contato
             if not resultado["cta"]:
                 resultado["cta"] = texto
+                _cta_aberto = True
         idx += 1
     if par_atual is not None:
         pares.append(par_atual)
@@ -2185,7 +2209,7 @@ _FILTRO_OCR_URL_GOOGLE = "url_origem.ilike.%googlesyndication.com%,url_origem.il
 
 _OCR_GADS_CAMPOS_VAZIO = {
     "titulo": "", "descricao": "", "url_exibida": "", "url_final": "",
-    "cta": "", "sitelinks": [],
+    "cta": "", "cta_subtitulo": "", "sitelinks": [],
 }
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str):
@@ -2239,7 +2263,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
                 texto_bruto = _ocr_texto_bruto(_img, _reader)
                 _estruturado = {
                     "titulo": "", "descricao": texto_bruto, "url_exibida": "",
-                    "url_final": "", "cta": "", "sitelinks": [],
+                    "url_final": "", "cta": "", "cta_subtitulo": "", "sitelinks": [],
                 }
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r}", flush=True)
@@ -23170,12 +23194,6 @@ function imgFallback_{uid}(img){{
                                 _campos_ocr_html.append(
                                     f'<div style="font-size:10.5px;color:#9ca3af;margin-bottom:4px">Destino: {_escapar_html_ocr(_ocr_estr_ad["url_final"])}</div>'
                                 )
-                            if _ocr_estr_ad.get("cta"):
-                                _campos_ocr_html.append(
-                                    '<div style="display:inline-block;font-size:11px;font-weight:700;color:#3a9fd6;'
-                                    'border:1px solid #cfe8fb;border-radius:14px;padding:2px 10px;margin-bottom:4px">'
-                                    f'{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
-                                )
                             if _ocr_estr_ad.get("sitelinks"):
                                 _blocos_sitelinks = []
                                 for _sl in _ocr_estr_ad["sitelinks"]:
@@ -23198,6 +23216,24 @@ function imgFallback_{uid}(img){{
                                         + '</div>'
                                     )
                                 _campos_ocr_html.append("".join(_blocos_sitelinks))
+                            if _ocr_estr_ad.get("cta"):
+                                # Renderizado DEPOIS dos sitelinks (mesma
+                                # posição do modelo real do Google Ads —
+                                # ver imagem de referência) e com sua
+                                # própria linha divisória, igual a de
+                                # cada sitelink acima — sem isso o CTA
+                                # (ex: "Enviar mensagem" do WhatsApp)
+                                # ficava indistinguível de uma descrição
+                                # de sitelink comum.
+                                _campos_ocr_html.append(
+                                    '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
+                                    f'<div style="font-size:12px;font-weight:700;color:#111827">{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
+                                    + (
+                                        f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_ocr_estr_ad["cta_subtitulo"])}</div>'
+                                        if _ocr_estr_ad.get("cta_subtitulo") else ''
+                                    )
+                                    + '</div>'
+                                )
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'

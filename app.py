@@ -2034,24 +2034,34 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
         _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+        # Domínio/URL de verdade nunca tem espaço em branco interno —
+        # remove qualquer espaço que o EasyOCR tenha inserido por engano
+        # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br
+        # /gestão /escolar" quando a barra vira uma caixa de detecção
+        # separada). Essa limpeza roda POR LINHA, antes de decidir se
+        # ela bate no formato de domínio e antes de juntar com as
+        # demais linhas do cabeçalho — se rodasse só uma vez no final,
+        # sobre o texto já concatenado, não teria como distinguir
+        # "espaço que separava duas linhas diferentes" (ex:
+        # "kedu.com.br" + "www.kedu.com.br/") de "espaço que era erro
+        # de OCR dentro da mesma linha", e acabaria apagando os dois
+        # igual — grudando as duas linhas numa só.
+        _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         # Só entra no url_exibida se a linha tiver formato de domínio/URL
         # de verdade (algo.algo, com ponto e sem espaço interno de frase).
         # Linhas de cabeçalho que são nome de página/marca (ex: "KEDU")
         # não batem nesse padrão e ficam de fora, em vez de contaminar
         # o domínio final.
-        _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
-        if _txt_dominio and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco):
-            _partes_dominio.append(_txt_dominio)
+        if _txt_dominio_sem_espaco and _REGEX_FORMATO_DOMINIO.match(_txt_dominio_sem_espaco):
+            _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
         idx += 1
-    resultado["url_exibida"] = " ".join(_partes_dominio)
-    # Domínio/URL de verdade nunca tem espaço em branco — remove
-    # qualquer espaço que o EasyOCR tenha inserido por engano (seja
-    # dentro de uma única caixa de detecção, ex: "kedu. com.br", seja
-    # entre duas caixas vizinhas que deveriam estar coladas). Título e
-    # descrição não passam por essa limpeza porque ali o espaço é
-    # legítimo (é frase, não domínio).
-    resultado["url_exibida"] = re.sub(r"\s+", "", resultado["url_exibida"])
-    resultado["url_exibida"] = _normalizar_url_exibida(resultado["url_exibida"])
+    # Junta as linhas já limpas/normalizadas com quebra de linha (não
+    # espaço) pra reproduzir o layout real do Google Ads, onde
+    # "kedu.com.br" e "www.kedu.com.br/" aparecem empilhadas em duas
+    # linhas separadas — `_escapar_html_ocr` converte "\n" em "<br>" na
+    # exibição. Quando só existe uma linha (ex: só "www.kedu.com.br/"),
+    # o join não insere nada e o resultado fica igual a antes.
+    resultado["url_exibida"] = "\n".join(_partes_dominio)
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None

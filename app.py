@@ -1852,6 +1852,26 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
 
 _REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
 
+def _normalizar_url_exibida(texto: str) -> str:
+    """Corrige dois erros de leitura de caractere (não de espaçamento)
+    que o EasyOCR comete com frequência no campo de URL, validados nos
+    testes reais com os anúncios da kedu:
+    1) 'www' vem com maiúsculas erradas ('WWw.', 'WW.', 'Www.') — o
+       modelo confunde a barra vertical do 'w' minúsculo repetido com
+       maiúscula. Como um domínio real nunca tem maiúscula aí, é seguro
+       normalizar sempre pra 'www.' minúsculo.
+    2) a barra final de fechamento do domínio ('.com.br/') é lida como
+       um 'l' ('.com.brl' ou '.combrl', faltando o ponto) — o traço
+       vertical da barra é visualmente parecido com o 'l'. Restrito ao
+       padrão '.com.br' pra não arriscar mexer em outros TLDs onde a
+       heurística não foi validada.
+    """
+    if not texto:
+        return texto
+    texto = re.sub(r"^[wW]{2,4}\.", "www.", texto)
+    texto = re.sub(r"\.com\.?brl$", ".com.br/", texto, flags=re.IGNORECASE)
+    return texto
+
 def _detectar_bandas_texto(img_bgr):
     """Varre a imagem linha a linha (sem OCR) e agrupa em 'bandas'
     horizontais de texto, cada uma classificada pela cor média dos
@@ -1997,6 +2017,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # descrição não passam por essa limpeza porque ali o espaço é
     # legítimo (é frase, não domínio).
     resultado["url_exibida"] = re.sub(r"\s+", "", resultado["url_exibida"])
+    resultado["url_exibida"] = _normalizar_url_exibida(resultado["url_exibida"])
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None

@@ -2175,6 +2175,29 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     largura_pixels = int(nao_branco[y_topo:y_base + 1].any(axis=0).sum())
     return largura_pixels >= 3  # descarta 1-2 pixels soltos (ruído)
 
+_REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
+
+def _limpar_pontuacao_ocr(texto: str) -> str:
+    """Corrige espaçamento que o EasyOCR insere por engano ao redor de
+    pontuação — ele costuma tratar cada caractere de pontuação como se
+    fosse uma 'palavra' separada, com espaço antes (ex:
+    'particulares , assegurando' em vez de 'particulares,
+    assegurando'; 'mensalidades .' em vez de 'mensalidades.'). Cobre
+    ,  .  ;  :  !  ?
+
+    Também remove um '_' solto colado no FINAL do texto: sublinhado
+    isolado não é pontuação de frase em português nenhuma — apareceu
+    em testes reais no fim de descrições, provavelmente ruído que o
+    detector de texto capturou perto da borda da caixa (mesma família
+    de problema do hífen perdido, só que ao contrário: aqui ele "acha"
+    texto onde não tem nada de fato)."""
+    if not texto:
+        return texto
+    texto = _REGEX_ESPACO_ANTES_PONTUACAO.sub(r"\1", texto)
+    texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
+    texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
+    return texto
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -2351,7 +2374,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     _cta_aberto = False
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
-        texto = _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip()
+        texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
         if banda["classe"] == "azul":
             _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):

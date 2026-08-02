@@ -2016,9 +2016,20 @@ def _normalizar_url_exibida(texto: str) -> str:
        caixa de detecção SEPARADA, com espaço ao redor, já é corrigido
        antes desta função — ver o `re.sub` logo antes de
        `_txt_dominio_sem_espaco` em `_estruturar_anuncio_google_ads`.)
+    3) mesma confusão barra→'l' do item 2, mas nas DUAS barras do
+       protocolo ('http://' vira 'http:ll', 'https://' vira
+       'https:ll') — validado com anúncio real da educbank
+       ('http://www.educbank.com.br/' → 'http:llwww.educbank.com.br/').
+       Tratado separado do item 2 porque aqui são duas barras coladas
+       (não uma só) logo depois de ':', então a regex do domínio não
+       cobre esse caso.
     """
     if not texto:
         return texto
+    # Corrige "http:ll" / "https:ll" -> "http://" / "https://" (item 3)
+    # ANTES do resto, pra não interferir na normalização do "www" que
+    # vem em seguida.
+    texto = re.sub(r"^(https?):l{1,2}(?=[a-zA-Z0-9])", r"\1://", texto, flags=re.IGNORECASE)
     # Normaliza o prefixo "www" mesmo quando o ponto separador some
     # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
     # domínio) — o lookahead garante que só mexe aqui se o que vem
@@ -2049,8 +2060,11 @@ def _normalizar_url_exibida(texto: str) -> str:
     # palavra de verdade.
     texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
     # Rede de segurança: colapsa qualquer barra dupla residual que ainda
-    # tenha sobrado por outro caminho não previsto pelas regras acima.
-    texto = re.sub(r"/{2,}", "/", texto)
+    # tenha sobrado por outro caminho não previsto pelas regras acima —
+    # EXCETO logo depois de "http:"/"https:", onde "//" é o protocolo
+    # de verdade, não duplicação por engano (lookbehind negativo evita
+    # comer a barra dupla certa que acabamos de recompor no item 3).
+    texto = re.sub(r"(?<!http:)(?<!https:)/{2,}", "/", texto)
     return texto
 
 def _detectar_bandas_texto(img_bgr):
@@ -23565,7 +23579,18 @@ function imgFallback_{uid}(img){{
                                 f'{_escapar_html_ocr(_ocr_txt_ad)}</div>'
                             )
                         elif _ocr_pendente_ad:
-                            no_copy_html = '<div class="no-copy">Extraindo texto da imagem via OCR…</div>'
+                            # Em anúncio de VÍDEO, a imagem que está com OCR
+                            # pendente é só um FRAME do vídeo (thumbnail),
+                            # não um criativo de texto de verdade — o card já
+                            # mostra a transcrição do vídeo separadamente
+                            # (ver badge/bloco de transcrição no
+                            # video-thumb-block acima). Mostrar "Extraindo
+                            # texto da imagem via OCR…" aqui só confundia,
+                            # prometendo um texto que nunca é o conteúdo
+                            # relevante do anúncio. `videos` é a mesma lista
+                            # já usada mais acima nesta iteração pra decidir
+                            # entre video-thumb-block e img-block.
+                            no_copy_html = "" if videos else '<div class="no-copy">Extraindo texto da imagem via OCR…</div>'
                         else:
                             no_copy_html = '<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>'
                     else:

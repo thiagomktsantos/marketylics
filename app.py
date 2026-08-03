@@ -1854,8 +1854,18 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     """Lê TODO o texto da imagem sem nenhuma tentativa de estruturar —
     usado como fallback quando `_estruturar_anuncio_google_ads` não
     reconhece o padrão de cores esperado (ex: anúncio de imagem/Display,
-    em vez de anúncio de texto)."""
-    resultado = reader.readtext(img_bgr, detail=1)
+    em vez de anúncio de texto).
+
+    width_ths baixo (padrão do EasyOCR é 0.5) evita que o CRAFT funda
+    palavras próximas numa ÚNICA caixa de detecção — quando isso
+    acontece, o reconhecedor devolve as palavras GRUDADAS, sem espaço
+    entre elas (ex: título de anúncio virando "ReduzirInadimplência
+    Escolar"), porque o modelo de reconhecimento não emite espaço de
+    forma confiável em recortes largos com várias palavras. Com caixas
+    menores (uma por palavra), a reconstrução manual de espaço vira
+    desnecessária pro fallback, mas o texto pelo menos não sai
+    concatenado."""
+    resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ""
     linhas = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
@@ -2229,12 +2239,24 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     e não funcionou — o CRAFT simplesmente não abre uma caixa de
     detecção só pro hífen mesmo mais sensível, então a checagem por
     pixel abaixo é a abordagem que realmente resolve, sem o
-    trade-off de aumentar ruído em outras partes do anúncio."""
+    trade-off de aumentar ruído em outras partes do anúncio.
+
+    width_ths baixo (padrão do EasyOCR é 0.5): sem isso, o CRAFT
+    frequentemente funde a banda inteira (ex: título "Reduzir
+    Inadimplência Escolar") numa ÚNICA caixa de detecção. Quando isso
+    acontece, `palavras` abaixo vira uma lista de 1 item só, o loop de
+    reconstrução de espaço (que junta cada palavra com `" ".join`)
+    nunca roda, e o texto sai exatamente como o reconhecedor do
+    EasyOCR devolveu — GRUDADO, sem espaço nenhum entre as palavras
+    (era esse o bug: "ReduzirInadimplênciaEscolarCansadode..."). Com
+    width_ths baixo, cada palavra vira sua própria caixa, e a lógica
+    de `" ".join(partes)" logo abaixo volta a fazer o trabalho dela de
+    verdade."""
     altura_total = img_bgr.shape[0]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     recorte = img_bgr[y0:y1, :]
-    resultado = reader.readtext(recorte, detail=1)
+    resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ""
     resultado.sort(key=lambda item: item[0][0][0])

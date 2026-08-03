@@ -23483,14 +23483,14 @@ function imgFallback_{uid}(img){{
                                 # anúncio real usa preto/cinza aqui).
                                 _linhas_url_ad = _ocr_estr_ad["url_exibida"].split("\n")
                                 if _linhas_url_ad and not _REGEX_FORMATO_DOMINIO.match(_linhas_url_ad[0]):
-                                    _nome_pagina_ad = _linhas_url_ad[0]
+                                    _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
                                 else:
                                     _nome_pagina_ad = ""
                                     _resto_url_ad = _ocr_estr_ad["url_exibida"]
                                 _coluna_texto_ad_html = (
-                                    (f'<div style="font-size:12.5px;font-weight:400;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
-                                    + (f'<div style="font-size:11px;color:#4b5563;margin-top:1px">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
+                                    (f'<div style="font-size:13.5px;font-weight:400;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
+                                    + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
                                 )
                                 _campos_ocr_html.append(
                                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'

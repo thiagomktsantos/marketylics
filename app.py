@@ -1864,11 +1864,44 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     forma confiável em recortes largos com várias palavras. Com caixas
     menores (uma por palavra), a reconstrução manual de espaço vira
     desnecessária pro fallback, mas o texto pelo menos não sai
-    concatenado."""
+    concatenado.
+
+    Ordena por posição (linha de cima pra baixo, esquerda pra direita
+    dentro de cada linha) antes de juntar — sem isso, a ordem das
+    palavras é a ordem em que o CRAFT detectou cada região, que não
+    tem nenhuma relação com a ordem de leitura (validado num anúncio
+    real: o texto saiu com pedaços do título, da descrição e de um
+    sitelink todos embaralhados entre si)."""
     resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ""
-    linhas = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
+    # Agrupa por linha (centro Y de cada caixa) antes de ordenar por X
+    # — do contrário, duas palavras de linhas DIFERENTES mas X parecido
+    # (comum quando uma linha começa mais à esquerda que a de cima)
+    # ficam vizinhas na ordenação e saem misturadas.
+    _itens = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
+    if not _itens:
+        return ""
+    def _y_centro(bbox):
+        return sum(p[1] for p in bbox) / len(bbox)
+    _itens.sort(key=lambda item: _y_centro(item[0]))
+    _linhas_agrupadas = []
+    _linha_atual = [_itens[0]]
+    _y_ref = _y_centro(_itens[0][0])
+    _altura_media = max(1.0, sum(max(p[1] for p in it[0]) - min(p[1] for p in it[0]) for it in _itens) / len(_itens))
+    for item in _itens[1:]:
+        _y_item = _y_centro(item[0])
+        if abs(_y_item - _y_ref) > _altura_media * 0.6:
+            _linhas_agrupadas.append(_linha_atual)
+            _linha_atual = [item]
+        else:
+            _linha_atual.append(item)
+        _y_ref = _y_item
+    _linhas_agrupadas.append(_linha_atual)
+    linhas = []
+    for _grupo in _linhas_agrupadas:
+        _grupo.sort(key=lambda item: item[0][0][0])
+        linhas.append(" ".join(t for _bbox, t in _grupo))
     return "\n".join(linhas)
 
 _REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
@@ -2077,6 +2110,46 @@ def _normalizar_url_exibida(texto: str) -> str:
     texto = re.sub(r"(?<!http:)(?<!https:)/{2,}", "/", texto)
     return texto
 
+def _detectar_cor_fundo_pagina(img_bgr):
+    """Detecta se a imagem tem uma margem/respiro CINZA (não branco) da
+    PÁGINA sobrando ao redor do card do anúncio — comum quando o
+    screenshot capturado (Central de Transparência) tem tamanho fixo
+    maior que o conteúdo real do anúncio, sobrando um pedaço da cor de
+    fundo da página (geralmente à direita e/ou embaixo do card,
+    validado nos prints reais reportados pelo usuário).
+
+    Sem tratar essa margem como fundo, ela é lida como "não-branco"
+    pelos detectores de banda (`_detectar_bandas_texto`) e de coluna
+    (`_dividir_banda_em_botoes`) — que assumem que QUALQUER pixel
+    não-branco é texto/ícone. O resultado prático: o respiro branco
+    que deveria separar duas bandas/colunas nunca aparece (a margem
+    cinza gruda direto na última linha/coluna de conteúdo real, sem
+    nenhuma faixa branca de verdade entre elas), e tudo vira uma banda
+    só — gigante e mal classificada, ou nem reconhecida (cai no
+    fallback de texto bruto, sem estrutura nenhuma).
+
+    Amostra um bloco pequeno no canto inferior direito da imagem (fora
+    do card do anúncio em todos os casos reais vistos até agora) pra
+    estimar essa cor. Devolve None quando não há margem pra tratar —
+    canto já branco (imagem "normal", sem esse problema) ou canto não
+    uniforme o suficiente pra confiar que é fundo de página, não
+    conteúdo real (ex: outro anúncio grudado logo abaixo)."""
+    import numpy as _np_fundo
+    altura, largura = img_bgr.shape[:2]
+    tam = max(4, min(20, altura // 10, largura // 10))
+    if tam < 4:
+        return None
+    canto = img_bgr[altura - tam:altura, largura - tam:largura]
+    if canto.size == 0:
+        return None
+    pixels = canto.reshape(-1, 3).astype(float)
+    cor_bgr = pixels.mean(axis=0)
+    if bool(_np_fundo.all(cor_bgr > 247)):
+        return None  # canto já é branco — sem margem cinza pra tratar
+    if float(pixels.std(axis=0).max()) > 12:
+        return None  # canto não é uniforme — não confia que é só fundo de página
+    return cor_bgr  # BGR médio da margem
+
 def _detectar_bandas_texto(img_bgr):
     """Varre a imagem linha a linha (sem OCR) e agrupa em 'bandas'
     horizontais de texto, cada uma classificada pela cor média dos
@@ -2094,6 +2167,18 @@ def _detectar_bandas_texto(img_bgr):
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
+    # Trata a margem cinza da PÁGINA (se existir — ver
+    # `_detectar_cor_fundo_pagina`) como fundo também, não só o branco
+    # puro — senão ela nunca dá o gap que separa uma banda da outra
+    # (ver docstring da função acima pro mecanismo completo do bug).
+    _cor_fundo_pagina = _detectar_cor_fundo_pagina(img_bgr)
+    if _cor_fundo_pagina is not None:
+        _cor_fundo_rgb = _cor_fundo_pagina[::-1]
+        _prox_fundo_pagina = _np_bandas.all(
+            _np_bandas.abs(img_rgb.astype(_np_bandas.int16) - _cor_fundo_rgb.astype(_np_bandas.int16)) <= 10,
+            axis=2,
+        )
+        nao_branco = nao_branco & ~_prox_fundo_pagina
 
     # Máscara separada, usada tanto pra decidir ONDE quebrar uma banda
     # quanto pra CLASSIFICAR a cor dela: ignora a faixa da esquerda
@@ -2260,6 +2345,20 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     if recorte_rgb.size == 0:
         return []
     coluna_tem_pixel = _np_botoes.any(recorte_rgb < 235, axis=2).any(axis=0)
+    # Mesmo tratamento de margem cinza da página usado em
+    # `_detectar_bandas_texto` (ver docstring de
+    # `_detectar_cor_fundo_pagina` pro mecanismo completo): sem isso, a
+    # margem — se entrar no recorte desta banda — nunca daria o vão em
+    # branco que separa um botão do outro, e a fileira inteira viraria
+    # um bloco de coluna só.
+    _cor_fundo_pagina_botoes = _detectar_cor_fundo_pagina(img_bgr)
+    if _cor_fundo_pagina_botoes is not None:
+        _cor_fundo_rgb_botoes = _cor_fundo_pagina_botoes[::-1]
+        _prox_fundo_botoes = _np_botoes.all(
+            _np_botoes.abs(recorte_rgb.astype(_np_botoes.int16) - _cor_fundo_rgb_botoes.astype(_np_botoes.int16)) <= 10,
+            axis=2,
+        ).any(axis=0)
+        coluna_tem_pixel = coluna_tem_pixel & ~_prox_fundo_botoes
     xs_com_pixel = _np_botoes.where(coluna_tem_pixel)[0]
     if len(xs_com_pixel) == 0:
         return []

@@ -2222,7 +2222,60 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
     return texto
 
-def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
+def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 18) -> list:
+    """Detecta se uma banda (faixa horizontal já identificada por
+    `_detectar_bandas_texto`) na verdade contém VÁRIOS botões/pílulas
+    lado a lado na mesma altura — ex: "Sobre o isaac" / "Entre Em
+    Contato" / "Saiba mais" — em vez de UM texto contínuo.
+
+    `_detectar_bandas_texto` só enxerga o eixo Y (agrupa linhas por
+    altura); quando os sitelinks vêm em formato de botão, lado a lado
+    na MESMA faixa de Y (em vez de empilhados verticalmente, um por
+    linha, com separador fino entre eles — o único formato que o resto
+    do pipeline já tratava), a banda inteira é lida pelo OCR como um
+    texto só, sem nenhuma separação (ex: virava "Matrícula Online
+    Segura Sistema administração esc" grudado, perdendo os 2 botões
+    como itens distintos).
+
+    Esta função varre as COLUNAS (eixo X) dentro da faixa de Y da
+    banda e agrupa em blocos contíguos, usando o mesmo princípio já
+    usado pra separar bandas por linha (`_detectar_bandas_texto`): um
+    vão em branco maior que `gap_minimo` pixels quebra um bloco do
+    próximo. `gap_minimo` foi calibrado pra ficar ACIMA do espaço
+    normal entre palavras de um mesmo texto (tipicamente bem menor) e
+    ABAIXO do respiro/borda entre dois botões distintos — pode
+    precisar de ajuste fino se aparecerem falsos positivos/negativos
+    em anúncios reais.
+
+    Devolve uma lista de (x_min, x_max) — um por bloco encontrado. Uma
+    banda de texto NORMAL (título/descrição de uma linha só) sempre
+    devolve UM bloco só (ou nenhum, se a faixa estiver vazia); só
+    quando há 2+ blocos é que faz sentido tratar como fileira de
+    botões — quem chama decide isso."""
+    import numpy as _np_botoes
+    altura_total = img_bgr.shape[0]
+    y0 = max(0, y_min - 4)
+    y1 = min(altura_total, y_max + 5)
+    recorte_rgb = img_bgr[y0:y1, :, ::-1]
+    if recorte_rgb.size == 0:
+        return []
+    coluna_tem_pixel = _np_botoes.any(recorte_rgb < 235, axis=2).any(axis=0)
+    xs_com_pixel = _np_botoes.where(coluna_tem_pixel)[0]
+    if len(xs_com_pixel) == 0:
+        return []
+    grupos = []
+    x_ini = int(xs_com_pixel[0])
+    x_ant = int(xs_com_pixel[0])
+    for x in xs_com_pixel[1:]:
+        x = int(x)
+        if x - x_ant > gap_minimo:
+            grupos.append((x_ini, x_ant))
+            x_ini = x
+        x_ant = x
+    grupos.append((x_ini, x_ant))
+    return grupos
+
+def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max: int = None) -> str:
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
@@ -2253,9 +2306,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
     de `" ".join(partes)" logo abaixo volta a fazer o trabalho dela de
     verdade."""
     altura_total = img_bgr.shape[0]
+    largura_total = img_bgr.shape[1]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
-    recorte = img_bgr[y0:y1, :]
+    # x_min/x_max: usado só quando esta banda foi dividida em botões
+    # lado a lado por `_dividir_banda_em_botoes` — restringe a leitura
+    # a UM botão por vez, com uma margem pra não cortar letra na borda.
+    x0 = max(0, x_min - 6) if x_min is not None else 0
+    x1 = min(largura_total, x_max + 7) if x_max is not None else largura_total
+    recorte = img_bgr[y0:y1, x0:x1]
     resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ""
@@ -2424,6 +2483,34 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     _cta_aberto = False
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
+        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"])
+        if len(_grupos_botoes) >= 2:
+            # Fileira de botões/pílulas lado a lado (ex: "Sobre o
+            # isaac" / "Entre Em Contato" / "Saiba mais") — formato
+            # diferente do sitelink empilhado verticalmente que o
+            # resto deste laço já tratava. Cada bloco de coluna vira
+            # um sitelink próprio (sem descrição, já que botão não tem
+            # segunda linha), na ordem em que aparecem da esquerda pra
+            # direita. Fecha o par de título/descrição em andamento
+            # (se houver) antes, porque esses botões nunca são
+            # continuação dele.
+            print(
+                f"[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, "
+                f"{len(_grupos_botoes)} bloco(s): {_grupos_botoes}",
+                flush=True,
+            )
+            if par_atual is not None:
+                pares.append(par_atual)
+                par_atual = None
+            _cta_aberto = False
+            for _x_ini, _x_fim in _grupos_botoes:
+                _texto_botao = _limpar_pontuacao_ocr(
+                    _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"], x_min=_x_ini, x_max=_x_fim).strip()
+                )
+                if _texto_botao:
+                    resultado["sitelinks"].append({"titulo": _texto_botao, "descricao": ""})
+            idx += 1
+            continue
         texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
         if banda["classe"] == "azul":
             _cta_aberto = False

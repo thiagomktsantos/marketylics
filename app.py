@@ -23612,11 +23612,11 @@ function imgFallback_{uid}(img){{
         <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div>{'<div class="page-sponsored">✓ Anunciante verificado</div>' if ad.get("verificado") else ''}</div></div>
     </div>
     {media_block}
-    <div class="copy-section">
+    {(f'''<div class="copy-section">
         {body_display}
         {'<div class="copy-title">' + title_safe + '</div>' if title_safe else ''}
         {no_copy_html}
-    </div>
+    </div>''') if (body_display or title_safe or no_copy_html) else ''}
     <div class="card-footer-btns">
         {'<a class="footer-btn lib" href="' + snap_url + '" target="_blank" style="text-align:center">Ver na Central</a>' if snap_url else '<span class="footer-btn lib" style="opacity:0.35;cursor:default;pointer-events:none">Sem link</span>'}
         <button class="footer-btn ia-btn" id="ia_gads_btn_{uid}" onclick="analisarAd('{uid}', {j})">{'Reanalisar' if False else 'Analisar anúncio'}</button>

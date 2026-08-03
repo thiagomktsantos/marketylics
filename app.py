@@ -22043,6 +22043,13 @@ window.addEventListener('load', syncHeight);
             ts           = cache_entry["ts"]
             query        = cache_entry.get("query","")
 
+            # Coletas antigas (antes da renomeação "Imagem" → "Gráfico") ficaram
+            # gravadas com "formato": "Imagem" no gads_cache persistido no banco.
+            # Normaliza aqui na leitura pra não depender de recoletar tudo de novo.
+            for _a in gads_list_raw:
+                if _a.get("formato") == "Imagem":
+                    _a["formato"] = "Gráfico"
+
             if configured_page:
                 if configured_page.upper().startswith("AR"):
                     filtered = [a for a in gads_list_raw if str(a.get("page_id","")).strip() == configured_page]

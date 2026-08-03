@@ -2086,8 +2086,14 @@ def _normalizar_url_exibida(texto: str) -> str:
     # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
     # domínio) — o lookahead garante que só mexe aqui se o que vem
     # depois já parece início de domínio (letra/número), sem comer
-    # acidentalmente outro texto.
-    texto = re.sub(r"^[wW]{2,4}\.?(?=[a-zA-Z0-9])", "www.", texto)
+    # acidentalmente outro texto. O grupo opcional de protocolo no
+    # início (`(?:https?://)?`) cobre o caso em que o "www" grudado
+    # vem DEPOIS de um "http://"/"https://" já certo (ex: anúncio real
+    # "http://wwwisaac_.com.br/" — sem essa parte o `^` só bateria com
+    # a string começando direto em "www", e como aqui ela começa com
+    # "http" o fix nunca disparava, deixando o domínio sem o ponto
+    # entre "www" e "isaac").
+    texto = re.sub(r"^((?:https?://)?)[wW]{2,4}\.?(?=[a-zA-Z0-9])", r"\1www.", texto)
     # Recompõe o fechamento do domínio como ".com.br/" removendo o "l"
     # colado (item 2) SE ele existir, mas sem assumir que ele sempre
     # existe: quando o EasyOCR acerta a barra de verdade (".com.br/"),
@@ -2111,6 +2117,12 @@ def _normalizar_url_exibida(texto: str) -> str:
     # então é seguro tratar esse "l" como barra sem risco de quebrar uma
     # palavra de verdade.
     texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
+    # 4) "_" sobrando colado bem antes do ".com.br" (ex: anúncio real
+    # "wwwisaac_.com.br" → o "_" aqui é ruído de leitura do EasyOCR,
+    # provavelmente confundindo um traço/sublinhado ou serifa da última
+    # letra do domínio com underscore — domínio de verdade não tem "_"
+    # nessa posição, então é seguro remover.
+    texto = re.sub(r"_+(?=\.?com\.?br)", "", texto, flags=re.IGNORECASE)
     # Rede de segurança: colapsa qualquer barra dupla residual que ainda
     # tenha sobrado por outro caminho não previsto pelas regras acima —
     # EXCETO logo depois de "http:"/"https:", onde "//" é o protocolo

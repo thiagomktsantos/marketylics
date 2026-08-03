@@ -2272,6 +2272,20 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int) -> str:
         if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
             partes.append("-")
         partes.append(palavras[i][1])
+    # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
+    # título pra outra banda) nunca era checado: o laço acima só olha o
+    # vão ENTRE duas palavras já reconhecidas NESTA banda, e esse hífen
+    # fica depois da ÚLTIMA palavra — sem "próxima palavra" na mesma
+    # banda pra formar o par, o vão nunca era testado e o "-" era
+    # perdido silenciosamente sempre que o título quebrava em duas
+    # linhas logo depois dele. Verifica o trecho entre o fim da última
+    # palavra e a borda direita do recorte (mesma imagem, largura
+    # inteira) pra recuperar esse caso.
+    _bbox_ultima = palavras[-1][0]
+    _x_dir_ultima = int(max(p[0] for p in _bbox_ultima))
+    _x_borda_direita = recorte.shape[1]
+    if _detectar_hifen_no_intervalo(recorte, _x_dir_ultima, _x_borda_direita):
+        partes.append("-")
     return " ".join(partes)
 
 def _estruturar_anuncio_google_ads(img_bgr, reader):

@@ -1925,7 +1925,16 @@ _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.
 _REGEX_CTA_TITULO_CONHECIDO = re.compile(
     r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|saiba\s*mais|"
     r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
-    r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já)$",
+    r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já|"
+    r"entre\s*em\s*contato|fale\s*conosco|fale\s*com\s*a\s*gente)"
+    # Aceita um complemento livre depois da frase-gatilho (ex: "Entre em
+    # contato" + "no app WhatsApp" na mesma linha) — sem isso o `$` logo
+    # depois da alternativa exigia a linha inteira bater exatamente com
+    # uma das frases da lista, e qualquer texto extra colado (comum
+    # quando o CTA e seu complemento saem na mesma banda do OCR) fazia
+    # o CTA inteiro passar batido, caindo como sitelink comum em vez do
+    # bloco com ícone (ver `_icone_cta_google_ads`).
+    r"(\s+.+)?$",
     re.IGNORECASE,
 )
 
@@ -2307,7 +2316,7 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
     return texto
 
-def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 18) -> list:
+def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = None) -> list:
     """Detecta se uma banda (faixa horizontal já identificada por
     `_detectar_bandas_texto`) na verdade contém VÁRIOS botões/pílulas
     lado a lado na mesma altura — ex: "Sobre o isaac" / "Entre Em
@@ -2344,6 +2353,23 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     recorte_rgb = img_bgr[y0:y1, :, ::-1]
     if recorte_rgb.size == 0:
         return []
+    if gap_minimo is None:
+        # Vão mínimo pra considerar "dois botões distintos" agora é
+        # PROPORCIONAL à altura da própria banda de texto, em vez de um
+        # valor fixo em pixels. A altura da banda reflete a resolução/
+        # zoom do print daquele anúncio específico — um print maior tem
+        # letras (e o respiro real entre pílulas) proporcionalmente
+        # maiores também. Um valor fixo (18px) calibrado numa resolução
+        # específica deixava de separar a fileira sempre que o print
+        # vinha menor/mais compacto: o vão real entre as pílulas ficava
+        # abaixo de 18px, a banda inteira era lida como um texto só, e
+        # os botões grudavam (ex: "Matrícula Online Segura Sistema
+        # administração esc..." em vez de dois sitelinks distintos).
+        # 0.9x a altura da banda fica bem acima do espaço normal entre
+        # palavras de um mesmo texto (tipicamente ~0.25-0.35x) e abaixo
+        # do respiro real entre duas pílulas — com um piso de 14px pra
+        # não ficar sensível demais em bandas muito baixas/pequenas.
+        gap_minimo = max(14, int((y_max - y_min) * 0.9))
     coluna_tem_pixel = _np_botoes.any(recorte_rgb < 235, axis=2).any(axis=0)
     # Mesmo tratamento de margem cinza da página usado em
     # `_detectar_bandas_texto` (ver docstring de
@@ -23150,6 +23176,13 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         pass  # sem OCR em lote não pode travar a tela — só some o texto
 
                 def _escapar_html_ocr(s: str) -> str:
+                    # Erro comum do OCR: o conectivo "o" minúsculo (ex:
+                    # "dia o ano todo") sai lido como "O" maiúsculo quando
+                    # fica isolado entre espaços — corrige antes de
+                    # escapar/exibir. Só troca quando é UMA letra sozinha
+                    # cercada de espaço dos dois lados (nunca dentro de
+                    # uma palavra, ex: o "O" de "OFERTA" continua intacto).
+                    s = re.sub(r"(?<=\s)O(?=\s)", "o", s)
                     return (
                         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                          .replace("\n", "<br>")
@@ -23718,7 +23751,7 @@ function imgFallback_{uid}(img){{
                                     _nome_pagina_ad = ""
                                     _resto_url_ad = _ocr_estr_ad["url_exibida"]
                                 _coluna_texto_ad_html = (
-                                    (f'<div style="font-size:13.5px;font-weight:400;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
+                                    (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
                                     + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
                                 )
                                 _campos_ocr_html.append(

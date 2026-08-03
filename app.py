@@ -19820,7 +19820,7 @@ elif st.session_state.pagina == "google_ads":
         if raw_format == "video":
             fmt = "Vídeo"
         elif raw_format == "image":
-            fmt = "Imagem"
+            fmt = "Gráfico"
         else:
             fmt = "Texto"
 
@@ -22094,7 +22094,7 @@ window.addEventListener('load', syncHeight);
                             icon="⏳",
                         )
                     n_vid = sum(1 for a in gads_list if "Vídeo" in a["formato"])
-                    n_img = sum(1 for a in gads_list if "Imagem" in a["formato"])
+                    n_img = sum(1 for a in gads_list if "Gráfico" in a["formato"])
                     n_car = sum(1 for a in gads_list if "Carrossel" in a["formato"])
                     _ph_ads = st.empty()
                     _render_modal_redes_ia("gerando", f"Anúncios — {nome}", 40, _ph_ads)
@@ -22246,7 +22246,7 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                         for a in gads_list[:15]
                     ])
                     n_vid = sum(1 for a in gads_list if "Vídeo" in a["formato"])
-                    n_img = sum(1 for a in gads_list if "Imagem" in a["formato"])
+                    n_img = sum(1 for a in gads_list if "Gráfico" in a["formato"])
                     n_car = sum(1 for a in gads_list if "Carrossel" in a["formato"])
                     n_dyn = sum(1 for a in gads_list if a.get("is_dynamic"))
                     _ph_ads = st.empty()
@@ -22804,7 +22804,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 )
 
                 n_video     = sum(1 for a in gads_f if "Vídeo"  in a["formato"])
-                n_imagem    = sum(1 for a in gads_f if "Imagem" in a["formato"])
+                n_imagem    = sum(1 for a in gads_f if "Gráfico" in a["formato"])
                 n_texto     = sum(1 for a in gads_f if "Texto"  in a["formato"])
                 n_ativos    = sum(1 for a in gads_f if a.get("ativo", True))
                 n_inativos  = sum(1 for a in gads_f if not a.get("ativo", True))
@@ -22813,7 +22813,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_ativos}</div><div class="stat-lbl stat-lbl-green">Ativos</div></div>')
                 if n_inativos > 0:
                     stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#6b7280">{n_inativos}</div><div class="stat-lbl">Histórico inativo</div></div>')
-                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Imagens</div></div>')
+                stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_imagem}</div><div class="stat-lbl">Gráficos</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_video}</div><div class="stat-lbl">Vídeos</div></div>')
                 stats_cards.append(f'<div class="stat-card"><div class="stat-num" style="color:#111827">{n_texto}</div><div class="stat-lbl">Texto</div></div>')
 

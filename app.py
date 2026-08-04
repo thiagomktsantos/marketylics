@@ -30673,6 +30673,45 @@ html, body { background: transparent; overflow: hidden; }
                     )
                 st.rerun()
 
+        # ══════════════════════════════════════════════════════════════
+        # Teste rápido de OCR (1 imagem, sem fila/banco) — pra depurar o
+        # parser sem precisar esperar o "Reprocessar tudo do zero" (que
+        # processa a empresa inteira e pode levar minutos). Sobe um
+        # print do anúncio, roda `_estruturar_anuncio_google_ads` na
+        # hora e mostra o resultado bruto — dá o mesmo retorno que ia
+        # pro banco, só que instantâneo e sem afetar nenhum dado real.
+        with st.expander("🧪 Testar OCR com uma imagem avulsa (debug)"):
+            st.caption(
+                "Sobe um print do anúncio (Google Ads) e roda o leitor na hora, "
+                "mostrando o resultado bruto — título, descrição, CTA, sitelinks — "
+                "sem mexer em nenhum dado salvo. Útil pra confirmar rápido se um "
+                "ajuste no parser resolveu um caso específico."
+            )
+            _arquivo_teste_ocr = st.file_uploader(
+                "Imagem do anúncio",
+                type=["png", "jpg", "jpeg", "webp"],
+                key="_uploader_teste_ocr_avulso",
+            )
+            if _arquivo_teste_ocr is not None and st.button(
+                "Rodar OCR nessa imagem", key="_btn_rodar_ocr_avulso"
+            ):
+                with st.spinner("Lendo a imagem…"):
+                    try:
+                        import numpy as _np_teste_ocr
+                        import cv2 as _cv2_teste_ocr
+                        _bytes_img = _arquivo_teste_ocr.getvalue()
+                        _arr_teste = _np_teste_ocr.frombuffer(_bytes_img, dtype=_np_teste_ocr.uint8)
+                        _img_bgr_teste = _cv2_teste_ocr.imdecode(_arr_teste, _cv2_teste_ocr.IMREAD_COLOR)
+                        if _img_bgr_teste is None:
+                            st.error("Não consegui decodificar essa imagem.")
+                        else:
+                            _reader_teste = _get_easyocr()
+                            _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
+                            st.success("OCR rodado com sucesso — resultado bruto abaixo:")
+                            st.json(_resultado_teste)
+                    except Exception as _e_teste_ocr:
+                        st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
+
     with aba_perfil_uso:
         import math as _math_uso
 

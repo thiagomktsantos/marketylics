@@ -4503,6 +4503,14 @@ def formatar_url(url):
 def login_supabase(email: str, senha: str):
     try:
         res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+        if res.user:
+            # Login SEMPRE tem uma sessão autenticada válida (diferente do
+            # cadastro — ver comentário em `cadastro_supabase`), então este
+            # é o lugar confiável pra garantir a linha em `ci_dados`: cria
+            # se ainda não existir (idempotente — ver `garantir_linha_usuario`)
+            # e "autocura" contas que ficaram sem a linha porque o cadastro
+            # rodou sem sessão (confirmação de e-mail pendente na hora).
+            garantir_linha_usuario(res.user.id)
         return res.user, None
     except Exception as e:
         return None, str(e)
@@ -4513,7 +4521,18 @@ def cadastro_supabase(email: str, senha: str, nome: str = ""):
         if nome.strip():
             payload["options"] = {"data": {"full_name": nome.strip()}}
         res = supabase.auth.sign_up(payload)
-        if res.user:
+        # `sign_up` só devolve uma sessão autenticada (`res.session`) de
+        # verdade quando a confirmação de e-mail está DESLIGADA no projeto
+        # Supabase — com ela ligada (padrão em projeto novo), o usuário é
+        # criado mas a sessão só existe depois que a pessoa clica no link
+        # do e-mail. Tentar o insert em `ci_dados` aqui SEM sessão faz a
+        # chamada rodar como anônima — o RLS exige `auth.uid() = user_id`,
+        # que dá NULL pra um pedido anônimo, e a inserção é barrada com
+        # "new row violates row-level security policy" (erro reportado
+        # pelo usuário, aparecendo pra toda conta nova). Só tenta aqui
+        # quando já existe sessão de verdade; senão, `login_supabase` cria
+        # a linha no primeiro login (sempre com sessão válida).
+        if res.user and res.session:
             garantir_linha_usuario(res.user.id)
         return res.user, None
     except Exception as e:

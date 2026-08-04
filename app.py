@@ -1926,15 +1926,17 @@ _REGEX_CTA_TITULO_CONHECIDO = re.compile(
     r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|saiba\s*mais|"
     r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
     r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já|"
-    r"entre\s*em\s*contato|fale\s*conosco|fale\s*com\s*a\s*gente)"
-    # Aceita um complemento livre depois da frase-gatilho (ex: "Entre em
-    # contato" + "no app WhatsApp" na mesma linha) — sem isso o `$` logo
-    # depois da alternativa exigia a linha inteira bater exatamente com
-    # uma das frases da lista, e qualquer texto extra colado (comum
-    # quando o CTA e seu complemento saem na mesma banda do OCR) fazia
-    # o CTA inteiro passar batido, caindo como sitelink comum em vez do
-    # bloco com ícone (ver `_icone_cta_google_ads`).
-    r"(\s+.+)?$",
+    # "entre em contato" aceita um complemento CURTO e ESPECÍFICO colado
+    # na mesma linha ("no app WhatsApp") — validado em anúncio real da
+    # isaac, onde o CTA e esse complemento saem juntos numa banda só do
+    # OCR. Restrito a essa continuação exata (não texto livre) porque
+    # uma versão anterior aceitava QUALQUER texto depois de qualquer
+    # gatilho da lista — e "saiba mais" também é um gatilho aqui, só
+    # que "saiba mais" é comum aparecer no MEIO de uma descrição normal
+    # (ex: "Saiba Mais Descubra como o Isaac pode ajudar..."), então
+    # aceitar texto livre depois dele fazia o meio da descrição virar
+    # CTA por engano, cortando o parágrafo ao meio.
+    r"entre\s*em\s*contato(\s+no\s*app\s*whatsapp)?|fale\s*conosco|fale\s*com\s*a\s*gente)$",
     re.IGNORECASE,
 )
 
@@ -2410,6 +2412,7 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
             x_ini = x
         x_ant = x
     grupos.append((x_ini, x_ant))
+    print(f"[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}", flush=True)
     return grupos
 
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max: int = None) -> str:
@@ -2814,7 +2817,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
                     "url_final": "", "cta": "", "cta_subtitulo": "", "sitelinks": [],
                 }
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
-        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r}", flush=True)
+        print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
         return _estruturado
     except Exception as e:
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}", flush=True)

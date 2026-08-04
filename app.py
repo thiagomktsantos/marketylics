@@ -16512,6 +16512,33 @@ function triggerTab(label) {{
                     </div>
                     {pgs_html}
                 </div>"""
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
+                # Busca já rodou pra essa empresa mas não achou nenhuma página —
+                # antes disso simplesmente não aparecia nada na tela (parecia
+                # que o botão tinha travado ou que nada tinha acontecido).
+                # Mostra um aviso claro + sugestão de usar o ID numérico da
+                # página (que sempre funciona, mesmo quando o nome buscado
+                # não bate com o nome exato cadastrado no Facebook) e deixa
+                # claro que dá pra salvar o texto digitado direto, sem
+                # precisar de um resultado de busca pra confirmar.
+                resultados_block = f"""
+                <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
+                    <div style="display:flex;align-items:flex-start;gap:10px;
+                                background:#fffbeb;border:1px solid #fde68a;border-radius:9px;
+                                padding:11px 14px;">
+                        <span style="font-size:15px;flex-shrink:0;line-height:1.3">⚠️</span>
+                        <div style="font-size:13px;color:#92400e;line-height:1.55">
+                            <strong>Nenhuma página encontrada</strong> pra esse nome na Biblioteca de Anúncios do Meta.
+                            Isso pode acontecer se o nome estiver diferente do cadastrado no Facebook,
+                            ou se a página não tiver anúncios catalogados nesse momento.
+                            <br/><br/>
+                            Tente buscar pelo <strong>ID numérico</strong> da página (em vez do nome) —
+                            costuma resolver. Se você já sabe o ID ou o nome exato, também pode clicar
+                            direto em <strong>Salvar ID</strong>, sem precisar de um resultado de busca.
+                        </div>
+                    </div>
+                </div>"""
+
 
             if is_editing:
                 cards_html += f"""

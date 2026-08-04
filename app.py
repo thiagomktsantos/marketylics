@@ -14845,7 +14845,7 @@ elif st.session_state.pagina == "ads":
             "is_dynamic":           is_dyn,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180) -> tuple:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -14908,7 +14908,7 @@ elif st.session_state.pagina == "ads":
             return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
 
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
-        deadline   = _time.time() + 180
+        deadline   = _time.time() + deadline_seconds
         status     = "RUNNING"
         while _time.time() < deadline:
             try:
@@ -15414,7 +15414,13 @@ elif st.session_state.pagina == "ads":
         salvar_empresa_e_concorrentes()
 
     def buscar_paginas_facebook(termo: str) -> list:
-        ads, _, erro = _apify_run_sync(termo, limit=20)
+        # deadline_seconds menor que o padrão (180s): essa busca roda de
+        # forma síncrona dentro do clique do botão "Buscar páginas" — o
+        # usuário fica olhando o spinner a tela toda o tempo, então não
+        # faz sentido deixar rodar até 3 minutos antes de mostrar "não
+        # encontrado". 45s é tempo suficiente pro Apify processar a busca
+        # de página (bem mais rápida que uma coleta completa de anúncios).
+        ads, _, erro = _apify_run_sync(termo, limit=20, deadline_seconds=45)
         if erro or not ads:
             return []
         paginas = {}
@@ -16007,15 +16013,42 @@ setHeight(false);
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
     _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados]
 
+    _SVG_ROLDANA_ALERTA = (
+        '<span style="display:inline-flex;align-items:center;gap:3px;font-weight:700;">'
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+        'style="vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="12" cy="12" r="3"/>'
+        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 '
+        '1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 '
+        '0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 '
+        '4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 '
+        '1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A'
+        '1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
+        '</svg>Configuração</span>'
+    )
+
     if _empresas_sem_config:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
         st.markdown(f"""
-        <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
-                    padding:11px 16px;font-size:14px;color:#0369a1;line-height:1.6;
-                    margin-bottom:24px;">
-            ⚙️ <strong>{_nomes}</strong>
-            {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
-            Vá em <strong>Configuração</strong> para adicionar o ID da página.
+        <div style="display:flex;align-items:flex-start;gap:12px;
+                    background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);
+                    border:1px solid #fde68a;border-left:4px solid #f59e0b;
+                    border-radius:12px;padding:14px 18px;margin-bottom:24px;">
+            <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;
+                        background:#f59e0b;display:flex;align-items:center;
+                        justify-content:center;margin-top:1px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 9v4"/><path d="M12 17h.01"/>
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                </svg>
+            </div>
+            <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
+                <strong>{_nomes}</strong>
+                {'precisa ser configurada' if len(_empresas_sem_config) == 1 else 'precisam ser configuradas'}.
+                Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+            </div>
         </div>
         """, unsafe_allow_html=True)
     if _empresas_sem_dados:
@@ -16732,7 +16765,7 @@ function handleBuscar(ci) {{
     var btnS = document.getElementById('btn_salvar_' + ci);
     if (btn) {{
         btn.disabled = true;
-        btn.innerHTML = SPINNER + ' &nbsp;Buscando...';
+        btn.innerHTML = SPINNER + ' &nbsp;Buscando... (até 45s)';
         btn.style.background = '#f0f9ff';
         btn.style.color = '#0369a1';
         btn.style.borderColor = '#7dd3fc';
@@ -20413,7 +20446,7 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180) -> tuple:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -20454,7 +20487,7 @@ elif st.session_state.pagina == "google_ads":
             return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
 
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
-        deadline   = _time.time() + 180
+        deadline   = _time.time() + deadline_seconds
         status     = "RUNNING"
         while _time.time() < deadline:
             try:
@@ -20978,21 +21011,47 @@ elif st.session_state.pagina == "google_ads":
         salvar_empresa_e_concorrentes()
 
     def buscar_anunciantes_google(termo: str) -> list:
-        ads, _, erro = _apify_run_sync(termo, limit=20)
-        if erro or not ads:
-            return []
-        paginas = {}
-        for ad in ads:
-            pid  = ad.get("page_id", "") or ""
-            nome = ad.get("page_name", "") or ""
-            pic  = ad.get("page_profile_picture", "") or ""
-            if nome and nome not in paginas:
-                paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
-            if nome in paginas:
-                paginas[nome]["total_ads"] += 1
-                if not paginas[nome]["profile_picture"] and pic:
-                    paginas[nome]["profile_picture"] = pic
-        return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+        # Mesmo raciocínio do Meta Ads: essa busca trava a tela toda
+        # (síncrona, dentro do clique do botão), então usa um deadline
+        # bem menor que os 180s padrão da coleta completa em background.
+        #
+        # Quando o termo é um domínio (ex: "site.com.br"), o Google Ads
+        # Transparency Center às vezes só tem o anunciante cadastrado com
+        # uma variação mais curta do domínio (ex: "site.com" ou só
+        # "site"). Em vez de desistir na primeira tentativa vazia, tenta
+        # de novo removendo um nível do domínio por vez, da direita pra
+        # esquerda: "site.com.br" → "site.com" → "site" (última tentativa,
+        # já sem ponto nenhum — nesse ponto vira busca por nome mesmo,
+        # graças à mesma detecção automática de domínio vs. nome que já
+        # existe em _apify_run_sync).
+        termo = termo.strip()
+        candidatos = [termo]
+        if "." in termo and " " not in termo:
+            partes = termo.split(".")
+            for i in range(len(partes) - 1, 0, -1):
+                candidato = ".".join(partes[:i])
+                if candidato not in candidatos:
+                    candidatos.append(candidato)
+
+        for candidato in candidatos:
+            ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45)
+            if erro or not ads:
+                continue
+            paginas = {}
+            for ad in ads:
+                pid  = ad.get("page_id", "") or ""
+                nome = ad.get("page_name", "") or ""
+                pic  = ad.get("page_profile_picture", "") or ""
+                if nome and nome not in paginas:
+                    paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
+                if nome in paginas:
+                    paginas[nome]["total_ads"] += 1
+                    if not paginas[nome]["profile_picture"] and pic:
+                        paginas[nome]["profile_picture"] = pic
+            if paginas:
+                return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+
+        return []
 
     # ══════════════════════════════════════════════════════════════════
     # CABEÇALHO DA PÁGINA
@@ -21630,7 +21689,7 @@ setHeight(false);
             </div>
             <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
                 <strong>{_nomes}</strong>
-                {'não está configurada' if len(_empresas_sem_config) == 1 else 'não estão configuradas'}.
+                {'precisa ser configurada' if len(_empresas_sem_config) == 1 else 'precisam ser configuradas'}.
                 Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
             </div>
         </div>
@@ -22149,6 +22208,31 @@ function triggerTab(label) {{
                     </div>
                     {pgs_html}
                 </div>"""
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
+                # Mesmo tratamento do Meta Ads: busca já rodou pra essa
+                # empresa mas não achou nenhuma página no Google Ads
+                # Transparency Center — antes disso não aparecia nada na
+                # tela. Mostra aviso claro + sugestões específicas do
+                # Google (ID do anunciante ou domínio do site).
+                resultados_block = f"""
+                <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
+                    <div style="display:flex;align-items:flex-start;gap:10px;
+                                background:#fffbeb;border:1px solid #fde68a;border-radius:9px;
+                                padding:11px 14px;">
+                        <span style="font-size:15px;flex-shrink:0;line-height:1.3">⚠️</span>
+                        <div style="font-size:13px;color:#92400e;line-height:1.55">
+                            <strong>Nenhuma página encontrada</strong> pra esse nome na Central de Transparência do Google Ads.
+                            Isso pode acontecer se o nome estiver diferente do cadastrado,
+                            ou se o anunciante não tiver anúncios catalogados nesse momento.
+                            <br/><br/>
+                            Tente buscar pelo <strong>ID do anunciante</strong> (ex: AR16735076323512287233)
+                            ou pelo <strong>domínio do site</strong> (ex: nike.com) em vez do nome —
+                            costuma resolver. Se você já sabe o ID ou o domínio exato, também pode clicar
+                            direto em <strong>Salvar ID</strong>, sem precisar de um resultado de busca.
+                        </div>
+                    </div>
+                </div>"""
+
 
             if is_editing:
                 cards_html += f"""
@@ -22342,7 +22426,7 @@ function handleBuscar(ci) {{
     var btnS = document.getElementById('btn_salvar_' + ci);
     if (btn) {{
         btn.disabled = true;
-        btn.innerHTML = SPINNER + ' &nbsp;Buscando...';
+        btn.innerHTML = SPINNER + ' &nbsp;Buscando... (pode levar até 2min)';
         btn.style.background = '#f0f9ff';
         btn.style.color = '#0369a1';
         btn.style.borderColor = '#7dd3fc';

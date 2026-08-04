@@ -2058,7 +2058,7 @@ def _escapar_html_ocr_preview(s: str) -> str:
     chamado também fora daquela página (ex: no teste avulso de OCR, na
     aba Suporte do Perfil), sem precisar promover a função original."""
     s = s or ""
-    s = re.sub(r"(?<=\s)O(?=\s)", "o", s)
+    s = _corrigir_o_isolado(s)
     return (
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
          .replace("\n", "<br>")
@@ -2407,6 +2407,32 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     return largura_pixels >= 3  # descarta 1-2 pixels soltos (ruído)
 
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
+# Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
+# sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
+# "O", ou — mais comum ainda — como o DÍGITO "0" (zero), porque na
+# fonte usada no card do Google Ads o zero sem risco fica visualmente
+# idêntico a um "O" maiúsculo (validado num anúncio real da isaac:
+# "Mensalidades em dia O ano todo" na tela veio de um "0" no dado bruto
+# do OCR, não de um "O" de verdade). Cobre os dois caracteres.
+_REGEX_O_OU_ZERO_ISOLADO = re.compile(r"(?<=\s)[O0](?=\s)")
+
+def _corrigir_o_isolado(texto: str) -> str:
+    """Troca um "O"/"0" isolado entre espaços pelo conectivo "o"
+    minúsculo, EXCETO quando ele vem logo depois de uma pontuação de
+    fim de frase (. ! ?) — nesse caso pode ser um "O" de verdade
+    iniciando a frase seguinte (ex: "Vem crescendo. O aluno..."), então
+    não mexe. Ignora quantos espaços houver entre a pontuação e a
+    letra (o OCR às vezes insere espaço duplo ali)."""
+    if not texto:
+        return texto
+    def _troca(m):
+        i = m.start() - 1
+        while i >= 0 and texto[i] == " ":
+            i -= 1
+        if i >= 0 and texto[i] in ".!?":
+            return m.group(0)  # mantém — provável início de frase nova
+        return "o"
+    return _REGEX_O_OU_ZERO_ISOLADO.sub(_troca, texto)
 
 def _limpar_pontuacao_ocr(texto: str) -> str:
     """Corrige espaçamento que o EasyOCR insere por engano ao redor de
@@ -2427,6 +2453,7 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto = _REGEX_ESPACO_ANTES_PONTUACAO.sub(r"\1", texto)
     texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
+    texto = _corrigir_o_isolado(texto)
     return texto
 
 def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = None) -> list:
@@ -2723,6 +2750,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
         _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"])
+        # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
+        # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
+        # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como
+        # "2 blocos", porque o vão entre o ícone (uma faixa bem estreita,
+        # ~45px) e o início do texto costuma passar do gap_minimo — mesmo
+        # não sendo, de fato, dois botões/sitelinks lado a lado. Validado
+        # nos anúncios reais da kedu e da isaac: os dois batiam nesse
+        # padrão (33,78)+(114,...) e viravam sitelinks soltos em vez de
+        # cair no reconhecimento de CTA por `_REGEX_CTA_TITULO_CONHECIDO`
+        # (ver mais abaixo). Uma fileira de botões DE VERDADE (ex: "Sobre
+        # o isaac" / "Entre Em Contato" / "Saiba mais") sempre tem cada
+        # bloco com largura de texto normal — nunca um primeiro bloco tão
+        # estreito quanto um ícone sozinho. Por isso: só descarta a divisão
+        # quando são exatamente 2 blocos E o primeiro é estreito o
+        # suficiente pra ser só o ícone — nesses casos, trata a banda
+        # inteira como um texto único (ícone some do OCR, sobra só o
+        # texto), deixando o resto do laço decidir se é CTA ou sitelink.
+        if len(_grupos_botoes) == 2 and (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55:
+            _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -23291,12 +23337,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 def _escapar_html_ocr(s: str) -> str:
                     # Erro comum do OCR: o conectivo "o" minúsculo (ex:
-                    # "dia o ano todo") sai lido como "O" maiúsculo quando
-                    # fica isolado entre espaços — corrige antes de
-                    # escapar/exibir. Só troca quando é UMA letra sozinha
-                    # cercada de espaço dos dois lados (nunca dentro de
-                    # uma palavra, ex: o "O" de "OFERTA" continua intacto).
-                    s = re.sub(r"(?<=\s)O(?=\s)", "o", s)
+                    # "dia o ano todo") sai lido como "O" maiúsculo — ou,
+                    # mais frequente ainda, como o DÍGITO "0" (zero), que
+                    # na fonte do card fica idêntico a um "O" na tela —
+                    # quando fica isolado entre espaços. Corrige antes de
+                    # escapar/exibir (ver `_corrigir_o_isolado`), mas
+                    # preserva um "O" real que comece frase nova logo
+                    # depois de ". "/"! "/"? ".
+                    s = _corrigir_o_isolado(s)
                     return (
                         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                          .replace("\n", "<br>")

@@ -15382,7 +15382,11 @@ elif st.session_state.pagina == "ads":
     if "ads_aba_conteudo" not in st.session_state:
         st.session_state.ads_aba_conteudo = {}
     if "ads_main_tab" not in st.session_state:
-        st.session_state.ads_main_tab = "empresas"
+        # Só faz sentido abrir direto em Configuração quando NENHUMA empresa
+        # tem ID configurado ainda (usuário novo, nada pra ver na lista de
+        # anúncios mesmo) — mesmo critério usado no Google Ads.
+        _nenhuma_empresa_configurada_init = todas_empresas and all(not empresa_tem_ads_id(e) for e in todas_empresas)
+        st.session_state.ads_main_tab = "configuracao" if _nenhuma_empresa_configurada_init else "empresas"
     if "ads_config_empresa_selecionada" not in st.session_state:
         st.session_state.ads_config_empresa_selecionada = None
     if "ads_analises_salvas" not in st.session_state:
@@ -27809,11 +27813,19 @@ function setHeight(isOpen) {{
     ]
     if novas_empresas:
         nomes = ", ".join(e["nome"] for e in novas_empresas)
-        st.info(
-            f"📡 **{nomes}** {'foi adicionada' if len(novas_empresas) == 1 else 'foram adicionadas'} "
-            f"mas ainda não {'tem' if len(novas_empresas) == 1 else 'têm'} dados coletados. "
-            f"Clique em **Coletar dados** para incluí-las."
-        )
+        # Container com key própria pra dar mais espaço embaixo dessa caixa
+        # azul específica (sem afetar outros st.info() espalhados pelo app).
+        st.markdown("""
+        <style>
+        .st-key-_redes_info_sem_dados_ { margin-bottom: 28px; }
+        </style>
+        """, unsafe_allow_html=True)
+        with st.container(key="_redes_info_sem_dados_"):
+            st.info(
+                f"📡 **{nomes}** {'foi adicionada' if len(novas_empresas) == 1 else 'foram adicionadas'} "
+                f"mas ainda não {'tem' if len(novas_empresas) == 1 else 'têm'} dados coletados. "
+                f"Clique em **Coletar dados** para incluí-las."
+            )
 
     # ── Estado de navegação ─────────────────────────────────────────
     if "redes_main_tab" not in st.session_state:

@@ -2051,6 +2051,105 @@ def _icone_cta_google_ads(cta_texto: str, cta_subtitulo: str) -> str:
         'margin-right:8px;flex-shrink:0;">' + icone + '</span>'
     )
 
+def _escapar_html_ocr_preview(s: str) -> str:
+    """Mesma correção/escaping usado na renderização real do card do
+    Google Ads (ver `_escapar_html_ocr` local, dentro da página
+    "google_ads") — duplicado aqui como função de módulo pra poder ser
+    chamado também fora daquela página (ex: no teste avulso de OCR, na
+    aba Suporte do Perfil), sem precisar promover a função original."""
+    s = s or ""
+    s = re.sub(r"(?<=\s)O(?=\s)", "o", s)
+    return (
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+         .replace("\n", "<br>")
+    )
+
+
+def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
+    """Reconstrói o mesmo card "Texto extraído da imagem (OCR)" mostrado
+    nos anúncios do Google Ads (globo/domínio, título, descrição,
+    sitelinks e CTA) a partir de um dict de OCR estruturado — mesma
+    lógica de montagem usada na página "google_ads" (ver
+    `_campos_ocr_html` por lá), extraída aqui como função reutilizável
+    pra também poder ser usada no teste avulso de OCR (aba Suporte do
+    Perfil), que roda fora do contexto daquela página."""
+    if not ocr_estr:
+        return ""
+    _campos = []
+    if ocr_estr.get("url_exibida"):
+        _linhas_url = ocr_estr["url_exibida"].split("\n")
+        if _linhas_url and not _REGEX_FORMATO_DOMINIO.match(_linhas_url[0]):
+            _nome_pagina = _linhas_url[0].rstrip("/")
+            _resto_url = "\n".join(_linhas_url[1:])
+        else:
+            _nome_pagina = ""
+            _resto_url = ocr_estr["url_exibida"]
+        _coluna_texto = (
+            (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr_preview(_nome_pagina)}</div>' if _nome_pagina else '')
+            + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr_preview(_resto_url)}</div>' if _resto_url else '')
+        )
+        _campos.append(
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            + _SVG_ICONE_GLOBO_SITE
+            + f'<div>{_coluna_texto}</div>'
+            + '</div>'
+        )
+    if ocr_estr.get("titulo"):
+        _campos.append(
+            f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr_preview(ocr_estr["titulo"])}</div>'
+        )
+    if ocr_estr.get("descricao"):
+        _campos.append(
+            f'<div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">{_escapar_html_ocr_preview(ocr_estr["descricao"])}</div>'
+        )
+    if ocr_estr.get("url_final") and ocr_estr.get("url_final") != ocr_estr.get("url_exibida"):
+        _campos.append(
+            f'<div style="font-size:10.5px;color:#9ca3af;margin-bottom:4px">Destino: {_escapar_html_ocr_preview(ocr_estr["url_final"])}</div>'
+        )
+    if ocr_estr.get("sitelinks"):
+        _blocos_sitelinks = []
+        for _sl in ocr_estr["sitelinks"]:
+            if isinstance(_sl, dict):
+                _sl_titulo = _sl.get("titulo") or ""
+                _sl_desc = _sl.get("descricao") or ""
+            elif " — " in _sl:
+                _sl_titulo, _sl_desc = _sl.split(" — ", 1)
+            else:
+                _sl_titulo, _sl_desc = _sl, ""
+            if not _sl_titulo:
+                continue
+            _blocos_sitelinks.append(
+                '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
+                f'<div style="font-size:12px;font-weight:700;color:#3a9fd6">{_escapar_html_ocr_preview(_sl_titulo)}</div>'
+                + (f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr_preview(_sl_desc)}</div>' if _sl_desc else '')
+                + '</div>'
+            )
+        _campos.append("".join(_blocos_sitelinks))
+    if ocr_estr.get("cta"):
+        _cta_icone_html = _icone_cta_google_ads(ocr_estr["cta"], ocr_estr.get("cta_subtitulo") or "")
+        _campos.append(
+            '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2;'
+            'display:flex;align-items:flex-start">'
+            + _cta_icone_html
+            + '<div>'
+            f'<div style="font-size:12px;font-weight:700;color:#111827">{_escapar_html_ocr_preview(ocr_estr["cta"])}</div>'
+            + (
+                f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr_preview(ocr_estr["cta_subtitulo"])}</div>'
+                if ocr_estr.get("cta_subtitulo") else ''
+            )
+            + '</div></div>'
+        )
+    return (
+        '<div style="text-align:left;font-style:normal;color:#374151;'
+        'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
+        '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+        'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
+        'Texto extraído da imagem (OCR)</div>'
+        + "".join(_campos) +
+        '</div>'
+    )
+
+
 def _normalizar_url_exibida(texto: str) -> str:
     """Corrige erros de leitura de caractere (não de espaçamento) que o
     EasyOCR comete com frequência no campo de URL, validados nos testes
@@ -31425,287 +31524,52 @@ html, body { background: transparent; overflow: hidden; }
             unsafe_allow_html=True,
         )
 
-    # ══════════════════════════════════════════════════════════════
-    # SUPORTE — testes rápidos de OCR (1 imagem avulsa, sem fila/banco).
-    # Antes vivia como um único expander dentro de "Notificações e
-    # automações" (só testava anúncio de TEXTO); agora tem sua própria
-    # aba, separada nos 2 tipos reais de criativo do Google Ads — texto
-    # (Rede de Pesquisa, estruturado em título/descrição/CTA/sitelinks
-    # por `_estruturar_anuncio_google_ads`) e gráfico/imagem (Display,
-    # sem esse padrão de bandas, só o texto solto que o OCR encontrar,
-    # se encontrar algum). Os dois aceitam upload OU link da imagem, e
-    # o resultado é mostrado no MESMO formato visual do card real da
-    # aba Google Ads — pra bater o olho e já saber se ficou igual ao
-    # anúncio de verdade, sem precisar comparar o JSON cru linha a
-    # linha.
     with aba_perfil_suporte:
-        st.markdown(
-            "<div style='font-size:16px;color:#4b5563;margin:14px 0 22px 0'>"
-            "Rode o leitor de anúncios do Google Ads numa imagem avulsa e veja "
-            "o resultado na hora — sem mexer em nenhum dado salvo. Útil pra "
-            "confirmar rápido se um ajuste no parser resolveu um caso "
-            "específico."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        def _escapar_html_teste_suporte(s: str) -> str:
-            # Mesma correção/escape usados na renderização real dos
-            # cards de Google Ads (ver `_escapar_html_ocr`, local à
-            # aba de anúncios) — replicado aqui porque aquela função é
-            # aninhada só dentro daquele escopo.
-            s = re.sub(r"(?<=\s)O(?=\s)", "o", s or "")
-            return (
-                s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                 .replace("\n", "<br>")
-            )
-
-        def _imagem_para_data_uri_suporte(img_bytes: bytes) -> str:
-            import base64 as _b64_suporte
-            import imghdr as _imghdr_suporte
-            _tipo = _imghdr_suporte.what(None, h=img_bytes) or "png"
-            _mime = f"image/{'jpeg' if _tipo == 'jpg' else _tipo}"
-            return f"data:{_mime};base64,{_b64_suporte.b64encode(img_bytes).decode('ascii')}"
-
-        def _obter_bytes_imagem_teste_suporte(arquivo_upload, url_imagem: str):
-            """Devolve (bytes_da_imagem, mensagem_erro) — prioriza o
-            arquivo enviado via upload; só baixa o link se não houver
-            upload. Mesma validação/timeout usados em
-            `_baixar_imagem_cv2` no resto do app."""
-            if arquivo_upload is not None:
-                return arquivo_upload.getvalue(), None
-            _url = (url_imagem or "").strip()
-            if not _url:
-                return None, "Suba uma imagem ou cole o link de uma imagem."
-            if not _url.lower().startswith(("http://", "https://")):
-                return None, "O link precisa começar com http:// ou https://"
-            try:
-                _r_suporte = requests.get(_url, timeout=20)
-                _r_suporte.raise_for_status()
-                return _r_suporte.content, None
-            except Exception as _e_download_suporte:
-                return None, f"Não consegui baixar essa imagem: {_e_download_suporte!r}"
-
-        _CSS_PREVIEW_GADS_SUPORTE = """
-            <style>
-            .gads-preview-card {
-                background:#fff;border:1px solid #e5e7eb;border-radius:12px;
-                overflow:hidden;max-width:380px;margin:0 auto;
-                box-shadow:0 1px 4px rgba(0,0,0,0.08);
-                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-            }
-            .gads-preview-media {
-                width:100%;max-height:260px;background:#f3f4f6;
-                display:flex;align-items:center;justify-content:center;overflow:hidden;
-            }
-            .gads-preview-media img { width:100%; height:auto; display:block; }
-            .gads-preview-copy { padding:14px 16px 16px; }
-            </style>
-        """
-
-        def _renderizar_preview_card_gads_suporte(img_data_uri: str, corpo_html: str) -> str:
-            # Mesmo layout visual do card real da aba Google Ads
-            # (media-block + copy-section, ver `card_html`/`media_block`
-            # naquela aba), só que isolado com estilo próprio
-            # (`.gads-preview-*`) pra não depender do CSS que só existe
-            # dentro do iframe da página de anúncios.
-            return (
-                _CSS_PREVIEW_GADS_SUPORTE
-                + '<div class="gads-preview-card">'
-                + f'<div class="gads-preview-media"><img src="{img_data_uri}" /></div>'
-                + f'<div class="gads-preview-copy">{corpo_html}</div>'
-                + "</div>"
-            )
-
-        aba_sup_texto, aba_sup_grafico = st.tabs(
-            ["📝 Anúncio em texto", "🖼️ Anúncio gráfico"]
-        )
-
-        # -------------------------------------------------------
-        # Anúncio EM TEXTO (Rede de Pesquisa) — roda
-        # `_estruturar_anuncio_google_ads` e mostra título, descrição,
-        # URL, CTA e sitelinks no mesmo formato do card real.
-        # -------------------------------------------------------
-        with aba_sup_texto:
+        # ══════════════════════════════════════════════════════════════
+        # Teste rápido de OCR (1 imagem, sem fila/banco) — pra depurar o
+        # parser sem precisar esperar o "Reprocessar tudo do zero" (que
+        # processa a empresa inteira e pode levar minutos). Sobe um
+        # print do anúncio, roda `_estruturar_anuncio_google_ads` na
+        # hora e mostra o resultado bruto — dá o mesmo retorno que ia
+        # pro banco, só que instantâneo e sem afetar nenhum dado real.
+        with st.expander("🧪 Testar OCR com uma imagem avulsa (debug)"):
             st.caption(
-                "Base: anúncio de texto do Google Ads (Rede de Pesquisa) — "
-                "título, descrição, URL, CTA e sitelinks, extraídos por cor "
-                "das bandas da imagem."
+                "Sobe um print do anúncio (Google Ads) e roda o leitor na hora, "
+                "mostrando o resultado bruto — título, descrição, CTA, sitelinks — "
+                "sem mexer em nenhum dado salvo. Útil pra confirmar rápido se um "
+                "ajuste no parser resolveu um caso específico."
             )
-            _arquivo_sup_texto = st.file_uploader(
+            _arquivo_teste_ocr = st.file_uploader(
                 "Imagem do anúncio",
                 type=["png", "jpg", "jpeg", "webp"],
-                key="_uploader_suporte_gads_texto",
+                key="_uploader_teste_ocr_avulso",
             )
-            _url_sup_texto = st.text_input(
-                "Ou cole o link da imagem",
-                key="_input_url_suporte_gads_texto",
-                placeholder="https://...",
-            )
-            if st.button("Rodar teste nesse anúncio de texto", key="_btn_suporte_gads_texto"):
-                _bytes_sup_texto, _erro_sup_texto = _obter_bytes_imagem_teste_suporte(
-                    _arquivo_sup_texto, _url_sup_texto
-                )
-                if _erro_sup_texto:
-                    st.warning(_erro_sup_texto)
-                else:
-                    with st.spinner("Lendo a imagem…"):
-                        try:
-                            import numpy as _np_sup_texto
-                            import cv2 as _cv2_sup_texto
-                            _arr_sup_texto = _np_sup_texto.frombuffer(_bytes_sup_texto, dtype=_np_sup_texto.uint8)
-                            _img_bgr_sup_texto = _cv2_sup_texto.imdecode(_arr_sup_texto, _cv2_sup_texto.IMREAD_COLOR)
-                            if _img_bgr_sup_texto is None:
-                                st.error("Não consegui decodificar essa imagem.")
+            if _arquivo_teste_ocr is not None and st.button(
+                "Rodar OCR nessa imagem", key="_btn_rodar_ocr_avulso"
+            ):
+                with st.spinner("Lendo a imagem…"):
+                    try:
+                        import numpy as _np_teste_ocr
+                        import cv2 as _cv2_teste_ocr
+                        _bytes_img = _arquivo_teste_ocr.getvalue()
+                        _arr_teste = _np_teste_ocr.frombuffer(_bytes_img, dtype=_np_teste_ocr.uint8)
+                        _img_bgr_teste = _cv2_teste_ocr.imdecode(_arr_teste, _cv2_teste_ocr.IMREAD_COLOR)
+                        if _img_bgr_teste is None:
+                            st.error("Não consegui decodificar essa imagem.")
+                        else:
+                            _reader_teste = _get_easyocr()
+                            _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
+                            st.success("OCR rodado com sucesso — resultado abaixo:")
+                            st.markdown("**Prévia (como aparece no card do Google Ads)**")
+                            _html_preview_teste_ocr = _montar_html_preview_ocr_estruturado(_resultado_teste)
+                            if _html_preview_teste_ocr:
+                                st.markdown(_html_preview_teste_ocr, unsafe_allow_html=True)
                             else:
-                                _reader_sup_texto = _get_easyocr()
-                                _resultado_sup_texto = _estruturar_anuncio_google_ads(
-                                    _img_bgr_sup_texto, _reader_sup_texto
-                                )
-                                if not _resultado_sup_texto or not (
-                                    _resultado_sup_texto.get("titulo") or _resultado_sup_texto.get("descricao")
-                                ):
-                                    st.warning(
-                                        "Essa imagem não pareceu ter o padrão de bandas de um "
-                                        "anúncio de texto (título/descrição não detectados) — "
-                                        "tenta testar como anúncio gráfico."
-                                    )
-                                else:
-                                    st.success("OCR rodado com sucesso — prévia no formato do anúncio abaixo:")
-                                    _campos_sup_texto = []
-                                    if _resultado_sup_texto.get("url_exibida"):
-                                        _linhas_url_sup = _resultado_sup_texto["url_exibida"].split("\n")
-                                        if _linhas_url_sup and not _REGEX_FORMATO_DOMINIO.match(_linhas_url_sup[0]):
-                                            _nome_pagina_sup = _linhas_url_sup[0].rstrip("/")
-                                            _resto_url_sup = "\n".join(_linhas_url_sup[1:])
-                                        else:
-                                            _nome_pagina_sup = ""
-                                            _resto_url_sup = _resultado_sup_texto["url_exibida"]
-                                        _coluna_texto_sup = (
-                                            (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_teste_suporte(_nome_pagina_sup)}</div>' if _nome_pagina_sup else '')
-                                            + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_teste_suporte(_resto_url_sup)}</div>' if _resto_url_sup else '')
-                                        )
-                                        _campos_sup_texto.append(
-                                            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-                                            + _SVG_ICONE_GLOBO_SITE
-                                            + f'<div>{_coluna_texto_sup}</div>'
-                                            + '</div>'
-                                        )
-                                    if _resultado_sup_texto.get("titulo"):
-                                        _campos_sup_texto.append(
-                                            f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_teste_suporte(_resultado_sup_texto["titulo"])}</div>'
-                                        )
-                                    if _resultado_sup_texto.get("descricao"):
-                                        _campos_sup_texto.append(
-                                            f'<div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">{_escapar_html_teste_suporte(_resultado_sup_texto["descricao"])}</div>'
-                                        )
-                                    if _resultado_sup_texto.get("sitelinks"):
-                                        _blocos_sl_sup = []
-                                        for _sl_sup in _resultado_sup_texto["sitelinks"]:
-                                            _sl_titulo_sup = (_sl_sup or {}).get("titulo") or ""
-                                            _sl_desc_sup = (_sl_sup or {}).get("descricao") or ""
-                                            if not _sl_titulo_sup:
-                                                continue
-                                            _blocos_sl_sup.append(
-                                                '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
-                                                f'<div style="font-size:12px;font-weight:700;color:#3a9fd6">{_escapar_html_teste_suporte(_sl_titulo_sup)}</div>'
-                                                + (f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_teste_suporte(_sl_desc_sup)}</div>' if _sl_desc_sup else '')
-                                                + '</div>'
-                                            )
-                                        _campos_sup_texto.append("".join(_blocos_sl_sup))
-                                    if _resultado_sup_texto.get("cta"):
-                                        _cta_icone_sup = _icone_cta_google_ads(
-                                            _resultado_sup_texto["cta"], _resultado_sup_texto.get("cta_subtitulo") or ""
-                                        )
-                                        _campos_sup_texto.append(
-                                            '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2;'
-                                            'display:flex;align-items:flex-start">'
-                                            + _cta_icone_sup
-                                            + '<div>'
-                                            f'<div style="font-size:12px;font-weight:700;color:#111827">{_escapar_html_teste_suporte(_resultado_sup_texto["cta"])}</div>'
-                                            + (
-                                                f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_teste_suporte(_resultado_sup_texto["cta_subtitulo"])}</div>'
-                                                if _resultado_sup_texto.get("cta_subtitulo") else ''
-                                            )
-                                            + '</div></div>'
-                                        )
-                                    _data_uri_sup_texto = _imagem_para_data_uri_suporte(_bytes_sup_texto)
-                                    st.markdown(
-                                        _renderizar_preview_card_gads_suporte(
-                                            _data_uri_sup_texto, "".join(_campos_sup_texto)
-                                        ),
-                                        unsafe_allow_html=True,
-                                    )
-                                with st.expander("Ver JSON bruto"):
-                                    st.json(_resultado_sup_texto)
-                        except Exception as _e_sup_texto:
-                            st.error(f"Deu erro rodando o OCR: {_e_sup_texto!r}")
-
-        # -------------------------------------------------------
-        # Anúncio GRÁFICO (Display/imagem) — sem o padrão de bandas do
-        # anúncio de texto, então só roda o OCR bruto (mesmo fallback
-        # usado em produção quando `_estruturar_anuncio_google_ads`
-        # devolve None) e mostra a imagem + o texto solto encontrado,
-        # se encontrado algum.
-        # -------------------------------------------------------
-        with aba_sup_grafico:
-            st.caption(
-                "Base: anúncio gráfico/imagem do Google Ads (Display) — sem "
-                "título/descrição estruturados, só o texto solto que o OCR "
-                "encontrar na peça (se encontrar algum)."
-            )
-            _arquivo_sup_grafico = st.file_uploader(
-                "Imagem do anúncio",
-                type=["png", "jpg", "jpeg", "webp"],
-                key="_uploader_suporte_gads_grafico",
-            )
-            _url_sup_grafico = st.text_input(
-                "Ou cole o link da imagem",
-                key="_input_url_suporte_gads_grafico",
-                placeholder="https://...",
-            )
-            if st.button("Rodar teste nesse anúncio gráfico", key="_btn_suporte_gads_grafico"):
-                _bytes_sup_grafico, _erro_sup_grafico = _obter_bytes_imagem_teste_suporte(
-                    _arquivo_sup_grafico, _url_sup_grafico
-                )
-                if _erro_sup_grafico:
-                    st.warning(_erro_sup_grafico)
-                else:
-                    with st.spinner("Lendo a imagem…"):
-                        try:
-                            import numpy as _np_sup_grafico
-                            import cv2 as _cv2_sup_grafico
-                            _arr_sup_grafico = _np_sup_grafico.frombuffer(_bytes_sup_grafico, dtype=_np_sup_grafico.uint8)
-                            _img_bgr_sup_grafico = _cv2_sup_grafico.imdecode(_arr_sup_grafico, _cv2_sup_grafico.IMREAD_COLOR)
-                            if _img_bgr_sup_grafico is None:
-                                st.error("Não consegui decodificar essa imagem.")
-                            else:
-                                _reader_sup_grafico = _get_easyocr()
-                                _texto_bruto_sup_grafico = _ocr_texto_bruto(_img_bgr_sup_grafico, _reader_sup_grafico)
-                                st.success("OCR rodado com sucesso — prévia no formato do anúncio abaixo:")
-                                if _texto_bruto_sup_grafico.strip():
-                                    _corpo_sup_grafico = (
-                                        '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
-                                        'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
-                                        'Texto extraído da imagem (OCR)</div>'
-                                        f'<div style="font-size:11.5px;color:#6b7280">{_escapar_html_teste_suporte(_texto_bruto_sup_grafico)}</div>'
-                                    )
-                                else:
-                                    _corpo_sup_grafico = (
-                                        '<div style="font-size:12px;color:#bcc0c4;font-style:italic">'
-                                        'Nenhum texto encontrado nessa imagem.</div>'
-                                    )
-                                _data_uri_sup_grafico = _imagem_para_data_uri_suporte(_bytes_sup_grafico)
-                                st.markdown(
-                                    _renderizar_preview_card_gads_suporte(
-                                        _data_uri_sup_grafico, _corpo_sup_grafico
-                                    ),
-                                    unsafe_allow_html=True,
-                                )
-                                with st.expander("Ver texto bruto completo"):
-                                    st.code(_texto_bruto_sup_grafico or "(vazio)")
-                        except Exception as _e_sup_grafico:
-                            st.error(f"Deu erro rodando o OCR: {_e_sup_grafico!r}")
+                                st.caption("Nenhum campo reconhecido pra montar a prévia.")
+                            st.markdown("**Resultado bruto**")
+                            st.json(_resultado_teste)
+                    except Exception as _e_teste_ocr:
+                        st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
 
 
 

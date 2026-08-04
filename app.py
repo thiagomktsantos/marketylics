@@ -16547,8 +16547,8 @@ function triggerTab(label) {{
                             <input
                                 id="cfg_input_{ci}"
                                 type="text"
-                                value="{ads_id}"
-                                placeholder="Ex: Educbank  ou  106889667774994"
+                                value="{ads_id if has_id else e['nome']}"
+                                placeholder="Ex: {e['nome']}  ou  106889667774994"
                                 style="width:100%;height:42px;border:1.5px solid #e5e7eb;
                                        border-radius:8px;padding:0 14px;font-size:14px;
                                        font-family:'DM Sans',sans-serif;color:#111827;

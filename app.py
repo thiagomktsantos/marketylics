@@ -14858,10 +14858,17 @@ elif st.session_state.pagina == "ads":
         import urllib.parse
         search_term_stripped = search_term.strip()
 
+        # country=ALL (em vez de BR fixo): páginas como a TicketSwap rodam
+        # anúncios com contas separadas por país (Suécia, Dinamarca,
+        # Bélgica, Austrália...) e podem não ter nenhum anúncio ativo
+        # catalogado especificamente sob "Brasil" — com country=BR fixo, a
+        # busca simplesmente não encontrava a página (mesmo ela tendo conta
+        # de anúncios de verdade) e caía num resultado qualquer sem relação.
+        # country=ALL busca a página não importa em qual país ela anuncia.
         if search_term_stripped.isdigit():
             ad_library_url = (
                 f"https://www.facebook.com/ads/library/"
-                f"?active_status=active&ad_type=all&country=BR"
+                f"?active_status=active&ad_type=all&country=ALL"
                 f"&is_targeted_country=false&media_type=all"
                 f"&search_type=page&sort_data[direction]=desc"
                 f"&sort_data[mode]=total_impressions"
@@ -14871,7 +14878,7 @@ elif st.session_state.pagina == "ads":
             query_encoded = urllib.parse.quote(search_term_stripped)
             ad_library_url = (
                 f"https://www.facebook.com/ads/library/"
-                f"?active_status=active&ad_type=all&country=BR"
+                f"?active_status=active&ad_type=all&country=ALL"
                 f"&is_targeted_country=false&media_type=all"
                 f"&search_type=page&sort_data[direction]=desc"
                 f"&sort_data[mode]=total_impressions"
@@ -14883,7 +14890,7 @@ elif st.session_state.pagina == "ads":
             "count": limit,
             "scrapeAdDetails": False,
             "scrapePageAds.activeStatus": "active",
-            "scrapePageAds.countryCode": "BR",
+            "scrapePageAds.countryCode": "ALL",
             "scrapePageAds.sortBy": "impressions_desc",
         }
 
@@ -17184,9 +17191,9 @@ Amostra dos anúncios:
 
             import urllib.parse as _urlparse
             if configured_page and configured_page.isdigit():
-                lib_url = (f"https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id={configured_page}")
+                lib_url = (f"https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=ALL&is_targeted_country=false&media_type=all&search_type=page&sort_data[direction]=desc&sort_data[mode]=total_impressions&view_all_page_id={configured_page}")
             elif query:
-                lib_url = (f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BR&q={_urlparse.quote(query)}")
+                lib_url = (f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={_urlparse.quote(query)}")
             else:
                 lib_url = ""
 

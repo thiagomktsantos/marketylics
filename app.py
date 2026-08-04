@@ -31532,12 +31532,33 @@ html, body { background: transparent; overflow: hidden; }
         # print do anúncio, roda `_estruturar_anuncio_google_ads` na
         # hora e mostra o resultado bruto — dá o mesmo retorno que ia
         # pro banco, só que instantâneo e sem afetar nenhum dado real.
-        with st.expander("🧪 Testar OCR com uma imagem avulsa (debug)"):
+        with st.expander(
+            "🧪 Testar OCR com uma imagem avulsa (debug)",
+            expanded=st.session_state.get("_expander_teste_ocr_aberto", False),
+        ):
             st.caption(
                 "Sobe um print do anúncio (Google Ads) e roda o leitor na hora, "
-                "mostrando o resultado bruto — título, descrição, CTA, sitelinks — "
-                "sem mexer em nenhum dado salvo. Útil pra confirmar rápido se um "
+                "mostrando o resultado — título, descrição, CTA, sitelinks — com "
+                "a MESMA formatação usada no card da página do Google Ads, sem "
+                "mexer em nenhum dado salvo. Útil pra confirmar rápido se um "
                 "ajuste no parser resolveu um caso específico."
+            )
+            _tipo_teste_ocr = st.radio(
+                "Tipo do anúncio",
+                options=["texto", "grafico"],
+                format_func=lambda v: (
+                    "Texto (Rede de Pesquisa)" if v == "texto" else "Gráfico (Display/imagem)"
+                ),
+                horizontal=True,
+                key="_radio_tipo_teste_ocr_avulso",
+                help=(
+                    "Anúncio de texto: título/descrição/URL/CTA são separados por "
+                    "cor (heurística de `_estruturar_anuncio_google_ads`), igual "
+                    "aos anúncios da Rede de Pesquisa. Anúncio gráfico: o texto "
+                    "está \"dentro\" de uma imagem/banner e não segue esse padrão "
+                    "de cores — nesse caso a página real cai no texto corrido "
+                    "bruto, então o teste já roda direto esse caminho."
+                ),
             )
             _arquivo_teste_ocr = st.file_uploader(
                 "Imagem do anúncio",
@@ -31547,6 +31568,12 @@ html, body { background: transparent; overflow: hidden; }
             if _arquivo_teste_ocr is not None and st.button(
                 "Rodar OCR nessa imagem", key="_btn_rodar_ocr_avulso"
             ):
+                # Mantém o expander aberto na próxima rerodada (o clique no
+                # botão acima já dispara uma rerun do Streamlit, que por
+                # padrão fecha o expander de novo — sem isso o resultado é
+                # renderizado mas fica escondido, dando a impressão de que
+                # "não apareceu nada").
+                st.session_state["_expander_teste_ocr_aberto"] = True
                 with st.spinner("Lendo a imagem…"):
                     try:
                         import numpy as _np_teste_ocr
@@ -31558,16 +31585,56 @@ html, body { background: transparent; overflow: hidden; }
                             st.error("Não consegui decodificar essa imagem.")
                         else:
                             _reader_teste = _get_easyocr()
-                            _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
                             st.success("OCR rodado com sucesso — resultado abaixo:")
                             st.markdown("**Prévia (como aparece no card do Google Ads)**")
-                            _html_preview_teste_ocr = _montar_html_preview_ocr_estruturado(_resultado_teste)
-                            if _html_preview_teste_ocr:
-                                st.markdown(_html_preview_teste_ocr, unsafe_allow_html=True)
+                            if _tipo_teste_ocr == "texto":
+                                # Mesmo caminho de `_extrair_ocr_estruturado_imagem`:
+                                # tenta estruturar por cor e, se não reconhecer
+                                # nada de verdade, cai no texto bruto — igual à
+                                # página real faria com essa mesma imagem.
+                                _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
+                                if _resultado_teste and _ocr_estruturado_tem_conteudo(_resultado_teste):
+                                    _html_preview_teste_ocr = _montar_html_preview_ocr_estruturado(_resultado_teste)
+                                    st.markdown(_html_preview_teste_ocr, unsafe_allow_html=True)
+                                    st.markdown("**Resultado bruto**")
+                                    st.json(_resultado_teste)
+                                else:
+                                    st.warning(
+                                        "Não reconheceu o padrão de anúncio de texto nessa "
+                                        "imagem — na página real isso cairia no texto bruto "
+                                        "(mesmo resultado de escolher \"Gráfico\" aqui)."
+                                    )
+                                    _texto_bruto_teste = _ocr_texto_bruto(_img_bgr_teste, _reader_teste)
+                                    _html_bruto_teste = (
+                                        '<div style="text-align:left;font-style:normal;color:#374151;'
+                                        'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
+                                        '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                        'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
+                                        'Texto extraído da imagem (OCR)</div>'
+                                        f'{_escapar_html_ocr_preview(_texto_bruto_teste) or "<i>Nenhum texto legível encontrado.</i>"}'
+                                        '</div>'
+                                    )
+                                    st.markdown(_html_bruto_teste, unsafe_allow_html=True)
+                                    st.markdown("**Resultado bruto**")
+                                    st.json(_resultado_teste)
                             else:
-                                st.caption("Nenhum campo reconhecido pra montar a prévia.")
-                            st.markdown("**Resultado bruto**")
-                            st.json(_resultado_teste)
+                                # Anúncio gráfico: mesma lógica do fallback usado
+                                # em produção — texto corrido, sem tentar separar
+                                # título/descrição/CTA (`elif _ocr_txt_ad` na
+                                # página "google_ads").
+                                _texto_bruto_teste = _ocr_texto_bruto(_img_bgr_teste, _reader_teste)
+                                _html_bruto_teste = (
+                                    '<div style="text-align:left;font-style:normal;color:#374151;'
+                                    'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
+                                    '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                    'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
+                                    'Texto extraído da imagem (OCR)</div>'
+                                    f'{_escapar_html_ocr_preview(_texto_bruto_teste) or "<i>Nenhum texto legível encontrado.</i>"}'
+                                    '</div>'
+                                )
+                                st.markdown(_html_bruto_teste, unsafe_allow_html=True)
+                                st.markdown("**Resultado bruto**")
+                                st.json({"ocr_texto": _texto_bruto_teste})
                     except Exception as _e_teste_ocr:
                         st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
 

@@ -31574,18 +31574,57 @@ html, body { background: transparent; overflow: hidden; }
                 # renderizado mas fica escondido, dando a impressão de que
                 # "não apareceu nada").
                 st.session_state["_expander_teste_ocr_aberto"] = True
-                with st.spinner("Lendo a imagem…"):
+                import time as _time_teste_ocr
+                _t0_teste_ocr = _time_teste_ocr.time()
+                with st.status(
+                    "Iniciando teste de OCR…", expanded=True
+                ) as _status_teste_ocr:
                     try:
+                        st.write("📥 Lendo os bytes da imagem enviada…")
                         import numpy as _np_teste_ocr
                         import cv2 as _cv2_teste_ocr
                         _bytes_img = _arquivo_teste_ocr.getvalue()
                         _arr_teste = _np_teste_ocr.frombuffer(_bytes_img, dtype=_np_teste_ocr.uint8)
                         _img_bgr_teste = _cv2_teste_ocr.imdecode(_arr_teste, _cv2_teste_ocr.IMREAD_COLOR)
                         if _img_bgr_teste is None:
+                            _status_teste_ocr.update(
+                                label="❌ Erro: imagem inválida", state="error"
+                            )
                             st.error("Não consegui decodificar essa imagem.")
                         else:
+                            st.write(
+                                f"✅ Imagem decodificada "
+                                f"({_img_bgr_teste.shape[1]}×{_img_bgr_teste.shape[0]}px)."
+                            )
+
+                            # Só existe download pesado se o motor ainda não foi
+                            # carregado neste processo (1ª chamada depois de um
+                            # deploy/restart do Streamlit Cloud, que apaga o cache
+                            # de modelo do EasyOCR). Diferenciar isso no log visual
+                            # é o que permite saber se "travou" baixando modelo ou
+                            # rodando a leitura em si.
+                            _ja_carregado_teste_ocr = _easyocr_instancia[0] is not None
+                            if _ja_carregado_teste_ocr:
+                                st.write("🧠 Motor de OCR já estava carregado — reaproveitando.")
+                            else:
+                                st.write(
+                                    "⏳ Motor de OCR ainda não carregado neste processo. "
+                                    "Baixando/carregando modelo agora — **pode levar "
+                                    "vários minutos** na primeira execução após um "
+                                    "deploy/restart (o Streamlit Cloud não guarda esse "
+                                    "cache entre restarts). Se parecer travado, é aqui."
+                                )
+                            _t_load0_teste_ocr = _time_teste_ocr.time()
                             _reader_teste = _get_easyocr()
-                            st.success("OCR rodado com sucesso — resultado abaixo:")
+                            _t_load1_teste_ocr = _time_teste_ocr.time()
+                            if not _ja_carregado_teste_ocr:
+                                st.write(
+                                    f"✅ Modelo carregado em "
+                                    f"{_t_load1_teste_ocr - _t_load0_teste_ocr:.1f}s."
+                                )
+
+                            st.write("🔎 Rodando a leitura da imagem (inferência do OCR)…")
+                            _t_infer0_teste_ocr = _time_teste_ocr.time()
                             st.markdown("**Prévia (como aparece no card do Google Ads)**")
                             if _tipo_teste_ocr == "texto":
                                 # Mesmo caminho de `_extrair_ocr_estruturado_imagem`:
@@ -31593,6 +31632,12 @@ html, body { background: transparent; overflow: hidden; }
                                 # nada de verdade, cai no texto bruto — igual à
                                 # página real faria com essa mesma imagem.
                                 _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
+                                _t_infer1_teste_ocr = _time_teste_ocr.time()
+                                st.write(
+                                    f"✅ Leitura concluída em "
+                                    f"{_t_infer1_teste_ocr - _t_infer0_teste_ocr:.1f}s. "
+                                    "Montando prévia…"
+                                )
                                 if _resultado_teste and _ocr_estruturado_tem_conteudo(_resultado_teste):
                                     _html_preview_teste_ocr = _montar_html_preview_ocr_estruturado(_resultado_teste)
                                     st.markdown(_html_preview_teste_ocr, unsafe_allow_html=True)
@@ -31623,6 +31668,11 @@ html, body { background: transparent; overflow: hidden; }
                                 # título/descrição/CTA (`elif _ocr_txt_ad` na
                                 # página "google_ads").
                                 _texto_bruto_teste = _ocr_texto_bruto(_img_bgr_teste, _reader_teste)
+                                _t_infer1_teste_ocr = _time_teste_ocr.time()
+                                st.write(
+                                    f"✅ Leitura concluída em "
+                                    f"{_t_infer1_teste_ocr - _t_infer0_teste_ocr:.1f}s."
+                                )
                                 _html_bruto_teste = (
                                     '<div style="text-align:left;font-style:normal;color:#374151;'
                                     'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
@@ -31635,8 +31685,25 @@ html, body { background: transparent; overflow: hidden; }
                                 st.markdown(_html_bruto_teste, unsafe_allow_html=True)
                                 st.markdown("**Resultado bruto**")
                                 st.json({"ocr_texto": _texto_bruto_teste})
+
+                            _status_teste_ocr.update(
+                                label=(
+                                    f"✅ Concluído em "
+                                    f"{_time_teste_ocr.time() - _t0_teste_ocr:.1f}s"
+                                ),
+                                state="complete",
+                            )
                     except Exception as _e_teste_ocr:
+                        _status_teste_ocr.update(
+                            label=(
+                                f"❌ Erro após "
+                                f"{_time_teste_ocr.time() - _t0_teste_ocr:.1f}s"
+                            ),
+                            state="error",
+                        )
                         st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
+                        import traceback as _tb_teste_ocr
+                        st.code(_tb_teste_ocr.format_exc(), language="text")
 
 
 

@@ -31576,6 +31576,7 @@ html, body { background: transparent; overflow: hidden; }
                 st.session_state["_expander_teste_ocr_aberto"] = True
                 import time as _time_teste_ocr
                 _t0_teste_ocr = _time_teste_ocr.time()
+                _ocr_banda_original_teste = None  # restaurado no finally, se o monkeypatch entrar em ação
                 with st.status(
                     "Iniciando teste de OCR…", expanded=True
                 ) as _status_teste_ocr:
@@ -31626,6 +31627,37 @@ html, body { background: transparent; overflow: hidden; }
                             st.write("🔎 Rodando a leitura da imagem (inferência do OCR)…")
                             _t_infer0_teste_ocr = _time_teste_ocr.time()
                             st.markdown("**Prévia (como aparece no card do Google Ads)**")
+
+                            # Monkeypatch temporário SÓ dentro deste bloco de teste:
+                            # `_estruturar_anuncio_google_ads` chama `_ocr_banda` várias
+                            # vezes (uma por título/descrição/sitelink detectado), cada
+                            # chamada roda detecção+reconhecimento do zero — é aqui que
+                            # o tempo/memória realmente se acumulam. Envolvendo a função
+                            # global (restaurando no finally) a gente consegue logar
+                            # banda por banda sem tocar no caminho de produção.
+                            _ocr_banda_original_teste = globals()["_ocr_banda"]
+                            _contador_banda_teste_ocr = [0]
+                            _t_ultima_banda_teste_ocr = [_time_teste_ocr.time()]
+
+                            def _ocr_banda_instrumentada_teste(*_args_banda, **_kwargs_banda):
+                                _contador_banda_teste_ocr[0] += 1
+                                _n_teste = _contador_banda_teste_ocr[0]
+                                _t_ini_banda = _time_teste_ocr.time()
+                                st.write(f"  ↳ lendo banda #{_n_teste}…")
+                                try:
+                                    _res_banda = _ocr_banda_original_teste(*_args_banda, **_kwargs_banda)
+                                except Exception:
+                                    st.write(f"  ↳ ❌ banda #{_n_teste} explodiu — veja o erro abaixo.")
+                                    raise
+                                _dt_banda = _time_teste_ocr.time() - _t_ini_banda
+                                st.write(
+                                    f"  ↳ ✅ banda #{_n_teste} lida em {_dt_banda:.1f}s "
+                                    f"→ {_res_banda.strip()[:60]!r}"
+                                )
+                                _t_ultima_banda_teste_ocr[0] = _time_teste_ocr.time()
+                                return _res_banda
+
+                            globals()["_ocr_banda"] = _ocr_banda_instrumentada_teste
                             if _tipo_teste_ocr == "texto":
                                 # Mesmo caminho de `_extrair_ocr_estruturado_imagem`:
                                 # tenta estruturar por cor e, se não reconhecer
@@ -31704,6 +31736,13 @@ html, body { background: transparent; overflow: hidden; }
                         st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
                         import traceback as _tb_teste_ocr
                         st.code(_tb_teste_ocr.format_exc(), language="text")
+                    finally:
+                        # Sempre desfaz o monkeypatch de `_ocr_banda`, mesmo se
+                        # algo explodir no meio — sem isso, o resto do app
+                        # continuaria usando a versão instrumentada (que só
+                        # deveria existir durante este teste avulso).
+                        if _ocr_banda_original_teste is not None:
+                            globals()["_ocr_banda"] = _ocr_banda_original_teste
 
 
 

@@ -2747,9 +2747,41 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # SUBTÍTULO do CTA (ex: "pelo app WhatsApp"), não como mais uma
     # linha de descrição do sitelink anterior.
     _cta_aberto = False
+    # Altura TÍPICA de uma linha de texto normal deste mesmo anúncio
+    # (mediana das alturas de todas as bandas — robusta a um único
+    # outlier). Usada logo abaixo como referência pra detectar bandas
+    # anormalmente altas (fileira de botões/pílulas COM BORDA, ex:
+    # "Sobre o isaac" / "Entre Em Contato" / "Saiba mais"): o contorno
+    # arredondado da pílula ocupa bem mais altura (y_max - y_min) do
+    # que só o texto, então `_dividir_banda_em_botoes` usando a altura
+    # da PRÓPRIA banda super-estima o vão mínimo entre botões (a
+    # pílula "empresta" altura, não largura) e a fileira inteira nunca
+    # quebra em blocos separados — cada botão fica em pé de igualdade
+    # com uma quebra de linha de título comum, sem estrutura nenhuma
+    # (ex.: "Sobre o isaac" + "Entre Em Contato" + "Saiba mais" saíam
+    # grudados num texto só, com até um "-" espúrio no meio detectado
+    # pela recuperação de hífen do `_ocr_banda`). Validado em anúncios
+    # reais da isaac.
+    _alturas_bandas_texto = sorted(b["y_max"] - b["y_min"] for b in bandas_texto)
+    _altura_tipica_texto = _alturas_bandas_texto[len(_alturas_bandas_texto) // 2] if _alturas_bandas_texto else None
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
-        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"])
+        _altura_banda_atual = banda["y_max"] - banda["y_min"]
+        _gap_minimo_botoes = None
+        if _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
+            # Banda bem mais alta que uma linha de texto típica deste
+            # anúncio — provável fileira de botões com borda (ver
+            # comentário acima). Troca a referência de altura (que
+            # aqui seria a da PRÓPRIA banda, inflada pela borda) pela
+            # altura típica de uma linha de texto normal, com um fator
+            # menor (0.5x em vez do 0.9x padrão): a borda da pílula
+            # garante que colunas DENTRO de um mesmo botão nunca ficam
+            # com vão em branco (a borda "costura" as letras de ponta
+            # a ponta), então um vão mínimo baixo aqui é seguro — só o
+            # vão de verdade ENTRE dois botões distintos consegue
+            # ultrapassá-lo.
+            _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
+        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
         # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
         # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como

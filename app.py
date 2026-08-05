@@ -7253,6 +7253,40 @@ def _get_usuarios_retry_migracao_ativo() -> set:
 
 _usuarios_retry_migracao_ativo = _get_usuarios_retry_migracao_ativo()
 
+# ---------------------------------------------------
+#  BUSCA DE ANUNCIANTES (Google Ads Transparency) EM BACKGROUND
+# ---------------------------------------------------
+# Registry de jobs de busca por job_id, seguindo o mesmo raciocínio do
+# singleton acima (_get_usuarios_retry_migracao_ativo): precisa ser um
+# `st.cache_resource` — não um dict de módulo comum — pra sobreviver aos
+# reruns do Streamlit e ficar visível tanto pro script principal quanto
+# pra thread de fundo que o preenche.
+#
+# Por que um registry em memória (em vez de reaproveitar a tabela
+# `atividades`, usada por migracao_midia/transcricao_video/ocr_gads): essa
+# busca é rápida (segundos a ~1-2min), por empresa, e é só um passo do
+# onboarding — não faz sentido virar um item persistente no sino de
+# notificações nem sobreviver a um restart do processo. O que ela
+# precisa mesmo é só o "buscar em background e ler o status depois" que
+# esses jobs de mídia já resolvem com `atividades`; aqui ela ganha o
+# equivalente mínimo disso.
+_lock_gads_onboarding_jobs = threading.Lock()
+
+@st.cache_resource
+def _get_gads_onboarding_jobs() -> dict:
+    return {}
+
+_gads_onboarding_jobs = _get_gads_onboarding_jobs()
+
+def _gads_onboarding_job_set(job_id: str, **campos):
+    with _lock_gads_onboarding_jobs:
+        job = _gads_onboarding_jobs.setdefault(job_id, {})
+        job.update(campos)
+
+def _gads_onboarding_job_get(job_id: str) -> dict:
+    with _lock_gads_onboarding_jobs:
+        return dict(_gads_onboarding_jobs.get(job_id, {}))
+
 def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     """Varre as migrações de mídia em aberto do usuário e refaz
     automaticamente TODAS as que estiverem travadas (ver
@@ -19840,6 +19874,7 @@ elif st.session_state.pagina == "google_ads":
     import json as _json
     import base64 as _b64
     import time as _time
+    import uuid as _uuid
 
     emp   = st.session_state.dados["minha_empresa"]
     concs = st.session_state.dados["concorrentes"]
@@ -21061,6 +21096,16 @@ elif st.session_state.pagina == "google_ads":
         # que a zeraria é a de DEPOIS da chamada bloqueante ao Apify, que
         # nunca chega a rodar se o script for interrompido antes.
         st.session_state.gads_onboarding_buscando_inicio = None
+    if "gads_onboarding_job_id" not in st.session_state:
+        # id do job de busca em background (ver _gads_onboarding_iniciar
+        # mais abaixo). Substitui o antigo esquema de "chamada bloqueante
+        # + flag `gads_onboarding_buscando` + watchdog de 240s": agora o
+        # clique em "Buscar anunciantes" só dispara uma thread e guarda o
+        # id aqui; cada rerun (incluindo o polling de 12s do sino) lê o
+        # status desse job em memória — nunca fica esperando a chamada ao
+        # Apify terminar dentro do mesmo script run, então não existe mais
+        # a corrida onde um rerun de fundo lê estado "no meio do caminho".
+        st.session_state.gads_onboarding_job_id = None
     if "gads_onboarding_termo" not in st.session_state:
         st.session_state.gads_onboarding_termo = ""
     if "gads_editando_empresa" not in st.session_state:
@@ -21223,6 +21268,49 @@ elif st.session_state.pagina == "google_ads":
 
         print(f"[GADS-BUSCA-DEBUG] todas as ondas esgotadas sem resultado (houve_timeout={houve_timeout})", flush=True)
         return [], houve_timeout
+
+    def _gads_onboarding_worker(job_id: str, termo: str):
+        # Roda em thread separada, fora do script run do Streamlit — por
+        # isso só grava no registry em memória (_gads_onboarding_job_set),
+        # nunca em st.session_state diretamente (session_state pertence
+        # ao script run que o criou; escrever nele de outra thread não é
+        # seguro nem é lido de volta com garantia). Quem lê esse
+        # resultado é sempre o script principal, no próximo rerun, via
+        # _gads_onboarding_job_get — inclusive o rerun disparado pelo
+        # polling de 12s do sino, que agora só faz uma leitura barata em
+        # memória em vez de esperar a chamada ao Apify terminar.
+        try:
+            paginas, houve_timeout = buscar_anunciantes_google(termo)
+            _gads_onboarding_job_set(
+                job_id,
+                status="concluido",
+                paginas=paginas,
+                timeout=houve_timeout,
+                terminado_em=_time.time(),
+            )
+        except Exception as e:
+            print(f"[GADS-BUSCA-DEBUG] job {job_id} exceção: {e!r}", flush=True)
+            _gads_onboarding_job_set(
+                job_id,
+                status="erro",
+                paginas=[],
+                timeout=False,
+                erro=str(e),
+                terminado_em=_time.time(),
+            )
+
+    def _gads_onboarding_iniciar(termo: str) -> str:
+        job_id = str(_uuid.uuid4())
+        _gads_onboarding_job_set(
+            job_id,
+            status="buscando",
+            paginas=[],
+            timeout=False,
+            termo=termo,
+            iniciado_em=_time.time(),
+        )
+        threading.Thread(target=_gads_onboarding_worker, args=(job_id, termo), daemon=True).start()
+        return job_id
 
     # ══════════════════════════════════════════════════════════════════
     # CABEÇALHO DA PÁGINA
@@ -22125,37 +22213,65 @@ function triggerTab(label) {{
         onboarding_timeout  = st.session_state.gads_onboarding_timeout
         onboarding_buscando = st.session_state.gads_onboarding_buscando
 
-        # ── Destrava sozinha a flag "buscando" presa em True.
-        # `gads_onboarding_buscando` é marcada True ANTES da chamada
-        # bloqueante ao Apify e só é desmarcada DEPOIS que ela retorna
-        # (ver `ghost_do_buscar` mais abaixo). Se o script for morto no
-        # meio do caminho — o que acontece porque o polling global de
-        # 12s do sino de notificações dispara um rerun completo mesmo
-        # com essa chamada ainda em andamento, e o Streamlit interrompe
-        # a execução antiga assim que a nova começa — a linha que
-        # zeraria a flag nunca chega a rodar, e ela fica presa em True
-        # pra sempre (session_state é preservado entre reruns). O
-        # resultado visível era o card "Buscando..." travado
-        # indefinidamente, sem nenhuma chamada de verdade em andamento.
-        #
-        # Detecta isso comparando com o pior caso possível de duração
-        # real da busca: `buscar_anunciantes_google` roda até 2 ondas
-        # de tentativas em paralelo, cada uma com deadline de 90s, então
-        # 240s dá margem confortável pra isso mais overhead de rede.
-        # Se a flag estiver True há mais tempo que isso, só pode estar
-        # presa — trata como timeout e libera a tela pro usuário tentar
-        # de novo, em vez de deixar o spinner girando pra sempre.
-        GADS_ONBOARDING_BUSCANDO_MAX_SEGUNDOS = 240
-        onboarding_buscando_inicio = st.session_state.gads_onboarding_buscando_inicio
-        if onboarding_buscando and (
-            onboarding_buscando_inicio is None
-            or (_time.time() - onboarding_buscando_inicio) > GADS_ONBOARDING_BUSCANDO_MAX_SEGUNDOS
-        ):
-            st.session_state.gads_onboarding_buscando = False
-            st.session_state.gads_onboarding_buscando_inicio = None
-            st.session_state.gads_onboarding_timeout = True
-            onboarding_buscando = False
-            onboarding_timeout = True
+        # ── Sincroniza com o job de busca em background (se houver um
+        # em andamento pra essa sessão). A busca em si não roda mais
+        # dentro do script run que renderiza a tela — só dispara uma
+        # thread (`_gads_onboarding_iniciar`, no clique de "Buscar
+        # anunciantes") e guarda o job_id em session_state. Isso é o que
+        # elimina a corrida original: antes, o polling de 12s do sino
+        # forçava um rerun completo enquanto a chamada bloqueante ao
+        # Apify ainda estava em andamento no script run anterior, e esse
+        # rerun via um estado "no meio do caminho" (empresa já setada,
+        # páginas ainda vazias) que era indistinguível de "terminou sem
+        # resultado". Agora todo rerun — inclusive o do sino — só faz
+        # essa leitura barata em memória; a busca de verdade roda numa
+        # thread própria e nunca é interrompida por um rerun.
+        GADS_ONBOARDING_JOB_MAX_SEGUNDOS = 240  # mesmo raciocínio do watchdog antigo: cobre o pior caso (2 ondas x 90s) + margem de rede
+        job_id = st.session_state.gads_onboarding_job_id
+        if job_id:
+            job = _gads_onboarding_job_get(job_id)
+            job_status = job.get("status")
+            if job_status == "buscando":
+                onboarding_buscando = True
+                inicio = job.get("iniciado_em") or st.session_state.gads_onboarding_buscando_inicio
+                if inicio is None or (_time.time() - inicio) > GADS_ONBOARDING_JOB_MAX_SEGUNDOS:
+                    # Job travado (ou o registry em memória foi perdido,
+                    # ex. reinício do processo) — libera a tela em vez de
+                    # deixar o spinner girando pra sempre.
+                    onboarding_buscando = False
+                    onboarding_timeout = True
+                    st.session_state.gads_onboarding_buscando = False
+                    st.session_state.gads_onboarding_buscando_inicio = None
+                    st.session_state.gads_onboarding_timeout = True
+                    st.session_state.gads_onboarding_job_id = None
+            elif job_status in ("concluido", "erro"):
+                onboarding_paginas = job.get("paginas") or []
+                # Um "erro" na thread (exceção não prevista) recebe o
+                # mesmo tratamento visual de timeout — mensagem pedindo
+                # pra tentar de novo, sem afirmar que o anunciante não
+                # tem anúncios (que é o que o card de "sem resultado"
+                # implicaria, e seria enganoso aqui).
+                onboarding_timeout = bool(job.get("timeout")) or job_status == "erro"
+                onboarding_buscando = False
+                st.session_state.gads_onboarding_paginas  = onboarding_paginas
+                st.session_state.gads_onboarding_timeout  = onboarding_timeout
+                st.session_state.gads_onboarding_buscando = False
+                st.session_state.gads_onboarding_buscando_inicio = None
+                st.session_state.gads_onboarding_job_id = None
+                with _lock_gads_onboarding_jobs:
+                    _gads_onboarding_jobs.pop(job_id, None)
+            else:
+                # job_id setado mas sem entrada no registry (processo
+                # reiniciado depois do clique, antes da thread terminar
+                # de escrever) — mesmo tratamento do watchdog acima.
+                inicio = st.session_state.gads_onboarding_buscando_inicio
+                if inicio is None or (_time.time() - inicio) > GADS_ONBOARDING_JOB_MAX_SEGUNDOS:
+                    onboarding_buscando = False
+                    onboarding_timeout = True
+                    st.session_state.gads_onboarding_buscando = False
+                    st.session_state.gads_onboarding_buscando_inicio = None
+                    st.session_state.gads_onboarding_timeout = True
+                    st.session_state.gads_onboarding_job_id = None
 
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
@@ -22250,21 +22366,17 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_empresa  = e["nome"]
                     st.session_state.gads_editando_empresa    = e["nome"]
                     st.session_state.gads_onboarding_paginas  = []
-                    # Marca ANTES de iniciar a chamada bloqueante ao Apify.
-                    # Se um rerun de fundo (polling do sino) acontecer
-                    # enquanto essa chamada ainda está rodando, ele vai ver
-                    # essa flag em True e sabe que ainda não pode concluir
-                    # "sem resultado" — só a renderização do "empresa
-                    # setada + páginas vazias" ficaria ambíguo sem ela.
+                    st.session_state.gads_onboarding_timeout  = False
+                    # Dispara a busca numa thread de fundo e volta na
+                    # hora — não bloqueia mais o script run pelos até
+                    # ~90-180s que o Apify pode levar (ver
+                    # _gads_onboarding_iniciar/_gads_onboarding_worker
+                    # acima). `buscando_inicio` fica só como fallback pro
+                    # caso raro do job sumir do registry em memória (ex.
+                    # reinício do processo) antes da thread terminar.
                     st.session_state.gads_onboarding_buscando = True
                     st.session_state.gads_onboarding_buscando_inicio = _time.time()
-                    with st.spinner(f"Buscando \"{val}\" na Central de Transparência do Google Ads..."):
-                        paginas, houve_timeout = buscar_anunciantes_google(val)
-                    st.session_state.gads_onboarding_paginas  = paginas
-                    st.session_state.gads_onboarding_timeout  = houve_timeout
-                    # Só desmarca quando a busca de verdade terminou.
-                    st.session_state.gads_onboarding_buscando = False
-                    st.session_state.gads_onboarding_buscando_inicio = None
+                    st.session_state.gads_onboarding_job_id = _gads_onboarding_iniciar(val)
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]

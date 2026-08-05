@@ -3552,16 +3552,44 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
         return None
 
 def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
-    """Atualiza o status de uma atividade (concluido/erro/em_andamento)."""
+    """Atualiza o status de uma atividade (concluido/erro/em_andamento).
+
+    Statuses terminais ("concluido"/"erro") tentam de novo com backoff
+    antes de desistir. É essa chamada que "fecha" o card pro usuário — se
+    ela falhar por causa de uma instabilidade passageira do Supabase
+    (reinício do Postgres, 521 do Cloudflare, etc.) e ninguém tentar de
+    novo, a atividade fica travada em "em_andamento" pra sempre, mesmo
+    com o trabalho de verdade (coleta, migração...) já concluído. Esse
+    tipo de atividade não tem nenhum retry automático depois (o retry
+    automático existente só cobre `migracao_midia`), então essa é a
+    última chance de fechar o card corretamente.
+
+    Statuses intermediários (ex: "em_andamento" usado pra progresso
+    dentro de loops) tentam só uma vez — perder um ping de progresso não
+    é grave (o próximo substitui), e não vale a pena atrasar um loop que
+    roda várias vezes por segundo.
+    """
     if not atividade_id:
         return
-    try:
-        payload = {"status": status}
-        if detalhes is not None:
-            payload["detalhes"] = detalhes
-        supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
-    except Exception:
-        pass
+    import time
+    payload = {"status": status}
+    if detalhes is not None:
+        payload["detalhes"] = detalhes
+
+    _eh_terminal = status in ("concluido", "erro")
+    _tentativas = 5 if _eh_terminal else 1
+    _backoffs = [1, 2, 4, 8, 15]
+    for _i in range(_tentativas):
+        try:
+            supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
+            return
+        except Exception:
+            if _i < _tentativas - 1:
+                time.sleep(_backoffs[_i])
+    # Esgotou as tentativas (só acontece pra status terminal, depois de
+    # ~30s tentando): não tem mais o que fazer aqui sem travar essa
+    # thread pra sempre. O card fica em_andamento até o usuário clicar
+    # "Refazer" ou até uma nova coleta reiniciar essa mesma atividade.
 
 def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
     """Remove uma atividade do sino de notificações. Usado pelo botão de
@@ -8078,6 +8106,7 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
     instabilidades passageiras do Supabase, não erros de dado.
     """
     try:
+        import time
         # `user_id` deve ser passado explicitamente quando essa função é
         # chamada de uma thread em background (ex: dentro da coleta de
         # anúncios) — `st.session_state` não tem contexto válido fora da
@@ -8179,6 +8208,7 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
     instabilidades passageiras do Supabase, não erros de dado.
     """
     try:
+        import time
         user_id = user_id or st.session_state.user.id
 
         dados_limpos = {}
@@ -21676,6 +21706,17 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         else:
             _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
  
+        # Empresa "tem dados" quando já existe uma coleta de Google Ads
+        # salva pra ela em `gads_cache` com pelo menos um anúncio (`data`
+        # não vazio) — mesmo critério usado em `empresas_com_dados` mais
+        # abaixo, só que aqui olhando empresa por empresa (pra decidir o
+        # cinza no item da lista) e no agregado (pra decidir se o
+        # dropdown inteiro deve ficar desativado).
+        def _gads_empresa_tem_dados(nome_emp: str) -> bool:
+            return bool((st.session_state.gads_cache.get(nome_emp) or {}).get("data"))
+
+        _algum_dado_gads = any(_gads_empresa_tem_dados(_e["nome"]) for _e in todas_empresas)
+
         _dropdown_items = ""
         for _ci_h, _e_h in enumerate(todas_empresas):
             _is_m     = _e_h["tipo"] == "minha"
@@ -21686,6 +21727,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _sub_d    = f"ID: {_gads_id_d}" if _gads_id_d and _gads_id_d.upper().startswith("AR") else (f"@{_gads_id_d}" if _gads_id_d else "Não configurado")
             _badge_txt_d = "Minha empresa" if _is_m else "Concorrente"
             _is_active_d = (_e_h["nome"] == _emp_ativa_nome)
+            _tem_dados_d = _gads_empresa_tem_dados(_e_h["nome"])
             _sk_h2       = safe_key(_e_h["nome"])
             _ghost_lbl_d = f"hdemp_{_sk_h2}"
             _av_item_html = (
@@ -21695,8 +21737,20 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
                 '</svg>'
             )
+            # Empresa sem nenhum anúncio coletado ainda: item fica em
+            # cinza (classe "no-data") e sem onclick — não tem pra onde
+            # navegar mesmo se o usuário clicar.
+            _dd_item_classes_d = 'dd-item'
+            if _is_active_d:
+                _dd_item_classes_d += ' selected'
+            if not _tem_dados_d:
+                _dd_item_classes_d += ' no-data'
+            _dd_item_onclick_d = (
+                f"onclick=\"triggerGhost('{_ghost_lbl_d}');closeDropdown()\"" if _tem_dados_d else ''
+            )
+            _dd_item_title_d = '' if _tem_dados_d else 'title="Ainda sem anúncios coletados para esta empresa"'
             _dropdown_items += f"""
-            <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
+            <div class="{_dd_item_classes_d}" {_dd_item_onclick_d} {_dd_item_title_d}>
                 <div class="dd-icon">{_av_item_html}</div>
                 <div class="dd-info">
                     <span class="dd-nome">{_e_h["nome"]}</span>
@@ -21751,6 +21805,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-trigger.disabled {{
+    background:#f3f4f6; border-color:#d1d5db; cursor:not-allowed; opacity:0.7;
+}}
+.dd-trigger.disabled:hover {{ box-shadow:none; }}
+.dd-trigger.disabled .dd-arrow {{ color:#d1d5db; }}
 .dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
  
@@ -21771,6 +21830,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item:last-child:hover {{ background:#17406a; border-color:#17406a; box-shadow:none; }}
 .dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
 .dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #3b82f6; }}
+.dd-item.no-data {{
+    cursor:not-allowed; opacity:0.5; background:#f3f4f6; border-color:#e5e7eb;
+}}
+.dd-item.no-data:hover {{ border-color:#e5e7eb; background:#f3f4f6; box-shadow:none; }}
+.dd-item.no-data .dd-icon {{ background:#e5e7eb; }}
+.dd-item.no-data .dd-icon svg {{ stroke:#9ca3af; }}
+.dd-item.no-data .dd-nome {{ color:#9ca3af; }}
 .dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
@@ -21812,7 +21878,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 <div class="ctrl-box">
     <div class="col-select">
         <div class="dd-wrap" id="dd-wrap">
-            <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
+            <div class="dd-trigger{' disabled' if not _algum_dado_gads else ''}" id="dd-trigger" onclick="{'' if not _algum_dado_gads else 'toggleDropdown()'}">
                 {_selected_html}
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
             </div>

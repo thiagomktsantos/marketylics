@@ -8214,6 +8214,17 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         dados_limpos = {}
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
+            # "_raw" é o dump bruto (até 100 itens) da resposta da Apify,
+            # guardado em `novos[ck]` só pra eventual debug — nada no app lê
+            # esse campo de volta do cache. Como cada item bruto costuma vir
+            # bem mais pesado que o anúncio já normalizado em "data" (texto,
+            # HTML, várias URLs de asset por item), guardá-lo pra TODAS as
+            # empresas do cache mergeado a cada save inflava o payload do
+            # `update` o suficiente pra derrubar a conexão no meio do
+            # caminho (era exatamente o "gateway error: Network connection
+            # lost" / JSON could not be generated que a atividade mostrava).
+            # Remove aqui, sem afetar nada que a UI realmente usa.
+            entry_limpa.pop("_raw", None)
             ads_limpos = [dict(ad) for ad in entry.get("data", [])]
             for ad_limpo in ads_limpos:
                 ad_limpo.pop("video_thumb", None)
@@ -8249,9 +8260,13 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
 
         # Retry com backoff curto: cobre instabilidades transitórias do
         # Supabase (521, 57P03, timeouts de conexão) sem desistir na
-        # primeira tentativa.
+        # primeira tentativa. 5 tentativas (era 3) com backoff um pouco
+        # mais longo — depois de tirar o "_raw" (acima) o payload já deve
+        # ficar bem menor, mas um 502/"network connection lost" ainda pode
+        # ser só uma instabilidade passageira do gateway, e vale a pena
+        # insistir um pouco mais antes de marcar a atividade como erro.
         ultimo_erro = None
-        for _tentativa in range(3):
+        for _tentativa in range(5):
             try:
                 supabase.table("ci_dados").update({
                     "gads_cache": dados_limpos,
@@ -8259,7 +8274,7 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 return True, None
             except Exception as e:
                 ultimo_erro = str(e)
-                if _tentativa < 2:
+                if _tentativa < 4:
                     time.sleep(2 * (_tentativa + 1))
         try:
             st.toast(f"Erro ao salvar cache de Google Ads: {ultimo_erro}", icon="⚠️")

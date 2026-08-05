@@ -8061,7 +8061,22 @@ def _imagem_precisa_de_b64_provisorio(ad: dict) -> bool:
         return False  # já migrado — não precisa mais do base64
     return True
 
-def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None):
+def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None) -> tuple[bool, str | None]:
+    """Persiste `dados` em `ci_dados.ads_cache`.
+
+    Retorna (sucesso, erro) em vez de só engolir a exceção — antes, uma
+    falha aqui (ex: Supabase fora do ar por alguns minutos) virava só um
+    `st.toast`, que sequer aparece quando essa função roda numa thread de
+    background (sem contexto do Streamlit, o toast é um no-op silencioso).
+    Isso fazia a atividade de coleta ser marcada "concluído" mesmo quando
+    o dado novo nunca chegou a ser gravado no banco. Quem chama agora tem
+    que checar o retorno antes de fechar a atividade como concluída.
+
+    Faz até 3 tentativas com backoff curto antes de desistir, porque boa
+    parte das falhas observadas na prática (521 do Cloudflare, 57P03 do
+    Postgres — "database system is not accepting connections") são
+    instabilidades passageiras do Supabase, não erros de dado.
+    """
     try:
         # `user_id` deve ser passado explicitamente quando essa função é
         # chamada de uma thread em background (ex: dentro da coleta de
@@ -8094,13 +8109,19 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             try:
                 dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
                 if _stats_midia.get("nao_migrados"):
-                    st.toast(
-                        f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
-                        f"foram migradas pro R2 (ficaram com o link original).",
-                        icon="⚠️",
-                    )
+                    try:
+                        st.toast(
+                            f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
+                            f"foram migradas pro R2 (ficaram com o link original).",
+                            icon="⚠️",
+                        )
+                    except Exception:
+                        pass
             except Exception as e_midia:
-                st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+                try:
+                    st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+                except Exception:
+                    pass
 
         # Só descarta o base64 depois de saber o resultado final da
         # migração (acima) — se ainda sobrou link cru do Google sem
@@ -8111,18 +8132,52 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
                 if not _imagem_precisa_de_b64_provisorio(ad_limpo):
                     ad_limpo.pop("images_b64", None)
 
-        supabase.table("ci_dados").update({
-            "ads_cache": dados_limpos,
-        }).eq("user_id", user_id).execute()
+        # Retry com backoff curto: cobre instabilidades transitórias do
+        # Supabase (521, 57P03, timeouts de conexão) sem desistir na
+        # primeira tentativa.
+        ultimo_erro = None
+        for _tentativa in range(3):
+            try:
+                supabase.table("ci_dados").update({
+                    "ads_cache": dados_limpos,
+                }).eq("user_id", user_id).execute()
+                return True, None
+            except Exception as e:
+                ultimo_erro = str(e)
+                if _tentativa < 2:
+                    time.sleep(2 * (_tentativa + 1))
+        try:
+            st.toast(f"Erro ao salvar cache de ads: {ultimo_erro}", icon="⚠️")
+        except Exception:
+            pass
+        return False, ultimo_erro
     except Exception as e:
-        st.toast(f"Erro ao salvar cache de ads: {e}", icon="⚠️")
+        try:
+            st.toast(f"Erro ao salvar cache de ads: {e}", icon="⚠️")
+        except Exception:
+            pass
+        return False, str(e)
 
-def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None):
+def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None) -> tuple[bool, str | None]:
     """Equivalente a `salvar_cache_ads`, mas pro Google Ads — grava na
     coluna `gads_cache`, não `ads_cache`. Antes, a coleta de Google Ads
     chamava por engano a função de Meta Ads, o que fazia os anúncios do
     Google sobrescreverem o cache do Meta (e a coluna gads_cache nunca
-    era realmente escrita)."""
+    era realmente escrita).
+
+    Retorna (sucesso, erro) em vez de só engolir a exceção — antes, uma
+    falha aqui (ex: Supabase fora do ar por alguns minutos) virava só um
+    `st.toast`, que sequer aparece quando essa função roda numa thread de
+    background (sem contexto do Streamlit, o toast é um no-op silencioso).
+    Isso fazia a atividade de coleta ser marcada "concluído" mesmo quando
+    o dado novo nunca chegou a ser gravado no banco. Quem chama agora tem
+    que checar o retorno antes de fechar a atividade como concluída.
+
+    Faz até 3 tentativas com backoff curto antes de desistir, porque boa
+    parte das falhas observadas na prática (521 do Cloudflare, 57P03 do
+    Postgres — "database system is not accepting connections") são
+    instabilidades passageiras do Supabase, não erros de dado.
+    """
     try:
         user_id = user_id or st.session_state.user.id
 
@@ -8139,13 +8194,19 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
             try:
                 dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
                 if _stats_midia.get("nao_migrados"):
-                    st.toast(
-                        f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
-                        f"foram migradas pro R2 (ficaram com o link original).",
-                        icon="⚠️",
-                    )
+                    try:
+                        st.toast(
+                            f"{_stats_midia['nao_migrados']} de {_stats_midia['total']} mídias não "
+                            f"foram migradas pro R2 (ficaram com o link original).",
+                            icon="⚠️",
+                        )
+                    except Exception:
+                        pass
             except Exception as e_midia:
-                st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+                try:
+                    st.toast(f"Mídia não foi persistida no R2 (dados salvos normalmente): {e_midia}", icon="⚠️")
+                except Exception:
+                    pass
 
         # Só descarta o base64 depois de saber o resultado final da
         # migração (acima) — se ainda sobrou link cru do Google sem
@@ -8156,11 +8217,31 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 if not _imagem_precisa_de_b64_provisorio(ad_limpo):
                     ad_limpo.pop("images_b64", None)
 
-        supabase.table("ci_dados").update({
-            "gads_cache": dados_limpos,
-        }).eq("user_id", user_id).execute()
+        # Retry com backoff curto: cobre instabilidades transitórias do
+        # Supabase (521, 57P03, timeouts de conexão) sem desistir na
+        # primeira tentativa.
+        ultimo_erro = None
+        for _tentativa in range(3):
+            try:
+                supabase.table("ci_dados").update({
+                    "gads_cache": dados_limpos,
+                }).eq("user_id", user_id).execute()
+                return True, None
+            except Exception as e:
+                ultimo_erro = str(e)
+                if _tentativa < 2:
+                    time.sleep(2 * (_tentativa + 1))
+        try:
+            st.toast(f"Erro ao salvar cache de Google Ads: {ultimo_erro}", icon="⚠️")
+        except Exception:
+            pass
+        return False, ultimo_erro
     except Exception as e:
-        st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
+        try:
+            st.toast(f"Erro ao salvar cache de Google Ads: {e}", icon="⚠️")
+        except Exception:
+            pass
+        return False, str(e)
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
@@ -15179,7 +15260,26 @@ elif st.session_state.pagina == "ads":
             # Save rápido: mantém os links originais do Facebook (ainda
             # válidos por bem mais que 1 dia). A troca pelos links
             # permanentes do R2 acontece depois, em background também.
-            salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            _salvo_ok, _erro_salvar = salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            if not _salvo_ok:
+                # Coleta rodou certinho (Apify respondeu), mas o ads_cache
+                # não chegou a ser gravado no Supabase (ex: instabilidade
+                # 521/57P03 do banco). Antes isso virava "concluído" do
+                # mesmo jeito — o card mostrava sucesso, mas os dados novos
+                # nunca apareciam, porque o merge nunca foi persistido.
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresas": _nomes_empresas,
+                    "total": _total_empresas,
+                    "concluidas": _processadas,
+                    "coletadas": list(novos.keys()),
+                    "com_erro": erros,
+                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
+                    "motivo": (
+                        f"A coleta funcionou, mas falhou ao salvar no banco de dados: "
+                        f"{_erro_salvar}. Clique em 'Refazer' para tentar salvar de novo."
+                    ),
+                })
+                return
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)
@@ -20788,7 +20888,26 @@ elif st.session_state.pagina == "google_ads":
             # Save rápido: mantém os links originais do provedor (ainda
             # válidos por bem mais que 1 dia). A troca pelos links
             # permanentes do R2 acontece depois, em background também.
-            salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            _salvo_ok, _erro_salvar = salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
+            if not _salvo_ok:
+                # Coleta rodou certinho (Apify respondeu), mas o gads_cache
+                # não chegou a ser gravado no Supabase (ex: instabilidade
+                # 521/57P03 do banco). Antes isso virava "concluído" do
+                # mesmo jeito — o card mostrava sucesso, mas os dados novos
+                # nunca apareciam, porque o merge nunca foi persistido.
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresas": _nomes_empresas,
+                    "total": _total_empresas,
+                    "concluidas": _processadas,
+                    "coletadas": list(novos.keys()),
+                    "com_erro": erros,
+                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
+                    "motivo": (
+                        f"A coleta funcionou, mas falhou ao salvar no banco de dados: "
+                        f"{_erro_salvar}. Clique em 'Refazer' para tentar salvar de novo."
+                    ),
+                })
+                return
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

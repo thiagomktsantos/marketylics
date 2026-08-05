@@ -21039,6 +21039,17 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_onboarding_empresa = None
     if "gads_onboarding_paginas" not in st.session_state:
         st.session_state.gads_onboarding_paginas = []
+    if "gads_onboarding_buscando" not in st.session_state:
+        # Flag "busca em andamento". Existe pra evitar uma condição de
+        # corrida: o polling global de 12s (sino de notificações) roda
+        # um rerun completo mesmo enquanto a chamada bloqueante ao Apify
+        # ainda está em andamento (ela pode levar até 90-180s). Sem essa
+        # flag, esse rerun de fundo lê o estado intermediário — empresa
+        # já setada em gads_onboarding_empresa mas gads_onboarding_paginas
+        # ainda vazio porque a busca de verdade não terminou — e conclui
+        # erroneamente "busca terminou, sem resultado", mostrando o card
+        # de "Nenhuma página encontrada" antes da hora.
+        st.session_state.gads_onboarding_buscando = False
     if "gads_onboarding_timeout" not in st.session_state:
         st.session_state.gads_onboarding_timeout = False
     if "gads_onboarding_termo" not in st.session_state:
@@ -22099,10 +22110,11 @@ function triggerTab(label) {{
 
     if main_tab == "configuracao":
 
-        editando_empresa   = st.session_state.gads_editando_empresa
-        onboarding_empresa = st.session_state.gads_onboarding_empresa
-        onboarding_paginas = st.session_state.gads_onboarding_paginas
-        onboarding_timeout = st.session_state.gads_onboarding_timeout
+        editando_empresa    = st.session_state.gads_editando_empresa
+        onboarding_empresa  = st.session_state.gads_onboarding_empresa
+        onboarding_paginas  = st.session_state.gads_onboarding_paginas
+        onboarding_timeout  = st.session_state.gads_onboarding_timeout
+        onboarding_buscando = st.session_state.gads_onboarding_buscando
 
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
@@ -22173,15 +22185,17 @@ function triggerTab(label) {{
         # ── Processar ações
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
-                st.session_state.gads_editando_empresa   = e["nome"]
-                st.session_state.gads_onboarding_empresa = None
-                st.session_state.gads_onboarding_paginas = []
+                st.session_state.gads_editando_empresa    = e["nome"]
+                st.session_state.gads_onboarding_empresa  = None
+                st.session_state.gads_onboarding_paginas  = []
+                st.session_state.gads_onboarding_buscando = False
                 st.rerun()
 
             if ghost_cancel[ci]:
-                st.session_state.gads_editando_empresa   = None
-                st.session_state.gads_onboarding_empresa = None
-                st.session_state.gads_onboarding_paginas = []
+                st.session_state.gads_editando_empresa    = None
+                st.session_state.gads_onboarding_empresa  = None
+                st.session_state.gads_onboarding_paginas  = []
+                st.session_state.gads_onboarding_buscando = False
                 for k in list(st.query_params.keys()):
                     if k.startswith("_cfg_val_"):
                         del st.query_params[k]
@@ -22190,12 +22204,22 @@ function triggerTab(label) {{
             if ghost_do_buscar[ci]:
                 val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
                 if val:
-                    st.session_state.gads_onboarding_empresa = e["nome"]
-                    st.session_state.gads_editando_empresa   = e["nome"]
+                    st.session_state.gads_onboarding_empresa  = e["nome"]
+                    st.session_state.gads_editando_empresa    = e["nome"]
+                    st.session_state.gads_onboarding_paginas  = []
+                    # Marca ANTES de iniciar a chamada bloqueante ao Apify.
+                    # Se um rerun de fundo (polling do sino) acontecer
+                    # enquanto essa chamada ainda está rodando, ele vai ver
+                    # essa flag em True e sabe que ainda não pode concluir
+                    # "sem resultado" — só a renderização do "empresa
+                    # setada + páginas vazias" ficaria ambíguo sem ela.
+                    st.session_state.gads_onboarding_buscando = True
                     with st.spinner(f"Buscando \"{val}\" na Central de Transparência do Google Ads..."):
                         paginas, houve_timeout = buscar_anunciantes_google(val)
-                    st.session_state.gads_onboarding_paginas = paginas
-                    st.session_state.gads_onboarding_timeout = houve_timeout
+                    st.session_state.gads_onboarding_paginas  = paginas
+                    st.session_state.gads_onboarding_timeout  = houve_timeout
+                    # Só desmarca quando a busca de verdade terminou.
+                    st.session_state.gads_onboarding_buscando = False
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -22205,9 +22229,10 @@ function triggerTab(label) {{
                 val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
                 if val:
                     salvar_gads_id(e, val)
-                    st.session_state.gads_editando_empresa   = None
-                    st.session_state.gads_onboarding_empresa = None
-                    st.session_state.gads_onboarding_paginas = []
+                    st.session_state.gads_editando_empresa    = None
+                    st.session_state.gads_onboarding_empresa  = None
+                    st.session_state.gads_onboarding_paginas  = []
+                    st.session_state.gads_onboarding_buscando = False
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -22224,9 +22249,10 @@ function triggerTab(label) {{
                             pg.get("page_id") or pg.get("nome", ""),
                             pg.get("profile_picture", ""),
                         )
-                        st.session_state.gads_editando_empresa   = None
-                        st.session_state.gads_onboarding_empresa = None
-                        st.session_state.gads_onboarding_paginas = []
+                        st.session_state.gads_editando_empresa    = None
+                        st.session_state.gads_onboarding_empresa  = None
+                        st.session_state.gads_onboarding_paginas  = []
+                        st.session_state.gads_onboarding_buscando = False
                         st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 
@@ -22317,7 +22343,28 @@ function triggerTab(label) {{
 
             # Bloco de resultados encontrados (dentro do card, após os botões)
             resultados_block = ""
-            if is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
+            if is_editing and onboarding_empresa == e["nome"] and onboarding_buscando:
+                # Busca ainda em andamento (chamada bloqueante ao Apify
+                # rodando). Isso pode aparecer se um rerun de fundo — o
+                # polling de 12s do sino de notificações — acontecer
+                # enquanto a busca de verdade ainda não terminou. Sem essa
+                # checagem, esse rerun via "gads_onboarding_empresa já
+                # setada + gads_onboarding_paginas ainda vazia" era
+                # indistinguível de "busca terminou sem resultado", e o
+                # card de erro aparecia antes da hora.
+                resultados_block = f"""
+                <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
+                    <div style="display:flex;align-items:center;gap:10px;
+                                background:#f0f9ff;border:1px solid #bae6fd;border-radius:9px;
+                                padding:11px 14px;">
+                        <span style="font-size:15px;flex-shrink:0;line-height:1.3">⏳</span>
+                        <div style="font-size:13px;color:#0369a1;line-height:1.55">
+                            <strong>Buscando na Central de Transparência do Google Ads...</strong>
+                            Isso pode levar até alguns minutos.
+                        </div>
+                    </div>
+                </div>"""
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
                 pgs_html = ""
                 for pi, pg in enumerate(onboarding_paginas[:8]):
                     initial = (pg.get("nome","P") or "P")[0].upper()
@@ -22375,7 +22422,7 @@ function triggerTab(label) {{
                     </div>
                     {pgs_html}
                 </div>"""
-            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and onboarding_timeout:
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and onboarding_timeout and not onboarding_buscando:
                 # A busca não achou nenhum resultado a tempo, mas pelo
                 # menos uma das tentativas (candidato x região) ainda
                 # estava "RUNNING" no Apify quando o deadline estourou —
@@ -22401,7 +22448,7 @@ function triggerTab(label) {{
                         </div>
                     </div>
                 </div>"""
-            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and not onboarding_buscando:
                 # Mesmo tratamento do Meta Ads: busca já rodou pra essa
                 # empresa mas não achou nenhuma página no Google Ads
                 # Transparency Center — antes disso não aparecia nada na

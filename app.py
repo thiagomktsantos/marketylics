@@ -20478,7 +20478,7 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, region: str = "BR") -> tuple:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -20497,7 +20497,24 @@ elif st.session_state.pagina == "google_ads":
         #    "AR16735076323512287233" — visto na URL da Transparency Center)
         #  - tem ponto e não tem espaço -> domínio (ex. "nike.com")
         #  - qualquer outra coisa -> nome do anunciante
-        payload = {"maxAds": limit, "region": "BR"}
+        #
+        # `region` agora é parâmetro (era fixo em "BR"). Motivo: o filtro
+        # de região do actor é sobre onde o ANÚNCIO foi exibido, não sobre
+        # o país do anunciante — um domínio pode aparecer normalmente na
+        # Central de Transparência (sem filtro nenhum) mas ter 0 anúncios
+        # marcados como exibidos na região BR nos dados do actor (ex.:
+        # anunciante roda campanha só em outras regiões, ou o dado de
+        # região daquele anúncio específico está incompleto/desatualizado
+        # no actor). Nesse caso, forçar region="BR" sempre faz a busca
+        # voltar vazia mesmo com o anunciante existindo de verdade —
+        # validado com o domínio real "buyticketbrasil.com", que tem
+        # anúncios confirmados na Transparency Center mas não retornava
+        # nada com region="BR" fixo. `buscar_anunciantes_google` (abaixo)
+        # agora tenta de novo com region="" (todas as regiões) como
+        # última etapa da cascata, quando as tentativas com BR falham.
+        payload = {"maxAds": limit}
+        if region:
+            payload["region"] = region
         if termo.upper().startswith("AR") and termo[2:].isdigit():
             payload["advertiserIds"] = [termo]
         elif "." in termo and " " not in termo:
@@ -21078,35 +21095,49 @@ elif st.session_state.pagina == "google_ads":
                     candidatos.append(candidato)
         print(f"[GADS-BUSCA-DEBUG] termo original={termo!r} -> candidatos={candidatos}", flush=True)
 
-        for candidato in candidatos:
-            ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45)
-            print(
-                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} -> "
-                f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
-                flush=True,
-            )
-            if erro or not ads:
-                continue
-            paginas = {}
-            for ad in ads:
-                pid  = ad.get("page_id", "") or ""
-                nome = ad.get("page_name", "") or ""
-                pic  = ad.get("page_profile_picture", "") or ""
-                if nome and nome not in paginas:
-                    paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
-                if nome in paginas:
-                    paginas[nome]["total_ads"] += 1
-                    if not paginas[nome]["profile_picture"] and pic:
-                        paginas[nome]["profile_picture"] = pic
-            print(
-                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} -> "
-                f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
-                flush=True,
-            )
-            if paginas:
-                return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+        # Duas passadas de região: primeiro BR (caso mais comum e mais
+        # rápido de descartar), depois SEM filtro nenhum (todas as
+        # regiões) só se a primeira passada inteira vier vazia. Precisa
+        # dessa segunda passada porque o filtro de região do actor é
+        # sobre onde o ANÚNCIO foi exibido, não sobre o país do
+        # anunciante — um domínio pode existir e ter anúncios de verdade
+        # na Central de Transparência (sem filtro nenhum) mas nenhum
+        # marcado como exibido na região BR nos dados do actor (ex.
+        # validado com "buyticketbrasil.com": aparece na Transparency
+        # Center, mas region="BR" fixo sempre voltava vazio). Só entra
+        # nessa segunda passada no caso raro de esgotar a primeira,
+        # então não paga o custo extra no caminho comum (anunciante
+        # encontrado já na primeira tentativa com BR).
+        for _regiao_tentativa in ("BR", ""):
+            for candidato in candidatos:
+                ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45, region=_regiao_tentativa)
+                print(
+                    f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={_regiao_tentativa or '(todas)'!r} -> "
+                    f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
+                    flush=True,
+                )
+                if erro or not ads:
+                    continue
+                paginas = {}
+                for ad in ads:
+                    pid  = ad.get("page_id", "") or ""
+                    nome = ad.get("page_name", "") or ""
+                    pic  = ad.get("page_profile_picture", "") or ""
+                    if nome and nome not in paginas:
+                        paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
+                    if nome in paginas:
+                        paginas[nome]["total_ads"] += 1
+                        if not paginas[nome]["profile_picture"] and pic:
+                            paginas[nome]["profile_picture"] = pic
+                print(
+                    f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={_regiao_tentativa or '(todas)'!r} -> "
+                    f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
+                    flush=True,
+                )
+                if paginas:
+                    return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
 
-        print(f"[GADS-BUSCA-DEBUG] todos os {len(candidatos)} candidato(s) esgotados sem resultado", flush=True)
+        print(f"[GADS-BUSCA-DEBUG] todos os {len(candidatos)} candidato(s) x 2 região(ões) esgotados sem resultado", flush=True)
         return []
 
     # ══════════════════════════════════════════════════════════════════

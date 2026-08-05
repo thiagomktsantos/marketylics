@@ -20659,7 +20659,17 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, region: str = "BR") -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, region: str = "BR", on_chunk=None, chunk_size: int = 15) -> tuple:
+        # `on_chunk` (opcional): callback chamado a cada `chunk_size` anúncios
+        # já normalizados (ver loop no fim da função). Existe pra quem chama
+        # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
+        # de normalizar os até 100 anúncios de uma empresa inteiros (cada um
+        # podendo custar ~20-25s se cair no fallback de navegador headless
+        # pra achar a imagem) pra só então salvar tudo de uma vez no final.
+        # Empresa com muitos anúncios "difíceis" (sem imagem pronta da
+        # Apify) podia passar 15-30+ minutos "rodando" sem nada persistido
+        # até o fim — com o chunk, o progresso vai sendo salvo no meio do
+        # caminho.
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -20765,11 +20775,20 @@ elif st.session_state.pagina == "google_ads":
         if not raw_items:
             return [], [], None
 
-        gads_normalizados = [_normalizar_item_apify(item) for item in raw_items]
+        gads_normalizados = []
+        for _i in range(0, len(raw_items), max(1, chunk_size)):
+            _chunk_raw = raw_items[_i:_i + chunk_size]
+            _chunk_normalizado = [_normalizar_item_apify(item) for item in _chunk_raw]
+            gads_normalizados.extend(_chunk_normalizado)
+            if on_chunk:
+                try:
+                    on_chunk(_chunk_normalizado)
+                except Exception as e_chunk:
+                    print(f"[APIFY-DEBUG] termo={termo!r} on_chunk falhou: {e_chunk!r}", flush=True)
         return gads_normalizados, raw_items[:100], None
 
-    def buscar_gads_apify(query: str, limit: int = 100) -> tuple:
-        return _apify_run_sync(query.strip(), limit=limit)
+    def buscar_gads_apify(query: str, limit: int = 100, on_chunk=None) -> tuple:
+        return _apify_run_sync(query.strip(), limit=limit, on_chunk=on_chunk)
 
     def _render_loader(placeholder, progresso: list, total: int, atual: int, finalizado: bool = False):
         progresso_pct = int((atual / total) * 100) if total else 100
@@ -20917,7 +20936,39 @@ elif st.session_state.pagina == "google_ads":
                 if _pula:
                     _status_por_empresa[ck] = {"status": "cache"}
                 else:
-                    ads, raw, erro = buscar_gads_apify(query)
+                    # Processa e salva em LOTES DENTRO da própria empresa
+                    # (não só empresa a empresa) — cada anúncio pode custar
+                    # até ~20-25s quando precisa do fallback de navegador
+                    # headless pra achar a imagem (ver _extrair_imagem_
+                    # pagina_google), e uma empresa com muitos anúncios
+                    # "difíceis" podia passar dezenas de minutos "rodando"
+                    # sem NADA persistido até terminar tudo. `on_chunk` (ver
+                    # _apify_run_sync) chama esse callback a cada ~15
+                    # anúncios já normalizados: salva o que já foi
+                    # processado até ali e atualiza o card com a contagem
+                    # parcial, em vez de um único "lotão" silencioso.
+                    _ads_ck_acumulados = []
+
+                    def _on_chunk_ck(chunk_normalizado, _ck=ck, _query=query):
+                        nonlocal cache_atual
+                        _ads_ck_acumulados.extend(chunk_normalizado)
+                        _entry_parcial = {
+                            "data":  list(_ads_ck_acumulados),
+                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "nome":  _ck,
+                            "query": _query,
+                        }
+                        _cache_parcial = merge_ads(cache_atual, {_ck: _entry_parcial})
+                        _salvo_parcial_ok, _ = salvar_cache_gads(_cache_parcial, migrar_midia=False, user_id=user_id)
+                        if _salvo_parcial_ok:
+                            cache_atual = _cache_parcial
+                        _status_por_empresa[_ck] = {
+                            "status": "rodando",
+                            "msg": f"{len(_ads_ck_acumulados)} anúncios coletados até agora…",
+                        }
+                        _grava_progresso()
+
+                    ads, raw, erro = buscar_gads_apify(query, on_chunk=_on_chunk_ck)
                     if erro:
                         erros[ck] = erro
                         _status_por_empresa[ck] = {"status": "erro", "msg": erro}
@@ -33134,8 +33185,12 @@ html, body { background: transparent; overflow: hidden; }
                             elif _status_emp == "erro":
                                 _pct_emp, _cor_emp, _classe_emp = 100, "#ef4444", ""
                                 _label_emp = f"Erro: {_msg_emp}" if _msg_emp else "Erro"
+                            elif _status_emp == "erro_ao_salvar":
+                                _pct_emp, _cor_emp, _classe_emp = 100, "#ef4444", ""
+                                _label_emp = f"Coletado, mas não salvou: {_msg_emp}" if _msg_emp else "Coletado, mas não salvou"
                             elif _status_emp == "rodando":
-                                _pct_emp, _cor_emp, _label_emp, _classe_emp = 100, "#3a9fd6", "Coletando agora…", "is-rodando"
+                                _pct_emp, _cor_emp, _classe_emp = 100, "#3a9fd6", "is-rodando"
+                                _label_emp = _msg_emp if _msg_emp else "Coletando agora…"
                             else:
                                 _pct_emp, _cor_emp, _label_emp, _classe_emp = 0, "#d1d5db", "Aguardando", ""
                             _linhas_empresa_html.append(f"""

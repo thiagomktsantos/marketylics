@@ -21052,6 +21052,15 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_onboarding_buscando = False
     if "gads_onboarding_timeout" not in st.session_state:
         st.session_state.gads_onboarding_timeout = False
+    if "gads_onboarding_buscando_inicio" not in st.session_state:
+        # Timestamp (epoch seconds) de quando `gads_onboarding_buscando`
+        # virou True. Existe pra destravar a flag sozinha se a execução
+        # que fazia a busca de verdade for morta no meio do caminho (ver
+        # comentário logo abaixo, onde a flag é lida) — sem isso, uma vez
+        # presa em True ela fica assim pra sempre, porque a única linha
+        # que a zeraria é a de DEPOIS da chamada bloqueante ao Apify, que
+        # nunca chega a rodar se o script for interrompido antes.
+        st.session_state.gads_onboarding_buscando_inicio = None
     if "gads_onboarding_termo" not in st.session_state:
         st.session_state.gads_onboarding_termo = ""
     if "gads_editando_empresa" not in st.session_state:
@@ -22116,6 +22125,38 @@ function triggerTab(label) {{
         onboarding_timeout  = st.session_state.gads_onboarding_timeout
         onboarding_buscando = st.session_state.gads_onboarding_buscando
 
+        # ── Destrava sozinha a flag "buscando" presa em True.
+        # `gads_onboarding_buscando` é marcada True ANTES da chamada
+        # bloqueante ao Apify e só é desmarcada DEPOIS que ela retorna
+        # (ver `ghost_do_buscar` mais abaixo). Se o script for morto no
+        # meio do caminho — o que acontece porque o polling global de
+        # 12s do sino de notificações dispara um rerun completo mesmo
+        # com essa chamada ainda em andamento, e o Streamlit interrompe
+        # a execução antiga assim que a nova começa — a linha que
+        # zeraria a flag nunca chega a rodar, e ela fica presa em True
+        # pra sempre (session_state é preservado entre reruns). O
+        # resultado visível era o card "Buscando..." travado
+        # indefinidamente, sem nenhuma chamada de verdade em andamento.
+        #
+        # Detecta isso comparando com o pior caso possível de duração
+        # real da busca: `buscar_anunciantes_google` roda até 2 ondas
+        # de tentativas em paralelo, cada uma com deadline de 90s, então
+        # 240s dá margem confortável pra isso mais overhead de rede.
+        # Se a flag estiver True há mais tempo que isso, só pode estar
+        # presa — trata como timeout e libera a tela pro usuário tentar
+        # de novo, em vez de deixar o spinner girando pra sempre.
+        GADS_ONBOARDING_BUSCANDO_MAX_SEGUNDOS = 240
+        onboarding_buscando_inicio = st.session_state.gads_onboarding_buscando_inicio
+        if onboarding_buscando and (
+            onboarding_buscando_inicio is None
+            or (_time.time() - onboarding_buscando_inicio) > GADS_ONBOARDING_BUSCANDO_MAX_SEGUNDOS
+        ):
+            st.session_state.gads_onboarding_buscando = False
+            st.session_state.gads_onboarding_buscando_inicio = None
+            st.session_state.gads_onboarding_timeout = True
+            onboarding_buscando = False
+            onboarding_timeout = True
+
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
@@ -22189,6 +22230,7 @@ function triggerTab(label) {{
                 st.session_state.gads_onboarding_empresa  = None
                 st.session_state.gads_onboarding_paginas  = []
                 st.session_state.gads_onboarding_buscando = False
+                st.session_state.gads_onboarding_buscando_inicio = None
                 st.rerun()
 
             if ghost_cancel[ci]:
@@ -22196,6 +22238,7 @@ function triggerTab(label) {{
                 st.session_state.gads_onboarding_empresa  = None
                 st.session_state.gads_onboarding_paginas  = []
                 st.session_state.gads_onboarding_buscando = False
+                st.session_state.gads_onboarding_buscando_inicio = None
                 for k in list(st.query_params.keys()):
                     if k.startswith("_cfg_val_"):
                         del st.query_params[k]
@@ -22214,12 +22257,14 @@ function triggerTab(label) {{
                     # "sem resultado" — só a renderização do "empresa
                     # setada + páginas vazias" ficaria ambíguo sem ela.
                     st.session_state.gads_onboarding_buscando = True
+                    st.session_state.gads_onboarding_buscando_inicio = _time.time()
                     with st.spinner(f"Buscando \"{val}\" na Central de Transparência do Google Ads..."):
                         paginas, houve_timeout = buscar_anunciantes_google(val)
                     st.session_state.gads_onboarding_paginas  = paginas
                     st.session_state.gads_onboarding_timeout  = houve_timeout
                     # Só desmarca quando a busca de verdade terminou.
                     st.session_state.gads_onboarding_buscando = False
+                    st.session_state.gads_onboarding_buscando_inicio = None
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -22233,6 +22278,7 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_empresa  = None
                     st.session_state.gads_onboarding_paginas  = []
                     st.session_state.gads_onboarding_buscando = False
+                    st.session_state.gads_onboarding_buscando_inicio = None
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -22253,6 +22299,7 @@ function triggerTab(label) {{
                         st.session_state.gads_onboarding_empresa  = None
                         st.session_state.gads_onboarding_paginas  = []
                         st.session_state.gads_onboarding_buscando = False
+                        st.session_state.gads_onboarding_buscando_inicio = None
                         st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 

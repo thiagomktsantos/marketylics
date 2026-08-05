@@ -22236,8 +22236,21 @@ function triggerTab(label) {{
             # Empresa" / "Concorrentes" mesmo sem ter configurado o Google
             # Ads ainda — usa isso como sugestão inicial no campo em vez de
             # deixar em branco, pra economizar um passo de quem for buscar.
+            #
+            # IMPORTANTE: se o usuário já digitou algo nesse campo (valor
+            # persistido em cfg_val_temp_{ci} via query param — ver oninput
+            # do input abaixo), esse valor tem prioridade sobre a sugestão.
+            # Sem isso, qualquer rerun do app enquanto a pessoa está editando
+            # (ex.: o polling global de 12s que atualiza o sininho de
+            # notificações enquanto há atividade em andamento) recria esse
+            # card do zero com `value="{gads_id_sugestao}"` e APAGA o que
+            # foi digitado, sempre voltando pro domínio cadastrado (o
+            # relato de "digitei .com mas sempre volta o .br" era isso:
+            # o valor digitado só era salvo no clique do botão, então um
+            # rerun de fundo no meio da digitação sempre revertia o campo).
             _dominio_conhecido = emp.get("site","") if is_minha else concs[e["idx"]].get("url","")
-            gads_id_sugestao   = gads_id or _dominio_conhecido or e["nome"]
+            _valor_em_edicao   = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+            gads_id_sugestao   = _valor_em_edicao or gads_id or _dominio_conhecido or e["nome"]
             is_editing = (editando_empresa == e["nome"])
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
             av_txt     = gerar_avatar(e["nome"])
@@ -22410,6 +22423,7 @@ function triggerTab(label) {{
                                        margin-bottom:12px;display:block;box-sizing:border-box;"
                                 onfocus="this.style.borderColor='#3a9fd6';this.style.background='#fff'"
                                 onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
+                                oninput="handleCfgInput({ci}, this.value)"
                             />
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                                 <button class="btn-buscar" id="btn_buscar_{ci}" onclick="handleBuscar({ci})">
@@ -22541,6 +22555,19 @@ function saveValToURL(ci, val) {{
     var url = new URL(window.parent.location.href);
     url.searchParams.set('_cfg_val_' + ci, val);
     window.parent.history.replaceState({{}}, '', url);
+}}
+
+// Persiste o valor digitado (debounced, 400ms sem digitar) na URL via
+// saveValToURL — sem isso, um rerun de fundo do Streamlit (ex.: o
+// polling de 12s do sininho de notificações enquanto há atividade em
+// andamento) recria este card do zero com o valor padrão/sugestão,
+// apagando o que a pessoa estava digitando antes mesmo de clicar em
+// "Buscar anunciantes". Só salvar no clique (como era antes) não é
+// suficiente porque o rerun de fundo pode acontecer no meio da digitação.
+var _cfgInputTimers = {{}};
+function handleCfgInput(ci, val) {{
+    clearTimeout(_cfgInputTimers[ci]);
+    _cfgInputTimers[ci] = setTimeout(function() {{ saveValToURL(ci, val); }}, 400);
 }}
 
 function handleBuscar(ci) {{

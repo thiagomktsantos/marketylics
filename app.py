@@ -20504,18 +20504,21 @@ elif st.session_state.pagina == "google_ads":
             payload["domains"] = [termo]
         else:
             payload["searchTerms"] = [termo]
+        print(f"[APIFY-DEBUG] termo={termo!r} -> payload={payload}", flush=True)
 
         try:
             r_start = requests.post(run_url, json=payload, timeout=30)
             r_start.raise_for_status()
             run_data = r_start.json()
         except Exception as e:
+            print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao iniciar run: {e!r}", flush=True)
             return [], [], f"Erro ao iniciar run Apify: {e}"
 
         run_id     = run_data.get("data", {}).get("id") or run_data.get("id")
         dataset_id = run_data.get("data", {}).get("defaultDatasetId") or run_data.get("defaultDatasetId")
 
         if not run_id:
+            print(f"[APIFY-DEBUG] termo={termo!r} sem run_id na resposta: {run_data}", flush=True)
             return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
 
         status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
@@ -20534,7 +20537,14 @@ elif st.session_state.pagina == "google_ads":
                 break
             _time.sleep(5)
 
+        print(f"[APIFY-DEBUG] termo={termo!r} run_id={run_id} status_final={status} dataset_id={dataset_id}", flush=True)
+
         if status != "SUCCEEDED":
+            # Status mais comum aqui quando o deadline curto (45s) da busca
+            # síncrona estoura ANTES do actor terminar: "RUNNING" mesmo (o
+            # loop saiu pelo `while _time.time() < deadline`, não por um
+            # status terminal) — nesse caso o run pode até ter sucesso
+            # depois, mas a busca já desistiu e devolveu erro pro usuário.
             return [], [], f"Run Apify terminou com status: {status}"
         if not dataset_id:
             return [], [], "Apify não retornou dataset ID."
@@ -20548,10 +20558,12 @@ elif st.session_state.pagina == "google_ads":
             r_items.raise_for_status()
             raw_items = r_items.json()
         except Exception as e:
+            print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao ler dataset: {e!r}", flush=True)
             return [], [], f"Erro ao ler dataset Apify: {e}"
 
         if not isinstance(raw_items, list):
             raw_items = raw_items.get("items", []) if isinstance(raw_items, dict) else []
+        print(f"[APIFY-DEBUG] termo={termo!r} raw_items retornados={len(raw_items)}", flush=True)
         if not raw_items:
             return [], [], None
 
@@ -21064,9 +21076,15 @@ elif st.session_state.pagina == "google_ads":
                 candidato = ".".join(partes[:i])
                 if candidato not in candidatos:
                     candidatos.append(candidato)
+        print(f"[GADS-BUSCA-DEBUG] termo original={termo!r} -> candidatos={candidatos}", flush=True)
 
         for candidato in candidatos:
             ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45)
+            print(
+                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} -> "
+                f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
+                flush=True,
+            )
             if erro or not ads:
                 continue
             paginas = {}
@@ -21080,9 +21098,15 @@ elif st.session_state.pagina == "google_ads":
                     paginas[nome]["total_ads"] += 1
                     if not paginas[nome]["profile_picture"] and pic:
                         paginas[nome]["profile_picture"] = pic
+            print(
+                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} -> "
+                f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
+                flush=True,
+            )
             if paginas:
                 return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
 
+        print(f"[GADS-BUSCA-DEBUG] todos os {len(candidatos)} candidato(s) esgotados sem resultado", flush=True)
         return []
 
     # ══════════════════════════════════════════════════════════════════

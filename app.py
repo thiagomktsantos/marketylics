@@ -22620,18 +22620,63 @@ function triggerTab(label) {{
                                 padding:11px 14px;">
                         <span style="font-size:15px;flex-shrink:0;line-height:1.3">⚠️</span>
                         <div style="font-size:13px;color:#92400e;line-height:1.55">
-                            <strong>Nenhuma página encontrada</strong> pra esse nome na Central de Transparência do Google Ads.
-                            Isso pode acontecer se o nome estiver diferente do cadastrado,
-                            ou se o anunciante não tiver anúncios catalogados nesse momento.
-                            <br/><br/>
-                            Tente buscar pelo <strong>ID do anunciante</strong> (ex: AR16735076323512287233)
-                            ou pelo <strong>domínio do site</strong> (ex: nike.com) em vez do nome —
-                            costuma resolver. Se você já sabe o ID ou o domínio exato, também pode clicar
-                            direto em <strong>Salvar ID</strong>, sem precisar de um resultado de busca.
+                            <strong>Nenhuma página encontrada</strong> pra esse nome no Google Ads.
+                            Tente pelo <strong>ID do anunciante</strong> (ex: AR16735076323512287233)
+                            ou pelo <strong>domínio</strong> (ex: nike.com), ou clique direto em
+                            <strong>Salvar ID</strong> se já souber o valor exato.
                         </div>
                     </div>
                 </div>"""
 
+
+            # Enquanto a busca dessa empresa esta em andamento (chamada
+            # bloqueante ao Apify), o botao "Buscar anunciantes" precisa
+            # nascer travado/com spinner ja no HTML gerado pelo Python --
+            # e nao so via JS no clique -- porque o components.html inteiro
+            # e recriado do zero a cada rerun (ex.: o polling de 12s do
+            # sino de notificacoes). Sem essa checagem aqui, um rerun de
+            # fundo durante a busca substituia o botao ja travado por um
+            # novo, destravado, permitindo cliques duplicados enquanto a
+            # busca de verdade ainda rodava. Mesmo padrao do botao
+            # "Buscar / Atualizar Anuncios" do cabecalho (_coleta_em_andamento).
+            _buscando_esta_empresa = is_editing and onboarding_empresa == e["nome"] and onboarding_buscando
+            if _buscando_esta_empresa:
+                _btn_buscar_html = (
+                    f'<button class="btn-buscar btn-buscar-loading" id="btn_buscar_{ci}" disabled>'
+                    f'<span class="btn-buscar-spinner"></span>'
+                    f'&nbsp;Buscando... (pode levar ate 2min)'
+                    f'</button>'
+                )
+                _btn_salvar_html = (
+                    f'<button class="btn-salvar" id="btn_salvar_{ci}" disabled onclick="handleSalvar({ci})">'
+                    f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '
+                    f'stroke="currentColor" stroke-width="2" '
+                    f'stroke-linecap="round" stroke-linejoin="round">'
+                    f'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>'
+                    f'<polyline points="17 21 17 13 7 13 7 21"/>'
+                    f'<polyline points="7 3 7 8 15 8"/>'
+                    f'</svg>'
+                    f'Salvar ID'
+                    f'</button>'
+                )
+            else:
+                _btn_buscar_html = (
+                    f'<button class="btn-buscar" id="btn_buscar_{ci}" onclick="handleBuscar({ci})">'
+                    f'🔍 Buscar anunciantes'
+                    f'</button>'
+                )
+                _btn_salvar_html = (
+                    f'<button class="btn-salvar" id="btn_salvar_{ci}" onclick="handleSalvar({ci})">'
+                    f'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '
+                    f'stroke="currentColor" stroke-width="2" '
+                    f'stroke-linecap="round" stroke-linejoin="round">'
+                    f'<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>'
+                    f'<polyline points="17 21 17 13 7 13 7 21"/>'
+                    f'<polyline points="7 3 7 8 15 8"/>'
+                    f'</svg>'
+                    f'Salvar ID'
+                    f'</button>'
+                )
 
             if is_editing:
                 cards_html += f"""
@@ -22686,19 +22731,8 @@ function triggerTab(label) {{
                                 oninput="handleCfgInput({ci}, this.value)"
                             />
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-                                <button class="btn-buscar" id="btn_buscar_{ci}" onclick="handleBuscar({ci})">
-                                    🔍 Buscar anunciantes
-                                </button>
-                                <button class="btn-salvar" id="btn_salvar_{ci}" onclick="handleSalvar({ci})">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                         stroke="currentColor" stroke-width="2"
-                                         stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                                        <polyline points="17 21 17 13 7 13 7 21"/>
-                                        <polyline points="7 3 7 8 15 8"/>
-                                    </svg>
-                                    Salvar ID
-                                </button>
+                                {_btn_buscar_html}
+                                {_btn_salvar_html}
                             </div>
                             {resultados_block}
                         </div>
@@ -22790,6 +22824,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; }}
 .btn-buscar:hover:not(:disabled) {{ background:#dbeafe; }}
 .btn-buscar:disabled {{ opacity:0.65; cursor:not-allowed; }}
+.btn-buscar-loading {{ opacity:1; cursor:not-allowed; }}
+.btn-buscar-loading:hover {{ background:#f0f9ff !important; }}
+.btn-buscar-spinner {{ display:inline-block; width:13px; height:13px; border-radius:50%;
+    border:2px solid rgba(3,105,161,0.25); border-top-color:#0369a1;
+    animation:spin 0.8s linear infinite; vertical-align:middle; }}
 .btn-salvar {{ display:flex; align-items:center; justify-content:center; gap:7px;
     padding:10px 0; border:none; border-radius:8px;
     background:#0e2a47; font-size:13px; font-weight:700; color:#fff;

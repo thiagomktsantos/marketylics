@@ -14,6 +14,41 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 
 # ---------------------------------------------------
+# LIMITE DE THREADS DE CPU (PyTorch/OpenCV) — corrige o throttle de CPU
+# do Streamlit Cloud no OCR (EasyOCR)
+# ---------------------------------------------------
+# Por padrão, o PyTorch (motor por baixo do EasyOCR) e o OpenCV usam
+# TODOS os núcleos de CPU disponíveis em paralelo dentro de uma única
+# chamada (ex: `reader.readtext()`, `cv2.imdecode()`). Isso faz cada
+# inferência de OCR gerar um PICO de uso de CPU, que é exatamente o
+# que o limitador do Streamlit Community Cloud está medindo — e é por
+# isso que só aumentar o intervalo MÍNIMO entre chamadas (ver
+# `_lock_easyocr_execucao` / `_MIN_INTERVALO_OCR_SEG`, mais abaixo) não
+# foi suficiente da vez anterior: aquele intervalo dá respiro ENTRE
+# inferências, mas não reduz a altura do pico durante cada inferência.
+#
+# Forçando 1 thread aqui, cada chamada de OCR fica mais lenta (não usa
+# mais vários núcleos de uma vez), mas o pico de CPU cai bastante —
+# troca deliberada de velocidade por não ser throttlado de novo. Isso
+# precisa rodar ANTES de qualquer uso de torch/cv2/easyocr no processo
+# (por isso está aqui em cima, logo após os imports, e não só dentro de
+# `_get_easyocr`) — o PyTorch fixa o número de threads na primeira
+# operação e não deixa mudar depois.
+def _limitar_threads_cpu_ocr():
+    try:
+        import torch
+        torch.set_num_threads(1)
+    except Exception as e:
+        print(f"[OCR-DEBUG] não consegui limitar threads do torch: {e!r}", flush=True)
+    try:
+        import cv2
+        cv2.setNumThreads(1)
+    except Exception as e:
+        print(f"[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}", flush=True)
+
+_limitar_threads_cpu_ocr()
+
+# ---------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
 # ---------------------------------------------------
 
@@ -1832,7 +1867,12 @@ _ultima_chamada_ocr = [0.0]
 def _get_easyocr():
     """Cria (uma única vez, na primeira chamada) e reaproveita a
     instância do EasyOCR — o carregamento do modelo é pesado, então não
-    dá pra recriar a cada imagem."""
+    dá pra recriar a cada imagem.
+
+    O limite de threads do PyTorch/OpenCV (ver `_limitar_threads_cpu_ocr`,
+    chamada logo no início do arquivo) já foi aplicado antes desse ponto
+    — é o que evita o pico de CPU que estava throttlando o app no
+    Streamlit Cloud."""
     if _easyocr_instancia[0] is None:
         with _lock_easyocr_init:
             if _easyocr_instancia[0] is None:
@@ -17808,7 +17848,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
                 with st.container(key=filtros_key):
-                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 2.5, 0.6])
+                    # "Tipo" reduzido (2.5 -> 1.7): era a mesma largura dos
+                    # outros filtros só por padrão, mas o texto das opções
+                    # (ex: "Tipo (todos)") é bem mais curto que o de
+                    # "Plataforma"/"Status", então sobrava espaço vazio à
+                    # toa. Diferença redistribuída entre Busca e Plataforma.
+                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3.3, 1.7, 2.8, 2.5, 2.5, 0.6])
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -23970,8 +24015,22 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
+                # Filtro de Região — só aparece se os dados baixados tiverem
+                # mais de uma região distinta (ex: BR + PT). Com uma região
+                # só (ou nenhuma), o filtro é redundante — todo mundo cairia
+                # na mesma opção mesmo — então nem mostramos o campo, pra não
+                # poluir a barra à toa.
+                regioes_disponiveis_gads = sorted(set(
+                    (a.get("regiao") or "").strip() for a in gads_list if (a.get("regiao") or "").strip()
+                ))
+                mostrar_filtro_regiao_gads = len(regioes_disponiveis_gads) > 1
+
                 with st.container(key=filtros_key):
-                    fcol1, fcol2, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 0.6])
+                    if mostrar_filtro_regiao_gads:
+                        fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2.6, 2, 2, 2.2, 2.2, 0.6])
+                    else:
+                        fcol1, fcol2, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 0.6])
+                        fcol3 = None
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -23986,6 +24045,16 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             key=f"gads_fmt_{sk}",
                             label_visibility="collapsed",
                         )
+                    if mostrar_filtro_regiao_gads:
+                        with fcol3:
+                            filtro_regiao = st.selectbox(
+                                "Região",
+                                ["Região (todas)"] + regioes_disponiveis_gads,
+                                key=f"gads_regiao_{sk}",
+                                label_visibility="collapsed",
+                            )
+                    else:
+                        filtro_regiao = "Região (todas)"
                     with fcol4:
                         filtro_status = st.selectbox(
                             "Status",
@@ -24022,6 +24091,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
+                if filtro_regiao != "Região (todas)":
+                    gads_f = [a for a in gads_f if (a.get("regiao") or "").strip() == filtro_regiao]
                 if filtro_status == "Ativos":
                     gads_f = [a for a in gads_f if a.get("ativo", True)]
                 elif filtro_status == "Inativos (histórico)":

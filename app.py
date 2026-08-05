@@ -10,6 +10,7 @@ import trafilatura
 import requests
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 
 # ---------------------------------------------------
@@ -21095,49 +21096,86 @@ elif st.session_state.pagina == "google_ads":
                     candidatos.append(candidato)
         print(f"[GADS-BUSCA-DEBUG] termo original={termo!r} -> candidatos={candidatos}", flush=True)
 
-        # Duas passadas de região: primeiro BR (caso mais comum e mais
-        # rápido de descartar), depois SEM filtro nenhum (todas as
-        # regiões) só se a primeira passada inteira vier vazia. Precisa
-        # dessa segunda passada porque o filtro de região do actor é
-        # sobre onde o ANÚNCIO foi exibido, não sobre o país do
-        # anunciante — um domínio pode existir e ter anúncios de verdade
-        # na Central de Transparência (sem filtro nenhum) mas nenhum
-        # marcado como exibido na região BR nos dados do actor (ex.
-        # validado com "buyticketbrasil.com": aparece na Transparency
-        # Center, mas region="BR" fixo sempre voltava vazio). Só entra
-        # nessa segunda passada no caso raro de esgotar a primeira,
-        # então não paga o custo extra no caminho comum (anunciante
-        # encontrado já na primeira tentativa com BR).
-        for _regiao_tentativa in ("BR", ""):
-            for candidato in candidatos:
-                ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45, region=_regiao_tentativa)
-                print(
-                    f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={_regiao_tentativa or '(todas)'!r} -> "
-                    f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
-                    flush=True,
-                )
-                if erro or not ads:
-                    continue
-                paginas = {}
-                for ad in ads:
-                    pid  = ad.get("page_id", "") or ""
-                    nome = ad.get("page_name", "") or ""
-                    pic  = ad.get("page_profile_picture", "") or ""
-                    if nome and nome not in paginas:
-                        paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
-                    if nome in paginas:
-                        paginas[nome]["total_ads"] += 1
-                        if not paginas[nome]["profile_picture"] and pic:
-                            paginas[nome]["profile_picture"] = pic
-                print(
-                    f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={_regiao_tentativa or '(todas)'!r} -> "
-                    f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
-                    flush=True,
-                )
-                if paginas:
-                    return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+        # Duas passadas de região: primeiro BR (caso mais comum), depois
+        # SEM filtro nenhum (todas as regiões) — só usada se a passada BR
+        # inteira vier vazia. Precisa dessa segunda passada porque o
+        # filtro de região do actor é sobre onde o ANÚNCIO foi exibido,
+        # não sobre o país do anunciante — um domínio pode existir e ter
+        # anúncios de verdade na Central de Transparência (sem filtro
+        # nenhum) mas nenhum marcado como exibido na região BR nos dados
+        # do actor (ex. validado com "buyticketbrasil.com": aparece na
+        # Transparency Center, mas region="BR" fixo sempre voltava vazio).
+        #
+        # As combinações candidato×região eram testadas uma de cada vez,
+        # em sequência — cada tentativa vazia consome o deadline_seconds
+        # (45s) inteiro antes de partir pra próxima. Com até 3 candidatos
+        # x 2 regiões = 6 combinações, o pior caso passava de 4 minutos
+        # (e o caso comum de um domínio "cascateando" — ex.: ".com.br"
+        # falha, ".com" acha — já levava uns 100s, tudo isso com a tela
+        # travada sem feedback nenhum).
+        #
+        # Agora dispara TODAS as combinações em paralelo (thread pool —
+        # é tudo I/O de rede, sem custo real de CPU em rodar junto) e
+        # escolhe o primeiro resultado não-vazio respeitando a ordem de
+        # prioridade original (candidato mais específico primeiro, região
+        # BR antes de "todas"). O tempo total de espera cai pra ~o tempo
+        # da tentativa mais lenta entre as que precisam terminar pra
+        # decidir, em vez da SOMA de todas as tentativas.
+        combinacoes = [
+            (candidato, regiao)
+            for regiao in ("BR", "")
+            for candidato in candidatos
+        ]
 
-        print(f"[GADS-BUSCA-DEBUG] todos os {len(candidatos)} candidato(s) x 2 região(ões) esgotados sem resultado", flush=True)
+        def _tentar(combo):
+            candidato, regiao = combo
+            ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45, region=regiao)
+            print(
+                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={regiao or '(todas)'!r} -> "
+                f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
+                flush=True,
+            )
+            return ads, erro
+
+        resultados = {}
+        with ThreadPoolExecutor(max_workers=len(combinacoes)) as executor:
+            futuros = {executor.submit(_tentar, combo): combo for combo in combinacoes}
+            for futuro in as_completed(futuros):
+                combo = futuros[futuro]
+                try:
+                    ads, erro = futuro.result()
+                except Exception as e:
+                    ads, erro = None, str(e)
+                resultados[combo] = (ads, erro)
+
+        # Percorre na ordem de prioridade original (não na ordem de
+        # chegada) — assim o comportamento continua idêntico ao
+        # sequencial, só que muito mais rápido.
+        for combo in combinacoes:
+            candidato, regiao = combo
+            ads, erro = resultados.get(combo, (None, "sem resultado"))
+            if erro or not ads:
+                continue
+            paginas = {}
+            for ad in ads:
+                pid  = ad.get("page_id", "") or ""
+                nome = ad.get("page_name", "") or ""
+                pic  = ad.get("page_profile_picture", "") or ""
+                if nome and nome not in paginas:
+                    paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
+                if nome in paginas:
+                    paginas[nome]["total_ads"] += 1
+                    if not paginas[nome]["profile_picture"] and pic:
+                        paginas[nome]["profile_picture"] = pic
+            print(
+                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={regiao or '(todas)'!r} -> "
+                f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
+                flush=True,
+            )
+            if paginas:
+                return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+
+        print(f"[GADS-BUSCA-DEBUG] todas as {len(combinacoes)} combinação(ões) candidato x região esgotadas sem resultado", flush=True)
         return []
 
     # ══════════════════════════════════════════════════════════════════
@@ -22127,7 +22165,8 @@ function triggerTab(label) {{
                 if val:
                     st.session_state.gads_onboarding_empresa = e["nome"]
                     st.session_state.gads_editando_empresa   = e["nome"]
-                    paginas = buscar_anunciantes_google(val)
+                    with st.spinner(f"Buscando \"{val}\" na Central de Transparência do Google Ads..."):
+                        paginas = buscar_anunciantes_google(val)
                     st.session_state.gads_onboarding_paginas = paginas
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:

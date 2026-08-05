@@ -21039,6 +21039,8 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_onboarding_empresa = None
     if "gads_onboarding_paginas" not in st.session_state:
         st.session_state.gads_onboarding_paginas = []
+    if "gads_onboarding_timeout" not in st.session_state:
+        st.session_state.gads_onboarding_timeout = False
     if "gads_onboarding_termo" not in st.session_state:
         st.session_state.gads_onboarding_termo = ""
     if "gads_editando_empresa" not in st.session_state:
@@ -21072,7 +21074,7 @@ elif st.session_state.pagina == "google_ads":
                 st.session_state.dados["concorrentes"][e["idx"]]["gads_page_pic"] = page_pic
         salvar_empresa_e_concorrentes()
 
-    def buscar_anunciantes_google(termo: str) -> list:
+    def buscar_anunciantes_google(termo: str) -> tuple:
         # Mesmo raciocínio do Meta Ads: essa busca trava a tela toda
         # (síncrona, dentro do clique do botão), então usa um deadline
         # bem menor que os 180s padrão da coleta completa em background.
@@ -21114,22 +21116,34 @@ elif st.session_state.pagina == "google_ads":
         # falha, ".com" acha — já levava uns 100s, tudo isso com a tela
         # travada sem feedback nenhum).
         #
-        # Agora dispara TODAS as combinações em paralelo (thread pool —
-        # é tudo I/O de rede, sem custo real de CPU em rodar junto) e
-        # escolhe o primeiro resultado não-vazio respeitando a ordem de
-        # prioridade original (candidato mais específico primeiro, região
-        # BR antes de "todas"). O tempo total de espera cai pra ~o tempo
-        # da tentativa mais lenta entre as que precisam terminar pra
-        # decidir, em vez da SOMA de todas as tentativas.
-        combinacoes = [
-            (candidato, regiao)
-            for regiao in ("BR", "")
-            for candidato in candidatos
-        ]
+        # Dispara as combinações em DUAS ONDAS (não mais as 6 de uma vez):
+        # onda 1 = todos os candidatos com região BR, onda 2 = todos os
+        # candidatos sem filtro de região — só roda se a onda 1 inteira
+        # vier vazia. Isso reduz o número de runs simultâneos batendo na
+        # mesma conta Apify ao mesmo tempo (de até 6 pra até 3), o que
+        # ajuda o actor não competir tanto por recursos/concorrência e
+        # terminar dentro do deadline com mais consistência.
+        #
+        # Motivo de ter mais de uma onda em primeiro lugar: o filtro de
+        # região do actor é sobre onde o ANÚNCIO foi exibido, não sobre
+        # o país do anunciante — um domínio pode existir e ter anúncios
+        # de verdade na Central de Transparência (sem filtro nenhum) mas
+        # nenhum marcado como exibido na região BR nos dados do actor
+        # (ex. validado com "buyticketbrasil.com": aparece na Transparency
+        # Center, mas region="BR" fixo sozinho às vezes voltava vazio).
+        #
+        # deadline_seconds subiu de 45 pra 90: o actor "google-ads-scraper"
+        # pode ter cold start lento, e com múltiplos runs concorrentes na
+        # mesma conta Apify o run às vezes ainda está "RUNNING" quando o
+        # prazo curto estourava — nesse caso o código tratava como "sem
+        # resultado" mesmo o anunciante tendo anúncios de verdade (log real:
+        # "buyticketbrasil.com" achou 20 anúncios numa tentativa e deu
+        # timeout "RUNNING" em outra, pro MESMO termo).
+        ondas = [("BR",), ("",)]
 
         def _tentar(combo):
             candidato, regiao = combo
-            ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=45, region=regiao)
+            ads, _, erro = _apify_run_sync(candidato, limit=20, deadline_seconds=90, region=regiao)
             print(
                 f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={regiao or '(todas)'!r} -> "
                 f"erro={erro!r} qtd_ads={len(ads) if ads else 0}",
@@ -21137,46 +21151,58 @@ elif st.session_state.pagina == "google_ads":
             )
             return ads, erro
 
-        resultados = {}
-        with ThreadPoolExecutor(max_workers=len(combinacoes)) as executor:
-            futuros = {executor.submit(_tentar, combo): combo for combo in combinacoes}
-            for futuro in as_completed(futuros):
-                combo = futuros[futuro]
-                try:
-                    ads, erro = futuro.result()
-                except Exception as e:
-                    ads, erro = None, str(e)
-                resultados[combo] = (ads, erro)
+        houve_timeout = False
 
-        # Percorre na ordem de prioridade original (não na ordem de
-        # chegada) — assim o comportamento continua idêntico ao
-        # sequencial, só que muito mais rápido.
-        for combo in combinacoes:
-            candidato, regiao = combo
-            ads, erro = resultados.get(combo, (None, "sem resultado"))
-            if erro or not ads:
-                continue
-            paginas = {}
-            for ad in ads:
-                pid  = ad.get("page_id", "") or ""
-                nome = ad.get("page_name", "") or ""
-                pic  = ad.get("page_profile_picture", "") or ""
-                if nome and nome not in paginas:
-                    paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
-                if nome in paginas:
-                    paginas[nome]["total_ads"] += 1
-                    if not paginas[nome]["profile_picture"] and pic:
-                        paginas[nome]["profile_picture"] = pic
-            print(
-                f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={regiao or '(todas)'!r} -> "
-                f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
-                flush=True,
-            )
-            if paginas:
-                return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+        for regioes_da_onda in ondas:
+            combinacoes = [
+                (candidato, regiao)
+                for regiao in regioes_da_onda
+                for candidato in candidatos
+            ]
 
-        print(f"[GADS-BUSCA-DEBUG] todas as {len(combinacoes)} combinação(ões) candidato x região esgotadas sem resultado", flush=True)
-        return []
+            resultados = {}
+            with ThreadPoolExecutor(max_workers=len(combinacoes)) as executor:
+                futuros = {executor.submit(_tentar, combo): combo for combo in combinacoes}
+                for futuro in as_completed(futuros):
+                    combo = futuros[futuro]
+                    try:
+                        ads, erro = futuro.result()
+                    except Exception as e:
+                        ads, erro = None, str(e)
+                    resultados[combo] = (ads, erro)
+
+            # Percorre na ordem de prioridade original (não na ordem de
+            # chegada) — assim o comportamento continua idêntico ao
+            # sequencial, só que muito mais rápido.
+            for combo in combinacoes:
+                candidato, regiao = combo
+                ads, erro = resultados.get(combo, (None, "sem resultado"))
+                if erro:
+                    if "status: RUNNING" in erro or "TIMED-OUT" in erro:
+                        houve_timeout = True
+                if erro or not ads:
+                    continue
+                paginas = {}
+                for ad in ads:
+                    pid  = ad.get("page_id", "") or ""
+                    nome = ad.get("page_name", "") or ""
+                    pic  = ad.get("page_profile_picture", "") or ""
+                    if nome and nome not in paginas:
+                        paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
+                    if nome in paginas:
+                        paginas[nome]["total_ads"] += 1
+                        if not paginas[nome]["profile_picture"] and pic:
+                            paginas[nome]["profile_picture"] = pic
+                print(
+                    f"[GADS-BUSCA-DEBUG] candidato={candidato!r} regiao={regiao or '(todas)'!r} -> "
+                    f"{len(paginas)} página(s) distinta(s) agrupada(s): {list(paginas.keys())}",
+                    flush=True,
+                )
+                if paginas:
+                    return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True), False
+
+        print(f"[GADS-BUSCA-DEBUG] todas as ondas esgotadas sem resultado (houve_timeout={houve_timeout})", flush=True)
+        return [], houve_timeout
 
     # ══════════════════════════════════════════════════════════════════
     # CABEÇALHO DA PÁGINA
@@ -22076,6 +22102,7 @@ function triggerTab(label) {{
         editando_empresa   = st.session_state.gads_editando_empresa
         onboarding_empresa = st.session_state.gads_onboarding_empresa
         onboarding_paginas = st.session_state.gads_onboarding_paginas
+        onboarding_timeout = st.session_state.gads_onboarding_timeout
 
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
@@ -22166,8 +22193,9 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_empresa = e["nome"]
                     st.session_state.gads_editando_empresa   = e["nome"]
                     with st.spinner(f"Buscando \"{val}\" na Central de Transparência do Google Ads..."):
-                        paginas = buscar_anunciantes_google(val)
+                        paginas, houve_timeout = buscar_anunciantes_google(val)
                     st.session_state.gads_onboarding_paginas = paginas
+                    st.session_state.gads_onboarding_timeout = houve_timeout
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -22346,6 +22374,32 @@ function triggerTab(label) {{
                         </span>
                     </div>
                     {pgs_html}
+                </div>"""
+            elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and onboarding_timeout:
+                # A busca não achou nenhum resultado a tempo, mas pelo
+                # menos uma das tentativas (candidato x região) ainda
+                # estava "RUNNING" no Apify quando o deadline estourou —
+                # ou seja, isso NÃO é evidência de que o anunciante não
+                # tem anúncios, só que a busca não teve tempo de terminar.
+                # Mostrar "Nenhuma página encontrada" nesse caso é
+                # enganoso, então usa uma mensagem separada pedindo pra
+                # tentar de novo em vez de sugerir ID/domínio.
+                resultados_block = f"""
+                <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
+                    <div style="display:flex;align-items:flex-start;gap:10px;
+                                background:#fffbeb;border:1px solid #fde68a;border-radius:9px;
+                                padding:11px 14px;">
+                        <span style="font-size:15px;flex-shrink:0;line-height:1.3">⏳</span>
+                        <div style="font-size:13px;color:#92400e;line-height:1.55">
+                            <strong>A busca demorou demais e não terminou a tempo.</strong>
+                            Isso não quer dizer que o anunciante não tem anúncios — a consulta
+                            à Central de Transparência do Google Ads ainda estava em andamento
+                            quando o tempo limite foi atingido.
+                            <br/><br/>
+                            Clique em <strong>🔍 Buscar anunciantes</strong> de novo pra tentar
+                            mais uma vez.
+                        </div>
+                    </div>
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
                 # Mesmo tratamento do Meta Ads: busca já rodou pra essa

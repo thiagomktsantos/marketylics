@@ -1945,7 +1945,7 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
         linhas.append(" ".join(t for _bbox, t in _grupo))
     return "\n".join(linhas)
 
-_REGEX_PATROCINADO = re.compile(r"^patrocinad[oa]$", re.IGNORECASE)
+_REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored)$", re.IGNORECASE)
 # Formato de domínio/URL: precisa ter pelo menos um "." separando
 # letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
 # distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
@@ -14928,6 +14928,49 @@ elif st.session_state.pagina == "ads":
         hd = [u for u in vids if u not in sd]
         return sd + hd
 
+    # Mapa de sufixo de domínio -> região, usado como HEURÍSTICA pra
+    # inferir a região dos anúncios do Meta (ver `_regiao_por_dominio`
+    # logo abaixo). Não existe campo de país/região confiável nos dados
+    # do Meta Ad Library pra anúncios comuns — `country_iso_code` e
+    # `targeted_or_reached_countries` vêm sempre vazios/null (validado
+    # em anúncios reais). O único sinal disponível é o domínio do site
+    # anunciado (campo `caption`, ex: "ticketswap.se", "ticketswap.de")
+    # quando o anunciante usa subdomínios por país — não é garantido,
+    # mas é o melhor sinal que temos sem inventar dado.
+    _MAPA_REGIAO_POR_TLD = {
+        "com.br": "Brasil", "pt": "Portugal", "es": "Espanha", "de": "Alemanha",
+        "se": "Suécia", "nl": "Holanda", "fr": "França", "it": "Itália",
+        "co.uk": "Reino Unido", "uk": "Reino Unido", "mx": "México",
+        "ar": "Argentina", "cl": "Chile", "co": "Colômbia", "pe": "Peru",
+        "uy": "Uruguai", "py": "Paraguai", "us": "Estados Unidos",
+        "ca": "Canadá", "at": "Áustria", "ch": "Suíça", "be": "Bélgica",
+        "dk": "Dinamarca", "no": "Noruega", "fi": "Finlândia", "pl": "Polônia",
+    }
+
+    def _regiao_por_dominio(caption: str) -> str:
+        """Extrai o domínio de `caption` (ex: "www.ticketswap.se" ->
+        "ticketswap.se") e mapeia o sufixo pra uma região conhecida.
+        ".com" puro (sem país antes, ex: "ticketswap.com") vira
+        "Internacional (.com)" em vez de tentar adivinhar um país —
+        não temos como saber se é EUA ou só a versão-padrão do site.
+        Domínio não reconhecido -> "" (essa imagem simplesmente não
+        entra na contagem de regiões, não quebra nada)."""
+        dom = (caption or "").strip().lower()
+        dom = dom.split("/")[0].split("?")[0]
+        if dom.startswith("www."):
+            dom = dom[4:]
+        if not dom or "." not in dom:
+            return ""
+        partes = dom.split(".")
+        # tenta sufixo de 2 labels (ex: "com.br", "co.uk"), depois 1
+        for n in (2, 1):
+            sufixo = ".".join(partes[-n:]) if len(partes) >= n else ""
+            if sufixo in _MAPA_REGIAO_POR_TLD:
+                return _MAPA_REGIAO_POR_TLD[sufixo]
+        if partes[-1] == "com":
+            return "Internacional (.com)"
+        return ""
+
     def _normalizar_item_apify(item: dict) -> dict:
         snapshot = item.get("snapshot") or {}
         cards    = snapshot.get("cards") or []
@@ -15076,6 +15119,7 @@ elif st.session_state.pagina == "ads":
             "plataformas":          plats,
             "formato":              fmt,
             "is_dynamic":           is_dyn,
+            "regiao":               _regiao_por_dominio(copy["caption"]),
         }
 
     def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180) -> tuple:
@@ -17847,13 +17891,28 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
+                # Filtro de Região (Meta) — mesma regra do Google Ads: só
+                # aparece se houver mais de uma região distinta entre os
+                # anúncios baixados. "regiao" aqui é uma HEURÍSTICA baseada
+                # no domínio do site anunciado (ver `_regiao_por_dominio`
+                # na normalização do item) — o Meta Ad Library não expõe
+                # país/região de verdade pra anúncios comuns.
+                regioes_disponiveis_ads = sorted(set(
+                    (a.get("regiao") or "").strip() for a in ads_list if (a.get("regiao") or "").strip()
+                ))
+                mostrar_filtro_regiao_ads = len(regioes_disponiveis_ads) > 1
+
                 with st.container(key=filtros_key):
                     # "Tipo" reduzido (2.5 -> 1.7): era a mesma largura dos
                     # outros filtros só por padrão, mas o texto das opções
                     # (ex: "Tipo (todos)") é bem mais curto que o de
                     # "Plataforma"/"Status", então sobrava espaço vazio à
                     # toa. Diferença redistribuída entre Busca e Plataforma.
-                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3.3, 1.7, 2.8, 2.5, 2.5, 0.6])
+                    if mostrar_filtro_regiao_ads:
+                        fcol1, fcol2, fcol3, fcol7, fcol4, fcol5, fcol6 = st.columns([2.6, 1.5, 2.2, 2, 2.2, 2.2, 0.6])
+                    else:
+                        fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([3.3, 1.7, 2.8, 2.5, 2.5, 0.6])
+                        fcol7 = None
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -17876,6 +17935,16 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             key=f"ads_plat_{sk}",
                             label_visibility="collapsed",
                         )
+                    if mostrar_filtro_regiao_ads:
+                        with fcol7:
+                            filtro_regiao = st.selectbox(
+                                "Região",
+                                ["Região (todas)"] + regioes_disponiveis_ads,
+                                key=f"ads_regiao_{sk}",
+                                label_visibility="collapsed",
+                            )
+                    else:
+                        filtro_regiao = "Região (todas)"
                     with fcol4:
                         filtro_status = st.selectbox(
                             "Status",
@@ -17914,6 +17983,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     ads_f = [a for a in ads_f if a["formato"] == filtro_fmt]
                 if filtro_plat != "Plataforma (todas)":
                     ads_f = [a for a in ads_f if filtro_plat.lower() in (a["plataformas"] or [])]
+                if filtro_regiao != "Região (todas)":
+                    ads_f = [a for a in ads_f if (a.get("regiao") or "").strip() == filtro_regiao]
                 if filtro_status == "Ativos":
                     ads_f = [a for a in ads_f if a.get("ativo", True)]
                 elif filtro_status == "Inativos (histórico)":

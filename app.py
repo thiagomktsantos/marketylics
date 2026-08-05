@@ -20849,7 +20849,19 @@ elif st.session_state.pagina == "google_ads":
         pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
         thread principal do Streamlit. Por isso não usa `_render_loader`
         nem lê `st.session_state` pro cache atual — busca direto do
-        Supabase, que é seguro de qualquer thread."""
+        Supabase, que é seguro de qualquer thread.
+
+        Salva CADA empresa assim que ela termina de ser coletada, em vez de
+        acumular tudo em memória e fazer um único `update` no final. Antes,
+        se a Apify respondia certinho pra 4 empresas mas o save final
+        falhasse (instabilidade do Supabase, payload grande demais etc.), o
+        lote INTEIRO se perdia — inclusive empresas que já tinham sido
+        coletadas com sucesso — e refazer significava rodar a Apify de novo
+        pra todo mundo. Salvando empresa a empresa: (1) uma falha de save
+        numa empresa não derruba as que já foram persistidas, e (2) dá pra
+        saber exatamente qual empresa falhou ao salvar (status
+        "erro_ao_salvar" em `por_empresa`) e refazer só ela, sem rodar a
+        Apify de novo pras que já deram certo (ver refazer_coleta_gads)."""
         try:
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
@@ -20862,8 +20874,11 @@ elif st.session_state.pagina == "google_ads":
             # Status por empresa pra desenhar uma barra individual por
             # empresa no card (em vez de só um "X de Y" agregado pro lote
             # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
-            # (chamando a Apify agora), "ok" (coletada), "cache" (pulada
-            # por já ter cache fresco) ou "erro" (com a mensagem).
+            # (chamando a Apify agora), "ok" (coletada e já salva), "cache"
+            # (pulada por já ter cache fresco), "erro" (falha na Apify) ou
+            # "erro_ao_salvar" (Apify respondeu, mas não persistiu no
+            # Supabase — distingue do "erro" de coleta porque o retry aqui
+            # não precisa chamar a Apify de novo, só tentar salvar de novo).
             _status_por_empresa = {nome: {"status": "pendente"} for nome in _nomes_empresas}
 
             def _grava_progresso():
@@ -20907,14 +20922,28 @@ elif st.session_state.pagina == "google_ads":
                         erros[ck] = erro
                         _status_por_empresa[ck] = {"status": "erro", "msg": erro}
                     else:
-                        novos[ck] = {
+                        entry_nova = {
                             "data":  ads,
                             "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "nome":  ck,
                             "query": query,
-                            "_raw":  raw,
                         }
-                        _status_por_empresa[ck] = {"status": "ok"}
+                        # Salva JÁ essa empresa, sozinha — usa o `cache_atual`
+                        # que já vai sendo atualizado em memória a cada
+                        # sucesso (não precisa reler o banco de novo aqui:
+                        # cache_atual já reflete o último save bem-sucedido
+                        # desta mesma execução, e uma releitura extra por
+                        # empresa só significava mais uma ida ao Supabase
+                        # sem ganho real).
+                        _cache_com_uma = merge_ads(cache_atual, {ck: entry_nova})
+                        _salvo_ok_ck, _erro_salvar_ck = salvar_cache_gads(_cache_com_uma, migrar_midia=False, user_id=user_id)
+                        if _salvo_ok_ck:
+                            novos[ck] = entry_nova
+                            cache_atual = _cache_com_uma
+                            _status_por_empresa[ck] = {"status": "ok"}
+                        else:
+                            erros[ck] = f"Coletado, mas falhou ao salvar: {_erro_salvar_ck}"
+                            _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_salvar_ck}
 
                 # Progresso incremental — sem isso, o card ficava mostrando só
                 # o rótulo genérico "Coleta de anúncios" do início ao fim,
@@ -20928,31 +20957,6 @@ elif st.session_state.pagina == "google_ads":
                 _processadas += 1
                 _grava_progresso()
 
-            cache_mergeado = merge_ads(cache_atual, novos)
-
-            # Save rápido: mantém os links originais do provedor (ainda
-            # válidos por bem mais que 1 dia). A troca pelos links
-            # permanentes do R2 acontece depois, em background também.
-            _salvo_ok, _erro_salvar = salvar_cache_gads(cache_mergeado, migrar_midia=False, user_id=user_id)
-            if not _salvo_ok:
-                # Coleta rodou certinho (Apify respondeu), mas o gads_cache
-                # não chegou a ser gravado no Supabase (ex: instabilidade
-                # 521/57P03 do banco). Antes isso virava "concluído" do
-                # mesmo jeito — o card mostrava sucesso, mas os dados novos
-                # nunca apareciam, porque o merge nunca foi persistido.
-                atualizar_atividade(atividade_id, "erro", {
-                    "empresas": _nomes_empresas,
-                    "total": _total_empresas,
-                    "concluidas": _processadas,
-                    "coletadas": list(novos.keys()),
-                    "com_erro": erros,
-                    "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
-                    "motivo": (
-                        f"A coleta funcionou, mas falhou ao salvar no banco de dados: "
-                        f"{_erro_salvar}. Clique em 'Refazer' para tentar salvar de novo."
-                    ),
-                })
-                return
             if novos:
                 iniciar_migracao_midia_background(user_id, novos)
             iniciar_retentativa_midias_background(user_id)

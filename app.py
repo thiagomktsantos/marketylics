@@ -3063,54 +3063,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # elas aparecem (nome da página, se houver, e a URL). O pior caso
     # passa a ser "nome da página aparece como uma linha extra em cima
     # da URL" (cosmético), em vez de "a URL inteira desaparece".
-    # Exceção pro anúncio "Patrocinado": nesses, a banda de cabeçalho
-    # (nome da página + URL, ex: "BuyTicket Brasil www.buyticketbrasil.
-    # com/") às vezes sai PINTADA DE AZUL pelo Google — igual um link/
-    # título — em vez de cinza como no anúncio orgânico normal. Sem
-    # tratar esse caso à parte, o laço abaixo (que só aceita banda
-    # cinza como cabeçalho) para na primeira banda depois do
-    # "Patrocinado" achando que já é o título de verdade, e o nome da
-    # página + URL acaba grudado no INÍCIO do headline (ex: "BuyTicket
-    # Brasil WWW.! buyticketbrasil.coml Ingressos para Linkin Park..."
-    # em vez de "Ingressos para Linkin Park..." sozinho, com o
-    # cabeçalho separado).
-    #
-    # Só entra nessa exceção quando: (1) o anúncio É de fato
-    # "Patrocinado" (banda 0 batia o rótulo exato, não só como prefixo
-    # colado — esse outro caso já reaproveita o texto limpo via
-    # `_texto_apos_patrocinado`, ver abaixo) e (2) a banda logo em
-    # seguida, mesmo azul, tem CARA de domínio/URL (tem "www." ou um
-    # ponto seguido de TLD) — um título de anúncio de verdade não tem
-    # esse formato, então isso evita confundir um headline azul comum
-    # (ex: "Ingressos para Linkin Park...") com o cabeçalho.
-    _idx_header_azul_forcado = None
-    if _eh_patrocinado and idx < len(bandas_texto) and bandas_texto[idx]["classe"] == "azul":
-        _txt_teste_header_azul = _ocr_banda(
-            reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]
-        ).strip()
-        if re.search(r"www\.|\.\s?[a-zA-Z]{2,4}\b", _txt_teste_header_azul, re.IGNORECASE):
-            _idx_header_azul_forcado = idx
-            print(
-                f"[OCR-DEBUG] banda idx={idx} é azul mas veio logo após 'Patrocinado' e "
-                f"tem cara de domínio/URL ({_txt_teste_header_azul!r}) — tratando como "
-                "cabeçalho, não como início do título",
-                flush=True,
-            )
-
     _partes_dominio = []
-    while idx < len(bandas_texto) and (
-        bandas_texto[idx]["classe"] != "azul" or idx == _idx_header_azul_forcado
-    ):
+    while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
         # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
         # o texto já limpo do rótulo em vez de rodar o OCR de novo
         # nessa banda — repetir o OCR aqui devolveria a mesma string
         # bruta "Patrocinado ..." de novo, com o rótulo ainda colado.
         if idx == 0 and _texto_apos_patrocinado is not None:
             _txt_dominio = _texto_apos_patrocinado
-        elif idx == _idx_header_azul_forcado:
-            # Já lemos essa banda acima (pro teste de "cara de
-            # domínio") — reaproveita, não roda o OCR de novo à toa.
-            _txt_dominio = _txt_teste_header_azul
         else:
             _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
         # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA
@@ -3125,53 +3085,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # intacto, porque ali ele faz parte da palavra de verdade, sem
         # espaço ao redor).
         _txt_dominio = re.sub(r"(?<!\S)l(?!\S)", "/", _txt_dominio)
-        if idx == _idx_header_azul_forcado:
-            # Essa banda "forçada" (ver acima) costuma vir com o NOME
-            # DA PÁGINA e a URL colados na MESMA linha (ex: "BuyTicket
-            # Brasil WWW.! buyticketbrasil.coml") — diferente do caso
-            # comum tratado logo abaixo, onde cada linha do cabeçalho
-            # é OU nome OU URL, nunca as duas juntas. Se essa linha
-            # caísse na regra de sempre ("a linha inteira tem cara de
-            # domínio → remove TODO espaço"), ela colaria as palavras
-            # do NOME também ("BuyTicket Brasil" → "BuyTicketBrasil")
-            # e ainda grudaria o nome direto na URL, sem separador
-            # nenhum ("BuyTicketBrasilWWW..." — foi exatamente isso
-            # que aconteceu num teste real).
-            #
-            # Em vez disso, acha onde a URL começa (o token "www",
-            # mesmo com ruído de OCR tipo "WWW.!") e separa em duas
-            # partes: tudo ANTES disso é nome da página (mantém os
-            # espaços entre palavras), tudo A PARTIR disso é a URL
-            # (aí sim remove espaço interno). As duas entram como duas
-            # linhas separadas do cabeçalho — igual apareceriam no
-            # anúncio real (nome numa linha, URL embaixo).
-            _match_www_no_meio = re.search(r"[wW]{2,4}\.", _txt_dominio)
-            if _match_www_no_meio and _match_www_no_meio.start() > 0:
-                _nome_pagina_bruto = _txt_dominio[:_match_www_no_meio.start()]
-                _url_bruta = _txt_dominio[_match_www_no_meio.start():]
-                _nome_pagina_limpo = re.sub(r"\s+", " ", _nome_pagina_bruto).strip()
-                _nome_pagina_limpo = re.sub(r"^[^a-zA-Z0-9]+", "", _nome_pagina_limpo)
-                _url_sem_espaco = re.sub(r"\s+", "", _url_bruta)
-                _url_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _url_sem_espaco)
-                print(
-                    f"[OCR-DEBUG] header-linha idx={idx} (azul forçado, nome+URL colados) "
-                    f"bruto={_txt_dominio!r} -> nome={_nome_pagina_limpo!r} url={_url_sem_espaco!r}",
-                    flush=True,
-                )
-                _debug_bandas[idx]["texto"] = _txt_dominio
-                _debug_bandas[idx]["decisao"] = (
-                    f"cabeçalho azul forçado após 'Patrocinado' — separado em "
-                    f"nome={_nome_pagina_limpo!r} + url={_url_sem_espaco!r}"
-                )
-                if _nome_pagina_limpo:
-                    _partes_dominio.append(_nome_pagina_limpo)
-                if _url_sem_espaco:
-                    _partes_dominio.append(_normalizar_url_exibida(_url_sem_espaco))
-                idx += 1
-                continue
-            # Não achou "www" no meio da linha (ex: a URL veio sozinha,
-            # sem nome de página na frente) — cai no fluxo normal
-            # abaixo, que já sabe tratar uma linha só de domínio/URL.
         # Domínio/URL de verdade nunca tem espaço em branco interno —
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br
@@ -3195,7 +3108,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # "www." ou um ponto seguido de letras, tipo TLD — mesmo com
         # ruído de OCR no meio, ex: "kedu. com.br"); caso contrário, só
         # colapsa espaços duplicados, sem juntar palavras.
-        _parece_dominio_ou_url = bool(re.search(r"www\.|\.\s?[a-zA-Z]{2,4}\b", _txt_dominio, re.IGNORECASE))
+        # Exceção rara mas real: quando o EasyOCR perde TODOS os pontos
+        # do domínio de uma vez (ex: "www.buyticketbrasil.com/" vira
+        # "WWW buyticketbrasil coml", sem nenhum "."), o regex original
+        # (que exige achar "www." ou ".xx" com ponto de verdade) não
+        # bate em nada, e a linha inteira cai no ramo errado de "nome da
+        # página" — só colapsando espaços duplicados, sem juntar as
+        # palavras nem recompor o "l" grudado no final como barra.
+        # `\bwww\b` cobre esse caso: um "WWW" isolado como palavra
+        # própria (mesmo sem o ponto depois) já é um sinal forte o
+        # bastante de que é uma URL — nenhum nome de página real usa
+        # "www" sozinho como uma das palavras. Com isso, a linha entra
+        # no ramo que remove TODOS os espaços (mais abaixo), e as
+        # correções de caractere já validadas em `_normalizar_url_exibida`
+        # (que junta "WWW"+domínio em "www." e recompõe "coml" em
+        # ".com/") fazem o resto — sem precisar duplicar essa lógica
+        # aqui.
+        _parece_dominio_ou_url = bool(re.search(r"\bwww\b|\.\s?[a-zA-Z]{2,4}\b", _txt_dominio, re.IGNORECASE))
         if _parece_dominio_ou_url:
             _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         else:
@@ -3327,43 +3256,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # texto), deixando o resto do laço decidir se é CTA ou sitelink.
         if len(_grupos_botoes) == 2 and (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55:
             _grupos_botoes = []
-        # Outro falso positivo, distinto do anterior: um TÍTULO/
-        # descrição de uma linha só onde o vão em branco ao redor de um
-        # hífen de pontuação (ex: "Harry Styles Together 2026 -
-        # Últimos", com espaço maior que o normal antes de "Últimos")
-        # passa do `gap_minimo` e a linha vira "2 blocos" mesmo sendo
-        # uma frase contínua — sem a borda de pílula do caso do CTA
-        # acima, aqui não tem como usar largura de ícone pra filtrar.
-        # Validado num anúncio real da BuyTicket Brasil: sem esse
-        # filtro, "Harry Styles Together 2026 - Últimos" virava DOIS
-        # sitelinks soltos ("Harry Styles Together 2026 -" / "Últimos"),
-        # com a segunda linha real do título ("Ingressos Harry Styles")
-        # virando um título novo por conta própria, arrastando a
-        # descrição inteira atrás.
-        #
-        # Sinal usado: o texto do PRIMEIRO bloco termina com um hífen
-        # solto (nenhuma outra pontuação de fim de frase junto). Um
-        # botão/sitelink de verdade (ex: "Sobre o isaac", "Saiba mais")
-        # nunca termina assim — hífen solto no fim só acontece quando o
-        # texto está cortado no meio de uma frase. Só testa quando são
-        # exatamente 2 blocos (o mesmo escopo do filtro de ícone acima);
-        # com 3+ blocos a chance de ser uma fileira de botões de verdade
-        # é alta demais pra vale a pena arriscar.
-        if len(_grupos_botoes) == 2:
-            _texto_bloco0_teste = _limpar_pontuacao_ocr(
-                _ocr_banda(
-                    reader, img_bgr, banda["y_min"], banda["y_max"],
-                    x_min=_grupos_botoes[0][0], x_max=_grupos_botoes[0][1],
-                ).strip()
-            )
-            if _texto_bloco0_teste.rstrip().endswith(("-", "–", "—")):
-                print(
-                    f"[OCR-DEBUG] banda idx={idx}: 2 blocos descartados como fileira de "
-                    f"botões — 1º bloco termina em hífen solto ({_texto_bloco0_teste!r}), "
-                    "sinal de frase cortada no meio, não botões distintos",
-                    flush=True,
-                )
-                _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -3398,6 +3290,45 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
         _debug_bandas[idx]["texto"] = texto
         if banda["classe"] == "azul":
+            # Linha de "termos relacionados" no fim do anúncio (ex.:
+            # "Fórmula 1 · Rock In Rio 2026 · Copa do Mundo 2026") — o
+            # Google Ads mostra vários links curtos lado a lado NA MESMA
+            # linha, separados por um ponto médio "·"/"•". Diferente de
+            # um sitelink empilhado normal (um por linha) e diferente de
+            # uma quebra de linha do mesmo título (que nunca tem esse
+            # separador no meio) — sem tratar esse caso à parte, os
+            # termos saíam grudados como um título só, com o separador
+            # virando um "-"/"–" solto no meio do texto (feio e sem
+            # estrutura nenhuma pro card).
+            #
+            # Só entra aqui quando a banda tem uma linha divisória de
+            # verdade ANTES dela (sep_antes) — sinal forte de que é essa
+            # linha especial, não um título comum de uma linha só que só
+            # por acaso tem um traço no meio (ex.: "Show Ao Vivo -
+            # Ingressos", que nunca vem logo depois de um separador).
+            # O EasyOCR às vezes lê o "·"/"•" certo; quando erra, costuma
+            # confundir com um traço "–"/"—" cercado de espaço — por
+            # isso os dois padrões são aceitos, mas o traço só conta
+            # junto com o sep_antes, pra não arriscar quebrar um título
+            # de verdade em pedaços.
+            _partes_relacionados = None
+            if banda.get("sep_antes"):
+                if re.search(r"[·•]", texto):
+                    _partes_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
+                elif re.search(r"\s[–—]\s", texto):
+                    _partes_relacionados = [p.strip() for p in re.split(r"\s+[–—]\s+", texto) if p.strip()]
+            if _partes_relacionados and len(_partes_relacionados) >= 2:
+                _debug_bandas[idx]["decisao"] = (
+                    f"azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) "
+                    "separados por hr, em vez de ficarem grudados com hífen)"
+                )
+                if par_atual is not None:
+                    pares.append(par_atual)
+                    par_atual = None
+                for _termo_rel in _partes_relacionados:
+                    resultado["sitelinks"].append({"titulo": _termo_rel, "descricao": ""})
+                idx += 1
+                continue
             _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
                 # banda azul consecutiva, ainda sem nenhuma linha de
@@ -25589,12 +25520,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         {_SVG_ICONE_OCR} Texto (OCR)
     </div>"""
                         elif _ocr_esta_pendente:
-                            # Badge "Extraindo texto..." removido a pedido —
-                            # enquanto o OCR está pendente, o card simplesmente
-                            # não mostra nada (igual ao caso "sem OCR" abaixo);
-                            # o badge "Texto (OCR)" acima continua aparecendo
-                            # normalmente assim que o texto fica pronto.
-                            ocr_badge_img_html = ""
+                            ocr_badge_img_html = f"""
+    <div title="Imagem já salva — o texto ainda está sendo extraído e aparece em breve"
+         onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px">
+        {_SVG_ICONE_OCR_PENDENTE} Extraindo texto…
+    </div>"""
                         else:
                             ocr_badge_img_html = ""
 

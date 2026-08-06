@@ -2529,11 +2529,6 @@ def _detectar_bandas_texto(img_bgr):
     if bandas_recuperadas:
         bandas = sorted(bandas + bandas_recuperadas, key=lambda b: b["y_min"])
     return bandas
-            classe = "cinza"
-        else:
-            classe = "misto"
-        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
-    return bandas
 
 def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     """Verifica, olhando os PIXELS (não o OCR), se existe um hífen
@@ -3028,7 +3023,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
-        _gap_minimo_botoes = None
+        _grupos_botoes = []
         if _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
             # Banda bem mais alta que uma linha de texto típica deste
             # anúncio — provável fileira de botões com borda (ver
@@ -3041,8 +3036,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # a ponta), então um vão mínimo baixo aqui é seguro — só o
             # vão de verdade ENTRE dois botões distintos consegue
             # ultrapassá-lo.
+            #
+            # Bandas de altura NORMAL nunca chegam a chamar
+            # `_dividir_banda_em_botoes`: fileira de botões de verdade
+            # SEMPRE infla a altura da banda (borda da pílula), então a
+            # ausência desse sinal já basta pra descartar a hipótese.
+            # Sem essa guarda, o cálculo de vão mínimo *padrão* de
+            # `_dividir_banda_em_botoes` (proporcional à própria altura
+            # da banda, ~0.9x) tratava uma banda de texto comum como
+            # candidata a fileira de botões — e um título de uma linha
+            # só com espaçamento largo ao redor de um "-" (ex: "Harry
+            # Styles Together 2026 - Últimos") já bastava pra ultrapassar
+            # esse vão e ser lido como 2 "botões" distintos, quebrando o
+            # título em sitelinks soltos sem descrição em vez de manter
+            # a banda como uma linha só do título. Validado no anúncio
+            # da BuyTicket Brasil (Harry Styles).
             _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
-        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
+            _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
         # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
         # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como

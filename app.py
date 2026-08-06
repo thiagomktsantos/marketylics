@@ -3063,14 +3063,54 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # elas aparecem (nome da página, se houver, e a URL). O pior caso
     # passa a ser "nome da página aparece como uma linha extra em cima
     # da URL" (cosmético), em vez de "a URL inteira desaparece".
+    # Exceção pro anúncio "Patrocinado": nesses, a banda de cabeçalho
+    # (nome da página + URL, ex: "BuyTicket Brasil www.buyticketbrasil.
+    # com/") às vezes sai PINTADA DE AZUL pelo Google — igual um link/
+    # título — em vez de cinza como no anúncio orgânico normal. Sem
+    # tratar esse caso à parte, o laço abaixo (que só aceita banda
+    # cinza como cabeçalho) para na primeira banda depois do
+    # "Patrocinado" achando que já é o título de verdade, e o nome da
+    # página + URL acaba grudado no INÍCIO do headline (ex: "BuyTicket
+    # Brasil WWW.! buyticketbrasil.coml Ingressos para Linkin Park..."
+    # em vez de "Ingressos para Linkin Park..." sozinho, com o
+    # cabeçalho separado).
+    #
+    # Só entra nessa exceção quando: (1) o anúncio É de fato
+    # "Patrocinado" (banda 0 batia o rótulo exato, não só como prefixo
+    # colado — esse outro caso já reaproveita o texto limpo via
+    # `_texto_apos_patrocinado`, ver abaixo) e (2) a banda logo em
+    # seguida, mesmo azul, tem CARA de domínio/URL (tem "www." ou um
+    # ponto seguido de TLD) — um título de anúncio de verdade não tem
+    # esse formato, então isso evita confundir um headline azul comum
+    # (ex: "Ingressos para Linkin Park...") com o cabeçalho.
+    _idx_header_azul_forcado = None
+    if _eh_patrocinado and idx < len(bandas_texto) and bandas_texto[idx]["classe"] == "azul":
+        _txt_teste_header_azul = _ocr_banda(
+            reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]
+        ).strip()
+        if re.search(r"www\.|\.\s?[a-zA-Z]{2,4}\b", _txt_teste_header_azul, re.IGNORECASE):
+            _idx_header_azul_forcado = idx
+            print(
+                f"[OCR-DEBUG] banda idx={idx} é azul mas veio logo após 'Patrocinado' e "
+                f"tem cara de domínio/URL ({_txt_teste_header_azul!r}) — tratando como "
+                "cabeçalho, não como início do título",
+                flush=True,
+            )
+
     _partes_dominio = []
-    while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
+    while idx < len(bandas_texto) and (
+        bandas_texto[idx]["classe"] != "azul" or idx == _idx_header_azul_forcado
+    ):
         # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
         # o texto já limpo do rótulo em vez de rodar o OCR de novo
         # nessa banda — repetir o OCR aqui devolveria a mesma string
         # bruta "Patrocinado ..." de novo, com o rótulo ainda colado.
         if idx == 0 and _texto_apos_patrocinado is not None:
             _txt_dominio = _texto_apos_patrocinado
+        elif idx == _idx_header_azul_forcado:
+            # Já lemos essa banda acima (pro teste de "cara de
+            # domínio") — reaproveita, não roda o OCR de novo à toa.
+            _txt_dominio = _txt_teste_header_azul
         else:
             _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
         # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA

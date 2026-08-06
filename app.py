@@ -2594,40 +2594,7 @@ def _detectar_bandas_texto(img_bgr):
     _y_limite_favicon = min(int(altura_total * 0.18), 160)
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
-    # IMPORTANTE: só ignora a faixa esquerda (onde o favicon costuma
-    # ficar) nas linhas em que ela REALMENTE é a linha do favicon+nome
-    # da página — ou seja, linhas que também têm conteúdo não-branco à
-    # DIREITA dessa faixa (o nome/domínio, ao lado do ícone). Sem essa
-    # checagem, QUALQUER linha dentro da janela de topo (0..y_limite)
-    # que comece rente à esquerda tinha sua faixa [0:_x_ignorar_quebra]
-    # zerada inteira — e quando essa linha não tem NADA à direita dela
-    # (n_quebra cai a 0), ela nunca entra em `linhas`, nunca vira banda,
-    # e o texto simplesmente SOME do OCR estruturado (nem aparece como
-    # banda "descartada" no debug).
-    #
-    # Foi exatamente isso que aconteceu com o rótulo "Patrocinado" num
-    # anúncio real (BuyTicket Brasil / Linkin Park): quando ele vem
-    # numa linha PRÓPRIA, em negrito, ACIMA do avatar/nome da página
-    # (em vez de colado na mesma linha), essa linha cai dentro da
-    # janela de topo e é só texto curto rente à esquerda — batendo
-    # exatamente no mesmo padrão que a máscara estava pensada pra
-    # ignorar (favicon). Resultado: "Patrocinado" desaparecia por
-    # completo, e o OCR seguinte lia a banda do favicon+nome já
-    # colada com o título, sem separação nenhuma.
-    #
-    # Restringindo o "ignore" só às linhas que têm texto à direita
-    # também, a linha do favicon (que sempre tem o nome da página ao
-    # lado, na mesma altura) continua sendo tratada como antes, mas uma
-    # linha isolada como "Patrocinado" passa a contar com a largura
-    # cheia — vira uma banda normal, cai no `_REGEX_PATROCINADO` já
-    # existente, e é descartada corretamente (ou, se vier grudada com
-    # outra coisa, tratada pelo `_REGEX_PATROCINADO_PREFIXO`).
-    _tem_texto_a_direita_do_favicon = _np_bandas.any(
-        nao_branco[:_y_limite_favicon, _x_ignorar_quebra:], axis=1
-    )
-    for _y_topo in range(_y_limite_favicon):
-        if _tem_texto_a_direita_do_favicon[_y_topo]:
-            nao_branco_quebra[_y_topo, :_x_ignorar_quebra] = False
+    nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False
 
     linhas = []
     for y in range(altura_total):

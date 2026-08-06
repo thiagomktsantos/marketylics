@@ -3125,6 +3125,53 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # intacto, porque ali ele faz parte da palavra de verdade, sem
         # espaço ao redor).
         _txt_dominio = re.sub(r"(?<!\S)l(?!\S)", "/", _txt_dominio)
+        if idx == _idx_header_azul_forcado:
+            # Essa banda "forçada" (ver acima) costuma vir com o NOME
+            # DA PÁGINA e a URL colados na MESMA linha (ex: "BuyTicket
+            # Brasil WWW.! buyticketbrasil.coml") — diferente do caso
+            # comum tratado logo abaixo, onde cada linha do cabeçalho
+            # é OU nome OU URL, nunca as duas juntas. Se essa linha
+            # caísse na regra de sempre ("a linha inteira tem cara de
+            # domínio → remove TODO espaço"), ela colaria as palavras
+            # do NOME também ("BuyTicket Brasil" → "BuyTicketBrasil")
+            # e ainda grudaria o nome direto na URL, sem separador
+            # nenhum ("BuyTicketBrasilWWW..." — foi exatamente isso
+            # que aconteceu num teste real).
+            #
+            # Em vez disso, acha onde a URL começa (o token "www",
+            # mesmo com ruído de OCR tipo "WWW.!") e separa em duas
+            # partes: tudo ANTES disso é nome da página (mantém os
+            # espaços entre palavras), tudo A PARTIR disso é a URL
+            # (aí sim remove espaço interno). As duas entram como duas
+            # linhas separadas do cabeçalho — igual apareceriam no
+            # anúncio real (nome numa linha, URL embaixo).
+            _match_www_no_meio = re.search(r"[wW]{2,4}\.", _txt_dominio)
+            if _match_www_no_meio and _match_www_no_meio.start() > 0:
+                _nome_pagina_bruto = _txt_dominio[:_match_www_no_meio.start()]
+                _url_bruta = _txt_dominio[_match_www_no_meio.start():]
+                _nome_pagina_limpo = re.sub(r"\s+", " ", _nome_pagina_bruto).strip()
+                _nome_pagina_limpo = re.sub(r"^[^a-zA-Z0-9]+", "", _nome_pagina_limpo)
+                _url_sem_espaco = re.sub(r"\s+", "", _url_bruta)
+                _url_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _url_sem_espaco)
+                print(
+                    f"[OCR-DEBUG] header-linha idx={idx} (azul forçado, nome+URL colados) "
+                    f"bruto={_txt_dominio!r} -> nome={_nome_pagina_limpo!r} url={_url_sem_espaco!r}",
+                    flush=True,
+                )
+                _debug_bandas[idx]["texto"] = _txt_dominio
+                _debug_bandas[idx]["decisao"] = (
+                    f"cabeçalho azul forçado após 'Patrocinado' — separado em "
+                    f"nome={_nome_pagina_limpo!r} + url={_url_sem_espaco!r}"
+                )
+                if _nome_pagina_limpo:
+                    _partes_dominio.append(_nome_pagina_limpo)
+                if _url_sem_espaco:
+                    _partes_dominio.append(_normalizar_url_exibida(_url_sem_espaco))
+                idx += 1
+                continue
+            # Não achou "www" no meio da linha (ex: a URL veio sozinha,
+            # sem nome de página na frente) — cai no fluxo normal
+            # abaixo, que já sabe tratar uma linha só de domínio/URL.
         # Domínio/URL de verdade nunca tem espaço em branco interno —
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br

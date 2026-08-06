@@ -25742,7 +25742,23 @@ function openModal(mediaSrc, snapUrl, isVideo) {{
 
     if (isVideo) {{
         var isDirectVideo = mediaSrc && (mediaSrc.indexOf('.mp4') !== -1 || mediaSrc.indexOf('fbcdn') !== -1);
-        if (isDirectVideo) {{
+        // Vídeo de anúncio do Google Ads quase sempre é uma URL do
+        // YouTube (watch/shorts/youtu.be) — não um .mp4 direto — porque
+        // é assim que `_preview_info.get("youtube_url")` popula
+        // `videos` lá no backend (ver render_gads_empresa). Sem esse
+        // match, `isDirectVideo` dava false pra toda URL do YouTube e a
+        // função caía direto no branch de "sem vídeo direto" (só o
+        // botão de abrir na Central de Transparência, nunca um embed) —
+        // por isso o modal nunca mostrava o vídeo do YouTube incorporado.
+        var ytMatch = mediaSrc ? mediaSrc.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{{6,20}})/) : null;
+        if (ytMatch) {{
+            var frame = doc.createElement('iframe');
+            frame.src = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1&rel=0';
+            frame.style.cssText = 'display:block;width:min(84vw,820px);height:min(82vh,461px);aspect-ratio:16/9;border:none;border-radius:10px;background:#000;';
+            frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+            frame.setAttribute('allowfullscreen', '');
+            content.appendChild(frame);
+        }} else if (isDirectVideo) {{
             var vid = doc.createElement('video');
             vid.id = 'gads_modal_video';
             vid.src = mediaSrc;

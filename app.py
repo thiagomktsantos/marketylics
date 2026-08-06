@@ -1070,6 +1070,110 @@ def _baixar_video_youtube(url_origem: str, ad_id: str = None):
         print(f"[MIDIA-DL:{ad_id}] yt-dlp EXCEÇÃO: {e!r}", flush=True)
         return None, None
 
+_RE_VTT_TIMESTAMP = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->")
+_RE_VTT_TAG = re.compile(r"<[^>]+>")
+
+def _obter_legenda_youtube(url_origem: str, ad_id: str = None) -> str:
+    """Tenta obter a legenda (CC) já pronta do YouTube via yt-dlp, em vez
+    de baixar o vídeo inteiro e rodar Whisper nele — mesma ideia de
+    `_transcrever_video_whisper`, mas praticamente instantânea quando o
+    vídeo já tem legenda (a maioria dos vídeos do YouTube tem, nem que
+    seja só a automática). Prioriza legenda enviada pelo criador (mais
+    precisa); yt-dlp cai pra automática sozinho quando só ela existir,
+    já que `writesubtitles` e `writeautomaticsub` ficam ligados juntos.
+
+    Devolve "" (nunca levanta) se não achar nenhuma legenda, o yt-dlp
+    não estiver instalado, ou qualquer etapa falhar — quem chama
+    (`baixar_e_persistir_midia`) trata "" exatamente como "sem legenda,
+    deixa a fila de Whisper cuidar depois", então esse fallback já
+    existe de graça, sem precisar de nenhum tratamento especial aqui.
+    """
+    try:
+        import yt_dlp
+    except ImportError:
+        return ""
+
+    import tempfile
+    import os
+    import glob
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            saida_template = os.path.join(tmp, "legenda.%(ext)s")
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "skip_download": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                # pt/pt-BR primeiro (idioma dos anúncios que este app
+                # coleta); "en" como segunda opção pra não ficar sem
+                # nenhuma transcrição quando o anúncio for só em inglês.
+                # Sem tradução automática — melhor ter a fala no idioma
+                # original do que arriscar uma tradução ruim do yt-dlp.
+                "subtitleslangs": ["pt", "pt-BR", "pt-PT", "en"],
+                "subtitlesformat": "vtt",
+                "outtmpl": saida_template,
+                "socket_timeout": 20,
+                "retries": 2,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "mweb", "web"],
+                    },
+                },
+            }
+            cookies_path = _caminho_cookies_youtube()
+            if cookies_path:
+                ydl_opts["cookiefile"] = cookies_path
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url_origem])
+
+            arquivos = sorted(glob.glob(os.path.join(tmp, "legenda.*")))
+            if not arquivos:
+                print(f"[YT-CC:{ad_id}] nenhuma legenda disponível pra {url_origem}", flush=True)
+                return ""
+
+            with open(arquivos[0], "r", encoding="utf-8", errors="ignore") as f:
+                bruto = f.read()
+
+            # Converte o VTT bruto (cabeçalho + timestamps + tags de
+            # estilo inline) pro mesmo formato de texto corrido que
+            # `_transcrever_video_whisper` devolve — assim `transcricao`
+            # fica idêntica não importa a origem (Whisper ou legenda do
+            # YouTube), e todo o resto do app (badge, modal, análise de
+            # IA) nem precisa saber de onde ela veio.
+            linhas = []
+            for linha in bruto.splitlines():
+                linha = linha.strip()
+                if not linha or linha == "WEBVTT":
+                    continue
+                if linha.startswith(("Kind:", "Language:", "NOTE", "STYLE", "Region:")):
+                    continue
+                if linha.isdigit() or _RE_VTT_TIMESTAMP.match(linha):
+                    continue
+                linha = _RE_VTT_TAG.sub("", linha).strip()
+                if linha:
+                    linhas.append(linha)
+
+            # Legenda automática do YouTube usa "rolagem" (a mesma frase
+            # aparece em vários cues consecutivos, uma palavra a mais
+            # por vez) — sem deduplicar linhas consecutivas idênticas, a
+            # transcrição final sairia com cada frase repetida várias
+            # vezes seguidas.
+            texto_final = []
+            for linha in linhas:
+                if not texto_final or texto_final[-1] != linha:
+                    texto_final.append(linha)
+
+            resultado = " ".join(texto_final).strip()
+            print(f"[YT-CC:{ad_id}] legenda obtida via yt-dlp — {len(resultado)} caracteres", flush=True)
+            return resultado
+    except Exception as e:
+        print(f"[YT-CC:{ad_id}] falha ao obter legenda: {e!r}", flush=True)
+        return ""
+
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
                               referer_hint: str = "") -> str:
@@ -1123,6 +1227,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         )
         _e_midia_google = "googlesyndication.com" in url_origem or "googleusercontent.com" in url_origem
         _e_youtube = _e_url_youtube(url_origem)
+        _legenda_youtube = ""  # preenchida abaixo só quando _e_youtube e o yt-dlp achar CC
 
         if _e_youtube:
             # A página /watch?v=... (ou /shorts/..., ou youtu.be/...) do
@@ -1140,6 +1245,15 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                 # senão toda varredura tentaria o yt-dlp de novo pra
                 # sempre) e devolve a url_origem, que não expira.
                 raise RuntimeError("yt-dlp: extração de vídeo do YouTube falhou ou não está instalado")
+            # Tenta a legenda (CC) do próprio YouTube ANTES de qualquer
+            # Whisper — é um atalho, não um passo obrigatório: se não
+            # achar nada, `_legenda_youtube` continua "" e o vídeo segue
+            # pro fluxo de sempre (`transcricao` NULL → pego depois por
+            # `_transcrever_pendentes_background`, igualzinho a um vídeo
+            # da Meta). Roda depois de já ter o vídeo em mãos (não antes)
+            # pra não atrasar/arriscar o download principal se a busca de
+            # legenda travar por algum motivo.
+            _legenda_youtube = _obter_legenda_youtube(url_origem, ad_id)
         else:
             if _e_midia_google:
                 # CDN do Google (tpc.googlesyndication.com) — igual em
@@ -1244,14 +1358,25 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            # Transcrição NÃO roda mais aqui. Antes, cada vídeo migrado podia
-            # segurar um dos workers da migração por até alguns minutos
-            # (ffmpeg + Whisper na CPU), fazendo a barra "X de Y salvos"
-            # andar bem mais devagar do que o download/upload em si
-            # precisaria. transcricao_video fica "" (vira NULL no banco,
-            # ver insert abaixo) e é isso que sinaliza "pendente" pra fila
-            # separada em _transcrever_pendentes_background — que roda
-            # depois de terminar a migração, sem bloquear o progresso dela.
+            # Transcrição via Whisper NÃO roda mais aqui. Antes, cada vídeo
+            # migrado podia segurar um dos workers da migração por até
+            # alguns minutos (ffmpeg + Whisper na CPU), fazendo a barra "X
+            # de Y salvos" andar bem mais devagar do que o download/upload
+            # em si precisaria. transcricao_video fica "" (vira NULL no
+            # banco, ver insert abaixo) e é isso que sinaliza "pendente"
+            # pra fila separada em _transcrever_pendentes_background — que
+            # roda depois de terminar a migração, sem bloquear o progresso
+            # dela.
+            #
+            # EXCEÇÃO: vídeo do YouTube (anúncio do Google Ads) já veio
+            # com a legenda (CC) pronta, se existir (ver `_legenda_youtube`
+            # lá em cima) — nesse caso usa ela direto em vez de deixar
+            # NULL, pulando o Whisper de vez pra esse vídeo (a legenda do
+            # YouTube já É a fala transcrita, não precisa reprocessar).
+            # Quando não tem CC (`_legenda_youtube == ""`), o comportamento
+            # é idêntico a antes: fica NULL e cai no Whisper da fila de
+            # sempre — mesmo fallback que todo vídeo da Meta já usa.
+            transcricao_video = _legenda_youtube
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
@@ -3023,7 +3148,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
-        _grupos_botoes = []
+        _gap_minimo_botoes = None
         if _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
             # Banda bem mais alta que uma linha de texto típica deste
             # anúncio — provável fileira de botões com borda (ver
@@ -3036,23 +3161,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # a ponta), então um vão mínimo baixo aqui é seguro — só o
             # vão de verdade ENTRE dois botões distintos consegue
             # ultrapassá-lo.
-            #
-            # Bandas de altura NORMAL nunca chegam a chamar
-            # `_dividir_banda_em_botoes`: fileira de botões de verdade
-            # SEMPRE infla a altura da banda (borda da pílula), então a
-            # ausência desse sinal já basta pra descartar a hipótese.
-            # Sem essa guarda, o cálculo de vão mínimo *padrão* de
-            # `_dividir_banda_em_botoes` (proporcional à própria altura
-            # da banda, ~0.9x) tratava uma banda de texto comum como
-            # candidata a fileira de botões — e um título de uma linha
-            # só com espaçamento largo ao redor de um "-" (ex: "Harry
-            # Styles Together 2026 - Últimos") já bastava pra ultrapassar
-            # esse vão e ser lido como 2 "botões" distintos, quebrando o
-            # título em sitelinks soltos sem descrição em vez de manter
-            # a banda como uma linha só do título. Validado no anúncio
-            # da BuyTicket Brasil (Harry Styles).
             _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
-            _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
+        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
         # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
         # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como

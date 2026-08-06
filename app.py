@@ -25589,14 +25589,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         {_SVG_ICONE_OCR} Texto (OCR)
     </div>"""
                         elif _ocr_esta_pendente:
-                            ocr_badge_img_html = f"""
-    <div title="Imagem já salva — o texto ainda está sendo extraído e aparece em breve"
-         onclick="event.stopPropagation()"
-         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px">
-        {_SVG_ICONE_OCR_PENDENTE} Extraindo texto…
-    </div>"""
+                            # Badge "Extraindo texto..." removido a pedido —
+                            # enquanto o OCR está pendente, o card simplesmente
+                            # não mostra nada (igual ao caso "sem OCR" abaixo);
+                            # o badge "Texto (OCR)" acima continua aparecendo
+                            # normalmente assim que o texto fica pronto.
+                            ocr_badge_img_html = ""
                         else:
                             ocr_badge_img_html = ""
 

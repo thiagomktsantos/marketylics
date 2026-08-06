@@ -2118,13 +2118,21 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
         return ""
     _campos = []
     if ocr_estr.get("url_exibida"):
-        _linhas_url = ocr_estr["url_exibida"].split("\n")
-        if _linhas_url and not _REGEX_FORMATO_DOMINIO.match(_linhas_url[0]):
+        _linhas_url = [l for l in ocr_estr["url_exibida"].split("\n") if l]
+        # Sempre que tem 2+ linhas no cabeçalho (nome da página + domínio,
+        # OU domínio curto + URL completa com caminho — os dois formatos
+        # reais que a Central de Transparência mostra), a PRIMEIRA linha
+        # vem em negrito e sem a "/" final, igual ao anúncio de verdade.
+        # Antes isso só valia quando a 1ª linha NÃO parecia domínio (ex:
+        # "BuyTicket Brasil"), então um caso como "buyticketbrasil.com/"
+        # + "www.buyticketbrasil.com/seguro/confiavel" (as duas linhas
+        # parecendo domínio) caía no "senão" e nenhuma ficava em negrito.
+        if len(_linhas_url) >= 2:
             _nome_pagina = _linhas_url[0].rstrip("/")
             _resto_url = "\n".join(_linhas_url[1:])
         else:
             _nome_pagina = ""
-            _resto_url = ocr_estr["url_exibida"]
+            _resto_url = _linhas_url[0] if _linhas_url else ""
         _coluna_texto = (
             (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr_preview(_nome_pagina)}</div>' if _nome_pagina else '')
             + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr_preview(_resto_url)}</div>' if _resto_url else '')
@@ -2180,14 +2188,54 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
             )
             + '</div></div>'
         )
+    _debug_html = _montar_html_debug_bandas_ocr(ocr_estr.get("_debug_bandas"))
     return (
         '<div style="text-align:left;font-style:normal;color:#374151;'
         'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
         '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
         'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
         'Texto extraído da imagem (OCR)</div>'
-        + "".join(_campos) +
+        + "".join(_campos) + _debug_html +
         '</div>'
+    )
+
+
+def _montar_html_debug_bandas_ocr(debug_bandas) -> str:
+    """Renderiza (dentro de um <details> recolhido por padrão) a lista de
+    bandas detectadas por `_estruturar_anuncio_google_ads`, banda por
+    banda, com a decisão que o agrupamento tomou pra cada uma —
+    equivalente aos prints `[OCR-DEBUG]` que hoje só existem no log
+    efêmero do Streamlit Cloud. Gravado junto do resto do OCR
+    (`ocr_estr["_debug_bandas"]`, vindo direto da coluna `ocr_estruturado`
+    no banco), então fica disponível no card de CADA anúncio pra
+    investigar título/sitelink partido ou duplicado sem precisar puxar
+    log nenhum. Devolve string vazia se não houver debug salvo (ex:
+    linhas de OCR antigas, gravadas antes dessa mudança)."""
+    if not debug_bandas:
+        return ""
+    _linhas = []
+    for _b in debug_bandas:
+        _sep = "sim" if _b.get("sep_antes") else "não"
+        _linhas.append(
+            '<tr>'
+            f'<td style="padding:2px 6px;color:#9ca3af">{_b.get("idx")}</td>'
+            f'<td style="padding:2px 6px;color:#9ca3af">{_b.get("classe")}</td>'
+            f'<td style="padding:2px 6px;color:#9ca3af">{_sep}</td>'
+            f'<td style="padding:2px 6px;color:#4b5563">{_escapar_html_ocr_preview(_b.get("texto") or "")}</td>'
+            f'<td style="padding:2px 6px;color:#4b5563">{_escapar_html_ocr_preview(_b.get("decisao") or "")}</td>'
+            '</tr>'
+        )
+    return (
+        '<details style="margin-top:8px;padding-top:6px;border-top:1px solid #eef0f2">'
+        '<summary style="font-size:10px;font-weight:700;color:#9ca3af;'
+        'text-transform:uppercase;letter-spacing:.3px;cursor:pointer">'
+        'Debug: bandas detectadas</summary>'
+        '<table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-top:6px">'
+        '<thead><tr style="text-align:left;color:#9ca3af">'
+        '<th style="padding:2px 6px">#</th><th style="padding:2px 6px">classe</th>'
+        '<th style="padding:2px 6px">sep. antes</th><th style="padding:2px 6px">texto lido</th>'
+        '<th style="padding:2px 6px">decisão</th></tr></thead>'
+        f'<tbody>{"".join(_linhas)}</tbody></table></details>'
     )
 
 
@@ -2399,12 +2447,26 @@ def _detectar_bandas_texto(img_bgr):
     #    por engano.
     # Ambos validados com imagens reais. O texto de cada banda continua
     # sendo lido (via OCR) na largura inteira depois — só a decisão de
-    # "onde quebra" e "que cor é essa banda" ignora essa faixa. Título/
-    # descrição sempre se estendem bem além dela, então não tem risco
-    # de uma linha real sumir ou trocar de classe por causa disso.
+    # "onde quebra" e "que cor é essa banda" ignora essa faixa.
+    #
+    # IMPORTANTE: essa faixa só pode ser ignorada perto do TOPO da
+    # imagem, onde o favicon/avatar de verdade existe (cabeçalho com
+    # nome da página/domínio) — nunca durante a altura inteira. Título
+    # e descrição não têm favicon do lado, e uma linha final de
+    # parágrafo quebrado pode ser uma palavra curta sozinha, alinhada
+    # bem à esquerda (ex.: "... Ingressos Do" / "Brasil") — se ela
+    # coubesse inteira dentro dessa faixa ignorada, o "n_quebra" dela
+    # dava 0, a linha nunca entrava em `linhas`, e a palavra
+    # simplesmente SUMIA da extração (nem chegava a ser mandada pro
+    # OCR) — foi exatamente isso que aconteceu com "Brasil" num
+    # anúncio real da BuyTicket Brasil. Restringindo a faixa ignorada a
+    # só essa janela no topo (onde o favicon cabe), qualquer linha
+    # abaixo dela conta com a largura cheia, mesmo que curta e rente à
+    # esquerda.
+    _y_limite_favicon = min(int(altura_total * 0.18), 160)
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
-    nao_branco_quebra[:, :_x_ignorar_quebra] = False
+    nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False
 
     linhas = []
     for y in range(altura_total):
@@ -2763,9 +2825,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         + str([(i, b['y_min'], b['y_max'], b['classe'], b.get('sep_antes')) for i, b in enumerate(bandas_texto)]),
         flush=True,
     )
+    # Espelha os prints [OCR-DEBUG] acima num dict serializável em JSON,
+    # guardado junto do resultado (`resultado["_debug_bandas"]`) — os
+    # prints só sobrevivem no log efêmero do Streamlit Cloud (se misturam
+    # com o resto do tráfego e somem depois de um tempo); isso aqui fica
+    # gravado na própria linha da mídia (coluna `ocr_estruturado`, jsonb)
+    # e pode ser mostrado direto no card de cada anúncio (ver
+    # `_montar_html_preview_ocr_estruturado`), sem depender de puxar log
+    # nenhum pra investigar por que um título saiu partido/duplicado.
+    _debug_bandas = [
+        {"idx": i, "y_min": b["y_min"], "y_max": b["y_max"], "classe": b["classe"], "sep_antes": b.get("sep_antes")}
+        for i, b in enumerate(bandas_texto)
+    ]
     primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
     _eh_patrocinado = bool(_REGEX_PATROCINADO.match(primeiro_texto.strip()))
     print(f"[OCR-DEBUG] primeira banda bruto={primeiro_texto.strip()!r} eh_patrocinado={_eh_patrocinado}", flush=True)
+    _debug_bandas[0]["texto"] = primeiro_texto.strip()
+    _debug_bandas[0]["decisao"] = "patrocinado (descartada)" if _eh_patrocinado else "não é 'patrocinado'"
     if _eh_patrocinado:
         idx = 1
 
@@ -2815,7 +2891,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # "kedu.com.br" + "www.kedu.com.br/") de "espaço que era erro
         # de OCR dentro da mesma linha", e acabaria apagando os dois
         # igual — grudando as duas linhas numa só.
-        _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
+        #
+        # SÓ VALE PRA LINHA DE DOMÍNIO/URL, não pro nome da página
+        # (ex: "BuyTicket Brasil", "Kedu Educação") — essa SIM pode ter
+        # espaço interno de verdade, entre palavras. Sem essa distinção,
+        # qualquer nome de página com mais de uma palavra saía com as
+        # palavras grudadas ("BuyTicket Brasil" → "BuyTicketBrasil"),
+        # porque a linha inteira do cabeçalho passava pela mesma limpeza
+        # "domínio nunca tem espaço". Heurística: só trata como
+        # domínio/URL se a linha tiver alguma pista de domínio (um
+        # "www." ou um ponto seguido de letras, tipo TLD — mesmo com
+        # ruído de OCR no meio, ex: "kedu. com.br"); caso contrário, só
+        # colapsa espaços duplicados, sem juntar palavras.
+        _parece_dominio_ou_url = bool(re.search(r"www\.|\.\s?[a-zA-Z]{2,4}\b", _txt_dominio, re.IGNORECASE))
+        if _parece_dominio_ou_url:
+            _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
+        else:
+            _txt_dominio_sem_espaco = re.sub(r"\s+", " ", _txt_dominio).strip()
         # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
         # início da linha — comum quando essa linha fica colada no
         # favicon/ícone e o EasyOCR devolve um símbolo/glifo espúrio do
@@ -2828,6 +2920,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
             f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r}",
             flush=True,
+        )
+        _debug_bandas[idx]["texto"] = _txt_dominio
+        _debug_bandas[idx]["decisao"] = (
+            f"cabeçalho ({'URL' if _parece_dominio_ou_url else 'nome da página'}, limpo: {_txt_dominio_sem_espaco!r})" if _txt_dominio_sem_espaco
+            else "cabeçalho/URL (vazio após limpeza — descartada)"
         )
         if _txt_dominio_sem_espaco:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
@@ -2953,19 +3050,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 f"{len(_grupos_botoes)} bloco(s): {_grupos_botoes}",
                 flush=True,
             )
+            _debug_bandas[idx]["decisao"] = f"fileira de botões ({len(_grupos_botoes)} bloco(s))"
             if par_atual is not None:
                 pares.append(par_atual)
                 par_atual = None
             _cta_aberto = False
+            _textos_botoes_debug = []
             for _x_ini, _x_fim in _grupos_botoes:
                 _texto_botao = _limpar_pontuacao_ocr(
                     _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"], x_min=_x_ini, x_max=_x_fim).strip()
                 )
+                _textos_botoes_debug.append(_texto_botao)
                 if _texto_botao:
                     resultado["sitelinks"].append({"titulo": _texto_botao, "descricao": ""})
+            _debug_bandas[idx]["texto"] = " | ".join(_textos_botoes_debug)
             idx += 1
             continue
         texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
+        _debug_bandas[idx]["texto"] = texto
         if banda["classe"] == "azul":
             _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
@@ -2978,15 +3080,20 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 # sempre um sitelink novo — mesmo que o anterior não
                 # tenha descrição (ex: "Kedu Bank" / "Kedu Marketing").
                 par_atual[0] = (par_atual[0] + " " + texto).strip()
+                _debug_bandas[idx]["decisao"] = "azul → quebra de linha do título/sitelink em andamento (juntada)"
             else:
                 if par_atual is not None:
                     pares.append(par_atual)
                 par_atual = [texto, []]
+                _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
+                    " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
+                )
         elif banda["classe"] == "cinza":
             if _cta_aberto:
                 # subtítulo do CTA (ex: "pelo app WhatsApp") — não é
                 # descrição de sitelink.
                 resultado["cta_subtitulo"] = (resultado["cta_subtitulo"] + " " + texto).strip()
+                _debug_bandas[idx]["decisao"] = "cinza → subtítulo do CTA"
             elif not resultado["cta"] and _REGEX_CTA_TITULO_CONHECIDO.match(texto):
                 # CTA final do anúncio (ex: "Enviar mensagem" do
                 # WhatsApp) que perdeu a classificação "misto" porque o
@@ -2999,8 +3106,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 # divisória própria antes dele.
                 resultado["cta"] = texto
                 _cta_aberto = True
+                _debug_bandas[idx]["decisao"] = "cinza → CTA (bateu regex de CTA conhecido)"
             elif par_atual is not None:
                 par_atual[1].append(texto)
+                _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
+            else:
+                _debug_bandas[idx]["decisao"] = "cinza → descartada (sem título/sitelink aberto nem CTA)"
             # texto cinza sem nenhum título azul aberto antes nem CTA
             # reconhecido: raro nesse ponto do fluxo (já passamos da
             # linha da URL) — ignora em vez de adivinhar onde encaixar.
@@ -3008,9 +3119,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             if not resultado["cta"]:
                 resultado["cta"] = texto
                 _cta_aberto = True
+                _debug_bandas[idx]["decisao"] = "misto → CTA"
+            else:
+                _debug_bandas[idx]["decisao"] = "misto → descartada (CTA já preenchido)"
         idx += 1
     if par_atual is not None:
         pares.append(par_atual)
+
+    resultado["_debug_bandas"] = _debug_bandas
 
     if not pares:
         return resultado if resultado["url_exibida"] else None
@@ -25043,13 +25159,21 @@ function imgFallback_{uid}(img){{
                                 # verde, que era só pra imitar a cor de URL
                                 # de resultado orgânico do Google, mas o
                                 # anúncio real usa preto/cinza aqui).
-                                _linhas_url_ad = _ocr_estr_ad["url_exibida"].split("\n")
-                                if _linhas_url_ad and not _REGEX_FORMATO_DOMINIO.match(_linhas_url_ad[0]):
+                                _linhas_url_ad = [l for l in _ocr_estr_ad["url_exibida"].split("\n") if l]
+                                # Mesma regra da versão reutilizável em
+                                # `_montar_html_preview_ocr_estruturado`:
+                                # com 2+ linhas no cabeçalho, a primeira
+                                # sempre vem em negrito e sem "/" final —
+                                # independente de parecer nome de página
+                                # ou já ser domínio (ex: "buyticketbrasil.com/"
+                                # + "www.buyticketbrasil.com/seguro/confiavel",
+                                # as duas domínio, mas só a 1ª em negrito).
+                                if len(_linhas_url_ad) >= 2:
                                     _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
                                 else:
                                     _nome_pagina_ad = ""
-                                    _resto_url_ad = _ocr_estr_ad["url_exibida"]
+                                    _resto_url_ad = _linhas_url_ad[0] if _linhas_url_ad else ""
                                 _coluna_texto_ad_html = (
                                     (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
                                     + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
@@ -25126,7 +25250,8 @@ function imgFallback_{uid}(img){{
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
                                 'Texto extraído da imagem (OCR)</div>'
-                                + "".join(_campos_ocr_html) +
+                                + "".join(_campos_ocr_html)
+                                + _montar_html_debug_bandas_ocr(_ocr_estr_ad.get("_debug_bandas")) +
                                 '</div>'
                             )
                         elif _ocr_txt_ad:

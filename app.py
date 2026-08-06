@@ -2449,59 +2449,86 @@ def _detectar_bandas_texto(img_bgr):
     # sendo lido (via OCR) na largura inteira depois — só a decisão de
     # "onde quebra" e "que cor é essa banda" ignora essa faixa.
     #
-    # IMPORTANTE: essa faixa só pode ser ignorada perto do TOPO da
-    # imagem, onde o favicon/avatar de verdade existe (cabeçalho com
-    # nome da página/domínio) — nunca durante a altura inteira. Título
-    # e descrição não têm favicon do lado, e uma linha final de
-    # parágrafo quebrado pode ser uma palavra curta sozinha, alinhada
-    # bem à esquerda (ex.: "... Ingressos Do" / "Brasil") — se ela
-    # coubesse inteira dentro dessa faixa ignorada, o "n_quebra" dela
-    # dava 0, a linha nunca entrava em `linhas`, e a palavra
-    # simplesmente SUMIA da extração (nem chegava a ser mandada pro
-    # OCR) — foi exatamente isso que aconteceu com "Brasil" num
-    # anúncio real da BuyTicket Brasil. Restringindo a faixa ignorada a
-    # só essa janela no topo (onde o favicon cabe), qualquer linha
-    # abaixo dela conta com a largura cheia, mesmo que curta e rente à
-    # esquerda.
-    _y_limite_favicon = min(int(altura_total * 0.18), 160)
+    # Essa faixa precisa ser ignorada na altura INTEIRA da imagem, não só
+    # perto do topo — um anúncio com "Patrocinado" antes do cabeçalho
+    # (ou qualquer coisa que empurre o avatar mais pra baixo) faz o
+    # favicon cair fora de qualquer limite fixo de altura, e as duas
+    # linhas do cabeçalho voltam a colar numa banda só, azul (foi
+    # exatamente isso que aconteceu num anúncio real da BuyTicket Brasil
+    # com "Patrocinado" em cima: "BuyTicket Brasil" + "www.buyticketbrasil.com/"
+    # colaram numa banda só, cor puxada pro azul do avatar, e viraram o
+    # "título" por engano). Um limite fixo de altura não tem como
+    # acompanhar isso de forma confiável.
+    #
+    # O preço de ignorar a faixa esquerda na altura inteira: uma linha
+    # de texto real que caiba TODA dentro dela (ex: última linha de um
+    # parágrafo quebrado sendo uma palavra curta rente à esquerda, tipo
+    # "Brasil" em "... Ingressos Do" / "Brasil") não teria nenhum pixel
+    # fora da faixa, e sumiria da extração inteira. Por isso, mais
+    # abaixo, tem uma passada de RECUPERAÇÃO: qualquer linha com texto
+    # de verdade (pixel non-white fora do fundo) que não caiu em
+    # NENHUMA banda detectada por essa máscara vira uma banda própria,
+    # usando a cor da linha SEM máscara nenhuma (já que, por definição,
+    # a máscara não teria nada ali) — cobre exatamente o caso "Brasil"
+    # sem reabrir o caso do favicon colando o cabeçalho.
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
-    nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False
+    nao_branco_quebra[:, :_x_ignorar_quebra] = False
 
-    linhas = []
+    def _bandas_a_partir_da_mascara(mask_2d):
+        _linhas_locais = []
+        for y in range(altura_total):
+            _linha_mask = mask_2d[y]
+            _n = int(_linha_mask.sum())
+            if _n > 3:
+                _pix = img_rgb[y][_linha_mask]
+                _linhas_locais.append((y, _n, float(_pix[:, 0].mean()), float(_pix[:, 1].mean()), float(_pix[:, 2].mean())))
+        _brutas = []
+        _atual = []
+        _y_ant = None
+        for y, n, r, g, b in _linhas_locais:
+            if _y_ant is not None and y - _y_ant > 3:
+                if _atual:
+                    _brutas.append(_atual)
+                _atual = []
+            _atual.append((y, n, r, g, b))
+            _y_ant = y
+        if _atual:
+            _brutas.append(_atual)
+        _out = []
+        for _banda in _brutas:
+            y_min, y_max = _banda[0][0], _banda[-1][0]
+            peso_total = sum(x[1] for x in _banda)
+            r = sum(x[2] * x[1] for x in _banda) / peso_total
+            g = sum(x[3] * x[1] for x in _banda) / peso_total
+            b = sum(x[4] * x[1] for x in _banda) / peso_total
+            altura = y_max - y_min + 1
+            if altura <= 3 and r > 190:
+                classe = "separador"
+            elif b > r + 15 and b > 150:
+                classe = "azul"
+            elif abs(r - g) < 15 and abs(g - b) < 15:
+                classe = "cinza"
+            else:
+                classe = "misto"
+            _out.append({"y_min": y_min, "y_max": y_max, "classe": classe})
+        return _out
+
+    bandas = _bandas_a_partir_da_mascara(nao_branco_quebra)
+
+    # Passada de recuperação (ver comentário acima): reconstrói bandas só
+    # com as linhas que NENHUMA banda detectada acima cobre, usando a
+    # máscara cheia (sem ignorar a faixa esquerda) — pega exatamente as
+    # linhas que sumiriam por caberem inteiras na faixa ignorada.
+    _faixas_cobertas = [(b["y_min"], b["y_max"]) for b in bandas]
+    _mask_recuperacao = nao_branco.copy()
     for y in range(altura_total):
-        mask = nao_branco[y]
-        n = int(mask.sum())
-        mask_quebra = nao_branco_quebra[y]
-        n_quebra = int(mask_quebra.sum())
-        if n_quebra > 3:
-            pix = img_rgb[y][mask_quebra]
-            linhas.append((y, n, float(pix[:, 0].mean()), float(pix[:, 1].mean()), float(pix[:, 2].mean())))
-    bandas_brutas = []
-    atual = []
-    y_ant = None
-    for y, n, r, g, b in linhas:
-        if y_ant is not None and y - y_ant > 3:
-            if atual:
-                bandas_brutas.append(atual)
-            atual = []
-        atual.append((y, n, r, g, b))
-        y_ant = y
-    if atual:
-        bandas_brutas.append(atual)
-    bandas = []
-    for banda in bandas_brutas:
-        y_min, y_max = banda[0][0], banda[-1][0]
-        peso_total = sum(x[1] for x in banda)
-        r = sum(x[2] * x[1] for x in banda) / peso_total
-        g = sum(x[3] * x[1] for x in banda) / peso_total
-        b = sum(x[4] * x[1] for x in banda) / peso_total
-        altura = y_max - y_min + 1
-        if altura <= 3 and r > 190:
-            classe = "separador"
-        elif b > r + 15 and b > 150:
-            classe = "azul"
-        elif abs(r - g) < 15 and abs(g - b) < 15:
+        if any(y_min - 2 <= y <= y_max + 2 for y_min, y_max in _faixas_cobertas):
+            _mask_recuperacao[y] = False
+    bandas_recuperadas = _bandas_a_partir_da_mascara(_mask_recuperacao)
+    if bandas_recuperadas:
+        bandas = sorted(bandas + bandas_recuperadas, key=lambda b: b["y_min"])
+    return bandas
             classe = "cinza"
         else:
             classe = "misto"

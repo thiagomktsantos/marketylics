@@ -3434,31 +3434,41 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # de verdade ao recuperar um traço perdido entre palavras
             # (ver `partes.append("-")` acima).
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
+            _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
             _partes_relacionados = None
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
-                if banda.get("sep_antes") or (_titulo_e_descricao_ja_fechados and len(_candidatos_relacionados) >= 2):
+                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
             elif re.search(r"\s[\-–—]\s", texto):
                 _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
                 _candidatos_relacionados = [
                     p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
                 ]
-                if banda.get("sep_antes") or (_titulo_e_descricao_ja_fechados and len(_candidatos_relacionados) >= 2):
+                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
-            # Nem "·"/"•" nem traço sobraram no texto reconhecido — pode
-            # ser que o separador tenha sumido INTEIRO do OCR (ver
-            # docstring de `_dividir_termos_relacionados_por_gap`), não
-            # só virado um traço solto. Só tenta esse fallback sob o
-            # mesmo portão de segurança usado acima (linha com separador
-            # de verdade antes, ou posição estrutural depois de
-            # título+descrição já fechados) — nunca num título comum de
-            # uma linha só.
-            if not _partes_relacionados and (banda.get("sep_antes") or _titulo_e_descricao_ja_fechados):
+            # Roda o fallback por vão SEMPRE que o portão de segurança
+            # permitir — não só quando nenhum separador sobrou no texto.
+            # Motivo: às vezes UM separador sobrevive (ex.: um traço
+            # recuperado por pixel em `_ocr_banda`, contando como "achei
+            # candidatos") mas outro, colado a um termo curto tipo "1",
+            # some INTEIRO — caso real: "Fórmula 1 · Rock In Rio 2026 ·
+            # Copa do Mundo 2026" perdia só o "·" antes de "Copa" (virava
+            # um traço recuperado), mas o "1" e o "·" antes de "Rock"
+            # sumiam por completo, sem deixar rastro nenhum de separador
+            # no texto — a divisão por texto achava só 2 candidatos
+            # ("Fórmula Rock In Rio 2026" grudado + "Copa do Mundo
+            # 2026"), passava no portão (>=2) e nunca chegava a tentar o
+            # fallback por vão, que teria achado os 3 termos certos.
+            # Por isso compara os dois resultados e usa o que tiver MAIS
+            # termos — mais termos é sempre sinal de que resolveu um
+            # separador que a divisão por texto não pegou, nunca o
+            # contrário (o fallback por vão só QUEBRA mais, nunca junta).
+            if _portao_seguranca_relacionados:
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(
                     reader, img_bgr, banda["y_min"], banda["y_max"]
                 )
-                if len(_candidatos_gap) >= 2:
+                if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]["decisao"] = (

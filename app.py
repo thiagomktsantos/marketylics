@@ -2664,6 +2664,26 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     recorte = img_bgr[y0:y1, x0:x1]
     resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
+        # Segunda tentativa com limiares de detecção mais permissivos.
+        # O CRAFT (detector de texto do EasyOCR) às vezes devolve ZERO
+        # caixas pra uma banda inteira quando ela tem pouco texto — o
+        # caso mais comum é uma ÚNICA palavra curta sozinha numa linha,
+        # típico da 2ª linha de um título que quebrou (ex: título
+        # "Ingressos Harry Styles - Harry Styles" / "Aqui": a 2ª banda
+        # azul só tem a palavra "Aqui", que os limiares padrão
+        # (text_threshold~0.7, low_text~0.4 — pensados pra texto
+        # corrido, com várias palavras se reforçando) às vezes não
+        # atingem sozinha, e a banda inteira ficava muda, sem cair em
+        # nenhum fallback — resultado: a palavra simplesmente sumia do
+        # título reconstruído. Baixa os limiares só NESTA segunda
+        # tentativa (nunca na primeira, pra não introduzir ruído em
+        # bandas que já leram normalmente) — só roda quando a primeira
+        # passada não achou NENHUMA caixa de detecção.
+        resultado = reader.readtext(
+            recorte, detail=1, width_ths=0.15, height_ths=0.5,
+            text_threshold=0.4, low_text=0.3, link_threshold=0.3,
+        )
+    if not resultado:
         return ""
     resultado.sort(key=lambda item: item[0][0][0])
     palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]

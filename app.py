@@ -2661,8 +2661,29 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
         return False  # grosso/alto demais pra ser só um traço
     if not (0.3 < centro_relativo < 0.7):
         return False  # não está no meio vertical da linha
-    largura_pixels = int(nao_branco[y_topo:y_base + 1].any(axis=0).sum())
-    return largura_pixels >= 3  # descarta 1-2 pixels soltos (ruído)
+    colunas_com_pixel = nao_branco[y_topo:y_base + 1].any(axis=0)
+    largura_pixels = int(colunas_com_pixel.sum())
+    if largura_pixels < 3:
+        return False  # descarta 1-2 pixels soltos (ruído)
+
+    # Reticências ("...") no fim de um texto truncado (ex: "100%
+    # Segura...") têm o MESMO perfil de um hífen — traço fino,
+    # centralizado na vertical — e por isso eram confundidas com um
+    # hífen de verdade (bug real: "100% Segura..." virava "100%
+    # Segura. -"). A diferença é que um hífen é UM traço contínuo,
+    # enquanto reticências são 2-3 pontinhos SEPARADOS por espaço em
+    # branco. Conta quantos blocos contínuos de pixel não-branco
+    # existem na faixa: 1 bloco = hífen de verdade; 2+ blocos =
+    # reticências (ou outro ruído pontuado), não é hífen.
+    blocos = 0
+    dentro_de_bloco = False
+    for tem_pixel in colunas_com_pixel:
+        if tem_pixel and not dentro_de_bloco:
+            blocos += 1
+            dentro_de_bloco = True
+        elif not tem_pixel:
+            dentro_de_bloco = False
+    return blocos == 1
 
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
@@ -2866,7 +2887,21 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
     if not palavras:
         return ""
-    partes = [palavras[0][1]]
+    # Hífen no INÍCIO da linha (ex: um item de lista começando com "-
+    # Algum texto", ou uma banda que continua um trecho cortado que
+    # terminou com "-" na banda anterior) tinha o mesmo problema — só
+    # espelhado — do "hífen no final" tratado logo abaixo: o laço
+    # seguinte só olha o vão ENTRE duas palavras já reconhecidas NESTA
+    # banda, e um hífen ANTES da primeira palavra não tem "palavra
+    # anterior" pra formar o par — o vão nunca era testado e o "-" se
+    # perdia silenciosamente. Verifica o trecho entre a borda esquerda
+    # do recorte e o início da primeira palavra pra recuperar esse caso.
+    partes = []
+    _bbox_primeira = palavras[0][0]
+    _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
+    if _detectar_hifen_no_intervalo(recorte, 0, _x_esq_primeira):
+        partes.append("-")
+    partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         _bbox_prev = palavras[i - 1][0]
         _bbox_atual = palavras[i][0]

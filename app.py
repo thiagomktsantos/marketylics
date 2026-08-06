@@ -1070,110 +1070,6 @@ def _baixar_video_youtube(url_origem: str, ad_id: str = None):
         print(f"[MIDIA-DL:{ad_id}] yt-dlp EXCEÇÃO: {e!r}", flush=True)
         return None, None
 
-_RE_VTT_TIMESTAMP = re.compile(r"^\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->")
-_RE_VTT_TAG = re.compile(r"<[^>]+>")
-
-def _obter_legenda_youtube(url_origem: str, ad_id: str = None) -> str:
-    """Tenta obter a legenda (CC) já pronta do YouTube via yt-dlp, em vez
-    de baixar o vídeo inteiro e rodar Whisper nele — mesma ideia de
-    `_transcrever_video_whisper`, mas praticamente instantânea quando o
-    vídeo já tem legenda (a maioria dos vídeos do YouTube tem, nem que
-    seja só a automática). Prioriza legenda enviada pelo criador (mais
-    precisa); yt-dlp cai pra automática sozinho quando só ela existir,
-    já que `writesubtitles` e `writeautomaticsub` ficam ligados juntos.
-
-    Devolve "" (nunca levanta) se não achar nenhuma legenda, o yt-dlp
-    não estiver instalado, ou qualquer etapa falhar — quem chama
-    (`baixar_e_persistir_midia`) trata "" exatamente como "sem legenda,
-    deixa a fila de Whisper cuidar depois", então esse fallback já
-    existe de graça, sem precisar de nenhum tratamento especial aqui.
-    """
-    try:
-        import yt_dlp
-    except ImportError:
-        return ""
-
-    import tempfile
-    import os
-    import glob
-
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            saida_template = os.path.join(tmp, "legenda.%(ext)s")
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "noplaylist": True,
-                "skip_download": True,
-                "writesubtitles": True,
-                "writeautomaticsub": True,
-                # pt/pt-BR primeiro (idioma dos anúncios que este app
-                # coleta); "en" como segunda opção pra não ficar sem
-                # nenhuma transcrição quando o anúncio for só em inglês.
-                # Sem tradução automática — melhor ter a fala no idioma
-                # original do que arriscar uma tradução ruim do yt-dlp.
-                "subtitleslangs": ["pt", "pt-BR", "pt-PT", "en"],
-                "subtitlesformat": "vtt",
-                "outtmpl": saida_template,
-                "socket_timeout": 20,
-                "retries": 2,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android", "ios", "mweb", "web"],
-                    },
-                },
-            }
-            cookies_path = _caminho_cookies_youtube()
-            if cookies_path:
-                ydl_opts["cookiefile"] = cookies_path
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url_origem])
-
-            arquivos = sorted(glob.glob(os.path.join(tmp, "legenda.*")))
-            if not arquivos:
-                print(f"[YT-CC:{ad_id}] nenhuma legenda disponível pra {url_origem}", flush=True)
-                return ""
-
-            with open(arquivos[0], "r", encoding="utf-8", errors="ignore") as f:
-                bruto = f.read()
-
-            # Converte o VTT bruto (cabeçalho + timestamps + tags de
-            # estilo inline) pro mesmo formato de texto corrido que
-            # `_transcrever_video_whisper` devolve — assim `transcricao`
-            # fica idêntica não importa a origem (Whisper ou legenda do
-            # YouTube), e todo o resto do app (badge, modal, análise de
-            # IA) nem precisa saber de onde ela veio.
-            linhas = []
-            for linha in bruto.splitlines():
-                linha = linha.strip()
-                if not linha or linha == "WEBVTT":
-                    continue
-                if linha.startswith(("Kind:", "Language:", "NOTE", "STYLE", "Region:")):
-                    continue
-                if linha.isdigit() or _RE_VTT_TIMESTAMP.match(linha):
-                    continue
-                linha = _RE_VTT_TAG.sub("", linha).strip()
-                if linha:
-                    linhas.append(linha)
-
-            # Legenda automática do YouTube usa "rolagem" (a mesma frase
-            # aparece em vários cues consecutivos, uma palavra a mais
-            # por vez) — sem deduplicar linhas consecutivas idênticas, a
-            # transcrição final sairia com cada frase repetida várias
-            # vezes seguidas.
-            texto_final = []
-            for linha in linhas:
-                if not texto_final or texto_final[-1] != linha:
-                    texto_final.append(linha)
-
-            resultado = " ".join(texto_final).strip()
-            print(f"[YT-CC:{ad_id}] legenda obtida via yt-dlp — {len(resultado)} caracteres", flush=True)
-            return resultado
-    except Exception as e:
-        print(f"[YT-CC:{ad_id}] falha ao obter legenda: {e!r}", flush=True)
-        return ""
-
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
                               referer_hint: str = "") -> str:
@@ -1227,7 +1123,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         )
         _e_midia_google = "googlesyndication.com" in url_origem or "googleusercontent.com" in url_origem
         _e_youtube = _e_url_youtube(url_origem)
-        _legenda_youtube = ""  # preenchida abaixo só quando _e_youtube e o yt-dlp achar CC
 
         if _e_youtube:
             # A página /watch?v=... (ou /shorts/..., ou youtu.be/...) do
@@ -1245,15 +1140,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                 # senão toda varredura tentaria o yt-dlp de novo pra
                 # sempre) e devolve a url_origem, que não expira.
                 raise RuntimeError("yt-dlp: extração de vídeo do YouTube falhou ou não está instalado")
-            # Tenta a legenda (CC) do próprio YouTube ANTES de qualquer
-            # Whisper — é um atalho, não um passo obrigatório: se não
-            # achar nada, `_legenda_youtube` continua "" e o vídeo segue
-            # pro fluxo de sempre (`transcricao` NULL → pego depois por
-            # `_transcrever_pendentes_background`, igualzinho a um vídeo
-            # da Meta). Roda depois de já ter o vídeo em mãos (não antes)
-            # pra não atrasar/arriscar o download principal se a busca de
-            # legenda travar por algum motivo.
-            _legenda_youtube = _obter_legenda_youtube(url_origem, ad_id)
         else:
             if _e_midia_google:
                 # CDN do Google (tpc.googlesyndication.com) — igual em
@@ -1358,25 +1244,14 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            # Transcrição via Whisper NÃO roda mais aqui. Antes, cada vídeo
-            # migrado podia segurar um dos workers da migração por até
-            # alguns minutos (ffmpeg + Whisper na CPU), fazendo a barra "X
-            # de Y salvos" andar bem mais devagar do que o download/upload
-            # em si precisaria. transcricao_video fica "" (vira NULL no
-            # banco, ver insert abaixo) e é isso que sinaliza "pendente"
-            # pra fila separada em _transcrever_pendentes_background — que
-            # roda depois de terminar a migração, sem bloquear o progresso
-            # dela.
-            #
-            # EXCEÇÃO: vídeo do YouTube (anúncio do Google Ads) já veio
-            # com a legenda (CC) pronta, se existir (ver `_legenda_youtube`
-            # lá em cima) — nesse caso usa ela direto em vez de deixar
-            # NULL, pulando o Whisper de vez pra esse vídeo (a legenda do
-            # YouTube já É a fala transcrita, não precisa reprocessar).
-            # Quando não tem CC (`_legenda_youtube == ""`), o comportamento
-            # é idêntico a antes: fica NULL e cai no Whisper da fila de
-            # sempre — mesmo fallback que todo vídeo da Meta já usa.
-            transcricao_video = _legenda_youtube
+            # Transcrição NÃO roda mais aqui. Antes, cada vídeo migrado podia
+            # segurar um dos workers da migração por até alguns minutos
+            # (ffmpeg + Whisper na CPU), fazendo a barra "X de Y salvos"
+            # andar bem mais devagar do que o download/upload em si
+            # precisaria. transcricao_video fica "" (vira NULL no banco,
+            # ver insert abaixo) e é isso que sinaliza "pendente" pra fila
+            # separada em _transcrever_pendentes_background — que roda
+            # depois de terminar a migração, sem bloquear o progresso dela.
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
@@ -2243,21 +2118,13 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
         return ""
     _campos = []
     if ocr_estr.get("url_exibida"):
-        _linhas_url = [l for l in ocr_estr["url_exibida"].split("\n") if l]
-        # Sempre que tem 2+ linhas no cabeçalho (nome da página + domínio,
-        # OU domínio curto + URL completa com caminho — os dois formatos
-        # reais que a Central de Transparência mostra), a PRIMEIRA linha
-        # vem em negrito e sem a "/" final, igual ao anúncio de verdade.
-        # Antes isso só valia quando a 1ª linha NÃO parecia domínio (ex:
-        # "BuyTicket Brasil"), então um caso como "buyticketbrasil.com/"
-        # + "www.buyticketbrasil.com/seguro/confiavel" (as duas linhas
-        # parecendo domínio) caía no "senão" e nenhuma ficava em negrito.
-        if len(_linhas_url) >= 2:
+        _linhas_url = ocr_estr["url_exibida"].split("\n")
+        if _linhas_url and not _REGEX_FORMATO_DOMINIO.match(_linhas_url[0]):
             _nome_pagina = _linhas_url[0].rstrip("/")
             _resto_url = "\n".join(_linhas_url[1:])
         else:
             _nome_pagina = ""
-            _resto_url = _linhas_url[0] if _linhas_url else ""
+            _resto_url = ocr_estr["url_exibida"]
         _coluna_texto = (
             (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr_preview(_nome_pagina)}</div>' if _nome_pagina else '')
             + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr_preview(_resto_url)}</div>' if _resto_url else '')
@@ -2313,54 +2180,14 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
             )
             + '</div></div>'
         )
-    _debug_html = _montar_html_debug_bandas_ocr(ocr_estr.get("_debug_bandas"))
     return (
         '<div style="text-align:left;font-style:normal;color:#374151;'
         'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
         '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
         'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
         'Texto extraído da imagem (OCR)</div>'
-        + "".join(_campos) + _debug_html +
+        + "".join(_campos) +
         '</div>'
-    )
-
-
-def _montar_html_debug_bandas_ocr(debug_bandas) -> str:
-    """Renderiza (dentro de um <details> recolhido por padrão) a lista de
-    bandas detectadas por `_estruturar_anuncio_google_ads`, banda por
-    banda, com a decisão que o agrupamento tomou pra cada uma —
-    equivalente aos prints `[OCR-DEBUG]` que hoje só existem no log
-    efêmero do Streamlit Cloud. Gravado junto do resto do OCR
-    (`ocr_estr["_debug_bandas"]`, vindo direto da coluna `ocr_estruturado`
-    no banco), então fica disponível no card de CADA anúncio pra
-    investigar título/sitelink partido ou duplicado sem precisar puxar
-    log nenhum. Devolve string vazia se não houver debug salvo (ex:
-    linhas de OCR antigas, gravadas antes dessa mudança)."""
-    if not debug_bandas:
-        return ""
-    _linhas = []
-    for _b in debug_bandas:
-        _sep = "sim" if _b.get("sep_antes") else "não"
-        _linhas.append(
-            '<tr>'
-            f'<td style="padding:2px 6px;color:#9ca3af">{_b.get("idx")}</td>'
-            f'<td style="padding:2px 6px;color:#9ca3af">{_b.get("classe")}</td>'
-            f'<td style="padding:2px 6px;color:#9ca3af">{_sep}</td>'
-            f'<td style="padding:2px 6px;color:#4b5563">{_escapar_html_ocr_preview(_b.get("texto") or "")}</td>'
-            f'<td style="padding:2px 6px;color:#4b5563">{_escapar_html_ocr_preview(_b.get("decisao") or "")}</td>'
-            '</tr>'
-        )
-    return (
-        '<details style="margin-top:8px;padding-top:6px;border-top:1px solid #eef0f2">'
-        '<summary style="font-size:10px;font-weight:700;color:#9ca3af;'
-        'text-transform:uppercase;letter-spacing:.3px;cursor:pointer">'
-        'Debug: bandas detectadas</summary>'
-        '<table style="width:100%;border-collapse:collapse;font-size:10.5px;margin-top:6px">'
-        '<thead><tr style="text-align:left;color:#9ca3af">'
-        '<th style="padding:2px 6px">#</th><th style="padding:2px 6px">classe</th>'
-        '<th style="padding:2px 6px">sep. antes</th><th style="padding:2px 6px">texto lido</th>'
-        '<th style="padding:2px 6px">decisão</th></tr></thead>'
-        f'<tbody>{"".join(_linhas)}</tbody></table></details>'
     )
 
 
@@ -2572,87 +2399,51 @@ def _detectar_bandas_texto(img_bgr):
     #    por engano.
     # Ambos validados com imagens reais. O texto de cada banda continua
     # sendo lido (via OCR) na largura inteira depois — só a decisão de
-    # "onde quebra" e "que cor é essa banda" ignora essa faixa.
-    #
-    # Essa faixa precisa ser ignorada na altura INTEIRA da imagem, não só
-    # perto do topo — um anúncio com "Patrocinado" antes do cabeçalho
-    # (ou qualquer coisa que empurre o avatar mais pra baixo) faz o
-    # favicon cair fora de qualquer limite fixo de altura, e as duas
-    # linhas do cabeçalho voltam a colar numa banda só, azul (foi
-    # exatamente isso que aconteceu num anúncio real da BuyTicket Brasil
-    # com "Patrocinado" em cima: "BuyTicket Brasil" + "www.buyticketbrasil.com/"
-    # colaram numa banda só, cor puxada pro azul do avatar, e viraram o
-    # "título" por engano). Um limite fixo de altura não tem como
-    # acompanhar isso de forma confiável.
-    #
-    # O preço de ignorar a faixa esquerda na altura inteira: uma linha
-    # de texto real que caiba TODA dentro dela (ex: última linha de um
-    # parágrafo quebrado sendo uma palavra curta rente à esquerda, tipo
-    # "Brasil" em "... Ingressos Do" / "Brasil") não teria nenhum pixel
-    # fora da faixa, e sumiria da extração inteira. Por isso, mais
-    # abaixo, tem uma passada de RECUPERAÇÃO: qualquer linha com texto
-    # de verdade (pixel non-white fora do fundo) que não caiu em
-    # NENHUMA banda detectada por essa máscara vira uma banda própria,
-    # usando a cor da linha SEM máscara nenhuma (já que, por definição,
-    # a máscara não teria nada ali) — cobre exatamente o caso "Brasil"
-    # sem reabrir o caso do favicon colando o cabeçalho.
+    # "onde quebra" e "que cor é essa banda" ignora essa faixa. Título/
+    # descrição sempre se estendem bem além dela, então não tem risco
+    # de uma linha real sumir ou trocar de classe por causa disso.
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
     nao_branco_quebra[:, :_x_ignorar_quebra] = False
 
-    def _bandas_a_partir_da_mascara(mask_2d):
-        _linhas_locais = []
-        for y in range(altura_total):
-            _linha_mask = mask_2d[y]
-            _n = int(_linha_mask.sum())
-            if _n > 3:
-                _pix = img_rgb[y][_linha_mask]
-                _linhas_locais.append((y, _n, float(_pix[:, 0].mean()), float(_pix[:, 1].mean()), float(_pix[:, 2].mean())))
-        _brutas = []
-        _atual = []
-        _y_ant = None
-        for y, n, r, g, b in _linhas_locais:
-            if _y_ant is not None and y - _y_ant > 3:
-                if _atual:
-                    _brutas.append(_atual)
-                _atual = []
-            _atual.append((y, n, r, g, b))
-            _y_ant = y
-        if _atual:
-            _brutas.append(_atual)
-        _out = []
-        for _banda in _brutas:
-            y_min, y_max = _banda[0][0], _banda[-1][0]
-            peso_total = sum(x[1] for x in _banda)
-            r = sum(x[2] * x[1] for x in _banda) / peso_total
-            g = sum(x[3] * x[1] for x in _banda) / peso_total
-            b = sum(x[4] * x[1] for x in _banda) / peso_total
-            altura = y_max - y_min + 1
-            if altura <= 3 and r > 190:
-                classe = "separador"
-            elif b > r + 15 and b > 150:
-                classe = "azul"
-            elif abs(r - g) < 15 and abs(g - b) < 15:
-                classe = "cinza"
-            else:
-                classe = "misto"
-            _out.append({"y_min": y_min, "y_max": y_max, "classe": classe})
-        return _out
-
-    bandas = _bandas_a_partir_da_mascara(nao_branco_quebra)
-
-    # Passada de recuperação (ver comentário acima): reconstrói bandas só
-    # com as linhas que NENHUMA banda detectada acima cobre, usando a
-    # máscara cheia (sem ignorar a faixa esquerda) — pega exatamente as
-    # linhas que sumiriam por caberem inteiras na faixa ignorada.
-    _faixas_cobertas = [(b["y_min"], b["y_max"]) for b in bandas]
-    _mask_recuperacao = nao_branco.copy()
+    linhas = []
     for y in range(altura_total):
-        if any(y_min - 2 <= y <= y_max + 2 for y_min, y_max in _faixas_cobertas):
-            _mask_recuperacao[y] = False
-    bandas_recuperadas = _bandas_a_partir_da_mascara(_mask_recuperacao)
-    if bandas_recuperadas:
-        bandas = sorted(bandas + bandas_recuperadas, key=lambda b: b["y_min"])
+        mask = nao_branco[y]
+        n = int(mask.sum())
+        mask_quebra = nao_branco_quebra[y]
+        n_quebra = int(mask_quebra.sum())
+        if n_quebra > 3:
+            pix = img_rgb[y][mask_quebra]
+            linhas.append((y, n, float(pix[:, 0].mean()), float(pix[:, 1].mean()), float(pix[:, 2].mean())))
+    bandas_brutas = []
+    atual = []
+    y_ant = None
+    for y, n, r, g, b in linhas:
+        if y_ant is not None and y - y_ant > 3:
+            if atual:
+                bandas_brutas.append(atual)
+            atual = []
+        atual.append((y, n, r, g, b))
+        y_ant = y
+    if atual:
+        bandas_brutas.append(atual)
+    bandas = []
+    for banda in bandas_brutas:
+        y_min, y_max = banda[0][0], banda[-1][0]
+        peso_total = sum(x[1] for x in banda)
+        r = sum(x[2] * x[1] for x in banda) / peso_total
+        g = sum(x[3] * x[1] for x in banda) / peso_total
+        b = sum(x[4] * x[1] for x in banda) / peso_total
+        altura = y_max - y_min + 1
+        if altura <= 3 and r > 190:
+            classe = "separador"
+        elif b > r + 15 and b > 150:
+            classe = "azul"
+        elif abs(r - g) < 15 and abs(g - b) < 15:
+            classe = "cinza"
+        else:
+            classe = "misto"
+        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
     return bandas
 
 def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
@@ -2972,23 +2763,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         + str([(i, b['y_min'], b['y_max'], b['classe'], b.get('sep_antes')) for i, b in enumerate(bandas_texto)]),
         flush=True,
     )
-    # Espelha os prints [OCR-DEBUG] acima num dict serializável em JSON,
-    # guardado junto do resultado (`resultado["_debug_bandas"]`) — os
-    # prints só sobrevivem no log efêmero do Streamlit Cloud (se misturam
-    # com o resto do tráfego e somem depois de um tempo); isso aqui fica
-    # gravado na própria linha da mídia (coluna `ocr_estruturado`, jsonb)
-    # e pode ser mostrado direto no card de cada anúncio (ver
-    # `_montar_html_preview_ocr_estruturado`), sem depender de puxar log
-    # nenhum pra investigar por que um título saiu partido/duplicado.
-    _debug_bandas = [
-        {"idx": i, "y_min": b["y_min"], "y_max": b["y_max"], "classe": b["classe"], "sep_antes": b.get("sep_antes")}
-        for i, b in enumerate(bandas_texto)
-    ]
     primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
     _eh_patrocinado = bool(_REGEX_PATROCINADO.match(primeiro_texto.strip()))
     print(f"[OCR-DEBUG] primeira banda bruto={primeiro_texto.strip()!r} eh_patrocinado={_eh_patrocinado}", flush=True)
-    _debug_bandas[0]["texto"] = primeiro_texto.strip()
-    _debug_bandas[0]["decisao"] = "patrocinado (descartada)" if _eh_patrocinado else "não é 'patrocinado'"
     if _eh_patrocinado:
         idx = 1
 
@@ -3038,23 +2815,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # "kedu.com.br" + "www.kedu.com.br/") de "espaço que era erro
         # de OCR dentro da mesma linha", e acabaria apagando os dois
         # igual — grudando as duas linhas numa só.
-        #
-        # SÓ VALE PRA LINHA DE DOMÍNIO/URL, não pro nome da página
-        # (ex: "BuyTicket Brasil", "Kedu Educação") — essa SIM pode ter
-        # espaço interno de verdade, entre palavras. Sem essa distinção,
-        # qualquer nome de página com mais de uma palavra saía com as
-        # palavras grudadas ("BuyTicket Brasil" → "BuyTicketBrasil"),
-        # porque a linha inteira do cabeçalho passava pela mesma limpeza
-        # "domínio nunca tem espaço". Heurística: só trata como
-        # domínio/URL se a linha tiver alguma pista de domínio (um
-        # "www." ou um ponto seguido de letras, tipo TLD — mesmo com
-        # ruído de OCR no meio, ex: "kedu. com.br"); caso contrário, só
-        # colapsa espaços duplicados, sem juntar palavras.
-        _parece_dominio_ou_url = bool(re.search(r"www\.|\.\s?[a-zA-Z]{2,4}\b", _txt_dominio, re.IGNORECASE))
-        if _parece_dominio_ou_url:
-            _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
-        else:
-            _txt_dominio_sem_espaco = re.sub(r"\s+", " ", _txt_dominio).strip()
+        _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
         # início da linha — comum quando essa linha fica colada no
         # favicon/ícone e o EasyOCR devolve um símbolo/glifo espúrio do
@@ -3067,11 +2828,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
             f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r}",
             flush=True,
-        )
-        _debug_bandas[idx]["texto"] = _txt_dominio
-        _debug_bandas[idx]["decisao"] = (
-            f"cabeçalho ({'URL' if _parece_dominio_ou_url else 'nome da página'}, limpo: {_txt_dominio_sem_espaco!r})" if _txt_dominio_sem_espaco
-            else "cabeçalho/URL (vazio após limpeza — descartada)"
         )
         if _txt_dominio_sem_espaco:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
@@ -3197,24 +2953,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 f"{len(_grupos_botoes)} bloco(s): {_grupos_botoes}",
                 flush=True,
             )
-            _debug_bandas[idx]["decisao"] = f"fileira de botões ({len(_grupos_botoes)} bloco(s))"
             if par_atual is not None:
                 pares.append(par_atual)
                 par_atual = None
             _cta_aberto = False
-            _textos_botoes_debug = []
             for _x_ini, _x_fim in _grupos_botoes:
                 _texto_botao = _limpar_pontuacao_ocr(
                     _ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"], x_min=_x_ini, x_max=_x_fim).strip()
                 )
-                _textos_botoes_debug.append(_texto_botao)
                 if _texto_botao:
                     resultado["sitelinks"].append({"titulo": _texto_botao, "descricao": ""})
-            _debug_bandas[idx]["texto"] = " | ".join(_textos_botoes_debug)
             idx += 1
             continue
         texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
-        _debug_bandas[idx]["texto"] = texto
         if banda["classe"] == "azul":
             _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
@@ -3227,20 +2978,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 # sempre um sitelink novo — mesmo que o anterior não
                 # tenha descrição (ex: "Kedu Bank" / "Kedu Marketing").
                 par_atual[0] = (par_atual[0] + " " + texto).strip()
-                _debug_bandas[idx]["decisao"] = "azul → quebra de linha do título/sitelink em andamento (juntada)"
             else:
                 if par_atual is not None:
                     pares.append(par_atual)
                 par_atual = [texto, []]
-                _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
-                    " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
-                )
         elif banda["classe"] == "cinza":
             if _cta_aberto:
                 # subtítulo do CTA (ex: "pelo app WhatsApp") — não é
                 # descrição de sitelink.
                 resultado["cta_subtitulo"] = (resultado["cta_subtitulo"] + " " + texto).strip()
-                _debug_bandas[idx]["decisao"] = "cinza → subtítulo do CTA"
             elif not resultado["cta"] and _REGEX_CTA_TITULO_CONHECIDO.match(texto):
                 # CTA final do anúncio (ex: "Enviar mensagem" do
                 # WhatsApp) que perdeu a classificação "misto" porque o
@@ -3253,12 +2999,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 # divisória própria antes dele.
                 resultado["cta"] = texto
                 _cta_aberto = True
-                _debug_bandas[idx]["decisao"] = "cinza → CTA (bateu regex de CTA conhecido)"
             elif par_atual is not None:
                 par_atual[1].append(texto)
-                _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
-            else:
-                _debug_bandas[idx]["decisao"] = "cinza → descartada (sem título/sitelink aberto nem CTA)"
             # texto cinza sem nenhum título azul aberto antes nem CTA
             # reconhecido: raro nesse ponto do fluxo (já passamos da
             # linha da URL) — ignora em vez de adivinhar onde encaixar.
@@ -3266,14 +3008,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             if not resultado["cta"]:
                 resultado["cta"] = texto
                 _cta_aberto = True
-                _debug_bandas[idx]["decisao"] = "misto → CTA"
-            else:
-                _debug_bandas[idx]["decisao"] = "misto → descartada (CTA já preenchido)"
         idx += 1
     if par_atual is not None:
         pares.append(par_atual)
-
-    resultado["_debug_bandas"] = _debug_bandas
 
     if not pares:
         return resultado if resultado["url_exibida"] else None
@@ -25306,21 +25043,13 @@ function imgFallback_{uid}(img){{
                                 # verde, que era só pra imitar a cor de URL
                                 # de resultado orgânico do Google, mas o
                                 # anúncio real usa preto/cinza aqui).
-                                _linhas_url_ad = [l for l in _ocr_estr_ad["url_exibida"].split("\n") if l]
-                                # Mesma regra da versão reutilizável em
-                                # `_montar_html_preview_ocr_estruturado`:
-                                # com 2+ linhas no cabeçalho, a primeira
-                                # sempre vem em negrito e sem "/" final —
-                                # independente de parecer nome de página
-                                # ou já ser domínio (ex: "buyticketbrasil.com/"
-                                # + "www.buyticketbrasil.com/seguro/confiavel",
-                                # as duas domínio, mas só a 1ª em negrito).
-                                if len(_linhas_url_ad) >= 2:
+                                _linhas_url_ad = _ocr_estr_ad["url_exibida"].split("\n")
+                                if _linhas_url_ad and not _REGEX_FORMATO_DOMINIO.match(_linhas_url_ad[0]):
                                     _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
                                 else:
                                     _nome_pagina_ad = ""
-                                    _resto_url_ad = _linhas_url_ad[0] if _linhas_url_ad else ""
+                                    _resto_url_ad = _ocr_estr_ad["url_exibida"]
                                 _coluna_texto_ad_html = (
                                     (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
                                     + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
@@ -25397,8 +25126,7 @@ function imgFallback_{uid}(img){{
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
                                 'Texto extraído da imagem (OCR)</div>'
-                                + "".join(_campos_ocr_html)
-                                + _montar_html_debug_bandas_ocr(_ocr_estr_ad.get("_debug_bandas")) +
+                                + "".join(_campos_ocr_html) +
                                 '</div>'
                             )
                         elif _ocr_txt_ad:
@@ -25852,23 +25580,7 @@ function openModal(mediaSrc, snapUrl, isVideo) {{
 
     if (isVideo) {{
         var isDirectVideo = mediaSrc && (mediaSrc.indexOf('.mp4') !== -1 || mediaSrc.indexOf('fbcdn') !== -1);
-        // Vídeo de anúncio do Google Ads quase sempre é uma URL do
-        // YouTube (watch/shorts/youtu.be) — não um .mp4 direto — porque
-        // é assim que `_preview_info.get("youtube_url")` popula
-        // `videos` lá no backend (ver render_gads_empresa). Sem esse
-        // match, `isDirectVideo` dava false pra toda URL do YouTube e a
-        // função caía direto no branch de "sem vídeo direto" (só o
-        // botão de abrir na Central de Transparência, nunca um embed) —
-        // por isso o modal nunca mostrava o vídeo do YouTube incorporado.
-        var ytMatch = mediaSrc ? mediaSrc.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{{6,20}})/) : null;
-        if (ytMatch) {{
-            var frame = doc.createElement('iframe');
-            frame.src = 'https://www.youtube.com/embed/' + ytMatch[1] + '?autoplay=1&rel=0';
-            frame.style.cssText = 'display:block;width:min(84vw,820px);height:min(82vh,461px);aspect-ratio:16/9;border:none;border-radius:10px;background:#000;';
-            frame.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
-            frame.setAttribute('allowfullscreen', '');
-            content.appendChild(frame);
-        }} else if (isDirectVideo) {{
+        if (isDirectVideo) {{
             var vid = doc.createElement('video');
             vid.id = 'gads_modal_video';
             vid.src = mediaSrc;

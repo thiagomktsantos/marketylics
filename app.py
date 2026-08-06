@@ -2812,6 +2812,42 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         if _txt_dominio_sem_espaco:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
         idx += 1
+    # O favicon (ícone circular do site) às vezes vaza pro início da
+    # linha e o EasyOCR lê o glifo como um DÍGITO isolado colado no
+    # domínio (ex: favicon da BuyTicket virando "1buyticketbrasil.com/"
+    # em vez de só "buyticketbrasil.com/") — diferente do glifo-símbolo
+    # já tratado acima (regex de caractere não-alfanumérico), aqui o
+    # dígito passa por alfanumérico e nada removia. O resultado prático:
+    # a MESMA linha de domínio aparece 2x no cabeçalho, uma suja (com o
+    # dígito) e uma limpa (normalmente com "www." de verdade) — e como a
+    # linha suja também "parece domínio", o trecho de exibição (mais
+    # abaixo) nem tenta tratar nenhuma das duas como nome de página.
+    #
+    # Deduplica comparando as linhas já normalizadas SEM um possível
+    # dígito líder colado a uma letra e SEM o prefixo "www." — quando
+    # duas linhas batem por essa chave, é a mesma URL lida duas vezes;
+    # fica só com a versão SEM o dígito líder (a mais limpa).
+    def _chave_dedup_dominio(s: str) -> str:
+        s2 = re.sub(r"^\d(?=[a-zA-Z])", "", s)
+        s2 = re.sub(r"^www\.", "", s2, flags=re.IGNORECASE)
+        return s2.lower()
+
+    def _linha_com_digito_lider(s: str) -> bool:
+        return bool(re.match(r"^\d[a-zA-Z]", s))
+
+    _grupos_dominio = {}
+    _ordem_chaves_dominio = []
+    for _p in _partes_dominio:
+        _k = _chave_dedup_dominio(_p)
+        if _k not in _grupos_dominio:
+            _grupos_dominio[_k] = []
+            _ordem_chaves_dominio.append(_k)
+        _grupos_dominio[_k].append(_p)
+    _partes_dominio = []
+    for _k in _ordem_chaves_dominio:
+        _candidatos = _grupos_dominio[_k]
+        _limpos = [c for c in _candidatos if not _linha_com_digito_lider(c)]
+        _partes_dominio.append(_limpos[0] if _limpos else _candidatos[0])
     # Junta as linhas já limpas/normalizadas com quebra de linha (não
     # espaço) pra reproduzir o layout real do Google Ads, onde
     # "kedu.com.br" e "www.kedu.com.br/" aparecem empilhadas em duas

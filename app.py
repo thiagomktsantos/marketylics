@@ -3338,15 +3338,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # separados por hr.
             #
             # Pra não depender só do sep_antes, aceita também um
-            # travessão SOBRANDO no final do texto bruto (ex.: "Termo A
-            # – Termo B –") — o Google Ads sempre fecha essa linha com
+            # traço SOBRANDO no final do texto bruto (ex.: "Termo A –
+            # Termo B –") — o Google Ads sempre fecha essa linha com
             # mais um separador depois do último termo, mesmo quando o
             # EasyOCR não lê o próximo termo em si. Um título comum com
             # um traço no meio (ex.: "Show Ao Vivo - Ingressos") nunca
             # termina com o traço solto, então esse sinal é seguro sem
             # precisar do sep_antes.
-            _texto_sem_travessao_final = re.sub(r"\s*[·•–—]\s*$", "", texto)
-            _tinha_travessao_sobrando = bool(re.search(r"[–—]\s*$", texto))
+            #
+            # IMPORTANTE: o traço aqui não é só "–"/"—" (travessão) que
+            # o EasyOCR às vezes lê errado no lugar do "·"/"•" — é
+            # também o HÍFEN ASCII SIMPLES "-", porque é literalmente
+            # esse o caractere que `_ocr_banda` (acima) insere de
+            # verdade quando recupera um traço perdido entre duas
+            # palavras via `_detectar_hifen_no_intervalo` (ver
+            # `partes.append("-")`). Sem cobrir o "-" simples aqui, o
+            # caso real "Lollapalooza 2026 - Rock In Rio 2026 -"
+            # nunca batia em nenhum dos dois ramos abaixo e ficava
+            # sempre grudado, mesmo com o sinal de traço sobrando.
+            _texto_sem_travessao_final = re.sub(r"\s*[·•\-–—]\s*$", "", texto)
+            _tinha_travessao_sobrando = bool(re.search(r"[\-–—]\s*$", texto))
             _partes_relacionados = None
             if re.search(r"[·•]", _texto_sem_travessao_final):
                 _candidatos_relacionados = [
@@ -3354,9 +3365,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 ]
                 if banda.get("sep_antes") or _tinha_travessao_sobrando or len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
-            elif re.search(r"\s[–—]\s", _texto_sem_travessao_final):
+            elif re.search(r"\s[\-–—]\s", _texto_sem_travessao_final):
                 _candidatos_relacionados = [
-                    p.strip() for p in re.split(r"\s+[–—]\s+", _texto_sem_travessao_final) if p.strip()
+                    p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
                 ]
                 if banda.get("sep_antes") or _tinha_travessao_sobrando:
                     _partes_relacionados = _candidatos_relacionados

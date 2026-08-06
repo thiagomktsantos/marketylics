@@ -2953,6 +2953,65 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         partes.append("-")
     return " ".join(partes)
 
+def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int) -> list:
+    """Fallback pra linha de 'termos relacionados' (ex.: "Fórmula 1 ·
+    Rock In Rio 2026 · Copa do Mundo 2026") quando o separador "·"/"•"
+    some INTEIRO do texto reconhecido — não só vira um traço solto
+    (caso já coberto pelo fallback de hífen em `_ocr_banda`), mas some
+    junto com algum termo curto vizinho. Validado num anúncio real da
+    BuyTicket Brasil: o "1" de "Fórmula 1" é um dígito isolado — mesmo
+    problema do hífen (caixa curta/fina demais pro CRAFT abrir uma
+    detecção só pra ele), só que sem o formato de traço fino que
+    `_detectar_hifen_no_intervalo` reconhece, então aquele fallback
+    nunca pega esse caso. Resultado real: "Fórmula 1 · Rock In Rio
+    2026" saía como "Fórmula Rock In Rio 2026" grudado, sem nenhum
+    separador sobrando pra guiar a quebra por regex de texto.
+
+    Em vez de tentar recuperar o caractere perdido (o "1" e o "·" não
+    voltam — o CRAFT simplesmente não abriu caixa pra eles), usa só a
+    POSIÇÃO das palavras que FORAM reconhecidas: o vão horizontal onde
+    ficava o separador (e o termo curto perdido, se houver) é bem mais
+    largo que o espaço normal entre duas palavras do MESMO termo (ex.:
+    o vão entre "Rock" e "In" é só um espaço; o vão onde sumiu "1 · " é
+    várias vezes mais largo). Quebra nos vãos desproporcionalmente
+    largos e devolve os termos resultantes — cada um pode perder um
+    termo curto/separador que não voltou, mas pelo menos não fica mais
+    grudado com o termo vizinho."""
+    altura_total = img_bgr.shape[0]
+    y0 = max(0, y_min - 4)
+    y1 = min(altura_total, y_max + 5)
+    recorte = img_bgr[y0:y1]
+    resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
+    if not resultado:
+        return []
+    palavras = [(bbox, (t or "").strip()) for bbox, t, _c in resultado if (t or "").strip()]
+    if len(palavras) < 2:
+        return []
+    palavras.sort(key=lambda item: item[0][0][0])
+    _caixas = [
+        (int(min(p[0] for p in bbox)), int(max(p[0] for p in bbox)), txt)
+        for bbox, txt in palavras
+    ]
+    _vaos = [_caixas[i][0] - _caixas[i - 1][1] for i in range(1, len(_caixas))]
+    if not _vaos:
+        return []
+    _vao_mediano = sorted(_vaos)[len(_vaos) // 2]
+    # Limiar: vão que seja ao menos o dobro do vão mediano da linha E
+    # com uma folga mínima absoluta (evita reagir a ruído de 1-2px
+    # quando a linha inteira já tem espaçamento apertado, onde
+    # "o dobro do mediano" seria um número minúsculo).
+    _limiar = max(_vao_mediano * 2.2, _vao_mediano + 14)
+    _termos = []
+    _termo_atual = [_caixas[0][2]]
+    for i in range(1, len(_caixas)):
+        if _vaos[i - 1] >= _limiar:
+            _termos.append(" ".join(_termo_atual))
+            _termo_atual = [_caixas[i][2]]
+        else:
+            _termo_atual.append(_caixas[i][2])
+    _termos.append(" ".join(_termo_atual))
+    return [t.strip() for t in _termos if t.strip()]
+
 def _estruturar_anuncio_google_ads(img_bgr, reader):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
     Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
@@ -3387,10 +3446,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 ]
                 if banda.get("sep_antes") or (_titulo_e_descricao_ja_fechados and len(_candidatos_relacionados) >= 2):
                     _partes_relacionados = _candidatos_relacionados
+            # Nem "·"/"•" nem traço sobraram no texto reconhecido — pode
+            # ser que o separador tenha sumido INTEIRO do OCR (ver
+            # docstring de `_dividir_termos_relacionados_por_gap`), não
+            # só virado um traço solto. Só tenta esse fallback sob o
+            # mesmo portão de segurança usado acima (linha com separador
+            # de verdade antes, ou posição estrutural depois de
+            # título+descrição já fechados) — nunca num título comum de
+            # uma linha só.
+            if not _partes_relacionados and (banda.get("sep_antes") or _titulo_e_descricao_ja_fechados):
+                _candidatos_gap = _dividir_termos_relacionados_por_gap(
+                    reader, img_bgr, banda["y_min"], banda["y_max"]
+                )
+                if len(_candidatos_gap) >= 2:
+                    _partes_relacionados = _candidatos_gap
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]["decisao"] = (
                     f"azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) "
-                    "separados por hr, em vez de ficarem grudados com hífen)"
+                    "separados por hr, em vez de ficarem grudados)"
                 )
                 if par_atual is not None:
                     pares.append(par_atual)

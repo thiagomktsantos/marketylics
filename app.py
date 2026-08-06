@@ -3295,12 +3295,66 @@ def _empresas_com_imagens_google_ads(user_id: str) -> list:
     except Exception:
         return []
 
-def resetar_ocr_gads_forcado(user_id: str, empresa: str) -> int:
+def _formatos_gads_disponiveis(user_id: str, empresa: str) -> list:
+    """Formatos de anúncio (\"Texto\", \"Gráfico\", \"Vídeo\"...) que essa
+    empresa tem pelo menos um anúncio salvo no `gads_cache` — alimenta o
+    seletor \"Tipo de anúncio\" do reset forçado. Essa informação (o
+    `formato` de CADA anúncio) só existe no `gads_cache` (coletada junto
+    com o anúncio via Apify/adFormat), não na tabela `midias` — que
+    guarda só a imagem em si, sem saber a qual anúncio/formato ela
+    pertence."""
+    try:
+        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        entry = cache.get(empresa) or {}
+        ads = entry.get("data") or []
+        formatos = set()
+        for a in ads:
+            f = a.get("formato") or ""
+            if f == "Imagem":  # nome antigo, ver normalização em render_gads_empresa
+                f = "Gráfico"
+            if f:
+                formatos.add(f)
+        return sorted(formatos)
+    except Exception:
+        return []
+
+def _urls_imagens_gads_por_formato(user_id: str, empresa: str, formato: str) -> set:
+    """Devolve as URLs de imagem (primeira imagem de cada anúncio) dos
+    anúncios de `empresa` que são do `formato` pedido (ex: só \"Texto\")
+    — lidas do `gads_cache`, mesma fonte de `_formatos_gads_disponiveis`.
+    Usado pra restringir `resetar_ocr_gads_forcado` a um tipo específico
+    de anúncio, já que a tabela `midias` não guarda esse tipo por linha."""
+    try:
+        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        entry = cache.get(empresa) or {}
+        ads = entry.get("data") or []
+        urls = set()
+        for a in ads:
+            f = a.get("formato") or ""
+            if f == "Imagem":
+                f = "Gráfico"
+            if f != formato:
+                continue
+            imgs = a.get("images") or []
+            if imgs and imgs[0]:
+                urls.add(imgs[0])
+        return urls
+    except Exception:
+        return set()
+
+def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None) -> int:
     """'Botão de pânico' pro OCR do Google Ads de UMA empresa: zera
     `ocr_texto` (e `ocr_estruturado`) de TODAS as imagens do Google Ads
     dessa empresa, sem NENHUMA condição sobre `ocr_estruturado` — ao
     contrário de `resetar_ocr_formato_antigo`, que só pega linhas com
     `ocr_estruturado IS NULL`.
+
+    `formato` (opcional): quando informado (\"Texto\", \"Gráfico\" ou
+    \"Vídeo\"), restringe o reset só às imagens dos anúncios desse tipo
+    — ver `_urls_imagens_gads_por_formato`. Sem isso (None/\"Todos\"),
+    reseta tudo, igual antes.
 
     Por quê isso existe: encontramos linhas com `ocr_estruturado`
     preenchido (não NULL), mas com conteúdo ERRADO — gravado por uma
@@ -3324,7 +3378,7 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str) -> int:
     try:
         res = (
             supabase.table("midias")
-            .select("id")
+            .select("id, url_cdn")
             .eq("user_id", user_id)
             .eq("empresa", empresa)
             .eq("tipo", "imagem")
@@ -3333,8 +3387,11 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str) -> int:
             .execute()
         )
         linhas = res.data or []
+        if formato:
+            _urls_formato = _urls_imagens_gads_por_formato(user_id, empresa, formato)
+            linhas = [r for r in linhas if r.get("url_cdn") in _urls_formato]
         if not linhas:
-            print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: nenhuma imagem do Google Ads pra empresa={empresa!r}", flush=True)
+            print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: nenhuma imagem do Google Ads pra empresa={empresa!r} formato={formato!r}", flush=True)
             return 0
         ids = [r["id"] for r in linhas]
         for i in range(0, len(ids), 200):
@@ -3343,11 +3400,11 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str) -> int:
                 "ocr_texto": None,
                 "ocr_estruturado": None,
             }).in_("id", bloco).execute()
-        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r}", flush=True)
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r} formato={formato!r}", flush=True)
         iniciar_ocr_pendente_background(user_id, empresa)
         return len(ids)
     except Exception as e:
-        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r}: {e!r}", flush=True)
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r} formato={formato!r}: {e!r}", flush=True)
         return 0
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
@@ -32607,37 +32664,62 @@ html, body { background: transparent; overflow: hidden; }
                 "todo achatado num bloco só (sem título/descrição separados), mesmo "
                 "depois de usar o botão acima — geralmente é OCR gravado por uma versão "
                 "mais antiga do sistema, com `ocr_estruturado` preenchido só que errado, "
-                "que os botões acima não detectam sozinhos. Isso reprocessa TODAS as "
-                "imagens do Google Ads dessa empresa, mesmo as que já estavam certas."
+                "que os botões acima não detectam sozinhos. Isso reprocessa as imagens "
+                "do Google Ads dessa empresa, mesmo as que já estavam certas — por "
+                "padrão TODAS, ou só um tipo de anúncio, se você filtrar abaixo."
             )
-            _empresa_reset_forcado = st.selectbox(
-                "Empresa",
-                options=_empresas_gads_perfil,
-                key="_select_empresa_reset_forcado_gads",
+            _col_empresa_reset, _col_formato_reset = st.columns(2)
+            with _col_empresa_reset:
+                _empresa_reset_forcado = st.selectbox(
+                    "Empresa",
+                    options=_empresas_gads_perfil,
+                    key="_select_empresa_reset_forcado_gads",
+                )
+            _formatos_disp_reset = _formatos_gads_disponiveis(
+                st.session_state.user.id, _empresa_reset_forcado
+            )
+            with _col_formato_reset:
+                _formato_reset_forcado = st.selectbox(
+                    "Tipo de anúncio",
+                    options=["Todos"] + _formatos_disp_reset,
+                    key="_select_formato_reset_forcado_gads",
+                    help=(
+                        "Filtra o reprocessamento só pros anúncios desse formato "
+                        "(ex: só \"Texto\") — os demais tipos ficam como estão."
+                    ),
+                )
+            _formato_reset_efetivo = (
+                None if _formato_reset_forcado == "Todos" else _formato_reset_forcado
+            )
+            _sufixo_confirmacao = (
+                "do zero" if not _formato_reset_efetivo
+                else f"do tipo \"{_formato_reset_efetivo}\" do zero"
             )
             _confirmar_reset_forcado = st.checkbox(
-                f"Confirmo que quero reprocessar TODAS as imagens do Google Ads de "
-                f"\"{_empresa_reset_forcado}\" do zero.",
+                f"Confirmo que quero reprocessar {'TODAS as' if not _formato_reset_efetivo else 'as'} "
+                f"imagens do Google Ads de \"{_empresa_reset_forcado}\" {_sufixo_confirmacao}.",
                 key="_chk_confirmar_reset_forcado_gads",
             )
             if st.button(
-                "Reprocessar tudo do zero",
+                "Reprocessar tudo do zero" if not _formato_reset_efetivo else f"Reprocessar \"{_formato_reset_efetivo}\" do zero",
                 key="_btn_reset_forcado_gads",
                 disabled=not _confirmar_reset_forcado,
             ):
                 _n_reset_forcado = resetar_ocr_gads_forcado(
-                    st.session_state.user.id, _empresa_reset_forcado
+                    st.session_state.user.id, _empresa_reset_forcado,
+                    formato=_formato_reset_efetivo,
                 )
+                _desc_tipo = "" if not _formato_reset_efetivo else f" do tipo \"{_formato_reset_efetivo}\""
                 if _n_reset_forcado:
                     st.toast(
-                        f"{_n_reset_forcado} imagem(ns) de \"{_empresa_reset_forcado}\" "
+                        f"{_n_reset_forcado} imagem(ns){_desc_tipo} de \"{_empresa_reset_forcado}\" "
                         f"enviada(s) pra reprocessar do zero — acompanhe no sino de "
                         f"notificações.",
                         icon="🔄",
                     )
                 else:
                     st.toast(
-                        f"Nenhuma imagem do Google Ads encontrada pra \"{_empresa_reset_forcado}\".",
+                        f"Nenhuma imagem{_desc_tipo} do Google Ads encontrada pra \"{_empresa_reset_forcado}\".",
                         icon="⚠️",
                     )
                 st.rerun()

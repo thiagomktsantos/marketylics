@@ -31767,128 +31767,6 @@ html, body { background: transparent; overflow: hidden; }
             except Exception as e:
                 st.toast(f"Erro ao salvar preferências: {e}", icon="⚠️")
 
-        st.markdown("**Extração de texto (OCR) — Google Ads**")
-        st.caption(
-            "O Google Ads Transparency Center não entrega o texto do anúncio (nem "
-            "nos de formato 'Texto') — só a imagem. A partir de agora, toda coleta "
-            "nova já roda OCR automaticamente nessas imagens. Anúncios coletados "
-            "ANTES dessa função existir não passaram por isso ainda; use o botão "
-            "abaixo pra processar o que já está salvo."
-        )
-        _qtd_ocr_pendente_perfil = 0
-        try:
-            _empresas_ocr_pend = _empresas_com_ocr_pendente(st.session_state.user.id)
-            for _emp_ocr_pend in _empresas_ocr_pend:
-                _qtd_ocr_pendente_perfil += _contar_ocr_pendentes(st.session_state.user.id, _emp_ocr_pend)
-        except Exception:
-            _empresas_ocr_pend = []
-        if _qtd_ocr_pendente_perfil:
-            st.caption(f"{_qtd_ocr_pendente_perfil} imagem(ns) do Google Ads ainda sem texto extraído.")
-        if st.button(
-            "Extrair texto (OCR) dos anúncios já coletados",
-            key="_btn_ocr_backfill_perfil",
-            disabled=not _empresas_ocr_pend,
-        ):
-            for _emp_ocr_pend in _empresas_ocr_pend:
-                iniciar_ocr_pendente_background(st.session_state.user.id, _emp_ocr_pend)
-            st.toast(
-                f"Extraindo texto de {len(_empresas_ocr_pend)} empresa(s) — acompanhe no sino de notificações.",
-                icon="🔄",
-            )
-            st.rerun()
-
-        # Duas situações caem no mesmo balde aqui — ver docstring de
-        # _contar_ocr_formato_antigo: (1) OCR salvo ANTES do texto virar
-        # estruturado (texto corrido, sem título/descrição/CTA separados)
-        # e (2) OCR gravado como "vazio" por causa de uma falha de rede/
-        # Gemini/parsing (bug já corrigido na extração, mas que já tinha
-        # gravado linhas erradas antes da correção — imagem com texto
-        # visível, mas marcada como "sem texto" pra sempre). Botão
-        # separado do de cima porque a ação é diferente: não é "processar
-        # o que nunca foi processado", é "jogar fora o que já foi
-        # processado errado/desatualizado e reprocessar do zero" (reseta
-        # ocr_texto pra NULL e reenvia pra fila normal de OCR).
-        try:
-            _qtd_ocr_formato_antigo = _contar_ocr_formato_antigo(st.session_state.user.id)
-        except Exception:
-            _qtd_ocr_formato_antigo = 0
-        if _qtd_ocr_formato_antigo:
-            st.caption(
-                f"{_qtd_ocr_formato_antigo} imagem(ns) com OCR no formato antigo (texto "
-                f"corrido) ou salvas sem texto por uma falha anterior."
-            )
-            if st.button(
-                "Refazer essas OCRs",
-                key="_btn_ocr_refazer_formato_antigo_perfil",
-            ):
-                _n_resetadas = resetar_ocr_formato_antigo(st.session_state.user.id)
-                if _n_resetadas:
-                    st.toast(
-                        f"{_n_resetadas} OCR(s) enviada(s) pra reprocessar "
-                        f"— acompanhe no sino de notificações.",
-                        icon="🔄",
-                    )
-                else:
-                    st.toast("Nenhuma OCR antiga/vazia pra reprocessar.", icon="⚠️")
-                st.rerun()
-
-        # Reset forçado por empresa — cobre o caso em que `ocr_estruturado`
-        # JÁ ESTÁ preenchido, mas com conteúdo errado (gravado por uma
-        # versão mais antiga/pior do parser por cor: título vazio, tudo
-        # despejado em `descricao` como texto corrido). O botão acima
-        # ("Refazer essas OCRs") NÃO pega esse caso — ele só enxerga
-        # `ocr_estruturado IS NULL`, e aqui o campo tem conteúdo (só que
-        # errado). Como não dá pra distinguir programaticamente um
-        # `ocr_estruturado` certo de um errado (mesmas chaves, ambos
-        # "preenchidos"), a correção é manual: o usuário escolhe a
-        # empresa e reprocessa tudo do zero, mesmo o que já estava certo.
-        _empresas_gads_perfil = []
-        try:
-            _empresas_gads_perfil = _empresas_com_imagens_google_ads(st.session_state.user.id)
-        except Exception:
-            pass
-        if _empresas_gads_perfil:
-            st.markdown("**Reprocessar OCR de uma empresa do zero**")
-            st.caption(
-                "Use isto se algum anúncio de texto do Google Ads estiver com o texto "
-                "todo achatado num bloco só (sem título/descrição separados), mesmo "
-                "depois de usar o botão acima — geralmente é OCR gravado por uma versão "
-                "mais antiga do sistema, com `ocr_estruturado` preenchido só que errado, "
-                "que os botões acima não detectam sozinhos. Isso reprocessa TODAS as "
-                "imagens do Google Ads dessa empresa, mesmo as que já estavam certas."
-            )
-            _empresa_reset_forcado = st.selectbox(
-                "Empresa",
-                options=_empresas_gads_perfil,
-                key="_select_empresa_reset_forcado_gads",
-            )
-            _confirmar_reset_forcado = st.checkbox(
-                f"Confirmo que quero reprocessar TODAS as imagens do Google Ads de "
-                f"\"{_empresa_reset_forcado}\" do zero.",
-                key="_chk_confirmar_reset_forcado_gads",
-            )
-            if st.button(
-                "Reprocessar tudo do zero",
-                key="_btn_reset_forcado_gads",
-                disabled=not _confirmar_reset_forcado,
-            ):
-                _n_reset_forcado = resetar_ocr_gads_forcado(
-                    st.session_state.user.id, _empresa_reset_forcado
-                )
-                if _n_reset_forcado:
-                    st.toast(
-                        f"{_n_reset_forcado} imagem(ns) de \"{_empresa_reset_forcado}\" "
-                        f"enviada(s) pra reprocessar do zero — acompanhe no sino de "
-                        f"notificações.",
-                        icon="🔄",
-                    )
-                else:
-                    st.toast(
-                        f"Nenhuma imagem do Google Ads encontrada pra \"{_empresa_reset_forcado}\".",
-                        icon="⚠️",
-                    )
-                st.rerun()
-
     with aba_perfil_uso:
         import math as _math_uso
 
@@ -32642,226 +32520,127 @@ html, body { background: transparent; overflow: hidden; }
         )
 
     with aba_perfil_suporte:
-        # ══════════════════════════════════════════════════════════════
-        # Teste rápido de OCR (1 imagem, sem fila/banco) — pra depurar o
-        # parser sem precisar esperar o "Reprocessar tudo do zero" (que
-        # processa a empresa inteira e pode levar minutos). Sobe um
-        # print do anúncio, roda `_estruturar_anuncio_google_ads` na
-        # hora e mostra o resultado bruto — dá o mesmo retorno que ia
-        # pro banco, só que instantâneo e sem afetar nenhum dado real.
-        with st.expander(
-            "🧪 Testar OCR com uma imagem avulsa (debug)",
-            expanded=st.session_state.get("_expander_teste_ocr_aberto", False),
+        st.markdown("**Extração de texto (OCR) — Google Ads**")
+        st.caption(
+            "O Google Ads Transparency Center não entrega o texto do anúncio (nem "
+            "nos de formato 'Texto') — só a imagem. A partir de agora, toda coleta "
+            "nova já roda OCR automaticamente nessas imagens. Anúncios coletados "
+            "ANTES dessa função existir não passaram por isso ainda; use o botão "
+            "abaixo pra processar o que já está salvo."
+        )
+        _qtd_ocr_pendente_perfil = 0
+        try:
+            _empresas_ocr_pend = _empresas_com_ocr_pendente(st.session_state.user.id)
+            for _emp_ocr_pend in _empresas_ocr_pend:
+                _qtd_ocr_pendente_perfil += _contar_ocr_pendentes(st.session_state.user.id, _emp_ocr_pend)
+        except Exception:
+            _empresas_ocr_pend = []
+        if _qtd_ocr_pendente_perfil:
+            st.caption(f"{_qtd_ocr_pendente_perfil} imagem(ns) do Google Ads ainda sem texto extraído.")
+        if st.button(
+            "Extrair texto (OCR) dos anúncios já coletados",
+            key="_btn_ocr_backfill_perfil",
+            disabled=not _empresas_ocr_pend,
         ):
+            for _emp_ocr_pend in _empresas_ocr_pend:
+                iniciar_ocr_pendente_background(st.session_state.user.id, _emp_ocr_pend)
+            st.toast(
+                f"Extraindo texto de {len(_empresas_ocr_pend)} empresa(s) — acompanhe no sino de notificações.",
+                icon="🔄",
+            )
+            st.rerun()
+
+        # Duas situações caem no mesmo balde aqui — ver docstring de
+        # _contar_ocr_formato_antigo: (1) OCR salvo ANTES do texto virar
+        # estruturado (texto corrido, sem título/descrição/CTA separados)
+        # e (2) OCR gravado como "vazio" por causa de uma falha de rede/
+        # Gemini/parsing (bug já corrigido na extração, mas que já tinha
+        # gravado linhas erradas antes da correção — imagem com texto
+        # visível, mas marcada como "sem texto" pra sempre). Botão
+        # separado do de cima porque a ação é diferente: não é "processar
+        # o que nunca foi processado", é "jogar fora o que já foi
+        # processado errado/desatualizado e reprocessar do zero" (reseta
+        # ocr_texto pra NULL e reenvia pra fila normal de OCR).
+        try:
+            _qtd_ocr_formato_antigo = _contar_ocr_formato_antigo(st.session_state.user.id)
+        except Exception:
+            _qtd_ocr_formato_antigo = 0
+        if _qtd_ocr_formato_antigo:
             st.caption(
-                "Sobe um print do anúncio (Google Ads) e roda o leitor na hora, "
-                "mostrando o resultado — título, descrição, CTA, sitelinks — com "
-                "a MESMA formatação usada no card da página do Google Ads, sem "
-                "mexer em nenhum dado salvo. Útil pra confirmar rápido se um "
-                "ajuste no parser resolveu um caso específico."
+                f"{_qtd_ocr_formato_antigo} imagem(ns) com OCR no formato antigo (texto "
+                f"corrido) ou salvas sem texto por uma falha anterior."
             )
-            _tipo_teste_ocr = st.radio(
-                "Tipo do anúncio",
-                options=["texto", "grafico"],
-                format_func=lambda v: (
-                    "Texto (Rede de Pesquisa)" if v == "texto" else "Gráfico (Display/imagem)"
-                ),
-                horizontal=True,
-                key="_radio_tipo_teste_ocr_avulso",
-                help=(
-                    "Anúncio de texto: título/descrição/URL/CTA são separados por "
-                    "cor (heurística de `_estruturar_anuncio_google_ads`), igual "
-                    "aos anúncios da Rede de Pesquisa. Anúncio gráfico: o texto "
-                    "está \"dentro\" de uma imagem/banner e não segue esse padrão "
-                    "de cores — nesse caso a página real cai no texto corrido "
-                    "bruto, então o teste já roda direto esse caminho."
-                ),
-            )
-            _arquivo_teste_ocr = st.file_uploader(
-                "Imagem do anúncio",
-                type=["png", "jpg", "jpeg", "webp"],
-                key="_uploader_teste_ocr_avulso",
-            )
-            if _arquivo_teste_ocr is not None and st.button(
-                "Rodar OCR nessa imagem", key="_btn_rodar_ocr_avulso"
+            if st.button(
+                "Refazer essas OCRs",
+                key="_btn_ocr_refazer_formato_antigo_perfil",
             ):
-                # Mantém o expander aberto na próxima rerodada (o clique no
-                # botão acima já dispara uma rerun do Streamlit, que por
-                # padrão fecha o expander de novo — sem isso o resultado é
-                # renderizado mas fica escondido, dando a impressão de que
-                # "não apareceu nada").
-                st.session_state["_expander_teste_ocr_aberto"] = True
-                import time as _time_teste_ocr
-                _t0_teste_ocr = _time_teste_ocr.time()
-                _ocr_banda_original_teste = None  # restaurado no finally, se o monkeypatch entrar em ação
-                with st.status(
-                    "Iniciando teste de OCR…", expanded=True
-                ) as _status_teste_ocr:
-                    try:
-                        st.write("📥 Lendo os bytes da imagem enviada…")
-                        import numpy as _np_teste_ocr
-                        import cv2 as _cv2_teste_ocr
-                        _bytes_img = _arquivo_teste_ocr.getvalue()
-                        _arr_teste = _np_teste_ocr.frombuffer(_bytes_img, dtype=_np_teste_ocr.uint8)
-                        _img_bgr_teste = _cv2_teste_ocr.imdecode(_arr_teste, _cv2_teste_ocr.IMREAD_COLOR)
-                        if _img_bgr_teste is None:
-                            _status_teste_ocr.update(
-                                label="❌ Erro: imagem inválida", state="error"
-                            )
-                            st.error("Não consegui decodificar essa imagem.")
-                        else:
-                            st.write(
-                                f"✅ Imagem decodificada "
-                                f"({_img_bgr_teste.shape[1]}×{_img_bgr_teste.shape[0]}px)."
-                            )
+                _n_resetadas = resetar_ocr_formato_antigo(st.session_state.user.id)
+                if _n_resetadas:
+                    st.toast(
+                        f"{_n_resetadas} OCR(s) enviada(s) pra reprocessar "
+                        f"— acompanhe no sino de notificações.",
+                        icon="🔄",
+                    )
+                else:
+                    st.toast("Nenhuma OCR antiga/vazia pra reprocessar.", icon="⚠️")
+                st.rerun()
 
-                            # Só existe download pesado se o motor ainda não foi
-                            # carregado neste processo (1ª chamada depois de um
-                            # deploy/restart do Streamlit Cloud, que apaga o cache
-                            # de modelo do EasyOCR). Diferenciar isso no log visual
-                            # é o que permite saber se "travou" baixando modelo ou
-                            # rodando a leitura em si.
-                            _ja_carregado_teste_ocr = _easyocr_instancia[0] is not None
-                            if _ja_carregado_teste_ocr:
-                                st.write("🧠 Motor de OCR já estava carregado — reaproveitando.")
-                            else:
-                                st.write(
-                                    "⏳ Motor de OCR ainda não carregado neste processo. "
-                                    "Baixando/carregando modelo agora — **pode levar "
-                                    "vários minutos** na primeira execução após um "
-                                    "deploy/restart (o Streamlit Cloud não guarda esse "
-                                    "cache entre restarts). Se parecer travado, é aqui."
-                                )
-                            _t_load0_teste_ocr = _time_teste_ocr.time()
-                            _reader_teste = _get_easyocr()
-                            _t_load1_teste_ocr = _time_teste_ocr.time()
-                            if not _ja_carregado_teste_ocr:
-                                st.write(
-                                    f"✅ Modelo carregado em "
-                                    f"{_t_load1_teste_ocr - _t_load0_teste_ocr:.1f}s."
-                                )
-
-                            st.write("🔎 Rodando a leitura da imagem (inferência do OCR)…")
-                            _t_infer0_teste_ocr = _time_teste_ocr.time()
-                            st.markdown("**Prévia (como aparece no card do Google Ads)**")
-
-                            # Monkeypatch temporário SÓ dentro deste bloco de teste:
-                            # `_estruturar_anuncio_google_ads` chama `_ocr_banda` várias
-                            # vezes (uma por título/descrição/sitelink detectado), cada
-                            # chamada roda detecção+reconhecimento do zero — é aqui que
-                            # o tempo/memória realmente se acumulam. Envolvendo a função
-                            # global (restaurando no finally) a gente consegue logar
-                            # banda por banda sem tocar no caminho de produção.
-                            _ocr_banda_original_teste = globals()["_ocr_banda"]
-                            _contador_banda_teste_ocr = [0]
-                            _t_ultima_banda_teste_ocr = [_time_teste_ocr.time()]
-
-                            def _ocr_banda_instrumentada_teste(*_args_banda, **_kwargs_banda):
-                                _contador_banda_teste_ocr[0] += 1
-                                _n_teste = _contador_banda_teste_ocr[0]
-                                _t_ini_banda = _time_teste_ocr.time()
-                                st.write(f"  ↳ lendo banda #{_n_teste}…")
-                                try:
-                                    _res_banda = _ocr_banda_original_teste(*_args_banda, **_kwargs_banda)
-                                except Exception:
-                                    st.write(f"  ↳ ❌ banda #{_n_teste} explodiu — veja o erro abaixo.")
-                                    raise
-                                _dt_banda = _time_teste_ocr.time() - _t_ini_banda
-                                st.write(
-                                    f"  ↳ ✅ banda #{_n_teste} lida em {_dt_banda:.1f}s "
-                                    f"→ {_res_banda.strip()[:60]!r}"
-                                )
-                                _t_ultima_banda_teste_ocr[0] = _time_teste_ocr.time()
-                                return _res_banda
-
-                            globals()["_ocr_banda"] = _ocr_banda_instrumentada_teste
-                            if _tipo_teste_ocr == "texto":
-                                # Mesmo caminho de `_extrair_ocr_estruturado_imagem`:
-                                # tenta estruturar por cor e, se não reconhecer
-                                # nada de verdade, cai no texto bruto — igual à
-                                # página real faria com essa mesma imagem.
-                                _resultado_teste = _estruturar_anuncio_google_ads(_img_bgr_teste, _reader_teste)
-                                _t_infer1_teste_ocr = _time_teste_ocr.time()
-                                st.write(
-                                    f"✅ Leitura concluída em "
-                                    f"{_t_infer1_teste_ocr - _t_infer0_teste_ocr:.1f}s. "
-                                    "Montando prévia…"
-                                )
-                                if _resultado_teste and _ocr_estruturado_tem_conteudo(_resultado_teste):
-                                    _html_preview_teste_ocr = _montar_html_preview_ocr_estruturado(_resultado_teste)
-                                    st.markdown(_html_preview_teste_ocr, unsafe_allow_html=True)
-                                    st.markdown("**Resultado bruto**")
-                                    st.json(_resultado_teste)
-                                else:
-                                    st.warning(
-                                        "Não reconheceu o padrão de anúncio de texto nessa "
-                                        "imagem — na página real isso cairia no texto bruto "
-                                        "(mesmo resultado de escolher \"Gráfico\" aqui)."
-                                    )
-                                    _texto_bruto_teste = _ocr_texto_bruto(_img_bgr_teste, _reader_teste)
-                                    _html_bruto_teste = (
-                                        '<div style="text-align:left;font-style:normal;color:#374151;'
-                                        'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
-                                        '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
-                                        'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
-                                        'Texto extraído da imagem (OCR)</div>'
-                                        f'{_escapar_html_ocr_preview(_texto_bruto_teste) or "<i>Nenhum texto legível encontrado.</i>"}'
-                                        '</div>'
-                                    )
-                                    st.markdown(_html_bruto_teste, unsafe_allow_html=True)
-                                    st.markdown("**Resultado bruto**")
-                                    st.json(_resultado_teste)
-                            else:
-                                # Anúncio gráfico: mesma lógica do fallback usado
-                                # em produção — texto corrido, sem tentar separar
-                                # título/descrição/CTA (`elif _ocr_txt_ad` na
-                                # página "google_ads").
-                                _texto_bruto_teste = _ocr_texto_bruto(_img_bgr_teste, _reader_teste)
-                                _t_infer1_teste_ocr = _time_teste_ocr.time()
-                                st.write(
-                                    f"✅ Leitura concluída em "
-                                    f"{_t_infer1_teste_ocr - _t_infer0_teste_ocr:.1f}s."
-                                )
-                                _html_bruto_teste = (
-                                    '<div style="text-align:left;font-style:normal;color:#374151;'
-                                    'background:#f9fafb;border:1px solid #eef0f2;border-radius:8px;padding:12px 14px">'
-                                    '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
-                                    'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
-                                    'Texto extraído da imagem (OCR)</div>'
-                                    f'{_escapar_html_ocr_preview(_texto_bruto_teste) or "<i>Nenhum texto legível encontrado.</i>"}'
-                                    '</div>'
-                                )
-                                st.markdown(_html_bruto_teste, unsafe_allow_html=True)
-                                st.markdown("**Resultado bruto**")
-                                st.json({"ocr_texto": _texto_bruto_teste})
-
-                            _status_teste_ocr.update(
-                                label=(
-                                    f"✅ Concluído em "
-                                    f"{_time_teste_ocr.time() - _t0_teste_ocr:.1f}s"
-                                ),
-                                state="complete",
-                            )
-                    except Exception as _e_teste_ocr:
-                        _status_teste_ocr.update(
-                            label=(
-                                f"❌ Erro após "
-                                f"{_time_teste_ocr.time() - _t0_teste_ocr:.1f}s"
-                            ),
-                            state="error",
-                        )
-                        st.error(f"Deu erro rodando o OCR: {_e_teste_ocr!r}")
-                        import traceback as _tb_teste_ocr
-                        st.code(_tb_teste_ocr.format_exc(), language="text")
-                    finally:
-                        # Sempre desfaz o monkeypatch de `_ocr_banda`, mesmo se
-                        # algo explodir no meio — sem isso, o resto do app
-                        # continuaria usando a versão instrumentada (que só
-                        # deveria existir durante este teste avulso).
-                        if _ocr_banda_original_teste is not None:
-                            globals()["_ocr_banda"] = _ocr_banda_original_teste
-
-
+        # Reset forçado por empresa — cobre o caso em que `ocr_estruturado`
+        # JÁ ESTÁ preenchido, mas com conteúdo errado (gravado por uma
+        # versão mais antiga/pior do parser por cor: título vazio, tudo
+        # despejado em `descricao` como texto corrido). O botão acima
+        # ("Refazer essas OCRs") NÃO pega esse caso — ele só enxerga
+        # `ocr_estruturado IS NULL`, e aqui o campo tem conteúdo (só que
+        # errado). Como não dá pra distinguir programaticamente um
+        # `ocr_estruturado` certo de um errado (mesmas chaves, ambos
+        # "preenchidos"), a correção é manual: o usuário escolhe a
+        # empresa e reprocessa tudo do zero, mesmo o que já estava certo.
+        _empresas_gads_perfil = []
+        try:
+            _empresas_gads_perfil = _empresas_com_imagens_google_ads(st.session_state.user.id)
+        except Exception:
+            pass
+        if _empresas_gads_perfil:
+            st.markdown("**Reprocessar OCR de uma empresa do zero**")
+            st.caption(
+                "Use isto se algum anúncio de texto do Google Ads estiver com o texto "
+                "todo achatado num bloco só (sem título/descrição separados), mesmo "
+                "depois de usar o botão acima — geralmente é OCR gravado por uma versão "
+                "mais antiga do sistema, com `ocr_estruturado` preenchido só que errado, "
+                "que os botões acima não detectam sozinhos. Isso reprocessa TODAS as "
+                "imagens do Google Ads dessa empresa, mesmo as que já estavam certas."
+            )
+            _empresa_reset_forcado = st.selectbox(
+                "Empresa",
+                options=_empresas_gads_perfil,
+                key="_select_empresa_reset_forcado_gads",
+            )
+            _confirmar_reset_forcado = st.checkbox(
+                f"Confirmo que quero reprocessar TODAS as imagens do Google Ads de "
+                f"\"{_empresa_reset_forcado}\" do zero.",
+                key="_chk_confirmar_reset_forcado_gads",
+            )
+            if st.button(
+                "Reprocessar tudo do zero",
+                key="_btn_reset_forcado_gads",
+                disabled=not _confirmar_reset_forcado,
+            ):
+                _n_reset_forcado = resetar_ocr_gads_forcado(
+                    st.session_state.user.id, _empresa_reset_forcado
+                )
+                if _n_reset_forcado:
+                    st.toast(
+                        f"{_n_reset_forcado} imagem(ns) de \"{_empresa_reset_forcado}\" "
+                        f"enviada(s) pra reprocessar do zero — acompanhe no sino de "
+                        f"notificações.",
+                        icon="🔄",
+                    )
+                else:
+                    st.toast(
+                        f"Nenhuma imagem do Google Ads encontrada pra \"{_empresa_reset_forcado}\".",
+                        icon="⚠️",
+                    )
+                st.rerun()
 
 # ---------------------------------------------------
 # NOTIFICAÇÕES — histórico de atividades

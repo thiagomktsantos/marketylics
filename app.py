@@ -3347,25 +3347,31 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # pra traço, exige adicionalmente 2+ OCORRÊNCIAS no texto
             # bruto (a linha de termos relacionados sempre tem pelo
             # menos 2: um entre cada par de termos e mais um sobrando
-            # no final, ex.: "Termo A - Termo B -") — um título comum
-            # com um único traço no meio nunca bate nessa contagem, e
-            # por isso fica de fora mesmo quando aparece depois da
-            # descrição. O traço aqui inclui o hífen ASCII simples "-"
-            # (não só "–"/"—"), porque é literalmente esse o caractere
-            # que `_ocr_banda` insere de verdade ao recuperar um traço
-            # perdido entre palavras (ver `partes.append("-")` acima).
+            # no final, ex.: "Termo A - Termo B -") — mas nem sempre
+            # tem esse traço sobrando (ex.: quando o print corta bem
+            # no fim do último termo), então a contagem de ocorrências
+            # não é confiável sozinha. Quem realmente protege o título
+            # de verdade (ex.: "Ingressos Luan Santana - Compre
+            # Ingresso Luan Santana", que tem só 1 traço e NUNCA pode
+            # virar 2 sitelinks) é a posição estrutural logo abaixo:
+            # esse título é sempre a 1ª banda do anúncio, então nunca
+            # bate em `_titulo_e_descricao_ja_fechados`. O traço aqui
+            # inclui o hífen ASCII simples "-" (não só "–"/"—"), porque
+            # é literalmente esse o caractere que `_ocr_banda` insere
+            # de verdade ao recuperar um traço perdido entre palavras
+            # (ver `partes.append("-")` acima).
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
             _partes_relacionados = None
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
                 if banda.get("sep_antes") or (_titulo_e_descricao_ja_fechados and len(_candidatos_relacionados) >= 2):
                     _partes_relacionados = _candidatos_relacionados
-            elif len(re.findall(r"[\-–—]", texto)) >= 2:
+            elif re.search(r"\s[\-–—]\s", texto):
                 _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
                 _candidatos_relacionados = [
                     p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
                 ]
-                if banda.get("sep_antes") or _titulo_e_descricao_ja_fechados:
+                if banda.get("sep_antes") or (_titulo_e_descricao_ja_fechados and len(_candidatos_relacionados) >= 2):
                     _partes_relacionados = _candidatos_relacionados
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]["decisao"] = (

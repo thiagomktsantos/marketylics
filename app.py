@@ -3223,7 +3223,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
         _gap_minimo_botoes = None
-        if _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
+        # Um botão/pílula de verdade nunca é a PRIMEIRA banda do
+        # anúncio — ele sempre vem depois do título e da descrição (ver
+        # exemplos "Sobre o isaac" etc., sempre no fim do anúncio). A
+        # primeira banda azul é sempre o título, cuja fonte costuma ser
+        # maior que a da descrição — e como `_altura_tipica_texto` é a
+        # MEDIANA de todas as bandas (dominada pelas várias linhas
+        # pequenas de descrição), um título nessa fonte maior já passa
+        # sozinho do limiar de "1.6x" abaixo, mesmo sendo só uma linha
+        # contínua. Se o título tiver um respiro maior em volta de um
+        # "-" natural (ex: "Harry Styles Together 2026 - Últimos",
+        # onde o Google Ads junta headlines com " - "), esse gap passa
+        # do limiar REDUZIDO da pílula e o título é partido ao meio
+        # como se fossem 2 botões — foi exatamente esse o bug real.
+        # Por isso a troca pro gap_minimo agressivo só entra em jogo
+        # depois que o título já foi reconhecido (pares não-vazio ou
+        # par_atual aberto).
+        _titulo_ja_reconhecido = bool(pares) or (par_atual is not None)
+        if _titulo_ja_reconhecido and _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
             # Banda bem mais alta que uma linha de texto típica deste
             # anúncio — provável fileira de botões com borda (ver
             # comentário acima). Troca a referência de altura (que
@@ -3311,12 +3328,38 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # isso os dois padrões são aceitos, mas o traço só conta
             # junto com o sep_antes, pra não arriscar quebrar um título
             # de verdade em pedaços.
+            # `sep_antes` continua sendo o sinal mais forte (linha
+            # divisória de verdade detectada antes da banda), mas nem
+            # sempre o EasyOCR/detector de cor pega essa linha (ex.:
+            # quando ela é muito fina ou fica colada na descrição de
+            # cima) — foi o que aconteceu com "Lollapalooza 2026 –
+            # Rock In Rio 2026 –", que ficou tudo grudado num título só
+            # com hífen solto no meio, em vez de virar sitelinks
+            # separados por hr.
+            #
+            # Pra não depender só do sep_antes, aceita também um
+            # travessão SOBRANDO no final do texto bruto (ex.: "Termo A
+            # – Termo B –") — o Google Ads sempre fecha essa linha com
+            # mais um separador depois do último termo, mesmo quando o
+            # EasyOCR não lê o próximo termo em si. Um título comum com
+            # um traço no meio (ex.: "Show Ao Vivo - Ingressos") nunca
+            # termina com o traço solto, então esse sinal é seguro sem
+            # precisar do sep_antes.
+            _texto_sem_travessao_final = re.sub(r"\s*[·•–—]\s*$", "", texto)
+            _tinha_travessao_sobrando = bool(re.search(r"[–—]\s*$", texto))
             _partes_relacionados = None
-            if banda.get("sep_antes"):
-                if re.search(r"[·•]", texto):
-                    _partes_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
-                elif re.search(r"\s[–—]\s", texto):
-                    _partes_relacionados = [p.strip() for p in re.split(r"\s+[–—]\s+", texto) if p.strip()]
+            if re.search(r"[·•]", _texto_sem_travessao_final):
+                _candidatos_relacionados = [
+                    p.strip() for p in re.split(r"\s*[·•]\s*", _texto_sem_travessao_final) if p.strip()
+                ]
+                if banda.get("sep_antes") or _tinha_travessao_sobrando or len(_candidatos_relacionados) >= 2:
+                    _partes_relacionados = _candidatos_relacionados
+            elif re.search(r"\s[–—]\s", _texto_sem_travessao_final):
+                _candidatos_relacionados = [
+                    p.strip() for p in re.split(r"\s+[–—]\s+", _texto_sem_travessao_final) if p.strip()
+                ]
+                if banda.get("sep_antes") or _tinha_travessao_sobrando:
+                    _partes_relacionados = _candidatos_relacionados
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]["decisao"] = (
                     f"azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) "

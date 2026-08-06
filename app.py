@@ -2061,6 +2061,19 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     return "\n".join(linhas)
 
 _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored)$", re.IGNORECASE)
+# Mesmo rótulo, mas como PREFIXO da linha (não a linha inteira). Cobre
+# o caso em que "Patrocinado" cai grudado, na MESMA banda de cor, com
+# a linha seguinte (nome da página/anunciante) — gap vertical pequeno
+# demais pra `_detectar_bandas_texto` separar em duas bandas — saindo
+# do OCR como "Patrocinado BuyTicket Brasil" ou "PatrocinadoBuyTicket
+# Brasil" em vez de duas linhas isoladas. Nesse caso o match EXATO
+# acima (`_REGEX_PATROCINADO`) falha, e sem esse segundo padrão a
+# banda inteira sobrevivia intacta como se fosse cabeçalho — grudando
+# a palavra "Patrocinado" na frente do nome da página/URL (validado
+# num anúncio real da BuyTicket Brasil, ver print reportado pelo
+# usuário). `[\s:\-]*` absorve o espaço/pontuação residual que
+# costuma sobrar entre o rótulo e o texto seguinte.
+_REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored)", re.IGNORECASE)
 # Formato de domínio/URL: precisa ter pelo menos um "." separando
 # letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
 # distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
@@ -2988,12 +3001,47 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         for i, b in enumerate(bandas_texto)
     ]
     primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
-    _eh_patrocinado = bool(_REGEX_PATROCINADO.match(primeiro_texto.strip()))
-    print(f"[OCR-DEBUG] primeira banda bruto={primeiro_texto.strip()!r} eh_patrocinado={_eh_patrocinado}", flush=True)
-    _debug_bandas[0]["texto"] = primeiro_texto.strip()
-    _debug_bandas[0]["decisao"] = "patrocinado (descartada)" if _eh_patrocinado else "não é 'patrocinado'"
+    _primeiro_texto_strip = primeiro_texto.strip()
+    _eh_patrocinado = bool(_REGEX_PATROCINADO.match(_primeiro_texto_strip))
+    # Se não bateu o match EXATO, checa se "Patrocinado"/"Sponsored"
+    # aparece só como PREFIXO da banda (ver comentário de
+    # `_REGEX_PATROCINADO_PREFIXO` acima) — sinal de que o rótulo ficou
+    # grudado, na mesma banda, com a linha seguinte do cabeçalho (nome
+    # da página). Nesse caso não descarta a banda inteira (perderia o
+    # nome da página) nem mantém ela intacta (grudaria "Patrocinado" no
+    # nome) — só tira o rótulo da frente e guarda o resto.
+    _texto_apos_patrocinado = None
+    if not _eh_patrocinado:
+        _match_prefixo_patrocinado = _REGEX_PATROCINADO_PREFIXO.match(_primeiro_texto_strip)
+        if _match_prefixo_patrocinado:
+            _resto_bruto = _primeiro_texto_strip[_match_prefixo_patrocinado.end():]
+            # Só aceita como "rótulo grudado" quando logo depois vem um
+            # separador explícito (espaço/":"/"-": ex. "Patrocinado
+            # BuyTicket Brasil") OU uma nova palavra colada começando
+            # com MAIÚSCULA sem nenhum espaço (ex.: OCR real
+            # "PatrocinadoBuyTicket Brasil", sem espaço nenhum entre as
+            # duas). Nunca quando o "resto" continua em minúscula logo
+            # em seguida (ex.: "Patrocinador", "Patrocinada por..." —
+            # aí é outra palavra/frase, não o rótulo + cabeçalho
+            # colados, e tratar como tal cortaria letras de uma palavra
+            # de verdade).
+            if _resto_bruto and (_resto_bruto[0] in " :-" or _resto_bruto[0].isupper()):
+                _texto_apos_patrocinado = _resto_bruto.lstrip(" :-").strip()
+    print(
+        f"[OCR-DEBUG] primeira banda bruto={_primeiro_texto_strip!r} eh_patrocinado={_eh_patrocinado} "
+        f"texto_apos_patrocinado={_texto_apos_patrocinado!r}",
+        flush=True,
+    )
+    _debug_bandas[0]["texto"] = _primeiro_texto_strip
     if _eh_patrocinado:
+        _debug_bandas[0]["decisao"] = "patrocinado (descartada)"
         idx = 1
+    elif _texto_apos_patrocinado:
+        _debug_bandas[0]["decisao"] = (
+            f"'Patrocinado' grudado no início — removido, resto tratado como cabeçalho: {_texto_apos_patrocinado!r}"
+        )
+    else:
+        _debug_bandas[0]["decisao"] = "não é 'patrocinado'"
 
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
@@ -3017,7 +3065,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # da URL" (cosmético), em vez de "a URL inteira desaparece".
     _partes_dominio = []
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
-        _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+        # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
+        # o texto já limpo do rótulo em vez de rodar o OCR de novo
+        # nessa banda — repetir o OCR aqui devolveria a mesma string
+        # bruta "Patrocinado ..." de novo, com o rótulo ainda colado.
+        if idx == 0 and _texto_apos_patrocinado is not None:
+            _txt_dominio = _texto_apos_patrocinado
+        else:
+            _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
         # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA
         # caixa de detecção (comentário logo abaixo), o EasyOCR
         # costuma ler esse traço vertical isolado como a letra "l" —

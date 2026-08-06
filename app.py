@@ -2236,17 +2236,36 @@ def _normalizar_url_exibida(texto: str) -> str:
     # "http" o fix nunca disparava, deixando o domínio sem o ponto
     # entre "www" e "isaac").
     texto = re.sub(r"^((?:https?://)?)[wW]{2,4}\.?(?=[a-zA-Z0-9])", r"\1www.", texto)
-    # Recompõe o fechamento do domínio como ".com.br/" removendo o "l"
-    # colado (item 2) SE ele existir, mas sem assumir que ele sempre
-    # existe: quando o EasyOCR acerta a barra de verdade (".com.br/"),
-    # essa barra cai no grupo "resto" abaixo e não pode ser duplicada.
-    _match_combr = re.search(r"\.?com\.?br", texto, flags=re.IGNORECASE)
-    if _match_combr:
-        _antes, _resto = texto[:_match_combr.start()], texto[_match_combr.end():]
+    # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
+    # removendo o "l" colado (item 2) SE ele existir, mas sem assumir
+    # que ele sempre existe: quando o EasyOCR acerta a barra de verdade
+    # (ex: ".com/"), essa barra cai no grupo "resto" abaixo e não pode
+    # ser duplicada.
+    #
+    # Cobre não só ".com.br" (o único caso validado originalmente), mas
+    # qualquer TLD comum SEM o "br" — ex: domínio real
+    # "buyticketbrasil.com/" saindo do EasyOCR como
+    # "buyticketbrasilcoml" (sem NENHUM ponto antes do "com" e sem a
+    # barra final, só o "l" colado). Como o regex antigo exigia
+    # "com.br" literal, esse caso não batia com nada e a URL inteira
+    # saía errada (sem "." nem "/"), diferente do "kedu.com.br" que já
+    # funcionava.
+    #
+    # O lookahead `(?=[l/]|$)` é o que evita casar "com" no MEIO de uma
+    # palavra comum (ex: "compre", "recomeceagora") — só dispara quando
+    # logo depois do TLD vem o artefato de OCR "l" (a barra lida
+    # errado), uma barra "/" de verdade, ou o fim da linha; nunca outra
+    # letra dando sequência a uma palavra.
+    _match_tld = re.search(r"\.?(com|net|org|io|shop|app)(\.?br)?(?=[l/]|$)", texto, flags=re.IGNORECASE)
+    if _match_tld:
+        _antes, _resto = texto[:_match_tld.start()], texto[_match_tld.end():]
+        _tld = _match_tld.group(1).lower()
+        if _match_tld.group(2):
+            _tld += ".br"
         if _resto[:1].lower() == "l":
             _resto = _resto[1:]
         _resto = re.sub(r"^/+", "", _resto)  # evita barra dupla se já tinha "/"
-        texto = _antes + ".com.br/" + _resto
+        texto = _antes + "." + _tld + "/" + _resto
     # 3) barra de CAMINHO (não a de fechamento do domínio, já coberta
     # acima) colada DIRETO na palavra seguinte, sem nenhum espaço nem
     # caixa de detecção separada — ex: "gestão" + "/" + "escolar" virando
@@ -2259,12 +2278,33 @@ def _normalizar_url_exibida(texto: str) -> str:
     # então é seguro tratar esse "l" como barra sem risco de quebrar uma
     # palavra de verdade.
     texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
-    # 4) "_" sobrando colado bem antes do ".com.br" (ex: anúncio real
+    # 3b) mesmo problema do item 3, mas SEM "ão" antes — ex: breadcrumb
+    # real "www.buyticketbrasil.com/seguro/confiavel" saindo do EasyOCR
+    # como "...comlsegurolconfiavel": o "l" entre "seguro" e "confiavel"
+    # também é a barra de caminho lida errado, só que não dá pra usar o
+    # mesmo truque do "ão" (nenhuma combinação de letras antes do "l" é
+    # 100% impossível em português). Por isso, restrito a rodar só na
+    # parte de CAMINHO da URL (depois da primeira "/", já recomposta
+    # pelo item 2 acima) — nunca no nome de domínio/marca, que é onde um
+    # falso positivo custaria mais caro. Dentro do caminho, exige pelo
+    # menos 3 letras de cada lado do "l" (palavras de breadcrumb tipo
+    # "seguro"/"confiavel" nunca são tão curtas quanto os poucos casos
+    # reais de "l" genuína grudada, ex: "al", "el" de 2 letras).
+    if "/" in texto:
+        _pos_barra = texto.index("/")
+        _dominio_parte, _caminho_parte = texto[:_pos_barra + 1], texto[_pos_barra + 1:]
+        _caminho_parte = re.sub(
+            r"(?<=[a-zà-úãõ]{3})l(?=[a-zà-úãõ]{3})", "/", _caminho_parte, flags=re.IGNORECASE
+        )
+        texto = _dominio_parte + _caminho_parte
+    # 4) "_" sobrando colado bem antes do TLD (ex: anúncio real
     # "wwwisaac_.com.br" → o "_" aqui é ruído de leitura do EasyOCR,
     # provavelmente confundindo um traço/sublinhado ou serifa da última
     # letra do domínio com underscore — domínio de verdade não tem "_"
-    # nessa posição, então é seguro remover.
-    texto = re.sub(r"_+(?=\.?com\.?br)", "", texto, flags=re.IGNORECASE)
+    # nessa posição, então é seguro remover. Mesma lista de TLDs do
+    # item 2 acima (generalizado além de só ".com.br"), senão esse "_"
+    # ficava preso em domínios genéricos ".com" (ex: "isaac_.com").
+    texto = re.sub(r"_+(?=\.?(?:com|net|org|io|shop|app)(?:\.?br)?)", "", texto, flags=re.IGNORECASE)
     # Rede de segurança: colapsa qualquer barra dupla residual que ainda
     # tenha sobrado por outro caminho não previsto pelas regras acima —
     # EXCETO logo depois de "http:"/"https:", onde "//" é o protocolo
@@ -24086,22 +24126,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # Filtro de Região — só aparece se os dados baixados tiverem
-                # mais de uma região distinta (ex: BR + PT). Com uma região
-                # só (ou nenhuma), o filtro é redundante — todo mundo cairia
-                # na mesma opção mesmo — então nem mostramos o campo, pra não
-                # poluir a barra à toa.
+                # Filtro de Região — SEMPRE aparece, como qualquer outro
+                # filtro de busca (igual Tipo/Status): mesmo quando os
+                # dados baixados não têm nenhuma região distinta (ex.:
+                # busca caiu no fallback region="" — ver comentário em
+                # `_apify_run_sync` acima, caso real da BuyTicket), a
+                # opção "Região (todas)" continua disponível e o campo
+                # não é escondido. Antes, com 0 ou 1 região nos dados o
+                # campo sumia da barra inteira.
                 regioes_disponiveis_gads = sorted(set(
                     (a.get("regiao") or "").strip() for a in gads_list if (a.get("regiao") or "").strip()
                 ))
-                mostrar_filtro_regiao_gads = len(regioes_disponiveis_gads) > 1
 
                 with st.container(key=filtros_key):
-                    if mostrar_filtro_regiao_gads:
-                        fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2.6, 2, 2, 2.2, 2.2, 0.6])
-                    else:
-                        fcol1, fcol2, fcol4, fcol5, fcol6 = st.columns([3, 2.5, 2.5, 2.5, 0.6])
-                        fcol3 = None
+                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2.6, 2, 2, 2.2, 2.2, 0.6])
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -24116,16 +24154,13 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             key=f"gads_fmt_{sk}",
                             label_visibility="collapsed",
                         )
-                    if mostrar_filtro_regiao_gads:
-                        with fcol3:
-                            filtro_regiao = st.selectbox(
-                                "Região",
-                                ["Região (todas)"] + regioes_disponiveis_gads,
-                                key=f"gads_regiao_{sk}",
-                                label_visibility="collapsed",
-                            )
-                    else:
-                        filtro_regiao = "Região (todas)"
+                    with fcol3:
+                        filtro_regiao = st.selectbox(
+                            "Região",
+                            ["Região (todas)"] + regioes_disponiveis_gads,
+                            key=f"gads_regiao_{sk}",
+                            label_visibility="collapsed",
+                        )
                     with fcol4:
                         filtro_status = st.selectbox(
                             "Status",

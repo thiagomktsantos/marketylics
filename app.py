@@ -2529,11 +2529,6 @@ def _detectar_bandas_texto(img_bgr):
     if bandas_recuperadas:
         bandas = sorted(bandas + bandas_recuperadas, key=lambda b: b["y_min"])
     return bandas
-            classe = "cinza"
-        else:
-            classe = "misto"
-        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
-    return bandas
 
 def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     """Verifica, olhando os PIXELS (não o OCR), se existe um hífen

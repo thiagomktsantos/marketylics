@@ -984,6 +984,121 @@ def _caminho_cookies_youtube() -> str | None:
     caminho = os.environ.get("YT_COOKIES_FILE", "youtube_cookies.txt")
     return caminho if os.path.isfile(caminho) else None
 
+def _texto_de_legenda_vtt(conteudo_vtt: str) -> str:
+    """Extrai só o texto falado de uma legenda .vtt do YouTube (manual ou
+    automática), descartando cabeçalho WEBVTT, números/timestamps de
+    cue e tags de estilo (<c>, <00:00:01.000> etc.). Legenda AUTOMÁTICA
+    do YouTube costuma repetir a linha anterior a cada novo cue (rolagem
+    palavra-por-palavra) — por isso descarta uma linha se ela for igual
+    à imediatamente anterior, senão o texto final sairia com cada frase
+    duplicada várias vezes."""
+    if not conteudo_vtt:
+        return ""
+    linhas_finais = []
+    ultima = None
+    for linha in conteudo_vtt.splitlines():
+        linha = linha.strip()
+        if not linha:
+            continue
+        if linha.upper().startswith("WEBVTT") or linha.startswith("Kind:") or linha.startswith("Language:"):
+            continue
+        if "-->" in linha:
+            continue
+        if linha.isdigit():
+            continue
+        linha = re.sub(r"<[^>]+>", "", linha).strip()  # remove <c>, <00:00:01.360> etc.
+        if linha and linha != ultima:
+            linhas_finais.append(linha)
+            ultima = linha
+    return " ".join(linhas_finais).strip()
+
+def obter_e_salvar_cc_youtube(youtube_url: str, user_id: str, empresa: str, ad_id: str = "") -> str:
+    """Equivalente à transcrição Whisper dos vídeos do Meta Ads, mas pros
+    anúncios de vídeo do Google Ads: em vez de transcrever áudio, baixa a
+    legenda (CC) já pronta do próprio YouTube — via yt-dlp, sem baixar o
+    vídeo (`skip_download=True`) — priorizando legenda MANUAL (mais
+    precisa) e caindo pra automática quando a manual não existe.
+
+    Salva o resultado na tabela `midias` com `url_cdn=youtube_url`, no
+    mesmo formato usado pelos vídeos migrados do Meta Ads — assim o
+    card da aba Google Ads (`_mapa_transcricoes`/badge "💬 Transcrição")
+    passa a enxergar essa legenda automaticamente, sem precisar de
+    nenhuma mudança na renderização do card."""
+    if not youtube_url:
+        return ""
+
+    cache = st.session_state.setdefault("_cache_cc_youtube", {})
+    if youtube_url in cache:
+        return cache[youtube_url]
+
+    try:
+        res = supabase.table("midias").select("transcricao").eq("url_cdn", youtube_url).execute()
+        if res.data:
+            existente = res.data[0].get("transcricao")
+            if existente is not None:
+                cache[youtube_url] = existente
+                return existente
+    except Exception:
+        pass
+
+    texto = ""
+    try:
+        import yt_dlp
+        import tempfile, glob, os as _os
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ydl_opts = {
+                "skip_download":     True,
+                "writesubtitles":    True,
+                "writeautomaticsub": True,
+                "subtitleslangs":    ["pt", "pt-BR", "pt-PT", "en"],
+                "subtitlesformat":   "vtt",
+                "outtmpl":           _os.path.join(tmpdir, "%(id)s.%(ext)s"),
+                "quiet":             True,
+                "no_warnings":       True,
+            }
+            cookies_path = _caminho_cookies_youtube()
+            if cookies_path:
+                ydl_opts["cookiefile"] = cookies_path
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
+            vtts = glob.glob(_os.path.join(tmpdir, "*.vtt"))
+            if vtts:
+                # Prioriza legenda manual (nome do arquivo sem ".auto.")
+                # e, entre as manuais/automáticas, prioriza pt/pt-BR.
+                def _prioridade(caminho):
+                    nome = _os.path.basename(caminho).lower()
+                    return (".auto." in nome, "pt" not in nome)
+                vtts.sort(key=_prioridade)
+                with open(vtts[0], encoding="utf-8", errors="ignore") as f:
+                    texto = _texto_de_legenda_vtt(f.read())
+    except Exception as e:
+        print(f"[GADS-CC] erro ao baixar CC do YouTube ({youtube_url}): {e!r}", flush=True)
+        texto = ""
+
+    cache[youtube_url] = texto
+
+    try:
+        import hashlib
+        _hash = hashlib.sha256(youtube_url.encode()).hexdigest()
+        supabase.table("midias").insert({
+            "user_id":       user_id,
+            "empresa":       empresa,
+            "ad_id":         ad_id or "",
+            "tipo":          "video",
+            "url_origem":    youtube_url,
+            "storage_key":   f"youtube_cc/{_hash}",
+            "url_cdn":       youtube_url,
+            "mime_type":     "text/vtt",
+            "tamanho_bytes": len(texto.encode()) if texto else 0,
+            "hash_conteudo": _hash,
+            "transcricao":   texto or "",
+            "thumbnail_url": None,
+        }).execute()
+    except Exception as e:
+        print(f"[GADS-CC] erro ao salvar CC do YouTube no banco ({youtube_url}): {e!r}", flush=True)
+
+    return texto
+
 def _baixar_video_youtube(url_origem: str, ad_id: str = None):
     """Baixa o vídeo de verdade do YouTube via yt-dlp — a página
     /watch?v=... devolvida por requests.get é só HTML, não dá pra baixar
@@ -3329,6 +3444,99 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
         return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
     except Exception:
         return []
+
+def _empresas_gads_com_cc_pendente(user_id: str) -> dict:
+    """Varre o `gads_cache` do usuário (ci_dados) procurando anúncios de
+    vídeo do YouTube (Google Ads) cuja legenda (CC) ainda não foi
+    baixada/salva em `midias` — devolve um dict {empresa: [youtube_url,
+    ...]}, só com quem tem pendência.
+
+    Diferente de `_empresas_com_ocr_pendente` (que só lê a tabela
+    `midias`, porque toda imagem de Google Ads passa por uma migração
+    prévia pro R2): o vídeo do YouTube NUNCA é baixado/migrado, só tem a
+    legenda extraída direto na fonte — por isso a lista de "quem tem
+    vídeo" vem do próprio `gads_cache`, não de `midias`, e só depois
+    cruza com `midias` pra saber o que já foi processado."""
+    try:
+        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+        gads_cache = ((res.data[0].get("gads_cache") or {}) if res.data else {}) or {}
+    except Exception:
+        return {}
+
+    por_empresa = {}
+    todas_urls = []
+    for empresa, entry in gads_cache.items():
+        if not isinstance(entry, dict):
+            continue
+        urls_empresa = []
+        vistos = set()
+        for ad in (entry.get("data") or []):
+            vids = ad.get("videos") or []
+            url_ad = vids[0] if vids else ""
+            if url_ad and _e_url_youtube(url_ad) and url_ad not in vistos:
+                vistos.add(url_ad)
+                urls_empresa.append(url_ad)
+        if urls_empresa:
+            por_empresa[empresa] = urls_empresa
+            todas_urls.extend(urls_empresa)
+
+    if not todas_urls:
+        return {}
+
+    ja_prontos = set()
+    todas_urls_unicas = list(set(todas_urls))
+    try:
+        for i in range(0, len(todas_urls_unicas), 200):
+            bloco = todas_urls_unicas[i:i + 200]
+            res2 = supabase.table("midias").select("url_cdn").in_("url_cdn", bloco).execute()
+            ja_prontos.update(r["url_cdn"] for r in (res2.data or []) if r.get("url_cdn"))
+    except Exception:
+        pass  # sem confirmar o que já está pronto, segue tratando tudo como pendente
+
+    pendentes = {}
+    for empresa, urls in por_empresa.items():
+        faltando = [u for u in urls if u not in ja_prontos]
+        if faltando:
+            pendentes[empresa] = faltando
+    return pendentes
+
+def _gerar_cc_pendente_empresa_bg(user_id: str, empresa: str, urls: list, atividade_id: str = None):
+    """Baixa e salva a legenda (CC) do YouTube pra cada URL pendente de
+    UMA empresa, uma de cada vez (mesmo padrão de
+    `_transcrever_pendentes_background`), atualizando o card no sino de
+    notificações conforme avança."""
+    total = len(urls)
+    feitas = 0
+    try:
+        for url in urls:
+            obter_e_salvar_cc_youtube(url, user_id, empresa, ad_id="")
+            feitas += 1
+            if atividade_id:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresa": empresa, "feitas": feitas, "total": total,
+                    "ultimo_heartbeat_em": _agora_iso(),
+                })
+        if atividade_id:
+            atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "feitas": feitas, "total": total})
+    except Exception as e:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e), "feitas": feitas, "total": total})
+
+def iniciar_cc_pendente_background(user_id: str, empresa: str, urls: list):
+    """Dispara em background a extração de CC dos vídeos do YouTube
+    pendentes de UMA empresa — mesmo padrão de
+    `iniciar_ocr_pendente_background`."""
+    if not urls:
+        return
+    atividade_id = criar_atividade(
+        user_id, "cc_pendente_gads",
+        f"{empresa} · Extraindo legenda (CC) dos vídeos do YouTube", {}
+    )
+    threading.Thread(
+        target=_gerar_cc_pendente_empresa_bg,
+        args=(user_id, empresa, urls, atividade_id),
+        daemon=True,
+    ).start()
 
 def _contar_ocr_formato_antigo(user_id: str) -> int:
     """Quantas imagens do Google Ads já têm `ocr_texto` preenchido (não
@@ -7128,6 +7336,69 @@ def iniciar_verificacao_ocr_pendente_google_background(user_id: str):
     )
     threading.Thread(
         target=_verificar_e_gerar_ocr_pendentes_google_bg,
+        args=(user_id, atividade_id),
+        daemon=True,
+    ).start()
+
+def _verificar_e_gerar_cc_pendentes_google_bg(user_id: str, atividade_id: str = None) -> int:
+    """Equivalente a `_verificar_e_gerar_ocr_pendentes_google_bg`, mas pra
+    legenda (CC) dos vídeos do YouTube: varre TODAS as empresas do
+    usuário (via `_empresas_gads_com_cc_pendente`) procurando anúncios de
+    vídeo do Google Ads sem CC salva, e dispara
+    `iniciar_cc_pendente_background` pra cada uma."""
+    try:
+        pendentes = _empresas_gads_com_cc_pendente(user_id)
+        for empresa, urls in pendentes.items():
+            iniciar_cc_pendente_background(user_id, empresa, urls)
+        if atividade_id:
+            if pendentes:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "empresas": list(pendentes.keys()),
+                    "aviso": (
+                        f"{len(pendentes)} empresa(s) com vídeo do YouTube (Google Ads) "
+                        f"sem legenda extraída — CC enviado pra rodar agora (acompanhe abaixo)."
+                    ),
+                })
+            else:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "aviso": "Nenhum vídeo do YouTube (Google Ads) pendente de legenda (CC).",
+                })
+        return len(pendentes)
+    except Exception as e:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+        return 0
+
+_MIN_MINUTOS_ENTRE_VERIFICACOES_CC_PENDENTE_GADS = 15
+
+def iniciar_verificacao_cc_pendente_google_background(user_id: str):
+    """Mesmo padrão de `iniciar_verificacao_ocr_pendente_google_background`
+    (throttle por sessão + por banco, card no sino desde o início), mas
+    pra disparar a checagem de segurança de legenda (CC) do YouTube em
+    vez de OCR. Roda lado a lado, de forma independente, na mesma aba
+    de Google Ads."""
+    try:
+        _res_ultima = (
+            supabase.table("atividades")
+            .select("criado_em")
+            .eq("user_id", user_id)
+            .eq("tipo", "verificacao_cc_pendente_gads")
+            .order("criado_em", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if _res_ultima.data:
+            _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
+            if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_CC_PENDENTE_GADS:
+                return
+    except Exception:
+        pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
+    atividade_id = criar_atividade(
+        user_id, "verificacao_cc_pendente_gads",
+        "Verificando vídeos do YouTube (Google Ads) pendentes de legenda (CC)", {}
+    )
+    threading.Thread(
+        target=_verificar_e_gerar_cc_pendentes_google_bg,
         args=(user_id, atividade_id),
         daemon=True,
     ).start()
@@ -21517,6 +21788,14 @@ elif st.session_state.pagina == "google_ads":
         iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
 
+    # Mesma ideia acima, mas pra legenda (CC) dos vídeos do YouTube:
+    # varredura de segurança (uma vez por sessão) procurando qualquer
+    # anúncio de vídeo do Google Ads sem CC extraída ainda, de qualquer
+    # empresa/coleta (ver _empresas_gads_com_cc_pendente).
+    if not st.session_state.get("_verificacao_cc_pendente_feita_google") and st.session_state.get("user"):
+        iniciar_verificacao_cc_pendente_google_background(st.session_state.user.id)
+        st.session_state["_verificacao_cc_pendente_feita_google"] = True
+
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
     # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
     # `_coleta_gads_em_andamento` estivesse True — e essa flag só existia
@@ -23993,6 +24272,25 @@ Amostra dos anúncios:
                 "",
             )
 
+            # O Google Ads Transparency Center não expõe foto de perfil
+            # (page_profile_picture normalizado sempre vem vazio — ver
+            # _normalizar_item_apify, na coleta do Google Ads). Se essa
+            # mesma empresa já tiver dados baixados no Meta Ads, reaproveita
+            # a foto de perfil de lá (Facebook/Instagram da página, a
+            # mesma que aparece nos cards do Meta Ads) em vez de cair
+            # direto pro círculo colorido com iniciais.
+            if not page_pic_empresa:
+                _meta_cache_entry_avatar = st.session_state.get("ads_cache", {}).get(nome)
+                if _meta_cache_entry_avatar:
+                    page_pic_empresa = next(
+                        (
+                            (a.get("page_profile_picture") or "").strip()
+                            for a in (_meta_cache_entry_avatar.get("data") or [])
+                            if (a.get("page_profile_picture") or "").strip().startswith("http")
+                        ),
+                        "",
+                    )
+
             if page_pic_empresa:
                 avatar_empresa_html = (
                     f'<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid #e5e7eb;">'
@@ -24355,20 +24653,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # Filtro de Região — SEMPRE aparece, como qualquer outro
-                # filtro de busca (igual Tipo/Status): mesmo quando os
-                # dados baixados não têm nenhuma região distinta (ex.:
-                # busca caiu no fallback region="" — ver comentário em
-                # `_apify_run_sync` acima, caso real da BuyTicket), a
-                # opção "Região (todas)" continua disponível e o campo
-                # não é escondido. Antes, com 0 ou 1 região nos dados o
-                # campo sumia da barra inteira.
-                regioes_disponiveis_gads = sorted(set(
-                    (a.get("regiao") or "").strip() for a in gads_list if (a.get("regiao") or "").strip()
-                ))
-
                 with st.container(key=filtros_key):
-                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns([2.6, 2, 2, 2.2, 2.2, 0.6])
+                    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([2.6, 2, 2.2, 2.2, 0.6])
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -24384,27 +24670,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             label_visibility="collapsed",
                         )
                     with fcol3:
-                        filtro_regiao = st.selectbox(
-                            "Região",
-                            ["Região (todas)"] + regioes_disponiveis_gads,
-                            key=f"gads_regiao_{sk}",
-                            label_visibility="collapsed",
-                        )
-                    with fcol4:
                         filtro_status = st.selectbox(
                             "Status",
                             ["Status (todos)", "Ativos", "Inativos (histórico)"],
                             key=f"gads_status_{sk}",
                             label_visibility="collapsed",
                         )
-                    with fcol5:
+                    with fcol4:
                         filtro_ordem = st.selectbox(
                             "Ordenar",
                             ["Mais recentes", "Mais tempo ativo"],
                             key=f"gads_ordem_{sk}",
                             label_visibility="collapsed",
                         )
-                    with fcol6:
+                    with fcol5:
                         icon_url = (
                             "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/3-Columns.png"
                             if n_cols_atual == 4
@@ -24426,8 +24705,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
-                if filtro_regiao != "Região (todas)":
-                    gads_f = [a for a in gads_f if (a.get("regiao") or "").strip() == filtro_regiao]
                 if filtro_status == "Ativos":
                     gads_f = [a for a in gads_f if a.get("ativo", True)]
                 elif filtro_status == "Inativos (histórico)":
@@ -24681,12 +24958,33 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         vid_fallback_modal_esc = vid_fallback_modal.replace("'","").replace('"',"") if vid_fallback_modal else ""
                         snap_url_safe_vid      = snap_url_safe
 
+                        # Anúncio de vídeo do Google Ads: o "vídeo" salvo em
+                        # `videos` (ver _normalizar_item_apify) não é um
+                        # arquivo .mp4 baixável — é o próprio link do
+                        # YouTube (youtube.com/watch?v=...). Não dá pra
+                        # jogar isso num <video src="...">, que só toca
+                        # arquivo de vídeo de verdade; o card precisa
+                        # reconhecer esse caso e abrir o player oficial do
+                        # YouTube (iframe embed) dentro do modal, em vez de
+                        # tentar (e falhar) tocar como arquivo.
+                        _yt_id_gads = ""
+                        _m_yt_gads = _REGEX_YOUTUBE.search(vid_modal) if vid_modal else None
+                        if _m_yt_gads:
+                            _yt_id_gads = _m_yt_gads.group(1)
+
                         # Badge de origem da mídia: se já foi migrada pro nosso
                         # R2 mostra um ícone de "armazenado" (permanente); senão
                         # mostra um relógio avisando que é o link original da
                         # Meta e pode expirar a qualquer momento.
                         _vid_e_do_r2 = bool(R2_PUBLIC_BASE) and vid_modal.startswith(R2_PUBLIC_BASE)
-                        if _vid_e_do_r2:
+                        if _yt_id_gads:
+                            # Vídeo do YouTube: não é "migrado pro R2" nem
+                            # "link da Meta que expira" — é o próprio
+                            # YouTube, que não tem esse tipo de expiração.
+                            # O selo de origem (R2/Meta) não faz sentido
+                            # aqui, então some.
+                            origem_badge_html = ""
+                        elif _vid_e_do_r2:
                             origem_badge_html = """
     <div title="Vídeo armazenado permanentemente — não expira"
          onclick="event.stopPropagation()"
@@ -24821,7 +25119,55 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         else:
                             transcricao_badge_html = ""
 
-                        media_block = f"""
+                        if _yt_id_gads:
+                            # Anúncio de vídeo do YouTube: em vez de tentar
+                            # tocar o link do YouTube como se fosse um
+                            # arquivo de vídeo (o que sempre falhava — ver
+                            # comentário acima em _yt_id_gads), o card usa a
+                            # thumbnail oficial do próprio YouTube como capa
+                            # e abre o player embed de verdade no modal.
+                            _yt_thumb_url_gads = f"https://i.ytimg.com/vi/{_yt_id_gads}/hqdefault.jpg"
+                            media_block = f"""
+<div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
+     id="vwrap_{uid}"
+     data-yt-id="{_yt_id_gads}">
+    <img src="{_yt_thumb_url_gads}"
+        style="width:100%;height:100%;object-fit:cover;display:block"
+        referrerpolicy="no-referrer"
+        onerror="this.onerror=null;this.src='{img_primary}';">
+    <div id="vid_overlay_{uid}" style="position:absolute;inset:0;display:flex;align-items:center;
+         justify-content:center;pointer-events:none">
+        <div style="width:52px;height:52px;border-radius:50%;background:rgba(0,0,0,0.55);
+                    display:flex;align-items:center;justify-content:center;
+                    box-shadow:0 2px 12px rgba(0,0,0,0.5);border: 2px solid #ffffff !important;">
+            <svg width="22" height="22" viewBox="0 0 54 54" fill="none">
+                <polygon points="18,12 44,27 18,42" fill="white"/>
+            </svg>
+        </div>
+    </div>
+    <div title="Vídeo do YouTube" onclick="event.stopPropagation()"
+         style="position:absolute;bottom:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
+                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                display:flex;align-items:center;gap:4px">
+        ▶ YouTube
+    </div>
+    {imgs_badge_html}
+    {transcricao_badge_html}
+</div>
+<script>
+(function(){{
+    var wrapEl_{uid} = document.getElementById('vwrap_{uid}');
+    var snapUrl_{uid} = '{snap_url_safe_vid}';
+    if (wrapEl_{uid}) {{
+        wrapEl_{uid}.addEventListener('click', function() {{
+            openModalEmbedYoutubeGads('{_yt_id_gads}', snapUrl_{uid});
+        }});
+    }}
+}})();
+</script>
+{imgs_badge_script}"""
+                        else:
+                            media_block = f"""
 <div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
      id="vwrap_{uid}"
      data-modal-src="{vid_modal_esc}"
@@ -24864,7 +25210,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
             wrapEl.innerHTML =
                 '<div style="position:absolute;inset:0;background:linear-gradient(135deg,#0f1f35,#1a3a5c);'
                 + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer"'
-                + ' onclick="window.open(\\'' + snapUrl + '\\',\\'_blank\\')">'
+                + ' onclick="window.open(\'' + snapUrl + '\',\'_blank\')">'
                 + '<div style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.15);'
                 + 'display:flex;align-items:center;justify-content:center;border: 2px solid #ffffff !important;">'
                 + '<svg width="22" height="22" viewBox="0 0 54 54" fill="none">'
@@ -25674,6 +26020,60 @@ function openModalEmbedGads(snapUrl) {{
     doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
 }}
 
+// Anúncio de vídeo do Google Ads cujo criativo é um vídeo do YouTube (ver
+// _yt_id_gads/_normalizar_item_apify): em vez de tentar (e sempre falhar)
+// tocar o link do YouTube como se fosse um arquivo .mp4, abre o player
+// oficial embutido do YouTube (iframe /embed/) dentro do mesmo modal usado
+// pelos outros criativos.
+function openModalEmbedYoutubeGads(videoId, snapUrl) {{
+    var doc = window.parent.document;
+    var old = doc.getElementById('gads_modal_overlay');
+    if (old) old.remove();
+
+    var overlay = doc.createElement('div');
+    overlay.id = 'gads_modal_overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.onclick = function(e) {{ if (e.target === overlay) closeModal(); }};
+
+    var box = doc.createElement('div');
+    box.style.cssText = 'background:#111;border-radius:16px;overflow:hidden;position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;max-width:min(90vw,860px);max-height:92vh;padding:24px 20px 20px;';
+
+    var closeBtn = doc.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = 'position:absolute;top:10px;right:12px;background:#0e1e35;border:1px solid #1e395e;border-radius:50%;width:34px;height:34px;font-size:17px;color:#22c45e;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;';
+    closeBtn.onclick = closeModal;
+    box.appendChild(closeBtn);
+
+    if (videoId) {{
+        var frame = doc.createElement('iframe');
+        frame.id = 'gads_modal_youtube_frame';
+        frame.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0';
+        frame.style.cssText = 'width:min(84vw,800px);height:min(70vh,450px);border:none;border-radius:10px;background:#000;aspect-ratio:16/9;';
+        frame.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+        frame.setAttribute('allowfullscreen', '');
+        box.appendChild(frame);
+
+        if (snapUrl) {{
+            var btn = doc.createElement('a');
+            btn.href = snapUrl; btn.target = '_blank';
+            btn.style.cssText = 'display:inline-flex;align-items:center;gap:8px;background:#1a73e8;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;font-family:DM Sans,sans-serif;';
+            btn.textContent = '↗ Abrir na Central de Transparência';
+            box.appendChild(btn);
+        }}
+    }} else {{
+        var msg = doc.createElement('div');
+        msg.style.cssText = 'color:#aaa;font-size:14px;padding:32px;text-align:center;font-family:DM Sans,sans-serif;';
+        msg.textContent = 'Vídeo não disponível.';
+        box.appendChild(msg);
+    }}
+
+    overlay.appendChild(box);
+    doc.body.appendChild(overlay);
+
+    window.parent.__gadsModalEscFn = function(e) {{ if (e.key === 'Escape') closeModal(); }};
+    doc.addEventListener('keydown', window.parent.__gadsModalEscFn);
+}}
+
 function openModal(mediaSrc, snapUrl, isVideo) {{
     var doc = window.parent.document;
     var old = doc.getElementById('gads_modal_overlay');
@@ -25776,6 +26176,8 @@ function closeModal() {{
     var doc = window.parent.document;
     var vid = doc.getElementById('gads_modal_video');
     if (vid) {{ vid.pause(); vid.src = ''; }}
+    var ytFrame = doc.getElementById('gads_modal_youtube_frame');
+    if (ytFrame) {{ ytFrame.src = ''; }}
     var overlay = doc.getElementById('gads_modal_overlay');
     if (overlay) overlay.remove();
     if (window.parent.__gadsModalEscFn) {{

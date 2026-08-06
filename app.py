@@ -2591,7 +2591,21 @@ def _detectar_bandas_texto(img_bgr):
     # só essa janela no topo (onde o favicon cabe), qualquer linha
     # abaixo dela conta com a largura cheia, mesmo que curta e rente à
     # esquerda.
-    _y_limite_favicon = min(int(altura_total * 0.18), 160)
+    # IMPORTANTE: a janela de exclusão do favicon precisa ser ancorada no
+    # início do CONTEÚDO real da imagem (primeira linha com algum pixel
+    # não-branco), não no topo absoluto (y=0) — senão ela falha sempre que
+    # existir uma banda "Patrocinado" separada ACIMA do cabeçalho de
+    # verdade (avatar + nome da página), empurrando esse cabeçalho pra
+    # baixo o suficiente pra sair de uma janela calculada a partir de y=0.
+    # Validado num anúncio real da BuyTicket Brasil: com "Patrocinado" numa
+    # banda própria em y=32-50, o cabeçalho (avatar roxo + "BuyTicket
+    # Brasil" + domínio) só começava em y=88 — bem depois do antigo corte
+    # fixo (~71px pra uma imagem de 398px de altura) — e o roxo do avatar
+    # vazava pra média de cor da banda, classificando o cabeçalho inteiro
+    # como "azul" (virava título por engano) em vez de "cinza".
+    _linhas_com_conteudo = _np_bandas.where(nao_branco.any(axis=1))[0]
+    _y_primeiro_conteudo = int(_linhas_com_conteudo.min()) if len(_linhas_com_conteudo) else 0
+    _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
     nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False

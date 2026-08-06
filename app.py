@@ -3327,6 +3327,43 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # texto), deixando o resto do laço decidir se é CTA ou sitelink.
         if len(_grupos_botoes) == 2 and (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55:
             _grupos_botoes = []
+        # Outro falso positivo, distinto do anterior: um TÍTULO/
+        # descrição de uma linha só onde o vão em branco ao redor de um
+        # hífen de pontuação (ex: "Harry Styles Together 2026 -
+        # Últimos", com espaço maior que o normal antes de "Últimos")
+        # passa do `gap_minimo` e a linha vira "2 blocos" mesmo sendo
+        # uma frase contínua — sem a borda de pílula do caso do CTA
+        # acima, aqui não tem como usar largura de ícone pra filtrar.
+        # Validado num anúncio real da BuyTicket Brasil: sem esse
+        # filtro, "Harry Styles Together 2026 - Últimos" virava DOIS
+        # sitelinks soltos ("Harry Styles Together 2026 -" / "Últimos"),
+        # com a segunda linha real do título ("Ingressos Harry Styles")
+        # virando um título novo por conta própria, arrastando a
+        # descrição inteira atrás.
+        #
+        # Sinal usado: o texto do PRIMEIRO bloco termina com um hífen
+        # solto (nenhuma outra pontuação de fim de frase junto). Um
+        # botão/sitelink de verdade (ex: "Sobre o isaac", "Saiba mais")
+        # nunca termina assim — hífen solto no fim só acontece quando o
+        # texto está cortado no meio de uma frase. Só testa quando são
+        # exatamente 2 blocos (o mesmo escopo do filtro de ícone acima);
+        # com 3+ blocos a chance de ser uma fileira de botões de verdade
+        # é alta demais pra vale a pena arriscar.
+        if len(_grupos_botoes) == 2:
+            _texto_bloco0_teste = _limpar_pontuacao_ocr(
+                _ocr_banda(
+                    reader, img_bgr, banda["y_min"], banda["y_max"],
+                    x_min=_grupos_botoes[0][0], x_max=_grupos_botoes[0][1],
+                ).strip()
+            )
+            if _texto_bloco0_teste.rstrip().endswith(("-", "–", "—")):
+                print(
+                    f"[OCR-DEBUG] banda idx={idx}: 2 blocos descartados como fileira de "
+                    f"botões — 1º bloco termina em hífen solto ({_texto_bloco0_teste!r}), "
+                    "sinal de frase cortada no meio, não botões distintos",
+                    flush=True,
+                )
+                _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato

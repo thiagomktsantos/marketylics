@@ -972,219 +972,6 @@ def _e_url_youtube(url: str) -> bool:
     i.ytimg.com (thumbnail, essa sim é uma imagem de verdade)."""
     return bool(url) and bool(_REGEX_YOUTUBE.search(url))
 
-def _caminho_cookies_youtube() -> str | None:
-    """Caminho do arquivo cookies.txt (formato Netscape) de uma conta
-    Google logada, usado pra contornar o bloqueio de PO Token do
-    YouTube em IPs de datacenter. Configurável via env var
-    YT_COOKIES_FILE; por padrão procura 'youtube_cookies.txt' na raiz
-    do projeto. Devolve None se o arquivo não existir (nesse caso o
-    download simplesmente falha com 403 de novo, e a checagem de
-    migração pendente tenta de novo depois — sem quebrar o fluxo)."""
-    import os
-    caminho = os.environ.get("YT_COOKIES_FILE", "youtube_cookies.txt")
-    return caminho if os.path.isfile(caminho) else None
-
-def _texto_de_legenda_vtt(conteudo_vtt: str) -> str:
-    """Extrai só o texto falado de uma legenda .vtt do YouTube (manual ou
-    automática), descartando cabeçalho WEBVTT, números/timestamps de
-    cue e tags de estilo (<c>, <00:00:01.000> etc.). Legenda AUTOMÁTICA
-    do YouTube costuma repetir a linha anterior a cada novo cue (rolagem
-    palavra-por-palavra) — por isso descarta uma linha se ela for igual
-    à imediatamente anterior, senão o texto final sairia com cada frase
-    duplicada várias vezes."""
-    if not conteudo_vtt:
-        return ""
-    linhas_finais = []
-    ultima = None
-    for linha in conteudo_vtt.splitlines():
-        linha = linha.strip()
-        if not linha:
-            continue
-        if linha.upper().startswith("WEBVTT") or linha.startswith("Kind:") or linha.startswith("Language:"):
-            continue
-        if "-->" in linha:
-            continue
-        if linha.isdigit():
-            continue
-        linha = re.sub(r"<[^>]+>", "", linha).strip()  # remove <c>, <00:00:01.360> etc.
-        if linha and linha != ultima:
-            linhas_finais.append(linha)
-            ultima = linha
-    return " ".join(linhas_finais).strip()
-
-def obter_e_salvar_cc_youtube(youtube_url: str, user_id: str, empresa: str, ad_id: str = "") -> str:
-    """Equivalente à transcrição Whisper dos vídeos do Meta Ads, mas pros
-    anúncios de vídeo do Google Ads: em vez de transcrever áudio, baixa a
-    legenda (CC) já pronta do próprio YouTube — via yt-dlp, sem baixar o
-    vídeo (`skip_download=True`) — priorizando legenda MANUAL (mais
-    precisa) e caindo pra automática quando a manual não existe.
-
-    Salva o resultado na tabela `midias` com `url_cdn=youtube_url`, no
-    mesmo formato usado pelos vídeos migrados do Meta Ads — assim o
-    card da aba Google Ads (`_mapa_transcricoes`/badge "💬 Transcrição")
-    passa a enxergar essa legenda automaticamente, sem precisar de
-    nenhuma mudança na renderização do card."""
-    if not youtube_url:
-        return ""
-
-    cache = st.session_state.setdefault("_cache_cc_youtube", {})
-    if youtube_url in cache:
-        return cache[youtube_url]
-
-    try:
-        res = supabase.table("midias").select("transcricao").eq("url_cdn", youtube_url).execute()
-        if res.data:
-            existente = res.data[0].get("transcricao")
-            if existente is not None:
-                cache[youtube_url] = existente
-                return existente
-    except Exception:
-        pass
-
-    texto = ""
-    try:
-        import yt_dlp
-        import tempfile, glob, os as _os
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ydl_opts = {
-                "skip_download":     True,
-                "writesubtitles":    True,
-                "writeautomaticsub": True,
-                "subtitleslangs":    ["pt", "pt-BR", "pt-PT", "en"],
-                "subtitlesformat":   "vtt",
-                "outtmpl":           _os.path.join(tmpdir, "%(id)s.%(ext)s"),
-                "quiet":             True,
-                "no_warnings":       True,
-            }
-            cookies_path = _caminho_cookies_youtube()
-            if cookies_path:
-                ydl_opts["cookiefile"] = cookies_path
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([youtube_url])
-            vtts = glob.glob(_os.path.join(tmpdir, "*.vtt"))
-            if vtts:
-                # Prioriza legenda manual (nome do arquivo sem ".auto.")
-                # e, entre as manuais/automáticas, prioriza pt/pt-BR.
-                def _prioridade(caminho):
-                    nome = _os.path.basename(caminho).lower()
-                    return (".auto." in nome, "pt" not in nome)
-                vtts.sort(key=_prioridade)
-                with open(vtts[0], encoding="utf-8", errors="ignore") as f:
-                    texto = _texto_de_legenda_vtt(f.read())
-    except Exception as e:
-        print(f"[GADS-CC] erro ao baixar CC do YouTube ({youtube_url}): {e!r}", flush=True)
-        texto = ""
-
-    cache[youtube_url] = texto
-
-    try:
-        import hashlib
-        _hash = hashlib.sha256(youtube_url.encode()).hexdigest()
-        supabase.table("midias").insert({
-            "user_id":       user_id,
-            "empresa":       empresa,
-            "ad_id":         ad_id or "",
-            "tipo":          "video",
-            "url_origem":    youtube_url,
-            "storage_key":   f"youtube_cc/{_hash}",
-            "url_cdn":       youtube_url,
-            "mime_type":     "text/vtt",
-            "tamanho_bytes": len(texto.encode()) if texto else 0,
-            "hash_conteudo": _hash,
-            "transcricao":   texto or "",
-            "thumbnail_url": None,
-        }).execute()
-    except Exception as e:
-        print(f"[GADS-CC] erro ao salvar CC do YouTube no banco ({youtube_url}): {e!r}", flush=True)
-
-    return texto
-
-def _baixar_video_youtube(url_origem: str, ad_id: str = None):
-    """Baixa o vídeo de verdade do YouTube via yt-dlp — a página
-    /watch?v=... devolvida por requests.get é só HTML, não dá pra baixar
-    o vídeo com um GET simples nela (foi isso que causava o bug de
-    "migração" salvando a página HTML disfarçada de vídeo no R2).
-
-    Já limita a extração a 720p (mesmo teto que _comprimir_video usa
-    depois), pra não baixar um arquivo maior do que o necessário só pra
-    reduzir ele em seguida. Precisa do ffmpeg (já usado em
-    _comprimir_video/_transcrever_video_whisper) pra juntar vídeo+áudio
-    quando vêm em streams separados.
-
-    Usa cookies de uma conta YouTube logada (ver
-    _caminho_cookies_youtube) pra contornar o bloqueio de PO Token que
-    IPs de datacenter tomam do YouTube — sem cookies, o cliente
-    android/ios/mweb sozinho não é suficiente e cai em 403. Os cookies
-    expiram periodicamente; quando isso acontecer, os vídeos voltam a
-    cair no 'nao_migrados' da migração, e a checagem de pendências já
-    existente vai tentar migrar de novo assim que o arquivo for
-    renovado — não precisa de nenhum reprocessamento manual.
-
-    Devolve (conteudo_bytes, content_type) em caso de sucesso, ou
-    (None, None) se o yt-dlp não estiver instalado ou a extração falhar
-    por qualquer motivo (vídeo privado/removido, bloqueio do YouTube,
-    etc.) — nunca quebra o fluxo; quem chama decide o fallback."""
-    try:
-        import yt_dlp
-    except ImportError:
-        print(f"[MIDIA-DL:{ad_id}] yt-dlp não instalado — não dá pra baixar vídeo do YouTube (ver requirements.txt)", flush=True)
-        return None, None
-
-    import tempfile
-    import os
-
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            saida_template = os.path.join(tmp, "video.%(ext)s")
-            ydl_opts = {
-                "format": (
-                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/"
-                    "best[height<=720][ext=mp4]/best[height<=720]/best"
-                ),
-                "outtmpl": saida_template,
-                "merge_output_format": "mp4",
-                "quiet": True,
-                "no_warnings": True,
-                "noplaylist": True,
-                "socket_timeout": 20,
-                "retries": 2,
-                # Cliente padrão do yt-dlp costuma exigir PO Token (Proof-of-Origin)
-                # pra liberar o download do stream de vídeo/áudio, e sem ele o
-                # YouTube devolve 403 Forbidden mesmo com a extração de metadados
-                # funcionando normal. android/ios/mweb ainda dispensam o token em
-                # parte dos casos, então tentamos esses como fallback antes do web.
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["android", "ios", "mweb", "web"],
-                    },
-                },
-            }
-
-            cookies_path = _caminho_cookies_youtube()
-            if cookies_path:
-                ydl_opts["cookiefile"] = cookies_path
-                print(f"[MIDIA-DL:{ad_id}] usando cookies do YouTube ({cookies_path})", flush=True)
-            else:
-                print(f"[MIDIA-DL:{ad_id}] cookies do YouTube não encontrados (YT_COOKIES_FILE) — tentando sem cookies, pode cair em 403", flush=True)
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url_origem])
-
-            arquivos = [f for f in os.listdir(tmp) if f.startswith("video.")]
-            if not arquivos:
-                print(f"[MIDIA-DL:{ad_id}] yt-dlp não gerou arquivo de saída pra {url_origem}", flush=True)
-                return None, None
-
-            caminho = os.path.join(tmp, arquivos[0])
-            with open(caminho, "rb") as f:
-                conteudo = f.read()
-            content_type = mimetypes.guess_type(caminho)[0] or "video/mp4"
-            print(f"[MIDIA-DL:{ad_id}] yt-dlp OK — {len(conteudo)} bytes, content-type={content_type!r}", flush=True)
-            return conteudo, content_type
-    except Exception as e:
-        print(f"[MIDIA-DL:{ad_id}] yt-dlp EXCEÇÃO: {e!r}", flush=True)
-        return None, None
-
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
                               referer_hint: str = "") -> str:
@@ -1240,21 +1027,15 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         _e_youtube = _e_url_youtube(url_origem)
 
         if _e_youtube:
-            # A página /watch?v=... (ou /shorts/..., ou youtu.be/...) do
-            # YouTube é HTML, não um arquivo de vídeo — requests.get nela
-            # nunca vai devolver bytes de vídeo. Extrai de verdade via
-            # yt-dlp (mesmo helper trata o teto de 720p); o resultado cai
-            # no mesmo fluxo de baixo (dedupe, upload, compressão em
-            # tipo=="video") igualzinho a um vídeo da Meta.
-            conteudo, content_type = _baixar_video_youtube(url_origem, ad_id)
-            if conteudo is None:
-                # yt-dlp indisponível ou extração falhou (vídeo privado/
-                # removido, bloqueio do YouTube, etc.) — não inventa um
-                # substituto: levanta pra cair no except abaixo, que
-                # registra a falha (alimenta o teto de MAX_TENTATIVAS_MIDIA,
-                # senão toda varredura tentaria o yt-dlp de novo pra
-                # sempre) e devolve a url_origem, que não expira.
-                raise RuntimeError("yt-dlp: extração de vídeo do YouTube falhou ou não está instalado")
+            # Vídeo de anúncio do Google Ads: o "vídeo" é, na verdade, o
+            # próprio link do YouTube (youtube.com/watch?v=...), não um
+            # arquivo baixável com um GET simples. Não baixamos mais o
+            # vídeo de verdade aqui (isso exigia yt-dlp) — o link do
+            # YouTube não expira como os da Meta, então simplesmente
+            # devolve a própria url_origem sem tentar migrar pro R2; o
+            # player do card (aba Google Ads) já sabe reconhecer esse
+            # caso e abrir o embed oficial do YouTube.
+            return url_origem
         else:
             if _e_midia_google:
                 # CDN do Google (tpc.googlesyndication.com) — igual em
@@ -3923,99 +3704,6 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
         return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
     except Exception:
         return []
-
-def _empresas_gads_com_cc_pendente(user_id: str) -> dict:
-    """Varre o `gads_cache` do usuário (ci_dados) procurando anúncios de
-    vídeo do YouTube (Google Ads) cuja legenda (CC) ainda não foi
-    baixada/salva em `midias` — devolve um dict {empresa: [youtube_url,
-    ...]}, só com quem tem pendência.
-
-    Diferente de `_empresas_com_ocr_pendente` (que só lê a tabela
-    `midias`, porque toda imagem de Google Ads passa por uma migração
-    prévia pro R2): o vídeo do YouTube NUNCA é baixado/migrado, só tem a
-    legenda extraída direto na fonte — por isso a lista de "quem tem
-    vídeo" vem do próprio `gads_cache`, não de `midias`, e só depois
-    cruza com `midias` pra saber o que já foi processado."""
-    try:
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        gads_cache = ((res.data[0].get("gads_cache") or {}) if res.data else {}) or {}
-    except Exception:
-        return {}
-
-    por_empresa = {}
-    todas_urls = []
-    for empresa, entry in gads_cache.items():
-        if not isinstance(entry, dict):
-            continue
-        urls_empresa = []
-        vistos = set()
-        for ad in (entry.get("data") or []):
-            vids = ad.get("videos") or []
-            url_ad = vids[0] if vids else ""
-            if url_ad and _e_url_youtube(url_ad) and url_ad not in vistos:
-                vistos.add(url_ad)
-                urls_empresa.append(url_ad)
-        if urls_empresa:
-            por_empresa[empresa] = urls_empresa
-            todas_urls.extend(urls_empresa)
-
-    if not todas_urls:
-        return {}
-
-    ja_prontos = set()
-    todas_urls_unicas = list(set(todas_urls))
-    try:
-        for i in range(0, len(todas_urls_unicas), 200):
-            bloco = todas_urls_unicas[i:i + 200]
-            res2 = supabase.table("midias").select("url_cdn").in_("url_cdn", bloco).execute()
-            ja_prontos.update(r["url_cdn"] for r in (res2.data or []) if r.get("url_cdn"))
-    except Exception:
-        pass  # sem confirmar o que já está pronto, segue tratando tudo como pendente
-
-    pendentes = {}
-    for empresa, urls in por_empresa.items():
-        faltando = [u for u in urls if u not in ja_prontos]
-        if faltando:
-            pendentes[empresa] = faltando
-    return pendentes
-
-def _gerar_cc_pendente_empresa_bg(user_id: str, empresa: str, urls: list, atividade_id: str = None):
-    """Baixa e salva a legenda (CC) do YouTube pra cada URL pendente de
-    UMA empresa, uma de cada vez (mesmo padrão de
-    `_transcrever_pendentes_background`), atualizando o card no sino de
-    notificações conforme avança."""
-    total = len(urls)
-    feitas = 0
-    try:
-        for url in urls:
-            obter_e_salvar_cc_youtube(url, user_id, empresa, ad_id="")
-            feitas += 1
-            if atividade_id:
-                atualizar_atividade(atividade_id, "em_andamento", {
-                    "empresa": empresa, "feitas": feitas, "total": total,
-                    "ultimo_heartbeat_em": _agora_iso(),
-                })
-        if atividade_id:
-            atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "feitas": feitas, "total": total})
-    except Exception as e:
-        if atividade_id:
-            atualizar_atividade(atividade_id, "erro", {"motivo": str(e), "feitas": feitas, "total": total})
-
-def iniciar_cc_pendente_background(user_id: str, empresa: str, urls: list):
-    """Dispara em background a extração de CC dos vídeos do YouTube
-    pendentes de UMA empresa — mesmo padrão de
-    `iniciar_ocr_pendente_background`."""
-    if not urls:
-        return
-    atividade_id = criar_atividade(
-        user_id, "cc_pendente_gads",
-        f"{empresa} · Extraindo legenda (CC) dos vídeos do YouTube", {}
-    )
-    threading.Thread(
-        target=_gerar_cc_pendente_empresa_bg,
-        args=(user_id, empresa, urls, atividade_id),
-        daemon=True,
-    ).start()
 
 def _contar_ocr_formato_antigo(user_id: str) -> int:
     """Quantas imagens do Google Ads já têm `ocr_texto` preenchido (não
@@ -7815,69 +7503,6 @@ def iniciar_verificacao_ocr_pendente_google_background(user_id: str):
     )
     threading.Thread(
         target=_verificar_e_gerar_ocr_pendentes_google_bg,
-        args=(user_id, atividade_id),
-        daemon=True,
-    ).start()
-
-def _verificar_e_gerar_cc_pendentes_google_bg(user_id: str, atividade_id: str = None) -> int:
-    """Equivalente a `_verificar_e_gerar_ocr_pendentes_google_bg`, mas pra
-    legenda (CC) dos vídeos do YouTube: varre TODAS as empresas do
-    usuário (via `_empresas_gads_com_cc_pendente`) procurando anúncios de
-    vídeo do Google Ads sem CC salva, e dispara
-    `iniciar_cc_pendente_background` pra cada uma."""
-    try:
-        pendentes = _empresas_gads_com_cc_pendente(user_id)
-        for empresa, urls in pendentes.items():
-            iniciar_cc_pendente_background(user_id, empresa, urls)
-        if atividade_id:
-            if pendentes:
-                atualizar_atividade(atividade_id, "concluido", {
-                    "empresas": list(pendentes.keys()),
-                    "aviso": (
-                        f"{len(pendentes)} empresa(s) com vídeo do YouTube (Google Ads) "
-                        f"sem legenda extraída — CC enviado pra rodar agora (acompanhe abaixo)."
-                    ),
-                })
-            else:
-                atualizar_atividade(atividade_id, "concluido", {
-                    "aviso": "Nenhum vídeo do YouTube (Google Ads) pendente de legenda (CC).",
-                })
-        return len(pendentes)
-    except Exception as e:
-        if atividade_id:
-            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
-        return 0
-
-_MIN_MINUTOS_ENTRE_VERIFICACOES_CC_PENDENTE_GADS = 15
-
-def iniciar_verificacao_cc_pendente_google_background(user_id: str):
-    """Mesmo padrão de `iniciar_verificacao_ocr_pendente_google_background`
-    (throttle por sessão + por banco, card no sino desde o início), mas
-    pra disparar a checagem de segurança de legenda (CC) do YouTube em
-    vez de OCR. Roda lado a lado, de forma independente, na mesma aba
-    de Google Ads."""
-    try:
-        _res_ultima = (
-            supabase.table("atividades")
-            .select("criado_em")
-            .eq("user_id", user_id)
-            .eq("tipo", "verificacao_cc_pendente_gads")
-            .order("criado_em", desc=True)
-            .limit(1)
-            .execute()
-        )
-        if _res_ultima.data:
-            _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
-            if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_CC_PENDENTE_GADS:
-                return
-    except Exception:
-        pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
-    atividade_id = criar_atividade(
-        user_id, "verificacao_cc_pendente_gads",
-        "Verificando vídeos do YouTube (Google Ads) pendentes de legenda (CC)", {}
-    )
-    threading.Thread(
-        target=_verificar_e_gerar_cc_pendentes_google_bg,
         args=(user_id, atividade_id),
         daemon=True,
     ).start()
@@ -22267,14 +21892,6 @@ elif st.session_state.pagina == "google_ads":
         iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
 
-    # Mesma ideia acima, mas pra legenda (CC) dos vídeos do YouTube:
-    # varredura de segurança (uma vez por sessão) procurando qualquer
-    # anúncio de vídeo do Google Ads sem CC extraída ainda, de qualquer
-    # empresa/coleta (ver _empresas_gads_com_cc_pendente).
-    if not st.session_state.get("_verificacao_cc_pendente_feita_google") and st.session_state.get("user"):
-        iniciar_verificacao_cc_pendente_google_background(st.session_state.user.id)
-        st.session_state["_verificacao_cc_pendente_feita_google"] = True
-
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
     # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
     # `_coleta_gads_em_andamento` estivesse True — e essa flag só existia
@@ -26378,7 +25995,8 @@ body{{padding-bottom:4px;min-height:0;}}
 .no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
-.img-block{{height:230px;background:#f0f2f5;}}
+.img-block{{height:230px;background:#3a9fd6;}}
+.img-block img{{opacity:.85;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}
 .cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}

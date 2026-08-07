@@ -25690,45 +25690,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
             <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14.5"/>
         </svg>
     </div>"""
-                        # Texto de OCR pronto (ou pendente) pra essa imagem — ver
-                        # _mapa_ocr/_urls_ocr_pendente montados em lote acima
-                        # (mesmo bloco "Texto extraído por OCR das imagens").
-                        # Consulta tanto img_primary quanto img_thumb_url porque
-                        # _mapa_ocr foi indexado por images[0], mas o card às
-                        # vezes mostra images[1] como principal (mesmo padrão do
-                        # vid_thumb/vid_modal no badge de transcrição acima).
-                        _ocr_txt_badge = _mapa_ocr.get(img_primary) or _mapa_ocr.get(img_thumb_url) or ""
-                        _ocr_esta_pendente = (
-                            not _ocr_txt_badge
-                            and (img_primary in _urls_ocr_pendente or img_thumb_url in _urls_ocr_pendente)
-                        )
-                        if _ocr_txt_badge:
-                            _ocr_tt = _escapar_tooltip(_ocr_txt_badge[:1200])
-                            if len(_ocr_txt_badge) > 1200:
-                                _ocr_tt += "…"
-                            ocr_badge_img_html = f"""
-    <div data-texto="{_ocr_tt}"
-         onmouseenter="mostrarTranscricaoTip(event)"
-         onmouseleave="esconderTranscricaoTip()"
-         onclick="event.stopPropagation()"
-         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
-                overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_OCR} Texto (OCR)
-    </div>"""
-                        elif _ocr_esta_pendente:
-                            ocr_badge_img_html = f"""
-    <div title="Imagem já salva — o texto ainda está sendo extraído e aparece em breve"
-         onclick="event.stopPropagation()"
-         style="position:absolute;bottom:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px">
-        {_SVG_ICONE_OCR_PENDENTE} Extraindo texto…
-    </div>"""
-                        else:
-                            ocr_badge_img_html = ""
-
                         media_block = f"""
 <div class="media-block img-block" id="mwrap_{uid}" style="position:relative;cursor:pointer">
     <img id="mimg_{uid}" src="{img_primary}" loading="lazy" referrerpolicy="no-referrer"
@@ -25739,7 +25700,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     </div>
     <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
     {origem_badge_img_html}
-    {ocr_badge_img_html}
 </div>
 <script>
 var _srcs_{uid} = {srcs_js};

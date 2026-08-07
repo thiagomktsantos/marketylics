@@ -2451,6 +2451,7 @@ def _detectar_bandas_texto(img_bgr):
     import numpy as _np_bandas
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
+    print(f"[OCR-DEBUG] _detectar_bandas_texto recebeu imagem {_largura}x{altura_total}px", flush=True)
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
     # Trata a margem cinza da PÁGINA (se existir — ver
     # `_detectar_cor_fundo_pagina`) como fundo também, não só o branco
@@ -2883,7 +2884,66 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         )
     if not resultado:
         return ""
-    resultado.sort(key=lambda item: item[0][0][0])
+    # Agrupa as caixas por LINHA FÍSICA (proximidade vertical) antes de
+    # ordenar por X. Sem isso, `resultado.sort(key=lambda item:
+    # item[0][0][0])` ordenava só pela coordenada X, ignorando Y — o que
+    # assume implicitamente que toda banda é UMA linha só. Na prática,
+    # quando duas linhas físicas de um título quebrado ficam coladas
+    # (vão vertical <=3px entre elas — ver `_detectar_bandas_texto`,
+    # que aí funde as duas numa banda só), o EasyOCR ainda devolve
+    # caixas de AMBAS as linhas dentro do mesmo `recorte`. Ordenar só
+    # por X intercala as palavras das duas linhas por posição horizontal
+    # (sem relação nenhuma com a ordem de leitura real) — na prática
+    # isso fazia a 2ª linha do título sumir silenciosamente do
+    # resultado (nem aparecia como banda própria no debug, porque a
+    # banda nunca tinha sido separada; nem aparecia corretamente aqui,
+    # porque a reconstrução de espaço em cima de uma ordem errada
+    # produz lixo ou perde palavras nos vãos "hífen"/"palavra curta"
+    # abaixo, que comparam posição X entre "palavras vizinhas" que na
+    # verdade estão em linhas diferentes).
+    #
+    # Agrupa pelo centro Y de cada caixa: caixas cujo centro Y difere
+    # menos que ~60% da altura mediana das caixas da banda inteiram
+    # ficam no mesmo grupo (mesma linha); um salto maior que isso
+    # começa um grupo novo (nova linha física). Dentro de cada grupo,
+    # ordena por X como antes. Concatena os grupos na ordem em que
+    # aparecem (de cima pra baixo) — o restante da função (junção com
+    # espaço, recuperação de hífen) continua tratando o resultado como
+    # uma sequência única de palavras, o que já é o comportamento
+    # correto pro caso de quebra de linha do mesmo título (a lógica de
+    # "juntada" em `_estruturar_anuncio_google_ads` também só concatena
+    # com espaço quando duas bandas azuis SEPARADAS são a mesma quebra).
+    def _centro_y(item):
+        bbox = item[0]
+        return sum(p[1] for p in bbox) / len(bbox)
+
+    def _altura_caixa(item):
+        bbox = item[0]
+        ys = [p[1] for p in bbox]
+        return max(ys) - min(ys)
+
+    _itens_por_y = sorted(resultado, key=_centro_y)
+    _alturas = sorted(_altura_caixa(it) for it in _itens_por_y)
+    _altura_mediana = _alturas[len(_alturas) // 2] if _alturas else 0
+    _limiar_linha = max(6.0, _altura_mediana * 0.6)
+
+    _linhas_agrupadas = []
+    _linha_atual = []
+    _y_ant = None
+    for item in _itens_por_y:
+        y = _centro_y(item)
+        if _y_ant is not None and (y - _y_ant) > _limiar_linha:
+            _linhas_agrupadas.append(_linha_atual)
+            _linha_atual = []
+        _linha_atual.append(item)
+        _y_ant = y
+    if _linha_atual:
+        _linhas_agrupadas.append(_linha_atual)
+
+    resultado = []
+    for _linha in _linhas_agrupadas:
+        _linha.sort(key=lambda item: item[0][0][0])
+        resultado.extend(_linha)
     palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
     if not palavras:
         return ""

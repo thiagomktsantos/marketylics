@@ -33435,6 +33435,43 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
+    # Estilo do select de status, achado pela classe "st-key-_status_notif"
+    # (aplicada pelo Streamlit no wrapper do widget por causa do key=
+    # passado acima) — mesmo mecanismo já usado nos botões-fantasma da
+    # barra de ações, só que aqui é só estilo, não clique. Deixa o select
+    # com a mesma altura/borda/raio dos botões e do campo de busca ao lado,
+    # pra tudo na barra ficar visualmente alinhado.
+    components.html("""
+    <script>
+    (function() {
+        function estilizarSelect() {
+            var doc = window.parent.document;
+            var wrap = doc.querySelector('.st-key-_status_notif');
+            if (!wrap) return false;
+            var controle = wrap.querySelector('[data-baseweb="select"]');
+            if (!controle) return false;
+            controle.style.setProperty('min-height', '40px', 'important');
+            var interno = controle.querySelector('div');
+            if (interno) {
+                interno.style.setProperty('border', '1px solid #d1d5db', 'important');
+                interno.style.setProperty('border-radius', '8px', 'important');
+                interno.style.setProperty('min-height', '40px', 'important');
+                interno.style.setProperty('background-color', '#ffffff', 'important');
+                interno.style.setProperty('box-shadow', 'none', 'important');
+            }
+            return true;
+        }
+        if (!estilizarSelect()) {
+            var tentativas2 = 0;
+            var iv2 = setInterval(function() {
+                tentativas2++;
+                if (estilizarSelect() || tentativas2 > 20) clearInterval(iv2);
+            }, 150);
+        }
+    })();
+    </script>
+    """, height=0)
+
     # Barra de ações da página: busca por texto (filtra os cards abaixo),
     # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
     # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver
@@ -33463,12 +33500,37 @@ html, body { background: transparent; overflow: hidden; }
         except Exception:
             pass
 
-        _col_busca, _col_lidas, _col_limpar = st.columns([3, 1.3, 1.3])
+        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.2, 1.5, 1.3, 1.3])
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
                 key="_busca_notif",
                 placeholder="Buscar por empresa ou tipo de atividade...",
+                label_visibility="collapsed",
+            )
+
+        # Filtro por status — mesma ideia do campo de busca (aplicado em
+        # Python sobre a lista já carregada, dentro de
+        # _renderizar_atividades_ao_vivo, logo abaixo). As opções cobrem os
+        # 4 status salvos no banco (pendente/em_andamento/concluido/erro)
+        # mais "Concluído com erros", que não é um status salvo — é
+        # derivado na hora de renderizar (ver _ATIVIDADE_STATUS_UI) quando
+        # uma atividade concluiu mas parte dela falhou. Por isso o filtro
+        # precisa da mesma lógica de derivação (ver _MAPA_STATUS_FILTRO_NOTIF
+        # mais abaixo), senão "Concluído" e "Concluído com erros" se
+        # confundiriam.
+        with _col_status:
+            st.selectbox(
+                "Filtrar por status",
+                options=[
+                    "Todos os status",
+                    "Pendente",
+                    "Em andamento",
+                    "Concluído",
+                    "Concluído com erros",
+                    "Erro",
+                ],
+                key="_status_notif",
                 label_visibility="collapsed",
             )
 
@@ -33630,14 +33692,39 @@ html, body { background: transparent; overflow: hidden; }
                 return _termo_busca in remover_acentos(_alvo.lower())
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
 
+        # Filtro por status (select da barra de ações, acima). "Concluído
+        # com erros" não é um status salvo no banco — é derivado aqui do
+        # mesmo jeito que o loop dos cards faz mais abaixo (status
+        # "concluido" + detalhes.com_erro), pra não misturar com
+        # "Concluído" de verdade.
+        _MAPA_STATUS_FILTRO_NOTIF = {
+            "Pendente": "pendente",
+            "Em andamento": "em_andamento",
+            "Concluído": "concluido",
+            "Concluído com erros": "concluido_com_erro",
+            "Erro": "erro",
+        }
+        _status_filtro_notif = st.session_state.get("_status_notif") or "Todos os status"
+        _status_alvo_notif = _MAPA_STATUS_FILTRO_NOTIF.get(_status_filtro_notif)
+        if _status_alvo_notif:
+            def _atividade_bate_status(a):
+                _status_a = a.get("status")
+                _com_erro_a = _status_a == "concluido" and bool((a.get("detalhes") or {}).get("com_erro"))
+                if _status_alvo_notif == "concluido_com_erro":
+                    return _com_erro_a
+                if _status_alvo_notif == "concluido":
+                    return _status_a == "concluido" and not _com_erro_a
+                return _status_a == _status_alvo_notif
+            _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
+
         if not _todas_atividades:
             _bell_svg = _svg_icone(
                 "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
                 "#c7cdd6", 32,
             )
             _msg_vazio_notif = (
-                "Nenhuma notificação encontrada pra essa busca."
-                if _termo_busca else "Nenhuma atividade registrada ainda."
+                "Nenhuma notificação encontrada pra esse filtro."
+                if (_termo_busca or _status_alvo_notif) else "Nenhuma atividade registrada ainda."
             )
             st.markdown(_html(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;

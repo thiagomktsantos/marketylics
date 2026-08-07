@@ -33306,7 +33306,33 @@ html, body { background: transparent; overflow: hidden; }
                 "padrão TODAS, só um tipo de anúncio, ou 1 único anúncio, se você "
                 "filtrar abaixo."
             )
-            _col_empresa_reset, _col_formato_reset = st.columns(2)
+            # Fundo branco nos 3 campos desta seção (por padrão eles herdam
+            # o cinza claro do tema) + no input de digitar o ad_id manual.
+            st.markdown(
+                """
+                <style>
+                .st-key-_select_empresa_reset_forcado_gads [data-baseweb="select"] > div,
+                .st-key-_select_formato_reset_forcado_gads [data-baseweb="select"] > div,
+                .st-key-_select_ad_reset_forcado_gads [data-baseweb="select"] > div,
+                .st-key-_input_ad_id_manual_reset_forcado_gads input {
+                    background: #ffffff !important;
+                    background-color: #ffffff !important;
+                    border: 1px solid #e5e7eb !important;
+                    border-radius: 7px !important;
+                }
+                .st-key-_select_empresa_reset_forcado_gads input[role="combobox"],
+                .st-key-_select_formato_reset_forcado_gads input[role="combobox"],
+                .st-key-_select_ad_reset_forcado_gads input[role="combobox"] {
+                    background: transparent !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            _OPCAO_DIGITAR_AD_RESET = "✏️ Digitar ID manualmente..."
+
+            _col_empresa_reset, _col_formato_reset, _col_ad_reset = st.columns(3)
             with _col_empresa_reset:
                 _empresa_reset_forcado = st.selectbox(
                     "Empresa",
@@ -33331,29 +33357,52 @@ html, body { background: transparent; overflow: hidden; }
             # em vez da empresa (ou do tipo) inteira. Alimentado por
             # _ads_gads_disponiveis, que devolve (ad_id, rótulo); o select
             # em si mostra só o rótulo (mapeado de volta pro ad_id logo
-            # abaixo) porque o ad_id sozinho não diz nada pro usuário.
+            # abaixo) porque o ad_id sozinho não diz nada pro usuário. Tem
+            # também a opção de digitar o ad_id na mão, pra quando o
+            # anúncio não aparece na lista (ex: recém-criado).
             _ads_disp_reset = _ads_gads_disponiveis(
                 st.session_state.user.id, _empresa_reset_forcado
             )
             _mapa_rotulo_ad_id = {rotulo: aid for aid, rotulo in _ads_disp_reset}
-            _rotulo_ad_reset = st.selectbox(
-                "Anúncio específico (opcional)",
-                options=["Todos os anúncios"] + list(_mapa_rotulo_ad_id.keys()),
-                key="_select_ad_reset_forcado_gads",
-                help=(
-                    "Escolha 1 anúncio pra reprocessar só ele (pelo ad_id), em vez "
-                    "da empresa inteira — útil quando só 1 anúncio específico está "
-                    "com o OCR errado."
-                ),
-            )
-            _ad_id_reset_efetivo = _mapa_rotulo_ad_id.get(_rotulo_ad_reset)
+            with _col_ad_reset:
+                _rotulo_ad_reset = st.selectbox(
+                    "Anúncio específico (opcional)",
+                    options=(
+                        ["Todos os anúncios"]
+                        + list(_mapa_rotulo_ad_id.keys())
+                        + [_OPCAO_DIGITAR_AD_RESET]
+                    ),
+                    key="_select_ad_reset_forcado_gads",
+                    help=(
+                        "Escolha 1 anúncio pra reprocessar só ele (pelo ad_id), em vez "
+                        "da empresa inteira — útil quando só 1 anúncio específico está "
+                        "com o OCR errado. Se o anúncio não estiver na lista, use "
+                        "\"Digitar ID manualmente...\"."
+                    ),
+                )
+
+            _ad_id_digitado_reset = ""
+            if _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET:
+                _ad_id_digitado_reset = st.text_input(
+                    "ID do anúncio (ad_id)",
+                    key="_input_ad_id_manual_reset_forcado_gads",
+                    placeholder="Cole aqui o ad_id do anúncio",
+                    help="Digite/cole o ad_id do anúncio que você quer reprocessar.",
+                ).strip()
+
+            if _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET:
+                _ad_id_reset_efetivo = _ad_id_digitado_reset or None
+                _rotulo_ad_exibicao = _ad_id_digitado_reset
+            else:
+                _ad_id_reset_efetivo = _mapa_rotulo_ad_id.get(_rotulo_ad_reset)
+                _rotulo_ad_exibicao = _rotulo_ad_reset
 
             _formato_reset_efetivo = (
                 None if _formato_reset_forcado == "Todos" else _formato_reset_forcado
             )
 
             if _ad_id_reset_efetivo:
-                _sufixo_confirmacao = f'do anúncio "{_rotulo_ad_reset}" do zero'
+                _sufixo_confirmacao = f'do anúncio "{_rotulo_ad_exibicao}" do zero'
                 _alvo_confirmacao = "o anúncio"
             elif _formato_reset_efetivo:
                 _sufixo_confirmacao = f'do tipo "{_formato_reset_efetivo}" do zero'
@@ -33361,6 +33410,13 @@ html, body { background: transparent; overflow: hidden; }
             else:
                 _sufixo_confirmacao = "do zero"
                 _alvo_confirmacao = "TODAS as"
+
+            _precisa_digitar_ad_id = (
+                _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET
+                and not _ad_id_digitado_reset
+            )
+            if _precisa_digitar_ad_id:
+                st.caption("⚠️ Digite o ad_id do anúncio acima antes de confirmar.")
 
             _confirmar_reset_forcado = st.checkbox(
                 f"Confirmo que quero reprocessar {_alvo_confirmacao} "
@@ -33376,7 +33432,7 @@ html, body { background: transparent; overflow: hidden; }
             if st.button(
                 _rotulo_btn_reset,
                 key="_btn_reset_forcado_gads",
-                disabled=not _confirmar_reset_forcado,
+                disabled=not _confirmar_reset_forcado or _precisa_digitar_ad_id,
             ):
                 _n_reset_forcado = resetar_ocr_gads_forcado(
                     st.session_state.user.id, _empresa_reset_forcado,
@@ -33384,7 +33440,7 @@ html, body { background: transparent; overflow: hidden; }
                     ad_id=_ad_id_reset_efetivo,
                 )
                 if _ad_id_reset_efetivo:
-                    _desc_tipo = f' do anúncio "{_rotulo_ad_reset}"'
+                    _desc_tipo = f' do anúncio "{_rotulo_ad_exibicao}"'
                 else:
                     _desc_tipo = "" if not _formato_reset_efetivo else f" do tipo \"{_formato_reset_efetivo}\""
                 if _n_reset_forcado:

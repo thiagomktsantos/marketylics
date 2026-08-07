@@ -2451,7 +2451,6 @@ def _detectar_bandas_texto(img_bgr):
     import numpy as _np_bandas
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
-    print(f"[OCR-DEBUG] _detectar_bandas_texto recebeu imagem {_largura}x{altura_total}px", flush=True)
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
     # Trata a margem cinza da PÁGINA (se existir — ver
     # `_detectar_cor_fundo_pagina`) como fundo também, não só o branco
@@ -2523,37 +2522,7 @@ def _detectar_bandas_texto(img_bgr):
     # como "azul" (virava título por engano) em vez de "cinza".
     _linhas_com_conteudo = _np_bandas.where(nao_branco.any(axis=1))[0]
     _y_primeiro_conteudo = int(_linhas_com_conteudo.min()) if len(_linhas_com_conteudo) else 0
-    # NOVO: em vez de um teto FIXO de 160px pra janela do favicon, detecta
-    # o fim REAL do cabeçalho (ícone + nome da página + domínio). O valor
-    # fixo já causou a palavra "Brasil" sumir uma vez (ver comentário
-    # acima) e o mesmo bug se repetiu com "Styles": em layouts mais
-    # compactos (fonte menor, cabeçalho mais baixo), 160px alcança a 2ª
-    # linha do título — e se essa linha for uma palavra curta sozinha
-    # rente à esquerda, ela cai inteira dentro da faixa ignorada
-    # (y<160 E x<x_ignorar_quebra) e desaparece da extração: n_quebra=0
-    # nas linhas dela, nunca entra em `linhas`, nunca vira banda, nunca
-    # é mandada pro OCR.
-    # Em vez de adivinhar uma altura fixa, acha o primeiro VÃO vertical
-    # grande (>=20px) depois do início do conteúdo, usando a largura
-    # CHEIA da imagem (sem a exclusão do favicon, que ainda não existe
-    # nesse ponto do código). Esse vão marca a transição
-    # cabeçalho -> resto do anúncio: vãos DENTRO do cabeçalho (nome da
-    # página -> domínio) ou dentro de texto quebrado em várias linhas
-    # (título/descrição) ficam tipicamente entre 8-18px nos anúncios reais
-    # testados; o vão cabeçalho -> título passa de 30px. Mantém 160px só
-    # como teto de segurança pro caso de a detecção não achar vão nenhum
-    # (imagem sem título/descrição, ou layout atípico).
-    _LIMIAR_VAO_SECAO = 20
-    _y_fim_cabecalho = None
-    _linhas_ordenadas = sorted(int(y) for y in _linhas_com_conteudo)
-    for _i in range(1, len(_linhas_ordenadas)):
-        if _linhas_ordenadas[_i] - _linhas_ordenadas[_i - 1] >= _LIMIAR_VAO_SECAO:
-            _y_fim_cabecalho = _linhas_ordenadas[_i - 1]
-            break
-    if _y_fim_cabecalho is not None:
-        _y_limite_favicon = min(_y_fim_cabecalho + 6, _y_primeiro_conteudo + 160, altura_total)
-    else:
-        _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
+    _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
     nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False
@@ -2659,62 +2628,6 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
         elif not tem_pixel:
             dentro_de_bloco = False
     return blocos == 1
-
-def _recuperar_palavra_curta_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
-    """Tenta recuperar uma palavra CURTA (conectivo de 1-3 letras, ex.:
-    "é", "e", "a", "o", "de", "do", "da", "em") que sumiu por completo
-    no vão entre duas palavras já reconhecidas em `_ocr_banda` — caso
-    real: "Entrar no Show é Garantido" perdia o "é" inteiro (não virava
-    letra errada, sumia mesmo), porque o CRAFT (detector de texto do
-    EasyOCR) não abre caixa de detecção pra uma letra isolada, minúscula
-    e com acento, cercada de bastante espaço em branco dos dois lados —
-    ao contrário do hífen (ver `_detectar_hifen_no_intervalo`), aqui não
-    dá pra confirmar por um padrão fixo de pixel, porque cada conectivo
-    tem uma forma diferente.
-
-    Sem recuperar essa palavra, dois problemas em cascata: (1) o texto
-    reconstruído já sai gramaticalmente errado ("Show Garantido" em vez
-    de "Show é Garantido"); e (2) o vão que sobra exatamente no lugar
-    dela — só o espaço que ela ocupava, sem letra nenhuma dentro — fica
-    largo o bastante pra parecer um respiro entre 2 termos separados, e
-    a lógica de "termos relacionados" (`_dividir_termos_relacionados_por_gap`)
-    quebra o título ao meio por engano.
-
-    Roda uma segunda passada de OCR recortada BEM apertada só nesse
-    vão (+ margem pequena), com limiares bem mais permissivos que o
-    padrão — como o recorte é estreito (não é a banda inteira), o risco
-    de ruído externo entrar é baixo. Só aceita o resultado se: (a) o
-    vão já tinha ALGUM pixel não-branco antes de tentar (senão é só o
-    espaço normal entre palavras, nada foi perdido); e (b) o texto
-    achado sai CURTO (até 3 caracteres) — um resultado mais longo que
-    isso seria sinal de um erro de segmentação bem maior, não desse bug
-    específico, e é mais seguro descartar do que arriscar inventar
-    texto."""
-    if x_dir - x_esq < 3:
-        return ""
-    import numpy as _np_gap
-    recorte_vao = recorte_bgr[:, x_esq:x_dir]
-    if recorte_vao.size == 0 or not _np_gap.any(recorte_vao < 200, axis=2).any():
-        return ""  # vão realmente vazio — só o espaço normal entre palavras
-    margem = 6
-    x0 = max(0, x_esq - margem)
-    x1 = min(recorte_bgr.shape[1], x_dir + margem)
-    sub = recorte_bgr[:, x0:x1]
-    try:
-        resultado = reader.readtext(
-            sub, detail=1, width_ths=0.15, height_ths=0.5,
-            text_threshold=0.3, low_text=0.25, link_threshold=0.3,
-        )
-    except Exception:
-        return ""
-    textos = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
-    if not textos:
-        return ""
-    palavra = max(textos, key=len)
-    if len(palavra) > 3:
-        return ""  # resultado longo demais pra ser só o conectivo perdido
-    return palavra
-
 
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
@@ -2914,66 +2827,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         )
     if not resultado:
         return ""
-    # Agrupa as caixas por LINHA FÍSICA (proximidade vertical) antes de
-    # ordenar por X. Sem isso, `resultado.sort(key=lambda item:
-    # item[0][0][0])` ordenava só pela coordenada X, ignorando Y — o que
-    # assume implicitamente que toda banda é UMA linha só. Na prática,
-    # quando duas linhas físicas de um título quebrado ficam coladas
-    # (vão vertical <=3px entre elas — ver `_detectar_bandas_texto`,
-    # que aí funde as duas numa banda só), o EasyOCR ainda devolve
-    # caixas de AMBAS as linhas dentro do mesmo `recorte`. Ordenar só
-    # por X intercala as palavras das duas linhas por posição horizontal
-    # (sem relação nenhuma com a ordem de leitura real) — na prática
-    # isso fazia a 2ª linha do título sumir silenciosamente do
-    # resultado (nem aparecia como banda própria no debug, porque a
-    # banda nunca tinha sido separada; nem aparecia corretamente aqui,
-    # porque a reconstrução de espaço em cima de uma ordem errada
-    # produz lixo ou perde palavras nos vãos "hífen"/"palavra curta"
-    # abaixo, que comparam posição X entre "palavras vizinhas" que na
-    # verdade estão em linhas diferentes).
-    #
-    # Agrupa pelo centro Y de cada caixa: caixas cujo centro Y difere
-    # menos que ~60% da altura mediana das caixas da banda inteiram
-    # ficam no mesmo grupo (mesma linha); um salto maior que isso
-    # começa um grupo novo (nova linha física). Dentro de cada grupo,
-    # ordena por X como antes. Concatena os grupos na ordem em que
-    # aparecem (de cima pra baixo) — o restante da função (junção com
-    # espaço, recuperação de hífen) continua tratando o resultado como
-    # uma sequência única de palavras, o que já é o comportamento
-    # correto pro caso de quebra de linha do mesmo título (a lógica de
-    # "juntada" em `_estruturar_anuncio_google_ads` também só concatena
-    # com espaço quando duas bandas azuis SEPARADAS são a mesma quebra).
-    def _centro_y(item):
-        bbox = item[0]
-        return sum(p[1] for p in bbox) / len(bbox)
-
-    def _altura_caixa(item):
-        bbox = item[0]
-        ys = [p[1] for p in bbox]
-        return max(ys) - min(ys)
-
-    _itens_por_y = sorted(resultado, key=_centro_y)
-    _alturas = sorted(_altura_caixa(it) for it in _itens_por_y)
-    _altura_mediana = _alturas[len(_alturas) // 2] if _alturas else 0
-    _limiar_linha = max(6.0, _altura_mediana * 0.6)
-
-    _linhas_agrupadas = []
-    _linha_atual = []
-    _y_ant = None
-    for item in _itens_por_y:
-        y = _centro_y(item)
-        if _y_ant is not None and (y - _y_ant) > _limiar_linha:
-            _linhas_agrupadas.append(_linha_atual)
-            _linha_atual = []
-        _linha_atual.append(item)
-        _y_ant = y
-    if _linha_atual:
-        _linhas_agrupadas.append(_linha_atual)
-
-    resultado = []
-    for _linha in _linhas_agrupadas:
-        _linha.sort(key=lambda item: item[0][0][0])
-        resultado.extend(_linha)
+    resultado.sort(key=lambda item: item[0][0][0])
     palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
     if not palavras:
         return ""
@@ -2999,15 +2853,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         x_esq_atual = int(min(p[0] for p in _bbox_atual))
         if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
             partes.append("-")
-        else:
-            # Não era hífen — checa se sobrou algum pixel no vão que
-            # possa ser um conectivo curto (ex.: "é") que o CRAFT
-            # descartou por inteiro (ver `_recuperar_palavra_curta_no_intervalo`).
-            _palavra_curta = _recuperar_palavra_curta_no_intervalo(
-                reader, recorte, x_dir_prev, x_esq_atual
-            )
-            if _palavra_curta:
-                partes.append(_palavra_curta)
         partes.append(palavras[i][1])
     # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
     # título pra outra banda) nunca era checado: o laço acima só olha o
@@ -3399,7 +3244,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
         _gap_minimo_botoes = None
-        _teve_seta_lateral = False
         # Um botão/pílula de verdade nunca é a PRIMEIRA banda do
         # anúncio — ele sempre vem depois do título e da descrição (ver
         # exemplos "Sobre o isaac" etc., sempre no fim do anúncio). A
@@ -3459,32 +3303,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # fechava o par título/descrição em andamento e as linhas cinza
         # de descrição que vinham depois ficavam sem título aberto pra
         # anexar, sendo descartadas.
-        if len(_grupos_botoes) == 2:
-            _bloco_ini_estreito = (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
-            _bloco_fim_estreito = (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
-            if _bloco_fim_estreito and not _bloco_ini_estreito:
-                # Estreito só no ÚLTIMO bloco (não no primeiro) = é a
-                # seta/chevron "›" clicável na borda direita de um
-                # sitelink de lista empilhada (ver comentário acima,
-                # print da buyticketbrasil), não o ícone de CTA (que
-                # fica no INÍCIO). Guarda esse sinal: uma linha com
-                # seta lateral é sempre UM sitelink individual da
-                # lista — nunca a linha especial de "termos
-                # relacionados" no fim do anúncio (essa nunca tem seta
-                # por termo, é só texto corrido separado por "·"/"•").
-                # Sem esse sinal, um título com hífen interno bem no
-                # meio de uma lista empilhada (ex.: "BTS World Tour -
-                # Arirang", "Entrar no Show é Garantido") acionava o
-                # "portão de segurança" de termos relacionados só por
-                # já ter `sep_antes`/título fechado antes — condição
-                # que, numa lista empilhada, é verdadeira pra
-                # PRATICAMENTE todo item a partir do segundo, não só
-                # pra linha especial que a lógica original tinha em
-                # mente.
-                _teve_seta_lateral = True
-                _debug_bandas[idx]["seta_lateral"] = True
-            if _bloco_ini_estreito or _bloco_fim_estreito:
-                _grupos_botoes = []
+        if len(_grupos_botoes) == 2 and (
+            (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
+            or (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
+        ):
+            _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -3573,33 +3396,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # de verdade ao recuperar um traço perdido entre palavras
             # (ver `partes.append("-")` acima).
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
-            _portao_seguranca_relacionados = (
-                not _teve_seta_lateral
-                and (bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados)
-            )
+            _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
             _partes_relacionados = None
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
                 if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
             elif re.search(r"\s[\-–—]\s", texto):
-                # Exige 2+ ocorrências do traço no texto BRUTO (antes de
-                # tirar o traço final) — é essa a checagem extra que o
-                # comentário acima já descrevia como proteção pra título
-                # de verdade com UM hífen só (ex.: "Ingressos Luan
-                # Santana - Compre Ingresso Luan Santana", "BTS World
-                # Tour - Arirang"), mas que nunca tinha sido implementada:
-                # antes, 1 traço já bastava pra virar 2 "candidatos" e
-                # passar no portão. Com 1 traço só, nunca é linha de
-                # termos relacionados — é sempre título/sitelink comum.
-                _n_ocorrencias_traco = len(re.findall(r"\s[\-–—]\s", texto))
-                if _n_ocorrencias_traco >= 2:
-                    _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
-                    _candidatos_relacionados = [
-                        p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
-                    ]
-                    if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
-                        _partes_relacionados = _candidatos_relacionados
+                _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
+                _candidatos_relacionados = [
+                    p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
+                ]
+                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
+                    _partes_relacionados = _candidatos_relacionados
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
             # Motivo: às vezes UM separador sobrevive (ex.: um traço
@@ -4021,35 +3830,6 @@ def _formatos_gads_disponiveis(user_id: str, empresa: str) -> list:
     except Exception:
         return []
 
-def _ads_gads_disponiveis(user_id: str, empresa: str) -> list:
-    """Lista (ad_id, rótulo) de cada anúncio do Google Ads que essa
-    empresa tem salvo no `gads_cache` — alimenta o seletor \"Anúncio
-    específico\" do reset forçado, pra dar pra reprocessar o OCR de 1 só
-    anúncio (pelo ad_id) em vez da empresa inteira. O rótulo usa o mesmo
-    fallback (title -> body -> \"Anúncio {id}\") já usado nos logs de
-    migração (ver _titulo_ad em processar_migracao_midia), só que aqui é
-    pra exibir no select. Anúncios sem `id` não entram (não tem como
-    filtrar `midias.ad_id` por eles)."""
-    try:
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
-        entry = cache.get(empresa) or {}
-        ads = entry.get("data") or []
-        opcoes = []
-        for a in ads:
-            _aid = a.get("id")
-            if not _aid:
-                continue
-            _rotulo = (
-                (a.get("title") or "").strip()
-                or (a.get("body") or "").strip()[:60]
-                or f"Anúncio {_aid}"
-            )
-            opcoes.append((_aid, f"{_rotulo} ({_aid})"))
-        return opcoes
-    except Exception:
-        return []
-
 def _urls_imagens_gads_por_formato(user_id: str, empresa: str, formato: str) -> set:
     """Devolve as URLs de imagem (primeira imagem de cada anúncio) dos
     anúncios de `empresa` que são do `formato` pedido (ex: só \"Texto\")
@@ -4075,7 +3855,7 @@ def _urls_imagens_gads_por_formato(user_id: str, empresa: str, formato: str) -> 
     except Exception:
         return set()
 
-def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None, ad_id: str = None) -> int:
+def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None) -> int:
     """'Botão de pânico' pro OCR do Google Ads de UMA empresa: zera
     `ocr_texto` (e `ocr_estruturado`) de TODAS as imagens do Google Ads
     dessa empresa, sem NENHUMA condição sobre `ocr_estruturado` — ao
@@ -4086,12 +3866,6 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None, ad
     \"Vídeo\"), restringe o reset só às imagens dos anúncios desse tipo
     — ver `_urls_imagens_gads_por_formato`. Sem isso (None/\"Todos\"),
     reseta tudo, igual antes.
-
-    `ad_id` (opcional): quando informado, restringe o reset a um único
-    anúncio (filtra `midias.ad_id`) — pra reprocessar só 1 anúncio
-    específico em vez da empresa inteira. Pode ser combinado com
-    `formato`, mas normalmente é usado sozinho (o select de "Anúncio
-    específico" na tela já implica 1 formato só).
 
     Por quê isso existe: encontramos linhas com `ocr_estruturado`
     preenchido (não NULL), mas com conteúdo ERRADO — gravado por uma
@@ -4105,17 +3879,17 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None, ad
     Não dá pra distinguir programaticamente um `ocr_estruturado` certo
     de um errado só olhando o JSON (os dois têm as mesmas chaves
     preenchidas), então a correção é manual: o usuário decide
-    reprocessar uma empresa inteira (ou 1 anúncio específico) do zero.
+    reprocessar uma empresa inteira do zero.
 
-    ATENÇÃO: isso gasta OCR de novo em TODAS as imagens afetadas,
+    ATENÇÃO: isso gasta OCR de novo em TODAS as imagens da empresa,
     inclusive as que já estavam certas — é uma ação explícita do
     usuário (botão com confirmação na tela), não algo automático.
     Devolve quantas linhas foram resetadas (0 = nenhuma imagem do
-    Google Ads encontrada pra esse filtro)."""
+    Google Ads encontrada pra essa empresa)."""
     try:
         res = (
             supabase.table("midias")
-            .select("id, url_cdn, ad_id")
+            .select("id, url_cdn")
             .eq("user_id", user_id)
             .eq("empresa", empresa)
             .eq("tipo", "imagem")
@@ -4124,13 +3898,11 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None, ad
             .execute()
         )
         linhas = res.data or []
-        if ad_id:
-            linhas = [r for r in linhas if r.get("ad_id") == ad_id]
         if formato:
             _urls_formato = _urls_imagens_gads_por_formato(user_id, empresa, formato)
             linhas = [r for r in linhas if r.get("url_cdn") in _urls_formato]
         if not linhas:
-            print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: nenhuma imagem do Google Ads pra empresa={empresa!r} formato={formato!r} ad_id={ad_id!r}", flush=True)
+            print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: nenhuma imagem do Google Ads pra empresa={empresa!r} formato={formato!r}", flush=True)
             return 0
         ids = [r["id"] for r in linhas]
         for i in range(0, len(ids), 200):
@@ -4139,11 +3911,11 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None, ad
                 "ocr_texto": None,
                 "ocr_estruturado": None,
             }).in_("id", bloco).execute()
-        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r} formato={formato!r} ad_id={ad_id!r}", flush=True)
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r} formato={formato!r}", flush=True)
         iniciar_ocr_pendente_background(user_id, empresa)
         return len(ids)
     except Exception as e:
-        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r} formato={formato!r} ad_id={ad_id!r}: {e!r}", flush=True)
+        print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r} formato={formato!r}: {e!r}", flush=True)
         return 0
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
@@ -33494,36 +33266,9 @@ html, body { background: transparent; overflow: hidden; }
                 "mais antiga do sistema, com `ocr_estruturado` preenchido só que errado, "
                 "que os botões acima não detectam sozinhos. Isso reprocessa as imagens "
                 "do Google Ads dessa empresa, mesmo as que já estavam certas — por "
-                "padrão TODAS, só um tipo de anúncio, ou 1 único anúncio, se você "
-                "filtrar abaixo."
+                "padrão TODAS, ou só um tipo de anúncio, se você filtrar abaixo."
             )
-            # Fundo branco nos 3 campos desta seção (por padrão eles herdam
-            # o cinza claro do tema) + no input de digitar o ad_id manual.
-            st.markdown(
-                """
-                <style>
-                .st-key-_select_empresa_reset_forcado_gads [data-baseweb="select"] > div,
-                .st-key-_select_formato_reset_forcado_gads [data-baseweb="select"] > div,
-                .st-key-_select_ad_reset_forcado_gads [data-baseweb="select"] > div,
-                .st-key-_input_ad_id_manual_reset_forcado_gads input {
-                    background: #ffffff !important;
-                    background-color: #ffffff !important;
-                    border: 1px solid #e5e7eb !important;
-                    border-radius: 7px !important;
-                }
-                .st-key-_select_empresa_reset_forcado_gads input[role="combobox"],
-                .st-key-_select_formato_reset_forcado_gads input[role="combobox"],
-                .st-key-_select_ad_reset_forcado_gads input[role="combobox"] {
-                    background: transparent !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            _OPCAO_DIGITAR_AD_RESET = "✏️ Digitar ID manualmente..."
-
-            _col_empresa_reset, _col_formato_reset, _col_ad_reset = st.columns(3)
+            _col_empresa_reset, _col_formato_reset = st.columns(2)
             with _col_empresa_reset:
                 _empresa_reset_forcado = st.selectbox(
                     "Empresa",
@@ -33543,97 +33288,28 @@ html, body { background: transparent; overflow: hidden; }
                         "(ex: só \"Texto\") — os demais tipos ficam como estão."
                     ),
                 )
-
-            # Anúncio específico (opcional) — pra reprocessar SÓ 1 anúncio
-            # em vez da empresa (ou do tipo) inteira. Alimentado por
-            # _ads_gads_disponiveis, que devolve (ad_id, rótulo); o select
-            # em si mostra só o rótulo (mapeado de volta pro ad_id logo
-            # abaixo) porque o ad_id sozinho não diz nada pro usuário. Tem
-            # também a opção de digitar o ad_id na mão, pra quando o
-            # anúncio não aparece na lista (ex: recém-criado).
-            _ads_disp_reset = _ads_gads_disponiveis(
-                st.session_state.user.id, _empresa_reset_forcado
-            )
-            _mapa_rotulo_ad_id = {rotulo: aid for aid, rotulo in _ads_disp_reset}
-            with _col_ad_reset:
-                _rotulo_ad_reset = st.selectbox(
-                    "Anúncio específico (opcional)",
-                    options=(
-                        ["Todos os anúncios"]
-                        + list(_mapa_rotulo_ad_id.keys())
-                        + [_OPCAO_DIGITAR_AD_RESET]
-                    ),
-                    key="_select_ad_reset_forcado_gads",
-                    help=(
-                        "Escolha 1 anúncio pra reprocessar só ele (pelo ad_id), em vez "
-                        "da empresa inteira — útil quando só 1 anúncio específico está "
-                        "com o OCR errado. Se o anúncio não estiver na lista, use "
-                        "\"Digitar ID manualmente...\"."
-                    ),
-                )
-
-            _ad_id_digitado_reset = ""
-            if _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET:
-                _ad_id_digitado_reset = st.text_input(
-                    "ID do anúncio (ad_id)",
-                    key="_input_ad_id_manual_reset_forcado_gads",
-                    placeholder="Cole aqui o ad_id do anúncio",
-                    help="Digite/cole o ad_id do anúncio que você quer reprocessar.",
-                ).strip()
-
-            if _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET:
-                _ad_id_reset_efetivo = _ad_id_digitado_reset or None
-                _rotulo_ad_exibicao = _ad_id_digitado_reset
-            else:
-                _ad_id_reset_efetivo = _mapa_rotulo_ad_id.get(_rotulo_ad_reset)
-                _rotulo_ad_exibicao = _rotulo_ad_reset
-
             _formato_reset_efetivo = (
                 None if _formato_reset_forcado == "Todos" else _formato_reset_forcado
             )
-
-            if _ad_id_reset_efetivo:
-                _sufixo_confirmacao = f'do anúncio "{_rotulo_ad_exibicao}" do zero'
-                _alvo_confirmacao = "o anúncio"
-            elif _formato_reset_efetivo:
-                _sufixo_confirmacao = f'do tipo "{_formato_reset_efetivo}" do zero'
-                _alvo_confirmacao = "as"
-            else:
-                _sufixo_confirmacao = "do zero"
-                _alvo_confirmacao = "TODAS as"
-
-            _precisa_digitar_ad_id = (
-                _rotulo_ad_reset == _OPCAO_DIGITAR_AD_RESET
-                and not _ad_id_digitado_reset
+            _sufixo_confirmacao = (
+                "do zero" if not _formato_reset_efetivo
+                else f"do tipo \"{_formato_reset_efetivo}\" do zero"
             )
-            if _precisa_digitar_ad_id:
-                st.caption("⚠️ Digite o ad_id do anúncio acima antes de confirmar.")
-
             _confirmar_reset_forcado = st.checkbox(
-                f"Confirmo que quero reprocessar {_alvo_confirmacao} "
-                f"imagens do Google Ads de \"{_empresa_reset_forcado}\" {_sufixo_confirmacao}."
-                if not _ad_id_reset_efetivo
-                else f"Confirmo que quero reprocessar {_sufixo_confirmacao} de \"{_empresa_reset_forcado}\".",
+                f"Confirmo que quero reprocessar {'TODAS as' if not _formato_reset_efetivo else 'as'} "
+                f"imagens do Google Ads de \"{_empresa_reset_forcado}\" {_sufixo_confirmacao}.",
                 key="_chk_confirmar_reset_forcado_gads",
             )
-            _rotulo_btn_reset = (
-                f"Reprocessar 1 anúncio do zero" if _ad_id_reset_efetivo
-                else ("Reprocessar tudo do zero" if not _formato_reset_efetivo else f"Reprocessar \"{_formato_reset_efetivo}\" do zero")
-            )
             if st.button(
-                _rotulo_btn_reset,
+                "Reprocessar tudo do zero" if not _formato_reset_efetivo else f"Reprocessar \"{_formato_reset_efetivo}\" do zero",
                 key="_btn_reset_forcado_gads",
-                disabled=not _confirmar_reset_forcado or _precisa_digitar_ad_id,
+                disabled=not _confirmar_reset_forcado,
             ):
                 _n_reset_forcado = resetar_ocr_gads_forcado(
                     st.session_state.user.id, _empresa_reset_forcado,
                     formato=_formato_reset_efetivo,
-                    ad_id=_ad_id_reset_efetivo,
                 )
-                if _ad_id_reset_efetivo:
-                    _desc_tipo = f' do anúncio "{_rotulo_ad_exibicao}"'
-                else:
-                    _desc_tipo = "" if not _formato_reset_efetivo else f" do tipo \"{_formato_reset_efetivo}\""
+                _desc_tipo = "" if not _formato_reset_efetivo else f" do tipo \"{_formato_reset_efetivo}\""
                 if _n_reset_forcado:
                     st.toast(
                         f"{_n_reset_forcado} imagem(ns){_desc_tipo} de \"{_empresa_reset_forcado}\" "
@@ -33759,43 +33435,6 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
-    # Estilo do select de status, achado pela classe "st-key-_status_notif"
-    # (aplicada pelo Streamlit no wrapper do widget por causa do key=
-    # passado acima) — mesmo mecanismo já usado nos botões-fantasma da
-    # barra de ações, só que aqui é só estilo, não clique. Deixa o select
-    # com a mesma altura/borda/raio dos botões e do campo de busca ao lado,
-    # pra tudo na barra ficar visualmente alinhado.
-    components.html("""
-    <script>
-    (function() {
-        function estilizarSelect() {
-            var doc = window.parent.document;
-            var wrap = doc.querySelector('.st-key-_status_notif');
-            if (!wrap) return false;
-            var controle = wrap.querySelector('[data-baseweb="select"]');
-            if (!controle) return false;
-            controle.style.setProperty('min-height', '40px', 'important');
-            var interno = controle.querySelector('div');
-            if (interno) {
-                interno.style.setProperty('border', '1px solid #d1d5db', 'important');
-                interno.style.setProperty('border-radius', '8px', 'important');
-                interno.style.setProperty('min-height', '40px', 'important');
-                interno.style.setProperty('background-color', '#ffffff', 'important');
-                interno.style.setProperty('box-shadow', 'none', 'important');
-            }
-            return true;
-        }
-        if (!estilizarSelect()) {
-            var tentativas2 = 0;
-            var iv2 = setInterval(function() {
-                tentativas2++;
-                if (estilizarSelect() || tentativas2 > 20) clearInterval(iv2);
-            }, 150);
-        }
-    })();
-    </script>
-    """, height=0)
-
     # Barra de ações da página: busca por texto (filtra os cards abaixo),
     # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
     # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver
@@ -33824,37 +33463,12 @@ html, body { background: transparent; overflow: hidden; }
         except Exception:
             pass
 
-        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.2, 1.5, 1.3, 1.3])
+        _col_busca, _col_lidas, _col_limpar = st.columns([3, 1.3, 1.3])
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
                 key="_busca_notif",
                 placeholder="Buscar por empresa ou tipo de atividade...",
-                label_visibility="collapsed",
-            )
-
-        # Filtro por status — mesma ideia do campo de busca (aplicado em
-        # Python sobre a lista já carregada, dentro de
-        # _renderizar_atividades_ao_vivo, logo abaixo). As opções cobrem os
-        # 4 status salvos no banco (pendente/em_andamento/concluido/erro)
-        # mais "Concluído com erros", que não é um status salvo — é
-        # derivado na hora de renderizar (ver _ATIVIDADE_STATUS_UI) quando
-        # uma atividade concluiu mas parte dela falhou. Por isso o filtro
-        # precisa da mesma lógica de derivação (ver _MAPA_STATUS_FILTRO_NOTIF
-        # mais abaixo), senão "Concluído" e "Concluído com erros" se
-        # confundiriam.
-        with _col_status:
-            st.selectbox(
-                "Filtrar por status",
-                options=[
-                    "Todos os status",
-                    "Pendente",
-                    "Em andamento",
-                    "Concluído",
-                    "Concluído com erros",
-                    "Erro",
-                ],
-                key="_status_notif",
                 label_visibility="collapsed",
             )
 
@@ -34016,39 +33630,14 @@ html, body { background: transparent; overflow: hidden; }
                 return _termo_busca in remover_acentos(_alvo.lower())
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
 
-        # Filtro por status (select da barra de ações, acima). "Concluído
-        # com erros" não é um status salvo no banco — é derivado aqui do
-        # mesmo jeito que o loop dos cards faz mais abaixo (status
-        # "concluido" + detalhes.com_erro), pra não misturar com
-        # "Concluído" de verdade.
-        _MAPA_STATUS_FILTRO_NOTIF = {
-            "Pendente": "pendente",
-            "Em andamento": "em_andamento",
-            "Concluído": "concluido",
-            "Concluído com erros": "concluido_com_erro",
-            "Erro": "erro",
-        }
-        _status_filtro_notif = st.session_state.get("_status_notif") or "Todos os status"
-        _status_alvo_notif = _MAPA_STATUS_FILTRO_NOTIF.get(_status_filtro_notif)
-        if _status_alvo_notif:
-            def _atividade_bate_status(a):
-                _status_a = a.get("status")
-                _com_erro_a = _status_a == "concluido" and bool((a.get("detalhes") or {}).get("com_erro"))
-                if _status_alvo_notif == "concluido_com_erro":
-                    return _com_erro_a
-                if _status_alvo_notif == "concluido":
-                    return _status_a == "concluido" and not _com_erro_a
-                return _status_a == _status_alvo_notif
-            _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
-
         if not _todas_atividades:
             _bell_svg = _svg_icone(
                 "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
                 "#c7cdd6", 32,
             )
             _msg_vazio_notif = (
-                "Nenhuma notificação encontrada pra esse filtro."
-                if (_termo_busca or _status_alvo_notif) else "Nenhuma atividade registrada ainda."
+                "Nenhuma notificação encontrada pra essa busca."
+                if _termo_busca else "Nenhuma atividade registrada ainda."
             )
             st.markdown(_html(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;

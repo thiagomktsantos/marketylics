@@ -25995,7 +25995,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
-.img-block{{height:230px;background:#3a9fd6;}}
+.img-block{{height:230px;background:#0d1117;}}
 .img-block img{{opacity:.85;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}

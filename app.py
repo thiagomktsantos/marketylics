@@ -26079,10 +26079,6 @@ function imgFallback_{uid}(img){{
         <div class="meta-row"><span class="meta-label">Última exibição:</span><span>{ultima_exib}</span></div>
         {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
     </div>
-    <div class="copy-section" style="position:relative">
-        {'<div class="dyn-float">Dinâmico</div>' if is_dyn else ''}
-        <div class="page-header">{page_avatar_html}<div style="flex:1;min-width:0"><div class="page-name">{ad.get("page_name") or nome}</div>{'<div class="page-sponsored">✓ Anunciante verificado</div>' if ad.get("verificado") else ''}</div></div>
-    </div>
     {media_block}
     {(f'''<div class="copy-section">
         {body_display}

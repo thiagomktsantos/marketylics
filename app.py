@@ -3244,6 +3244,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
         _gap_minimo_botoes = None
+        _teve_seta_lateral = False
         # Um botão/pílula de verdade nunca é a PRIMEIRA banda do
         # anúncio — ele sempre vem depois do título e da descrição (ver
         # exemplos "Sobre o isaac" etc., sempre no fim do anúncio). A
@@ -3303,11 +3304,32 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # fechava o par título/descrição em andamento e as linhas cinza
         # de descrição que vinham depois ficavam sem título aberto pra
         # anexar, sendo descartadas.
-        if len(_grupos_botoes) == 2 and (
-            (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
-            or (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
-        ):
-            _grupos_botoes = []
+        if len(_grupos_botoes) == 2:
+            _bloco_ini_estreito = (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
+            _bloco_fim_estreito = (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
+            if _bloco_fim_estreito and not _bloco_ini_estreito:
+                # Estreito só no ÚLTIMO bloco (não no primeiro) = é a
+                # seta/chevron "›" clicável na borda direita de um
+                # sitelink de lista empilhada (ver comentário acima,
+                # print da buyticketbrasil), não o ícone de CTA (que
+                # fica no INÍCIO). Guarda esse sinal: uma linha com
+                # seta lateral é sempre UM sitelink individual da
+                # lista — nunca a linha especial de "termos
+                # relacionados" no fim do anúncio (essa nunca tem seta
+                # por termo, é só texto corrido separado por "·"/"•").
+                # Sem esse sinal, um título com hífen interno bem no
+                # meio de uma lista empilhada (ex.: "BTS World Tour -
+                # Arirang", "Entrar no Show é Garantido") acionava o
+                # "portão de segurança" de termos relacionados só por
+                # já ter `sep_antes`/título fechado antes — condição
+                # que, numa lista empilhada, é verdadeira pra
+                # PRATICAMENTE todo item a partir do segundo, não só
+                # pra linha especial que a lógica original tinha em
+                # mente.
+                _teve_seta_lateral = True
+                _debug_bandas[idx]["seta_lateral"] = True
+            if _bloco_ini_estreito or _bloco_fim_estreito:
+                _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -3396,19 +3418,33 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # de verdade ao recuperar um traço perdido entre palavras
             # (ver `partes.append("-")` acima).
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
-            _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
+            _portao_seguranca_relacionados = (
+                not _teve_seta_lateral
+                and (bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados)
+            )
             _partes_relacionados = None
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
                 if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
             elif re.search(r"\s[\-–—]\s", texto):
-                _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
-                _candidatos_relacionados = [
-                    p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
-                ]
-                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
-                    _partes_relacionados = _candidatos_relacionados
+                # Exige 2+ ocorrências do traço no texto BRUTO (antes de
+                # tirar o traço final) — é essa a checagem extra que o
+                # comentário acima já descrevia como proteção pra título
+                # de verdade com UM hífen só (ex.: "Ingressos Luan
+                # Santana - Compre Ingresso Luan Santana", "BTS World
+                # Tour - Arirang"), mas que nunca tinha sido implementada:
+                # antes, 1 traço já bastava pra virar 2 "candidatos" e
+                # passar no portão. Com 1 traço só, nunca é linha de
+                # termos relacionados — é sempre título/sitelink comum.
+                _n_ocorrencias_traco = len(re.findall(r"\s[\-–—]\s", texto))
+                if _n_ocorrencias_traco >= 2:
+                    _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
+                    _candidatos_relacionados = [
+                        p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
+                    ]
+                    if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
+                        _partes_relacionados = _candidatos_relacionados
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
             # Motivo: às vezes UM separador sobrevive (ex.: um traço

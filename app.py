@@ -2995,12 +2995,43 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     _vaos = [_caixas[i][0] - _caixas[i - 1][1] for i in range(1, len(_caixas))]
     if not _vaos:
         return []
-    _vao_mediano = sorted(_vaos)[len(_vaos) // 2]
-    # Limiar: vão que seja ao menos o dobro do vão mediano da linha E
-    # com uma folga mínima absoluta (evita reagir a ruído de 1-2px
-    # quando a linha inteira já tem espaçamento apertado, onde
-    # "o dobro do mediano" seria um número minúsculo).
-    _limiar = max(_vao_mediano * 2.2, _vao_mediano + 14)
+    # Limiar ADAPTATIVO em vez de fixo: acha o maior SALTO RELATIVO
+    # entre os vãos da própria linha, ordenados — não um número fixo de
+    # pixels. Validado com OCR real (EasyOCR de verdade, não simulado)
+    # num anúncio da BuyTicket Brasil: os vãos da linha vieram
+    # [42, 0, 2, 13, 0, 2] — o separador onde sumiram "1" E "·" juntos
+    # rendeu um vão de 42px, mas o separador onde sumiu só o "·" (sem
+    # nenhum termo curto junto) rendeu só 13px. Um limiar fixo (ex.:
+    # "2x o vão mediano + 14px" ≈ 16px) pega o primeiro (42) mas PERDE
+    # o segundo (13 < 16) — "Copa do Mundo 2026" ficava grudado em "Rio
+    # 2026". Ordenando os vãos ([0,0,2,2,13,42]) e comparando cada par
+    # consecutivo, o maior salto relativo é bem claro entre 2 e 13
+    # (razão ~4.7x) — bem maior que qualquer salto DENTRO do grupo dos
+    # vãos normais (razão ~1-3x entre 0/2/2). Esse salto separa os dois
+    # grupos ("espaço normal entre palavras do mesmo termo" vs "vão
+    # onde tinha separador") sem depender de nenhum número mágico fixo
+    # — se adapta ao tamanho de fonte/espaçamento de cada imagem.
+    _vaos_ordenados = sorted(_vaos)
+    _melhor_idx = None
+    _melhor_razao = 1.0
+    for i in range(len(_vaos_ordenados) - 1):
+        _razao = (_vaos_ordenados[i + 1] + 1) / (_vaos_ordenados[i] + 1)
+        if _razao > _melhor_razao:
+            _melhor_razao = _razao
+            _melhor_idx = i
+    if _melhor_idx is None:
+        return []  # todos os vãos são iguais — nenhum separador escondido
+    _limiar = _vaos_ordenados[_melhor_idx + 1]
+    # Duas salvaguardas contra falso positivo: (1) o salto relativo
+    # precisa ser expressivo (>=2x, não só um pouquinho maior — evita
+    # reagir a ruído de sub-pixel numa linha com espaçamento bem
+    # uniforme); (2) o vão candidato a separador precisa ter uma
+    # largura mínima absoluta (>=8px) — numa linha com fonte pequena/
+    # compacta, mesmo o "maior salto relativo" pode ser só ruído de
+    # 2px pra 4px, que não é largura suficiente pra ter escondido um
+    # separador de verdade.
+    if _melhor_razao < 2.0 or _limiar < 8:
+        return []
     _termos = []
     _termo_atual = [_caixas[0][2]]
     for i in range(1, len(_caixas)):

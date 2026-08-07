@@ -2432,7 +2432,19 @@ def _normalizar_url_exibida(texto: str) -> str:
     # logo depois do TLD vem o artefato de OCR "l" (a barra lida
     # errado), uma barra "/" de verdade, ou o fim da linha; nunca outra
     # letra dando sequência a uma palavra.
-    _match_tld = re.search(r"\.?(com|net|org|io|shop|app)(\.?br)?(?=[l/]|$)", texto, flags=re.IGNORECASE)
+    #
+    # O separador entre TLD e "br" (grupo 2) aceita "." OU "_" — validado
+    # num anúncio real da FanTicket, onde o ponto entre "com" e "br" saiu
+    # do EasyOCR como underscore ("fanticket.com_br" em vez de
+    # "fanticket.com.br"). Sem aceitar "_" aqui, o grupo 2 nunca batia
+    # (exigia "." literal), o que também derrubava o lookahead final
+    # (não tinha "l"/"/" logo depois de "com", só o "_"), e o regex
+    # inteiro falhava — a normalização inteira era pulada e o "_" errado
+    # sobrevivia intacto no meio do domínio. Como o código logo abaixo já
+    # reconstrói o TLD como ".br" fixo sempre que o grupo 2 bate (não usa
+    # o separador original), aceitar "_" aqui não muda nada pro caso
+    # ".com.br" que já funcionava — só resolve o caso novo do "_".
+    _match_tld = re.search(r"\.?(com|net|org|io|shop|app)([._]?br)?(?=[l/]|$)", texto, flags=re.IGNORECASE)
     if _match_tld:
         _antes, _resto = texto[:_match_tld.start()], texto[_match_tld.end():]
         _tld = _match_tld.group(1).lower()
@@ -2463,14 +2475,22 @@ def _normalizar_url_exibida(texto: str) -> str:
     # parte de CAMINHO da URL (depois da primeira "/", já recomposta
     # pelo item 2 acima) — nunca no nome de domínio/marca, que é onde um
     # falso positivo custaria mais caro. Dentro do caminho, exige pelo
-    # menos 3 letras de cada lado do "l" (palavras de breadcrumb tipo
+    # menos 4 letras de cada lado do "l" (palavras de breadcrumb tipo
     # "seguro"/"confiavel" nunca são tão curtas quanto os poucos casos
     # reais de "l" genuína grudada, ex: "al", "el" de 2 letras).
+    #
+    # O piso era 3 letras originalmente, mas isso batia num falso
+    # positivo real: "tomorrowland" (nome do festival, "tomorrow" + "l"
+    # + "and") virava "tomorrow/and", porque "and" tem exatamente 3
+    # letras — o mínimo aceito. Subir o piso pra 4 letras resolve esse
+    # caso sem afetar o único caso de verdade já validado pra essa regra
+    # ("seguro"/"confiavel", 6 e 9 letras — bem acima de 4 dos dois
+    # lados).
     if "/" in texto:
         _pos_barra = texto.index("/")
         _dominio_parte, _caminho_parte = texto[:_pos_barra + 1], texto[_pos_barra + 1:]
         _caminho_parte = re.sub(
-            r"(?<=[a-zà-úãõ]{3})l(?=[a-zà-úãõ]{3})", "/", _caminho_parte, flags=re.IGNORECASE
+            r"(?<=[a-zà-úãõ]{4})l(?=[a-zà-úãõ]{4})", "/", _caminho_parte, flags=re.IGNORECASE
         )
         texto = _dominio_parte + _caminho_parte
     # 4) "_" sobrando colado bem antes do TLD (ex: anúncio real
@@ -2529,6 +2549,111 @@ def _detectar_cor_fundo_pagina(img_bgr):
         return None  # canto não é uniforme — não confia que é só fundo de página
     return cor_bgr  # BGR médio da margem
 
+def _detectar_regiao_foto_embutida(img_bgr):
+    """Detecta um retângulo de FOTO de verdade embutida no meio do
+    anúncio (ex: a foto do show ao lado da descrição no anúncio da
+    FanTicket, onde a descrição de 5 linhas fica ao lado de uma foto de
+    pessoas dançando) — pra poder EXCLUIR esses pixels da detecção de
+    bandas em `_detectar_bandas_texto`.
+
+    Sem isso, os pixels bem coloridos e contínuos da foto nunca dão o
+    respiro de 3px que separa uma linha de texto da outra (a foto ocupa
+    várias linhas de altura sem nenhuma interrupção vertical), então
+    TODAS as linhas de descrição que ficam do lado da foto grudam numa
+    única banda gigante — e a leitura por OCR dessa banda mistura o
+    texto da descrição com a área da foto, saindo embaralhada (ex.:
+    "Faltou ingresso pode te segurança..." em vez da ordem real). A
+    média de cor dessa banda gigante também sai "misto" (nem azul nem
+    cinza uniforme, por causa da variedade de cor da foto), fazendo o
+    resto do pipeline tratar a descrição inteira como se fosse uma
+    fileira de botões — perdendo a descrição por completo.
+
+    Detecta via DIVERSIDADE DE COR: uma foto de verdade tem muito mais
+    tons distintos por área do que qualquer elemento de UI deste tipo
+    de anúncio (fundo quase branco, texto cinza uniforme, título azul
+    uniforme, no máximo um ícone de cor chapada) — mesmo um ícone
+    colorido pequeno (ex: avatar, ícone do WhatsApp, ~40x40px) nunca
+    passa de uma dúzia de tons (borda + preenchimento + antialiasing)
+    numa área tão pequena. Divide a imagem em blocos de 20x20px e marca
+    como "foto" qualquer bloco com mais de 15 tons distintos (RGB
+    arredondado pro múltiplo de 24 mais próximo, pra ignorar ruído de
+    compressão/antialiasing) — depois agrupa blocos "foto" vizinhos
+    (4-conectividade) e devolve o retângulo (y_min, y_max, x_min, x_max)
+    em pixels do maior grupo contíguo, só se ele for grande o bastante
+    (>=80x80px — bem acima do tamanho de qualquer ícone já validado)
+    pra não ser confundido com um ícone colorido pequeno. Devolve None
+    quando não acha nenhum retângulo assim, ou quando ele tomaria conta
+    de mais de 60% da imagem inteira (esse extrator é só pra anúncio de
+    TEXTO com sitelinks — se a imagem inteira for foto, não há banda de
+    texto real pra proteger)."""
+    import numpy as _np_foto
+    altura_total, largura_total = img_bgr.shape[:2]
+    img_rgb = img_bgr[:, :, ::-1]
+    tam_bloco = 20
+    n_blocos_y = altura_total // tam_bloco
+    n_blocos_x = largura_total // tam_bloco
+    if n_blocos_y == 0 or n_blocos_x == 0:
+        return None
+    quantizado = (img_rgb[: n_blocos_y * tam_bloco, : n_blocos_x * tam_bloco] // 24).astype(_np_foto.int32)
+    cod_cor = (quantizado[:, :, 0] * 100 + quantizado[:, :, 1]) * 100 + quantizado[:, :, 2]
+    grade_foto = _np_foto.zeros((n_blocos_y, n_blocos_x), dtype=bool)
+    for by in range(n_blocos_y):
+        for bx in range(n_blocos_x):
+            bloco = cod_cor[by * tam_bloco:(by + 1) * tam_bloco, bx * tam_bloco:(bx + 1) * tam_bloco]
+            if len(_np_foto.unique(bloco)) > 15:
+                grade_foto[by, bx] = True
+    if not grade_foto.any():
+        return None
+    # Agrupa blocos "foto" vizinhos (4-conectividade, flood fill) e
+    # fica só com o maior grupo contíguo — uma foto de verdade forma um
+    # bloco retangular sólido; ruído espalhado (ex: vários ícones
+    # pequenos em pontos diferentes) nunca forma um grupo grande.
+    visitado = _np_foto.zeros_like(grade_foto)
+    melhor_grupo = []
+    for by in range(n_blocos_y):
+        for bx in range(n_blocos_x):
+            if grade_foto[by, bx] and not visitado[by, bx]:
+                pilha = [(by, bx)]
+                visitado[by, bx] = True
+                grupo = []
+                while pilha:
+                    cy, cx = pilha.pop()
+                    grupo.append((cy, cx))
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = cy + dy, cx + dx
+                        if (
+                            0 <= ny < n_blocos_y
+                            and 0 <= nx < n_blocos_x
+                            and grade_foto[ny, nx]
+                            and not visitado[ny, nx]
+                        ):
+                            visitado[ny, nx] = True
+                            pilha.append((ny, nx))
+                if len(grupo) > len(melhor_grupo):
+                    melhor_grupo = grupo
+    if not melhor_grupo:
+        return None
+    ys = [c[0] for c in melhor_grupo]
+    xs = [c[1] for c in melhor_grupo]
+    y_min_bloco, y_max_bloco = min(ys), max(ys)
+    x_min_bloco, x_max_bloco = min(xs), max(xs)
+    largura_px = (x_max_bloco - x_min_bloco + 1) * tam_bloco
+    altura_px = (y_max_bloco - y_min_bloco + 1) * tam_bloco
+    if largura_px < 80 or altura_px < 80:
+        return None  # pequeno demais pra ser foto — provável ícone colorido
+    if (largura_px * altura_px) > 0.6 * altura_total * largura_total:
+        return None  # imagem inteira é praticamente só foto — nada a proteger
+    y0 = y_min_bloco * tam_bloco
+    y1 = min((y_max_bloco + 1) * tam_bloco, altura_total)
+    x0 = x_min_bloco * tam_bloco
+    x1 = min((x_max_bloco + 1) * tam_bloco, largura_total)
+    print(
+        f"[OCR-DEBUG] _detectar_regiao_foto_embutida achou retângulo "
+        f"y=({y0},{y1}) x=({x0},{x1})",
+        flush=True,
+    )
+    return (y0, y1, x0, x1)
+
 def _detectar_bandas_texto(img_bgr):
     """Varre a imagem linha a linha (sem OCR) e agrupa em 'bandas'
     horizontais de texto, cada uma classificada pela cor média dos
@@ -2558,6 +2683,17 @@ def _detectar_bandas_texto(img_bgr):
             axis=2,
         )
         nao_branco = nao_branco & ~_prox_fundo_pagina
+
+    # Exclui uma FOTO de verdade embutida no meio do anúncio (ver
+    # docstring de `_detectar_regiao_foto_embutida`) — sem isso, os
+    # pixels contínuos e coloridos da foto nunca dão o respiro que
+    # separa uma linha de descrição da outra quando a foto fica do lado
+    # do texto (ex: anúncio da FanTicket), e todas as linhas grudam
+    # numa banda só, gigante e mal classificada.
+    _regiao_foto = _detectar_regiao_foto_embutida(img_bgr)
+    if _regiao_foto is not None:
+        _yf0, _yf1, _xf0, _xf1 = _regiao_foto
+        nao_branco[_yf0:_yf1, _xf0:_xf1] = False
 
     # Máscara separada, usada tanto pra decidir ONDE quebrar uma banda
     # quanto pra CLASSIFICAR a cor dela: ignora a faixa da esquerda

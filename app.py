@@ -26375,9 +26375,9 @@ body{{padding-bottom:4px;min-height:0;}}
 .copy-body{{font-size:13px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-title{{font-size:13px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:11px;color:#65676b;margin-top:2px;}}
-.no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
-.media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;}}
+.media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
 .img-block{{height:230px;background:#f0f2f5;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}

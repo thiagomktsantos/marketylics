@@ -2523,7 +2523,37 @@ def _detectar_bandas_texto(img_bgr):
     # como "azul" (virava título por engano) em vez de "cinza".
     _linhas_com_conteudo = _np_bandas.where(nao_branco.any(axis=1))[0]
     _y_primeiro_conteudo = int(_linhas_com_conteudo.min()) if len(_linhas_com_conteudo) else 0
-    _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
+    # NOVO: em vez de um teto FIXO de 160px pra janela do favicon, detecta
+    # o fim REAL do cabeçalho (ícone + nome da página + domínio). O valor
+    # fixo já causou a palavra "Brasil" sumir uma vez (ver comentário
+    # acima) e o mesmo bug se repetiu com "Styles": em layouts mais
+    # compactos (fonte menor, cabeçalho mais baixo), 160px alcança a 2ª
+    # linha do título — e se essa linha for uma palavra curta sozinha
+    # rente à esquerda, ela cai inteira dentro da faixa ignorada
+    # (y<160 E x<x_ignorar_quebra) e desaparece da extração: n_quebra=0
+    # nas linhas dela, nunca entra em `linhas`, nunca vira banda, nunca
+    # é mandada pro OCR.
+    # Em vez de adivinhar uma altura fixa, acha o primeiro VÃO vertical
+    # grande (>=20px) depois do início do conteúdo, usando a largura
+    # CHEIA da imagem (sem a exclusão do favicon, que ainda não existe
+    # nesse ponto do código). Esse vão marca a transição
+    # cabeçalho -> resto do anúncio: vãos DENTRO do cabeçalho (nome da
+    # página -> domínio) ou dentro de texto quebrado em várias linhas
+    # (título/descrição) ficam tipicamente entre 8-18px nos anúncios reais
+    # testados; o vão cabeçalho -> título passa de 30px. Mantém 160px só
+    # como teto de segurança pro caso de a detecção não achar vão nenhum
+    # (imagem sem título/descrição, ou layout atípico).
+    _LIMIAR_VAO_SECAO = 20
+    _y_fim_cabecalho = None
+    _linhas_ordenadas = sorted(int(y) for y in _linhas_com_conteudo)
+    for _i in range(1, len(_linhas_ordenadas)):
+        if _linhas_ordenadas[_i] - _linhas_ordenadas[_i - 1] >= _LIMIAR_VAO_SECAO:
+            _y_fim_cabecalho = _linhas_ordenadas[_i - 1]
+            break
+    if _y_fim_cabecalho is not None:
+        _y_limite_favicon = min(_y_fim_cabecalho + 6, _y_primeiro_conteudo + 160, altura_total)
+    else:
+        _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
     _x_ignorar_quebra = min(int(_largura * 0.13), 110)
     nao_branco_quebra = nao_branco.copy()
     nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False

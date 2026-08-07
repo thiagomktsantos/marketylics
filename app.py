@@ -3274,7 +3274,28 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # vão de verdade ENTRE dois botões distintos consegue
             # ultrapassá-lo.
             _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
-        _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
+        if _titulo_ja_reconhecido:
+            _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
+        else:
+            # A primeira banda azul do anúncio é SEMPRE o título — uma
+            # fileira de botões/pílulas de verdade nunca aparece ANTES
+            # dele (ver comentário acima, sobre `_gap_minimo_botoes`).
+            # Sem pular a divisão em colunas aqui, o respiro natural
+            # entre palavras do próprio título (ou um "-" cercado de
+            # espaço, comum em headlines do Google Ads) passava do gap
+            # padrão (0.9x a altura da banda) e a banda inteira virava
+            # "fileira de botões" por engano — bug real observado com
+            # o título "Ingressos NFL Rio Game - Compre Ingresso NFL
+            # Rio Game", que saía como 5 blocos ilegíveis ("| | | |")
+            # em vez de texto corrido. Isso não só perdia o título:
+            # como o título nunca ficava aberto, as linhas cinza de
+            # descrição logo depois ficavam sem onde encaixar (iam pro
+            # "descartada"), E a fileira de botões DE VERDADE mais
+            # abaixo também saía errada — sem `_titulo_ja_reconhecido`
+            # nunca virando True, ela nunca chegava a usar o gap
+            # calibrado pra pílula com borda (branch acima) e acabava
+            # lida como um texto corrido só, grudando os botões.
+            _grupos_botoes = []
         # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
         # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
         # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como

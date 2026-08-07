@@ -2629,6 +2629,62 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
             dentro_de_bloco = False
     return blocos == 1
 
+def _recuperar_palavra_curta_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
+    """Tenta recuperar uma palavra CURTA (conectivo de 1-3 letras, ex.:
+    "é", "e", "a", "o", "de", "do", "da", "em") que sumiu por completo
+    no vão entre duas palavras já reconhecidas em `_ocr_banda` — caso
+    real: "Entrar no Show é Garantido" perdia o "é" inteiro (não virava
+    letra errada, sumia mesmo), porque o CRAFT (detector de texto do
+    EasyOCR) não abre caixa de detecção pra uma letra isolada, minúscula
+    e com acento, cercada de bastante espaço em branco dos dois lados —
+    ao contrário do hífen (ver `_detectar_hifen_no_intervalo`), aqui não
+    dá pra confirmar por um padrão fixo de pixel, porque cada conectivo
+    tem uma forma diferente.
+
+    Sem recuperar essa palavra, dois problemas em cascata: (1) o texto
+    reconstruído já sai gramaticalmente errado ("Show Garantido" em vez
+    de "Show é Garantido"); e (2) o vão que sobra exatamente no lugar
+    dela — só o espaço que ela ocupava, sem letra nenhuma dentro — fica
+    largo o bastante pra parecer um respiro entre 2 termos separados, e
+    a lógica de "termos relacionados" (`_dividir_termos_relacionados_por_gap`)
+    quebra o título ao meio por engano.
+
+    Roda uma segunda passada de OCR recortada BEM apertada só nesse
+    vão (+ margem pequena), com limiares bem mais permissivos que o
+    padrão — como o recorte é estreito (não é a banda inteira), o risco
+    de ruído externo entrar é baixo. Só aceita o resultado se: (a) o
+    vão já tinha ALGUM pixel não-branco antes de tentar (senão é só o
+    espaço normal entre palavras, nada foi perdido); e (b) o texto
+    achado sai CURTO (até 3 caracteres) — um resultado mais longo que
+    isso seria sinal de um erro de segmentação bem maior, não desse bug
+    específico, e é mais seguro descartar do que arriscar inventar
+    texto."""
+    if x_dir - x_esq < 3:
+        return ""
+    import numpy as _np_gap
+    recorte_vao = recorte_bgr[:, x_esq:x_dir]
+    if recorte_vao.size == 0 or not _np_gap.any(recorte_vao < 200, axis=2).any():
+        return ""  # vão realmente vazio — só o espaço normal entre palavras
+    margem = 6
+    x0 = max(0, x_esq - margem)
+    x1 = min(recorte_bgr.shape[1], x_dir + margem)
+    sub = recorte_bgr[:, x0:x1]
+    try:
+        resultado = reader.readtext(
+            sub, detail=1, width_ths=0.15, height_ths=0.5,
+            text_threshold=0.3, low_text=0.25, link_threshold=0.3,
+        )
+    except Exception:
+        return ""
+    textos = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
+    if not textos:
+        return ""
+    palavra = max(textos, key=len)
+    if len(palavra) > 3:
+        return ""  # resultado longo demais pra ser só o conectivo perdido
+    return palavra
+
+
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
 # sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
@@ -2853,6 +2909,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         x_esq_atual = int(min(p[0] for p in _bbox_atual))
         if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
             partes.append("-")
+        else:
+            # Não era hífen — checa se sobrou algum pixel no vão que
+            # possa ser um conectivo curto (ex.: "é") que o CRAFT
+            # descartou por inteiro (ver `_recuperar_palavra_curta_no_intervalo`).
+            _palavra_curta = _recuperar_palavra_curta_no_intervalo(
+                reader, recorte, x_dir_prev, x_esq_atual
+            )
+            if _palavra_curta:
+                partes.append(_palavra_curta)
         partes.append(palavras[i][1])
     # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
     # título pra outra banda) nunca era checado: o laço acima só olha o

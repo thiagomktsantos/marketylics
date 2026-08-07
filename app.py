@@ -3369,13 +3369,27 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # cair no reconhecimento de CTA por `_REGEX_CTA_TITULO_CONHECIDO`
         # (ver mais abaixo). Uma fileira de botões DE VERDADE (ex: "Sobre
         # o isaac" / "Entre Em Contato" / "Saiba mais") sempre tem cada
-        # bloco com largura de texto normal — nunca um primeiro bloco tão
-        # estreito quanto um ícone sozinho. Por isso: só descarta a divisão
-        # quando são exatamente 2 blocos E o primeiro é estreito o
-        # suficiente pra ser só o ícone — nesses casos, trata a banda
-        # inteira como um texto único (ícone some do OCR, sobra só o
+        # bloco com largura de texto normal — nunca um bloco tão estreito
+        # quanto um ícone sozinho. Por isso: só descarta a divisão quando
+        # são exatamente 2 blocos E um dos dois (primeiro OU último) é
+        # estreito o suficiente pra ser só o ícone — nesses casos, trata a
+        # banda inteira como um texto único (ícone some do OCR, sobra só o
         # texto), deixando o resto do laço decidir se é CTA ou sitelink.
-        if len(_grupos_botoes) == 2 and (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55:
+        #
+        # Mesmo raciocínio vale espelhado pro lado direito: o título de
+        # um sitelink de UMA linha só (ex: "Quer Vender Seu Ingresso?")
+        # vem seguido da seta/chevron "›" clicável lá na borda direita da
+        # faixa (ver print da buyticketbrasil) — o vão até essa seta é
+        # bem maior que o gap_minimo, e o bloco da seta sozinha é tão
+        # estreito quanto o ícone do CTA. Sem checar o ÚLTIMO bloco
+        # também, esse título virava "fileira de botões (2 bloco(s))":
+        # fechava o par título/descrição em andamento e as linhas cinza
+        # de descrição que vinham depois ficavam sem título aberto pra
+        # anexar, sendo descartadas.
+        if len(_grupos_botoes) == 2 and (
+            (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
+            or (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
+        ):
             _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o

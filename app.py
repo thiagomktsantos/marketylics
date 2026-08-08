@@ -2601,7 +2601,21 @@ def _detectar_bandas_texto(img_bgr):
             classe = "cinza"
         else:
             classe = "misto"
-        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe})
+        # Mesma janela [0, _y_limite_favicon) x [0, _x_ignorar_quebra)
+        # usada acima só pra decidir onde quebrar/qual cor — aqui
+        # devolve o limite X pra quem for rodar OCR de verdade nessa
+        # banda também PULAR o favicon/avatar, não só pra classificar.
+        # Sem isso, `_ocr_banda` lia a banda inteira (largura cheia,
+        # avatar incluso), e o EasyOCR às vezes lê o círculo colorido
+        # do avatar como se fosse um caractere de verdade — validado
+        # num anúncio real da BuyTicket Brasil: o avatar redondo virou
+        # um "i" solto grudado na frente do nome da página ("i
+        # BuyTicket Brasil" em vez de só "BuyTicket Brasil"). Só marca
+        # a banda quando ela está DENTRO da janela do favicon (perto do
+        # topo) — bandas mais abaixo (título, descrição) não têm avatar
+        # do lado, então não perdem nada da largura.
+        x_min_favicon = _x_ignorar_quebra if y_min < _y_limite_favicon else 0
+        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe, "x_min_favicon": x_min_favicon})
     return bandas
 
 def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
@@ -3181,10 +3195,16 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
     # `_montar_html_preview_ocr_estruturado`), sem depender de puxar log
     # nenhum pra investigar por que um título saiu partido/duplicado.
     _debug_bandas = [
-        {"idx": i, "y_min": b["y_min"], "y_max": b["y_max"], "classe": b["classe"], "sep_antes": b.get("sep_antes")}
+        {
+            "idx": i, "y_min": b["y_min"], "y_max": b["y_max"], "classe": b["classe"],
+            "sep_antes": b.get("sep_antes"), "x_min_favicon": b.get("x_min_favicon") or 0,
+        }
         for i, b in enumerate(bandas_texto)
     ]
-    primeiro_texto = _ocr_banda(reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"])
+    primeiro_texto = _ocr_banda(
+        reader, img_bgr, bandas_texto[0]["y_min"], bandas_texto[0]["y_max"],
+        x_min=(bandas_texto[0].get("x_min_favicon") or None),
+    )
     _primeiro_texto_strip = primeiro_texto.strip()
     _eh_patrocinado = bool(_REGEX_PATROCINADO.match(_primeiro_texto_strip))
     # Se não bateu o match EXATO, checa se "Patrocinado"/"Sponsored"
@@ -3256,7 +3276,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         if idx == 0 and _texto_apos_patrocinado is not None:
             _txt_dominio = _texto_apos_patrocinado
         else:
-            _txt_dominio = _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip()
+            _txt_dominio = _ocr_banda(
+                reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"],
+                x_min=(bandas_texto[idx].get("x_min_favicon") or None),
+            ).strip()
         # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA
         # caixa de detecção (comentário logo abaixo), o EasyOCR
         # costuma ler esse traço vertical isolado como a letra "l" —

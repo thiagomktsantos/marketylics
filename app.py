@@ -2367,6 +2367,7 @@ def _detectar_regiao_foto_embutida(img_bgr):
     de mais de 60% da imagem inteira (esse extrator é só pra anúncio de
     TEXTO com sitelinks — se a imagem inteira for foto, não há banda de
     texto real pra proteger)."""
+    import cv2 as _cv2_foto
     import numpy as _np_foto
     altura_total, largura_total = img_bgr.shape[:2]
     img_rgb = img_bgr[:, :, ::-1]
@@ -2375,13 +2376,49 @@ def _detectar_regiao_foto_embutida(img_bgr):
     n_blocos_x = largura_total // tam_bloco
     if n_blocos_y == 0 or n_blocos_x == 0:
         return None
-    quantizado = (img_rgb[: n_blocos_y * tam_bloco, : n_blocos_x * tam_bloco] // 24).astype(_np_foto.int32)
-    cod_cor = (quantizado[:, :, 0] * 100 + quantizado[:, :, 1]) * 100 + quantizado[:, :, 2]
+    # ANTES: contava tons RGB distintos (quantizados) por bloco, sem
+    # olhar se esses tons eram cores DE VERDADE diferentes ou só o
+    # degradê de anti-aliasing entre uma cor sólida e o fundo branco.
+    # Um título grande/em negrito (ex: headline azul de anúncio) tem
+    # muito mais pixels de borda por bloco 20x20 do que um ícone
+    # pequeno (~40x40px inteiro) — e cada pixel de borda é uma mistura
+    # ligeiramente diferente de "azul + branco" conforme a opacidade da
+    # fonte ali, cada uma quantizando pra um tom RGB distinto. Isso
+    # sozinho já passava fácil dos 15 tons, sem NENHUMA foto de
+    # verdade — bug real: o retângulo do título "Ingressos Ed Sheeran
+    # - Ed Sheeran / Aqui" (fonte grande e em negrito) foi detectado
+    # como foto e apagado por inteiro antes da detecção de bandas.
+    #
+    # A distinção real entre "foto" e "texto grande com anti-aliasing"
+    # não está na quantidade de tons RGB, e sim na diversidade de
+    # MATIZ (hue): o degradê azul→branco de uma letra é uma única
+    # matiz (o azul da fonte) variando só em saturação/luminosidade
+    # (branco = saturação baixa) — nunca "vira" outra cor. Uma foto de
+    # verdade tem pixels de matizes genuinamente diferentes (tons de
+    # pele, céu, roupa etc.) numa mesma área. Por isso: ignora pixels
+    # de saturação baixa (< 40 de 255 — é aí que mora o anti-aliasing
+    # contra o fundo branco/cinza, sem informação de matiz confiável) e
+    # conta blocos como "foto" pela diversidade de matiz DENTRE os
+    # pixels saturados que sobraram, não pelos tons RGB brutos.
+    img_hsv = _cv2_foto.cvtColor(img_bgr, _cv2_foto.COLOR_BGR2HSV)
+    matiz = img_hsv[:, :, 0].astype(_np_foto.int32)  # 0-179 no OpenCV
+    saturacao = img_hsv[:, :, 1]
+    matiz_quantizada = matiz // 8  # ~23 faixas de matiz
     grade_foto = _np_foto.zeros((n_blocos_y, n_blocos_x), dtype=bool)
     for by in range(n_blocos_y):
         for bx in range(n_blocos_x):
-            bloco = cod_cor[by * tam_bloco:(by + 1) * tam_bloco, bx * tam_bloco:(bx + 1) * tam_bloco]
-            if len(_np_foto.unique(bloco)) > 15:
+            y0, y1 = by * tam_bloco, (by + 1) * tam_bloco
+            x0, x1 = bx * tam_bloco, (bx + 1) * tam_bloco
+            sat_bloco = saturacao[y0:y1, x0:x1]
+            mask_saturado = sat_bloco >= 40
+            # Exige também uma quantidade mínima de pixels saturados —
+            # um bloco quase todo branco, com só uma pontinha de cor
+            # (ex: um cantinho de ícone), não deve contar como "área
+            # colorida" só porque essa pontinha tem uma matiz.
+            if int(mask_saturado.sum()) < 30:
+                continue
+            matizes_bloco = matiz_quantizada[y0:y1, x0:x1][mask_saturado]
+            if len(_np_foto.unique(matizes_bloco)) > 5:
                 grade_foto[by, bx] = True
     if not grade_foto.any():
         return None

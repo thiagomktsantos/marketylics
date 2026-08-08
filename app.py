@@ -2666,6 +2666,98 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
             dentro_de_bloco = False
     return blocos == 1
 
+def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
+    """Verifica, pelos PIXELS (não pelo OCR), se existe alguma marca de
+    tinta relevante — não necessariamente um hífen — no intervalo
+    horizontal [x_esq, x_dir) do `recorte_bgr`. Complementa
+    `_detectar_hifen_no_intervalo`: aquela função só reconhece um
+    hífen (traço fino e centralizado); esta aqui pega qualquer OUTRA
+    coisa que sobrar no vão — o caso real que motivou isso foi uma
+    palavra de UMA letra acentuada sozinha entre duas outras palavras
+    (ex: o "é" de "Entrar no Show é Garantido", um sitelink real da
+    BuyTicket Brasil), que o CRAFT do EasyOCR descarta como caixa de
+    detecção própria por ser pequena/fina demais (mesma causa-raiz do
+    hífen perdido), mas cujo "buraco" no meio do texto não tem o
+    perfil fino-e-centralizado de um hífen — tem a altura e a posição
+    vertical (subindo até a faixa do acento) de uma letra de verdade.
+    Quando dá positivo aqui, `_ocr_banda` faz uma segunda passada de
+    OCR SÓ nesse recorte, bem mais sensível (ver
+    `_recuperar_texto_no_intervalo`), pra tentar recuperar o texto
+    perdido — em vez de inserir um "-" (que só faz sentido pro caso
+    hífen)."""
+    if x_dir - x_esq < 2:
+        return False
+    import numpy as _np_glifo
+    recorte = recorte_bgr[:, x_esq:x_dir]
+    if recorte.size == 0:
+        return False
+    nao_branco = _np_glifo.any(recorte < 235, axis=2)
+    altura = nao_branco.shape[0]
+    if altura < 4:
+        return False
+    linhas_com_pixel = _np_glifo.where(nao_branco.any(axis=1))[0]
+    if len(linhas_com_pixel) == 0:
+        return False
+    y_topo, y_base = int(linhas_com_pixel.min()), int(linhas_com_pixel.max())
+    espessura = y_base - y_topo + 1
+    colunas_com_pixel = nao_branco[y_topo:y_base + 1].any(axis=0)
+    largura_pixels = int(colunas_com_pixel.sum())
+    if largura_pixels < 2:
+        return False  # 1 pixel solto — ruído, não uma letra
+    # Qualquer coisa que JÁ bata no perfil de hífen (fino e centralizado
+    # na vertical) é tratada por `_detectar_hifen_no_intervalo` — não
+    # duplica aqui, pra não inserir "-" E tentar reler a mesma marca
+    # como palavra ao mesmo tempo. Só sobra o que essa função rejeita:
+    # traços mais altos que um hífen (corpo de letra) OU fora do centro
+    # vertical (ex: só o acento, sem o corpo — ainda assim vale tentar
+    # reler, porque o restante da letra pode estar abaixo do limiar de
+    # branco por antialiasing, comum em texto azul/clicável fino).
+    centro_relativo = (y_topo + y_base) / 2 / altura
+    eh_perfil_hifen = (
+        espessura <= max(3, int(altura * 0.35)) and 0.3 < centro_relativo < 0.7
+    )
+    return not eh_perfil_hifen
+
+def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
+    """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
+    vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
+    (pelos pixels) que sobrou alguma marca — usada só quando essa marca
+    NÃO tem perfil de hífen. Recorta com uma margem generosa (a
+    palavra perdida pode ser mais larga que o vão medido entre as
+    caixas vizinhas, já que o CRAFT costuma cortar rente às bordas das
+    palavras que ele DETECTA) e roda o EasyOCR com limiares bem
+    permissivos — os mesmos já usados no fallback de "banda muda" mais
+    acima em `_ocr_banda` — pra maximizar a chance de ler algo tão
+    pequeno quanto uma letra acentuada isolada (ex: "é").
+
+    Só aceita o resultado se vier CURTO (até 3 caracteres): o objetivo
+    aqui é recuperar uma palavra de uma letra só (com ou sem acento),
+    não arriscar duplicar/corromper texto de uma palavra vizinha que a
+    margem generosa possa ter incluído por engano — se vier mais longo
+    que isso, é mais seguro devolver vazio e deixar o texto original
+    (só com o espaço) do que arriscar lixo."""
+    if x_dir - x_esq < 2:
+        return ""
+    margem = 10
+    largura_total = recorte_bgr.shape[1]
+    x0 = max(0, x_esq - margem)
+    x1 = min(largura_total, x_dir + margem)
+    recorte = recorte_bgr[:, x0:x1]
+    if recorte.size == 0:
+        return ""
+    resultado = reader.readtext(
+        recorte, detail=1, width_ths=0.15, height_ths=0.5,
+        text_threshold=0.3, low_text=0.2, link_threshold=0.2,
+    )
+    if not resultado:
+        return ""
+    resultado.sort(key=lambda item: item[0][0][0])
+    textos = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
+    if not textos:
+        return ""
+    texto = textos[0] if len(textos) == 1 else "".join(textos)
+    return texto if len(texto) <= 3 else ""
+
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
 # sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
@@ -2882,6 +2974,10 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
     if _detectar_hifen_no_intervalo(recorte, 0, _x_esq_primeira):
         partes.append("-")
+    elif _detectar_glifo_curto_no_intervalo(recorte, 0, _x_esq_primeira):
+        _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, 0, _x_esq_primeira)
+        if _txt_recuperado:
+            partes.append(_txt_recuperado)
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         _bbox_prev = palavras[i - 1][0]
@@ -2890,6 +2986,17 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         x_esq_atual = int(min(p[0] for p in _bbox_atual))
         if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
             partes.append("-")
+        else:
+            # Vão entre duas palavras já reconhecidas NESTA banda que
+            # não tem perfil de hífen — pode ser uma palavra curta
+            # (tipicamente de 1 letra acentuada, ex: "é") que o CRAFT
+            # descartou como caixa própria. Tenta recuperar só pelos
+            # pixels + uma releitura sensível; se não conseguir nada
+            # curto e confiável, segue como estava (só o espaço).
+            if _detectar_glifo_curto_no_intervalo(recorte, x_dir_prev, x_esq_atual):
+                _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, x_dir_prev, x_esq_atual)
+                if _txt_recuperado:
+                    partes.append(_txt_recuperado)
         partes.append(palavras[i][1])
     # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
     # título pra outra banda) nunca era checado: o laço acima só olha o
@@ -2905,6 +3012,10 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _x_borda_direita = recorte.shape[1]
     if _detectar_hifen_no_intervalo(recorte, _x_dir_ultima, _x_borda_direita):
         partes.append("-")
+    elif _detectar_glifo_curto_no_intervalo(recorte, _x_dir_ultima, _x_borda_direita):
+        _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, _x_dir_ultima, _x_borda_direita)
+        if _txt_recuperado:
+            partes.append(_txt_recuperado)
     return " ".join(partes)
 
 def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int) -> list:

@@ -3719,8 +3719,39 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 _cta_aberto = True
                 _debug_bandas[idx]["decisao"] = "cinza → CTA (bateu regex de CTA conhecido)"
             elif par_atual is not None:
-                par_atual[1].append(texto)
-                _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
+                _titulo_ou_desc_ja_existe = bool(par_atual[1]) or bool(pares)
+                if banda.get("sep_antes") and _titulo_ou_desc_ja_existe:
+                    # Sitelink em TEXTO PRETO (mesma classe de cor
+                    # "cinza" da descrição, não azul) — layout real
+                    # observado num anúncio da BuyTicket Brasil: os 4
+                    # sitelinks ("Compre Ingressos Harry Styles",
+                    # "Harry Styles Together", "BTS World Tour -
+                    # Arirang", "Rock In Rio 2026") vinham em preto,
+                    # cada um com sua própria linha divisória antes
+                    # (o mesmo sinal `sep_antes` que já usamos pra
+                    # separar sitelinks AZUIS uns dos outros). Sem
+                    # esta checagem, cada um virava só mais uma frase
+                    # colada na descrição do título principal — os 4
+                    # sitelinks reais sumiam dentro de um parágrafo só
+                    # ("...De Fã Para Fã. Compre Ingressos Harry Styles
+                    # Together BTS World Tour - Arirang Rock In Rio
+                    # 2026"), em vez de aparecerem como 4 itens de
+                    # lista separados.
+                    #
+                    # Só entra aqui quando JÁ existe descrição (ou
+                    # sitelink) anterior fechando o título principal —
+                    # mesma proteção estrutural usada nos outros casos
+                    # de falso positivo por `sep_antes` acima: a
+                    # PRIMEIRA linha cinza logo depois do título nunca
+                    # é sitelink (é sempre o início da descrição de
+                    # verdade), mesmo que ela venha, por algum erro
+                    # raro de detecção de cor, com `sep_antes` ligado.
+                    pares.append(par_atual)
+                    par_atual = [texto, []]
+                    _debug_bandas[idx]["decisao"] = "cinza → NOVO sitelink em texto preto (por causa de separador antes)"
+                else:
+                    par_atual[1].append(texto)
+                    _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
             else:
                 _debug_bandas[idx]["decisao"] = "cinza → descartada (sem título/sitelink aberto nem CTA)"
             # texto cinza sem nenhum título azul aberto antes nem CTA

@@ -3311,7 +3311,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
             # vão de verdade ENTRE dois botões distintos consegue
             # ultrapassá-lo.
             _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
-        if _titulo_ja_reconhecido:
+        # Mesmo já com o título reconhecido, uma banda azul que é só a
+        # QUEBRA DE LINHA do título/sitelink em andamento (par_atual
+        # aberto, ainda sem nenhuma descrição, e sem separador antes
+        # dela — o MESMO critério usado mais abaixo pra juntar essa
+        # continuação em vez de abrir um sitelink novo) nunca pode ser
+        # uma fileira de botões de verdade: um botão sempre vem DEPOIS
+        # que o título E a descrição já fecharam (ver comentário acima
+        # sobre a primeira banda), nunca colado na 2ª linha do próprio
+        # título. Bug real: o título "Compre Ingresso Harry Styles - A
+        # sua" / "Chance de Ver o Harry" (2 linhas, fonte grande) tinha
+        # a 2ª linha partida em blocos ilegíveis ("7 n | | | | |") e
+        # classificada como fileira de botões — a proteção da PRIMEIRA
+        # banda (ver bloco `else` abaixo) não cobria esse caso porque
+        # `_titulo_ja_reconhecido` já estava True (a 1ª linha já tinha
+        # sido aceita como título).
+        _continuacao_titulo_aberto = (
+            par_atual is not None and not par_atual[1] and not banda.get("sep_antes")
+        )
+        if _titulo_ja_reconhecido and not _continuacao_titulo_aberto:
             _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         else:
             # A primeira banda azul do anúncio é SEMPRE o título — uma

@@ -2756,6 +2756,21 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     if not textos:
         return ""
     texto = textos[0] if len(textos) == 1 else "".join(textos)
+    # A margem generosa (pra não cortar a letra perdida rente à borda)
+    # também costuma capturar um pedacinho da MARGEM de uma letra
+    # vizinha real (ex: a "haste" do "w" de "Show" ou do "G" de
+    # "Garantido" logo ao lado) — o EasyOCR às vezes lê esse pedacinho
+    # como uma aspa/apóstrofo solto colado no resultado (validado num
+    # anúncio real: o "é" de "Entrar no Show é Garantido" voltou como
+    # "'é", com uma aspa fantasma na frente). Remove pontuação solta
+    # (aspas, apóstrofos, vírgulas etc.) só das BORDAS do texto
+    # recuperado — nunca do meio, pra não mexer num acento de verdade
+    # que faça parte da própria letra (ex: nunca remove o "´" de "é",
+    # que já vem embutido no caractere unicode, não como um símbolo à
+    # parte).
+    texto = texto.strip("'\"`´,.;:!?()[]{}").strip()
+    if not texto:
+        return ""
     return texto if len(texto) <= 3 else ""
 
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
@@ -3594,7 +3609,28 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 _candidatos_relacionados = [
                     p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
                 ]
-                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
+                # Exige 3+ candidatos aqui (não 2): validado com um anúncio
+                # real da BuyTicket Brasil que "sep_antes" NÃO é exclusivo
+                # da linha de termos relacionados — TODO sitelink empilhado
+                # tem uma linha divisória antes dele nesse layout (cada
+                # item da lista vem separado por um "hr"), então o portão
+                # de segurança sozinho não distingue "linha de termos
+                # relacionados" de "sitelink normal que só por acaso tem UM
+                # traço no meio do próprio nome". Dois sitelinks reais
+                # quebraram por causa disso: "BTS World Tour - Arirang"
+                # (nome do evento, com o traço fazendo parte do título) e,
+                # via fallback por vão logo abaixo, "Entrar no Show é
+                # Garantido" — os dois viraram 2 sitelinks fantasmas em vez
+                # de 1 verdadeiro. A proteção por "posição estrutural"
+                # citada nos comentários acima (banda 0 = sempre título)
+                # não cobre sitelinks fora da banda 0, que é exatamente
+                # onde esses dois casos reais aconteceram. Como o exemplo
+                # de termos relacionados de verdade do Google sempre tem
+                # pelo menos 3 termos (2 separadores, ex.: "Fórmula 1 ·
+                # Rock In Rio 2026 · Copa do Mundo 2026"), subir o piso de
+                # 2 pra 3 elimina os dois falsos positivos reais acima sem
+                # perder a capacidade de reconhecer a linha de verdade.
+                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
                     _partes_relacionados = _candidatos_relacionados
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
@@ -3617,7 +3653,20 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(
                     reader, img_bgr, banda["y_min"], banda["y_max"]
                 )
-                if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
+                # Mesmo piso de 3 candidatos e pelo mesmo motivo do ramo
+                # do traço logo acima: esse fallback só olha a POSIÇÃO dos
+                # vãos entre palavras, sem entender de separador nenhum —
+                # basta UM gap um pouco maior que o normal (ex.: o vão
+                # deixado por uma palavra curta acentuada recuperada por
+                # `_recuperar_texto_no_intervalo`, ou simplesmente
+                # espaçamento irregular do próprio anúncio) pra ele achar
+                # "2 termos" onde só existe 1 sitelink de verdade — foi
+                # exatamente assim que "Entrar no Show é Garantido" virou
+                # 2 sitelinks fantasmas num anúncio real. Com 2 candidatos
+                # só, a informação é ambígua demais pra confiar; 3+ ainda
+                # é um sinal forte o bastante (nenhum sitelink normal tem
+                # 2 vãos anormalmente largos ao mesmo tempo).
+                if len(_candidatos_gap) >= 3 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]["decisao"] = (

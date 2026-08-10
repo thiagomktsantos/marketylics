@@ -2212,7 +2212,15 @@ def _normalizar_url_exibida(texto: str) -> str:
     # caracteres colados) em vez de só ".". Continua opcional (mínimo
     # zero) pra não quebrar o caso "Wwwisaac_.com.br/" acima, que não
     # tem nenhuma pontuação entre o "www" e o domínio.
-    texto = re.sub(r"^((?:https?://)?)[nNwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
+    #
+    # O conjunto de caracteres também aceita "V"/"v": validado em outro
+    # anúncio real da BuyTicket Brasil, onde o cabeçalho de URL saiu do
+    # EasyOCR como "VWW. buyticketbrasil coml" — o traço diagonal do "V"
+    # é visualmente parecido com o primeiro "w" de "www" (mesma família
+    # de confusão de caractere já coberta pelo "N", só que numa letra
+    # diferente). Sem o "V" aqui, esse prefixo nunca virava "www." e o
+    # domínio final ficava com um "VWW." literal na frente.
+    texto = re.sub(r"^((?:https?://)?)[nNvVwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
     # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
     # removendo o "l" colado (item 2) SE ele existir, mas sem assumir
     # que ele sempre existe: quando o EasyOCR acerta a barra de verdade
@@ -3371,7 +3379,20 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # (que junta "WWW"+domínio em "www." e recompõe "coml" em
         # ".com/") fazem o resto — sem precisar duplicar essa lógica
         # aqui.
-        _parece_dominio_ou_url = bool(re.search(r"\bwww\b|\.\s?[a-zA-Z]{2,4}\b", _txt_dominio, re.IGNORECASE))
+        # Também reconhece o prefixo "www" com erro de OCR de caractere
+        # (ex: "VWW.", "NWW.") como pista de domínio/URL — mesmo
+        # conjunto de caracteres já validado em `_normalizar_url_exibida`
+        # (ver docstring lá). Sem isso, uma linha como "VWW.
+        # buyticketbrasil coml" caía no ramo de "nome da página" (só
+        # colapsa espaço duplicado, não remove o espaço interno de
+        # verdade), e o espaço entre "VWW." e "buyticketbrasil"
+        # sobrevivia até o card final ("VWW. buyticketbrasil.com/" em
+        # vez de "www.buyticketbrasil.com/") mesmo depois da correção
+        # de caractere rodar.
+        _parece_dominio_ou_url = bool(re.search(
+            r"\bwww\b|\.\s?[a-zA-Z]{2,4}\b|^[nNvVwW]{2,4}[.:]",
+            _txt_dominio, re.IGNORECASE
+        ))
         if _parece_dominio_ou_url:
             _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         else:

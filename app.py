@@ -2610,11 +2610,31 @@ def _detectar_bandas_texto(img_bgr):
         # do avatar como se fosse um caractere de verdade — validado
         # num anúncio real da BuyTicket Brasil: o avatar redondo virou
         # um "i" solto grudado na frente do nome da página ("i
-        # BuyTicket Brasil" em vez de só "BuyTicket Brasil"). Só marca
-        # a banda quando ela está DENTRO da janela do favicon (perto do
-        # topo) — bandas mais abaixo (título, descrição) não têm avatar
-        # do lado, então não perdem nada da largura.
-        x_min_favicon = _x_ignorar_quebra if y_min < _y_limite_favicon else 0
+        # BuyTicket Brasil" em vez de só "BuyTicket Brasil").
+        #
+        # MAS: só estar dentro da janela (perto do topo) não basta pra
+        # decidir que TEM avatar ali — "Patrocinado" fica no MESMO
+        # bloco superior (a janela precisa alcançar o avatar mesmo com
+        # "Patrocinado" numa banda própria acima dele, comentário mais
+        # abaixo), só que "Patrocinado" começa RENTE À ESQUERDA, sem
+        # nenhum avatar do lado. Aplicar o corte de largura pra ELE
+        # também comia as primeiras letras da palavra — validado num
+        # anúncio real: "Patrocinado" virou "cinado" (o corte comeu
+        # "Patro"). Por isso agora checa, banda por banda, se o que tem
+        # ali dentro é de fato um avatar (bloco de pixel bem SATURADO —
+        # ícone roxo/azul/colorido) e não apenas texto preto/cinza
+        # comum (baixa saturação, R≈G≈B) — só corta quando confirma que
+        # tem cor de verdade ali, não só qualquer tinta.
+        x_min_favicon = 0
+        if y_min < _y_limite_favicon:
+            _regiao_favicon = img_rgb[y_min:y_max + 1, 0:_x_ignorar_quebra]
+            if _regiao_favicon.size:
+                _canal_max = _regiao_favicon.max(axis=2).astype(_np_bandas.int16)
+                _canal_min = _regiao_favicon.min(axis=2).astype(_np_bandas.int16)
+                _saturacao = _canal_max - _canal_min
+                _n_pixels_coloridos = int((_saturacao > 30).sum())
+                if _n_pixels_coloridos >= 8:
+                    x_min_favicon = _x_ignorar_quebra
         bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe, "x_min_favicon": x_min_favicon})
     return bandas
 

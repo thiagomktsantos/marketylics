@@ -2192,7 +2192,27 @@ def _normalizar_url_exibida(texto: str) -> str:
     # a string começando direto em "www", e como aqui ela começa com
     # "http" o fix nunca disparava, deixando o domínio sem o ponto
     # entre "www" e "isaac").
-    texto = re.sub(r"^((?:https?://)?)[wW]{2,4}\.?(?=[a-zA-Z0-9])", r"\1www.", texto)
+    #
+    # O primeiro caractere do grupo também aceita "n"/"N": validado num
+    # anúncio real da BuyTicket Brasil, onde o cabeçalho de URL saiu do
+    # EasyOCR como "NWW.: buyticketbrasil.coml" — o traço diagonal
+    # inicial do "N" é visualmente parecido com o primeiro "w" de "www"
+    # (mesma família de confusão de caractere do item 1 do docstring
+    # acima, só que na letra inicial em vez de maiúscula/minúscula). Só
+    # dispara com no MÍNIMO 2 caracteres consecutivos desse conjunto
+    # (`{2,4}`, sem baixar pra 1), então um domínio real que comece só
+    # com "n" (ex: "netflix.com") nunca cai aqui por engano — precisaria
+    # de pelo menos 2 letras seguidas em {n,N,w,W}, combinação rara em
+    # início de domínio de verdade.
+    #
+    # A pontuação logo depois também passa a aceitar ":" além de ".",
+    # em qualquer combinação de 0 a 2 caracteres (`[.:]{0,2}`, no lugar
+    # do antigo `\.?` que só cobria um ponto opcional) — no mesmo
+    # anúncio da BuyTicket o EasyOCR leu essa pontuação como ".:" (dois
+    # caracteres colados) em vez de só ".". Continua opcional (mínimo
+    # zero) pra não quebrar o caso "Wwwisaac_.com.br/" acima, que não
+    # tem nenhuma pontuação entre o "www" e o domínio.
+    texto = re.sub(r"^((?:https?://)?)[nNwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
     # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
     # removendo o "l" colado (item 2) SE ele existir, mas sem assumir
     # que ele sempre existe: quando o EasyOCR acerta a barra de verdade

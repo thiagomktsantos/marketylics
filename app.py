@@ -3185,13 +3185,103 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     _termos.append(" ".join(_termo_atual))
     return [t.strip() for t in _termos if t.strip()]
 
-def _estruturar_anuncio_google_ads(img_bgr, reader):
+def _distancia_levenshtein(a: str, b: str) -> int:
+    """Distância de edição clássica (nº mínimo de inserções/remoções/
+    substituições de 1 caractere pra transformar `a` em `b`). Usada só
+    por `_corrigir_nome_pagina_com_empresa` — implementada aqui (DP
+    O(n*m) simples) pra não precisar de dependência externa (ex:
+    `python-Levenshtein`) só por causa dessa comparação pontual."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    _linha_anterior = list(range(len(b) + 1))
+    for i, _ca in enumerate(a, start=1):
+        _linha_atual = [i]
+        for j, _cb in enumerate(b, start=1):
+            _custo = 0 if _ca == _cb else 1
+            _linha_atual.append(min(
+                _linha_anterior[j] + 1,           # remoção
+                _linha_atual[j - 1] + 1,          # inserção
+                _linha_anterior[j - 1] + _custo,  # substituição
+            ))
+        _linha_anterior = _linha_atual
+    return _linha_anterior[-1]
+
+
+def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
+    """Substitui o nome da página lido pelo OCR pelo nome REAL da
+    empresa já cadastrada no monitoramento, quando os dois são
+    claramente a mesma marca — cobre erros de caractere que o EasyOCR
+    comete no NOME (não na URL), ex: 'B' inicial lido como '3' na
+    BuyTicket Brasil: '3uyTicket Brasil' → 'BuyTicket Brasil'.
+
+    Diferente da URL (`_normalizar_url_exibida`), o nome da página não
+    tem um formato fixo pra âncorar correções de caractere específicas
+    (não tem "www."/TLD pra se guiar). Mas aqui a gente já SABE qual é
+    o nome certo — é a própria empresa que o usuário está monitorando,
+    vindo de cadastro, não de leitura de imagem. Em vez de adivinhar
+    caractere por caractere, comparamos o texto lido com o nome
+    cadastrado: se forem parecidos o bastante pra ser claramente a
+    mesma marca com só 1-2 letras erradas de OCR, usamos o nome
+    cadastrado (sempre correto).
+
+    Critério: normaliza os dois (minúsculo, sem acento, sem pontuação)
+    e mede a DISTÂNCIA DE EDIÇÃO (Levenshtein) entre eles — não a
+    proporção de caracteres em comum (`difflib.SequenceMatcher`, testado
+    antes e descartado): duas empresas DIFERENTES que só compartilham
+    um pedaço do nome (ex: 'FanTicket Brasil' vs 'BuyTicket Brasil',
+    ambas terminando em 'Ticket Brasil') batem um ratio de similaridade
+    alto por SequenceMatcher mesmo sendo marcas distintas — o que
+    trocaria o nome de uma empresa pelo da outra. Levenshtein não tem
+    esse problema: mede erro caractere a caractere, e o mesmo par dá
+    distância 3 (f≠b, a≠u, n≠y), bem acima do que 1-2 letras trocadas
+    pelo OCR produziriam.
+
+    Limite: aceita distância de até 15% do tamanho do maior nome
+    normalizado, com piso de 2 caracteres (pra nomes curtos ainda
+    tolerarem 1-2 erros de OCR) — calibrado pro caso real ('3uyticket-
+    brasil' vs 'buyticketbrasil', distância 1) sem aceitar o caso
+    'FanTicket'/'BuyTicket' acima (distância 3, sempre maior que o
+    limite pra esse tamanho de nome)."""
+    if not nome_ocr or not empresa:
+        return nome_ocr
+
+    def _norm_nome(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    _ocr_norm = _norm_nome(nome_ocr)
+    _empresa_norm = _norm_nome(empresa)
+    if not _ocr_norm or not _empresa_norm:
+        return nome_ocr
+    if _ocr_norm == _empresa_norm:
+        return empresa  # já bate 100% — usa a grafia/capitalização cadastrada
+    if abs(len(_ocr_norm) - len(_empresa_norm)) > 3:
+        return nome_ocr
+    _maior = max(len(_ocr_norm), len(_empresa_norm))
+    _limite = max(2, round(_maior * 0.15))
+    if _distancia_levenshtein(_ocr_norm, _empresa_norm) <= _limite:
+        return empresa
+    return nome_ocr
+
+
+def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
     Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
     sitelinks, sem depender de nenhuma IA generativa. Cobre tanto o
     anúncio simples (título + descrição + URL) quanto o anúncio com
     sitelinks expandidos (vários pares título+descrição depois do
     anúncio principal, separados por linhas divisórias finas).
+
+    `empresa`, quando informado, é o nome da empresa já cadastrada no
+    monitoramento do usuário — usado só pra corrigir o NOME DA PÁGINA
+    do cabeçalho (ver `_corrigir_nome_pagina_com_empresa`) quando o OCR
+    erra 1-2 caracteres da marca. Opcional: se não vier (ou vier None),
+    o nome da página simplesmente não passa por essa correção extra,
+    igual ao comportamento antigo.
 
     Devolve None quando a imagem não tem NENHUM texto detectável (nem
     título nem descrição) — nesse caso quem chama deve cair no fallback
@@ -3405,14 +3495,35 @@ def _estruturar_anuncio_google_ads(img_bgr, reader):
         # (não decide mais se a linha entra ou não), mas ainda vale a
         # pena limpar antes de exibir.
         _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
+        # Linha do NOME DA PÁGINA (não parece URL): se sabemos qual é a
+        # empresa cadastrada, tenta corrigir erros de caractere do OCR
+        # comparando com o nome de verdade (ver docstring de
+        # `_corrigir_nome_pagina_com_empresa`) — ex: "3uyTicket Brasil"
+        # (o EasyOCR lê o "B" inicial da BuyTicket Brasil como "3")
+        # virando "BuyTicket Brasil". Só roda no ramo "nome da página":
+        # a linha de URL já tem sua própria correção especializada em
+        # `_normalizar_url_exibida`, que não deve ser substituída por
+        # isso (o nome da empresa não necessariamente bate com o
+        # domínio, ex: razão social vs. domínio comercial).
+        _nome_corrigido_p_empresa = False
+        if not _parece_dominio_ou_url and empresa:
+            _txt_corrigido = _corrigir_nome_pagina_com_empresa(_txt_dominio_sem_espaco, empresa)
+            if _txt_corrigido != _txt_dominio_sem_espaco:
+                _txt_dominio_sem_espaco = _txt_corrigido
+                _nome_corrigido_p_empresa = True
         print(
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
-            f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r}",
+            f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} "
+            f"corrigido_p_empresa={_nome_corrigido_p_empresa}",
             flush=True,
         )
         _debug_bandas[idx]["texto"] = _txt_dominio
         _debug_bandas[idx]["decisao"] = (
-            f"cabeçalho ({'URL' if _parece_dominio_ou_url else 'nome da página'}, limpo: {_txt_dominio_sem_espaco!r})" if _txt_dominio_sem_espaco
+            (
+                f"cabeçalho ({'URL' if _parece_dominio_ou_url else 'nome da página'}, limpo: {_txt_dominio_sem_espaco!r}"
+                + (", corrigido p/ nome cadastrado da empresa" if _nome_corrigido_p_empresa else "")
+                + ")"
+            ) if _txt_dominio_sem_espaco
             else "cabeçalho/URL (vazio após limpeza — descartada)"
         )
         if _txt_dominio_sem_espaco:
@@ -3919,7 +4030,7 @@ _OCR_GADS_CAMPOS_VAZIO = {
     "cta": "", "cta_subtitulo": "", "sitelinks": [],
 }
 
-def _extrair_ocr_estruturado_imagem(url_imagem: str):
+def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
     """Baixa a imagem (já no nosso R2) e separa, de forma ESTRUTURADA,
     os campos título/descrição/url_exibida/cta/sitelinks de um anúncio
     de TEXTO do Google Ads — sem nenhuma IA generativa, só EasyOCR +
@@ -3928,6 +4039,12 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
     azul, descrição/URL são sempre cinza uniforme, um traço fino
     cinza-claro separa cada sitelink — validado nos prints reais do
     Google Ads).
+
+    `empresa`, quando informado, é repassado pra
+    `_estruturar_anuncio_google_ads` só pra corrigir o NOME DA PÁGINA
+    do cabeçalho usando o nome já cadastrado no monitoramento (ver
+    `_corrigir_nome_pagina_com_empresa`) — opcional, não quebra quem
+    chama sem passar esse argumento (comportamento igual ao antigo).
 
     Se a imagem não bater com esse padrão (ex: anúncio de Display com
     imagem, ou algum layout fora do comum), cai no fallback: todo o
@@ -3955,7 +4072,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str):
             if _espera > 0:
                 _time_ocr_estr.sleep(_espera)
             _reader = _get_easyocr()
-            _estruturado = _estruturar_anuncio_google_ads(_img, _reader)
+            _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
                 # não reconheceu o padrão (ou não achou NENHUM campo de
                 # verdade — nem título/descrição, nem sequer a
@@ -4305,7 +4422,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             for midia in pendentes:
                 _ids_tentados_neste_run.add(midia["id"])
                 import json as _json_ocr_fila
-                _estruturado = _extrair_ocr_estruturado_imagem(midia["url_cdn"])
+                _estruturado = _extrair_ocr_estruturado_imagem(midia["url_cdn"], empresa=empresa)
                 if _estruturado is None:
                     # Falha real na extração (download, Gemini, ou parsing
                     # da resposta) — ver docstring de

@@ -3245,7 +3245,17 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
     tolerarem 1-2 erros de OCR) — calibrado pro caso real ('3uyticket-
     brasil' vs 'buyticketbrasil', distância 1) sem aceitar o caso
     'FanTicket'/'BuyTicket' acima (distância 3, sempre maior que o
-    limite pra esse tamanho de nome)."""
+    limite pra esse tamanho de nome).
+
+    Também tenta uma segunda comparação removendo um TLD comum ("com",
+    "com.br" etc.) GRUDADO no fim do texto lido, porque às vezes o
+    EasyOCR não lê só o nome errado — ele funde o próprio nome com o
+    domínio de baixo, tipo 'BuyTicket Brasil' virando 'ouyticketbrasil.
+    com' (sem "www", sem espaço, com ".com" de brinde no final). Sem
+    tirar esse TLD antes de comparar, a diferença de tamanho ('...com'
+    tem ~3-6 caracteres a mais que o nome real) faria o texto nem
+    entrar na comparação. Tentamos as duas versões (com e sem TLD) e
+    ficamos com a que tiver a menor distância dentro do limite."""
     if not nome_ocr or not empresa:
         return nome_ocr
 
@@ -3253,18 +3263,31 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
         s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
         return re.sub(r"[^a-z0-9]", "", s.lower())
 
+    def _sem_tld_final(s: str) -> str:
+        # Ordem importa: TLDs compostos ("combr") antes dos simples
+        # ("com"), senão "combr" perderia só o "br" e sobraria "com"
+        # grudado sem necessidade.
+        for _tld in ("combr", "netbr", "orgbr", "iobr", "shopbr", "appbr",
+                     "com", "net", "org", "io", "shop", "app"):
+            if s.endswith(_tld) and len(s) > len(_tld):
+                return s[: -len(_tld)]
+        return s
+
     _ocr_norm = _norm_nome(nome_ocr)
     _empresa_norm = _norm_nome(empresa)
     if not _ocr_norm or not _empresa_norm:
         return nome_ocr
     if _ocr_norm == _empresa_norm:
         return empresa  # já bate 100% — usa a grafia/capitalização cadastrada
-    if abs(len(_ocr_norm) - len(_empresa_norm)) > 3:
-        return nome_ocr
-    _maior = max(len(_ocr_norm), len(_empresa_norm))
-    _limite = max(2, round(_maior * 0.15))
-    if _distancia_levenshtein(_ocr_norm, _empresa_norm) <= _limite:
-        return empresa
+
+    _candidatos = {_ocr_norm, _sem_tld_final(_ocr_norm)}
+    for _cand in _candidatos:
+        if not _cand or abs(len(_cand) - len(_empresa_norm)) > 3:
+            continue
+        _maior = max(len(_cand), len(_empresa_norm))
+        _limite = max(2, round(_maior * 0.15))
+        if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
+            return empresa
     return nome_ocr
 
 
@@ -3479,6 +3502,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # sobrevivia até o card final ("VWW. buyticketbrasil.com/" em
         # vez de "www.buyticketbrasil.com/") mesmo depois da correção
         # de caractere rodar.
+        # Sinal FORTE de que a linha É mesmo uma URL/domínio (não o nome
+        # da página): tem "www" de verdade (ou a variante já coberta de
+        # erro de caractere no prefixo, "VWW."/"NWW." etc.) ou começa
+        # com protocolo "http(s)". Isso é bem diferente do sinal FRACO
+        # abaixo (`\.\s?[a-zA-Z]{2,4}\b`, que só olha se tem uma
+        # "pontuação + 2-4 letras" em algum lugar do texto): o nome da
+        # página às vezes é lido pelo EasyOCR já GRUDADO com um TLD
+        # (ex: "BuyTicket Brasil" virando "ouyticketbrasil.com", sem
+        # nenhum "www" — o "B" inicial some e um ".com" espúrio aparece
+        # no fim), o que faz esse sinal fraco disparar mesmo a linha
+        # sendo, na real, o nome da empresa com lixo de OCR. Por isso
+        # separamos os dois: o sinal FORTE (www/protocolo) nunca deve
+        # ser tratado como nome de página (é sempre e só URL de
+        # verdade), enquanto o sinal fraco sozinho ainda pode ser, na
+        # real, um nome de empresa maltratado pelo OCR — e é tentado
+        # contra `_corrigir_nome_pagina_com_empresa` antes de decidir.
+        _tem_prefixo_www_forte = bool(re.search(
+            r"^(?:https?://)?[nNvVwW]{2,4}[.:]|\bwww\b",
+            _txt_dominio, re.IGNORECASE
+        ))
         _parece_dominio_ou_url = bool(re.search(
             r"\bwww\b|\.\s?[a-zA-Z]{2,4}\b|^[nNvVwW]{2,4}[.:]",
             _txt_dominio, re.IGNORECASE
@@ -3495,22 +3538,29 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # (não decide mais se a linha entra ou não), mas ainda vale a
         # pena limpar antes de exibir.
         _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
-        # Linha do NOME DA PÁGINA (não parece URL): se sabemos qual é a
-        # empresa cadastrada, tenta corrigir erros de caractere do OCR
-        # comparando com o nome de verdade (ver docstring de
-        # `_corrigir_nome_pagina_com_empresa`) — ex: "3uyTicket Brasil"
-        # (o EasyOCR lê o "B" inicial da BuyTicket Brasil como "3")
-        # virando "BuyTicket Brasil". Só roda no ramo "nome da página":
-        # a linha de URL já tem sua própria correção especializada em
-        # `_normalizar_url_exibida`, que não deve ser substituída por
-        # isso (o nome da empresa não necessariamente bate com o
-        # domínio, ex: razão social vs. domínio comercial).
+        # Tenta corrigir contra o nome CADASTRADO da empresa em toda
+        # linha que não tenha o sinal FORTE de URL (ver acima) — mesmo
+        # que o sinal fraco tenha disparado, porque o próprio sinal
+        # fraco pode ter disparado por causa de um TLD que o OCR colou
+        # sem querer no nome da empresa (ver
+        # `_corrigir_nome_pagina_com_empresa`, que já lida com isso
+        # removendo um TLD final antes de comparar). Nunca tenta na
+        # linha que TEM o sinal forte: essa é garantidamente a URL de
+        # verdade, e o nome da empresa não necessariamente bate com o
+        # domínio (ex: razão social vs. domínio comercial) — sobrescrever
+        # ela destruiria a URL real.
         _nome_corrigido_p_empresa = False
-        if not _parece_dominio_ou_url and empresa:
+        if not _tem_prefixo_www_forte and empresa:
             _txt_corrigido = _corrigir_nome_pagina_com_empresa(_txt_dominio_sem_espaco, empresa)
             if _txt_corrigido != _txt_dominio_sem_espaco:
                 _txt_dominio_sem_espaco = _txt_corrigido
                 _nome_corrigido_p_empresa = True
+                # Já sabemos agora que essa linha é o nome da página
+                # (confirmado batendo com a empresa cadastrada), não uma
+                # URL — evita rodar `_normalizar_url_exibida` (feita pra
+                # domínio) em cima do nome puro da empresa logo abaixo,
+                # e deixa o texto de debug coerente com a decisão real.
+                _parece_dominio_ou_url = False
         print(
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
             f"bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} "

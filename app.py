@@ -12,6 +12,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
+import httpx
 
 # ---------------------------------------------------
 # LIMITE DE THREADS DE CPU (PyTorch/OpenCV) — corrige o throttle de CPU
@@ -335,11 +336,43 @@ def get_supabase() -> Client:
     devolvia sucesso mas não apagava nada, porque o delete rodava com o
     token de outra sessão). Guardando o client em st.session_state, cada
     aba/usuário tem o seu próprio client — e ele persiste entre os reruns
-    da mesma sessão, então o login continua funcionando normalmente."""
+    da mesma sessão, então o login continua funcionando normalmente.
+
+    Timeout do AUTH (login/cadastro) configurado à mão: por padrão, o
+    `supabase-py` só define um timeout generoso (120s) pro client de
+    BANCO (`postgrest`, via `ClientOptions.postgrest_client_timeout`).
+    O client de AUTH (`gotrue`, usado em `sign_in_with_password` /
+    `sign_up`) não usa essa opção — se nenhum `httpx_client` for passado
+    em `ClientOptions`, ele cria um `httpx.Client()` totalmente padrão
+    por baixo dos panos, e o timeout padrão do `httpx` pra QUALQUER
+    operação (conexão, leitura, escrita) é de só 5 segundos. Isso batia
+    direto num caso real: um pico de IOwait no Postgres do Supabase
+    (a query de auth precisa ler `auth.users`) fazia a resposta demorar
+    mais que 5s, e o `httpx` desistia com "The read operation timed
+    out" — mesmo o banco estando saudável o bastante pra responder
+    logo em seguida, só mais devagar que o normal. Passar um
+    `httpx_client` próprio com timeout maior (30s de leitura, 10s só
+    pra abrir a conexão) resolve isso sem mudar nada do lado do
+    Supabase."""
     if "_supabase_client" not in st.session_state:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
-        st.session_state["_supabase_client"] = create_client(url, key)
+        # Importante: `ClientOptions` tem que vir do topo do pacote
+        # (`from supabase import ClientOptions`), não de
+        # `supabase.lib.client_options` — esse último é a dataclass
+        # BASE, que não tem o campo `httpx_client` (só existe nas
+        # subclasses `SyncClientOptions`/`AsyncClientOptions`; o
+        # `supabase/__init__.py` já expõe `SyncClientOptions` com o
+        # apelido `ClientOptions`). Importar do lugar errado dá
+        # `TypeError: unexpected keyword argument 'httpx_client'`
+        # direto na inicialização do app.
+        from supabase import ClientOptions
+        _opcoes_supabase = ClientOptions(
+            httpx_client=httpx.Client(
+                timeout=httpx.Timeout(30.0, connect=10.0)
+            ),
+        )
+        st.session_state["_supabase_client"] = create_client(url, key, options=_opcoes_supabase)
     return st.session_state["_supabase_client"]
 
 supabase = get_supabase()
@@ -5764,19 +5797,36 @@ def formatar_url(url):
 # ---------------------------------------------------
 
 def login_supabase(email: str, senha: str):
-    try:
-        res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
-        if res.user:
-            # Login SEMPRE tem uma sessão autenticada válida (diferente do
-            # cadastro — ver comentário em `cadastro_supabase`), então este
-            # é o lugar confiável pra garantir a linha em `ci_dados`: cria
-            # se ainda não existir (idempotente — ver `garantir_linha_usuario`)
-            # e "autocura" contas que ficaram sem a linha porque o cadastro
-            # rodou sem sessão (confirmação de e-mail pendente na hora).
-            garantir_linha_usuario(res.user.id)
-        return res.user, None
-    except Exception as e:
-        return None, str(e)
+    # Um retry só pra erros de REDE/TIMEOUT (não de credencial errada):
+    # um pico passageiro de IOwait no Supabase pode fazer a PRIMEIRA
+    # tentativa estourar o timeout mesmo com credenciais corretas — sem
+    # esse retry, a pessoa precisa perceber o erro e clicar em "Entrar"
+    # de novo à mão pra conseguir logar, quando muitas vezes a segunda
+    # tentativa (1-2s depois) já teria funcionado sozinha. Login por
+    # senha é uma operação segura de repetir (não duplica nada), então
+    # não tem risco em tentar de novo automaticamente. Erros de
+    # credencial (senha errada, usuário não existe etc.) vêm da API do
+    # GoTrue como resposta HTTP normal, não como exceção de timeout —
+    # esses NUNCA entram nesse retry, só falham direto na primeira vez.
+    _ultimo_erro = None
+    for _tentativa in range(2):
+        try:
+            res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+            if res.user:
+                # Login SEMPRE tem uma sessão autenticada válida (diferente do
+                # cadastro — ver comentário em `cadastro_supabase`), então este
+                # é o lugar confiável pra garantir a linha em `ci_dados`: cria
+                # se ainda não existir (idempotente — ver `garantir_linha_usuario`)
+                # e "autocura" contas que ficaram sem a linha porque o cadastro
+                # rodou sem sessão (confirmação de e-mail pendente na hora).
+                garantir_linha_usuario(res.user.id)
+            return res.user, None
+        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout) as e:
+            _ultimo_erro = str(e)
+            continue  # tenta mais uma vez antes de desistir
+        except Exception as e:
+            return None, str(e)
+    return None, _ultimo_erro
 
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:

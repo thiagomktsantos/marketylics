@@ -25499,7 +25499,24 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 })
                 _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
                 _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
-                _urls_ocr_pendente = set()  # url -> já migrada, ocr ainda NULL
+                # Começa com TODAS as URLs de imagem como "pendente" —
+                # não só as que já têm linha em `midias` com ocr_texto
+                # NULL. Antes, uma URL sem NENHUMA linha ainda em
+                # `midias` (comum logo que a página carrega: a imagem
+                # ainda nem foi migrada/inserida, quanto mais ter OCR
+                # rodado) não caía nem aqui nem em `_mapa_ocr` — ficava
+                # de fora dos dois mapas e o card renderizava direto o
+                # fallback definitivo "Texto não disponibilizado pelo
+                # Google Ads Transparency Center", como se o OCR já
+                # tivesse rodado e não achado nada, mesmo ele nunca
+                # tendo tido chance de rodar. Com o set pré-populado,
+                # essa URL simplesmente permanece "pendente" até a
+                # linha aparecer com `ocr_texto` preenchido (mostrando
+                # "Extraindo texto da imagem via OCR…" nesse meio
+                # tempo) — só sai do set quando a query abaixo devolver
+                # uma linha com `ocr_texto` não-nulo (seja "" de "OCR
+                # rodou e não achou nada", seja com texto de verdade).
+                _urls_ocr_pendente = set(_urls_img_cards)
                 if _urls_img_cards:
                     try:
                         import json as _json_ocr_cards
@@ -25513,8 +25530,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             _url_row = _row.get("url_cdn")
                             _val_ocr = _row.get("ocr_texto")
                             if _val_ocr is None:
-                                _urls_ocr_pendente.add(_url_row)
+                                pass  # continua em _urls_ocr_pendente (já está lá por padrão)
                             else:
+                                _urls_ocr_pendente.discard(_url_row)
                                 _txt_ocr = _val_ocr.strip()
                                 if _txt_ocr:
                                     _mapa_ocr[_url_row] = _txt_ocr
@@ -25528,7 +25546,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                     except Exception:
                                         pass  # linha com JSON inválido — cai pro fallback de texto corrido
                     except Exception:
-                        pass  # sem OCR em lote não pode travar a tela — só some o texto
+                        # Falha na query em lote: mantém TODAS as URLs como
+                        # pendentes (o set já veio assim por padrão) em vez
+                        # de zerar `_urls_ocr_pendente` — mostrar "Extraindo
+                        # texto…" é mais seguro que afirmar (errado) que o
+                        # Google não disponibilizou o texto.
+                        pass
 
                 def _escapar_html_ocr(s: str) -> str:
                     # Erro comum do OCR: o conectivo "o" minúsculo (ex:

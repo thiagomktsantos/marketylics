@@ -3226,7 +3226,52 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         )
     if not resultado:
         return ""
-    resultado.sort(key=lambda item: item[0][0][0])
+    # Ordena em ordem de LEITURA de verdade: agrupa por LINHA primeiro
+    # (usando o centro vertical de cada caixa, com tolerância baseada na
+    # altura média das caixas), e só DENTRO de cada linha ordena da
+    # esquerda pra direita. Antes disso, ordenava só por X — o que
+    # funciona bem quando a banda tem uma linha só (o caso mais comum:
+    # um título ou uma linha de descrição sozinha), mas embaralha tudo
+    # quando a banda tem VÁRIAS linhas de tamanhos diferentes (bug real:
+    # anúncio de Display onde cabeçalho + título de 3 linhas + descrição
+    # de 3 linhas viram uma banda SÓ, sem nenhuma quebra de cor pra
+    # separar — ver `_detectar_bandas_texto`; ordenar só por X ali
+    # produzia "Cliques, Alguns Garanta Falta Com o..." em vez de
+    # "Falta Só Alguns Cliques, Volta. O Seu Ingresso Ainda Tá Aqui!...",
+    # porque palavras de LINHAS diferentes com X parecido saíam
+    # intercaladas). Pra uma banda de uma linha só, o resultado final é
+    # idêntico ao de antes (todas as palavras caem no mesmo grupo, cuja
+    # ordenação interna já é por X).
+    def _y_centro_bbox(bbox):
+        _ys = [p[1] for p in bbox]
+        return sum(_ys) / len(_ys)
+
+    def _altura_bbox(bbox):
+        _ys = [p[1] for p in bbox]
+        return max(_ys) - min(_ys)
+
+    resultado.sort(key=lambda item: _y_centro_bbox(item[0]))
+    _altura_media = (
+        sum(_altura_bbox(item[0]) for item in resultado) / len(resultado)
+        if resultado else 20
+    )
+    _tolerancia_linha = max(6, _altura_media * 0.6)
+
+    _linhas_agrupadas = []
+    for _item in resultado:
+        _yc = _y_centro_bbox(_item[0])
+        if _linhas_agrupadas and abs(_yc - _linhas_agrupadas[-1]["y_ref"]) <= _tolerancia_linha:
+            _grupo = _linhas_agrupadas[-1]
+            _grupo["itens"].append(_item)
+            _n = len(_grupo["itens"])
+            _grupo["y_ref"] = (_grupo["y_ref"] * (_n - 1) + _yc) / _n
+        else:
+            _linhas_agrupadas.append({"y_ref": _yc, "itens": [_item]})
+
+    resultado = []
+    for _grupo in _linhas_agrupadas:
+        _grupo["itens"].sort(key=lambda item: item[0][0][0])
+        resultado.extend(_grupo["itens"])
     palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
     if not palavras:
         return ""

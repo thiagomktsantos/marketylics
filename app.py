@@ -2533,6 +2533,124 @@ def _detectar_regiao_foto_embutida(img_bgr):
     )
     return (y0, y1, x0, x1)
 
+def _detectar_regiao_grafico_criativo(img_bgr):
+    """Detecta um bloco de CRIATIVO GRÁFICO (banner/imagem promocional
+    embutida no anúncio — comum em anúncio de DISPLAY/gráfico, diferente
+    do anúncio de TEXTO da Rede de Pesquisa que o resto deste arquivo
+    foi pensado pra ler: ex. o banner "Copa do Mundo" com foto de
+    pessoas + selo + botão desenhados DENTRO da própria imagem, no
+    anúncio "Ingressos Copa 2026" da BuyTicket) — pra excluir esses
+    pixels da detecção de bandas, igual já fazemos com foto de verdade
+    em `_detectar_regiao_foto_embutida`.
+
+    Por que uma função SEPARADA, e não só usar `_detectar_regiao_foto_
+    embutida`: aquela mede diversidade de matiz bloco a bloco (20x20px),
+    o que funciona bem pra uma FOTO contínua (pele, céu, roupa variando
+    a cada bloco pequeno), mas falha num criativo gráfico tipo banner,
+    que costuma ser um mosaico de ÁREAS DE COR SÓLIDA + texto (fundo
+    roxo + texto amarelo aqui, selo verde ali, foto de pessoas noutro
+    canto) — cada bloco 20x20 isolado dentro da área "fundo roxo + texto
+    amarelo", por exemplo, só vê 2 matizes, nunca estoura o limiar de
+    diversidade POR BLOCO. Só o pedacinho com rosto/pele de verdade
+    passava — o resto do banner (texto/selo/botão) ficava de fora,
+    sobrava como pixel "não-branco" comum, e vazava pra dentro da banda
+    de texto real logo acima, produzindo uma leitura de OCR toda
+    embaralhada (bug real, anúncio "Ingressos Copa 2026" da BuyTicket:
+    título + descrição + TODO o texto do banner promocional viraram uma
+    única banda "azul" ilegível).
+
+    A saída: em vez de bloco 20x20, mede diversidade de matiz agregada
+    numa FAIXA HORIZONTAL INTEIRA (toda a largura da imagem, 20px de
+    altura) — a diversidade de cor do CONJUNTO (roxo + amarelo + verde +
+    tons de pele, todos somados na mesma faixa) fica bem acima de
+    qualquer texto de UI legítimo, mesmo um título grande e em negrito
+    (que é sempre UMA cor só — a variação ali é antialiasing borda/fundo,
+    não matizes diferentes). Validado nos dados reais: faixas de título/
+    descrição nunca passam de ~3 matizes distintos; o banner promocional
+    real ficou entre 9 e 23. A barra de CTA sólida (ex: "Compre Agora"
+    em navy escuro, mesma cor de marca do título) também fica em só 1-2
+    matizes — não é confundida com o criativo mesmo tendo saturação de
+    cor parecida, porque aqui o que decide é DIVERSIDADE, não saturação.
+
+    Agrupa a maior sequência CONTÍGUA de faixas "gráficas", tolerando
+    até 1 faixa "fria" isolada no meio (evita quebrar a região por um
+    respiro pontual de baixa diversidade dentro do próprio criativo,
+    ex: uma linha momentaneamente mais uniforme dentro da foto) — de
+    propósito NÃO tolera mais que isso: no anúncio real da BuyTicket, o
+    banner e a barra de CTA ficam praticamente colados (só 2 faixas
+    frias de intervalo), e uma tolerância maior os fundiria numa coisa
+    só, apagando o texto do botão "Compre Agora" junto com o banner.
+    Devolve (y0, y1, x0, x1) da região achada, ou None se nenhuma faixa
+    passar do limiar, se a altura resultante for menor que 100px (pouco
+    provável ser um criativo de verdade), ou se tomar mais de 70% da
+    altura da imagem (a esta altura já não sobra anúncio de texto pra
+    proteger)."""
+    import cv2 as _cv2_graf
+    import numpy as _np_graf
+    altura_total, largura_total = img_bgr.shape[:2]
+    img_hsv = _cv2_graf.cvtColor(img_bgr, _cv2_graf.COLOR_BGR2HSV)
+    matiz = img_hsv[:, :, 0].astype(_np_graf.int32)
+    saturacao = img_hsv[:, :, 1]
+    matiz_quantizada = matiz // 8
+    tam_faixa = 20
+    n_faixas = altura_total // tam_faixa
+    if n_faixas == 0:
+        return None
+
+    _LIMIAR_MATIZES = 6
+    _min_pixels_saturados = max(200, int(largura_total * tam_faixa * 0.03))
+
+    faixa_e_grafico = []
+    for fy in range(n_faixas):
+        y0, y1 = fy * tam_faixa, (fy + 1) * tam_faixa
+        sat_faixa = saturacao[y0:y1, :]
+        mask_sat = sat_faixa >= 40
+        n_sat = int(mask_sat.sum())
+        if n_sat < _min_pixels_saturados:
+            faixa_e_grafico.append(False)
+            continue
+        n_matizes = len(_np_graf.unique(matiz_quantizada[y0:y1, :][mask_sat]))
+        faixa_e_grafico.append(n_matizes > _LIMIAR_MATIZES)
+
+    # Maior sequência contígua de faixas "gráficas", com tolerância de
+    # só 1 faixa fria isolada no meio (ver docstring acima pro porquê
+    # desse limite ser baixo — de propósito, pra não engolir a barra de
+    # CTA que costuma ficar colada logo abaixo do banner).
+    melhor_inicio, melhor_fim, melhor_tam = None, None, 0
+    inicio_atual, fim_atual, frias_seguidas = None, None, 0
+    for fy, e_grafico in enumerate(faixa_e_grafico):
+        if e_grafico:
+            if inicio_atual is None:
+                inicio_atual = fy
+            fim_atual = fy
+            frias_seguidas = 0
+        elif inicio_atual is not None:
+            frias_seguidas += 1
+            if frias_seguidas > 1:
+                _tam_atual = fim_atual - inicio_atual + 1
+                if _tam_atual > melhor_tam:
+                    melhor_tam, melhor_inicio, melhor_fim = _tam_atual, inicio_atual, fim_atual
+                inicio_atual, fim_atual, frias_seguidas = None, None, 0
+    if inicio_atual is not None:
+        _tam_atual = fim_atual - inicio_atual + 1
+        if _tam_atual > melhor_tam:
+            melhor_tam, melhor_inicio, melhor_fim = _tam_atual, inicio_atual, fim_atual
+
+    if melhor_inicio is None:
+        return None
+    y0 = melhor_inicio * tam_faixa
+    y1 = min((melhor_fim + 1) * tam_faixa, altura_total)
+    altura_px = y1 - y0
+    if altura_px < 100 or altura_px > 0.7 * altura_total:
+        return None
+    print(
+        f"[OCR-DEBUG] _detectar_regiao_grafico_criativo achou faixa "
+        f"y=({y0},{y1})",
+        flush=True,
+    )
+    return (y0, y1, 0, largura_total)
+
+
 def _detectar_bandas_texto(img_bgr):
     """Varre a imagem linha a linha (sem OCR) e agrupa em 'bandas'
     horizontais de texto, cada uma classificada pela cor média dos
@@ -2573,6 +2691,19 @@ def _detectar_bandas_texto(img_bgr):
     if _regiao_foto is not None:
         _yf0, _yf1, _xf0, _xf1 = _regiao_foto
         nao_branco[_yf0:_yf1, _xf0:_xf1] = False
+
+    # Exclui um CRIATIVO GRÁFICO (banner promocional com texto/logo/selo
+    # desenhados dentro da própria imagem — comum em anúncio de Display,
+    # ver docstring de `_detectar_regiao_grafico_criativo`) — sem isso,
+    # o texto embutido no banner (não é copy real do anúncio, é arte
+    # gráfica) vaza pra dentro da banda de título/descrição de verdade
+    # logo acima, produzindo uma leitura de OCR toda embaralhada. Roda
+    # DEPOIS da exclusão de foto acima (independente uma da outra — um
+    # anúncio pode ter as duas, ou só uma).
+    _regiao_grafico = _detectar_regiao_grafico_criativo(img_bgr)
+    if _regiao_grafico is not None:
+        _yg0, _yg1, _xg0, _xg1 = _regiao_grafico
+        nao_branco[_yg0:_yg1, _xg0:_xg1] = False
 
     # Máscara separada, usada tanto pra decidir ONDE quebrar uma banda
     # quanto pra CLASSIFICAR a cor dela: ignora a faixa da esquerda

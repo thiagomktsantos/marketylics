@@ -2572,14 +2572,36 @@ def _detectar_regiao_grafico_criativo(img_bgr):
     matizes — não é confundida com o criativo mesmo tendo saturação de
     cor parecida, porque aqui o que decide é DIVERSIDADE, não saturação.
 
-    Agrupa a maior sequência CONTÍGUA de faixas "gráficas", tolerando
-    até 1 faixa "fria" isolada no meio (evita quebrar a região por um
-    respiro pontual de baixa diversidade dentro do próprio criativo,
-    ex: uma linha momentaneamente mais uniforme dentro da foto) — de
-    propósito NÃO tolera mais que isso: no anúncio real da BuyTicket, o
-    banner e a barra de CTA ficam praticamente colados (só 2 faixas
-    frias de intervalo), e uma tolerância maior os fundiria numa coisa
-    só, apagando o texto do botão "Compre Agora" junto com o banner.
+    Uma faixa só conta como "quente" (parte do criativo) se, ALÉM da
+    diversidade de matiz, cobrir uma fração mínima da LARGURA da imagem
+    com pixels saturados (`_FRACAO_MIN_COBERTURA`) — sem isso, um ícone
+    pequeno e colorido (ex: o logo circular "b" no cabeçalho, ~60x40px,
+    que sozinho já tem matizes variados por causa do antialiasing das
+    bordas) contava como "quente" igual a uma faixa cheia de banner, e
+    isso bugava a busca de continuidade abaixo (ver próximo parágrafo):
+    o logo no topo virava o início "falso" de uma sequência que pulava
+    por cima do nome do anunciante e ia parar dentro do banner de
+    verdade, apagando o nome da empresa do cabeçalho junto com o banner
+    (regressão real, pega no anúncio "BuyTicket Brasil: Não tome golpe"
+    — o cabeçalho INTEIRO ia embora, não só a foto).
+
+    Busca a maior sequência de faixas "quentes" tolerando lacunas no
+    meio via BUSCA À FRENTE (lookahead de até `_LOOKAHEAD_FAIXAS` faixas
+    = ~120px): uma faixa fria isolada não quebra a sequência se outra
+    faixa quente aparecer dentro dessa janela logo à frente — isso
+    resolve o caso real de um trecho de TEXTO SOBRE FUNDO SÓLIDO dentro
+    do próprio banner (ex: "O tempo tá correndo... / O ingresso de
+    revenda não fica parado por muito tempo.", só 2-3 matizes, mas ainda
+    dentro do mesmo criativo, sanduichado entre a foto acima e o botão
+    "SALVAR MEU LUGAR" abaixo — sem essa busca à frente, esse trecho
+    quebrava a detecção em dois pedaços pequenos demais, ou o algoritmo
+    ficava só com o menor). O fim de uma sequência é SEMPRE a última
+    faixa quente encontrada — nunca se estende pra dentro de um trecho
+    frio que não leva a nenhuma faixa quente depois (é assim que a barra
+    de CTA, colada logo abaixo do banner, nunca é engolida junto: não
+    tem nenhuma faixa quente depois dela pra "puxar" a sequência até
+    lá).
+
     Devolve (y0, y1, x0, x1) da região achada, ou None se nenhuma faixa
     passar do limiar, se a altura resultante for menor que 100px (pouco
     provável ser um criativo de verdade), ou se tomar mais de 70% da
@@ -2598,43 +2620,50 @@ def _detectar_regiao_grafico_criativo(img_bgr):
         return None
 
     _LIMIAR_MATIZES = 6
-    _min_pixels_saturados = max(200, int(largura_total * tam_faixa * 0.03))
+    _FRACAO_MIN_COBERTURA = 0.15  # fração mínima da LARGURA coberta por pixels saturados
+    _area_faixa = largura_total * tam_faixa
+    _min_pixels_saturados = max(200, int(_area_faixa * _FRACAO_MIN_COBERTURA))
 
-    faixa_e_grafico = []
+    faixa_e_quente = []
     for fy in range(n_faixas):
         y0, y1 = fy * tam_faixa, (fy + 1) * tam_faixa
         sat_faixa = saturacao[y0:y1, :]
         mask_sat = sat_faixa >= 40
         n_sat = int(mask_sat.sum())
         if n_sat < _min_pixels_saturados:
-            faixa_e_grafico.append(False)
+            faixa_e_quente.append(False)
             continue
         n_matizes = len(_np_graf.unique(matiz_quantizada[y0:y1, :][mask_sat]))
-        faixa_e_grafico.append(n_matizes > _LIMIAR_MATIZES)
+        faixa_e_quente.append(n_matizes > _LIMIAR_MATIZES)
 
-    # Maior sequência contígua de faixas "gráficas", com tolerância de
-    # só 1 faixa fria isolada no meio (ver docstring acima pro porquê
-    # desse limite ser baixo — de propósito, pra não engolir a barra de
-    # CTA que costuma ficar colada logo abaixo do banner).
+    # Maior sequência de faixas "quentes", com busca à frente (ver
+    # docstring acima) — bridging de lacunas frias de até
+    # `_LOOKAHEAD_FAIXAS` faixas, mas SEMPRE ancorada na última faixa
+    # quente de verdade encontrada (nunca extrapola pra depois dela).
+    _LOOKAHEAD_FAIXAS = 6  # ~120px de tolerância
     melhor_inicio, melhor_fim, melhor_tam = None, None, 0
-    inicio_atual, fim_atual, frias_seguidas = None, None, 0
-    for fy, e_grafico in enumerate(faixa_e_grafico):
-        if e_grafico:
-            if inicio_atual is None:
-                inicio_atual = fy
-            fim_atual = fy
-            frias_seguidas = 0
-        elif inicio_atual is not None:
-            frias_seguidas += 1
-            if frias_seguidas > 1:
-                _tam_atual = fim_atual - inicio_atual + 1
-                if _tam_atual > melhor_tam:
-                    melhor_tam, melhor_inicio, melhor_fim = _tam_atual, inicio_atual, fim_atual
-                inicio_atual, fim_atual, frias_seguidas = None, None, 0
-    if inicio_atual is not None:
-        _tam_atual = fim_atual - inicio_atual + 1
+    _i = 0
+    while _i < n_faixas:
+        if not faixa_e_quente[_i]:
+            _i += 1
+            continue
+        _inicio = _i
+        _fim = _i
+        _j = _i + 1
+        while _j < n_faixas:
+            _achou_a_frente = False
+            for _k in range(_j, min(_j + _LOOKAHEAD_FAIXAS, n_faixas)):
+                if faixa_e_quente[_k]:
+                    _fim = _k
+                    _j = _k + 1
+                    _achou_a_frente = True
+                    break
+            if not _achou_a_frente:
+                break
+        _tam_atual = _fim - _inicio + 1
         if _tam_atual > melhor_tam:
-            melhor_tam, melhor_inicio, melhor_fim = _tam_atual, inicio_atual, fim_atual
+            melhor_tam, melhor_inicio, melhor_fim = _tam_atual, _inicio, _fim
+        _i = _fim + 1  # não reprocessa a mesma sequência
 
     if melhor_inicio is None:
         return None

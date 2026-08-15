@@ -3336,6 +3336,19 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         _y1_l = min(recorte.shape[0], _y1_l + _MARGEM_VERTICAL_LINHA)
         return recorte[_y0_l:_y1_l, :]
 
+    # Largura MÁXIMA (px) de vão que ainda vale a pena checar pra hífen/
+    # glifo perdido. Um hífen ou uma letra isolada de verdade fica
+    # sempre GRUDADO ou bem perto da palavra vizinha (poucas dezenas de
+    # px); um vão bem maior que isso é quase sempre espaço em branco de
+    # verdade OU um elemento gráfico decorativo longe do texto — ex: a
+    # seta/chevron (»‏) no fim de um botão de CTA tipo "Saiba Mais [>]",
+    # que fica ~250-300px à direita da última palavra. Sem esse limite,
+    # o vão até a seta era varrido igual a um vão pequeno, achava tinta
+    # (a própria seta) e tentava "recuperar" um glifo que nunca existiu
+    # ali — alucinando um dígito (bug real: "Saiba Mais" virando "Saiba
+    # 1 Mais" num anúncio de Display, o "1" vindo da seta do botão).
+    _LARGURA_MAX_VAO_GLIFO = 70
+
     # Hífen no INÍCIO da linha (ex: um item de lista começando com "-
     # Algum texto", ou uma banda que continua um trecho cortado que
     # terminou com "-" na banda anterior) tinha o mesmo problema — só
@@ -3350,12 +3363,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _recorte_primeira_linha = _recorte_da_linha(linha_idx_por_palavra[0])
     _bbox_primeira = palavras[0][0]
     _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
-    if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
-        partes.append("-")
-    elif _detectar_glifo_curto_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
-        _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
-        if _txt_recuperado:
-            partes.append(_txt_recuperado)
+    if _x_esq_primeira <= _LARGURA_MAX_VAO_GLIFO:
+        if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
+            partes.append("-")
+        elif _detectar_glifo_curto_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
+            _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
+            if _txt_recuperado:
+                partes.append(_txt_recuperado)
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
@@ -3371,6 +3385,9 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         _bbox_atual = palavras[i][0]
         x_dir_prev = int(max(p[0] for p in _bbox_prev))
         x_esq_atual = int(min(p[0] for p in _bbox_atual))
+        if x_esq_atual - x_dir_prev > _LARGURA_MAX_VAO_GLIFO:
+            partes.append(palavras[i][1])
+            continue
         if _detectar_hifen_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
             partes.append("-")
         else:
@@ -3398,12 +3415,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max(p[0] for p in _bbox_ultima))
     _x_borda_direita = recorte.shape[1]
-    if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
-        partes.append("-")
-    elif _detectar_glifo_curto_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
-        _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
-        if _txt_recuperado:
-            partes.append(_txt_recuperado)
+    if _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
+        if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
+            partes.append("-")
+        elif _detectar_glifo_curto_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
+            _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
+            if _txt_recuperado:
+                partes.append(_txt_recuperado)
     _texto_completo = " ".join(partes)
     if not retornar_linhas:
         return _texto_completo
@@ -3626,6 +3644,44 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
         if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
             return empresa
     return nome_ocr
+
+
+def _melhor_nome_para_exibir(nome_ocr_linha: str, empresa: str) -> str:
+    """Escolhe qual dos dois textos — o nome CADASTRADO da empresa
+    (`empresa`) ou o texto que o OCR leu de verdade na imagem
+    (`nome_ocr_linha`) — fica melhor pra EXIBIR no card, depois que já
+    confirmamos (via `_corrigir_nome_pagina_com_empresa`) que os dois
+    são a mesma marca.
+
+    Normalmente `empresa` é a escolha certa — é a grafia oficial,
+    cadastrada pelo usuário, e não depende de qualidade de imagem/OCR.
+    Mas em alguns cadastros reais `empresa` vem SEM espaço e tudo
+    minúsculo (ex: "buyticketbrasil" em vez de "BuyTicket Brasil" —
+    provavelmente herdado de um campo tipo domínio/slug no cadastro),
+    e nesses casos usar `empresa` direto piora o card em vez de
+    melhorar: o OCR, mesmo lendo o cabeçalho do anúncio em CAIXA ALTA
+    estilizada por design ("BUYTICKET BRASIL"), pelo menos preserva a
+    separação de PALAVRA de verdade (o espaço), que `empresa` nem tem.
+
+    Critério: se `empresa` tem espaço OU mistura maiúscula/minúscula,
+    ela já está bem formatada — usa ela (fonte de verdade pra
+    ortografia). Senão (tudo minúsculo/maiúsculo E sem nenhum espaço —
+    sinal de slug/username, não de nome de exibição), prefere o texto
+    lido da imagem, convertendo de CAIXA ALTA pra Title Case quando for
+    o caso (cabeçalho de Display normalmente vem estilizado em
+    maiúsculas), já que ele tem a informação de espaçamento que
+    `empresa` perdeu."""
+    if not empresa:
+        return nome_ocr_linha or ""
+    _empresa_bem_formatada = (
+        " " in empresa
+        or (any(c.isupper() for c in empresa) and any(c.islower() for c in empresa))
+    )
+    if _empresa_bem_formatada or not nome_ocr_linha:
+        return empresa
+    if nome_ocr_linha.isupper():
+        return nome_ocr_linha.title()
+    return nome_ocr_linha
 
 
 def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
@@ -4359,7 +4415,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         if _linhas_banda:
                             _primeira_linha_txt = _limpar_pontuacao_ocr(_linhas_banda[0]["texto"])
                             if _corrigir_nome_pagina_com_empresa(_primeira_linha_txt, empresa) == empresa:
-                                resultado["url_exibida"] = empresa
+                                resultado["url_exibida"] = _melhor_nome_para_exibir(_primeira_linha_txt, empresa)
                                 _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
                                     _linhas_banda[1:]
                                 )

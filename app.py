@@ -3163,7 +3163,7 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     print(f"[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}", flush=True)
     return grupos
 
-def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max: int = None) -> str:
+def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max: int = None, retornar_linhas: bool = False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
     texto de faixas vizinhas quando há fragmentos detectados fora de
@@ -3225,10 +3225,9 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             text_threshold=0.4, low_text=0.3, link_threshold=0.3,
         )
     if not resultado:
-        return ""
+        return ("", []) if retornar_linhas else ""
     # Ordena em ordem de LEITURA de verdade: agrupa por LINHA primeiro
     # (usando o centro vertical de cada caixa, com tolerância baseada na
-    # altura média das caixas), e só DENTRO de cada linha ordena da
     # esquerda pra direita. Antes disso, ordenava só por X — o que
     # funciona bem quando a banda tem uma linha só (o caso mais comum:
     # um título ou uma linha de descrição sozinha), mas embaralha tudo
@@ -3293,7 +3292,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             _linha_idx_filtrada.append(linha_idx_por_palavra[_i_item])
     linha_idx_por_palavra = _linha_idx_filtrada
     if not palavras:
-        return ""
+        return ("", []) if retornar_linhas else ""
     # Margem vertical (px) somada pra cima/baixo do range da linha antes
     # de recortar — cobre acento/til que sobe um pouco acima do topo
     # medido e a haste descendente de "g"/"p"/"q"/"j" que desce um
@@ -3390,7 +3389,33 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
         if _txt_recuperado:
             partes.append(_txt_recuperado)
-    return " ".join(partes)
+    _texto_completo = " ".join(partes)
+    if not retornar_linhas:
+        return _texto_completo
+    # Reconstrói o texto de CADA linha separadamente (usando `palavras`
+    # agrupadas por `linha_idx_por_palavra`, sem os "extras" de hífen/
+    # glifo recuperado — perde um pouco de fidelidade textual aqui, mas
+    # não importa pro uso pretendido: dar pra quem chamou a ALTURA de
+    # cada linha, pra decidir onde cortar título de descrição num
+    # anúncio de Display, onde as duas ficam juntas na mesma banda sem
+    # nenhuma quebra de cor — ver `_extrair_titulo_descricao_por_altura`.
+    _linhas_out = []
+    _idx_linha_atual = None
+    _palavras_linha_atual = []
+    for _pi, (_bbox, _txt) in enumerate(palavras):
+        _idx_l = linha_idx_por_palavra[_pi]
+        if _idx_linha_atual is None:
+            _idx_linha_atual = _idx_l
+        if _idx_l != _idx_linha_atual:
+            _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
+            _linhas_out.append({"texto": " ".join(_palavras_linha_atual), "altura": _y1_l - _y0_l})
+            _palavras_linha_atual = []
+            _idx_linha_atual = _idx_l
+        _palavras_linha_atual.append(_txt)
+    if _palavras_linha_atual:
+        _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
+        _linhas_out.append({"texto": " ".join(_palavras_linha_atual), "altura": _y1_l - _y0_l})
+    return _texto_completo, _linhas_out
 
 def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int) -> list:
     """Fallback pra linha de 'termos relacionados' (ex.: "Fórmula 1 ·
@@ -3588,48 +3613,52 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
     return nome_ocr
 
 
-def _extrair_prefixo_nome_empresa(texto: str, empresa: str):
-    """Verifica se `texto` COMEÇA com o nome da empresa cadastrada
-    (mesma tolerância a erro de OCR de `_corrigir_nome_pagina_com_
-    empresa`) e, se sim, separa esse prefixo do resto.
+def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
+    """Separa TÍTULO de DESCRIÇÃO dentro de uma lista de linhas de uma
+    mesma banda (cada item = {"texto":..., "altura":...}, vindo de
+    `_ocr_banda(..., retornar_linhas=True)`) usando a ALTURA da fonte
+    como sinal — não o texto em si.
 
-    Usado em anúncio de Display/gráfico: cabeçalho (nome da empresa) +
-    título + descrição viram uma banda ÚNICA sem quebra de cor pra
-    separar (ver `_detectar_bandas_texto`/`_estruturar_anuncio_google_
-    ads` — não tem o padrão "azul=título, cinza=descrição/URL" do
-    anúncio de Busca), então o nome da empresa nunca teria uma banda
-    própria pra passar por `_corrigir_nome_pagina_com_empresa` como
-    acontece lá. Sem isso, o card desse tipo de anúncio saía sem o
-    cabeçalho de empresa + globo que os outros anúncios têm — o nome
-    ficava perdido, colado na frente do título de verdade (ex: "BUY-
-    TICKET BRASIL Falta Só Alguns Cliques, Volta" tudo junto como se
-    fosse um título só).
+    Usado só pra anúncio de Display/gráfico: título (fonte grande,
+    geralmente 2-3 linhas) e descrição (fonte bem menor, geralmente
+    2-3 linhas) ficam juntos na MESMA banda, sem nenhuma quebra de cor
+    pra separar (ver `_estruturar_anuncio_google_ads`) — diferente do
+    anúncio de Busca, onde título é sempre uma banda azul e descrição é
+    sempre uma banda cinza SEPARADA, então nunca precisou desse split.
 
-    Só olha as PRIMEIRAS N palavras de `texto`, onde N é o número de
-    palavras de `empresa` (ex.: "BuyTicket Brasil" → N=2) — testa esse
-    prefixo E também N+1 (cobre o OCR ter quebrado uma palavra do nome
-    em duas, ex.: "Buy Ticket" em vez de "BuyTicket") contra o nome
-    cadastrado, usando a mesma distância de Levenshtein normalizada já
-    validada em `_corrigir_nome_pagina_com_empresa` — reaproveitada
-    aqui, não duplicada.
+    O título é sempre a(s) linha(s) de MAIOR fonte: usa a maior altura
+    entre todas as linhas recebidas como referência, e agrupa as linhas
+    CONSECUTIVAS a partir do início cuja altura fica perto dela (>=70%)
+    como título — a primeira linha visivelmente menor (<70%) marca onde
+    a descrição começa, e dali em diante tudo vira descrição, mesmo que
+    a altura varie um pouco entre as linhas da própria descrição (não
+    recalcula a referência no meio, só compara com a do título).
 
-    Devolve (nome_empresa_cadastrado, resto_do_texto) se achou um
-    prefixo que bate, ou (None, texto) sem nenhuma mudança se não achou
-    — inclusive quando `texto` é curto demais pra sequer ter N
-    palavras, ou quando `empresa` não foi informado."""
-    if not texto or not empresa:
-        return None, texto
-    _palavras_texto = texto.split()
-    _n_palavras_empresa = len(empresa.split())
-    for _n in (_n_palavras_empresa, _n_palavras_empresa + 1):
-        if _n < 1 or _n > len(_palavras_texto):
-            continue
-        _prefixo = " ".join(_palavras_texto[:_n])
-        _corrigido = _corrigir_nome_pagina_com_empresa(_prefixo, empresa)
-        if _corrigido == empresa:
-            _resto = " ".join(_palavras_texto[_n:]).strip()
-            return empresa, _resto
-    return None, texto
+    Devolve (titulo, [linhas_descricao]) — a segunda parte é uma LISTA
+    de linhas (não uma string já unida), no mesmo formato que
+    `par_atual[1]` já espera dentro de `_estruturar_anuncio_google_
+    ads`. Com 1 linha só (ou nenhuma altura utilizável), devolve tudo
+    como título sem descrição — não dá pra decidir "grande vs pequeno"
+    com um ponto de referência só, e arriscar dividir errado é pior que
+    não dividir."""
+    if not linhas:
+        return "", []
+    if len(linhas) == 1:
+        return linhas[0]["texto"], []
+    _altura_ref = max(l["altura"] for l in linhas)
+    if _altura_ref <= 0:
+        return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
+    _limite = _altura_ref * 0.7
+    _titulo_linhas = []
+    _i = 0
+    while _i < len(linhas) and linhas[_i]["altura"] >= _limite:
+        _titulo_linhas.append(linhas[_i]["texto"])
+        _i += 1
+    if _i == 0:
+        _titulo_linhas = [linhas[0]["texto"]]
+        _i = 1
+    _descricao_linhas = [l["texto"] for l in linhas[_i:] if l["texto"]]
+    return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
 
 
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):

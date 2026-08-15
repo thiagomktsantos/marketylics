@@ -2069,9 +2069,24 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
         # "BuyTicket Brasil"), então um caso como "buyticketbrasil.com/"
         # + "www.buyticketbrasil.com/seguro/confiavel" (as duas linhas
         # parecendo domínio) caía no "senão" e nenhuma ficava em negrito.
+        #
+        # Com só 1 linha (nenhuma URL/domínio abaixo pra acompanhar) E
+        # essa linha NÃO parecendo um domínio (sem "www"/TLD), também
+        # vai em negrito — é o nome puro da empresa extraído de um
+        # anúncio de Display/gráfico (ver `_extrair_titulo_descricao_
+        # por_altura` em `_estruturar_anuncio_google_ads`), que nunca
+        # tem nenhuma linha de URL junto porque esse tipo de anúncio não
+        # mostra domínio nenhum. Sem esse caso, uma única linha caía
+        # direto no "senão" de baixo e saía sem negrito — como se fosse
+        # um domínio comum, quando na verdade é o nome da empresa (que
+        # todo outro tipo de anúncio já mostra em negrito).
+        _PADRAO_PARECE_DOMINIO = r"\bwww\b|\.[a-z]{2,4}(?:$|/)"
         if len(_linhas_url) >= 2:
             _nome_pagina = _linhas_url[0].rstrip("/")
             _resto_url = "\n".join(_linhas_url[1:])
+        elif len(_linhas_url) == 1 and not re.search(_PADRAO_PARECE_DOMINIO, _linhas_url[0], re.IGNORECASE):
+            _nome_pagina = _linhas_url[0]
+            _resto_url = ""
         else:
             _nome_pagina = ""
             _resto_url = _linhas_url[0] if _linhas_url else ""
@@ -4310,28 +4325,58 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             else:
                 if par_atual is not None:
                     pares.append(par_atual)
-                elif not pares and not resultado["url_exibida"] and empresa:
-                    # PRIMEIRO título/sitelink do anúncio inteiro (nunca
-                    # houve nenhum par_atual nem nenhum outro `pares`
-                    # antes) — só aqui faz sentido testar se o texto
-                    # COMEÇA com o nome da empresa cadastrada. Cobre o
-                    # anúncio de Display/gráfico, onde cabeçalho (nome
-                    # da empresa) + título viram uma banda só sem
-                    # nenhuma quebra de cor pra separar (diferente do
-                    # anúncio de Busca, que tem uma banda de cabeçalho
-                    # própria tratada lá em cima, antes deste laço) — ver
-                    # docstring de `_extrair_prefixo_nome_empresa`.
-                    _nome_empresa_extraido, _texto_sem_nome = _extrair_prefixo_nome_empresa(texto, empresa)
-                    if _nome_empresa_extraido:
-                        resultado["url_exibida"] = _nome_empresa_extraido
-                        texto = _texto_sem_nome
-                        _debug_bandas[idx]["decisao_extra"] = (
-                            f"nome da empresa extraído do início da banda: {_nome_empresa_extraido!r}"
+                    par_atual = [texto, []]
+                    _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
+                        " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
+                    )
+                else:
+                    _par_criado_via_empresa = False
+                    if not pares and not resultado["url_exibida"] and empresa:
+                        # PRIMEIRO título/sitelink do anúncio inteiro
+                        # (nunca houve par_atual nem nenhum `pares`
+                        # antes) — só aqui faz sentido testar se a
+                        # banda COMEÇA com o nome da empresa cadastrada.
+                        # Cobre o anúncio de Display/gráfico, onde
+                        # cabeçalho (nome da empresa) + título +
+                        # descrição viram uma banda ÚNICA sem nenhuma
+                        # quebra de cor pra separar (diferente do
+                        # anúncio de Busca, que tem uma banda de
+                        # cabeçalho própria tratada lá em cima, antes
+                        # deste laço). Roda uma 2ª passada de OCR NESTA
+                        # MESMA banda pedindo o detalhamento por linha
+                        # (`retornar_linhas=True`) — o `texto` já
+                        # calculado acima é só a versão achatada, sem
+                        # separação por linha nem altura de fonte, que é
+                        # exatamente o que falta pra: (1) comparar só a
+                        # 1ª LINHA de verdade (não um chute de N
+                        # palavras) contra o nome cadastrado, e (2)
+                        # separar título de descrição pela altura da
+                        # fonte dentro da mesma banda — ver
+                        # `_extrair_titulo_descricao_por_altura`.
+                        _, _linhas_banda = _ocr_banda(
+                            reader, img_bgr, banda["y_min"], banda["y_max"], retornar_linhas=True
                         )
-                par_atual = [texto, []]
-                _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
-                    " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
-                )
+                        if _linhas_banda:
+                            _primeira_linha_txt = _limpar_pontuacao_ocr(_linhas_banda[0]["texto"])
+                            if _corrigir_nome_pagina_com_empresa(_primeira_linha_txt, empresa) == empresa:
+                                resultado["url_exibida"] = empresa
+                                _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
+                                    _linhas_banda[1:]
+                                )
+                                par_atual = [
+                                    _limpar_pontuacao_ocr(_titulo_extraido),
+                                    [_limpar_pontuacao_ocr(l) for l in _descricao_linhas if l],
+                                ]
+                                _debug_bandas[idx]["decisao"] = (
+                                    f"azul → cabeçalho de Display: nome da empresa {empresa!r} extraído "
+                                    "da 1ª linha, título+descrição separados por altura de fonte"
+                                )
+                                _par_criado_via_empresa = True
+                    if not _par_criado_via_empresa:
+                        par_atual = [texto, []]
+                        _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
+                            " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
+                        )
         elif banda["classe"] == "cinza":
             if _cta_aberto:
                 # subtítulo do CTA (ex: "pelo app WhatsApp") — não é
@@ -26516,9 +26561,18 @@ function imgFallback_{uid}(img){{
                                 # ou já ser domínio (ex: "buyticketbrasil.com/"
                                 # + "www.buyticketbrasil.com/seguro/confiavel",
                                 # as duas domínio, mas só a 1ª em negrito).
+                                # Com só 1 linha e ela NÃO parecendo domínio
+                                # (sem "www"/TLD), também vai em negrito — é
+                                # o nome puro da empresa extraído de um
+                                # anúncio de Display/gráfico (ver
+                                # `_extrair_titulo_descricao_por_altura`),
+                                # que não tem nenhuma linha de URL junto.
                                 if len(_linhas_url_ad) >= 2:
                                     _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
+                                elif len(_linhas_url_ad) == 1 and not re.search(r"\bwww\b|\.[a-z]{2,4}(?:$|/)", _linhas_url_ad[0], re.IGNORECASE):
+                                    _nome_pagina_ad = _linhas_url_ad[0]
+                                    _resto_url_ad = ""
                                 else:
                                     _nome_pagina_ad = ""
                                     _resto_url_ad = _linhas_url_ad[0] if _linhas_url_ad else ""

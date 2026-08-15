@@ -3269,12 +3269,59 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             _linhas_agrupadas.append({"y_ref": _yc, "itens": [_item]})
 
     resultado = []
-    for _grupo in _linhas_agrupadas:
+    linha_idx_por_palavra = []
+    linhas_y_range = []  # [(y_topo, y_base), ...] por índice de linha, no
+                          # sistema de coordenadas de `recorte` (local)
+    for _idx_linha, _grupo in enumerate(_linhas_agrupadas):
         _grupo["itens"].sort(key=lambda item: item[0][0][0])
-        resultado.extend(_grupo["itens"])
-    palavras = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
+        _y_topo_linha = min(min(p[1] for p in item[0]) for item in _grupo["itens"])
+        _y_base_linha = max(max(p[1] for p in item[0]) for item in _grupo["itens"])
+        linhas_y_range.append((_y_topo_linha, _y_base_linha))
+        for _item in _grupo["itens"]:
+            resultado.append(_item)
+            linha_idx_por_palavra.append(_idx_linha)
+    # Monta `palavras` e filtra `linha_idx_por_palavra` NO MESMO laço,
+    # pelos mesmos índices — evita desalinhar as duas listas (o filtro
+    # "só quem tem texto" precisa ser idêntico nas duas, ou o índice de
+    # linha de uma palavra passaria a apontar pra outra por engano).
+    palavras = []
+    _linha_idx_filtrada = []
+    for _i_item, (bbox, t, _conf) in enumerate(resultado):
+        _t = (t or "").strip()
+        if _t:
+            palavras.append((bbox, _t))
+            _linha_idx_filtrada.append(linha_idx_por_palavra[_i_item])
+    linha_idx_por_palavra = _linha_idx_filtrada
     if not palavras:
         return ""
+    # Margem vertical (px) somada pra cima/baixo do range da linha antes
+    # de recortar — cobre acento/til que sobe um pouco acima do topo
+    # medido e a haste descendente de "g"/"p"/"q"/"j" que desce um
+    # pouco abaixo da base medida, sem chegar a invadir a linha vizinha
+    # (as linhas deste anúncio ficam bem mais distantes entre si que
+    # essa margem).
+    _MARGEM_VERTICAL_LINHA = 3
+
+    def _recorte_da_linha(idx_linha):
+        # Recorte vertical de UMA linha só, no sistema de coordenadas de
+        # `recorte` — usado nas checagens de hífen/glifo abaixo em vez
+        # do `recorte` inteiro (todas as linhas da banda empilhadas).
+        # Sem isso, checar um "vão" só pela coordenada X (como o código
+        # fazia antes) varre a ALTURA INTEIRA da banda nessa faixa de X
+        # — e como várias linhas de texto (cabeçalho/título/descrição,
+        # tamanhos de fonte bem diferentes) ficam empilhadas na mesma
+        # banda quando ela não tem quebra de cor pra se separar (ver
+        # `_detectar_bandas_texto`), essa faixa de X quase sempre tinha
+        # tinta de ALGUMA outra linha passando por ali — o código
+        # confundia isso com um hífen/glifo perdido e tentava "recuperar"
+        # um texto que nunca existiu ali, alucinando lixo (bug real:
+        # "Ja0"/"ri"/"Un"/"RA8" aparecendo entre palavras de um anúncio
+        # de Display onde cabeçalho+título+descrição formam uma banda só).
+        _y0_l, _y1_l = linhas_y_range[idx_linha]
+        _y0_l = max(0, _y0_l - _MARGEM_VERTICAL_LINHA)
+        _y1_l = min(recorte.shape[0], _y1_l + _MARGEM_VERTICAL_LINHA)
+        return recorte[_y0_l:_y1_l, :]
+
     # Hífen no INÍCIO da linha (ex: um item de lista começando com "-
     # Algum texto", ou uma banda que continua um trecho cortado que
     # terminou com "-" na banda anterior) tinha o mesmo problema — só
@@ -3283,23 +3330,34 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     # banda, e um hífen ANTES da primeira palavra não tem "palavra
     # anterior" pra formar o par — o vão nunca era testado e o "-" se
     # perdia silenciosamente. Verifica o trecho entre a borda esquerda
-    # do recorte e o início da primeira palavra pra recuperar esse caso.
+    # do recorte e o início da primeira palavra pra recuperar esse caso
+    # — restrito à altura da PRIMEIRA linha (ver `_recorte_da_linha`).
     partes = []
+    _recorte_primeira_linha = _recorte_da_linha(linha_idx_por_palavra[0])
     _bbox_primeira = palavras[0][0]
     _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
-    if _detectar_hifen_no_intervalo(recorte, 0, _x_esq_primeira):
+    if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
         partes.append("-")
-    elif _detectar_glifo_curto_no_intervalo(recorte, 0, _x_esq_primeira):
-        _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, 0, _x_esq_primeira)
+    elif _detectar_glifo_curto_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
+        _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
         if _txt_recuperado:
             partes.append(_txt_recuperado)
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
+        if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
+            # Palavras de LINHAS diferentes (fim de uma linha, começo da
+            # próxima) — nunca é um "vão dentro da mesma linha" pra
+            # tentar recuperar hífen/glifo; é só a quebra normal entre
+            # duas linhas. Só entra o espaço de sempre via
+            # `partes.append` mais abaixo.
+            partes.append(palavras[i][1])
+            continue
+        _recorte_linha_atual = _recorte_da_linha(linha_idx_por_palavra[i])
         _bbox_prev = palavras[i - 1][0]
         _bbox_atual = palavras[i][0]
         x_dir_prev = int(max(p[0] for p in _bbox_prev))
         x_esq_atual = int(min(p[0] for p in _bbox_atual))
-        if _detectar_hifen_no_intervalo(recorte, x_dir_prev, x_esq_atual):
+        if _detectar_hifen_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
             partes.append("-")
         else:
             # Vão entre duas palavras já reconhecidas NESTA banda que
@@ -3308,8 +3366,8 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             # descartou como caixa própria. Tenta recuperar só pelos
             # pixels + uma releitura sensível; se não conseguir nada
             # curto e confiável, segue como estava (só o espaço).
-            if _detectar_glifo_curto_no_intervalo(recorte, x_dir_prev, x_esq_atual):
-                _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, x_dir_prev, x_esq_atual)
+            if _detectar_glifo_curto_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
+                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_linha_atual, x_dir_prev, x_esq_atual)
                 if _txt_recuperado:
                     partes.append(_txt_recuperado)
         partes.append(palavras[i][1])
@@ -3320,15 +3378,16 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     # banda pra formar o par, o vão nunca era testado e o "-" era
     # perdido silenciosamente sempre que o título quebrava em duas
     # linhas logo depois dele. Verifica o trecho entre o fim da última
-    # palavra e a borda direita do recorte (mesma imagem, largura
-    # inteira) pra recuperar esse caso.
+    # palavra e a borda direita do recorte (mesma largura, restrito à
+    # altura da ÚLTIMA linha) pra recuperar esse caso.
+    _recorte_ultima_linha = _recorte_da_linha(linha_idx_por_palavra[-1])
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max(p[0] for p in _bbox_ultima))
     _x_borda_direita = recorte.shape[1]
-    if _detectar_hifen_no_intervalo(recorte, _x_dir_ultima, _x_borda_direita):
+    if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
         partes.append("-")
-    elif _detectar_glifo_curto_no_intervalo(recorte, _x_dir_ultima, _x_borda_direita):
-        _txt_recuperado = _recuperar_texto_no_intervalo(reader, recorte, _x_dir_ultima, _x_borda_direita)
+    elif _detectar_glifo_curto_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
+        _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
         if _txt_recuperado:
             partes.append(_txt_recuperado)
     return " ".join(partes)
@@ -3527,6 +3586,50 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
         if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
             return empresa
     return nome_ocr
+
+
+def _extrair_prefixo_nome_empresa(texto: str, empresa: str):
+    """Verifica se `texto` COMEÇA com o nome da empresa cadastrada
+    (mesma tolerância a erro de OCR de `_corrigir_nome_pagina_com_
+    empresa`) e, se sim, separa esse prefixo do resto.
+
+    Usado em anúncio de Display/gráfico: cabeçalho (nome da empresa) +
+    título + descrição viram uma banda ÚNICA sem quebra de cor pra
+    separar (ver `_detectar_bandas_texto`/`_estruturar_anuncio_google_
+    ads` — não tem o padrão "azul=título, cinza=descrição/URL" do
+    anúncio de Busca), então o nome da empresa nunca teria uma banda
+    própria pra passar por `_corrigir_nome_pagina_com_empresa` como
+    acontece lá. Sem isso, o card desse tipo de anúncio saía sem o
+    cabeçalho de empresa + globo que os outros anúncios têm — o nome
+    ficava perdido, colado na frente do título de verdade (ex: "BUY-
+    TICKET BRASIL Falta Só Alguns Cliques, Volta" tudo junto como se
+    fosse um título só).
+
+    Só olha as PRIMEIRAS N palavras de `texto`, onde N é o número de
+    palavras de `empresa` (ex.: "BuyTicket Brasil" → N=2) — testa esse
+    prefixo E também N+1 (cobre o OCR ter quebrado uma palavra do nome
+    em duas, ex.: "Buy Ticket" em vez de "BuyTicket") contra o nome
+    cadastrado, usando a mesma distância de Levenshtein normalizada já
+    validada em `_corrigir_nome_pagina_com_empresa` — reaproveitada
+    aqui, não duplicada.
+
+    Devolve (nome_empresa_cadastrado, resto_do_texto) se achou um
+    prefixo que bate, ou (None, texto) sem nenhuma mudança se não achou
+    — inclusive quando `texto` é curto demais pra sequer ter N
+    palavras, ou quando `empresa` não foi informado."""
+    if not texto or not empresa:
+        return None, texto
+    _palavras_texto = texto.split()
+    _n_palavras_empresa = len(empresa.split())
+    for _n in (_n_palavras_empresa, _n_palavras_empresa + 1):
+        if _n < 1 or _n > len(_palavras_texto):
+            continue
+        _prefixo = " ".join(_palavras_texto[:_n])
+        _corrigido = _corrigir_nome_pagina_com_empresa(_prefixo, empresa)
+        if _corrigido == empresa:
+            _resto = " ".join(_palavras_texto[_n:]).strip()
+            return empresa, _resto
+    return None, texto
 
 
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
@@ -4178,6 +4281,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             else:
                 if par_atual is not None:
                     pares.append(par_atual)
+                elif not pares and not resultado["url_exibida"] and empresa:
+                    # PRIMEIRO título/sitelink do anúncio inteiro (nunca
+                    # houve nenhum par_atual nem nenhum outro `pares`
+                    # antes) — só aqui faz sentido testar se o texto
+                    # COMEÇA com o nome da empresa cadastrada. Cobre o
+                    # anúncio de Display/gráfico, onde cabeçalho (nome
+                    # da empresa) + título viram uma banda só sem
+                    # nenhuma quebra de cor pra separar (diferente do
+                    # anúncio de Busca, que tem uma banda de cabeçalho
+                    # própria tratada lá em cima, antes deste laço) — ver
+                    # docstring de `_extrair_prefixo_nome_empresa`.
+                    _nome_empresa_extraido, _texto_sem_nome = _extrair_prefixo_nome_empresa(texto, empresa)
+                    if _nome_empresa_extraido:
+                        resultado["url_exibida"] = _nome_empresa_extraido
+                        texto = _texto_sem_nome
+                        _debug_bandas[idx]["decisao_extra"] = (
+                            f"nome da empresa extraído do início da banda: {_nome_empresa_extraido!r}"
+                        )
                 par_atual = [texto, []]
                 _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
                     " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"

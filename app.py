@@ -2531,6 +2531,59 @@ def _detectar_regiao_foto_embutida(img_bgr):
     xs = [c[1] for c in melhor_grupo]
     y_min_bloco, y_max_bloco = min(ys), max(ys)
     x_min_bloco, x_max_bloco = min(xs), max(xs)
+
+    # EXPANSÃO por densidade (não só por diversidade de matiz): a
+    # diversidade de matiz por bloco 20x20 (acima) só pega a parte
+    # "movimentada" de uma foto (ex: multidão colorida) — trechos mais
+    # uniformes da MESMA foto (céu, gramado, uma faixa de bandeira
+    # sólida) nunca passam de poucos matizes por bloco e ficam de fora
+    # do grupo, SUBESTIMANDO o retângulo real da foto. Bug real: anúncio
+    # de Display com layout lado a lado (foto ocupando a coluna
+    # esquerda inteira do card, texto na direita) — só o trecho da
+    # torcida foi reconhecido como foto (uma fatia no meio), o resto
+    # (céu, gramado) sobrou como "não-branco" comum, nunca deu o
+    # respiro em branco que separaria a foto do texto da coluna da
+    # direita, e a imagem inteira virou UMA banda só, gigante, sem
+    # estrutura nenhuma (título/descrição/botão grudados).
+    #
+    # Corrige com uma 2ª passada: cresce o retângulo já achado (âncora
+    # confiável — veio da diversidade de matiz, não é ruído aleatório)
+    # incluindo blocos VIZINHOS (4-conectividade, flood fill) que
+    # tenham densidade alta de pixel não-branco (>=35% da área do
+    # bloco), mesmo com pouca diversidade de matiz — cobre céu/gramado/
+    # bandeira sólidos que claramente fazem parte da MESMA foto
+    # retangular, sem exigir que cada bloco pareça "colorido o
+    # bastante" sozinho.
+    nao_branco_total = _np_foto.any(img_rgb < 240, axis=2)
+    densidade = _np_foto.zeros((n_blocos_y, n_blocos_x))
+    for by in range(n_blocos_y):
+        for bx in range(n_blocos_x):
+            y0d, y1d = by * tam_bloco, (by + 1) * tam_bloco
+            x0d, x1d = bx * tam_bloco, (bx + 1) * tam_bloco
+            densidade[by, bx] = nao_branco_total[y0d:y1d, x0d:x1d].mean()
+    _LIMIAR_DENSIDADE = 0.35
+    visitado_dens = _np_foto.zeros((n_blocos_y, n_blocos_x), dtype=bool)
+    pilha_dens = []
+    for by in range(y_min_bloco, y_max_bloco + 1):
+        for bx in range(x_min_bloco, x_max_bloco + 1):
+            visitado_dens[by, bx] = True
+            pilha_dens.append((by, bx))
+    while pilha_dens:
+        cy, cx = pilha_dens.pop()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = cy + dy, cx + dx
+            if (
+                0 <= ny < n_blocos_y and 0 <= nx < n_blocos_x
+                and not visitado_dens[ny, nx]
+                and densidade[ny, nx] >= _LIMIAR_DENSIDADE
+            ):
+                visitado_dens[ny, nx] = True
+                pilha_dens.append((ny, nx))
+                y_min_bloco = min(y_min_bloco, ny)
+                y_max_bloco = max(y_max_bloco, ny)
+                x_min_bloco = min(x_min_bloco, nx)
+                x_max_bloco = max(x_max_bloco, nx)
+
     largura_px = (x_max_bloco - x_min_bloco + 1) * tam_bloco
     altura_px = (y_max_bloco - y_min_bloco + 1) * tam_bloco
     if largura_px < 80 or altura_px < 80:
@@ -2829,7 +2882,41 @@ def _detectar_bandas_texto(img_bgr):
         g = sum(x[3] * x[1] for x in banda) / peso_total
         b = sum(x[4] * x[1] for x in banda) / peso_total
         altura = y_max - y_min + 1
-        if altura <= 3 and r > 190:
+        # BOTÃO SÓLIDO (CTA de anúncio de Display, ex: "Compre Agora"
+        # com fundo azul/navy e texto branco por cima): a média de cor
+        # sozinha NÃO distingue esse caso de um título/link azul de
+        # anúncio de Busca — as duas dão média "azul" (lá porque é o
+        # TEXTO que é azul sobre fundo branco; aqui porque é o FUNDO do
+        # botão que é azul, e o texto branco por cima vira parte do
+        # "branco" ignorado). O que diferencia de verdade é quanto da
+        # PRÓPRIA CAIXA (bounding box apertado do conteúdo, não a
+        # largura da imagem) fica preenchida: um texto normal, mesmo
+        # grande/negrito, preenche só uns 25-40% da sua caixa (letras
+        # têm vãos entre si); um botão retangular sólido preenche 90%+.
+        # Validado pixel a pixel em 2 anúncios reais de Display
+        # (BuyTicket Brasil, "BTS World Tour" e "Copa do Mundo"):
+        # título/descrição saíram em 0.27-0.36; o botão "Compre Agora"
+        # saiu em 0.92-0.97 nos dois — checa isso ANTES da
+        # classificação por cor, senão o botão vira "azul" e o resto do
+        # pipeline trata ele como se fosse um novo título/sitelink.
+        _cols_com_pixel_bandas = _np_bandas.where(
+            nao_branco[y_min:y_max + 1].any(axis=0)
+        )[0]
+        _taxa_preenchimento_bandas = 0.0
+        _largura_conteudo_bandas = 0
+        if len(_cols_com_pixel_bandas):
+            _x0c_bandas = int(_cols_com_pixel_bandas.min())
+            _x1c_bandas = int(_cols_com_pixel_bandas.max())
+            _largura_conteudo_bandas = _x1c_bandas - _x0c_bandas + 1
+            _caixa_bandas = nao_branco[y_min:y_max + 1, _x0c_bandas:_x1c_bandas + 1]
+            _taxa_preenchimento_bandas = float(_caixa_bandas.mean())
+        if (
+            altura >= 15
+            and _largura_conteudo_bandas >= 40
+            and _taxa_preenchimento_bandas >= 0.6
+        ):
+            classe = "botao"
+        elif altura <= 3 and r > 190:
             classe = "separador"
         elif b > r + 15 and b > 150:
             classe = "azul"
@@ -3870,7 +3957,28 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # passa a ser "nome da página aparece como uma linha extra em cima
     # da URL" (cosmético), em vez de "a URL inteira desaparece".
     _partes_dominio = []
-    while idx < len(bandas_texto) and bandas_texto[idx]["classe"] != "azul":
+    while (
+        idx < len(bandas_texto)
+        and bandas_texto[idx]["classe"] not in ("azul", "botao")
+        # Trava também por SALTO VERTICAL anormal: cabeçalho de verdade
+        # (nome da página + domínio, às vezes quebrado em 2-3 linhas)
+        # nunca tem um vão de mais de ~80px até a próxima linha — só
+        # acontece um vão desse tamanho quando existe um banner/foto no
+        # meio (anúncio de Display), separando o cabeçalho do resto do
+        # texto do anúncio (título/descrição/botão). Sem essa trava,
+        # num anúncio de Display SEM sitelinks (nenhuma banda azul em
+        # lugar nenhum antes do botão) esse laço continuava "comendo"
+        # TUDO como se fosse domínio — título e descrição inteiros
+        # viravam url_exibida, garbled, e o botão (agora classe "botao"
+        # em vez de "azul", ver acima) nunca era alcançado por esse
+        # trecho. Bug real, anúncio "Ingressos BTS 2026" da BuyTicket
+        # Brasil: cabeçalho (2 linhas) + banner excluído + headline (2
+        # linhas) + descrição (2 linhas) todos ficavam a menos de 80px
+        # de distância DENTRO de cada grupo, mas o salto do fim do
+        # cabeçalho (y=67) pro início do headline (y=540+) é de mais de
+        # 470px — exatamente o sinal que separa os dois blocos.
+        and (idx == 0 or bandas_texto[idx]["y_min"] - bandas_texto[idx - 1]["y_max"] <= 80)
+    ):
         # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
         # o texto já limpo do rótulo em vez de rodar o OCR de novo
         # nessa banda — repetir o OCR aqui devolveria a mesma string
@@ -4066,6 +4174,71 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None
+
+    # ANÚNCIO DE DISPLAY SEM SITELINKS (ex: os dois exemplos reais da
+    # BuyTicket Brasil — "BTS World Tour" e "Copa do Mundo"): quando
+    # não existe NENHUMA banda azul de verdade no resto do anúncio
+    # (nem título de Busca, nem sitelink), o headline vem em preto/
+    # cinza-escuro — mesma classe de cor "cinza" da descrição — e sem
+    # este bloco cairia discretamente no balde "cinza → descartada"
+    # (mais abaixo, dentro do laço principal), por nunca existir um
+    # `par_atual` aberto pra receber essas bandas. Resultado sem essa
+    # checagem: o anúncio inteiro (headline + descrição) desaparecia,
+    # e só sobrava o CTA (ver classe "botao" acima).
+    #
+    # Detecta o caso ANTES do laço principal: se, a partir daqui, não
+    # sobra NENHUMA banda "azul" até o fim do anúncio (ou até a
+    # próxima banda não-"cinza", tipicamente o botão), separa headline
+    # de descrição usando a ALTURA de cada banda como sinal de tamanho
+    # de fonte — mesmo princípio de `_extrair_titulo_descricao_por_
+    # altura` (já usado pra separar título/descrição DENTRO de uma
+    # banda fundida), só que aqui aplicado ENTRE bandas distintas: como
+    # elas já vêm naturalmente separadas por um respiro em branco de
+    # verdade (não uma fusão numa banda só), cada banda entra como uma
+    # "linha" pra essa função, e ela decide quantas das bandas iniciais
+    # (a(s) de fonte maior) formam o título.
+    _bandas_restantes_display = bandas_texto[idx:]
+    _tem_azul_de_verdade = any(b["classe"] == "azul" for b in _bandas_restantes_display)
+    if (
+        not _tem_azul_de_verdade
+        and _bandas_restantes_display
+        and _bandas_restantes_display[0]["classe"] == "cinza"
+    ):
+        _fim_bloco_display = 0
+        while (
+            _fim_bloco_display < len(_bandas_restantes_display)
+            and _bandas_restantes_display[_fim_bloco_display]["classe"] == "cinza"
+        ):
+            _fim_bloco_display += 1
+        _bandas_display = _bandas_restantes_display[:_fim_bloco_display]
+        _linhas_display = []
+        for _b_display in _bandas_display:
+            _txt_display = _limpar_pontuacao_ocr(
+                _ocr_banda(reader, img_bgr, _b_display["y_min"], _b_display["y_max"]).strip()
+            )
+            _linhas_display.append({
+                "texto": _txt_display,
+                "altura": _b_display["y_max"] - _b_display["y_min"] + 1,
+            })
+        _linhas_display_com_texto = [l for l in _linhas_display if l["texto"]]
+        if _linhas_display_com_texto:
+            _titulo_display, _descricao_linhas_display = _extrair_titulo_descricao_por_altura(
+                _linhas_display_com_texto
+            )
+            if _titulo_display:
+                pares = [[_titulo_display, _descricao_linhas_display]]
+                for _i_b, _b_display in enumerate(_bandas_display):
+                    _idx_global_display = idx + _i_b
+                    if _idx_global_display < len(_debug_bandas):
+                        _debug_bandas[_idx_global_display]["texto"] = (
+                            _linhas_display[_i_b]["texto"] if _i_b < len(_linhas_display) else ""
+                        )
+                        _debug_bandas[_idx_global_display]["decisao"] = (
+                            "cinza → título/descrição de Display sem sitelinks "
+                            "(separado por altura de fonte, sem nenhuma banda azul no anúncio)"
+                        )
+                idx += _fim_bloco_display
+
     # True assim que a gente reconhece a banda do título do CTA (via
     # _REGEX_CTA_TITULO_CONHECIDO ou classe "misto") — enquanto estiver
     # ligado, a(s) próxima(s) banda(s) cinza são tratadas como o
@@ -4491,6 +4664,24 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # texto cinza sem nenhum título azul aberto antes nem CTA
             # reconhecido: raro nesse ponto do fluxo (já passamos da
             # linha da URL) — ignora em vez de adivinhar onde encaixar.
+        elif banda["classe"] == "botao":
+            # Botão CTA sólido de anúncio de Display (ex: "Compre
+            # Agora" com fundo azul/navy e texto branco) — reconhecido
+            # pela taxa de preenchimento da caixa, não pela cor (ver
+            # comentário em `_detectar_bandas_texto`). Mesma lógica do
+            # CTA "misto" (ícone + texto): fecha o par título/descrição
+            # em andamento (se houver) e vira o CTA do anúncio — nunca
+            # é tratado como um novo título/sitelink, mesmo que a
+            # classificação de cor pura desse "azul".
+            if par_atual is not None:
+                pares.append(par_atual)
+                par_atual = None
+            if not resultado["cta"]:
+                resultado["cta"] = texto
+                _cta_aberto = True
+                _debug_bandas[idx]["decisao"] = "botao → CTA (taxa de preenchimento alta)"
+            else:
+                _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
         else:  # "misto" — ícone + texto, ex: botão de contato
             if not resultado["cta"]:
                 resultado["cta"] = texto

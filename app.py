@@ -2372,39 +2372,56 @@ def _detectar_cor_fundo_pagina(img_bgr):
     screenshot capturado (Central de Transparência) tem tamanho fixo
     maior que o conteúdo real do anúncio, sobrando um pedaço da cor de
     fundo da página (geralmente à direita e/ou embaixo do card,
-    validado nos prints reais reportados pelo usuário).
+    validado nos prints reais reportados pelo usuário). TAMBÉM cobre o
+    caso do card em si (não só a margem da página ao redor) ter uma cor
+    de fundo levemente tingida (ex: lavanda clarinho, BGR ~(250,236,236)
+    em vez de branco puro) — comum em anúncios de Display.
 
-    Sem tratar essa margem como fundo, ela é lida como "não-branco"
-    pelos detectores de banda (`_detectar_bandas_texto`) e de coluna
+    Sem tratar essa cor como fundo, ela é lida como "não-branco" pelos
+    detectores de banda (`_detectar_bandas_texto`) e de coluna
     (`_dividir_banda_em_botoes`) — que assumem que QUALQUER pixel
-    não-branco é texto/ícone. O resultado prático: o respiro branco
-    que deveria separar duas bandas/colunas nunca aparece (a margem
-    cinza gruda direto na última linha/coluna de conteúdo real, sem
-    nenhuma faixa branca de verdade entre elas), e tudo vira uma banda
-    só — gigante e mal classificada, ou nem reconhecida (cai no
-    fallback de texto bruto, sem estrutura nenhuma).
+    não-branco é texto/ícone. O resultado prático: o respiro branco que
+    deveria separar duas bandas/colunas nunca aparece (o fundo tingido
+    gruda direto em toda linha de conteúdo real, sem nenhuma faixa
+    branca de verdade entre elas), e tudo vira uma banda só — gigante,
+    quase 100% "preenchida" (o que também confunde a detecção de botão
+    sólido, ver `_detectar_bandas_texto`) e mal classificada, ou nem
+    reconhecida (cai no fallback de texto bruto, sem estrutura nenhuma).
 
-    Amostra um bloco pequeno no canto inferior direito da imagem (fora
-    do card do anúncio em todos os casos reais vistos até agora) pra
-    estimar essa cor. Devolve None quando não há margem pra tratar —
-    canto já branco (imagem "normal", sem esse problema) ou canto não
-    uniforme o suficiente pra confiar que é fundo de página, não
-    conteúdo real (ex: outro anúncio grudado logo abaixo)."""
+    Amostra um bloco pequeno em CADA UM DOS 4 CANTOS da imagem (não só
+    o inferior direito) e usa o primeiro que for uniforme e não-branco.
+    Checar só um canto (sempre o mesmo) falha sempre que ELE, por
+    acaso, cai dentro de algum elemento real do anúncio nesse ponto
+    específico — bug real, anúncio "Compre Agora Seu Ingresso" da
+    BuyTicket Brasil: o canto inferior direito cai dentro da barra de
+    CTA preta (fim do card), então a função devolvia None mesmo com o
+    resto do card inteiro num lavanda clarinho uniforme e óbvio nos
+    outros 3 cantos. Devolve None só quando NENHUM dos 4 cantos serve —
+    já branco (imagem "normal", sem esse problema) ou não uniforme o
+    suficiente pra confiar que é fundo, não conteúdo real (ex: outro
+    anúncio grudado logo abaixo/ao lado)."""
     import numpy as _np_fundo
     altura, largura = img_bgr.shape[:2]
     tam = max(4, min(20, altura // 10, largura // 10))
     if tam < 4:
         return None
-    canto = img_bgr[altura - tam:altura, largura - tam:largura]
-    if canto.size == 0:
-        return None
-    pixels = canto.reshape(-1, 3).astype(float)
-    cor_bgr = pixels.mean(axis=0)
-    if bool(_np_fundo.all(cor_bgr > 247)):
-        return None  # canto já é branco — sem margem cinza pra tratar
-    if float(pixels.std(axis=0).max()) > 12:
-        return None  # canto não é uniforme — não confia que é só fundo de página
-    return cor_bgr  # BGR médio da margem
+    _cantos = (
+        img_bgr[0:tam, 0:tam],                                  # superior esquerdo
+        img_bgr[0:tam, largura - tam:largura],                  # superior direito
+        img_bgr[altura - tam:altura, 0:tam],                    # inferior esquerdo
+        img_bgr[altura - tam:altura, largura - tam:largura],    # inferior direito
+    )
+    for canto in _cantos:
+        if canto.size == 0:
+            continue
+        pixels = canto.reshape(-1, 3).astype(float)
+        cor_bgr = pixels.mean(axis=0)
+        if bool(_np_fundo.all(cor_bgr > 247)):
+            continue  # esse canto já é branco — tenta o próximo
+        if float(pixels.std(axis=0).max()) > 12:
+            continue  # esse canto não é uniforme — tenta o próximo
+        return cor_bgr  # BGR médio do primeiro canto que serviu
+    return None
 
 def _detectar_regiao_foto_embutida(img_bgr):
     """Detecta um retângulo de FOTO de verdade embutida no meio do
@@ -2920,7 +2937,23 @@ def _detectar_bandas_texto(img_bgr):
             classe = "separador"
         elif b > r + 15 and b > 150:
             classe = "azul"
-        elif abs(r - g) < 15 and abs(g - b) < 15:
+        elif abs(r - g) < 15 and abs(g - b) < 60:
+            # Tolerância no canal azul alargada de <15 pra <60: texto de
+            # marca em navy escuro (comum em anúncio de Display, ex:
+            # "BUYTICKET BRASIL"/headline da BuyTicket Brasil, RGB médio
+            # ~(43,40,88) — vermelho e verde quase iguais, mas o azul
+            # puxa mais alto sem chegar a ser um azul VÍVIDO de
+            # link/título de Busca de verdade) antes caía no limbo entre
+            # "azul" (exige b>150, não bate) e "cinza" (exigia
+            # abs(g-b)<15, não bate) e virava "misto" por eliminação —
+            # bug real: como "misto" também é o sinal de CTA
+            # ícone+texto (ver comentário do branch abaixo), o headline
+            # inteiro em navy virava "CTA", e título/descrição do
+            # anúncio sumiam. Mantém o critério de vermelho/verde
+            # apertado (abs(r-g)<15): é ELE que segue distinguindo um
+            # ícone colorido de verdade (ex: verde do WhatsApp, onde
+            # r e g divergem bastante) de texto neutro/navy — só o
+            # alargamento no azul muda.
             classe = "cinza"
         else:
             classe = "misto"
@@ -3375,8 +3408,8 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
                           # sistema de coordenadas de `recorte` (local)
     for _idx_linha, _grupo in enumerate(_linhas_agrupadas):
         _grupo["itens"].sort(key=lambda item: item[0][0][0])
-        _y_topo_linha = min(min(p[1] for p in item[0]) for item in _grupo["itens"])
-        _y_base_linha = max(max(p[1] for p in item[0]) for item in _grupo["itens"])
+        _y_topo_linha = int(min(min(p[1] for p in item[0]) for item in _grupo["itens"]))
+        _y_base_linha = int(max(max(p[1] for p in item[0]) for item in _grupo["itens"]))
         linhas_y_range.append((_y_topo_linha, _y_base_linha))
         for _item in _grupo["itens"]:
             resultado.append(_item)
@@ -4314,7 +4347,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _continuacao_titulo_aberto = (
             par_atual is not None and not par_atual[1] and not banda.get("sep_antes")
         )
-        if _titulo_ja_reconhecido and not _continuacao_titulo_aberto:
+        if (
+            banda["classe"] != "botao"
+            and _titulo_ja_reconhecido
+            and not _continuacao_titulo_aberto
+        ):
             _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         else:
             # A primeira banda azul do anúncio é SEMPRE o título — uma
@@ -4589,9 +4626,69 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                             _primeira_linha_txt = _limpar_pontuacao_ocr(_linhas_banda[0]["texto"])
                             if _corrigir_nome_pagina_com_empresa(_primeira_linha_txt, empresa) == empresa:
                                 resultado["url_exibida"] = _melhor_nome_para_exibir(_primeira_linha_txt, empresa)
-                                _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
-                                    _linhas_banda[1:]
-                                )
+                                if _linhas_banda[1:]:
+                                    _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
+                                        _linhas_banda[1:]
+                                    )
+                                else:
+                                    # Cabeçalho (nome da empresa) veio
+                                    # SOZINHO nessa banda azul — sem
+                                    # título/descrição fundidos na mesma
+                                    # banda (layout diferente do caso
+                                    # "tudo fundido" que esse bloco foi
+                                    # feito pra cobrir originalmente:
+                                    # aqui cada elemento do anúncio de
+                                    # Display já vem em BANDAS
+                                    # SEPARADAS, e o que sobra depois do
+                                    # cabeçalho são bandas cinza
+                                    # distintas pro headline e pra
+                                    # descrição). Junta as bandas cinza
+                                    # CONSECUTIVAS logo depois dessa (até
+                                    # a próxima banda azul/botão ou o fim
+                                    # do anúncio) e separa título de
+                                    # descrição pela ALTURA de cada
+                                    # banda — mesmo princípio de
+                                    # `_extrair_titulo_descricao_por_
+                                    # altura`, só que aqui cada "linha"
+                                    # é uma banda inteira (não uma linha
+                                    # OCR dentro da banda). Bug real,
+                                    # anúncio "Compre Agora Seu
+                                    # Ingresso" da BuyTicket Brasil: o
+                                    # cabeçalho é só "BUYTICKET BRASIL"
+                                    # (nada mais na banda); sem este
+                                    # bloco, título ficava sempre vazio
+                                    # e a descrição virava um bloco só
+                                    # com TUDO (headline + descrição de
+                                    # verdade grudados).
+                                    _fim_bloco_cinza = idx + 1
+                                    while (
+                                        _fim_bloco_cinza < len(bandas_texto)
+                                        and bandas_texto[_fim_bloco_cinza]["classe"] == "cinza"
+                                    ):
+                                        _fim_bloco_cinza += 1
+                                    _bandas_cinza_seguintes = bandas_texto[idx + 1:_fim_bloco_cinza]
+                                    _linhas_seguintes = []
+                                    for _b_seg in _bandas_cinza_seguintes:
+                                        _txt_seg = _limpar_pontuacao_ocr(
+                                            _ocr_banda(
+                                                reader, img_bgr, _b_seg["y_min"], _b_seg["y_max"]
+                                            ).strip()
+                                        )
+                                        _linhas_seguintes.append({
+                                            "texto": _txt_seg,
+                                            "altura": _b_seg["y_max"] - _b_seg["y_min"] + 1,
+                                        })
+                                    _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
+                                        [l for l in _linhas_seguintes if l["texto"]]
+                                    )
+                                    for _k_seg in range(idx + 1, _fim_bloco_cinza):
+                                        if _k_seg < len(_debug_bandas):
+                                            _debug_bandas[_k_seg]["decisao"] = (
+                                                "cinza → título/descrição de Display separado por "
+                                                "altura de fonte (cabeçalho já identificado numa "
+                                                "banda azul à parte)"
+                                            )
+                                    idx = _fim_bloco_cinza - 1  # o += 1 do fim do laço completa o avanço
                                 par_atual = [
                                     _limpar_pontuacao_ocr(_titulo_extraido),
                                     [_limpar_pontuacao_ocr(l) for l in _descricao_linhas if l],

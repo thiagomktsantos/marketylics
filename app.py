@@ -4980,9 +4980,40 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
                 # jogando tudo cru em "descricao" em vez de manter no
                 # campo certo.
                 texto_bruto = _ocr_texto_bruto(_img, _reader)
+                # Heurística mínima pra não perder a separação título/
+                # descrição mesmo quando o reconhecimento de bandas falha
+                # por completo (ex: `_detectar_regiao_grafico_criativo`
+                # não achou a faixa do banner e devolveu None — o texto
+                # de arte do criativo vazou pra dentro das bandas de
+                # texto real e embaralhou tudo): a primeira linha "curta"
+                # lida vira título, o resto vira descrição. Não é tão
+                # preciso quanto o caminho estruturado, mas evita o card
+                # sair como um bloco corrido sem nenhuma hierarquia.
+                _linhas_fallback = [l.strip() for l in texto_bruto.split("\n") if l.strip()]
+                _titulo_fallback = _linhas_fallback[0] if _linhas_fallback and len(_linhas_fallback[0]) <= 80 else ""
+                _descricao_fallback = "\n".join(_linhas_fallback[1:] if _titulo_fallback else _linhas_fallback)
+                # Roda só pra registrar NO DEBUG por que caiu aqui — não
+                # decide nada, é puramente diagnóstico. Antes esse
+                # caminho não gravava `_debug_bandas` nenhum (só o
+                # caminho estruturado gravava), então quando um anúncio
+                # caía aqui o card ficava sem o expander "Debug: bandas
+                # detectadas" e não dava pra saber POR QUE falhou sem
+                # reproduzir localmente — foi exatamente isso que
+                # aconteceu com o card sem estrutura investigado junto
+                # com o usuário (o expander simplesmente não existia).
+                try:
+                    _regiao_grafico_dbg = _detectar_regiao_grafico_criativo(_img)
+                except Exception as _e_dbg_graf:
+                    _regiao_grafico_dbg = f"erro ao detectar: {_e_dbg_graf!r}"
                 _estruturado = {
-                    "titulo": "", "descricao": texto_bruto, "url_exibida": "",
+                    "titulo": _titulo_fallback, "descricao": _descricao_fallback, "url_exibida": "",
                     "url_final": "", "cta": "", "cta_subtitulo": "", "sitelinks": [],
+                    "_debug_bandas": [{
+                        "idx": 0, "y_min": 0, "y_max": 0, "classe": "fallback_bruto",
+                        "sep_antes": False,
+                        "texto": f"regiao_grafico_detectada={_regiao_grafico_dbg!r}",
+                        "decisao": "_estruturar_anuncio_google_ads não reconheceu padrão de bandas — caiu no OCR bruto (título/descrição separados por heurística de 1ª linha)",
+                    }],
                 }
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)

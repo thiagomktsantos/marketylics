@@ -2779,6 +2779,7 @@ def _detectar_bandas_texto(img_bgr):
     a estrutura só pelo texto (validado nos prints reais do Google Ads:
     título sempre azul, descrição/URL sempre cinza uniforme)."""
     import numpy as _np_bandas
+    import cv2 as _cv2_bandas
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
@@ -2871,6 +2872,7 @@ def _detectar_bandas_texto(img_bgr):
     nao_branco_quebra[:_y_limite_favicon, :_x_ignorar_quebra] = False
 
     linhas = []
+    _saturacao_total = _cv2_bandas.cvtColor(img_bgr, _cv2_bandas.COLOR_BGR2HSV)[:, :, 1]
     for y in range(altura_total):
         mask = nao_branco[y]
         n = int(mask.sum())
@@ -2937,26 +2939,40 @@ def _detectar_bandas_texto(img_bgr):
             classe = "separador"
         elif b > r + 15 and b > 150:
             classe = "azul"
-        elif abs(r - g) < 15 and abs(g - b) < 60:
-            # Tolerância no canal azul alargada de <15 pra <60: texto de
-            # marca em navy escuro (comum em anúncio de Display, ex:
-            # "BUYTICKET BRASIL"/headline da BuyTicket Brasil, RGB médio
-            # ~(43,40,88) — vermelho e verde quase iguais, mas o azul
-            # puxa mais alto sem chegar a ser um azul VÍVIDO de
-            # link/título de Busca de verdade) antes caía no limbo entre
-            # "azul" (exige b>150, não bate) e "cinza" (exigia
-            # abs(g-b)<15, não bate) e virava "misto" por eliminação —
-            # bug real: como "misto" também é o sinal de CTA
-            # ícone+texto (ver comentário do branch abaixo), o headline
-            # inteiro em navy virava "CTA", e título/descrição do
-            # anúncio sumiam. Mantém o critério de vermelho/verde
-            # apertado (abs(r-g)<15): é ELE que segue distinguindo um
-            # ícone colorido de verdade (ex: verde do WhatsApp, onde
-            # r e g divergem bastante) de texto neutro/navy — só o
-            # alargamento no azul muda.
-            classe = "cinza"
         else:
-            classe = "misto"
+            # CINZA (texto neutro, qualquer tom — preto, cinza, navy,
+            # indigo, roxo escuro etc.) vs MISTO (ícone colorido + texto,
+            # ex: ícone verde do WhatsApp + texto preto): não dá pra
+            # confiar numa faixa fixa de RGB pra essa distinção — cada
+            # anúncio de Display usa um tom de marca diferente pro seu
+            # headline (já vimos ~(43,40,88), ~(37,30,111), cada um com
+            # uma "distância" different entre verde e azul), e por mais
+            # que a faixa seja alargada, o PRÓXIMO tom de marca sempre
+            # acaba caindo fora de novo — bug real, anúncio "Falta Só
+            # Alguns Cliques, Volta" da BuyTicket Brasil: headline em
+            # RGB~(37,30,111) escapava até de uma tolerância já alargada
+            # (abs(g-b)<60) e virava "misto" → tratado como CTA → título
+            # e descrição inteiros descartados.
+            #
+            # O que separa os dois casos de verdade não é QUAL cor, é SE
+            # a banda é preenchida por UMA cor só (texto, mesmo colorido/
+            # navy/indigo) ou por uma MISTURA de uma área colorida
+            # pequena (o ícone) com uma área bem maior de texto quase
+            # sem saturação (preto/cinza) — um ícone de verdade nunca
+            # ocupa a banda inteira, sempre convive com uma faixa grande
+            # de texto ao lado. Mede isso pela FRAÇÃO de pixels "não-
+            # branco" que são saturados (a "tinta" tem cor de verdade,
+            # não é só preto/cinza neutro): texto de uma cor só (mesmo
+            # navy escuro) tem quase toda a tinta saturada (~95-98%,
+            # validado nos exemplos acima); ícone+texto tem a maior
+            # parte da tinta vindo do TEXTO preto/cinza (baixa
+            # saturação), com só uma fatia saturada vindo do ícone.
+            _mask_banda_cor = nao_branco[y_min:y_max + 1]
+            _sat_banda = _saturacao_total[y_min:y_max + 1]
+            _n_tinta = int(_mask_banda_cor.sum())
+            _n_tinta_saturada = int((_mask_banda_cor & (_sat_banda >= 40)).sum())
+            _fracao_saturada = (_n_tinta_saturada / _n_tinta) if _n_tinta else 0.0
+            classe = "cinza" if _fracao_saturada >= 0.6 else "misto"
         # Mesma janela [0, _y_limite_favicon) x [0, _x_ignorar_quebra)
         # usada acima só pra decidir onde quebrar/qual cor — aqui
         # devolve o limite X pra quem for rodar OCR de verdade nessa
@@ -3018,7 +3034,21 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return False
-    nao_branco = _np_hifen.any(recorte < 200, axis=2)
+    # Direção do limiar ADAPTADA ao fundo real do recorte, não sempre
+    # "fundo branco + tinta escura": num CTA de fundo ESCURO com texto
+    # BRANCO (ex: botão "Saiba Mais" em navy escuro da BuyTicket
+    # Brasil), o limiar fixo `< 200` batia em TODO pixel do vão (o
+    # próprio fundo escuro já conta como "tinta"), então a função
+    # sempre achava um hífen/glifo que nunca existiu ali — era só o
+    # espaço normal entre duas palavras. Olha o brilho médio do PRÓPRIO
+    # recorte pra decidir: fundo escuro → tinta é o pixel CLARO (texto
+    # branco); fundo claro (o caso de sempre) → tinta é o pixel escuro,
+    # comportamento idêntico ao de antes.
+    _cinza_hifen = recorte.mean(axis=2)
+    if float(_np_hifen.median(_cinza_hifen)) < 128:
+        nao_branco = _cinza_hifen > 160
+    else:
+        nao_branco = _np_hifen.any(recorte < 200, axis=2)
     altura = nao_branco.shape[0]
     if altura < 4:
         return False
@@ -3081,7 +3111,16 @@ def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> b
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return False
-    nao_branco = _np_glifo.any(recorte < 235, axis=2)
+    # Mesma correção adaptativa de `_detectar_hifen_no_intervalo` (ver
+    # comentário lá) — sem ela, um vão normal entre palavras dentro de
+    # um CTA de fundo escuro (texto branco) sempre "achava" um glifo
+    # perdido, porque o próprio fundo escuro já batia no limiar fixo de
+    # "tinta".
+    _cinza_glifo = recorte.mean(axis=2)
+    if float(_np_glifo.median(_cinza_glifo)) < 128:
+        nao_branco = _cinza_glifo > 160
+    else:
+        nao_branco = _np_glifo.any(recorte < 235, axis=2)
     altura = nao_branco.shape[0]
     if altura < 4:
         return False
@@ -4235,12 +4274,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     if (
         not _tem_azul_de_verdade
         and _bandas_restantes_display
-        and _bandas_restantes_display[0]["classe"] == "cinza"
+        and _bandas_restantes_display[0]["classe"] in ("cinza", "misto")
     ):
+        # Aceita também classe "misto" nessa sequência inicial, não só
+        # "cinza": a heurística de cor (`_detectar_bandas_texto`) às
+        # vezes não consegue confirmar que um headline em navy/indigo
+        # escuro é "uma cor só" (texto) e cai em "misto" por segurança
+        # — mas um botão/CTA de verdade NUNCA é a primeira banda do
+        # anúncio (mesmo princípio já usado mais abaixo, na proteção do
+        # divisor de fileira de botões). Sem aceitar "misto" aqui
+        # também, esse headline (que É "misto" nessa leitura de cor)
+        # nunca entrava nesse bloco, ia parar direto no laço principal,
+        # e lá "misto" sem título aberto ainda vira CTA na hora — bug
+        # real, anúncio "Falta Só Alguns Cliques, Volta" da BuyTicket
+        # Brasil: o headline virava CTA e título/descrição do anúncio
+        # inteiro desapareciam.
         _fim_bloco_display = 0
         while (
             _fim_bloco_display < len(_bandas_restantes_display)
-            and _bandas_restantes_display[_fim_bloco_display]["classe"] == "cinza"
+            and _bandas_restantes_display[_fim_bloco_display]["classe"] in ("cinza", "misto")
         ):
             _fim_bloco_display += 1
         _bandas_display = _bandas_restantes_display[:_fim_bloco_display]
@@ -4663,7 +4715,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                     _fim_bloco_cinza = idx + 1
                                     while (
                                         _fim_bloco_cinza < len(bandas_texto)
-                                        and bandas_texto[_fim_bloco_cinza]["classe"] == "cinza"
+                                        and bandas_texto[_fim_bloco_cinza]["classe"] in ("cinza", "misto")
                                     ):
                                         _fim_bloco_cinza += 1
                                     _bandas_cinza_seguintes = bandas_texto[idx + 1:_fim_bloco_cinza]
@@ -4780,12 +4832,28 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             else:
                 _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
         else:  # "misto" — ícone + texto, ex: botão de contato
-            if not resultado["cta"]:
-                resultado["cta"] = texto
-                _cta_aberto = True
-                _debug_bandas[idx]["decisao"] = "misto → CTA"
+            if _titulo_ja_reconhecido:
+                if not resultado["cta"]:
+                    resultado["cta"] = texto
+                    _cta_aberto = True
+                    _debug_bandas[idx]["decisao"] = "misto → CTA"
+                else:
+                    _debug_bandas[idx]["decisao"] = "misto → descartada (CTA já preenchido)"
             else:
-                _debug_bandas[idx]["decisao"] = "misto → descartada (CTA já preenchido)"
+                # Um botão/CTA de verdade nunca é a PRIMEIRA banda do
+                # anúncio (mesmo princípio do divisor de fileira de
+                # botões, acima) — se chegou "misto" aqui sem nenhum
+                # título reconhecido ainda, trata como texto normal
+                # (mesmo destino de uma banda "cinza" nessa posição),
+                # não como CTA. Rede de segurança: o caso comum já é
+                # pego antes pelos blocos de Display sem sitelinks (ver
+                # início da função) — isso só cobre alguma banda
+                # "misto" que escape deles por algum motivo.
+                if par_atual is not None:
+                    par_atual[1].append(texto)
+                    _debug_bandas[idx]["decisao"] = "misto → descrição (título ainda não reconhecido, não pode ser CTA)"
+                else:
+                    _debug_bandas[idx]["decisao"] = "misto → descartada (sem título aberto, mas não pode ser CTA aqui)"
         idx += 1
     if par_atual is not None:
         pares.append(par_atual)

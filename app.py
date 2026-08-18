@@ -3479,6 +3479,74 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     print(f"[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}", flush=True)
     return grupos
 
+
+
+def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> str:
+    """Releitura localizada quando o EasyOCR parece confundir vírgula.
+
+    Casos observados em anúncios reais: ``Brasileira,`` saiu como
+    ``Brasileira;`` e um artigo isolado ``A`` saiu como ``A,``. Em vez de
+    substituir pontuação cegamente no texto final, recorta SOMENTE a caixa
+    original, amplia 3x e roda uma segunda leitura com uma allowlist que
+    contém vírgula/ponto/!/? mas NÃO contém ponto-e-vírgula. Só aceita a
+    releitura se a sequência alfanumérica continuar a mesma, então essa
+    rotina não pode trocar a palavra — apenas resolver a pontuação.
+    """
+    _t = (texto or "").strip()
+    if not _t:
+        return _t
+    _suspeito = (";" in _t) or bool(re.fullmatch(r"[AaOoEe],", _t))
+    if not _suspeito:
+        return _t
+    try:
+        import cv2 as _cv2_pont2
+        import unicodedata as _ud_pont2
+        xs = [int(round(p[0])) for p in bbox]
+        ys = [int(round(p[1])) for p in bbox]
+        x0, x1 = max(0, min(xs) - 4), min(recorte_bgr.shape[1], max(xs) + 5)
+        y0, y1 = max(0, min(ys) - 4), min(recorte_bgr.shape[0], max(ys) + 5)
+        _crop = recorte_bgr[y0:y1, x0:x1]
+        if _crop.size == 0:
+            return _t
+        _crop = _cv2_pont2.resize(_crop, None, fx=3.0, fy=3.0, interpolation=_cv2_pont2.INTER_CUBIC)
+        _allow = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            "ÁÀÂÃÉÊÍÓÔÕÚÜÇáàâãéêíóôõúüç"
+            "0123456789,.!?-:()/%&'\""
+        )
+        _r = reader.readtext(
+            _crop, detail=1, paragraph=False, allowlist=_allow,
+            text_threshold=0.35, low_text=0.25, link_threshold=0.25,
+            width_ths=0.2, height_ths=0.6,
+        )
+        if not _r:
+            return _t
+        _r.sort(key=lambda it: min(p[0] for p in it[0]))
+        _cand = " ".join((it[1] or "").strip() for it in _r if (it[1] or "").strip()).strip()
+        if not _cand:
+            return _t
+
+        def _base(x):
+            x = ''.join(c for c in _ud_pont2.normalize('NFKD', x) if not _ud_pont2.combining(c))
+            return re.sub(r"[^A-Za-z0-9]", "", x).lower()
+
+        if _base(_cand) != _base(_t):
+            return _t
+
+        # Preferimos a releitura quando ela elimina o ';' (caractere mais
+        # comum de confusão com vírgula) ou remove uma vírgula espúria de um
+        # artigo isolado. Fora disso, mantém a leitura original.
+        if ";" in _t and ";" not in _cand:
+            print(f"[OCR-DEBUG] pontuação relida: {_t!r} -> {_cand!r}", flush=True)
+            return _cand
+        if re.fullmatch(r"[AaOoEe],", _t) and not _cand.endswith(","):
+            print(f"[OCR-DEBUG] vírgula espúria removida: {_t!r} -> {_cand!r}", flush=True)
+            return _cand
+    except Exception as e:
+        print(f"[OCR-DEBUG] releitura de pontuação falhou para {_t!r}: {e!r}", flush=True)
+    return _t
+
+
 def _filtrar_ruidos_ocr_linha(itens: list) -> list:
     """Remove caixas OCR espúrias usando GEOMETRIA + contexto da própria linha.
 
@@ -3636,6 +3704,18 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         )
     if not resultado:
         return ("", []) if retornar_linhas else ""
+
+    # V5: corrige pontuação DENTRO da própria caixa OCR antes de agrupar
+    # palavras. O detector de vão só consegue recuperar uma vírgula que o
+    # CRAFT deixou FORA das caixas; quando a vírgula foi engolida pela caixa
+    # da palavra e lida como ';' (ex: "Brasileira;") ele nunca tinha chance
+    # de atuar. A releitura localizada resolve exatamente esse outro caso.
+    _resultado_pont = []
+    for _bbox_p, _txt_p, _conf_p in resultado:
+        _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
+        _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
+    resultado = _resultado_pont
+
     # Ordena em ordem de LEITURA de verdade: agrupa por LINHA primeiro
     # (usando o centro vertical de cada caixa, com tolerância baseada na
     # esquerda pra direita. Antes disso, ordenava só por X — o que
@@ -4162,10 +4242,10 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
     Considera "salto de fonte de verdade" uma queda de mais de 15%
     entre uma linha e a seguinte (razão <= 0.85) — abaixo disso é só
     variação normal de medição do OCR entre linhas do MESMO tamanho.
-    Entre os saltos de verdade, corta no MAIOR deles (menor razão entre
-    alturas). Isso evita que uma linha curta do próprio título — cuja caixa
-    pode sair alguns pixels menor só pela geometria das letras — provoque um
-    corte prematuro antes da mudança real para a fonte da descrição.
+    No caminho de Display, a V5 passa a fornecer a altura REAL das caixas
+    OCR de cada linha (em vez da altura bruta da banda). Com essa medida mais
+    fiel, corta no PRIMEIRO salto consistente, que corresponde à transição
+    visual título → descrição.
     Se nenhum salto real aparecer em nenhum par de linhas, mantém o
     comportamento antigo: tudo vira título, sem descrição — não dá pra
     separar com segurança sem nenhum sinal de mudança de fonte.
@@ -4183,18 +4263,22 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return linhas[0]["texto"], []
     if any(l["altura"] <= 0 for l in linhas):
         return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    # Escolhe o MAIOR salto de fonte (menor razão), não simplesmente o
-    # primeiro. Linhas curtas como ``Você`` podem ter bbox alguns pixels
-    # menor por não conter hastes/acentos/descendentes, embora usem a MESMA
-    # fonte do restante do headline. Cortar no primeiro degrau fazia essa
-    # última linha do título cair na descrição. A mudança real de headline
-    # para body é normalmente o salto mais forte da sequência.
-    _candidatos_corte = []
+    # V5: agora as alturas recebidas pelo caminho de Display são as
+    # alturas REAIS das caixas OCR, não a altura bruta da banda. Com essa
+    # medida mais fiel podemos voltar ao primeiro degrau consistente: título
+    # vem antes da descrição, então o primeiro salto real é semanticamente o
+    # corte correto. O problema antigo de "Você" cair na descrição vinha da
+    # altura imprecisa da banda, não da ordem do corte.
+    _corte = len(linhas)
     for _i in range(len(linhas) - 1):
-        _razao = linhas[_i + 1]["altura"] / linhas[_i]["altura"]
-        if _razao <= 0.85:
-            _candidatos_corte.append((_razao, _i + 1))
-    _corte = min(_candidatos_corte, key=lambda x: x[0])[1] if _candidatos_corte else len(linhas)
+        _h0 = float(linhas[_i]["altura"] or 0)
+        _h1 = float(linhas[_i + 1]["altura"] or 0)
+        if _h0 <= 0 or _h1 <= 0:
+            continue
+        _razao = _h1 / _h0
+        if _razao <= 0.88:
+            _corte = _i + 1
+            break
     _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
     _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
     return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
@@ -4704,12 +4788,29 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _bandas_display = _bandas_restantes_display[:_fim_bloco_display]
         _linhas_display = []
         for _b_display in _bandas_display:
-            _txt_display = _limpar_pontuacao_ocr(
-                _ocr_banda(reader, img_bgr, _b_display["y_min"], _b_display["y_max"]).strip()
+            # V5: usa a ALTURA REAL das caixas OCR da linha, não a altura
+            # inteira da banda detectada por pixels. A banda inclui respiro,
+            # antialiasing e às vezes bordas/elementos gráficos; em alguns
+            # layouts isso fazia título e descrição parecerem do mesmo
+            # tamanho e tudo virava título. Bug real: "Venda Seu Ingresso
+            # Aqui" + "A BuyTicket é Brasileira...".
+            _txt_display_bruto, _linhas_bbox_display = _ocr_banda(
+                reader, img_bgr, _b_display["y_min"], _b_display["y_max"],
+                retornar_linhas=True,
             )
+            _txt_display = _limpar_pontuacao_ocr((_txt_display_bruto or "").strip())
+            _alturas_reais = [
+                float(_l.get("altura") or 0) for _l in (_linhas_bbox_display or [])
+                if (_l.get("texto") or "").strip() and float(_l.get("altura") or 0) > 0
+            ]
+            if _alturas_reais:
+                _alturas_reais.sort()
+                _altura_display = _alturas_reais[len(_alturas_reais) // 2]
+            else:
+                _altura_display = _b_display["y_max"] - _b_display["y_min"] + 1
             _linhas_display.append({
                 "texto": _txt_display,
-                "altura": _b_display["y_max"] - _b_display["y_min"] + 1,
+                "altura": _altura_display,
             })
         _linhas_display_com_texto = [l for l in _linhas_display if l["texto"]]
         if _linhas_display_com_texto:

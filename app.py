@@ -3820,12 +3820,35 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
 
     _candidatos = {_ocr_norm, _sem_tld_final(_ocr_norm)}
     for _cand in _candidatos:
-        if not _cand or abs(len(_cand) - len(_empresa_norm)) > 3:
+        if not _cand:
             continue
-        _maior = max(len(_cand), len(_empresa_norm))
-        _limite = max(2, round(_maior * 0.15))
-        if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
-            return empresa
+        if abs(len(_cand) - len(_empresa_norm)) <= 3:
+            _maior = max(len(_cand), len(_empresa_norm))
+            _limite = max(2, round(_maior * 0.15))
+            if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
+                return empresa
+        # PREFIXO: o cabeçalho do anúncio às vezes mostra só a marca
+        # curta (ex: "BuyTicket"), enquanto o nome cadastrado é o nome
+        # completo (ex: "BuyTicket Brasil") — a checagem de tamanho
+        # acima nunca bate nesse caso (a diferença de tamanho é bem
+        # maior que 3), mesmo sendo claramente a mesma marca. Bug real:
+        # "uyTicket" (o "B" inicial sumiu na leitura) nunca era
+        # corrigido pra "BuyTicket Brasil" por causa disso. Compara o
+        # texto lido contra os primeiros N caracteres do nome
+        # cadastrado, testando um deslocamento de 1 caractere (cobre o
+        # caso comum de a 1ª letra ter sumido/sido lida errado — sem
+        # o deslocamento, "uyTicket" comparado direto contra "BuyTicke"
+        # já começa desalinhado e a distância de edição fica alta à
+        # toa). Limite mais apertado (20%, não 15%) porque comparar só
+        # um prefixo é uma checagem mais fraca — nomes de marcas
+        # diferentes têm mais chance de compartilhar um prefixo curto
+        # por coincidência do que o nome INTEIRO batendo.
+        if 4 <= len(_cand) < len(_empresa_norm) - 1:
+            _limite_prefixo = max(1, round(len(_cand) * 0.2))
+            for _offset in (0, 1):
+                _prefixo = _empresa_norm[_offset:_offset + len(_cand)]
+                if _prefixo and _distancia_levenshtein(_cand, _prefixo) <= _limite_prefixo:
+                    return empresa
     return nome_ocr
 
 
@@ -3880,13 +3903,29 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
     anúncio de Busca, onde título é sempre uma banda azul e descrição é
     sempre uma banda cinza SEPARADA, então nunca precisou desse split.
 
-    O título é sempre a(s) linha(s) de MAIOR fonte: usa a maior altura
-    entre todas as linhas recebidas como referência, e agrupa as linhas
-    CONSECUTIVAS a partir do início cuja altura fica perto dela (>=70%)
-    como título — a primeira linha visivelmente menor (<70%) marca onde
-    a descrição começa, e dali em diante tudo vira descrição, mesmo que
-    a altura varie um pouco entre as linhas da própria descrição (não
-    recalcula a referência no meio, só compara com a do título).
+    O título é sempre a(s) linha(s) de MAIOR fonte. Em vez de comparar
+    cada linha contra um limiar FIXO (70% da maior altura entre todas),
+    procura o maior SALTO relativo entre duas linhas CONSECUTIVAS (ex:
+    linha 1 tem 40px, linha 2 tem 24px → salto de 60%) e corta ali.
+    Bug real, anúncio "Venda Seu Ingresso Aqui" da BuyTicket Brasil: a
+    fonte da descrição era ~71% da fonte do título — passava zoada do
+    limiar fixo de 70% (ficava DENTRO da faixa "parece título"), então
+    a descrição inteira grudava no título como se fosse uma 2ª linha
+    dele. Comparar o salto ENTRE CADA PAR de linhas consecutivas (em
+    vez de cada linha contra o máximo global) captura esse tipo de
+    corte mesmo quando a proporção título/descrição do design é mais
+    sutil que o normal — o salto real de fonte entre título e descrição
+    aparece como o degrau mais acentuado da sequência, ainda que o
+    valor absoluto da razão passe perto de qualquer limiar fixo.
+
+    Considera "salto de fonte de verdade" uma queda de mais de 15%
+    entre uma linha e a seguinte (razão <= 0.85) — abaixo disso é só
+    variação normal de medição do OCR entre linhas do MESMO tamanho.
+    Corta no PRIMEIRO salto de verdade encontrado (o título nunca some
+    de tamanho no meio pra depois a descrição "voltar" a ficar grande).
+    Se nenhum salto real aparecer em nenhum par de linhas, mantém o
+    comportamento antigo: tudo vira título, sem descrição — não dá pra
+    separar com segurança sem nenhum sinal de mudança de fonte.
 
     Devolve (titulo, [linhas_descricao]) — a segunda parte é uma LISTA
     de linhas (não uma string já unida), no mesmo formato que
@@ -3899,19 +3938,16 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return "", []
     if len(linhas) == 1:
         return linhas[0]["texto"], []
-    _altura_ref = max(l["altura"] for l in linhas)
-    if _altura_ref <= 0:
+    if any(l["altura"] <= 0 for l in linhas):
         return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    _limite = _altura_ref * 0.7
-    _titulo_linhas = []
-    _i = 0
-    while _i < len(linhas) and linhas[_i]["altura"] >= _limite:
-        _titulo_linhas.append(linhas[_i]["texto"])
-        _i += 1
-    if _i == 0:
-        _titulo_linhas = [linhas[0]["texto"]]
-        _i = 1
-    _descricao_linhas = [l["texto"] for l in linhas[_i:] if l["texto"]]
+    _corte = len(linhas)  # sem salto de verdade = tudo vira título
+    for _i in range(len(linhas) - 1):
+        _razao = linhas[_i + 1]["altura"] / linhas[_i]["altura"]
+        if _razao <= 0.85:
+            _corte = _i + 1
+            break
+    _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
+    _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
     return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
 
 

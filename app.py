@@ -3202,6 +3202,30 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
         return ""
     return texto if len(texto) <= 3 else ""
 
+_REGEX_ASPA_FECHAMENTO_TROCADA = re.compile(r'(["][^"\'\n]{1,60})[\'](?=\s|[.,;:!?)\]]|$)')
+
+def _normalizar_aspas_ocr(texto: str) -> str:
+    """Normaliza aspas lidas pelo OCR: unifica variantes tipográficas
+    (curvas " " ' ') pra aspas retas " e ' — e corrige o caso em que o
+    EasyOCR lê a aspa DUPLA de fechamento de um trecho citado como um
+    apóstrofo simples (') em vez da aspa dupla (") que está realmente
+    impressa no anúncio (validado num anúncio real da BuyTicket
+    Brasil: o card leu 'Ingressos BTS 2026 World Tour "Arirang'' —
+    abre com aspa dupla reta, fecha com apóstrofo, quando o criativo
+    original tem aspa dupla dos dois lados).
+    Só troca quando existe uma aspa dupla de ABERTURA sem o fechamento
+    correspondente por perto (heurística: abre com " e o próximo
+    candidato a fechamento, a até 60 caracteres, é um apóstrofo solto
+    seguido de espaço/pontuação/fim de string) — nunca mexe num
+    apóstrofo que faça parte de uma contração ou plural de verdade no
+    meio do texto, porque esses não vêm logo depois de uma aspa dupla
+    aberta sem fechar."""
+    if not texto:
+        return texto
+    texto = texto.replace("\u201c", '"').replace("\u201d", '"').replace("\u2019", "'").replace("\u2018", "'")
+    texto = _REGEX_ASPA_FECHAMENTO_TROCADA.sub(lambda m: m.group(1) + '"', texto)
+    return texto
+
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
 # sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
@@ -4863,12 +4887,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     if not pares:
         return resultado if resultado["url_exibida"] else None
 
-    resultado["titulo"] = pares[0][0]
-    resultado["descricao"] = " ".join(l for l in pares[0][1] if l).strip()
+    resultado["titulo"] = _normalizar_aspas_ocr(pares[0][0])
+    resultado["descricao"] = _normalizar_aspas_ocr(" ".join(l for l in pares[0][1] if l).strip())
     for titulo_sl, linhas_sl in pares[1:]:
-        descricao_sl = " ".join(l for l in linhas_sl if l).strip()
+        descricao_sl = _normalizar_aspas_ocr(" ".join(l for l in linhas_sl if l).strip())
         if titulo_sl:
-            resultado["sitelinks"].append({"titulo": titulo_sl, "descricao": descricao_sl})
+            resultado["sitelinks"].append({"titulo": _normalizar_aspas_ocr(titulo_sl), "descricao": descricao_sl})
     return resultado
 
 def _extrair_texto_paddleocr(url_imagem: str):
@@ -4990,8 +5014,8 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
                 # preciso quanto o caminho estruturado, mas evita o card
                 # sair como um bloco corrido sem nenhuma hierarquia.
                 _linhas_fallback = [l.strip() for l in texto_bruto.split("\n") if l.strip()]
-                _titulo_fallback = _linhas_fallback[0] if _linhas_fallback and len(_linhas_fallback[0]) <= 80 else ""
-                _descricao_fallback = "\n".join(_linhas_fallback[1:] if _titulo_fallback else _linhas_fallback)
+                _titulo_fallback = _normalizar_aspas_ocr(_linhas_fallback[0]) if _linhas_fallback and len(_linhas_fallback[0]) <= 80 else ""
+                _descricao_fallback = _normalizar_aspas_ocr("\n".join(_linhas_fallback[1:] if _titulo_fallback else _linhas_fallback))
                 # Roda só pra registrar NO DEBUG por que caiu aqui — não
                 # decide nada, é puramente diagnóstico. Antes esse
                 # caminho não gravava `_debug_bandas` nenhum (só o

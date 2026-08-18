@@ -3582,6 +3582,102 @@ def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> st
     return _t
 
 
+def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str:
+    """Tenta recuperar UMA vírgula final que o EasyOCR deixou visível nos
+    pixels mas omitiu do texto reconhecido (caso real: ``Buy,`` -> ``Buy``).
+
+    Diferente do detector de vão, esta rotina olha a PRÓPRIA caixa da palavra
+    e alguns pixels à direita. Isso cobre a situação em que o CRAFT englobou
+    a vírgula dentro do bbox da palavra, portanto não existe nenhum glifo no
+    espaço ENTRE ``Buy`` e ``Tá`` para o detector anterior encontrar.
+
+    Para não reler todas as palavras indiscriminadamente, primeiro exige um
+    pequeno componente escuro no canto inferior-direito da caixa/margem. Só
+    então amplia o recorte 3x e pede uma releitura. A nova leitura só é aceita
+    quando a parte alfanumérica é IDÊNTICA e a única diferença relevante é a
+    vírgula final.
+    """
+    _t = (texto or "").strip()
+    if not _t or not re.search(r"[A-Za-zÀ-ÿ0-9]$", _t):
+        return _t
+    try:
+        import cv2 as _cv2_vf
+        import numpy as _np_vf
+        import unicodedata as _ud_vf
+        xs = [int(round(p[0])) for p in bbox]
+        ys = [int(round(p[1])) for p in bbox]
+        bx0, bx1 = max(0, min(xs)), min(recorte_bgr.shape[1] - 1, max(xs))
+        by0, by1 = max(0, min(ys)), min(recorte_bgr.shape[0] - 1, max(ys))
+        h = max(2, by1 - by0 + 1)
+        w = max(2, bx1 - bx0 + 1)
+
+        # Região onde uma vírgula final pode existir: últimos ~22% da caixa
+        # + margem à direita, apenas na metade inferior. O fundo é estimado
+        # localmente pelos cantos e subtraído por DISTÂNCIA DE COR, não por
+        # limiar absoluto (funciona também no fundo lilás claro da BuyTicket).
+        rx0 = max(0, bx1 - max(5, int(w * 0.22)))
+        rx1 = min(recorte_bgr.shape[1], bx1 + max(7, int(h * 0.35)))
+        ry0 = max(0, by0 + int(h * 0.48))
+        ry1 = min(recorte_bgr.shape[0], by1 + max(5, int(h * 0.28)))
+        _reg = recorte_bgr[ry0:ry1, rx0:rx1]
+        if _reg.size == 0:
+            return _t
+        _bordas = _np_vf.concatenate([
+            _reg[:1].reshape(-1, 3), _reg[-1:].reshape(-1, 3),
+            _reg[:, :1].reshape(-1, 3), _reg[:, -1:].reshape(-1, 3),
+        ], axis=0)
+        _fundo = _np_vf.median(_bordas.astype(_np_vf.float32), axis=0)
+        _dist = _np_vf.linalg.norm(_reg.astype(_np_vf.float32) - _fundo, axis=2)
+        _mask = (_dist > 28).astype('uint8') * 255
+        _n, _labels, _stats, _cent = _cv2_vf.connectedComponentsWithStats(_mask, 8)
+        _tem_componente = False
+        for _j in range(1, _n):
+            _x, _y, _ww, _hh, _area = _stats[_j]
+            if 2 <= _area <= max(90, int(h * h * 0.18)) and _hh <= max(9, int(h * 0.48)):
+                # componente pequeno e baixo; exige que esteja próximo do
+                # lado direito — reduz confusão com descendente do 'y'.
+                if (_x + _ww) >= int(_reg.shape[1] * 0.58):
+                    _tem_componente = True
+                    break
+        if not _tem_componente:
+            return _t
+
+        x0 = max(0, bx0 - 4)
+        x1 = min(recorte_bgr.shape[1], bx1 + max(9, int(h * 0.45)))
+        y0 = max(0, by0 - 4)
+        y1 = min(recorte_bgr.shape[0], by1 + max(6, int(h * 0.32)))
+        _crop = recorte_bgr[y0:y1, x0:x1]
+        _crop = _cv2_vf.resize(_crop, None, fx=3.0, fy=3.0, interpolation=_cv2_vf.INTER_CUBIC)
+        _allow = (
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            "ÁÀÂÃÉÊÍÓÔÕÚÜÇáàâãéêíóôõúüç"
+            "0123456789,.!?-:()/%&'\""
+        )
+        _r = reader.readtext(
+            _crop, detail=1, paragraph=False, allowlist=_allow,
+            text_threshold=0.30, low_text=0.20, link_threshold=0.20,
+            width_ths=0.15, height_ths=0.65,
+        )
+        if not _r:
+            return _t
+        _r.sort(key=lambda it: min(p[0] for p in it[0]))
+        _cand = " ".join((it[1] or "").strip() for it in _r if (it[1] or "").strip()).strip()
+        if not _cand:
+            return _t
+
+        def _base(x):
+            x = ''.join(c for c in _ud_vf.normalize('NFKD', x) if not _ud_vf.combining(c))
+            return re.sub(r"[^A-Za-z0-9]", "", x).lower()
+
+        if _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
+            _novo = re.sub(r"\s*,\s*$", ",", _cand)
+            print(f"[OCR-DEBUG] vírgula final recuperada na caixa: {_t!r} -> {_novo!r}", flush=True)
+            return _novo
+    except Exception as e:
+        print(f"[OCR-DEBUG] recuperação de vírgula final falhou para {_t!r}: {e!r}", flush=True)
+    return _t
+
+
 def _filtrar_ruidos_ocr_linha(itens: list) -> list:
     """Remove caixas OCR espúrias usando GEOMETRIA + contexto da própria linha.
 
@@ -3643,6 +3739,36 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         if vizinhos_textuais and t in {"~", "˜", "^", "`", "´"}:
             print(f"[OCR-DEBUG] caixa-ruído removida entre palavras: {t!r}", flush=True)
             continue
+
+        # V10: letra isolada duplicando o início da palavra seguinte. Caso
+        # real: ``Me Leva Pro Show! N Na Buy`` — o EasyOCR abriu uma caixa
+        # minúscula ``N`` imediatamente antes da caixa correta ``Na``.
+        # Não fazemos replace textual cego: só remove quando a letra isolada
+        # é igual ao PRIMEIRO caractere da palavra seguinte e a geometria
+        # também parece ruído (caixa estreita/colada ou baixa confiança).
+        # Assim um artigo legítimo como ``A Apple`` continua preservado
+        # quando tem espaçamento/caixa normais.
+        if vizinhos_textuais and re.fullmatch(r"[A-Za-zÀ-ÿ]", t):
+            _prox_txt = tp.strip()
+            if _prox_txt and _prox_txt[0].lower() == t.lower() and len(_prox_txt) >= 2:
+                x0, x1, y0, y1 = _bbox_geom(it)
+                xp0, xp1, yp0, yp1 = _bbox_geom(prox)
+                h = max(1.0, y1 - y0)
+                w = max(1.0, x1 - x0)
+                href = float(_altura_ref or max(1.0, yp1 - yp0))
+                gap_prox = max(0.0, xp0 - x1)
+                conf = float(it[2] or 0.0)
+                _caixa_estreita = w <= href * 0.48
+                _colado_prox = gap_prox <= max(3.0, href * 0.18)
+                _conf_baixa = conf < 0.62
+                if _caixa_estreita and (_colado_prox or _conf_baixa):
+                    print(
+                        "[OCR-DEBUG] letra-ruído duplicada removida: "
+                        f"texto={t!r} prox={_prox_txt!r} conf={conf:.3f} "
+                        f"w={w:.1f} h={h:.1f}/{href:.1f} gap_prox={gap_prox:.1f}",
+                        flush=True,
+                    )
+                    continue
 
         # ``1`` / ``1F`` espúrio vindo de acento/antialiasing. Exige dois
         # vizinhos com letras E pelo menos um sinal geométrico forte:
@@ -3748,6 +3874,11 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
         _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
+        # V10: a vírgula pode estar DENTRO do bbox da palavra e mesmo assim
+        # ter sido omitida pelo reconhecedor (``Buy,`` -> ``Buy``). Nessa
+        # situação o detector de vão nunca a encontra; tenta recuperação
+        # localizada na própria caixa antes de montar a frase.
+        _txt_corr_p = _recuperar_virgula_final_caixa(reader, recorte, _bbox_p, _txt_corr_p)
         _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
@@ -4342,7 +4473,12 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         _h_seguinte = float(linhas[_corte + 1].get("altura") or 0)
         _parece_continuacao_titulo = (
             1 <= len(_linha_curta) <= 20
-            and not re.search(r"[.!?:;]\s*$", _linha_curta)
+            # '?' e '!' são comuns justamente na ÚLTIMA linha de um
+            # headline quebrado (caso real: "Volta, Bora" /
+            # "Viver Essa Emoção?"). Bloqueia só pontuação que realmente
+            # costuma encerrar prosa/descrição aqui: ponto, dois-pontos ou
+            # ponto-e-vírgula.
+            and not re.search(r"[.;:]\s*$", _linha_curta)
             and len(_linha_seguinte) >= max(14, int(len(_linha_curta) * 1.4))
             and _h_curta > 0 and _h_seguinte > 0
             and (_h_seguinte / _h_curta) <= 0.94

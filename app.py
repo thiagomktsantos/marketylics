@@ -3128,6 +3128,53 @@ def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> b
     )
     return not eh_perfil_hifen
 
+def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> str:
+    """Reconhece pontuação pequena que o CRAFT costuma ignorar como caixa.
+
+    O caso que motivou esta função foi vírgula em texto de Display: o glifo
+    continuava visível nos pixels, mas a releitura permissiva do EasyOCR
+    interpretava a marca curta como o dígito ``1``. Como uma vírgula ocupa
+    somente a parte inferior da linha e é muito menor que uma letra/dígito
+    verdadeiro, dá para distingui-la geometricamente sem adivinhar pelo texto.
+
+    Retorna apenas a pontuação quando o perfil é forte o bastante; caso
+    contrário devolve string vazia e deixa o fallback normal tentar recuperar
+    uma letra curta real (por exemplo, ``é``).
+    """
+    if x_dir - x_esq < 2:
+        return ""
+    import numpy as _np_pont
+    recorte = recorte_bgr[:, x_esq:x_dir]
+    if recorte.size == 0:
+        return ""
+    cinza = recorte.mean(axis=2)
+    if float(_np_pont.median(cinza)) < 128:
+        tinta = cinza > 160
+    else:
+        tinta = _np_pont.any(recorte < 235, axis=2)
+    ys, xs = _np_pont.where(tinta)
+    if len(xs) < 2:
+        return ""
+    y0, y1 = int(ys.min()), int(ys.max())
+    x0, x1 = int(xs.min()), int(xs.max())
+    h = y1 - y0 + 1
+    w = x1 - x0 + 1
+    altura_linha = max(1, tinta.shape[0])
+    centro_y = (y0 + y1) / 2 / altura_linha
+
+    # Vírgula: marca baixa, curta e estreita. Os limites são relativos à
+    # própria linha para continuarem válidos em criativos de tamanhos
+    # diferentes. Evita confundir ``1`` verdadeiro, que ocupa quase toda a
+    # altura da linha.
+    if (
+        centro_y >= 0.58
+        and h <= max(8, int(altura_linha * 0.48))
+        and w <= max(7, int(altura_linha * 0.38))
+    ):
+        return ","
+    return ""
+
+
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
     vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
@@ -3162,9 +3209,10 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     if not resultado:
         return ""
     resultado.sort(key=lambda item: item[0][0][0])
-    textos = [(t or "").strip() for _bbox, t, _conf in resultado if (t or "").strip()]
-    if not textos:
+    itens_texto = [(_bbox, (t or "").strip(), float(_conf or 0.0)) for _bbox, t, _conf in resultado if (t or "").strip()]
+    if not itens_texto:
         return ""
+    textos = [t for _bbox, t, _conf in itens_texto]
     texto = textos[0] if len(textos) == 1 else "".join(textos)
     # A margem generosa (pra não cortar a letra perdida rente à borda)
     # também costuma capturar um pedacinho da MARGEM de uma letra
@@ -3181,6 +3229,29 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     texto = texto.strip("'\"`´,.;:!?()[]{}").strip()
     if not texto:
         return ""
+
+    # Proteção específica contra o falso ``1`` vindo de vírgula/ruído de
+    # margem. Quando o OCR sensível devolve 1, exigimos que exista dentro do
+    # VÃO ORIGINAL (sem as margens usadas na releitura) um glifo alto, com
+    # corpo compatível com dígito/letra. Uma vírgula real ou um fragmento da
+    # palavra vizinha ocupa só uma faixa pequena da altura e é rejeitado.
+    if texto == "1":
+        import numpy as _np_um
+        _gap = recorte_bgr[:, max(0, x_esq):min(recorte_bgr.shape[1], x_dir)]
+        if _gap.size == 0:
+            return ""
+        _cinza = _gap.mean(axis=2)
+        if float(_np_um.median(_cinza)) < 128:
+            _tinta = _cinza > 160
+        else:
+            _tinta = _np_um.any(_gap < 235, axis=2)
+        _ys, _xs = _np_um.where(_tinta)
+        if len(_xs) < 2:
+            return ""
+        _h = int(_ys.max() - _ys.min() + 1)
+        if _h < max(7, int(_tinta.shape[0] * 0.55)):
+            return ""
+
     return texto if len(texto) <= 3 else ""
 
 _REGEX_ASPA_FECHAMENTO_TROCADA = re.compile(r'(["][^"\'\n]{1,60})[\'](?=\s|[.,;:!?)\]]|$)')
@@ -3531,9 +3602,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
             partes.append("-")
         elif _detectar_glifo_curto_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
-            _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
-            if _txt_recuperado:
-                partes.append(_txt_recuperado)
+            _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira)
+            if _pont:
+                partes.append(_pont)
+            else:
+                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
+                if _txt_recuperado:
+                    partes.append(_txt_recuperado)
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
@@ -3562,9 +3637,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             # pixels + uma releitura sensível; se não conseguir nada
             # curto e confiável, segue como estava (só o espaço).
             if _detectar_glifo_curto_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
-                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_linha_atual, x_dir_prev, x_esq_atual)
-                if _txt_recuperado:
-                    partes.append(_txt_recuperado)
+                _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual)
+                if _pont:
+                    partes.append(_pont)
+                else:
+                    _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_linha_atual, x_dir_prev, x_esq_atual)
+                    if _txt_recuperado:
+                        partes.append(_txt_recuperado)
         partes.append(palavras[i][1])
     # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
     # título pra outra banda) nunca era checado: o laço acima só olha o
@@ -3583,9 +3662,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
             partes.append("-")
         elif _detectar_glifo_curto_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
-            _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
-            if _txt_recuperado:
-                partes.append(_txt_recuperado)
+            _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
+            if _pont:
+                partes.append(_pont)
+            else:
+                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
+                if _txt_recuperado:
+                    partes.append(_txt_recuperado)
     _texto_completo = " ".join(partes)
     if not retornar_linhas:
         return _texto_completo
@@ -3902,8 +3985,10 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
     Considera "salto de fonte de verdade" uma queda de mais de 15%
     entre uma linha e a seguinte (razão <= 0.85) — abaixo disso é só
     variação normal de medição do OCR entre linhas do MESMO tamanho.
-    Corta no PRIMEIRO salto de verdade encontrado (o título nunca some
-    de tamanho no meio pra depois a descrição "voltar" a ficar grande).
+    Entre os saltos de verdade, corta no MAIOR deles (menor razão entre
+    alturas). Isso evita que uma linha curta do próprio título — cuja caixa
+    pode sair alguns pixels menor só pela geometria das letras — provoque um
+    corte prematuro antes da mudança real para a fonte da descrição.
     Se nenhum salto real aparecer em nenhum par de linhas, mantém o
     comportamento antigo: tudo vira título, sem descrição — não dá pra
     separar com segurança sem nenhum sinal de mudança de fonte.
@@ -3921,12 +4006,18 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return linhas[0]["texto"], []
     if any(l["altura"] <= 0 for l in linhas):
         return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    _corte = len(linhas)  # sem salto de verdade = tudo vira título
+    # Escolhe o MAIOR salto de fonte (menor razão), não simplesmente o
+    # primeiro. Linhas curtas como ``Você`` podem ter bbox alguns pixels
+    # menor por não conter hastes/acentos/descendentes, embora usem a MESMA
+    # fonte do restante do headline. Cortar no primeiro degrau fazia essa
+    # última linha do título cair na descrição. A mudança real de headline
+    # para body é normalmente o salto mais forte da sequência.
+    _candidatos_corte = []
     for _i in range(len(linhas) - 1):
         _razao = linhas[_i + 1]["altura"] / linhas[_i]["altura"]
         if _razao <= 0.85:
-            _corte = _i + 1
-            break
+            _candidatos_corte.append((_razao, _i + 1))
+    _corte = min(_candidatos_corte, key=lambda x: x[0])[1] if _candidatos_corte else len(linhas)
     _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
     _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
     return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas

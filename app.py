@@ -4070,6 +4070,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # passa a ser "nome da página aparece como uma linha extra em cima
     # da URL" (cosmético), em vez de "a URL inteira desaparece".
     _partes_dominio = []
+    # Maior altura entre as linhas de cabeçalho já confirmadas (não vazias)
+    # até agora — usado pela trava de SALTO DE FONTE logo abaixo.
+    _altura_max_linha_cabecalho = 0
     while (
         idx < len(bandas_texto)
         and bandas_texto[idx]["classe"] not in ("azul", "botao")
@@ -4091,6 +4094,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # cabeçalho (y=67) pro início do headline (y=540+) é de mais de
         # 470px — exatamente o sinal que separa os dois blocos.
         and (idx == 0 or bandas_texto[idx]["y_min"] - bandas_texto[idx - 1]["y_max"] <= 80)
+        # Trava também por SALTO DE FONTE, não só pelo vão vertical acima:
+        # bug real, anúncio "Ele Tá No Site Esperando Você" da BuyTicket
+        # Brasil — nesse layout o headline vem logo ABAIXO do cabeçalho
+        # pequeno, sem nenhum banner/foto separando os dois (o banner só
+        # aparece depois, entre a descrição e o botão), então o vão de
+        # ~80px nunca dispara e o laço "comia" o headline inteiro e a
+        # descrição inteira, banda por banda, como se fossem linhas de
+        # cabeçalho (nome da página/URL) — só parava no botão, tarde
+        # demais pro bloco de título/descrição de Display (mais abaixo)
+        # sobrar alguma banda pra processar.
+        # Cabeçalho de verdade é sempre um texto PEQUENO; o headline de
+        # Display é sempre bem maior. Assim que uma banda aparece com
+        # altura BEM maior (>= 60% mais alta) que a maior linha de
+        # cabeçalho já confirmada até aqui, ela já não é mais cabeçalho —
+        # é o início do título, e o laço para ali.
+        and not (
+            _altura_max_linha_cabecalho > 0
+            and (bandas_texto[idx]["y_max"] - bandas_texto[idx]["y_min"] + 1)
+                >= _altura_max_linha_cabecalho * 1.6
+        )
     ):
         # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
         # o texto já limpo do rótulo em vez de rodar o OCR de novo
@@ -4260,6 +4283,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         )
         if _txt_dominio_sem_espaco:
             _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
+            _altura_linha_cabecalho_atual = bandas_texto[idx]["y_max"] - bandas_texto[idx]["y_min"] + 1
+            if _altura_linha_cabecalho_atual > _altura_max_linha_cabecalho:
+                _altura_max_linha_cabecalho = _altura_linha_cabecalho_atual
         idx += 1
     # O favicon (ícone circular do site) às vezes vaza pro início da
     # linha e o EasyOCR lê o glifo como um DÍGITO isolado colado no

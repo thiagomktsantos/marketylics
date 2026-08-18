@@ -4293,8 +4293,41 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # verdade (não uma fusão numa banda só), cada banda entra como uma
     # "linha" pra essa função, e ela decide quantas das bandas iniciais
     # (a(s) de fonte maior) formam o título.
+    # Pula banda(s) "azul" vazias (só ícone/logo, sem texto nenhum) NO
+    # INÍCIO do que resta do anúncio, ANTES de decidir se existe banda
+    # azul de verdade — sem isso, mesmo com `_tem_azul_de_verdade` já
+    # corrigido acima, a checagem logo abaixo (`_bandas_restantes_
+    # display[0]["classe"] in ("cinza", "misto")`) continuava falhando
+    # porque a primeira banda que sobrava ainda era essa "azul" vazia,
+    # e o bloco de agrupamento por altura nunca chegava a rodar pro
+    # headline de verdade logo depois dela.
+    while idx < len(bandas_texto) and bandas_texto[idx]["classe"] == "azul":
+        if _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip():
+            break
+        _debug_bandas[idx]["decisao"] = "azul → vazia (só ícone/logo, sem texto) — ignorada"
+        idx += 1
+
     _bandas_restantes_display = bandas_texto[idx:]
-    _tem_azul_de_verdade = any(b["classe"] == "azul" for b in _bandas_restantes_display)
+    # Só conta como "azul de verdade" se a banda tiver algum TEXTO real
+    # (não só a cor). Bug real, anúncio "BuyTicket: Ingressos" da
+    # BuyTicket Brasil: a banda do ícone/logo da empresa (só o símbolo
+    # "b", sem nenhuma letra do nome ao lado) saía classificada como
+    # "azul" pela cor, mesmo sem texto nenhum dentro dela — isso sozinho
+    # já fazia `_tem_azul_de_verdade` dar True e desligava TODO o bloco
+    # abaixo (agrupamento por altura pra anúncio de Display sem
+    # sitelinks), mesmo o anúncio não tendo nenhum título/sitelink azul
+    # de verdade. Sem o bloco, o headline real ("BuyTicket: Ingressos")
+    # caía no laço principal como uma banda "misto" comum, sem título
+    # nenhum aberto pra recebê-la — virava CTA por engano, e a
+    # descrição + o botão real ("Saiba Mais") eram descartados em
+    # cascata por "CTA já preenchido". OCR rápido só nas bandas "azul"
+    # (list pequena, custo desprezível) pra confirmar que têm texto de
+    # verdade antes de contar.
+    _tem_azul_de_verdade = any(
+        b["classe"] == "azul"
+        and _ocr_banda(reader, img_bgr, b["y_min"], b["y_max"]).strip()
+        for b in _bandas_restantes_display
+    )
     if (
         not _tem_azul_de_verdade
         and _bandas_restantes_display
@@ -4775,10 +4808,33 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                 )
                                 _par_criado_via_empresa = True
                     if not _par_criado_via_empresa:
-                        par_atual = [texto, []]
-                        _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
-                            " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
-                        )
+                        if not texto.strip():
+                            # Banda azul sem NENHUM texto reconhecido
+                            # (só o ícone/logo da empresa, ex: o "b" da
+                            # BuyTicket sozinho, sem nome ao lado) — bug
+                            # real: abrir `par_atual = ["", []]` aqui
+                            # "gasta" a vaga de título com um título
+                            # vazio, e `_titulo_ja_reconhecido` (que só
+                            # olha se `par_atual is not None`, não se
+                            # tem texto de verdade) passa a valer True
+                            # a partir daqui. Resultado: a PRÓXIMA banda
+                            # com o título real (ex: "BuyTicket:
+                            # Ingressos") era tratada como CTA em vez
+                            # de título, a descrição real virava
+                            # "descartada (CTA já preenchido)" e até o
+                            # botão de verdade no fim ("Saiba Mais")
+                            # era descartado pelo mesmo motivo — o
+                            # anúncio inteiro saía sem título, sem
+                            # descrição e sem CTA. Ignora a banda (não
+                            # abre par_atual nenhum) e deixa a próxima
+                            # banda com texto de verdade abrir o par
+                            # normalmente.
+                            _debug_bandas[idx]["decisao"] = "azul → vazia (só ícone/logo, sem texto) — ignorada"
+                        else:
+                            par_atual = [texto, []]
+                            _debug_bandas[idx]["decisao"] = "azul → NOVO título/sitelink" + (
+                                " (por causa de separador antes)" if banda.get("sep_antes") else " (par anterior já tinha descrição, ou é o primeiro)"
+                            )
         elif banda["classe"] == "cinza":
             if _cta_aberto:
                 # subtítulo do CTA (ex: "pelo app WhatsApp") — não é

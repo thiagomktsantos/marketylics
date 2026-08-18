@@ -4115,6 +4115,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # intacto, porque ali ele faz parte da palavra de verdade, sem
         # espaço ao redor).
         _txt_dominio = re.sub(r"(?<!\S)l(?!\S)", "/", _txt_dominio)
+        # Outro erro de leitura comum nas linhas de cabeçalho (nome da
+        # página, quando ele vem em várias linhas/bandas — ex.:
+        # "BuyTicket Brasil", "Tá Na Buy, Tá Na Boa", "Humano E De Fã
+        # Pra Fã."): um glifo pequeno perto do texto (vírgula que virou
+        # caixa de detecção própria, selo/ícone, marca de pontuação
+        # rara) é lido pelo EasyOCR como um DÍGITO "1" isolado — ou "1"
+        # + 1 letra maiúscula colada (ex: "1F") — bem no meio da frase.
+        # Ex. real: "Tá Na Buy, Tá Na Boa." virou "Tá 1 Na Buy Tá 1 Na
+        # Boa." (a vírgula sumiu e virou um "1" solto); "Fã Pra Fã."
+        # virou "Fã 1F Pra Fã.".
+        #
+        # Só remove um token EXATAMENTE "1" ou "1"+1 letra maiúscula
+        # cercado de espaço dos DOIS lados (ou início/fim de linha) —
+        # nunca um "1" colado a uma palavra (ex.: "top1" continua
+        # intacto) — pra reduzir o risco de apagar um número real que
+        # por acaso seja só "1" sozinho no meio da frase (ex.: "ganhe
+        # 1 ingresso"); esse risco existe mas é bem mais raro que o
+        # ruído de OCR que estamos corrigindo aqui.
+        _txt_dominio = re.sub(r"(?<!\S)1[A-Z]?(?!\S)", "", _txt_dominio)
+        _txt_dominio = re.sub(r"\s{2,}", " ", _txt_dominio).strip()
         # Domínio/URL de verdade nunca tem espaço em branco interno —
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br

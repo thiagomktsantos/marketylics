@@ -3147,11 +3147,15 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return ""
-    cinza = recorte.mean(axis=2)
-    if float(_np_pont.median(cinza)) < 128:
-        tinta = cinza > 160
-    else:
-        tinta = _np_pont.any(recorte < 235, axis=2)
+    # Limiar ADAPTATIVO ao fundo local. O anúncio real da BuyTicket usa
+    # fundo lilás muito claro (~230-240), então o antigo ``< 235`` marcava
+    # o próprio FUNDO como tinta e escondia justamente a vírgula. Medimos
+    # a distância de cor em relação à mediana do vão: só pixels realmente
+    # diferentes do fundo entram como glifo. Funciona também em fundo escuro.
+    _pix = recorte.astype(_np_pont.int16)
+    _cor_fundo = _np_pont.median(_pix.reshape(-1, 3), axis=0)
+    _dist_fundo = _np_pont.max(_np_pont.abs(_pix - _cor_fundo), axis=2)
+    tinta = _dist_fundo >= 24
     ys, xs = _np_pont.where(tinta)
     if len(xs) < 2:
         return ""
@@ -4546,7 +4550,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             else "cabeçalho/URL (vazio após limpeza — descartada)"
         )
         if _txt_dominio_sem_espaco:
-            _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
+            # Se a linha foi confirmada como NOME da página, não passe pela
+            # normalização de URL. Além disso, cadastros antigos podem guardar
+            # a empresa como slug (ex.: ``buyticketbrasil``). Para exibição,
+            # recupera separação/capitalização sem alterar a chave cadastrada.
+            if _nome_corrigido_p_empresa and not _parece_dominio_ou_url:
+                _nome_exibicao = _txt_dominio_sem_espaco.strip()
+                if " " not in _nome_exibicao and _nome_exibicao.lower().endswith("brasil"):
+                    _marca = _nome_exibicao[:-6]
+                    # Marcas compostas muito comuns no setor: preserva Ticket
+                    # como segundo elemento (buyticket -> BuyTicket).
+                    if _marca.lower().endswith("ticket") and len(_marca) > 6:
+                        _prefixo = _marca[:-6]
+                        _marca = _prefixo[:1].upper() + _prefixo[1:].lower() + "Ticket"
+                    else:
+                        _marca = _marca[:1].upper() + _marca[1:]
+                    _nome_exibicao = f"{_marca} Brasil"
+                _partes_dominio.append(_nome_exibicao)
+            else:
+                _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
             _altura_linha_cabecalho_atual = bandas_texto[idx]["y_max"] - bandas_texto[idx]["y_min"] + 1
             if _altura_linha_cabecalho_atual > _altura_max_linha_cabecalho:
                 _altura_max_linha_cabecalho = _altura_linha_cabecalho_atual

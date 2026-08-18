@@ -1997,42 +1997,23 @@ _SVG_ICONE_GLOBO_SITE = (
 )
 
 def _icone_cta_google_ads(cta_texto: str, cta_subtitulo: str) -> str:
-    """Devolve o HTML do ícone do CTA final do anúncio, escolhido por
-    palavra-chave no título/subtítulo do CTA extraído por OCR (ex:
-    "pelo app WhatsApp" → ícone verde do WhatsApp, sem fundo; outros
-    CTAs → ícone branco dentro de um círculo colorido) — reproduz
-    visualmente o ícone que a Central de Transparência mostra de
-    verdade à esquerda desse texto. Devolve "" quando não reconhece
-    nenhum padrão conhecido, pra não inventar um ícone genérico que não
-    bate com o anúncio real."""
+    """Devolve o HTML do ícone do CTA final do anúncio — só existe pro
+    CTA do WhatsApp (ex: "pelo app WhatsApp" → ícone verde do
+    WhatsApp, sem fundo), que é o único que a Central de Transparência
+    mostra de verdade à esquerda do texto do CTA. Pra qualquer outro
+    CTA (ligar, comprar, baixar, agendar, cadastre-se, saiba mais
+    etc.) devolve "" — não inventa ícone nenhum pra eles."""
     alvo = f"{cta_texto or ''} {cta_subtitulo or ''}".lower()
     if "whatsapp" in alvo:
         # Sem fundo colorido — só o ícone oficial do WhatsApp (verde),
         # "solto", igual ao que aparece de fato ao lado do CTA na
-        # Central de Transparência (diferente dos outros CTAs abaixo,
-        # que usam um círculo colorido cheio).
+        # Central de Transparência.
         return (
             '<span style="display:inline-flex;align-items:center;justify-content:center;'
             'width:30px;height:30px;min-width:30px;margin-right:8px;flex-shrink:0;">'
             + _SVG_CTA_WHATSAPP + '</span>'
         )
-    elif re.search(r"ligar|telefone|liga\s*(pra|para)", alvo):
-        icone, cor = _SVG_CTA_TELEFONE, "#3a9fd6"
-    elif re.search(r"comprar|pedido|pe[çc]a\s*já", alvo):
-        icone, cor = _SVG_CTA_CARRINHO, "#f5a623"
-    elif re.search(r"baixar|instalar", alvo):
-        icone, cor = _SVG_CTA_DOWNLOAD, "#3a9fd6"
-    elif re.search(r"agendar|reservar", alvo):
-        icone, cor = _SVG_CTA_CALENDARIO, "#8b5cf6"
-    elif re.search(r"saiba\s*mais|cadastre|inscreva", alvo):
-        icone, cor = _SVG_CTA_LINK, "#6b7280"
-    else:
-        return ""
-    return (
-        '<span style="display:inline-flex;align-items:center;justify-content:center;'
-        f'width:30px;height:30px;min-width:30px;border-radius:50%;background:{cor};'
-        'margin-right:8px;flex-shrink:0;">' + icone + '</span>'
-    )
+    return ""
 
 def _escapar_html_ocr_preview(s: str) -> str:
     """Mesma correção/escaping usado na renderização real do card do

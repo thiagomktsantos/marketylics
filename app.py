@@ -2910,12 +2910,42 @@ def _detectar_bandas_texto(img_bgr):
             _largura_conteudo_bandas = _x1c_bandas - _x0c_bandas + 1
             _caixa_bandas = nao_branco[y_min:y_max + 1, _x0c_bandas:_x1c_bandas + 1]
             _taxa_preenchimento_bandas = float(_caixa_bandas.mean())
+        # V6: além de classificar a banda como botão, localiza o RETÂNGULO
+        # sólido do CTA no eixo X. Em anúncios com foto ao lado do texto, a
+        # mesma faixa horizontal do botão pode atravessar detalhes da foto
+        # (ex.: "ORDEM E PROGRESSO" na bandeira do Brasil). Se o OCR rodar
+        # na largura inteira da banda, esse texto da foto vaza para o CTA e
+        # vira algo como "0RDE Compre Agora". O fundo sólido do botão,
+        # porém, ocupa uma sequência longa de colunas com alta ocupação
+        # vertical; texto/foto adjacente não. Guardamos esse intervalo para
+        # restringir o OCR do botão mais abaixo.
+        _x_min_botao_bandas = None
+        _x_max_botao_bandas = None
         if (
             altura >= 15
             and _largura_conteudo_bandas >= 40
             and _taxa_preenchimento_bandas >= 0.6
         ):
             classe = "botao"
+            _faixa_mask_botao = nao_branco[y_min:y_max + 1]
+            if _faixa_mask_botao.size:
+                _ocupacao_colunas = _faixa_mask_botao.mean(axis=0)
+                _cols_solidas = _ocupacao_colunas >= 0.68
+                _runs = []
+                _ini_run = None
+                for _xc, _eh_solida in enumerate(_cols_solidas):
+                    if _eh_solida and _ini_run is None:
+                        _ini_run = _xc
+                    elif not _eh_solida and _ini_run is not None:
+                        if _xc - _ini_run >= 40:
+                            _runs.append((_ini_run, _xc - 1))
+                        _ini_run = None
+                if _ini_run is not None and len(_cols_solidas) - _ini_run >= 40:
+                    _runs.append((_ini_run, len(_cols_solidas) - 1))
+                if _runs:
+                    _x_min_botao_bandas, _x_max_botao_bandas = max(
+                        _runs, key=lambda _r: _r[1] - _r[0]
+                    )
         elif altura <= 3 and r > 190:
             classe = "separador"
         elif b > r + 15 and b > 150:
@@ -2988,7 +3018,12 @@ def _detectar_bandas_texto(img_bgr):
                 _n_pixels_coloridos = int((_saturacao > 30).sum())
                 if _n_pixels_coloridos >= 8:
                     x_min_favicon = _x_ignorar_quebra
-        bandas.append({"y_min": y_min, "y_max": y_max, "classe": classe, "x_min_favicon": x_min_favicon})
+        bandas.append({
+            "y_min": y_min, "y_max": y_max, "classe": classe,
+            "x_min_favicon": x_min_favicon,
+            "x_min_botao": _x_min_botao_bandas if classe == "botao" else None,
+            "x_max_botao": _x_max_botao_bandas if classe == "botao" else None,
+        })
     return bandas
 
 def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
@@ -4263,22 +4298,27 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return linhas[0]["texto"], []
     if any(l["altura"] <= 0 for l in linhas):
         return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    # V5: agora as alturas recebidas pelo caminho de Display são as
-    # alturas REAIS das caixas OCR, não a altura bruta da banda. Com essa
-    # medida mais fiel podemos voltar ao primeiro degrau consistente: título
-    # vem antes da descrição, então o primeiro salto real é semanticamente o
-    # corte correto. O problema antigo de "Você" cair na descrição vinha da
-    # altura imprecisa da banda, não da ordem do corte.
+    # V6: usa o MAIOR degrau de redução de fonte, não o primeiro. Mesmo
+    # usando altura real das caixas OCR, duas linhas do MESMO título podem
+    # variar um pouco (ex.: "Ingressos Para Copa" / "Do Mundo") e o
+    # primeiro degrau pode parecer grande o bastante para cortar cedo. A
+    # transição título -> descrição é, em anúncios Display, a queda mais
+    # forte de tamanho entre linhas consecutivas. Escolher a menor razão
+    # preserva títulos de 2-3 linhas e ainda separa corretamente descrições.
     _corte = len(linhas)
+    _melhor_i = None
+    _menor_razao = 1.0
     for _i in range(len(linhas) - 1):
         _h0 = float(linhas[_i]["altura"] or 0)
         _h1 = float(linhas[_i + 1]["altura"] or 0)
         if _h0 <= 0 or _h1 <= 0:
             continue
         _razao = _h1 / _h0
-        if _razao <= 0.88:
-            _corte = _i + 1
-            break
+        if _razao < _menor_razao:
+            _menor_razao = _razao
+            _melhor_i = _i
+    if _melhor_i is not None and _menor_razao <= 0.88:
+        _corte = _melhor_i + 1
     _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
     _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
     return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
@@ -4996,7 +5036,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _debug_bandas[idx]["texto"] = " | ".join(_textos_botoes_debug)
             idx += 1
             continue
-        texto = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda["y_min"], banda["y_max"]).strip())
+        # V6: botão sólido é lido somente dentro do retângulo detectado.
+        # Isso impede texto pertencente à foto/arte na mesma altura (como
+        # "ORDE" da bandeira do Brasil) de contaminar "Compre Agora".
+        if banda["classe"] == "botao" and banda.get("x_min_botao") is not None:
+            _texto_banda_bruto = _ocr_banda(
+                reader, img_bgr, banda["y_min"], banda["y_max"],
+                x_min=banda.get("x_min_botao"), x_max=banda.get("x_max_botao"),
+            ).strip()
+        else:
+            _texto_banda_bruto = _ocr_banda(
+                reader, img_bgr, banda["y_min"], banda["y_max"]
+            ).strip()
+        texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
         _debug_bandas[idx]["texto"] = texto
         if banda["classe"] == "azul":
             # Linha de "termos relacionados" no fim do anúncio (ex.:

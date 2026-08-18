@@ -3167,9 +3167,12 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
     # diferentes. Evita confundir ``1`` verdadeiro, que ocupa quase toda a
     # altura da linha.
     if (
-        centro_y >= 0.58
-        and h <= max(8, int(altura_linha * 0.48))
-        and w <= max(7, int(altura_linha * 0.38))
+        centro_y >= 0.50
+        and h <= max(9, int(altura_linha * 0.58))
+        and w <= max(8, int(altura_linha * 0.42))
+        # A vírgula tem que continuar sendo claramente menor que uma letra
+        # normal; este teto impede transformar um ``1`` legítimo em vírgula.
+        and (h * w) <= max(48, int((altura_linha * altura_linha) * 0.18))
     ):
         return ","
     return ""
@@ -3230,29 +3233,70 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     if not texto:
         return ""
 
-    # Proteção específica contra o falso ``1`` vindo de vírgula/ruído de
-    # margem. Quando o OCR sensível devolve 1, exigimos que exista dentro do
-    # VÃO ORIGINAL (sem as margens usadas na releitura) um glifo alto, com
-    # corpo compatível com dígito/letra. Uma vírgula real ou um fragmento da
-    # palavra vizinha ocupa só uma faixa pequena da altura e é rejeitado.
-    if texto == "1":
-        import numpy as _np_um
-        _gap = recorte_bgr[:, max(0, x_esq):min(recorte_bgr.shape[1], x_dir)]
-        if _gap.size == 0:
-            return ""
-        _cinza = _gap.mean(axis=2)
-        if float(_np_um.median(_cinza)) < 128:
-            _tinta = _cinza > 160
-        else:
-            _tinta = _np_um.any(_gap < 235, axis=2)
-        _ys, _xs = _np_um.where(_tinta)
-        if len(_xs) < 2:
-            return ""
-        _h = int(_ys.max() - _ys.min() + 1)
-        if _h < max(7, int(_tinta.shape[0] * 0.55)):
-            return ""
+    # Esta função existe SOMENTE para recuperar um termo curto que o CRAFT
+    # deixou de abrir como caixa (ex.: "é"). Um número que aparece aqui não
+    # veio de uma caixa OCR normal: foi "inventado" pela releitura permissiva
+    # de um VÃO entre duas palavras já reconhecidas. Nos anúncios reais da
+    # BuyTicket isso gerava exatamente "Tá 1 Na" e "De Fã 1F Pra Fã".
+    #
+    # Portanto não aceitamos tokens recuperados que comecem por dígito. Um
+    # número legítimo ("Fórmula 1", "2026" etc.) continua intacto quando o
+    # EasyOCR o detecta normalmente como caixa; esta trava só vale para o
+    # fallback de recuperação de lacunas.
+    if re.match(r"^\d", texto):
+        print(
+            f"[OCR-DEBUG] glifo recuperado rejeitado (começa por dígito): {texto!r}",
+            flush=True,
+        )
+        return ""
 
     return texto if len(texto) <= 3 else ""
+
+def _reler_banda_ampliada_se_suspeita(reader, recorte_bgr, texto_atual: str) -> str:
+    """Reprocessa uma banda em 2.5x somente quando aparecem artefatos
+    típicos de vírgula/antialiasing lidos como dígito 1. Mantém a leitura
+    original salvo quando a alternativa reduz esses artefatos e continua
+    muito parecida com o texto original."""
+    if not texto_atual or recorte_bgr is None or recorte_bgr.size == 0:
+        return texto_atual
+    _rx_sus = re.compile(r"(?:^|\s)1(?:\s|(?=[A-Za-zÀ-ÿ]))|\b1[A-Za-zÀ-ÿ]")
+    _qtd_sus_atual = len(_rx_sus.findall(texto_atual))
+    if _qtd_sus_atual == 0:
+        return texto_atual
+    try:
+        import cv2 as _cv2_re
+        import difflib as _difflib_re
+        _ampliado = _cv2_re.resize(recorte_bgr, None, fx=2.5, fy=2.5, interpolation=_cv2_re.INTER_CUBIC)
+        _res = reader.readtext(
+            _ampliado, detail=1, width_ths=0.35, height_ths=0.5,
+            text_threshold=0.55, low_text=0.3, link_threshold=0.3,
+        )
+        if not _res:
+            return texto_atual
+        _res.sort(key=lambda it: (sum(p[1] for p in it[0]) / len(it[0]), it[0][0][0]))
+        _cand = " ".join((it[1] or "").strip() for it in _res if (it[1] or "").strip()).strip()
+        if not _cand:
+            return texto_atual
+        _cand = re.sub(r"\s+([,.;:!?])", r"\1", _cand)
+        _cand = re.sub(r"\s{2,}", " ", _cand).strip()
+        _qtd_sus_cand = len(_rx_sus.findall(_cand))
+        if _qtd_sus_cand >= _qtd_sus_atual:
+            return texto_atual
+        def _norm(_s):
+            _s = unicodedata.normalize("NFKD", _s).encode("ascii", "ignore").decode("ascii")
+            return re.sub(r"[^a-z0-9]+", "", _s.lower())
+        _na, _nb = _norm(texto_atual), _norm(_cand)
+        if not _na or not _nb:
+            return texto_atual
+        _sim = _difflib_re.SequenceMatcher(None, _na, _nb).ratio()
+        _pal_a = len(re.findall(r"[A-Za-zÀ-ÿ0-9]+", texto_atual))
+        _pal_b = len(re.findall(r"[A-Za-zÀ-ÿ0-9]+", _cand))
+        if _sim >= 0.72 and _pal_b >= max(1, int(_pal_a * 0.70)):
+            print(f"[OCR-DEBUG] releitura ampliada adotada: {texto_atual!r} -> {_cand!r} (sim={_sim:.2f})", flush=True)
+            return _cand
+    except Exception as e:
+        print(f"[OCR-DEBUG] releitura ampliada falhou: {e!r}", flush=True)
+    return texto_atual
 
 _REGEX_ASPA_FECHAMENTO_TROCADA = re.compile(r'(["][^"\'\n]{1,60})[\'](?=\s|[.,;:!?)\]]|$)')
 
@@ -3322,9 +3366,27 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto onde não tem nada de fato)."""
     if not texto:
         return texto
+    # Pontuação solta ANTES do primeiro caractere alfanumérico é quase
+    # sempre ruído de borda/ícone recuperado pelo OCR (bug real: o CTA
+    # "Compre Agora" apareceu como ",Compre Agora").
+    texto = re.sub(r"^[,;:]+\s*", "", texto)
     texto = _REGEX_ESPACO_ANTES_PONTUACAO.sub(r"\1", texto)
+    # Ruído OCR observado em headline: um pequeno artefato entre duas
+    # palavras vira "~" isolado ("Ele ~ Tá"). Em texto publicitário comum,
+    # til solto entre palavras não é pontuação válida; remove somente quando
+    # está isolado por espaços e cercado por caracteres alfanuméricos.
+    texto = re.sub(r"(?<=\w)\s+[~^]\s+(?=\w)", " ", texto)
     texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
+
+    # Em prosa longa, o EasyOCR às vezes cola um ruído fino à primeira
+    # letra seguinte e devolve "1F", "1N" etc. Só removemos esse 1
+    # quando não há nenhum outro dígito diferente de 1 na linha.
+    _digitos = re.findall(r"\d", texto)
+    _palavras_alpha = re.findall(r"[A-Za-zÀ-ÿ]{2,}", texto)
+    if len(_palavras_alpha) >= 4 and _digitos and all(d == "1" for d in _digitos):
+        texto = re.sub(r"(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])", "", texto)
+
     texto = _corrigir_o_isolado(texto)
     return texto
 
@@ -3412,6 +3474,100 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     grupos.append((x_ini, x_ant))
     print(f"[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}", flush=True)
     return grupos
+
+def _filtrar_ruidos_ocr_linha(itens: list) -> list:
+    """Remove caixas OCR espúrias usando GEOMETRIA + contexto da própria linha.
+
+    Não corrige texto por dicionário nem por frase conhecida. O caso real que
+    motivou isto é o EasyOCR separar o acento/antialiasing de ``Tá``/``Fã`` em
+    uma caixa minúscula e reconhecê-la como ``1`` ou ``1F``. Como essa caixa
+    fica praticamente COLADA à palavra anterior, ela é estruturalmente bem
+    diferente de um número 1 legítimo em ``Fórmula 1``: o número real ocupa a
+    altura normal da fonte e tem espaçamento de palavra dos dois lados.
+
+    Também remove ``~`` isolado entre duas palavras (artefato observado em
+    ``Ele ~ Tá``). A função só age quando há vizinhos textuais dos dois lados;
+    números/tils legítimos fora desse padrão continuam intactos.
+    """
+    if not itens or len(itens) < 3:
+        return itens
+
+    import statistics as _stats_ruido
+
+    def _txt(it):
+        return (it[1] or "").strip()
+
+    def _bbox_geom(it):
+        bbox = it[0]
+        xs = [float(pt[0]) for pt in bbox]
+        ys = [float(pt[1]) for pt in bbox]
+        return min(xs), max(xs), min(ys), max(ys)
+
+    def _tem_letra(t):
+        return bool(re.search(r"[A-Za-zÀ-ÿ]", t or ""))
+
+    # Altura de referência da linha usando somente palavras normais (2+
+    # letras), para não deixar a própria caixa-ruído contaminar a mediana.
+    _alturas_normais = []
+    for _it in itens:
+        _t = _txt(_it)
+        if len(re.findall(r"[A-Za-zÀ-ÿ]", _t)) >= 2:
+            _x0, _x1, _y0, _y1 = _bbox_geom(_it)
+            _alturas_normais.append(max(1.0, _y1 - _y0))
+    _altura_ref = _stats_ruido.median(_alturas_normais) if _alturas_normais else None
+
+    saida = []
+    for i, it in enumerate(itens):
+        t = _txt(it)
+        if not t:
+            continue
+        if i == 0 or i == len(itens) - 1:
+            saida.append(it)
+            continue
+
+        ant = itens[i - 1]
+        prox = itens[i + 1]
+        ta, tp = _txt(ant), _txt(prox)
+        vizinhos_textuais = _tem_letra(ta) and _tem_letra(tp)
+
+        # Artefato puro entre palavras: ``Ele ~ Tá``. Não mexe em til que
+        # faça parte de uma palavra, porque aqui ele precisa ser uma caixa
+        # OCR isolada inteira.
+        if vizinhos_textuais and t in {"~", "˜", "^", "`", "´"}:
+            print(f"[OCR-DEBUG] caixa-ruído removida entre palavras: {t!r}", flush=True)
+            continue
+
+        # ``1`` / ``1F`` espúrio vindo de acento/antialiasing. Exige dois
+        # vizinhos com letras E pelo menos um sinal geométrico forte:
+        # caixa colada à palavra anterior, altura muito menor que a fonte
+        # normal da linha ou confiança baixa. Assim ``Fórmula 1`` não é
+        # removido só por ter um 1 entre palavras.
+        if vizinhos_textuais and re.fullmatch(r"1[A-Za-zÀ-ÿ]?", t):
+            x0, x1, y0, y1 = _bbox_geom(it)
+            xa0, xa1, ya0, ya1 = _bbox_geom(ant)
+            xp0, xp1, yp0, yp1 = _bbox_geom(prox)
+            h = max(1.0, y1 - y0)
+            href = float(_altura_ref or max(1.0, ya1 - ya0, yp1 - yp0))
+            gap_ant = max(0.0, x0 - xa1)
+            gap_prox = max(0.0, xp0 - x1)
+            conf = float(it[2] or 0.0)
+
+            colado_anterior = gap_ant <= max(4.0, href * 0.28)
+            caixa_baixa = h <= href * 0.72
+            confianca_baixa = conf < 0.52
+
+            if colado_anterior or caixa_baixa or confianca_baixa:
+                print(
+                    "[OCR-DEBUG] caixa-ruído numérica removida: "
+                    f"texto={t!r} conf={conf:.3f} h={h:.1f}/{href:.1f} "
+                    f"gap_ant={gap_ant:.1f} gap_prox={gap_prox:.1f}",
+                    flush=True,
+                )
+                continue
+
+        saida.append(it)
+    return saida
+
 
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max: int = None, retornar_linhas: bool = False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
@@ -3523,6 +3679,14 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
                           # sistema de coordenadas de `recorte` (local)
     for _idx_linha, _grupo in enumerate(_linhas_agrupadas):
         _grupo["itens"].sort(key=lambda item: item[0][0][0])
+        # V3: limpa caixas espúrias ANTES de montar ``palavras``. Nas
+        # versões anteriores tentávamos corrigir o ``1`` depois que ele já
+        # tinha virado texto; isso não funcionava quando o próprio EasyOCR
+        # entregava ``1``/``1F`` como uma caixa primária. Aqui ainda temos
+        # bbox + confiança + vizinhos, então dá para decidir pela geometria.
+        _grupo["itens"] = _filtrar_ruidos_ocr_linha(_grupo["itens"])
+        if not _grupo["itens"]:
+            continue
         _y_topo_linha = int(min(min(p[1] for p in item[0]) for item in _grupo["itens"]))
         _y_base_linha = int(max(max(p[1] for p in item[0]) for item in _grupo["itens"]))
         linhas_y_range.append((_y_topo_linha, _y_base_linha))
@@ -3599,16 +3763,10 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _bbox_primeira = palavras[0][0]
     _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
     if _x_esq_primeira <= _LARGURA_MAX_VAO_GLIFO:
+        # Na borda esquerda só recupera hífen. Vírgula/letra curta aqui
+        # gerava falso positivo vindo da borda/ícone do CTA (",Compre Agora").
         if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
             partes.append("-")
-        elif _detectar_glifo_curto_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
-            _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira)
-            if _pont:
-                partes.append(_pont)
-            else:
-                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_primeira_linha, 0, _x_esq_primeira)
-                if _txt_recuperado:
-                    partes.append(_txt_recuperado)
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
@@ -3630,20 +3788,26 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         if _detectar_hifen_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
             partes.append("-")
         else:
-            # Vão entre duas palavras já reconhecidas NESTA banda que
-            # não tem perfil de hífen — pode ser uma palavra curta
-            # (tipicamente de 1 letra acentuada, ex: "é") que o CRAFT
-            # descartou como caixa própria. Tenta recuperar só pelos
-            # pixels + uma releitura sensível; se não conseguir nada
-            # curto e confiável, segue como estava (só o espaço).
-            if _detectar_glifo_curto_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
-                _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual)
-                if _pont:
-                    partes.append(_pont)
-                else:
-                    _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_linha_atual, x_dir_prev, x_esq_atual)
-                    if _txt_recuperado:
-                        partes.append(_txt_recuperado)
+            # Pontuação pequena (principalmente vírgula) NÃO deve depender
+            # de `_detectar_glifo_curto_no_intervalo`: uma vírgula é tão
+            # baixa/pequena que esse detector pode rejeitá-la antes de a
+            # rotina específica ter chance de enxergá-la. Foi o que fazia
+            # "Tá Na Buy, Tá Na Boa." perder a vírgula depois de "Buy".
+            # Primeiro tenta pontuação diretamente pela geometria; só se não
+            # houver pontuação tenta recuperar uma palavra curta como "é".
+            _pont = _detectar_pontuacao_curta_no_intervalo(
+                _recorte_linha_atual, x_dir_prev, x_esq_atual
+            )
+            if _pont:
+                partes.append(_pont)
+            elif _detectar_glifo_curto_no_intervalo(
+                _recorte_linha_atual, x_dir_prev, x_esq_atual
+            ):
+                _txt_recuperado = _recuperar_texto_no_intervalo(
+                    reader, _recorte_linha_atual, x_dir_prev, x_esq_atual
+                )
+                if _txt_recuperado:
+                    partes.append(_txt_recuperado)
         partes.append(palavras[i][1])
     # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
     # título pra outra banda) nunca era checado: o laço acima só olha o
@@ -3661,15 +3825,24 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     if _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
         if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
             partes.append("-")
-        elif _detectar_glifo_curto_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
-            _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
+        else:
+            _pont = _detectar_pontuacao_curta_no_intervalo(
+                _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+            )
             if _pont:
                 partes.append(_pont)
-            else:
-                _txt_recuperado = _recuperar_texto_no_intervalo(reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
+            elif _detectar_glifo_curto_no_intervalo(
+                _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+            ):
+                _txt_recuperado = _recuperar_texto_no_intervalo(
+                    reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+                )
                 if _txt_recuperado:
                     partes.append(_txt_recuperado)
     _texto_completo = " ".join(partes)
+    # Segunda passada só em bandas suspeitas. O recorte é ampliado para
+    # dar mais pixels à pontuação fina, evitando "Tá 1 Na" / "1F".
+    _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
     if not retornar_linhas:
         return _texto_completo
     # Reconstrói o texto de CADA linha separadamente (usando `palavras`

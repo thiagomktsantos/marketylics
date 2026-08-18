@@ -3917,6 +3917,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             _pont = _detectar_pontuacao_curta_no_intervalo(
                 _recorte_linha_atual, x_dir_prev, x_esq_atual
             )
+            # V7: não inventa vírgula depois de artigo/conjunção de UMA
+            # letra ("A BuyTicket...", "E Agora..."). Nesses vãos o
+            # antialiasing da própria letra curta às vezes produz um pequeno
+            # grupo de pixels baixos com geometria parecida com vírgula.
+            # A vírgula real de "Buy, Tá" continua sendo recuperada porque
+            # a palavra anterior tem mais de um caractere.
+            _prev_txt_pont = (palavras[i - 1][1] or "").strip()
+            if _pont == "," and re.fullmatch(r"[AaOoEe]", _prev_txt_pont):
+                _pont = ""
             if _pont:
                 partes.append(_pont)
             elif _detectar_glifo_curto_no_intervalo(
@@ -4298,30 +4307,273 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return linhas[0]["texto"], []
     if any(l["altura"] <= 0 for l in linhas):
         return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    # V6: usa o MAIOR degrau de redução de fonte, não o primeiro. Mesmo
-    # usando altura real das caixas OCR, duas linhas do MESMO título podem
-    # variar um pouco (ex.: "Ingressos Para Copa" / "Do Mundo") e o
-    # primeiro degrau pode parecer grande o bastante para cortar cedo. A
-    # transição título -> descrição é, em anúncios Display, a queda mais
-    # forte de tamanho entre linhas consecutivas. Escolher a menor razão
-    # preserva títulos de 2-3 linhas e ainda separa corretamente descrições.
+    # V7: volta a usar o PRIMEIRO degrau consistente como corte padrão,
+    # porque esse é o comportamento que separa corretamente anúncios como
+    # "Venda Seu Ingresso Aqui" da descrição logo abaixo. A V6 passou a
+    # escolher o MAIOR degrau global e, nesse layout, a última linha curta
+    # "Fã" criava um degrau ainda maior; resultado: a primeira linha da
+    # descrição era promovida para o título.
+    #
+    # Há, porém, um caso legítimo que motivou a V6: títulos quebrados em uma
+    # segunda linha MUITO CURTA, como "Ingressos Para Copa" / "Do Mundo".
+    # Neles a geometria das letras pode criar um primeiro degrau falso. Para
+    # preservar esses títulos, se a linha logo após o primeiro corte tiver
+    # até 20 caracteres, não terminar como frase e houver uma linha seguinte
+    # claramente mais longa/menor, mantemos essa linha curta no título.
     _corte = len(linhas)
-    _melhor_i = None
-    _menor_razao = 1.0
+    _razoes = []
     for _i in range(len(linhas) - 1):
         _h0 = float(linhas[_i]["altura"] or 0)
         _h1 = float(linhas[_i + 1]["altura"] or 0)
         if _h0 <= 0 or _h1 <= 0:
+            _razoes.append(None)
             continue
-        _razao = _h1 / _h0
-        if _razao < _menor_razao:
-            _menor_razao = _razao
-            _melhor_i = _i
-    if _melhor_i is not None and _menor_razao <= 0.88:
-        _corte = _melhor_i + 1
+        _razoes.append(_h1 / _h0)
+
+    for _i, _razao in enumerate(_razoes):
+        if _razao is not None and _razao <= 0.88:
+            _corte = _i + 1
+            break
+
+    if _corte < len(linhas) - 1:
+        _linha_curta = (linhas[_corte].get("texto") or "").strip()
+        _linha_seguinte = (linhas[_corte + 1].get("texto") or "").strip()
+        _h_curta = float(linhas[_corte].get("altura") or 0)
+        _h_seguinte = float(linhas[_corte + 1].get("altura") or 0)
+        _parece_continuacao_titulo = (
+            1 <= len(_linha_curta) <= 20
+            and not re.search(r"[.!?:;]\s*$", _linha_curta)
+            and len(_linha_seguinte) >= max(14, int(len(_linha_curta) * 1.4))
+            and _h_curta > 0 and _h_seguinte > 0
+            and (_h_seguinte / _h_curta) <= 0.94
+        )
+        if _parece_continuacao_titulo:
+            _corte += 1
+
+    print(
+        "[OCR-DEBUG] split-display alturas="
+        + repr([(l.get("texto"), round(float(l.get("altura") or 0), 1)) for l in linhas])
+        + f" razoes={_razoes!r} corte={_corte}",
+        flush=True,
+    )
     _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
     _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
     return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
+
+
+
+def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
+    """Detecta o formato de anúncio em GRADE/CATÁLOGO do Google Ads.
+
+    Esse layout é estruturalmente diferente do anúncio simples: há vários
+    cards independentes (normalmente 2 colunas), cada um com uma imagem,
+    um título logo ABAIXO da imagem e um CTA próprio (ex.: "Compre Agora").
+    Tentar passar a captura inteira pelo parser linear de bandas mistura
+    texto de cards diferentes na mesma faixa Y e também deixa texto que
+    está DENTRO das artes vazar para título/CTA.
+
+    Estratégia:
+      1) só tenta este caminho em capturas bem mais altas que largas;
+      2) roda uma leitura global com bboxes e procura 3+ ocorrências de
+         um mesmo CTA do tipo "Compre Agora";
+      3) para cada CTA, busca APENAS as caixas de texto imediatamente
+         acima dele, na mesma coluna, numa janela curta — essa região é
+         exatamente onde fica o título externo do card. Texto interno da
+         arte fica mais distante e é ignorado;
+      4) devolve cada card como um item de `sitelinks`, preservando a
+         estrutura atual do JSON sem misturar todos os cards num único
+         título/descrição/CTA.
+
+    Retorna None quando não parece grade de cards.
+    """
+    import re as _re_grade
+    from difflib import SequenceMatcher as _SM_grade
+
+    h, w = img_bgr.shape[:2]
+    if h < w * 1.45:
+        return None
+
+    try:
+        _ocr = reader.readtext(
+            img_bgr,
+            detail=1,
+            paragraph=False,
+            width_ths=0.7,
+            height_ths=0.5,
+            text_threshold=0.55,
+            low_text=0.35,
+            link_threshold=0.35,
+        )
+    except Exception as e:
+        print(f"[OCR-DEBUG] grade-cards: leitura global falhou: {e!r}", flush=True)
+        return None
+
+    def _norm(txt):
+        txt = (txt or "").strip().lower()
+        txt = _re_grade.sub(r"[^a-z0-9áàâãéêíóôõúç ]+", " ", txt)
+        return _re_grade.sub(r"\s+", " ", txt).strip()
+
+    def _bbox_info(item):
+        bbox, txt, conf = item
+        xs = [float(p[0]) for p in bbox]
+        ys = [float(p[1]) for p in bbox]
+        return {
+            "bbox": bbox,
+            "texto": (txt or "").strip(),
+            "conf": float(conf or 0),
+            "x0": min(xs), "x1": max(xs),
+            "y0": min(ys), "y1": max(ys),
+            "xc": (min(xs) + max(xs)) / 2,
+            "yc": (min(ys) + max(ys)) / 2,
+        }
+
+    caixas = [_bbox_info(x) for x in _ocr if x and len(x) >= 3 and (x[1] or "").strip()]
+    if not caixas:
+        return None
+
+    # CTA externo dos cards. Aceita pequenos erros do OCR, mas exige que
+    # a caixa esteja longe do topo (cabeçalho) e que a similaridade seja alta.
+    ctas = []
+    for c in caixas:
+        n = _norm(c["texto"])
+        sim = _SM_grade(None, n, "compre agora").ratio() if n else 0
+        if (
+            c["yc"] > h * 0.18
+            and (n == "compre agora" or sim >= 0.78 or ("compre" in n and "agora" in n))
+        ):
+            ctas.append(c)
+
+    # Deduplica caixas praticamente sobrepostas da mesma leitura.
+    ctas.sort(key=lambda c: (c["yc"], c["xc"]))
+    _ctas_dedup = []
+    for c in ctas:
+        if any(abs(c["xc"] - d["xc"]) < 20 and abs(c["yc"] - d["yc"]) < 20 for d in _ctas_dedup):
+            continue
+        _ctas_dedup.append(c)
+    ctas = _ctas_dedup
+
+    if len(ctas) < 3:
+        return None
+
+    # Distância vertical máxima do título externo ao CTA. Em layouts reais,
+    # o título fica colado ao botão; já o texto dentro da arte termina mais
+    # acima. Escala com a altura pra continuar funcionando em outras resoluções.
+    janela_titulo = max(70, min(145, int(h * 0.062)))
+    cards = []
+    debug = []
+
+    for i, cta in enumerate(ctas):
+        largura_cta = max(1.0, cta["x1"] - cta["x0"])
+        # Área horizontal da "coluna" do card: mais larga que o botão para
+        # incluir títulos longos, mas não invade a coluna vizinha.
+        margem_x = max(80.0, largura_cta * 0.80)
+        x_min = max(0.0, cta["x0"] - margem_x)
+        x_max = min(float(w), cta["x1"] + margem_x)
+
+        candidatos = []
+        for b in caixas:
+            if b is cta:
+                continue
+            if b["y1"] > cta["y0"] + 3:
+                continue
+            gap = cta["y0"] - b["y1"]
+            if gap < 4 or gap > janela_titulo:
+                continue
+            # centro dentro da mesma coluna + sobreposição horizontal mínima
+            if not (x_min <= b["xc"] <= x_max):
+                continue
+            overlap = max(0.0, min(b["x1"], x_max) - max(b["x0"], x_min))
+            if overlap < min(20.0, (b["x1"] - b["x0"]) * 0.25):
+                continue
+            n = _norm(b["texto"])
+            if not n or "compre agora" in n:
+                continue
+            # não puxa cabeçalho/domínio por engano
+            if empresa and _norm(empresa).replace(" ", "") in n.replace(" ", ""):
+                continue
+            if ".com" in n or "http" in n or "www" in n:
+                continue
+            candidatos.append(b)
+
+        # Mantém as caixas mais próximas do CTA e agrupa por linha.
+        if not candidatos:
+            continue
+        candidatos.sort(key=lambda b: (b["yc"], b["x0"]))
+
+        # A janela pode pegar um pedaço do texto interno da arte no limite
+        # superior. O título externo forma o BLOCO CONTÍGUO mais próximo do CTA;
+        # anda de baixo para cima e para quando aparece um vão vertical grande.
+        candidatos_por_proximidade = sorted(candidatos, key=lambda b: b["y1"], reverse=True)
+        bloco = []
+        limite_superior = cta["y0"]
+        for b in candidatos_por_proximidade:
+            gap_bloco = limite_superior - b["y1"]
+            if bloco and gap_bloco > max(22, int(h * 0.014)):
+                break
+            bloco.append(b)
+            limite_superior = min(limite_superior, b["y0"])
+        bloco.sort(key=lambda b: (b["yc"], b["x0"]))
+
+        # Agrupa bboxes em linhas pela proximidade vertical e concatena da
+        # esquerda para a direita.
+        linhas = []
+        for b in bloco:
+            colocado = False
+            alt = max(8.0, b["y1"] - b["y0"])
+            for linha in linhas:
+                if abs(b["yc"] - linha["yc"]) <= max(8.0, alt * 0.45):
+                    linha["itens"].append(b)
+                    linha["yc"] = sum(x["yc"] for x in linha["itens"]) / len(linha["itens"])
+                    colocado = True
+                    break
+            if not colocado:
+                linhas.append({"yc": b["yc"], "itens": [b]})
+        linhas.sort(key=lambda l: l["yc"])
+
+        partes = []
+        for linha in linhas:
+            itens = sorted(linha["itens"], key=lambda b: b["x0"])
+            txt = " ".join(x["texto"] for x in itens if x["texto"]).strip()
+            txt = _limpar_pontuacao_ocr(txt)
+            if txt:
+                partes.append(txt)
+        titulo = " ".join(partes).strip()
+        titulo = _re_grade.sub(r"\s{2,}", " ", titulo)
+
+        if not titulo:
+            continue
+
+        # Evita duplicatas do mesmo card por OCR repetido.
+        if any(_norm(x["titulo"]) == _norm(titulo) for x in cards):
+            continue
+
+        cards.append({"titulo": titulo, "descricao": "Compre Agora"})
+        debug.append({
+            "idx": len(debug),
+            "classe": "grade-card",
+            "sep_antes": False,
+            "texto": f"{titulo} | Compre Agora",
+            "decisao": "grade de cards → título externo associado ao CTA da mesma coluna",
+            "y_min": int(min([b["y0"] for b in bloco] + [cta["y0"]])),
+            "y_max": int(cta["y1"]),
+            "x_min_favicon": 0,
+        })
+
+    if len(cards) < 3:
+        return None
+
+    print(f"[OCR-DEBUG] grade-cards detectada: {len(cards)} card(s) -> {cards!r}", flush=True)
+    return {
+        "titulo": "",
+        "descricao": "",
+        "url_exibida": empresa or "",
+        "url_final": "",
+        "cta": "",
+        "cta_subtitulo": "",
+        "sitelinks": cards,
+        "_debug_bandas": debug,
+        "_layout_ocr": "grade_cards",
+    }
 
 
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
@@ -4343,6 +4595,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     título nem descrição) — nesse caso quem chama deve cair no fallback
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
+
+    # V8 — anúncio em grade/catálogo: vários cards independentes na mesma
+    # captura não podem passar pelo parser linear de bandas, porque linhas
+    # de colunas diferentes acabam fundidas. Detecta esse layout primeiro e
+    # devolve cada card estruturado separadamente.
+    _grade = _detectar_grade_cards_google_ads(img_bgr, reader, empresa=empresa)
+    if _grade is not None:
+        return _grade
+
     bandas = _detectar_bandas_texto(img_bgr)
     # Não descarta os separadores — só ignora eles pro OCR. Precisamos
     # saber se existia uma linha divisória ANTES de cada banda de texto,
@@ -5396,23 +5657,64 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # reconhecido: raro nesse ponto do fluxo (já passamos da
             # linha da URL) — ignora em vez de adivinhar onde encaixar.
         elif banda["classe"] == "botao":
-            # Botão CTA sólido de anúncio de Display (ex: "Compre
-            # Agora" com fundo azul/navy e texto branco) — reconhecido
-            # pela taxa de preenchimento da caixa, não pela cor (ver
-            # comentário em `_detectar_bandas_texto`). Mesma lógica do
-            # CTA "misto" (ícone + texto): fecha o par título/descrição
-            # em andamento (se houver) e vira o CTA do anúncio — nunca
-            # é tratado como um novo título/sitelink, mesmo que a
-            # classificação de cor pura desse "azul".
-            if par_atual is not None:
-                pares.append(par_atual)
-                par_atual = None
-            if not resultado["cta"]:
-                resultado["cta"] = texto
-                _cta_aberto = True
-                _debug_bandas[idx]["decisao"] = "botao → CTA (taxa de preenchimento alta)"
+            # V9 — NÃO aceita cegamente a primeira faixa com alta taxa de
+            # preenchimento como CTA. Em anúncios verticais com uma arte
+            # promocional embutida, uma região sólida DENTRO da própria arte
+            # também pode parecer um botão para `_detectar_bandas_texto`.
+            # Caso real: o banner "Copa do Mundo é na BuyTicket" gerou uma
+            # banda falsa lida como "Cor" antes do CTA verdadeiro, que vinha
+            # mais abaixo como "Compre Agora". Como o código antigo ocupava
+            # `resultado["cta"]` com a PRIMEIRA banda `botao`, o CTA real era
+            # descartado depois como "CTA já preenchido".
+            #
+            # Regra nova: um texto curtíssimo/estranho (<= 4 caracteres) não
+            # pode ganhar a vaga de CTA se existe OUTRA banda `botao` não vazia
+            # mais abaixo. Fazemos um look-ahead só nesses casos suspeitos,
+            # restringindo o OCR ao retângulo sólido detectado da banda futura.
+            # Isso é deliberadamente conservador: não troca CTAs normais e não
+            # depende de uma lista fechada de palavras como "Compre Agora".
+            _texto_cta_limpo = (texto or "").strip()
+            _cta_suspeito_curto = bool(_texto_cta_limpo) and len(re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", _texto_cta_limpo)) <= 4
+            _ha_botao_valido_mais_abaixo = False
+            if _cta_suspeito_curto and not resultado["cta"]:
+                for _j_cta in range(idx + 1, len(bandas_texto)):
+                    _b_cta_fut = bandas_texto[_j_cta]
+                    if _b_cta_fut.get("classe") != "botao":
+                        continue
+                    if _b_cta_fut.get("x_min_botao") is not None:
+                        _txt_cta_fut = _ocr_banda(
+                            reader, img_bgr, _b_cta_fut["y_min"], _b_cta_fut["y_max"],
+                            x_min=_b_cta_fut.get("x_min_botao"),
+                            x_max=_b_cta_fut.get("x_max_botao"),
+                        ).strip()
+                    else:
+                        _txt_cta_fut = _ocr_banda(
+                            reader, img_bgr, _b_cta_fut["y_min"], _b_cta_fut["y_max"]
+                        ).strip()
+                    _txt_cta_fut = _limpar_pontuacao_ocr(_txt_cta_fut)
+                    if len(re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", _txt_cta_fut)) >= 5:
+                        _ha_botao_valido_mais_abaixo = True
+                        break
+
+            if _cta_suspeito_curto and _ha_botao_valido_mais_abaixo:
+                _debug_bandas[idx]["decisao"] = (
+                    "botao → ignorado como falso CTA (texto curto e existe botão válido mais abaixo)"
+                )
             else:
-                _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
+                # Só fecha o título/descrição quando o botão foi aceito de
+                # verdade. Um falso botão dentro da arte não pode encerrar o
+                # par principal antes de chegar ao CTA real.
+                if par_atual is not None:
+                    pares.append(par_atual)
+                    par_atual = None
+                if not resultado["cta"] and _texto_cta_limpo:
+                    resultado["cta"] = _texto_cta_limpo
+                    _cta_aberto = True
+                    _debug_bandas[idx]["decisao"] = "botao → CTA (taxa de preenchimento alta, validado)"
+                elif not _texto_cta_limpo:
+                    _debug_bandas[idx]["decisao"] = "botao → descartada (OCR vazio)"
+                else:
+                    _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
         else:  # "misto" — ícone + texto, ex: botão de contato
             if _titulo_ja_reconhecido:
                 if not resultado["cta"]:

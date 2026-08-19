@@ -10,11 +10,29 @@ import trafilatura
 import requests
 import subprocess
 import sys
+import os
+import time
+import queue
+import gc
 import threading
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 import httpx
+
+# ---------------------------------------------------
+# LIMITES DE THREADS NATIVAS — definidos ANTES de importar torch/cv2
+# ---------------------------------------------------
+# Bibliotecas numéricas podem abrir pools próprios além dos threads que o
+# Python enxerga. Em container pequeno isso multiplica CPU/RAM sem benefício.
+for _var_threads in (
+    "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ.setdefault(_var_threads, "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+_PROCESSO_INICIO_MONOTONIC = time.monotonic()
 
 # ---------------------------------------------------
 # LIMITE DE THREADS DE CPU (PyTorch/OpenCV) — corrige o throttle de CPU
@@ -1844,20 +1862,41 @@ _lock_easyocr_execucao = threading.Lock()
 _MIN_INTERVALO_OCR_SEG = 6.0
 _ultima_chamada_ocr = [0.0]
 
-def _get_easyocr():
-    """Cria (uma única vez, na primeira chamada) e reaproveita a
-    instância do EasyOCR — o carregamento do modelo é pesado, então não
-    dá pra recriar a cada imagem.
+# O primeiro carregamento do EasyOCR é o ponto de maior pico de memória:
+# importa torch, abre os pesos e, se faltarem, baixa o detector. Mantemos
+# estado de falha/cooldown para não repetir esse pico em loop após erro.
+_easyocr_init_falhou_em = [0.0]
+_EASYOCR_INIT_COOLDOWN_SEG = 300.0
 
-    O limite de threads do PyTorch/OpenCV (ver `_limitar_threads_cpu_ocr`,
-    chamada logo no início do arquivo) já foi aplicado antes desse ponto
-    — é o que evita o pico de CPU que estava throttlando o app no
-    Streamlit Cloud."""
-    if _easyocr_instancia[0] is None:
-        with _lock_easyocr_init:
-            if _easyocr_instancia[0] is None:
+def _get_easyocr():
+    """Inicializa o EasyOCR uma única vez, de forma serializada e protegida.
+
+    A inicialização também entra no semáforo global de CPU pesada. Antes,
+    somente a inferência estava protegida; duas filas podiam chegar juntas
+    ao primeiro uso e uma delas ficava esperando enquanto o processo ainda
+    carregava PyTorch/modelos. Agora o pico de inicialização não concorre com
+    ffmpeg/Whisper e uma falha não dispara novas tentativas por 5 minutos.
+    """
+    if _easyocr_instancia[0] is not None:
+        return _easyocr_instancia[0]
+
+    agora = time.monotonic()
+    if _easyocr_init_falhou_em[0] and (agora - _easyocr_init_falhou_em[0]) < _EASYOCR_INIT_COOLDOWN_SEG:
+        raise RuntimeError("EasyOCR em cooldown após falha recente de inicialização")
+
+    with _lock_easyocr_init:
+        if _easyocr_instancia[0] is not None:
+            return _easyocr_instancia[0]
+        try:
+            with _recurso_cpu_pesada("easyocr-init"):
+                print("[OCR-DEBUG] inicializando EasyOCR (única instância global)...", flush=True)
                 import easyocr
-                _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False)
+                _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False, verbose=False)
+                print("[OCR-DEBUG] EasyOCR inicializado com sucesso", flush=True)
+        except BaseException:
+            _easyocr_init_falhou_em[0] = time.monotonic()
+            gc.collect()
+            raise
     return _easyocr_instancia[0]
 
 def _baixar_imagem_cv2(url_imagem: str):
@@ -1869,7 +1908,22 @@ def _baixar_imagem_cv2(url_imagem: str):
     r = requests.get(url_imagem, timeout=20)
     r.raise_for_status()
     _arr = _np_ocr.frombuffer(r.content, dtype=_np_ocr.uint8)
-    return _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
+    _img = _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
+    if _img is None:
+        return None
+    # Evita que screenshots anormalmente gigantes façam o EasyOCR reservar
+    # dezenas/centenas de MB só para tensores intermediários. Criativos
+    # normais ficam intocados; apenas imagens acima de 2200 px no maior lado
+    # são reduzidas proporcionalmente.
+    _h, _w = _img.shape[:2]
+    _maior = max(_h, _w)
+    if _maior > 2200:
+        _escala = 2200.0 / float(_maior)
+        _img = _cv2_ocr.resize(
+            _img, (max(1, int(_w * _escala)), max(1, int(_h * _escala))),
+            interpolation=_cv2_ocr.INTER_AREA,
+        )
+    return _img
 
 def _ocr_texto_bruto(img_bgr, reader) -> str:
     """Lê TODO o texto da imagem sem nenhuma tentativa de estruturar —
@@ -6577,6 +6631,66 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard(_chave_ativa)
 
+# ---------------------------------------------------
+# FILA GLOBAL DE OCR
+# ---------------------------------------------------
+# Antes existia uma thread por empresa. O lock serializava as inferências,
+# mas ainda havia várias threads, atividades e imagens carregadas aguardando
+# a mesma trava. Em pouca RAM isso é desperdício. Agora existe UM worker de
+# OCR para o processo inteiro; empresas entram em FIFO e são processadas uma
+# depois da outra.
+_fila_ocr_global = queue.Queue()
+_lock_worker_ocr_global = threading.Lock()
+_worker_ocr_global_ativo = [False]
+_OCR_DELAY_PRIMEIRO_START_SEG = 45.0
+
+def _worker_ocr_global():
+    try:
+        # Não carregamos PyTorch/EasyOCR durante o pico de boot do Streamlit,
+        # Playwright e demais caches. Isso reduz muito a chance de OOM no
+        # primeiro minuto após um deploy/restart.
+        restante = _OCR_DELAY_PRIMEIRO_START_SEG - (time.monotonic() - _PROCESSO_INICIO_MONOTONIC)
+        if restante > 0:
+            print(f"[OCR-DEBUG] worker global aguardando {restante:.1f}s para estabilizar o container", flush=True)
+            time.sleep(restante)
+
+        while True:
+            try:
+                user_id, empresa, atividade_id = _fila_ocr_global.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                print(f"[OCR-DEBUG] worker global INICIO empresa={empresa!r}", flush=True)
+                _ocr_pendentes_background(user_id, empresa, atividade_id)
+            except BaseException as exc:
+                print(f"[OCR-DEBUG] worker global FALHA empresa={empresa!r}: {exc!r}", flush=True)
+                try:
+                    if atividade_id:
+                        atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(exc)[:500]})
+                except Exception:
+                    pass
+                with _lock_ocr_pendente:
+                    _ocr_empresas_ativas_agora.discard((user_id, empresa))
+            finally:
+                _fila_ocr_global.task_done()
+                # Devolve memória temporária entre empresas antes de pegar a próxima.
+                gc.collect()
+    finally:
+        with _lock_worker_ocr_global:
+            _worker_ocr_global_ativo[0] = False
+            # Corrida possível: um item pode ter entrado entre o empty() e
+            # desligarmos a flag. Se aconteceu, religa um único worker.
+            if not _fila_ocr_global.empty():
+                _worker_ocr_global_ativo[0] = True
+                threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
+
+def _garantir_worker_ocr_global():
+    with _lock_worker_ocr_global:
+        if _worker_ocr_global_ativo[0]:
+            return
+        _worker_ocr_global_ativo[0] = True
+        threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
+
 def iniciar_ocr_pendente_background(user_id: str, empresa: str):
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
     das imagens do Google Ads dessa empresa que já foram migradas pro R2
@@ -6608,7 +6722,12 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
             user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
             {"empresa": empresa, "processadas": 0, "total": total},
         )
-    threading.Thread(target=_ocr_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
+    _fila_ocr_global.put((user_id, empresa, atividade_id))
+    print(
+        f"[OCR-DEBUG] enfileirado no worker global: empresa={empresa!r} fila={_fila_ocr_global.qsize()}",
+        flush=True,
+    )
+    _garantir_worker_ocr_global()
 
 
 # ---------------------------------------------------
@@ -6911,6 +7030,90 @@ def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
         return res.data or []
     except Exception:
         return []
+
+def resumo_status_notificacoes(user_id: str) -> dict:
+    """Conta TODAS as notificações por status para alimentar o filtro da
+    página de Notificações. É uma única consulta leve (só status/detalhes/lida),
+    executada fora do fragment de atualização de 2s, portanto não fica
+    martelando o Supabase durante o polling ao vivo.
+
+    'concluido_com_erro' continua sendo um status visual: no banco ele é
+    'concluido' com detalhes.com_erro=True.
+    """
+    cont = {
+        "todos": 0,
+        "em_andamento": 0,
+        "pendente": 0,
+        "concluido": 0,
+        "concluido_com_erro": 0,
+        "erro": 0,
+        "erro_nao_lido": 0,
+    }
+    if not user_id:
+        return cont
+    try:
+        res = (
+            supabase.table("atividades")
+            .select("status, detalhes, lida")
+            .eq("user_id", user_id)
+            .limit(1000)
+            .execute()
+        )
+        for a in (res.data or []):
+            cont["todos"] += 1
+            st_a = a.get("status") or "pendente"
+            if st_a == "em_andamento":
+                cont["em_andamento"] += 1
+            elif st_a == "pendente":
+                cont["pendente"] += 1
+            elif st_a == "erro":
+                cont["erro"] += 1
+                if not a.get("lida"):
+                    cont["erro_nao_lido"] += 1
+            elif st_a == "concluido":
+                if bool((a.get("detalhes") or {}).get("com_erro")):
+                    cont["concluido_com_erro"] += 1
+                else:
+                    cont["concluido"] += 1
+        return cont
+    except Exception as e:
+        print(f"[NOTIF-DEBUG] falha ao contar status: {e!r}", flush=True)
+        return cont
+
+def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> list:
+    """Lista o histórico recente SEM esconder atividades que ainda pedem
+    atenção. Antes a tela carregava só as 50 mais recentes, enquanto o sino
+    contava pendente/em_andamento/erro no banco inteiro; por isso o badge
+    podia mostrar, por exemplo, 10 e nenhuma dessas 10 aparecer na tela.
+
+    Agora carregamos os recentes e fazemos uma segunda consulta pequena só
+    para status ativos/erro, mesclando por id. Assim o número do sino sempre
+    tem correspondência visível na página, mesmo se a atividade for antiga.
+    """
+    if not user_id:
+        return []
+    recentes = listar_atividades_recentes(user_id, limite=limite_recentes)
+    try:
+        res_ativos = (
+            supabase.table("atividades")
+            .select("*")
+            .eq("user_id", user_id)
+            .in_("status", ["pendente", "em_andamento", "erro"])
+            .order("criado_em", desc=True)
+            .limit(300)
+            .execute()
+        )
+        por_id = {}
+        for a in (recentes + (res_ativos.data or [])):
+            aid = a.get("id")
+            if aid is not None:
+                por_id[aid] = a
+        itens = list(por_id.values())
+        itens.sort(key=lambda a: a.get("criado_em") or "", reverse=True)
+        return itens
+    except Exception as e:
+        print(f"[NOTIF-DEBUG] falha ao complementar ativos: {e!r}", flush=True)
+        return recentes
 
 def resumo_sino_atividades(user_id: str) -> dict:
     """Conta atividades que ainda pedem atenção, separando por urgência —
@@ -36038,6 +36241,44 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
+    # V17: deixa o select de status com o MESMO acabamento visual dos
+    # outros campos da toolbar (40px, fundo branco, borda #d1d5db, raio 8).
+    # BaseWeb/Streamlit injeta vários wrappers próprios no selectbox, então
+    # estilizamos o [data-baseweb="select"] dentro da key estável.
+    components.html("""
+    <script>
+    (function() {
+        function estilizarStatus() {
+            var doc = window.parent.document;
+            var host = doc.querySelector('.st-key-_filtro_status_notif');
+            if (!host) return false;
+            var sel = host.querySelector('[data-baseweb="select"]');
+            if (!sel) return false;
+            sel.style.setProperty('min-height', '40px', 'important');
+            sel.style.setProperty('height', '40px', 'important');
+            sel.style.setProperty('border', '1px solid #d1d5db', 'important');
+            sel.style.setProperty('border-radius', '8px', 'important');
+            sel.style.setProperty('background', '#ffffff', 'important');
+            sel.style.setProperty('box-shadow', 'none', 'important');
+            var inner = sel.querySelector('div');
+            if (inner) {
+                inner.style.setProperty('min-height', '38px', 'important');
+                inner.style.setProperty('font-size', '14px', 'important');
+                inner.style.setProperty('color', '#374151', 'important');
+            }
+            return true;
+        }
+        if (!estilizarStatus()) {
+            var n = 0;
+            var iv = setInterval(function() {
+                n++;
+                if (estilizarStatus() || n > 20) clearInterval(iv);
+            }, 150);
+        }
+    })();
+    </script>
+    """, height=0)
+
     # Barra de ações da página: busca por texto (filtra os cards abaixo),
     # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
     # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver
@@ -36066,14 +36307,30 @@ html, body { background: transparent; overflow: hidden; }
         except Exception:
             pass
 
-        # V16: filtro por STATUS ao lado da busca. Antes a página sempre
-        # mostrava as 50 atividades mais recentes misturadas; quando havia
-        # várias concluídas recentes, o sino podia indicar atividades em
-        # andamento/erro (ex.: badge "10") mas elas ficavam escondidas mais
-        # abaixo na lista. O filtro trabalha sobre a lista já carregada pelo
-        # fragment (sem query adicional no Supabase), então é praticamente
-        # gratuito em processamento.
-        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.55, 1.25, 1.3, 1.3])
+        # V17: contagem REAL por status (banco inteiro) no próprio filtro.
+        # Isso também explica visualmente o número do sino: antes o badge
+        # podia mostrar 10 porque ele contava atividades ativas antigas, mas
+        # a tela trazia só as 50 mais recentes e essas 10 podiam ficar fora.
+        _cont_status_notif = resumo_status_notificacoes(st.session_state.user.id)
+        _STATUS_NOTIF_LABELS = {
+            "todos": "Todos os status",
+            "em_andamento": "Em andamento",
+            "pendente": "Pendente",
+            "concluido": "Concluído",
+            "concluido_com_erro": "Concluído com erros",
+            "erro": "Erro",
+        }
+        # Migra o valor salvo pela V16 (que guardava o label visível) para a
+        # chave estável usada a partir da V17. Evita SelectboxValueError no
+        # primeiro acesso após deploy.
+        _valor_status_antigo = st.session_state.get("_filtro_status_notif")
+        _map_status_antigo = {v: k for k, v in _STATUS_NOTIF_LABELS.items()}
+        if _valor_status_antigo in _map_status_antigo:
+            st.session_state["_filtro_status_notif"] = _map_status_antigo[_valor_status_antigo]
+        elif _valor_status_antigo not in _STATUS_NOTIF_LABELS:
+            st.session_state["_filtro_status_notif"] = "todos"
+
+        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.45, 1.45, 1.3, 1.3])
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
@@ -36084,14 +36341,8 @@ html, body { background: transparent; overflow: hidden; }
         with _col_status:
             st.selectbox(
                 "Filtrar por status",
-                options=[
-                    "Todos os status",
-                    "Em andamento",
-                    "Pendente",
-                    "Concluído",
-                    "Concluído com erros",
-                    "Erro",
-                ],
+                options=list(_STATUS_NOTIF_LABELS.keys()),
+                format_func=lambda k: f"{_STATUS_NOTIF_LABELS[k]} ({_cont_status_notif.get(k, 0)})",
                 key="_filtro_status_notif",
                 label_visibility="collapsed",
             )
@@ -36239,7 +36490,7 @@ html, body { background: transparent; overflow: hidden; }
         no intervalo; o resto da página (cabeçalho, sidebar) fica parado.
         Precisa estar numa função à parte porque st.fragment decora uma
         função, não um bloco de código solto."""
-        _todas_atividades = listar_atividades_recentes(st.session_state.user.id, limite=50) if st.session_state.user else []
+        _todas_atividades = listar_atividades_notificacoes(st.session_state.user.id, limite_recentes=100) if st.session_state.user else []
 
         # Filtro de busca (texto digitado na caixa da barra de ações, acima):
         # compara com o título e com a empresa nos detalhes, sem acento/case,
@@ -36254,24 +36505,24 @@ html, body { background: transparent; overflow: hidden; }
                 return _termo_busca in remover_acentos(_alvo.lower())
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
 
-        # V16 — filtro por status. "Concluído com erros" não é um status
-        # gravado no banco: é um concluído cujo detalhes.com_erro=True (mesma
-        # regra visual já usada nos cards). Mantemos "Concluído" separado,
-        # mostrando apenas os concluídos limpos quando esse filtro é escolhido.
-        _filtro_status_notif = st.session_state.get("_filtro_status_notif", "Todos os status")
-        if _filtro_status_notif != "Todos os status":
+        # V17 — filtro por status usando CHAVES estáveis. O número exibido
+        # no select vem de resumo_status_notificacoes (banco inteiro), enquanto
+        # listar_atividades_notificacoes garante que pendentes/em andamento/
+        # erros apareçam mesmo se forem mais antigos que o histórico recente.
+        _filtro_status_notif = st.session_state.get("_filtro_status_notif", "todos")
+        if _filtro_status_notif != "todos":
             def _atividade_bate_status(a):
                 _status_a = a.get("status") or "pendente"
                 _com_erro_a = bool((a.get("detalhes") or {}).get("com_erro"))
-                if _filtro_status_notif == "Em andamento":
+                if _filtro_status_notif == "em_andamento":
                     return _status_a == "em_andamento"
-                if _filtro_status_notif == "Pendente":
+                if _filtro_status_notif == "pendente":
                     return _status_a == "pendente"
-                if _filtro_status_notif == "Erro":
+                if _filtro_status_notif == "erro":
                     return _status_a == "erro"
-                if _filtro_status_notif == "Concluído com erros":
+                if _filtro_status_notif == "concluido_com_erro":
                     return _status_a == "concluido" and _com_erro_a
-                if _filtro_status_notif == "Concluído":
+                if _filtro_status_notif == "concluido":
                     return _status_a == "concluido" and not _com_erro_a
                 return True
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
@@ -36281,12 +36532,13 @@ html, body { background: transparent; overflow: hidden; }
                 "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
                 "#c7cdd6", 32,
             )
-            if _termo_busca and _filtro_status_notif != "Todos os status":
+            if _termo_busca and _filtro_status_notif != "todos":
                 _msg_vazio_notif = "Nenhuma notificação encontrada com essa busca e esse status."
             elif _termo_busca:
                 _msg_vazio_notif = "Nenhuma notificação encontrada pra essa busca."
-            elif _filtro_status_notif != "Todos os status":
-                _msg_vazio_notif = f"Nenhuma notificação com status {_filtro_status_notif.lower()}."
+            elif _filtro_status_notif != "todos":
+                _label_filtro_vazio = _STATUS_NOTIF_LABELS.get(_filtro_status_notif, _filtro_status_notif)
+                _msg_vazio_notif = f"Nenhuma notificação com status {_label_filtro_vazio.lower()}."
             else:
                 _msg_vazio_notif = "Nenhuma atividade registrada ainda."
             st.markdown(_html(f"""

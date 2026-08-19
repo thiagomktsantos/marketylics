@@ -3855,12 +3855,29 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
             if _grandes and _pequenos:
                 _direita_letras = max(g[0] + g[2] for g in _grandes)
                 _altura_g = max(1, _greg.shape[0])
+                # V36 — a confirmação anterior olhava apenas se o componente
+                # pequeno estava à direita e na metade inferior. Isso ainda
+                # aceitava antialiasing/fragmentos das próprias letras como
+                # vírgula (casos reais: ``Copa, 2026`` e ``Agora, Seu``).
+                # Uma vírgula verdadeira tem uma característica geométrica
+                # adicional: ela cai na região da LINHA DE BASE ou abaixo
+                # dela. Calculamos o fundo típico dos componentes grandes que
+                # formam as letras e exigimos que o pequeno componente chegue
+                # claramente até essa região. Assim preservamos ``Buy, Tá``
+                # quando a vírgula realmente existe, sem inventar pontuação
+                # a partir de ruído dentro do corpo das letras.
+                _fundos_letras = sorted(g[1] + g[3] for g in _grandes)
+                _fundo_tipico_letras = _fundos_letras[len(_fundos_letras) // 2]
                 for _pp in _pequenos:
                     _px, _py, _pw, _ph, _pa, _pcx, _pcy = _pp
+                    _pbaixo = _py + _ph
                     if (
-                        _pcx >= _direita_letras - max(1, int(h * 0.06))
-                        and (_pcy / _altura_g) >= 0.52
-                        and _pw <= max(7, int(h * 0.30))
+                        _pcx >= _direita_letras - max(1, int(h * 0.04))
+                        and (_pcy / _altura_g) >= 0.62
+                        and (_pbaixo / _altura_g) >= 0.70
+                        and _pbaixo >= _fundo_tipico_letras - max(1, int(h * 0.08))
+                        and _pw <= max(6, int(h * 0.24))
+                        and _ph <= max(7, int(h * 0.32))
                     ):
                         _virgula_geom_forte = True
                         break
@@ -3892,9 +3909,14 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
             x = ''.join(c for c in _ud_vf.normalize('NFKD', x) if not _ud_vf.combining(c))
             return re.sub(r"[^A-Za-z0-9]", "", x).lower()
 
-        if _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
+        # V36 — a releitura ampliada sozinha não é prova suficiente. Em
+        # palavras sem vírgula, o EasyOCR às vezes transforma um pequeno
+        # fragmento de antialiasing em `,` na ampliação. Só aceitamos a
+        # vírgula relida quando a geometria forte acima também confirma um
+        # componente realmente compatível com pontuação na linha de base.
+        if _virgula_geom_forte and _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
             _novo = re.sub(r"\s*,\s*$", ",", _cand)
-            print(f"[OCR-DEBUG] vírgula final recuperada na caixa: {_t!r} -> {_novo!r}", flush=True)
+            print(f"[OCR-DEBUG] vírgula final recuperada na caixa + geometria: {_t!r} -> {_novo!r}", flush=True)
             return _novo
         if _virgula_geom_forte:
             _novo = _t.rstrip() + ","
@@ -7176,18 +7198,20 @@ def _invalidar_cache_notificacoes_sessao():
         pass
 
 def resumo_status_notificacoes(user_id: str) -> dict:
+    """Conta TODAS as notificações por status para alimentar o filtro.
+
+    A consulta usa cache curto da sessão para evitar chamadas redundantes ao
+    Supabase. ``concluido_com_erro`` é um status visual: no banco ele continua
+    como ``concluido`` com ``detalhes.com_erro=True``.
+
+    IMPORTANTE: o docstring precisa ser a PRIMEIRA instrução da função. Se uma
+    string literal ficar solta depois de código executável, o recurso de
+    "magic" do Streamlit pode renderizá-la na interface.
+    """
     _cache_key = "_cache_resumo_status_notif_v33"
     _cached = _notif_cache_get(_cache_key)
     if _cached is not None:
         return dict(_cached)
-    """Conta TODAS as notificações por status para alimentar o filtro da
-    página de Notificações. É uma única consulta leve (só status/detalhes/lida),
-    executada fora do fragment de atualização de 2s, portanto não fica
-    martelando o Supabase durante o polling ao vivo.
-
-    'concluido_com_erro' continua sendo um status visual: no banco ele é
-    'concluido' com detalhes.com_erro=True.
-    """
     cont = {
         "todos": 0,
         "em_andamento": 0,

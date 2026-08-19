@@ -36466,47 +36466,111 @@ html, body { background: transparent; overflow: hidden; }
             _prefixo = f"{_empresa} · " if _empresa else ""
             return f"{_prefixo}{_titulo} — {_lbl_st}"
 
-        # V21 — acabamento visual uniforme dos dois campos da toolbar.
-        # O BaseWeb pode trocar a profundidade do DIV interno entre selectbox e
-        # multiselect; por isso estilizamos o componente pela chave estável do
-        # Streamlit e o [data-baseweb="select"], em vez de depender do pai do
-        # role=combobox. Assim ambos ficam iguais ao campo de busca.
-        st.markdown("""
-        <style>
-        .st-key-_filtro_status_notif [data-baseweb="select"] > div,
-        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div {
-            min-height: 40px !important;
-            height: 40px !important;
-            background: #ffffff !important;
-            border: 1px solid #d1d5db !important;
-            border-radius: 8px !important;
-            box-shadow: none !important;
-            outline: none !important;
-        }
-        .st-key-_filtro_status_notif [data-baseweb="select"] > div:hover,
-        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div:hover {
-            border-color: #b8c0cc !important;
-        }
-        .st-key-_filtro_status_notif [data-baseweb="select"] > div:focus-within,
-        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div:focus-within {
-            border-color: #9aa6b5 !important;
-            box-shadow: none !important;
-        }
-        .st-key-_filtro_status_notif [role="combobox"],
-        .st-key-_notificacoes_selecionadas [role="combobox"] {
-            min-height: 38px !important;
-            font-size: 14px !important;
-            color: #374151 !important;
-            background: transparent !important;
-        }
-        .st-key-_notificacoes_selecionadas [data-baseweb="select"] input {
-            font-size: 14px !important;
-        }
-        .st-key-_notificacoes_selecionadas [data-baseweb="tag"] {
-            max-height: 28px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # V22 — o CSS da V21 não alterou visualmente os componentes nesta versão
+        # do Streamlit/BaseWeb: a caixa visível não é estável entre selectbox e
+        # multiselect. Em vez de adivinhar a profundidade do DOM, copiamos em JS
+        # o acabamento COMPUTADO do campo de busca (que já está correto) para a
+        # raiz visual dos dois selects. Assim altura, fundo, borda e raio ficam
+        # literalmente iguais ao campo de busca, mesmo se o tema mudar.
+        components.html("""
+        <script>
+        (function() {
+            function acharHost(doc, chave) {
+                return doc.querySelector('.st-key-' + chave);
+            }
+
+            function acharCaixaBusca(doc) {
+                var host = acharHost(doc, '_busca_notif');
+                if (!host) return null;
+                var input = host.querySelector('input');
+                if (!input) return null;
+                var el = input.parentElement;
+                // Sobe até encontrar a caixa que realmente desenha a borda.
+                for (var i = 0; el && i < 6; i++, el = el.parentElement) {
+                    var cs = getComputedStyle(el);
+                    var bw = parseFloat(cs.borderTopWidth || '0');
+                    if (bw > 0 || cs.borderTopStyle !== 'none') return el;
+                }
+                return input.parentElement;
+            }
+
+            function aplicarEmSelect(doc, chave, ref) {
+                var host = acharHost(doc, chave);
+                if (!host) return false;
+                var sel = host.querySelector('[data-baseweb="select"]');
+                if (!sel) return false;
+
+                var cs = getComputedStyle(ref);
+                var h = Math.round(ref.getBoundingClientRect().height || 46);
+                var bg = cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)'
+                    ? cs.backgroundColor : '#ffffff';
+                var borderColor = cs.borderTopColor || '#d1d5db';
+                var radius = cs.borderTopLeftRadius || '8px';
+
+                // A própria raiz BaseWeb passa a ser a caixa visual.
+                sel.style.setProperty('box-sizing', 'border-box', 'important');
+                sel.style.setProperty('height', h + 'px', 'important');
+                sel.style.setProperty('min-height', h + 'px', 'important');
+                sel.style.setProperty('background-color', bg, 'important');
+                sel.style.setProperty('border', '1px solid ' + borderColor, 'important');
+                sel.style.setProperty('border-radius', radius, 'important');
+                sel.style.setProperty('box-shadow', 'none', 'important');
+                sel.style.setProperty('overflow', 'hidden', 'important');
+
+                // Neutraliza a caixa interna do BaseWeb para não termos borda dupla
+                // nem o fundo cinza que estava aparecendo nas V19–V21.
+                Array.from(sel.children).forEach(function(child) {
+                    child.style.setProperty('height', '100%', 'important');
+                    child.style.setProperty('min-height', '100%', 'important');
+                    child.style.setProperty('background', 'transparent', 'important');
+                    child.style.setProperty('border', '0', 'important');
+                    child.style.setProperty('border-radius', '0', 'important');
+                    child.style.setProperty('box-shadow', 'none', 'important');
+                });
+
+                var combo = sel.querySelector('[role="combobox"]');
+                if (combo) {
+                    combo.style.setProperty('height', '100%', 'important');
+                    combo.style.setProperty('min-height', '100%', 'important');
+                    combo.style.setProperty('background', 'transparent', 'important');
+                    combo.style.setProperty('font-size', '14px', 'important');
+                    combo.style.setProperty('color', '#374151', 'important');
+                }
+                var inp = sel.querySelector('input');
+                if (inp) {
+                    inp.style.setProperty('background', 'transparent', 'important');
+                    inp.style.setProperty('font-size', '14px', 'important');
+                    inp.style.setProperty('min-height', (h - 2) + 'px', 'important');
+                }
+                return true;
+            }
+
+            function estilizar() {
+                var doc = window.parent.document;
+                var ref = acharCaixaBusca(doc);
+                if (!ref) return false;
+                var a = aplicarEmSelect(doc, '_filtro_status_notif', ref);
+                var b = aplicarEmSelect(doc, '_notificacoes_selecionadas', ref);
+                return a || b;
+            }
+
+            estilizar();
+            var tentativas = 0;
+            var iv = setInterval(function() {
+                tentativas++;
+                estilizar();
+                if (tentativas > 40) clearInterval(iv);
+            }, 150);
+
+            // Reaplica após reruns e após o multiselect criar/remover tags.
+            try {
+                var obs = new MutationObserver(function() { estilizar(); });
+                obs.observe(window.parent.document.body, {childList:true, subtree:true});
+                setTimeout(function(){ obs.disconnect(); }, 15000);
+            } catch(e) {}
+        })();
+        </script>
+        """, height=0)
 
         _col_sel, _col_todos, _col_lidas, _col_excluir = st.columns([2.45, .75, 1.35, 1.25])
         with _col_sel:

@@ -36588,7 +36588,7 @@ html, body { background: transparent; overflow: hidden; }
                     st.session_state["_confirmar_excluir_selecionadas"] = []
                     st.rerun()
 
-        # V24 — "Selecionar todas" alinhado à ESQUERDA, exatamente no mesmo
+        # V26 — "Selecionar todas" alinhado à ESQUERDA, exatamente no mesmo
         # eixo de início dos cards abaixo. Sem coluna-espaçadora: o próprio
         # checkbox ocupa a largura natural e fica colado ao início do conteúdo.
         # Também reduzimos os respiros verticais desta região para aproximar
@@ -36622,10 +36622,16 @@ html, body { background: transparent; overflow: hidden; }
             margin: 0 !important;
         }
 
-        /* Compacta a faixa de controles da página de notificações. */
+        /* V26 — deslocamento VISUAL direto no próprio container.
+           A V25 tentou reduzir a margem/gap do wrapper pai, mas esse wrapper
+           é gerado dinamicamente pelo Streamlit e o seletor não atingia o DOM
+           real desta versão. transform atua no elemento que sabemos que existe
+           (.st-key-_bloco_todas_topo), portanto elimina de fato o vão acima.
+           margin-bottom negativo devolve o espaço ocupado no fluxo para que o
+           primeiro card também suba junto, sem deixar um buraco abaixo. */
         .st-key-_bloco_todas_topo {
-            margin-top: -6px !important;
-            margin-bottom: -10px !important;
+            transform: translateY(-30px) !important;
+            margin-bottom: -30px !important;
             padding-top: 0 !important;
             padding-bottom: 0 !important;
         }
@@ -36645,12 +36651,6 @@ html, body { background: transparent; overflow: hidden; }
         section.main [data-testid="stVerticalBlock"]:has(.st-key-_bloco_todas_topo) {
             gap: 0 !important;
             row-gap: 0 !important;
-        }
-        /* O wrapper do bloco também ganha deslocamento real para cima. */
-        section.main .stElementContainer:has(.st-key-_bloco_todas_topo),
-        section.main [data-testid="stElementContainer"]:has(.st-key-_bloco_todas_topo) {
-            margin-top: -22px !important;
-            margin-bottom: -4px !important;
         }
         </style>
         """, unsafe_allow_html=True)

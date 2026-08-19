@@ -147,29 +147,32 @@ def _recurso_api_io():
 # (libnss3, libatk etc.) que o Chromium precisa pra rodar, que vêm de um
 # `packages.txt` na raiz do repo (a plataforma instala isso com root
 # antes do app subir — ver arquivo packages.txt enviado junto).
-@st.cache_resource(show_spinner=False)
-def _garantir_chromium_playwright() -> bool:
-    try:
-        r = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
-            check=True,
-            capture_output=True,
-            timeout=300,
-            text=True,
-        )
-        print(f"[PLAYWRIGHT] chromium instalado com sucesso. stdout: {r.stdout[-500:]}", flush=True)
-        return True
-    except Exception as e:
-        # Não derruba o app se falhar — o fallback de imagem via página
-        # humana (camada 3) simplesmente continua indisponível; as
-        # outras 2 camadas (imageUrl e previewUrl) seguem funcionando
-        # normalmente de qualquer jeito.
-        stderr = getattr(e, "stderr", "")
-        print(f"[PLAYWRIGHT] FALHA ao instalar chromium: {e!r} | stderr: {stderr}", flush=True)
-        return False
+_playwright_install_lock = threading.Lock()
+_playwright_install_status = [None]  # None=não tentou; True/False=resultado nesta instância
 
-_chromium_ok = _garantir_chromium_playwright()
-print(f"[PLAYWRIGHT] _garantir_chromium_playwright() retornou: {_chromium_ok}", flush=True)
+def _garantir_chromium_playwright() -> bool:
+    """Garante Chromium de forma LAZY, só quando o fallback realmente precisar.
+
+    V31: o app não baixa mais ~115 MB de Chromium em todo startup/deploy.
+    O estado fica em cache Python puro, inclusive quando chamado por background thread.
+    """
+    if _playwright_install_status[0] is not None:
+        return bool(_playwright_install_status[0])
+    with _playwright_install_lock:
+        if _playwright_install_status[0] is not None:
+            return bool(_playwright_install_status[0])
+        try:
+            r = subprocess.run(
+                [sys.executable, "-m", "playwright", "install", "chromium"],
+                check=True, capture_output=True, timeout=300, text=True,
+            )
+            print(f"[PLAYWRIGHT] chromium instalado sob demanda. stdout: {r.stdout[-500:]}", flush=True)
+            _playwright_install_status[0] = True
+        except Exception as e:
+            stderr = getattr(e, "stderr", "")
+            print(f"[PLAYWRIGHT] FALHA ao instalar chromium sob demanda: {e!r} | stderr: {stderr}", flush=True)
+            _playwright_install_status[0] = False
+        return bool(_playwright_install_status[0])
 
 # ---------------------------------------------------
 #  ÍCONES SVG — CLASSIFICAÇÃO DE SCORE (Excelente / Muito bom / Bom /
@@ -1859,7 +1862,7 @@ _easyocr_instancia = [None]
 # entre inferências, que é o que o limitador de CPU do Streamlit Cloud
 # está olhando. Se ainda throttlar com esse valor, subir mais.
 _lock_easyocr_execucao = threading.Lock()
-_MIN_INTERVALO_OCR_SEG = 6.0
+_MIN_INTERVALO_OCR_SEG = 15.0  # V31: reduz duty-cycle de CPU e risco de throttling
 _ultima_chamada_ocr = [0.0]
 
 # O primeiro carregamento do EasyOCR é o ponto de maior pico de memória:
@@ -11090,7 +11093,7 @@ with st.sidebar:
     # a aba estiver aberta e conectada — em QUALQUER página, porque a
     # sidebar é renderizada em todas elas. Substitui por completo o antigo
     # bloco "Auto-poll global" (botão escondido + setInterval em JS).
-    @st.fragment(run_every="15s")
+    @st.fragment(run_every="60s")
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
@@ -11102,10 +11105,10 @@ with st.sidebar:
             # do processo do servidor). _empresas_com_transcricao_pendente
             # varre por empresa, e iniciar_transcricao_pendente_background
             # já se protege contra rodar 2x ao mesmo tempo pra mesma
-            # empresa, então chamar aqui a cada 15s é seguro (é só uma
+            # empresa, então chamar aqui a cada 60s é seguro (é só uma
             # checagem "já tem uma fila rodando pra essa empresa?") — é
             # esse religamento automático que garante que a transcrição
-            # nunca fica "travada" por mais de ~15s com a aba aberta,
+            # é revista automaticamente a cada ~60s com a aba aberta,
             # mesmo se a thread original tiver morrido.
             for _empresa_pendente in _empresas_com_transcricao_pendente(st.session_state.user.id):
                 iniciar_transcricao_pendente_background(st.session_state.user.id, _empresa_pendente)
@@ -11407,7 +11410,7 @@ setInterval(function() {{
     var doc = window.parent.document;
     var el = doc.querySelector('.st-key-_hidden_sino_refresh button');
     if (el) el.click();
-}}, 12000);
+}}, 30000);
 ''' if _resumo_sino['andamento'] > 0 else ''}
 </script>
 """
@@ -23764,6 +23767,10 @@ elif st.session_state.pagina == "google_ads":
         print(f"[GADS-IMG] abrindo página humana: {pagina_url}", flush=True)
         achado = [""]
         try:
+            # V31 — só instala/abre Chromium se este fallback raro for realmente usado.
+            if not _garantir_chromium_playwright():
+                print("[GADS-IMG] fallback Playwright indisponível; seguindo sem browser", flush=True)
+                return ""
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=True,
@@ -36544,9 +36551,85 @@ html, body { background: transparent; overflow: hidden; }
                 {_lixeira_svg_tb}<span>{_rotulo_excluir}</span>
             </button>
             <script>
+            // V30 — usa EXATAMENTE o mesmo modelo visual de confirmação usado
+            // pelos botões "Limpar cache" das páginas de Ads: overlay escuro,
+            // card azul-marinho, ícone de alerta e dois botões lado a lado.
+            function triggerGhostNotif(label, tentativas) {{
+                tentativas = tentativas || 0;
+                var btns = window.parent.document.querySelectorAll('button');
+                for (var i = 0; i < btns.length; i++) {{
+                    var txt = (btns[i].textContent || btns[i].innerText || '').split(/\s+/).join(' ').trim();
+                    if (txt === String(label)) {{ btns[i].click(); return; }}
+                }}
+                if (tentativas < 10) {{
+                    setTimeout(function() {{ triggerGhostNotif(label, tentativas + 1); }}, 150);
+                }}
+            }}
+
+            function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
+                var doc = window.parent.document;
+                var old = doc.getElementById('confirm_modal_overlay');
+                if (old) old.remove();
+
+                var ov = doc.createElement('div');
+                ov.id = 'confirm_modal_overlay';
+                ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:999999;display:flex;align-items:center;justify-content:center;padding:24px;';
+                ov.onclick = function(e) {{ if (e.target === ov) ov.remove(); }};
+
+                var box = doc.createElement('div');
+                box.style.cssText = 'background:#0e2a47;border-radius:20px;padding:32px;width:min(95vw,460px);box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid #1e3a5f;font-family:DM Sans,sans-serif;';
+
+                var icone = doc.createElement('div');
+                icone.style.cssText = 'width:52px;height:52px;border-radius:50%;background:' + corBtn + '22;border:2px solid ' + corBtn + ';display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 20px;';
+                icone.textContent = '⚠️';
+
+                var tit = doc.createElement('div');
+                tit.style.cssText = 'font-size:18px;font-weight:800;color:#f1f5f9;text-align:center;margin-bottom:10px;';
+                tit.textContent = titulo;
+
+                var msg = doc.createElement('div');
+                msg.style.cssText = 'font-size:14px;color:#94a3b8;text-align:center;line-height:1.6;margin-bottom:28px;';
+                msg.textContent = mensagem;
+
+                var btnsRow = doc.createElement('div');
+                btnsRow.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;';
+
+                var cancelBtn = doc.createElement('button');
+                cancelBtn.textContent = 'Cancelar';
+                cancelBtn.style.cssText = 'padding:12px;border-radius:10px;border:1.5px solid #1e3a5f;background:#0e1e35;color:#94a3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+                cancelBtn.onclick = function() {{ ov.remove(); }};
+
+                var confirmBtn = doc.createElement('button');
+                confirmBtn.textContent = labelBtn;
+                confirmBtn.style.cssText = 'padding:12px;border-radius:10px;border:none;background:' + corBtn + ';color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif;';
+                confirmBtn.onclick = function() {{ ov.remove(); onConfirm(); }};
+
+                btnsRow.appendChild(cancelBtn);
+                btnsRow.appendChild(confirmBtn);
+                box.appendChild(icone);
+                box.appendChild(tit);
+                box.appendChild(msg);
+                box.appendChild(btnsRow);
+                ov.appendChild(box);
+                doc.body.appendChild(ov);
+
+                var escFn = function(e) {{
+                    if (e.key === 'Escape') {{
+                        ov.remove();
+                        doc.removeEventListener('keydown', escFn);
+                    }}
+                }};
+                doc.addEventListener('keydown', escFn);
+            }}
+
             document.getElementById('tb_btn_excluir_sel').addEventListener('click', function() {{
-                var el = window.parent.document.querySelector('.st-key-_btn_excluir_sel button');
-                if (el) el.click();
+                abrirConfirmacao(
+                    '🗑️ Excluir notificações',
+                    'Tem certeza que deseja excluir {_n_sel} notificação(ões) selecionada(s)? Isso remove somente o histórico dessas atividades e não pode ser desfeito.',
+                    '#ef4444',
+                    'Sim, excluir',
+                    function() {{ triggerGhostNotif('_confirmar_excluir_notificacoes_selecionadas_'); }}
+                );
             }});
             </script>
             """, height=44)
@@ -36557,9 +36640,24 @@ html, body { background: transparent; overflow: hidden; }
                 _n_marcadas = marcar_atividades_como_lidas_por_ids(st.session_state.user.id, _ids_ler)
                 st.toast(f"{_n_marcadas} notificação(ões) selecionada(s) marcada(s) como lida(s).", icon="✅")
                 st.rerun()
-            if st.button("_excluir_sel_", key="_btn_excluir_sel"):
-                if _n_sel:
-                    st.session_state["_confirmar_excluir_selecionadas"] = list(_sel_cards)
+
+            # O botão-fantasma só é acionado pelo botão vermelho do modal JS
+            # acima. Usa a seleção atual dos cards, então não precisa manter um
+            # segundo estado de "confirmação" nem renderizar st.dialog.
+            if st.button(
+                "_confirmar_excluir_notificacoes_selecionadas_",
+                key="_btn_confirmar_excluir_notificacoes_selecionadas",
+            ):
+                _ids_excluir = [str(x) for x in (_sel_cards or []) if x]
+                if _ids_excluir:
+                    _n_removidas = excluir_atividades_por_ids(
+                        st.session_state.user.id, _ids_excluir
+                    )
+                    st.session_state["_notificacoes_selecionadas_cards"] = []
+                    st.session_state["_selecionar_todas_notif_cards"] = False
+                    st.toast(
+                        f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️"
+                    )
                     st.rerun()
 
         st.markdown("""
@@ -36567,50 +36665,6 @@ html, body { background: transparent; overflow: hidden; }
         .st-key-_ghost_wrap_toolbar_notif { display:none !important; }
         </style>
         """, unsafe_allow_html=True)
-
-        # V29 — confirmação de exclusão em modal. Na V28 a confirmação era
-        # renderizada inline entre a toolbar e o "Selecionar todas". Como os
-        # blocos abaixo têm deslocamentos negativos para compactar a página,
-        # os botões de confirmação acabavam visualmente sobrepostos ao restante
-        # da interface. O modal não participa do fluxo vertical e elimina essa
-        # interferência sem desfazer a compactação da tela.
-        _ids_confirmar = st.session_state.get("_confirmar_excluir_selecionadas") or []
-        if _ids_confirmar:
-            @st.dialog("Excluir notificações")
-            def _dialog_confirmar_exclusao_notificacoes():
-                _ids_modal = list(st.session_state.get("_confirmar_excluir_selecionadas") or [])
-                st.write(
-                    f"Excluir **{len(_ids_modal)} notificação(ões)** selecionada(s)? "
-                    "Isso remove somente o histórico dessas atividades e não pode ser desfeito."
-                )
-                _c1, _c2 = st.columns(2)
-                with _c1:
-                    if st.button(
-                        "Excluir",
-                        key="_btn_confirmar_excluir_sel",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        _n_removidas = excluir_atividades_por_ids(
-                            st.session_state.user.id, _ids_modal
-                        )
-                        st.session_state["_confirmar_excluir_selecionadas"] = []
-                        st.session_state["_notificacoes_selecionadas_cards"] = []
-                        st.session_state["_selecionar_todas_notif_cards"] = False
-                        st.toast(
-                            f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️"
-                        )
-                        st.rerun()
-                with _c2:
-                    if st.button(
-                        "Cancelar",
-                        key="_btn_cancelar_excluir_sel",
-                        use_container_width=True,
-                    ):
-                        st.session_state["_confirmar_excluir_selecionadas"] = []
-                        st.rerun()
-
-            _dialog_confirmar_exclusao_notificacoes()
 
         # V28 — "Selecionar todas" com estado persistente.
         #
@@ -36720,10 +36774,13 @@ html, body { background: transparent; overflow: hidden; }
         </style>
         """, unsafe_allow_html=True)
 
-    @st.fragment(run_every="2s")
+    # V31 — 2s reconstruía a lista inteira até 30x/min. Com muitos cards, isso
+    # gerava CPU contínua mesmo sem o usuário interagir. 10s reduz ~80% desses
+    # reruns e ainda mantém o progresso visual suficientemente responsivo.
+    @st.fragment(run_every="10s")
     def _renderizar_atividades_ao_vivo():
         """Desenha a lista de atividades (cards, texto e barra de progresso)
-        dentro de um st.fragment que se atualiza sozinho a cada ~2 segundos —
+        dentro de um st.fragment que se atualiza sozinho a cada ~10 segundos —
         é o que dá o efeito de progresso 'ao vivo' (tipo barra de cópia do
         Windows) enquanto uma migração está rodando, sem precisar de
         clique nem de recarregar a página inteira. Só essa função reroda

@@ -3418,6 +3418,28 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
 
+    # V11: fallback textual MUITO restrito para uma caixa-ruído que pode
+    # chegar já FUNDIDA pelo EasyOCR e, por isso, escapar do filtro geométrico
+    # de bboxes acima. Caso real: ``Show! N Na Buy``. Só remove a letra
+    # isolada quando: (1) vem imediatamente depois de fim de frase (!?.),
+    # (2) é exatamente a mesma inicial da palavra seguinte e (3) a palavra
+    # seguinte tem 2+ letras. Isso não toca em números, siglas ou artigos
+    # normais no meio da frase.
+    def _remover_inicial_duplicada_pos_frase(_m):
+        _pont, _letra, _palavra = _m.group(1), _m.group(2), _m.group(3)
+        if _palavra and _palavra[0].lower() == _letra.lower():
+            print(
+                f"[OCR-DEBUG] inicial duplicada fundida removida: {_letra!r} antes de {_palavra!r}",
+                flush=True,
+            )
+            return f"{_pont} {_palavra}"
+        return _m.group(0)
+    texto = re.sub(
+        r"([.!?])\s+([A-Za-zÀ-ÿ])\s+([A-Za-zÀ-ÿ]{2,})\b",
+        _remover_inicial_duplicada_pos_frase,
+        texto,
+    )
+
     # Em prosa longa, o EasyOCR às vezes cola um ruído fino à primeira
     # letra seguinte e devolve "1F", "1N" etc. Só removemos esse 1
     # quando não há nenhum outro dígito diferente de 1 na linha.
@@ -3642,6 +3664,52 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         if not _tem_componente:
             return _t
 
+        # V11: confirmação geométrica forte da vírgula. A V10 ainda exigia
+        # que uma segunda chamada do EasyOCR LESSE o caractere `,`; esse é
+        # justamente o glifo que o reconhecedor está omitindo, então mesmo
+        # com a vírgula claramente presente nos pixels a rotina voltava a
+        # devolver ``Buy``. Aqui verificamos o componente no recorte COMPLETO
+        # da palavra + margem: a vírgula precisa ser um componente pequeno,
+        # separado, baixo e situado à DIREITA dos componentes grandes que
+        # formam as letras. Assim um descendente conectado do ``y`` não vira
+        # vírgula, mas o componente separado de ``Buy,`` sim.
+        _gx0 = max(0, bx0 - 2)
+        _gx1 = min(recorte_bgr.shape[1], bx1 + max(10, int(h * 0.50)))
+        _gy0 = max(0, by0 - 3)
+        _gy1 = min(recorte_bgr.shape[0], by1 + max(7, int(h * 0.35)))
+        _greg = recorte_bgr[_gy0:_gy1, _gx0:_gx1]
+        _virgula_geom_forte = False
+        if _greg.size:
+            _gbord = _np_vf.concatenate([
+                _greg[:1].reshape(-1, 3), _greg[-1:].reshape(-1, 3),
+                _greg[:, :1].reshape(-1, 3), _greg[:, -1:].reshape(-1, 3),
+            ], axis=0)
+            _gfundo = _np_vf.median(_gbord.astype(_np_vf.float32), axis=0)
+            _gdist = _np_vf.linalg.norm(_greg.astype(_np_vf.float32) - _gfundo, axis=2)
+            _gmask = (_gdist > 30).astype('uint8') * 255
+            _gn, _glab, _gstats, _gcent = _cv2_vf.connectedComponentsWithStats(_gmask, 8)
+            _grandes = []
+            _pequenos = []
+            for _jj in range(1, _gn):
+                _xx, _yy, _ww, _hh, _aa = _gstats[_jj]
+                _cx, _cy = _gcent[_jj]
+                if _aa >= max(12, int(h * h * 0.10)) and _hh >= max(5, int(h * 0.42)):
+                    _grandes.append((_xx, _yy, _ww, _hh, _aa, _cx, _cy))
+                elif 2 <= _aa <= max(70, int(h * h * 0.12)) and _hh <= max(8, int(h * 0.38)):
+                    _pequenos.append((_xx, _yy, _ww, _hh, _aa, _cx, _cy))
+            if _grandes and _pequenos:
+                _direita_letras = max(g[0] + g[2] for g in _grandes)
+                _altura_g = max(1, _greg.shape[0])
+                for _pp in _pequenos:
+                    _px, _py, _pw, _ph, _pa, _pcx, _pcy = _pp
+                    if (
+                        _pcx >= _direita_letras - max(1, int(h * 0.06))
+                        and (_pcy / _altura_g) >= 0.52
+                        and _pw <= max(7, int(h * 0.30))
+                    ):
+                        _virgula_geom_forte = True
+                        break
+
         x0 = max(0, bx0 - 4)
         x1 = min(recorte_bgr.shape[1], bx1 + max(9, int(h * 0.45)))
         y0 = max(0, by0 - 4)
@@ -3672,6 +3740,13 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         if _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
             _novo = re.sub(r"\s*,\s*$", ",", _cand)
             print(f"[OCR-DEBUG] vírgula final recuperada na caixa: {_t!r} -> {_novo!r}", flush=True)
+            return _novo
+        if _virgula_geom_forte:
+            _novo = _t.rstrip() + ","
+            print(
+                f"[OCR-DEBUG] vírgula final recuperada por geometria: {_t!r} -> {_novo!r}",
+                flush=True,
+            )
             return _novo
     except Exception as e:
         print(f"[OCR-DEBUG] recuperação de vírgula final falhou para {_t!r}: {e!r}", flush=True)
@@ -5677,14 +5752,30 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                     _bandas_cinza_seguintes = bandas_texto[idx + 1:_fim_bloco_cinza]
                                     _linhas_seguintes = []
                                     for _b_seg in _bandas_cinza_seguintes:
-                                        _txt_seg = _limpar_pontuacao_ocr(
-                                            _ocr_banda(
-                                                reader, img_bgr, _b_seg["y_min"], _b_seg["y_max"]
-                                            ).strip()
+                                        # V11: este caminho (cabeçalho azul separado) ainda
+                                        # usava a ALTURA BRUTA da banda, enquanto o caminho
+                                        # sem cabeçalho azul já usava a altura real dos bboxes
+                                        # do EasyOCR desde a V5. Foi por isso que ``Volta, Bora``
+                                        # cortou antes de ``Viver Essa Emoção?`` apesar de as três
+                                        # linhas terem a mesma fonte visual. Usa exatamente a
+                                        # mesma medição real aqui para os dois layouts.
+                                        _txt_seg_bruto, _linhas_bbox_seg = _ocr_banda(
+                                            reader, img_bgr, _b_seg["y_min"], _b_seg["y_max"],
+                                            retornar_linhas=True,
                                         )
+                                        _txt_seg = _limpar_pontuacao_ocr((_txt_seg_bruto or "").strip())
+                                        _alturas_seg = [
+                                            float(_l.get("altura") or 0) for _l in (_linhas_bbox_seg or [])
+                                            if (_l.get("texto") or "").strip() and float(_l.get("altura") or 0) > 0
+                                        ]
+                                        if _alturas_seg:
+                                            _alturas_seg.sort()
+                                            _altura_seg = _alturas_seg[len(_alturas_seg) // 2]
+                                        else:
+                                            _altura_seg = _b_seg["y_max"] - _b_seg["y_min"] + 1
                                         _linhas_seguintes.append({
                                             "texto": _txt_seg,
-                                            "altura": _b_seg["y_max"] - _b_seg["y_min"] + 1,
+                                            "altura": _altura_seg,
                                         })
                                     _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(
                                         [l for l in _linhas_seguintes if l["texto"]]

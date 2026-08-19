@@ -36639,9 +36639,18 @@ html, body { background: transparent; overflow: hidden; }
             padding-bottom: 0 !important;
         }
 
-        /* O container que contém toolbar + seletor herda um gap bem menor. */
+        /* Cola o "Selecionar todas" na toolbar acima. O espaço visto na tela
+           vem do gap do bloco PAI do Streamlit, não da margem do checkbox. */
+        section.main [data-testid="stVerticalBlock"]:has(> .stElementContainer .st-key-_bloco_todas_topo),
         section.main [data-testid="stVerticalBlock"]:has(.st-key-_bloco_todas_topo) {
-            gap: 0.35rem !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+        }
+        /* O wrapper do bloco também ganha deslocamento real para cima. */
+        section.main .stElementContainer:has(.st-key-_bloco_todas_topo),
+        section.main [data-testid="stElementContainer"]:has(.st-key-_bloco_todas_topo) {
+            margin-top: -22px !important;
+            margin-bottom: -4px !important;
         }
         </style>
         """, unsafe_allow_html=True)

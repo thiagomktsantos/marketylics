@@ -123,6 +123,38 @@ def _recurso_api_io():
 
 
 # ---------------------------------------------------
+# V33 — HTTP COM REUSO DE CONEXÃO POR THREAD
+# ---------------------------------------------------
+# O app faz muitos downloads curtos (criativos, thumbnails, vídeos e páginas).
+# requests.get/post/head avulsos recriam conexão/TLS com frequência. Uma Session
+# por thread reaproveita keep-alive sem compartilhar estado mutável entre workers.
+_http_local = threading.local()
+
+def _http_session() -> requests.Session:
+    sess = getattr(_http_local, "session", None)
+    if sess is None:
+        sess = requests.Session()
+        try:
+            from requests.adapters import HTTPAdapter
+            adapter = HTTPAdapter(pool_connections=8, pool_maxsize=8, max_retries=0)
+            sess.mount("https://", adapter)
+            sess.mount("http://", adapter)
+        except Exception:
+            pass
+        _http_local.session = sess
+    return sess
+
+def _http_get(*args, **kwargs):
+    return _http_session().get(*args, **kwargs)
+
+def _http_post(*args, **kwargs):
+    return _http_session().post(*args, **kwargs)
+
+def _http_head(*args, **kwargs):
+    return _http_session().head(*args, **kwargs)
+
+
+# ---------------------------------------------------
 # PLAYWRIGHT — GARANTE O CHROMIUM INSTALADO
 # ---------------------------------------------------
 # Usado como último recurso pra achar a imagem de criativos do Google Ads
@@ -973,7 +1005,7 @@ def obter_transcricao_video(url_video: str, user_id: str = None) -> str:
 
     if not texto and whisper_model_ou_none() is not None:
         try:
-            resp = requests.get(url_video, timeout=30)
+            resp = _http_get(url_video, timeout=30)
             resp.raise_for_status()
             texto = _transcrever_video_whisper(resp.content)
         except Exception:
@@ -1164,7 +1196,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             for _i_tent, _headers_download in enumerate(_tentativas_headers):
                 try:
                     with _recurso_api_io():
-                        _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
+                        _tentativa = _http_get(url_origem, timeout=15, stream=True, headers=_headers_download)
                 except Exception as _e_tent:
                     print(f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} EXCEÇÃO: {_e_tent!r}", flush=True)
                     continue
@@ -1217,7 +1249,7 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             _url_dedupe = existente.data[0]["url_cdn"]
             try:
                 with _recurso_api_io():
-                    _check = requests.head(_url_dedupe, timeout=5)
+                    _check = _http_head(_url_dedupe, timeout=5)
                 _arquivo_existe = _check.status_code == 200
             except Exception:
                 _arquivo_existe = False
@@ -1591,7 +1623,7 @@ def _contar_transcricoes_pendentes(user_id: str, empresa: str) -> int:
 
 def _empresas_com_transcricao_pendente(user_id: str) -> list:
     """Lista as empresas distintas do usuário que ainda têm vídeo migrado
-    sem transcrição — usada pelo auto-retry da sidebar (a cada 15s) pra
+    sem transcrição — usada pelo auto-retry da sidebar (periodicamente) pra
     saber quais filas de transcrição precisam ser (re)ligadas, do mesmo
     jeito que retentar_migracoes_travadas_automaticamente faz pra
     migração."""
@@ -1692,7 +1724,7 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                 # fila pra sempre, a cada ciclo.
                 texto = ""
                 try:
-                    resp = requests.get(midia["url_cdn"], timeout=30)
+                    resp = _http_get(midia["url_cdn"], timeout=30)
                     resp.raise_for_status()
                     texto = _transcrever_video_whisper(resp.content)
                 except Exception:
@@ -1740,7 +1772,7 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                         f"salvar a transcrição no banco (rede instável, sessão expirada "
                         f"ou permissão negada) — não vão se resolver sozinhos nesta "
                         f"passada. Clique 'Refazer' pra tentar de novo, ou aguarde: o "
-                        f"religamento automático da sidebar também tenta a cada 15s.\n"
+                        f"religamento automático da sidebar também tenta periodicamente.\n"
                         f"Detalhe técnico (até 3 amostras): {' | '.join(_erros_update_amostra)}"
                     ),
                 })
@@ -1908,7 +1940,7 @@ def _baixar_imagem_cv2(url_imagem: str):
     decodificação falharem."""
     import numpy as _np_ocr
     import cv2 as _cv2_ocr
-    r = requests.get(url_imagem, timeout=20)
+    r = _http_get(url_imagem, timeout=20)
     r.raise_for_status()
     _arr = _np_ocr.frombuffer(r.content, dtype=_np_ocr.uint8)
     _img = _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
@@ -6300,7 +6332,7 @@ def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
 
 def _empresas_com_ocr_pendente(user_id: str) -> list:
     """Equivalente a _empresas_com_transcricao_pendente, mas pra fila de
-    OCR — usada pelo auto-retry da sidebar (a cada 15s)."""
+    OCR — usada pelo auto-retry da sidebar (periodicamente)."""
     try:
         res = (
             supabase.table("midias")
@@ -6808,7 +6840,7 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
             _nome_empresa_reel = dados[pi].get("nome") or "—"
             texto = ""
             try:
-                resp = requests.get(video_url, timeout=30)
+                resp = _http_get(video_url, timeout=30)
                 resp.raise_for_status()
                 texto = _transcrever_video_whisper(resp.content)
             except Exception:
@@ -6958,6 +6990,7 @@ def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
     pra sempre (como se ainda estivessem "ativas"). Filtra por user_id
     também (mesmo padrão das outras exclusões no app) — evita depender
     só da policy de RLS pra não apagar registro de outra conta."""
+    _invalidar_cache_notificacoes_sessao()
     if not atividade_id:
         return False
     try:
@@ -6985,6 +7018,7 @@ def excluir_atividades_com_erro(user_id: str) -> int:
     de novo), então a única forma de o alerta do sino sumir era excluir
     uma por uma, manualmente, card por card. Devolve quantas foram
     removidas."""
+    _invalidar_cache_notificacoes_sessao()
     if not user_id:
         return 0
     try:
@@ -7005,6 +7039,7 @@ def marcar_erros_como_lidos(user_id: str) -> int:
     quem já viu/tratou os erros e só quer tirar o alerta vermelho do sino,
     mas ainda quer manter o card no histórico da página de notificações
     pra consulta depois. Devolve quantas foram marcadas."""
+    _invalidar_cache_notificacoes_sessao()
     if not user_id:
         return 0
     try:
@@ -7075,7 +7110,44 @@ def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     except Exception:
         return []
 
+# ---------------------------------------------------
+# V33 — CACHE CURTO DA PÁGINA DE NOTIFICAÇÕES
+# ---------------------------------------------------
+# Busca/status/cards pediam os mesmos dados mais de uma vez no mesmo rerun.
+# Cache de poucos segundos elimina duplicidade sem esconder progresso por tempo
+# perceptível. Fica em session_state, portanto não mistura usuários/sessões.
+_NOTIF_CACHE_TTL_SEG = 3.0
+
+def _notif_cache_get(chave: str):
+    try:
+        item = st.session_state.get(chave)
+        if not item:
+            return None
+        ts, valor = item
+        if (time.monotonic() - float(ts)) <= _NOTIF_CACHE_TTL_SEG:
+            return valor
+    except Exception:
+        pass
+    return None
+
+def _notif_cache_set(chave: str, valor):
+    try:
+        st.session_state[chave] = (time.monotonic(), valor)
+    except Exception:
+        pass
+
+def _invalidar_cache_notificacoes_sessao():
+    try:
+        for _k in ("_cache_resumo_status_notif_v33", "_cache_lista_notif_v33"):
+            st.session_state.pop(_k, None)
+    except Exception:
+        pass
+
 def resumo_status_notificacoes(user_id: str) -> dict:
+    _cache_key = "_cache_resumo_status_notif_v33"
+    _cached = _notif_cache_get(_cache_key)
+    if _cached is not None:
+        return dict(_cached)
     """Conta TODAS as notificações por status para alimentar o filtro da
     página de Notificações. É uma única consulta leve (só status/detalhes/lida),
     executada fora do fragment de atualização de 2s, portanto não fica
@@ -7119,6 +7191,7 @@ def resumo_status_notificacoes(user_id: str) -> dict:
                     cont["concluido_com_erro"] += 1
                 else:
                     cont["concluido"] += 1
+        _notif_cache_set(_cache_key, dict(cont))
         return cont
     except Exception as e:
         print(f"[NOTIF-DEBUG] falha ao contar status: {e!r}", flush=True)
@@ -7136,6 +7209,10 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
     """
     if not user_id:
         return []
+    _cache_key_lista = "_cache_lista_notif_v33"
+    _cached_lista = _notif_cache_get(_cache_key_lista)
+    if isinstance(_cached_lista, dict) and _cached_lista.get("user_id") == str(user_id) and _cached_lista.get("limite") == int(limite_recentes):
+        return list(_cached_lista.get("itens") or [])
     recentes = listar_atividades_recentes(user_id, limite=limite_recentes)
     try:
         res_ativos = (
@@ -7154,9 +7231,11 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
                 por_id[aid] = a
         itens = list(por_id.values())
         itens.sort(key=lambda a: a.get("criado_em") or "", reverse=True)
+        _notif_cache_set(_cache_key_lista, {"user_id": str(user_id), "limite": int(limite_recentes), "itens": list(itens)})
         return itens
     except Exception as e:
         print(f"[NOTIF-DEBUG] falha ao complementar ativos: {e!r}", flush=True)
+        _notif_cache_set(_cache_key_lista, {"user_id": str(user_id), "limite": int(limite_recentes), "itens": list(recentes)})
         return recentes
 
 def resumo_sino_atividades(user_id: str) -> dict:
@@ -8415,7 +8494,7 @@ def extrair_conteudo_site(url: str) -> str:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         }
-        resp = requests.get(url_fmt, headers=headers, timeout=15, allow_redirects=True)
+        resp = _http_get(url_fmt, headers=headers, timeout=15, allow_redirects=True)
         resp.encoding = resp.apparent_encoding
         html = resp.text
 
@@ -8459,7 +8538,7 @@ def extrair_seo_site(url: str) -> dict:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
         }
-        resp = requests.get(url_fmt, headers=headers, timeout=12, allow_redirects=True)
+        resp = _http_get(url_fmt, headers=headers, timeout=12, allow_redirects=True)
         resp.encoding = resp.apparent_encoding
         html = resp.text
 
@@ -8692,7 +8771,7 @@ def extrair_sitemap(url: str) -> dict:
         if profundidade > 2:
             return []
         try:
-            r = requests.get(sitemap_url, headers=headers, timeout=10, allow_redirects=True)
+            r = _http_get(sitemap_url, headers=headers, timeout=10, allow_redirects=True)
             if r.status_code != 200:
                 return []
             conteudo = r.text
@@ -8714,7 +8793,7 @@ def extrair_sitemap(url: str) -> dict:
     # 1. Tenta achar pelo robots.txt
     base = url_fmt.rstrip("/")
     try:
-        robots = requests.get(f"{base}/robots.txt", headers=headers, timeout=8)
+        robots = _http_get(f"{base}/robots.txt", headers=headers, timeout=8)
         sm_declarado = _re.findall(r'(?i)sitemap:\s*(https?://\S+)', robots.text)
     except Exception:
         sm_declarado = []
@@ -10356,7 +10435,7 @@ def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
                             continue
                         verificados += 1
                         try:
-                            ok = requests.head(u, timeout=5).status_code == 200
+                            ok = _http_head(u, timeout=5).status_code == 200
                         except Exception:
                             ok = False
                         if not ok:
@@ -10373,7 +10452,7 @@ def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
                 if _foto and R2_PUBLIC_BASE and _foto.startswith(R2_PUBLIC_BASE):
                     verificados += 1
                     try:
-                        ok_foto = requests.head(_foto, timeout=5).status_code == 200
+                        ok_foto = _http_head(_foto, timeout=5).status_code == 200
                     except Exception:
                         ok_foto = False
                     if not ok_foto:
@@ -10917,7 +10996,7 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
             # o teto, também regrava 'ultima_tentativa_em' — sem isso, o
             # próximo ciclo de 15s acharia de novo que já passou tempo
             # demais (heartbeat/tentativa antigos) e martelaria a mesma
-            # query de ads_cache a cada 15s à toa.
+            # query de ads_cache periodicamente à toa.
             _detalhes_atuais = alvo.get("detalhes") or {}
             _tentativas_cache_ausente = _detalhes_atuais.get("tentativas_cache_ausente", 0) + 1
             print(
@@ -10997,7 +11076,7 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
 # lá), não tem risco de reprocessar a mesma linha pra sempre. Ainda assim
 # mantém um cooldown entre tentativas automáticas: se o problema de
 # verdade AINDA não tiver sido corrigido, não faz sentido martelar o
-# banco a cada 15s tentando de novo a mesma coisa que vai falhar de novo.
+# banco periodicamente tentando de novo a mesma coisa que vai falhar de novo.
 LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS = 300  # 5 min entre tentativas automáticas
 
 def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
@@ -11093,7 +11172,7 @@ with st.sidebar:
     # a aba estiver aberta e conectada — em QUALQUER página, porque a
     # sidebar é renderizada em todas elas. Substitui por completo o antigo
     # bloco "Auto-poll global" (botão escondido + setInterval em JS).
-    @st.fragment(run_every="60s")
+    @st.fragment(run_every="120s")
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
@@ -11105,10 +11184,10 @@ with st.sidebar:
             # do processo do servidor). _empresas_com_transcricao_pendente
             # varre por empresa, e iniciar_transcricao_pendente_background
             # já se protege contra rodar 2x ao mesmo tempo pra mesma
-            # empresa, então chamar aqui a cada 60s é seguro (é só uma
+            # empresa, então chamar aqui a cada 120s é seguro (é só uma
             # checagem "já tem uma fila rodando pra essa empresa?") — é
             # esse religamento automático que garante que a transcrição
-            # é revista automaticamente a cada ~60s com a aba aberta,
+            # é revista automaticamente a cada ~120s com a aba aberta,
             # mesmo se a thread original tiver morrido.
             for _empresa_pendente in _empresas_com_transcricao_pendente(st.session_state.user.id):
                 iniciar_transcricao_pendente_background(st.session_state.user.id, _empresa_pendente)
@@ -11826,7 +11905,7 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
                 # vídeos são maiores e demoram mais pra baixar/reencodar
                 # que imagens, então usamos um timeout maior pra eles.
                 timeout_download = 120 if m.get("tipo") == "video" else 20
-                resp = requests.get(url_antiga, timeout=timeout_download)
+                resp = _http_get(url_antiga, timeout=timeout_download)
                 resp.raise_for_status()
                 conteudo_original = resp.content
                 tamanho_original = len(conteudo_original)
@@ -12244,7 +12323,7 @@ def _rapidapi_get_com_retry(url: str, headers: dict, tentativas: int = 3, timeou
     ultimo_erro = None
     for i in range(tentativas):
         try:
-            return requests.get(url, headers=headers, timeout=timeout)
+            return _http_get(url, headers=headers, timeout=timeout)
         except requests.exceptions.RequestException as e:
             ultimo_erro = e
             if i < tentativas - 1:
@@ -18171,7 +18250,7 @@ elif st.session_state.pagina == "ads":
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Referer": "https://www.facebook.com/",
             }
-            r = requests.get(url, headers=headers, timeout=10, stream=True)
+            r = _http_get(url, headers=headers, timeout=10, stream=True)
             if r.status_code != 200:
                 return ""
             ct = r.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
@@ -18634,7 +18713,7 @@ elif st.session_state.pagina == "ads":
         }
 
         try:
-            r_start = requests.post(run_url, json=payload, timeout=30)
+            r_start = _http_post(run_url, json=payload, timeout=30)
             r_start.raise_for_status()
             run_data = r_start.json()
         except Exception as e:
@@ -18651,7 +18730,7 @@ elif st.session_state.pagina == "ads":
         status     = "RUNNING"
         while _time.time() < deadline:
             try:
-                r_st   = requests.get(status_url, timeout=15)
+                r_st   = _http_get(status_url, timeout=15)
                 jdata  = r_st.json().get("data", {})
                 status = jdata.get("status", "RUNNING")
                 if not dataset_id:
@@ -18672,7 +18751,7 @@ elif st.session_state.pagina == "ads":
             f"?token={api_token}&limit={limit}&clean=true"
         )
         try:
-            r_items = requests.get(items_url, timeout=30)
+            r_items = _http_get(items_url, timeout=30)
             r_items.raise_for_status()
             raw_items = r_items.json()
         except Exception as e:
@@ -23722,7 +23801,7 @@ elif st.session_state.pagina == "google_ads":
             })
         for i, headers in enumerate(tentativas):
             try:
-                r = requests.get(url, headers=headers, timeout=15)
+                r = _http_get(url, headers=headers, timeout=15)
                 ct_raw = r.headers.get("Content-Type", "")
                 print(f"[{tag}] tentativa={i} headers={list(headers.keys())} url={url} status={r.status_code} content-type={ct_raw!r} bytes={len(r.content) if r.content else 0}", flush=True)
                 if r.status_code == 200 and r.content:
@@ -23750,7 +23829,7 @@ elif st.session_state.pagina == "google_ads":
         (adstransparency.google.com/advertiser/.../creative/...) é uma SPA
         em Angular: o HTML cru não tem nada de criativo, ele só aparece na
         tela depois que o JS roda no navegador e chama o backend do Google
-        — por isso um `requests.get()` simples nela não adianta (o corpo
+        — por isso um `_http_get()` simples nela não adianta (o corpo
         vem vazio, só a casca do app). A solução é abrir essa página com
         um navegador headless de verdade (Playwright) e escutar o tráfego
         de rede até aparecer uma URL que bata com
@@ -23844,7 +23923,7 @@ elif st.session_state.pagina == "google_ads":
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Referer": "https://adstransparency.google.com/",
             }
-            r = requests.get(preview_url, headers=headers, timeout=15)
+            r = _http_get(preview_url, headers=headers, timeout=15)
             if r.status_code != 200 or not r.text:
                 return resultado
             texto = r.text
@@ -24297,7 +24376,7 @@ elif st.session_state.pagina == "google_ads":
         print(f"[APIFY-DEBUG] termo={termo!r} -> payload={payload}", flush=True)
 
         try:
-            r_start = requests.post(run_url, json=payload, timeout=30)
+            r_start = _http_post(run_url, json=payload, timeout=30)
             r_start.raise_for_status()
             run_data = r_start.json()
         except Exception as e:
@@ -24316,7 +24395,7 @@ elif st.session_state.pagina == "google_ads":
         status     = "RUNNING"
         while _time.time() < deadline:
             try:
-                r_st   = requests.get(status_url, timeout=15)
+                r_st   = _http_get(status_url, timeout=15)
                 jdata  = r_st.json().get("data", {})
                 status = jdata.get("status", "RUNNING")
                 if not dataset_id:
@@ -24344,7 +24423,7 @@ elif st.session_state.pagina == "google_ads":
             f"?token={api_token}&limit={limit}&clean=true"
         )
         try:
-            r_items = requests.get(items_url, timeout=30)
+            r_items = _http_get(items_url, timeout=30)
             r_items.raise_for_status()
             raw_items = r_items.json()
         except Exception as e:
@@ -36377,26 +36456,16 @@ html, body { background: transparent; overflow: hidden; }
     # apagar tudo com 1 clique errado. "Marcar como lidas" não precisa de
     # confirmação porque não é destrutivo (o card continua no histórico).
     if st.session_state.user:
-        _n_erros_notif = 0
-        _n_erros_nao_lidos = 0
-        try:
-            _res_n_erros = (
-                supabase.table("atividades")
-                .select("id, lida", count="exact")
-                .eq("user_id", st.session_state.user.id)
-                .eq("status", "erro")
-                .execute()
-            )
-            _n_erros_notif = _res_n_erros.count or 0
-            _n_erros_nao_lidos = sum(1 for r in (_res_n_erros.data or []) if not r.get("lida"))
-        except Exception:
-            pass
-
+        # V33 — uma única consulta alimenta contadores do status e dos erros.
+        # Antes havia uma query separada só para erro/lida e logo depois outra
+        # query de resumo, lendo a mesma tabela duas vezes em todo rerun da página.
         # V17: contagem REAL por status (banco inteiro) no próprio filtro.
         # Isso também explica visualmente o número do sino: antes o badge
         # podia mostrar 10 porque ele contava atividades ativas antigas, mas
         # a tela trazia só as 50 mais recentes e essas 10 podiam ficar fora.
         _cont_status_notif = resumo_status_notificacoes(st.session_state.user.id)
+        _n_erros_notif = int(_cont_status_notif.get("erro", 0) or 0)
+        _n_erros_nao_lidos = int(_cont_status_notif.get("erro_nao_lido", 0) or 0)
         _STATUS_NOTIF_LABELS = {
             "todos": "Todos os status",
             "em_andamento": "Em andamento",
@@ -36796,10 +36865,10 @@ html, body { background: transparent; overflow: hidden; }
     # V31 — 2s reconstruía a lista inteira até 30x/min. Com muitos cards, isso
     # gerava CPU contínua mesmo sem o usuário interagir. 10s reduz ~80% desses
     # reruns e ainda mantém o progresso visual suficientemente responsivo.
-    @st.fragment(run_every="10s")
+    @st.fragment(run_every="20s")
     def _renderizar_atividades_ao_vivo():
         """Desenha a lista de atividades (cards, texto e barra de progresso)
-        dentro de um st.fragment que se atualiza sozinho a cada ~10 segundos —
+        dentro de um st.fragment que se atualiza sozinho a cada ~20 segundos —
         é o que dá o efeito de progresso 'ao vivo' (tipo barra de cópia do
         Windows) enquanto uma migração está rodando, sem precisar de
         clique nem de recarregar a página inteira. Só essa função reroda

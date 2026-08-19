@@ -52,6 +52,16 @@ def _limitar_threads_cpu_ocr():
 _limitar_threads_cpu_ocr()
 
 # ---------------------------------------------------
+# CONFIGURAÇÃO DA PÁGINA
+# ---------------------------------------------------
+
+st.set_page_config(
+    page_title="Marketylics · Competitive Intelligence",
+    page_icon="https://raw.githubusercontent.com/thiagomktsantos/marketylics/231a39c102b672fbb803b0ecf335febdd119d3b1/images/favicon.jpg",
+    layout="wide"
+)
+
+# ---------------------------------------------------
 # GERENCIADOR GLOBAL DE RECURSOS PESADOS
 # ---------------------------------------------------
 # O Streamlit Community Cloud tem CPU/RAM/processos bastante limitados.
@@ -93,15 +103,6 @@ def _recurso_api_io():
     finally:
         _semaforo_api_io.release()
 
-# ---------------------------------------------------
-# CONFIGURAÇÃO DA PÁGINA
-# ---------------------------------------------------
-
-st.set_page_config(
-    page_title="Marketylics · Competitive Intelligence",
-    page_icon="https://raw.githubusercontent.com/thiagomktsantos/marketylics/231a39c102b672fbb803b0ecf335febdd119d3b1/images/favicon.jpg",
-    layout="wide"
-)
 
 # ---------------------------------------------------
 # PLAYWRIGHT — GARANTE O CHROMIUM INSTALADO

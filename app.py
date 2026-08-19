@@ -36588,74 +36588,63 @@ html, body { background: transparent; overflow: hidden; }
                     st.session_state["_confirmar_excluir_selecionadas"] = []
                     st.rerun()
 
-        # "Selecionar todas" fica acima da lista de cards, alinhado à direita —
-        # sem caixa/fundo branco, só o checkbox nativo mesmo (diferente da
-        # busca/status/botões, que são "campos" e por isso têm fundo branco).
-        # A coluna vazia à esquerda é só um espaçador pra empurrar o checkbox
-        # pro lado direito. Fica dentro de um container próprio só pra poder
-        # puxar o espaçamento pra cima (margin-top negativa) — cada bloco
-        # (linha de botões, CSS oculto, aviso de exclusão) soma um respiro
-        # padrão do Streamlit entre si, e a soma deles deixava um vão grande
-        # demais entre a barra de cima e este checkbox.
+        # V24 — "Selecionar todas" alinhado à ESQUERDA, exatamente no mesmo
+        # eixo de início dos cards abaixo. Sem coluna-espaçadora: o próprio
+        # checkbox ocupa a largura natural e fica colado ao início do conteúdo.
+        # Também reduzimos os respiros verticais desta região para aproximar
+        # toolbar -> selecionar todas -> primeiro card, sem sobreposição.
         with st.container(key="_bloco_todas_topo"):
-            _col_espaco_todas, _col_todas = st.columns([4, 1.6])
-            with _col_todas:
-                _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
-                if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
-                    st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
-                _todos_sel = st.checkbox(
-                    f"Selecionar todas ({len(_ids_visiveis)})",
-                    key="_selecionar_todas_notif_cards",
-                    help="Seleciona todas as notificações visíveis no filtro atual.",
-                )
-                if _todos_sel and not _todos_devem_estar:
-                    st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
-                    st.rerun()
-                elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
-                    st.session_state["_notificacoes_selecionadas_cards"] = []
-                    st.rerun()
+            _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
+            if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
+                st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
+            _todos_sel = st.checkbox(
+                f"Selecionar todas ({len(_ids_visiveis)})",
+                key="_selecionar_todas_notif_cards",
+                help="Seleciona todas as notificações visíveis no filtro atual.",
+            )
+            if _todos_sel and not _todos_devem_estar:
+                st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
+                st.rerun()
+            elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
+                st.session_state["_notificacoes_selecionadas_cards"] = []
+                st.rerun()
+
         st.markdown("""
         <style>
-        .st-key-_selecionar_todas_notif_cards { display: flex; justify-content: flex-end; }
-        .st-key-_selecionar_todas_notif_cards label { justify-content: flex-end; }
+        /* Selecionar todas: alinhamento à esquerda igual ao início dos cards. */
+        .st-key-_bloco_todas_topo,
+        .st-key-_selecionar_todas_notif_cards {
+            width: 100% !important;
+            justify-content: flex-start !important;
+        }
+        .st-key-_selecionar_todas_notif_cards label {
+            justify-content: flex-start !important;
+            margin: 0 !important;
+        }
+
+        /* Compacta a faixa de controles da página de notificações. */
+        .st-key-_bloco_todas_topo {
+            margin-top: -6px !important;
+            margin-bottom: -10px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        .st-key-_bloco_todas_topo [data-testid="stVerticalBlock"],
+        .st-key-_bloco_todas_topo [data-testid="stElementContainer"],
+        .st-key-_selecionar_todas_notif_cards {
+            gap: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+
+        /* O container que contém toolbar + seletor herda um gap bem menor. */
+        section.main [data-testid="stVerticalBlock"]:has(.st-key-_bloco_todas_topo) {
+            gap: 0.35rem !important;
+        }
         </style>
         """, unsafe_allow_html=True)
-
-        # O vão grande antes do "Selecionar todas" não vinha de margem, e sim
-        # do gap padrão que o Streamlit aplica entre CADA bloco empilhado
-        # nessa coluna (linha de busca/status/botões, o markdown que esconde
-        # o "_ghost_wrap_toolbar_notif", e este container do checkbox — 3
-        # blocos = 2 gaps de ~1rem cada). Em vez de compensar com uma margem
-        # negativa (frágil, pode sobrepor conteúdo se o Streamlit mudar o
-        # tamanho do gap padrão), reduzimos o gap real do container pai que
-        # eles todos compartilham.
-        components.html("""
-        <script>
-        (function() {
-            function reduzirGapToolbar() {
-                var doc = window.parent.document;
-                var bloco = doc.querySelector('.st-key-_bloco_todas_topo');
-                if (!bloco) return false;
-                var pai = bloco.parentElement;
-                if (!pai) return false;
-                pai.style.setProperty('gap', '0.05rem', 'important');
-                return true;
-            }
-            if (!reduzirGapToolbar()) {
-                var tentativas = 0;
-                var iv = setInterval(function() {
-                    tentativas++;
-                    if (reduzirGapToolbar() || tentativas > 30) clearInterval(iv);
-                }, 150);
-            }
-            try {
-                var obs = new MutationObserver(function() { reduzirGapToolbar(); });
-                obs.observe(window.parent.document.body, {childList:true, subtree:true});
-                setTimeout(function(){ obs.disconnect(); }, 10000);
-            } catch(e) {}
-        })();
-        </script>
-        """, height=0)
 
     @st.fragment(run_every="2s")
     def _renderizar_atividades_ao_vivo():

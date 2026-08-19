@@ -36466,6 +36466,48 @@ html, body { background: transparent; overflow: hidden; }
             _prefixo = f"{_empresa} · " if _empresa else ""
             return f"{_prefixo}{_titulo} — {_lbl_st}"
 
+        # V21 — acabamento visual uniforme dos dois campos da toolbar.
+        # O BaseWeb pode trocar a profundidade do DIV interno entre selectbox e
+        # multiselect; por isso estilizamos o componente pela chave estável do
+        # Streamlit e o [data-baseweb="select"], em vez de depender do pai do
+        # role=combobox. Assim ambos ficam iguais ao campo de busca.
+        st.markdown("""
+        <style>
+        .st-key-_filtro_status_notif [data-baseweb="select"] > div,
+        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div {
+            min-height: 40px !important;
+            height: 40px !important;
+            background: #ffffff !important;
+            border: 1px solid #d1d5db !important;
+            border-radius: 8px !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        .st-key-_filtro_status_notif [data-baseweb="select"] > div:hover,
+        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div:hover {
+            border-color: #b8c0cc !important;
+        }
+        .st-key-_filtro_status_notif [data-baseweb="select"] > div:focus-within,
+        .st-key-_notificacoes_selecionadas [data-baseweb="select"] > div:focus-within {
+            border-color: #9aa6b5 !important;
+            box-shadow: none !important;
+        }
+        .st-key-_filtro_status_notif [role="combobox"],
+        .st-key-_notificacoes_selecionadas [role="combobox"] {
+            min-height: 38px !important;
+            font-size: 14px !important;
+            color: #374151 !important;
+            background: transparent !important;
+        }
+        .st-key-_notificacoes_selecionadas [data-baseweb="select"] input {
+            font-size: 14px !important;
+        }
+        .st-key-_notificacoes_selecionadas [data-baseweb="tag"] {
+            max-height: 28px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         _col_sel, _col_todos, _col_lidas, _col_excluir = st.columns([2.45, .75, 1.35, 1.25])
         with _col_sel:
             st.multiselect(

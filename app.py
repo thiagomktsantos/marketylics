@@ -36282,11 +36282,13 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
-    # V19: o selectbox do Streamlit/BaseWeb desenha a borda no DIV interno
-    # (control), não no wrapper [data-baseweb="select"]. A V17/V18 estilizou
-    # o wrapper e por isso visualmente o campo continuava parecendo sem caixa.
-    # Aqui localizamos o combobox real e estilizamos exatamente o control que
-    # recebe fundo/borda, deixando-o idêntico ao campo de busca da toolbar.
+    # V26: essa versão do Streamlit trocou o BaseWeb pelo React Aria — o
+    # selectbox não tem mais [data-baseweb="select"]; agora é um
+    # .react-aria-ComboBox com um <div role="group"> por dentro (é esse group
+    # que desenha a caixa visual) envolvendo o <input role="combobox">. A V19
+    # ainda procurava pelo seletor antigo e nunca encontrava nada — por isso
+    # o fundo continuava transparente. Aqui buscamos pelo input[role=combobox]
+    # e subimos até o [role="group"] mais próximo, que é a caixa real.
     components.html("""
     <script>
     (function() {
@@ -36294,17 +36296,11 @@ html, body { background: transparent; overflow: hidden; }
             var doc = window.parent.document;
             var host = doc.querySelector('.st-key-_filtro_status_notif');
             if (!host) return false;
-            var combo = host.querySelector('[role="combobox"]');
-            var sel = host.querySelector('[data-baseweb="select"]');
-            if (!combo || !sel) return false;
+            var combo = host.querySelector('input[role="combobox"]');
+            if (!combo) return false;
 
-            // No BaseWeb o pai direto do combobox é a caixa visual do select.
-            var control = combo.parentElement;
+            var control = combo.closest('[role="group"]') || combo.parentElement;
             if (!control) return false;
-
-            sel.style.setProperty('height', '40px', 'important');
-            sel.style.setProperty('min-height', '40px', 'important');
-            sel.style.setProperty('background', 'transparent', 'important');
 
             control.style.setProperty('height', '40px', 'important');
             control.style.setProperty('min-height', '40px', 'important');
@@ -36313,12 +36309,24 @@ html, body { background: transparent; overflow: hidden; }
             control.style.setProperty('background-color', '#ffffff', 'important');
             control.style.setProperty('box-shadow', 'none', 'important');
             control.style.setProperty('outline', 'none', 'important');
+            control.style.setProperty('box-sizing', 'border-box', 'important');
+            control.style.setProperty('overflow', 'hidden', 'important');
 
-            combo.style.setProperty('height', '38px', 'important');
+            combo.style.setProperty('height', '100%', 'important');
             combo.style.setProperty('min-height', '38px', 'important');
             combo.style.setProperty('font-size', '14px', 'important');
             combo.style.setProperty('color', '#374151', 'important');
             combo.style.setProperty('background', 'transparent', 'important');
+
+            // O wrapper .react-aria-ComboBox às vezes também tem borda/fundo
+            // próprios (herdados do tema) — neutraliza pra não sobrar caixa
+            // duplicada por trás do "control" que acabamos de estilizar.
+            var wrapper = host.querySelector('.react-aria-ComboBox');
+            if (wrapper) {
+                wrapper.style.setProperty('background', 'transparent', 'important');
+                wrapper.style.setProperty('border', '0', 'important');
+                wrapper.style.setProperty('box-shadow', 'none', 'important');
+            }
 
             // Mantém seta e área clicável centralizadas na mesma altura.
             Array.from(control.children).forEach(function(el) {
@@ -36469,113 +36477,13 @@ html, body { background: transparent; overflow: hidden; }
             _prefixo = f"{_empresa} · " if _empresa else ""
             return f"{_prefixo}{_titulo} — {_lbl_st}"
 
-        # V22 — o CSS da V21 não alterou visualmente os componentes nesta versão
-        # do Streamlit/BaseWeb: a caixa visível não é estável entre selectbox e
-        # multiselect. Em vez de adivinhar a profundidade do DOM, copiamos em JS
-        # o acabamento COMPUTADO do campo de busca (que já está correto) para a
-        # raiz visual dos dois selects. Assim altura, fundo, borda e raio ficam
-        # literalmente iguais ao campo de busca, mesmo se o tema mudar.
-        components.html("""
-        <script>
-        (function() {
-            function acharHost(doc, chave) {
-                return doc.querySelector('.st-key-' + chave);
-            }
-
-            function acharCaixaBusca(doc) {
-                var host = acharHost(doc, '_busca_notif');
-                if (!host) return null;
-                var input = host.querySelector('input');
-                if (!input) return null;
-                var el = input.parentElement;
-                // Sobe até encontrar a caixa que realmente desenha a borda.
-                for (var i = 0; el && i < 6; i++, el = el.parentElement) {
-                    var cs = getComputedStyle(el);
-                    var bw = parseFloat(cs.borderTopWidth || '0');
-                    if (bw > 0 || cs.borderTopStyle !== 'none') return el;
-                }
-                return input.parentElement;
-            }
-
-            function aplicarEmSelect(doc, chave, ref) {
-                var host = acharHost(doc, chave);
-                if (!host) return false;
-                var sel = host.querySelector('[data-baseweb="select"]');
-                if (!sel) return false;
-
-                var cs = getComputedStyle(ref);
-                var h = Math.round(ref.getBoundingClientRect().height || 46);
-                // Fundo sempre branco sólido — copiar o background computado do
-                // campo de busca era frágil (podia devolver transparente e
-                // deixar a cor cinza da página vazar por trás do select).
-                var bg = '#ffffff';
-                var borderColor = cs.borderTopColor || '#d1d5db';
-                var radius = cs.borderTopLeftRadius || '8px';
-
-                // A própria raiz BaseWeb passa a ser a caixa visual.
-                sel.style.setProperty('box-sizing', 'border-box', 'important');
-                sel.style.setProperty('height', h + 'px', 'important');
-                sel.style.setProperty('min-height', h + 'px', 'important');
-                sel.style.setProperty('background-color', bg, 'important');
-                sel.style.setProperty('border', '1px solid ' + borderColor, 'important');
-                sel.style.setProperty('border-radius', radius, 'important');
-                sel.style.setProperty('box-shadow', 'none', 'important');
-                sel.style.setProperty('overflow', 'hidden', 'important');
-
-                // Neutraliza a caixa interna do BaseWeb para não termos borda dupla
-                // nem o fundo cinza que estava aparecendo nas V19–V21.
-                Array.from(sel.children).forEach(function(child) {
-                    child.style.setProperty('height', '100%', 'important');
-                    child.style.setProperty('min-height', '100%', 'important');
-                    child.style.setProperty('background', 'transparent', 'important');
-                    child.style.setProperty('border', '0', 'important');
-                    child.style.setProperty('border-radius', '0', 'important');
-                    child.style.setProperty('box-shadow', 'none', 'important');
-                });
-
-                var combo = sel.querySelector('[role="combobox"]');
-                if (combo) {
-                    combo.style.setProperty('height', '100%', 'important');
-                    combo.style.setProperty('min-height', '100%', 'important');
-                    combo.style.setProperty('background', 'transparent', 'important');
-                    combo.style.setProperty('font-size', '14px', 'important');
-                    combo.style.setProperty('color', '#374151', 'important');
-                }
-                var inp = sel.querySelector('input');
-                if (inp) {
-                    inp.style.setProperty('background', 'transparent', 'important');
-                    inp.style.setProperty('font-size', '14px', 'important');
-                    inp.style.setProperty('min-height', (h - 2) + 'px', 'important');
-                }
-                return true;
-            }
-
-            function estilizar() {
-                var doc = window.parent.document;
-                var ref = acharCaixaBusca(doc);
-                if (!ref) return false;
-                var a = aplicarEmSelect(doc, '_filtro_status_notif', ref);
-                var b = aplicarEmSelect(doc, '_notificacoes_selecionadas', ref);
-                return a || b;
-            }
-
-            estilizar();
-            var tentativas = 0;
-            var iv = setInterval(function() {
-                tentativas++;
-                estilizar();
-                if (tentativas > 40) clearInterval(iv);
-            }, 150);
-
-            // Reaplica após reruns e após o multiselect criar/remover tags.
-            try {
-                var obs = new MutationObserver(function() { estilizar(); });
-                obs.observe(window.parent.document.body, {childList:true, subtree:true});
-                setTimeout(function(){ obs.disconnect(); }, 15000);
-            } catch(e) {}
-        })();
-        </script>
-        """, height=0)
+        # V22 foi removida: dependia de [data-baseweb="select"], que não existe
+        # mais nesta versão do Streamlit (React Aria). A estilização real do
+        # select de status agora é feita só pela V26, lá em cima. Manter os
+        # dois scripts também estava somando um bloco vazio a mais no fluxo
+        # vertical da página (cada components.html(...) conta como um item na
+        # coluna, mesmo com height=0), o que ajudava a abrir aquele vão grande
+        # antes do "Selecionar todas".
 
         # V25 — seleção direta nos próprios cards. Cada notificação tem um
         # checkbox visual à esquerda; a contagem de selecionados/elegíveis
@@ -36710,9 +36618,44 @@ html, body { background: transparent; overflow: hidden; }
         <style>
         .st-key-_selecionar_todas_notif_cards { display: flex; justify-content: flex-end; }
         .st-key-_selecionar_todas_notif_cards label { justify-content: flex-end; }
-        .st-key-_bloco_todas_topo { margin-top: -48px; }
         </style>
         """, unsafe_allow_html=True)
+
+        # O vão grande antes do "Selecionar todas" não vinha de margem, e sim
+        # do gap padrão que o Streamlit aplica entre CADA bloco empilhado
+        # nessa coluna (linha de busca/status/botões, o markdown que esconde
+        # o "_ghost_wrap_toolbar_notif", e este container do checkbox — 3
+        # blocos = 2 gaps de ~1rem cada). Em vez de compensar com uma margem
+        # negativa (frágil, pode sobrepor conteúdo se o Streamlit mudar o
+        # tamanho do gap padrão), reduzimos o gap real do container pai que
+        # eles todos compartilham.
+        components.html("""
+        <script>
+        (function() {
+            function reduzirGapToolbar() {
+                var doc = window.parent.document;
+                var bloco = doc.querySelector('.st-key-_bloco_todas_topo');
+                if (!bloco) return false;
+                var pai = bloco.parentElement;
+                if (!pai) return false;
+                pai.style.setProperty('gap', '0.35rem', 'important');
+                return true;
+            }
+            if (!reduzirGapToolbar()) {
+                var tentativas = 0;
+                var iv = setInterval(function() {
+                    tentativas++;
+                    if (reduzirGapToolbar() || tentativas > 30) clearInterval(iv);
+                }, 150);
+            }
+            try {
+                var obs = new MutationObserver(function() { reduzirGapToolbar(); });
+                obs.observe(window.parent.document.body, {childList:true, subtree:true});
+                setTimeout(function(){ obs.disconnect(); }, 10000);
+            } catch(e) {}
+        })();
+        </script>
+        """, height=0)
 
     @st.fragment(run_every="2s")
     def _renderizar_atividades_ao_vivo():

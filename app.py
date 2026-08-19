@@ -36684,27 +36684,33 @@ html, body { background: transparent; overflow: hidden; }
         # sem caixa/fundo branco, só o checkbox nativo mesmo (diferente da
         # busca/status/botões, que são "campos" e por isso têm fundo branco).
         # A coluna vazia à esquerda é só um espaçador pra empurrar o checkbox
-        # pro lado direito.
-        _col_espaco_todas, _col_todas = st.columns([4, 1.6])
-        with _col_todas:
-            _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
-            if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
-                st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
-            _todos_sel = st.checkbox(
-                f"Selecionar todas ({len(_ids_visiveis)})",
-                key="_selecionar_todas_notif_cards",
-                help="Seleciona todas as notificações visíveis no filtro atual.",
-            )
-            if _todos_sel and not _todos_devem_estar:
-                st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
-                st.rerun()
-            elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
-                st.session_state["_notificacoes_selecionadas_cards"] = []
-                st.rerun()
+        # pro lado direito. Fica dentro de um container próprio só pra poder
+        # puxar o espaçamento pra cima (margin-top negativa) — cada bloco
+        # (linha de botões, CSS oculto, aviso de exclusão) soma um respiro
+        # padrão do Streamlit entre si, e a soma deles deixava um vão grande
+        # demais entre a barra de cima e este checkbox.
+        with st.container(key="_bloco_todas_topo"):
+            _col_espaco_todas, _col_todas = st.columns([4, 1.6])
+            with _col_todas:
+                _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
+                if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
+                    st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
+                _todos_sel = st.checkbox(
+                    f"Selecionar todas ({len(_ids_visiveis)})",
+                    key="_selecionar_todas_notif_cards",
+                    help="Seleciona todas as notificações visíveis no filtro atual.",
+                )
+                if _todos_sel and not _todos_devem_estar:
+                    st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
+                    st.rerun()
+                elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
+                    st.session_state["_notificacoes_selecionadas_cards"] = []
+                    st.rerun()
         st.markdown("""
         <style>
         .st-key-_selecionar_todas_notif_cards { display: flex; justify-content: flex-end; }
         .st-key-_selecionar_todas_notif_cards label { justify-content: flex-end; }
+        .st-key-_bloco_todas_topo { margin-top: -48px; }
         </style>
         """, unsafe_allow_html=True)
 

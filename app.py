@@ -3622,6 +3622,21 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
     _t = (texto or "").strip()
     if not _t or not re.search(r"[A-Za-zÀ-ÿ0-9]$", _t):
         return _t
+
+    # V13 — recuperação de vírgula deve ser CONSERVADORA. Esta rotina é
+    # um fallback geométrico para quando o OCR deixou de ler uma vírgula
+    # que realmente existe; ela não pode inventar pontuação em palavras
+    # curtas. Caso real: ``Ele Tá No Site`` virou ``Ele Tá No, Site``
+    # porque pixels de antialiasing depois de ``No`` pareciam um pequeno
+    # componente baixo. Palavras de 1–2 letras têm pouco corpo e deixam
+    # essa heurística ambígua demais. A vírgula legítima de ``Buy, Tá``
+    # continua coberta (``Buy`` tem 3 letras), enquanto ``No``, ``Na``,
+    # ``De``, ``E``, ``A`` etc. nunca recebem vírgula INVENTADA por este
+    # fallback. Se o próprio EasyOCR já leu uma vírgula, ela chega em
+    # ``texto`` e não depende desta função.
+    _base_curta = re.sub(r"[^A-Za-zÀ-ÿ]", "", _t)
+    if len(_base_curta) < 3:
+        return _t
     try:
         import cv2 as _cv2_vf
         import numpy as _np_vf
@@ -4130,7 +4145,19 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             # A vírgula real de "Buy, Tá" continua sendo recuperada porque
             # a palavra anterior tem mais de um caractere.
             _prev_txt_pont = (palavras[i - 1][1] or "").strip()
-            if _pont == "," and re.fullmatch(r"[AaOoEe]", _prev_txt_pont):
+            # V13 — a vírgula por GEOMETRIA do vão é fallback, portanto
+            # exige pelo menos 3 letras na palavra anterior. Isso evita
+            # falso positivo como ``No, Site`` (o antialiasing de ``No``
+            # formava um componente baixo no vão), sem perder ``Buy, Tá``.
+            # Pontuação que o EasyOCR leu de verdade continua intacta;
+            # esta trava só atua na vírgula que nós estamos tentando
+            # INVENTAR a partir dos pixels.
+            _prev_base_pont = re.sub(r"[^A-Za-zÀ-ÿ]", "", _prev_txt_pont)
+            if _pont == "," and len(_prev_base_pont) < 3:
+                print(
+                    f"[OCR-DEBUG] vírgula geométrica rejeitada após palavra curta: {_prev_txt_pont!r}",
+                    flush=True,
+                )
                 _pont = ""
             if _pont:
                 partes.append(_pont)
@@ -4163,6 +4190,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             _pont = _detectar_pontuacao_curta_no_intervalo(
                 _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
             )
+            if _pont == ",":
+                _ult_txt_pont = (palavras[-1][1] or "").strip()
+                _ult_base_pont = re.sub(r"[^A-Za-zÀ-ÿ]", "", _ult_txt_pont)
+                if len(_ult_base_pont) < 3:
+                    print(
+                        f"[OCR-DEBUG] vírgula geométrica final rejeitada após palavra curta: {_ult_txt_pont!r}",
+                        flush=True,
+                    )
+                    _pont = ""
             if _pont:
                 partes.append(_pont)
             elif _detectar_glifo_curto_no_intervalo(
@@ -4462,114 +4498,73 @@ def _melhor_nome_para_exibir(nome_ocr_linha: str, empresa: str) -> str:
 
 
 def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
-    """Separa TÍTULO de DESCRIÇÃO dentro de uma lista de linhas de uma
-    mesma banda (cada item = {"texto":..., "altura":...}, vindo de
-    `_ocr_banda(..., retornar_linhas=True)`) usando a ALTURA da fonte
-    como sinal — não o texto em si.
+    """Separa headline e descrição de anúncios Display pela altura REAL
+    das caixas OCR.
 
-    Usado só pra anúncio de Display/gráfico: título (fonte grande,
-    geralmente 2-3 linhas) e descrição (fonte bem menor, geralmente
-    2-3 linhas) ficam juntos na MESMA banda, sem nenhuma quebra de cor
-    pra separar (ver `_estruturar_anuncio_google_ads`) — diferente do
-    anúncio de Busca, onde título é sempre uma banda azul e descrição é
-    sempre uma banda cinza SEPARADA, então nunca precisou desse split.
+    V12: em vez de escolher o primeiro/maior *salto* entre linhas, forma um
+    BLOCO DE FONTE GRANDE a partir do começo. O headline de Display é sempre
+    um conjunto consecutivo das linhas de maior fonte; a descrição começa
+    quando a altura cai claramente abaixo desse grupo. Isso é mais estável
+    para headlines de 1, 2 ou 3 linhas (ex.: ``Venda Seu Ingresso Aqui``,
+    ``Ingressos Para Copa`` / ``Do Mundo`` e ``Volta, Bora`` / ``Viver Essa``
+    / ``Emoção?``), sem promover a descrição de ~70% do tamanho do título.
 
-    O título é sempre a(s) linha(s) de MAIOR fonte. Em vez de comparar
-    cada linha contra um limiar FIXO (70% da maior altura entre todas),
-    procura o maior SALTO relativo entre duas linhas CONSECUTIVAS (ex:
-    linha 1 tem 40px, linha 2 tem 24px → salto de 60%) e corta ali.
-    Bug real, anúncio "Venda Seu Ingresso Aqui" da BuyTicket Brasil: a
-    fonte da descrição era ~71% da fonte do título — passava zoada do
-    limiar fixo de 70% (ficava DENTRO da faixa "parece título"), então
-    a descrição inteira grudava no título como se fosse uma 2ª linha
-    dele. Comparar o salto ENTRE CADA PAR de linhas consecutivas (em
-    vez de cada linha contra o máximo global) captura esse tipo de
-    corte mesmo quando a proporção título/descrição do design é mais
-    sutil que o normal — o salto real de fonte entre título e descrição
-    aparece como o degrau mais acentuado da sequência, ainda que o
-    valor absoluto da razão passe perto de qualquer limiar fixo.
-
-    Considera "salto de fonte de verdade" uma queda de mais de 15%
-    entre uma linha e a seguinte (razão <= 0.85) — abaixo disso é só
-    variação normal de medição do OCR entre linhas do MESMO tamanho.
-    No caminho de Display, a V5 passa a fornecer a altura REAL das caixas
-    OCR de cada linha (em vez da altura bruta da banda). Com essa medida mais
-    fiel, corta no PRIMEIRO salto consistente, que corresponde à transição
-    visual título → descrição.
-    Se nenhum salto real aparecer em nenhum par de linhas, mantém o
-    comportamento antigo: tudo vira título, sem descrição — não dá pra
-    separar com segurança sem nenhum sinal de mudança de fonte.
-
-    Devolve (titulo, [linhas_descricao]) — a segunda parte é uma LISTA
-    de linhas (não uma string já unida), no mesmo formato que
-    `par_atual[1]` já espera dentro de `_estruturar_anuncio_google_
-    ads`. Com 1 linha só (ou nenhuma altura utilizável), devolve tudo
-    como título sem descrição — não dá pra decidir "grande vs pequeno"
-    com um ponto de referência só, e arriscar dividir errado é pior que
-    não dividir."""
+    A referência é a maior altura observada nas linhas iniciais e uma linha
+    continua no título quando mede pelo menos 80% dessa referência. A queda
+    abaixo de 80% encerra o headline. Há uma tolerância de 76% apenas para uma
+    linha CURTA imediatamente após outra linha de título, cobrindo pequenas
+    diferenças de bbox causadas por acentos/descendentes sem puxar uma frase
+    longa de descrição para o título.
+    """
+    if not linhas:
+        return "", []
+    linhas = [l for l in linhas if (l.get("texto") or "").strip()]
     if not linhas:
         return "", []
     if len(linhas) == 1:
         return linhas[0]["texto"], []
-    if any(l["altura"] <= 0 for l in linhas):
-        return " ".join(l["texto"] for l in linhas if l["texto"]).strip(), []
-    # V7: volta a usar o PRIMEIRO degrau consistente como corte padrão,
-    # porque esse é o comportamento que separa corretamente anúncios como
-    # "Venda Seu Ingresso Aqui" da descrição logo abaixo. A V6 passou a
-    # escolher o MAIOR degrau global e, nesse layout, a última linha curta
-    # "Fã" criava um degrau ainda maior; resultado: a primeira linha da
-    # descrição era promovida para o título.
-    #
-    # Há, porém, um caso legítimo que motivou a V6: títulos quebrados em uma
-    # segunda linha MUITO CURTA, como "Ingressos Para Copa" / "Do Mundo".
-    # Neles a geometria das letras pode criar um primeiro degrau falso. Para
-    # preservar esses títulos, se a linha logo após o primeiro corte tiver
-    # até 20 caracteres, não terminar como frase e houver uma linha seguinte
-    # claramente mais longa/menor, mantemos essa linha curta no título.
-    _corte = len(linhas)
-    _razoes = []
-    for _i in range(len(linhas) - 1):
-        _h0 = float(linhas[_i]["altura"] or 0)
-        _h1 = float(linhas[_i + 1]["altura"] or 0)
-        if _h0 <= 0 or _h1 <= 0:
-            _razoes.append(None)
-            continue
-        _razoes.append(_h1 / _h0)
+    if any(float(l.get("altura") or 0) <= 0 for l in linhas):
+        return " ".join(l["texto"] for l in linhas).strip(), []
 
-    for _i, _razao in enumerate(_razoes):
-        if _razao is not None and _razao <= 0.88:
-            _corte = _i + 1
+    alturas = [float(l.get("altura") or 0) for l in linhas]
+    # O título está no topo, portanto não deixamos uma anomalia tardia da
+    # descrição definir a referência. Usa o máximo das 3 primeiras linhas.
+    ref = max(alturas[: min(3, len(alturas))])
+    corte = 1
+    for i in range(1, len(linhas)):
+        h = alturas[i]
+        txt = (linhas[i].get("texto") or "").strip()
+        razao = h / ref if ref > 0 else 0
+        continua = razao >= 0.80
+        # Tolerância estreita para a última linha curta de um headline
+        # quebrado: ``Emoção?`` ou ``Do Mundo``. Só vale se a linha anterior
+        # já pertence ao headline e o texto atual é curto; uma descrição
+        # normal longa não entra por esta exceção.
+        if not continua and razao >= 0.76 and len(txt) <= 22 and corte >= 1:
+            continua = True
+        if not continua:
             break
+        corte = i + 1
 
-    if _corte < len(linhas) - 1:
-        _linha_curta = (linhas[_corte].get("texto") or "").strip()
-        _linha_seguinte = (linhas[_corte + 1].get("texto") or "").strip()
-        _h_curta = float(linhas[_corte].get("altura") or 0)
-        _h_seguinte = float(linhas[_corte + 1].get("altura") or 0)
-        _parece_continuacao_titulo = (
-            1 <= len(_linha_curta) <= 20
-            # '?' e '!' são comuns justamente na ÚLTIMA linha de um
-            # headline quebrado (caso real: "Volta, Bora" /
-            # "Viver Essa Emoção?"). Bloqueia só pontuação que realmente
-            # costuma encerrar prosa/descrição aqui: ponto, dois-pontos ou
-            # ponto-e-vírgula.
-            and not re.search(r"[.;:]\s*$", _linha_curta)
-            and len(_linha_seguinte) >= max(14, int(len(_linha_curta) * 1.4))
-            and _h_curta > 0 and _h_seguinte > 0
-            and (_h_seguinte / _h_curta) <= 0.94
-        )
-        if _parece_continuacao_titulo:
-            _corte += 1
+    # Rede de segurança: se TODAS as linhas ficaram dentro do mesmo grupo,
+    # procura uma queda relativa forte (>18%) e usa o primeiro ponto. Isso
+    # evita transformar tudo em título em layouts com fontes muito próximas.
+    if corte == len(linhas):
+        for i in range(len(linhas) - 1):
+            h0, h1 = alturas[i], alturas[i + 1]
+            if h0 > 0 and h1 / h0 <= 0.82:
+                corte = i + 1
+                break
 
     print(
-        "[OCR-DEBUG] split-display alturas="
+        "[OCR-DEBUG] split-display-v12 linhas="
         + repr([(l.get("texto"), round(float(l.get("altura") or 0), 1)) for l in linhas])
-        + f" razoes={_razoes!r} corte={_corte}",
+        + f" ref={ref:.1f} corte={corte}",
         flush=True,
     )
-    _titulo_linhas = [l["texto"] for l in linhas[:_corte]]
-    _descricao_linhas = [l["texto"] for l in linhas[_corte:] if l["texto"]]
-    return " ".join(t for t in _titulo_linhas if t).strip(), _descricao_linhas
+    titulo = " ".join(l["texto"] for l in linhas[:corte] if l.get("texto")).strip()
+    descricao = [l["texto"] for l in linhas[corte:] if l.get("texto")]
+    return titulo, descricao
 
 
 

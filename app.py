@@ -4130,7 +4130,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         # ter sido omitida pelo reconhecedor (``Buy,`` -> ``Buy``). Nessa
         # situação o detector de vão nunca a encontra; tenta recuperação
         # localizada na própria caixa antes de montar a frase.
-        _txt_corr_p = _recuperar_virgula_final_caixa(reader, recorte, _bbox_p, _txt_corr_p)
+        # V38 — NÃO inventar vírgula dentro de uma caixa OCR.
+        # A recuperação geométrica no fim da própria palavra gerou falsos
+        # positivos reais (ex.: "Copa, 2026" e "Agora, Seu") mesmo quando
+        # não havia vírgula no criativo. Mantemos apenas a pontuação que o
+        # OCR realmente leu e a recuperação no VÃO ENTRE caixas, onde existe
+        # evidência espacial independente do texto.
+        # _txt_corr_p = _recuperar_virgula_final_caixa(reader, recorte, _bbox_p, _txt_corr_p)
         _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
@@ -6131,8 +6137,38 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     _debug_bandas[idx]["decisao"] = "botao → descartada (OCR vazio)"
                 else:
                     _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
-        else:  # "misto" — ícone + texto, ex: botão de contato
-            if _titulo_ja_reconhecido:
+        else:  # "misto" — pode ser texto normal OU ícone + CTA
+            # V37 — anúncios de Busca podem ter a DESCRIÇÃO classificada como
+            # "misto" (anti-aliasing/tons diferentes no texto cinza). Antes,
+            # assim que um título azul já existia, QUALQUER banda "misto" era
+            # promovida a CTA. Isso destruiu um layout real da BuyTicket:
+            #   título azul -> 4 linhas cinza/misto de descrição -> sitelinks
+            # e a primeira linha da descrição virou CTA, enquanto as outras 3
+            # foram descartadas.
+            #
+            # Regra estrutural mais segura: se há um par de título aberto e a
+            # banda "misto" vem SEM separador antes, ela continua sendo texto
+            # corrido da descrição — principalmente quando é uma frase longa
+            # ou quando a descrição já começou. CTA misto de verdade continua
+            # sendo aceito quando aparece fora desse bloco textual ou bate no
+            # regex de CTA conhecido.
+            _misto_palavras = [p for p in re.split(r"\s+", (texto or '').strip()) if p]
+            _misto_parece_frase = len(_misto_palavras) >= 4 or len((texto or '').strip()) >= 28
+            _misto_cta_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match((texto or '').strip()))
+            _misto_continua_descricao = (
+                par_atual is not None
+                and not banda.get("sep_antes")
+                and not _misto_cta_conhecido
+                and (bool(par_atual[1]) or _misto_parece_frase)
+            )
+
+            if _misto_continua_descricao:
+                par_atual[1].append(texto)
+                _debug_bandas[idx]["decisao"] = (
+                    "misto → descrição do título/sitelink em andamento "
+                    "(frase corrida sem separador; não é CTA)"
+                )
+            elif _titulo_ja_reconhecido:
                 if not resultado["cta"]:
                     resultado["cta"] = texto
                     _cta_aberto = True

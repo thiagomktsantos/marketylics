@@ -7017,6 +7017,47 @@ def marcar_erros_como_lidos(user_id: str) -> int:
     except Exception:
         return 0
 
+
+
+def marcar_atividades_como_lidas_por_ids(user_id: str, atividade_ids: list) -> int:
+    """Marca como lidas somente as atividades selecionadas do usuário.
+    Mantém a seleção em lote segura: filtra por user_id e só toca registros
+    em status erro que ainda estejam com lida=false."""
+    ids = [str(x) for x in (atividade_ids or []) if x]
+    if not user_id or not ids:
+        return 0
+    try:
+        res = (
+            supabase.table("atividades")
+            .update({"lida": True})
+            .eq("user_id", user_id)
+            .in_("id", ids)
+            .eq("status", "erro")
+            .eq("lida", False)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
+
+def excluir_atividades_por_ids(user_id: str, atividade_ids: list) -> int:
+    """Exclui somente as notificações selecionadas, sempre limitadas ao usuário."""
+    ids = [str(x) for x in (atividade_ids or []) if x]
+    if not user_id or not ids:
+        return 0
+    try:
+        res = (
+            supabase.table("atividades")
+            .delete()
+            .eq("user_id", user_id)
+            .in_("id", ids)
+            .execute()
+        )
+        return len(res.data or [])
+    except Exception:
+        return 0
+
 def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     try:
         res = (
@@ -36241,10 +36282,11 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
-    # V17: deixa o select de status com o MESMO acabamento visual dos
-    # outros campos da toolbar (40px, fundo branco, borda #d1d5db, raio 8).
-    # BaseWeb/Streamlit injeta vários wrappers próprios no selectbox, então
-    # estilizamos o [data-baseweb="select"] dentro da key estável.
+    # V19: o selectbox do Streamlit/BaseWeb desenha a borda no DIV interno
+    # (control), não no wrapper [data-baseweb="select"]. A V17/V18 estilizou
+    # o wrapper e por isso visualmente o campo continuava parecendo sem caixa.
+    # Aqui localizamos o combobox real e estilizamos exatamente o control que
+    # recebe fundo/borda, deixando-o idêntico ao campo de busca da toolbar.
     components.html("""
     <script>
     (function() {
@@ -36252,29 +36294,57 @@ html, body { background: transparent; overflow: hidden; }
             var doc = window.parent.document;
             var host = doc.querySelector('.st-key-_filtro_status_notif');
             if (!host) return false;
+            var combo = host.querySelector('[role="combobox"]');
             var sel = host.querySelector('[data-baseweb="select"]');
-            if (!sel) return false;
-            sel.style.setProperty('min-height', '40px', 'important');
+            if (!combo || !sel) return false;
+
+            // No BaseWeb o pai direto do combobox é a caixa visual do select.
+            var control = combo.parentElement;
+            if (!control) return false;
+
             sel.style.setProperty('height', '40px', 'important');
-            sel.style.setProperty('border', '1px solid #d1d5db', 'important');
-            sel.style.setProperty('border-radius', '8px', 'important');
-            sel.style.setProperty('background', '#ffffff', 'important');
-            sel.style.setProperty('box-shadow', 'none', 'important');
-            var inner = sel.querySelector('div');
-            if (inner) {
-                inner.style.setProperty('min-height', '38px', 'important');
-                inner.style.setProperty('font-size', '14px', 'important');
-                inner.style.setProperty('color', '#374151', 'important');
-            }
+            sel.style.setProperty('min-height', '40px', 'important');
+            sel.style.setProperty('background', 'transparent', 'important');
+
+            control.style.setProperty('height', '40px', 'important');
+            control.style.setProperty('min-height', '40px', 'important');
+            control.style.setProperty('border', '1px solid #d1d5db', 'important');
+            control.style.setProperty('border-radius', '8px', 'important');
+            control.style.setProperty('background-color', '#ffffff', 'important');
+            control.style.setProperty('box-shadow', 'none', 'important');
+            control.style.setProperty('outline', 'none', 'important');
+
+            combo.style.setProperty('height', '38px', 'important');
+            combo.style.setProperty('min-height', '38px', 'important');
+            combo.style.setProperty('font-size', '14px', 'important');
+            combo.style.setProperty('color', '#374151', 'important');
+            combo.style.setProperty('background', 'transparent', 'important');
+
+            // Mantém seta e área clicável centralizadas na mesma altura.
+            Array.from(control.children).forEach(function(el) {
+                el.style.setProperty('min-height', '38px', 'important');
+                el.style.setProperty('align-items', 'center', 'important');
+            });
             return true;
         }
-        if (!estilizarStatus()) {
+
+        function aplicar() {
+            if (estilizarStatus()) return;
             var n = 0;
             var iv = setInterval(function() {
                 n++;
-                if (estilizarStatus() || n > 20) clearInterval(iv);
+                if (estilizarStatus() || n > 30) clearInterval(iv);
             }, 150);
         }
+        aplicar();
+
+        // Streamlit pode recriar o select após rerun/troca de filtro.
+        // Reaplica o acabamento sem depender de classes internas voláteis.
+        try {
+            var obs = new MutationObserver(function() { estilizarStatus(); });
+            obs.observe(window.parent.document.body, {childList:true, subtree:true});
+            setTimeout(function(){ obs.disconnect(); }, 10000);
+        } catch(e) {}
     })();
     </script>
     """, height=0)
@@ -36330,7 +36400,10 @@ html, body { background: transparent; overflow: hidden; }
         elif _valor_status_antigo not in _STATUS_NOTIF_LABELS:
             st.session_state["_filtro_status_notif"] = "todos"
 
-        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.45, 1.45, 1.3, 1.3])
+        # V20 — barra em duas linhas: filtros na primeira e seleção/ações na segunda.
+        # A seleção é nativa do Streamlit (multiselect), portanto suporta várias
+        # notificações sem JS frágil e mantém os IDs no session_state entre reruns.
+        _col_busca, _col_status = st.columns([2.7, 1.3])
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
@@ -36347,14 +36420,88 @@ html, body { background: transparent; overflow: hidden; }
                 label_visibility="collapsed",
             )
 
-        # Os dois botões abaixo (Marcar como lidas / Limpar com erro) usam
-        # ícone em SVG em vez de emoji, no mesmo esquema já usado pelo
-        # "Refazer"/"Excluir" dentro dos cards mais abaixo: um st.button
-        # nativo ESCONDIDO continua fazendo a ação de verdade (toda a
-        # lógica em Python normal), e o botão que aparece de fato é HTML
-        # puro dentro de um components.html — o clique nele "aperta", via
-        # JS, o botão nativo escondido (window.parent.document, porque
-        # components.html roda num iframe à parte).
+        # Carrega a mesma janela usada nos cards para montar as opções de seleção.
+        # Pendentes/em andamento/erros antigos também entram porque
+        # listar_atividades_notificacoes já os inclui mesmo fora do histórico recente.
+        _atividades_selecao = listar_atividades_notificacoes(
+            st.session_state.user.id, limite_recentes=100
+        )
+        _termo_sel = remover_acentos((st.session_state.get("_busca_notif") or "").strip().lower())
+        _status_sel = st.session_state.get("_filtro_status_notif", "todos")
+
+        def _bate_filtros_toolbar(a):
+            if _termo_sel:
+                _empresa = (a.get("detalhes") or {}).get("empresa") or ""
+                _alvo = remover_acentos(f"{a.get('titulo') or ''} {_empresa}".lower())
+                if _termo_sel not in _alvo:
+                    return False
+            if _status_sel != "todos":
+                _st = a.get("status") or "pendente"
+                _com_erro = bool((a.get("detalhes") or {}).get("com_erro"))
+                if _status_sel == "em_andamento" and _st != "em_andamento": return False
+                if _status_sel == "pendente" and _st != "pendente": return False
+                if _status_sel == "erro" and _st != "erro": return False
+                if _status_sel == "concluido_com_erro" and not (_st == "concluido" and _com_erro): return False
+                if _status_sel == "concluido" and not (_st == "concluido" and not _com_erro): return False
+            return True
+
+        _atividades_selecao = [a for a in _atividades_selecao if _bate_filtros_toolbar(a)]
+        _por_id_sel = {str(a.get("id")): a for a in _atividades_selecao if a.get("id")}
+        _ids_visiveis = list(_por_id_sel.keys())
+
+        # Remove automaticamente IDs que deixaram de existir/ficaram fora do filtro.
+        _sel_antiga = [str(x) for x in st.session_state.get("_notificacoes_selecionadas", [])]
+        _sel_valida = [x for x in _sel_antiga if x in _por_id_sel]
+        if _sel_valida != _sel_antiga:
+            st.session_state["_notificacoes_selecionadas"] = _sel_valida
+
+        def _label_notif_selecao(_id):
+            a = _por_id_sel.get(str(_id), {})
+            _titulo = (a.get("titulo") or "Atividade").strip()
+            _empresa = ((a.get("detalhes") or {}).get("empresa") or "").strip()
+            _st = a.get("status") or "pendente"
+            _lbl_st = _STATUS_NOTIF_LABELS.get(_st, "Concluído com erros" if (_st == "concluido" and (a.get("detalhes") or {}).get("com_erro")) else _st)
+            if _st == "concluido" and (a.get("detalhes") or {}).get("com_erro"):
+                _lbl_st = "Concluído com erros"
+            _prefixo = f"{_empresa} · " if _empresa else ""
+            return f"{_prefixo}{_titulo} — {_lbl_st}"
+
+        _col_sel, _col_todos, _col_lidas, _col_excluir = st.columns([2.45, .75, 1.35, 1.25])
+        with _col_sel:
+            st.multiselect(
+                "Selecionar notificações",
+                options=_ids_visiveis,
+                format_func=_label_notif_selecao,
+                key="_notificacoes_selecionadas",
+                placeholder="Selecionar uma ou várias notificações...",
+                label_visibility="collapsed",
+            )
+
+        with _col_todos:
+            _todos_sel = st.checkbox(
+                "Todas",
+                key="_selecionar_todas_notif",
+                help="Seleciona todas as notificações visíveis no filtro atual.",
+            )
+            if _todos_sel and set(st.session_state.get("_notificacoes_selecionadas", [])) != set(_ids_visiveis):
+                st.session_state["_notificacoes_selecionadas"] = list(_ids_visiveis)
+                st.rerun()
+            if not _todos_sel and st.session_state.get("_selecionar_todas_notif_foi_ativado"):
+                st.session_state["_notificacoes_selecionadas"] = []
+                st.session_state["_selecionar_todas_notif_foi_ativado"] = False
+                st.rerun()
+            if _todos_sel:
+                st.session_state["_selecionar_todas_notif_foi_ativado"] = True
+
+        _selecionadas = [str(x) for x in st.session_state.get("_notificacoes_selecionadas", []) if str(x) in _por_id_sel]
+        _selecionadas_objs = [_por_id_sel[x] for x in _selecionadas]
+        _erros_nao_lidos_sel = [
+            a for a in _selecionadas_objs
+            if (a.get("status") == "erro" and not a.get("lida"))
+        ]
+        _n_sel = len(_selecionadas)
+        _n_lidas_elegiveis = len(_erros_nao_lidos_sel)
+
         _check_svg_tb = _svg_icone(_ICONE_OK[0], "currentColor", 15)
         _lixeira_svg_tb = _svg_icone(
             "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
@@ -36377,60 +36524,45 @@ html, body { background: transparent; overflow: hidden; }
         """
 
         with _col_lidas:
-            _rotulo_lidas = (
-                f"Marcar como lidas ({_n_erros_nao_lidos})" if _n_erros_nao_lidos
-                else "Marcar como lidas"
-            )
-            _lidas_disabled = _n_erros_nao_lidos == 0
+            _rotulo_lidas = f"Marcar lidas ({_n_lidas_elegiveis})" if _n_lidas_elegiveis else "Marcar lidas"
             components.html(f"""
             {_TOOLBAR_BTN_CSS}
-            <button class="tb-btn{' disabled' if _lidas_disabled else ''}" id="tb_btn_lidas">
+            <button class="tb-btn{' disabled' if _n_lidas_elegiveis == 0 else ''}" id="tb_btn_lidas_sel">
                 {_check_svg_tb}<span>{_rotulo_lidas}</span>
             </button>
             <script>
-            document.getElementById('tb_btn_lidas').addEventListener('click', function() {{
-                var doc = window.parent.document;
-                var el = doc.querySelector('.st-key-_btn_marcar_lidas button');
+            document.getElementById('tb_btn_lidas_sel').addEventListener('click', function() {{
+                var el = window.parent.document.querySelector('.st-key-_btn_marcar_lidas_sel button');
                 if (el) el.click();
             }});
             </script>
             """, height=44)
 
-        with _col_limpar:
-            if _n_erros_notif and not st.session_state.get("_confirmar_limpar_erros"):
-                components.html(f"""
-                {_TOOLBAR_BTN_CSS}
-                <button class="tb-btn" id="tb_btn_limpar">
-                    {_lixeira_svg_tb}<span>Limpar {_n_erros_notif} com erro</span>
-                </button>
-                <script>
-                document.getElementById('tb_btn_limpar').addEventListener('click', function() {{
-                    var doc = window.parent.document;
-                    var el = doc.querySelector('.st-key-_btn_limpar_erros button');
-                    if (el) el.click();
-                }});
-                </script>
-                """, height=44)
+        with _col_excluir:
+            _rotulo_excluir = f"Excluir ({_n_sel})" if _n_sel else "Excluir selecionadas"
+            components.html(f"""
+            {_TOOLBAR_BTN_CSS}
+            <button class="tb-btn{' disabled' if _n_sel == 0 else ''}" id="tb_btn_excluir_sel">
+                {_lixeira_svg_tb}<span>{_rotulo_excluir}</span>
+            </button>
+            <script>
+            document.getElementById('tb_btn_excluir_sel').addEventListener('click', function() {{
+                var el = window.parent.document.querySelector('.st-key-_btn_excluir_sel button');
+                if (el) el.click();
+            }});
+            </script>
+            """, height=44)
 
-        # Os dois botões nativos "gatilho" (só existem pro JS acima clicar
-        # neles) são achados pela classe .st-key-X (mesmo mecanismo já usado
-        # pro clique, comprovadamente confiável) e escondidos via JS: o
-        # script sobe a partir do <button> pegando o ancestral mais externo
-        # que ainda não tem irmãos (ou seja, o wrapper que existe só pra
-        # esse botão) e aplica display:none NELE. Isso garante que some por
-        # completo, sem sobrar "gap" de flex do Streamlit entre os itens.
-        # IMPORTANTE: não dá pra achar esses botões pelo texto (tentativa
-        # anterior) porque o Streamlit renderiza o label do st.button como
-        # markdown — "_marcar_lidas_" vira itálico e os "_" do texto
-        # literal desaparecem do textContent renderizado.
         with st.container(key="_ghost_wrap_toolbar_notif"):
-            if st.button("_marcar_lidas_", key="_btn_marcar_lidas"):
-                _n_marcadas = marcar_erros_como_lidos(st.session_state.user.id)
-                st.toast(f"{_n_marcadas} notificação(ões) marcada(s) como lida(s).", icon="✅")
+            if st.button("_marcar_lidas_sel_", key="_btn_marcar_lidas_sel"):
+                _ids_ler = [str(a.get("id")) for a in _erros_nao_lidos_sel if a.get("id")]
+                _n_marcadas = marcar_atividades_como_lidas_por_ids(st.session_state.user.id, _ids_ler)
+                st.toast(f"{_n_marcadas} notificação(ões) selecionada(s) marcada(s) como lida(s).", icon="✅")
                 st.rerun()
-            if st.button("_limpar_erros_", key="_btn_limpar_erros"):
-                st.session_state["_confirmar_limpar_erros"] = True
-                st.rerun()
+            if st.button("_excluir_sel_", key="_btn_excluir_sel"):
+                if _n_sel:
+                    st.session_state["_confirmar_excluir_selecionadas"] = list(_selecionadas)
+                    st.rerun()
 
         components.html("""
         <script>
@@ -36440,44 +36572,38 @@ html, body { background: transparent; overflow: hidden; }
                 var btn = doc.querySelector('.st-key-' + keyClasse + ' button');
                 if (!btn) return false;
                 var el = btn;
-                while (el.parentElement && el.parentElement.children.length === 1) {
-                    el = el.parentElement;
-                }
+                while (el.parentElement && el.parentElement.children.length === 1) el = el.parentElement;
                 el.style.setProperty('display', 'none', 'important');
                 return true;
             }
-            function tentar() {
-                var a = colapsar('_btn_marcar_lidas');
-                var b = colapsar('_btn_limpar_erros');
-                return a && b;
-            }
-            if (!tentar()) {
-                var n = 0;
-                var iv = setInterval(function() {
-                    n++;
-                    if (tentar() || n > 20) clearInterval(iv);
-                }, 150);
-            }
+            var n = 0, iv = setInterval(function(){
+                n++;
+                var a = colapsar('_btn_marcar_lidas_sel');
+                var b = colapsar('_btn_excluir_sel');
+                if ((a && b) || n > 20) clearInterval(iv);
+            }, 120);
         })();
         </script>
         """, height=0)
 
-        if _n_erros_notif and st.session_state.get("_confirmar_limpar_erros"):
+        _ids_confirmar = st.session_state.get("_confirmar_excluir_selecionadas") or []
+        if _ids_confirmar:
             st.warning(
-                f"Apagar as {_n_erros_notif} notificação(ões) com erro? Isso não "
-                f"afeta os anúncios/mídia já salvos, só o histórico de atividade "
-                f"— e não pode ser desfeito."
+                f"Excluir {_len := len(_ids_confirmar)} notificação(ões) selecionada(s)? "
+                "Isso remove somente o histórico dessas atividades e não pode ser desfeito."
             )
-            _col_conf1, _col_conf2 = st.columns(2)
-            with _col_conf1:
-                if st.button("Sim, apagar", key="_btn_confirmar_limpar_erros", type="primary"):
-                    _n_removidas = excluir_atividades_com_erro(st.session_state.user.id)
-                    st.session_state["_confirmar_limpar_erros"] = False
-                    st.toast(f"{_n_removidas} notificação(ões) com erro removida(s).", icon="🗑️")
+            _c1, _c2 = st.columns(2)
+            with _c1:
+                if st.button("Sim, excluir selecionadas", key="_btn_confirmar_excluir_sel", type="primary"):
+                    _n_removidas = excluir_atividades_por_ids(st.session_state.user.id, _ids_confirmar)
+                    st.session_state["_confirmar_excluir_selecionadas"] = []
+                    st.session_state["_notificacoes_selecionadas"] = []
+                    st.session_state["_selecionar_todas_notif"] = False
+                    st.toast(f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️")
                     st.rerun()
-            with _col_conf2:
-                if st.button("Cancelar", key="_btn_cancelar_limpar_erros"):
-                    st.session_state["_confirmar_limpar_erros"] = False
+            with _c2:
+                if st.button("Cancelar", key="_btn_cancelar_excluir_sel"):
+                    st.session_state["_confirmar_excluir_selecionadas"] = []
                     st.rerun()
 
     @st.fragment(run_every="2s")

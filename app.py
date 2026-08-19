@@ -36638,7 +36638,7 @@ html, body { background: transparent; overflow: hidden; }
                 if (!bloco) return false;
                 var pai = bloco.parentElement;
                 if (!pai) return false;
-                pai.style.setProperty('gap', '0.35rem', 'important');
+                pai.style.setProperty('gap', '0.05rem', 'important');
                 return true;
             }
             if (!reduzirGapToolbar()) {

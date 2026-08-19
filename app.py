@@ -36554,16 +36554,26 @@ html, body { background: transparent; overflow: hidden; }
             // V30 — usa EXATAMENTE o mesmo modelo visual de confirmação usado
             // pelos botões "Limpar cache" das páginas de Ads: overlay escuro,
             // card azul-marinho, ícone de alerta e dois botões lado a lado.
-            function triggerGhostNotif(label, tentativas) {{
+            // V32 — não procura mais o botão-fantasma pelo texto. O texto
+            // interno de st.button pode mudar/ganhar wrappers no DOM do Streamlit,
+            // fazendo a busca por textContent falhar silenciosamente. Como a key
+            // gera uma classe estável (.st-key-*), clicamos diretamente nela.
+            function triggerExcluirSelecionadas(tentativas) {{
                 tentativas = tentativas || 0;
-                var btns = window.parent.document.querySelectorAll('button');
-                for (var i = 0; i < btns.length; i++) {{
-                    var txt = (btns[i].textContent || btns[i].innerText || '').split(/\s+/).join(' ').trim();
-                    if (txt === String(label)) {{ btns[i].click(); return; }}
+                var doc = window.parent.document;
+                var el = doc.querySelector('.st-key-_btn_confirmar_excluir_notificacoes_selecionadas button');
+                if (el) {{
+                    el.click();
+                    return true;
                 }}
-                if (tentativas < 10) {{
-                    setTimeout(function() {{ triggerGhostNotif(label, tentativas + 1); }}, 150);
+                // Dá tempo pro Streamlit terminar de montar o botão oculto caso o
+                // DOM esteja em transição por causa de algum rerun do fragment.
+                if (tentativas < 20) {{
+                    setTimeout(function() {{ triggerExcluirSelecionadas(tentativas + 1); }}, 100);
+                }} else {{
+                    console.error('[notificacoes] botão oculto de confirmação de exclusão não encontrado');
                 }}
+                return false;
             }}
 
             function abrirConfirmacao(titulo, mensagem, corBtn, labelBtn, onConfirm) {{
@@ -36628,7 +36638,7 @@ html, body { background: transparent; overflow: hidden; }
                     'Tem certeza que deseja excluir {_n_sel} notificação(ões) selecionada(s)? Isso remove somente o histórico dessas atividades e não pode ser desfeito.',
                     '#ef4444',
                     'Sim, excluir',
-                    function() {{ triggerGhostNotif('_confirmar_excluir_notificacoes_selecionadas_'); }}
+                    function() {{ triggerExcluirSelecionadas(0); }}
                 );
             }});
             </script>
@@ -36662,7 +36672,16 @@ html, body { background: transparent; overflow: hidden; }
 
         st.markdown("""
         <style>
-        .st-key-_ghost_wrap_toolbar_notif { display:none !important; }
+        .st-key-_ghost_wrap_toolbar_notif {
+            position: fixed !important;
+            left: -10000px !important;
+            top: -10000px !important;
+            width: 1px !important;
+            height: 1px !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 

@@ -36572,41 +36572,36 @@ html, body { background: transparent; overflow: hidden; }
         </script>
         """, height=0)
 
-        _col_sel, _col_todos, _col_lidas, _col_excluir = st.columns([2.45, .75, 1.35, 1.25])
-        with _col_sel:
-            st.multiselect(
-                "Selecionar notificações",
-                options=_ids_visiveis,
-                format_func=_label_notif_selecao,
-                key="_notificacoes_selecionadas",
-                placeholder="Selecionar uma ou várias notificações...",
-                label_visibility="collapsed",
-            )
+        # V23 — seleção direta nos próprios cards. O multiselect da V20–V22
+        # foi removido: cada notificação passa a ter um checkbox visual à esquerda.
+        # A barra superior fica só com "Selecionar todas" + ações em lote.
+        _sel_antiga_cards = [str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", [])]
+        _sel_valida_cards = [x for x in _sel_antiga_cards if x in _por_id_sel]
+        if _sel_valida_cards != _sel_antiga_cards:
+            st.session_state["_notificacoes_selecionadas_cards"] = _sel_valida_cards
 
+        _sel_cards = [str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", []) if str(x) in _por_id_sel]
+        _objs_sel_cards = [_por_id_sel[x] for x in _sel_cards]
+        _erros_nao_lidos_sel = [a for a in _objs_sel_cards if a.get("status") == "erro" and not a.get("lida")]
+        _n_sel = len(_sel_cards)
+        _n_lidas_elegiveis = len(_erros_nao_lidos_sel)
+
+        _col_todos, _col_spacer, _col_lidas, _col_excluir = st.columns([1.25, 2.15, 1.35, 1.25])
         with _col_todos:
+            _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
+            if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
+                st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
             _todos_sel = st.checkbox(
-                "Todas",
-                key="_selecionar_todas_notif",
+                f"Selecionar todas ({len(_ids_visiveis)})",
+                key="_selecionar_todas_notif_cards",
                 help="Seleciona todas as notificações visíveis no filtro atual.",
             )
-            if _todos_sel and set(st.session_state.get("_notificacoes_selecionadas", [])) != set(_ids_visiveis):
-                st.session_state["_notificacoes_selecionadas"] = list(_ids_visiveis)
+            if _todos_sel and not _todos_devem_estar:
+                st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
                 st.rerun()
-            if not _todos_sel and st.session_state.get("_selecionar_todas_notif_foi_ativado"):
-                st.session_state["_notificacoes_selecionadas"] = []
-                st.session_state["_selecionar_todas_notif_foi_ativado"] = False
+            elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
+                st.session_state["_notificacoes_selecionadas_cards"] = []
                 st.rerun()
-            if _todos_sel:
-                st.session_state["_selecionar_todas_notif_foi_ativado"] = True
-
-        _selecionadas = [str(x) for x in st.session_state.get("_notificacoes_selecionadas", []) if str(x) in _por_id_sel]
-        _selecionadas_objs = [_por_id_sel[x] for x in _selecionadas]
-        _erros_nao_lidos_sel = [
-            a for a in _selecionadas_objs
-            if (a.get("status") == "erro" and not a.get("lida"))
-        ]
-        _n_sel = len(_selecionadas)
-        _n_lidas_elegiveis = len(_erros_nao_lidos_sel)
 
         _check_svg_tb = _svg_icone(_ICONE_OK[0], "currentColor", 15)
         _lixeira_svg_tb = _svg_icone(
@@ -36667,35 +36662,19 @@ html, body { background: transparent; overflow: hidden; }
                 st.rerun()
             if st.button("_excluir_sel_", key="_btn_excluir_sel"):
                 if _n_sel:
-                    st.session_state["_confirmar_excluir_selecionadas"] = list(_selecionadas)
+                    st.session_state["_confirmar_excluir_selecionadas"] = list(_sel_cards)
                     st.rerun()
 
-        components.html("""
-        <script>
-        (function() {
-            function colapsar(keyClasse) {
-                var doc = window.parent.document;
-                var btn = doc.querySelector('.st-key-' + keyClasse + ' button');
-                if (!btn) return false;
-                var el = btn;
-                while (el.parentElement && el.parentElement.children.length === 1) el = el.parentElement;
-                el.style.setProperty('display', 'none', 'important');
-                return true;
-            }
-            var n = 0, iv = setInterval(function(){
-                n++;
-                var a = colapsar('_btn_marcar_lidas_sel');
-                var b = colapsar('_btn_excluir_sel');
-                if ((a && b) || n > 20) clearInterval(iv);
-            }, 120);
-        })();
-        </script>
-        """, height=0)
+        st.markdown("""
+        <style>
+        .st-key-_ghost_wrap_toolbar_notif { display:none !important; }
+        </style>
+        """, unsafe_allow_html=True)
 
         _ids_confirmar = st.session_state.get("_confirmar_excluir_selecionadas") or []
         if _ids_confirmar:
             st.warning(
-                f"Excluir {_len := len(_ids_confirmar)} notificação(ões) selecionada(s)? "
+                f"Excluir {len(_ids_confirmar)} notificação(ões) selecionada(s)? "
                 "Isso remove somente o histórico dessas atividades e não pode ser desfeito."
             )
             _c1, _c2 = st.columns(2)
@@ -36703,8 +36682,8 @@ html, body { background: transparent; overflow: hidden; }
                 if st.button("Sim, excluir selecionadas", key="_btn_confirmar_excluir_sel", type="primary"):
                     _n_removidas = excluir_atividades_por_ids(st.session_state.user.id, _ids_confirmar)
                     st.session_state["_confirmar_excluir_selecionadas"] = []
-                    st.session_state["_notificacoes_selecionadas"] = []
-                    st.session_state["_selecionar_todas_notif"] = False
+                    st.session_state["_notificacoes_selecionadas_cards"] = []
+                    st.session_state["_selecionar_todas_notif_cards"] = False
                     st.toast(f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️")
                     st.rerun()
             with _c2:
@@ -36723,6 +36702,7 @@ html, body { background: transparent; overflow: hidden; }
         Precisa estar numa função à parte porque st.fragment decora uma
         função, não um bloco de código solto."""
         _todas_atividades = listar_atividades_notificacoes(st.session_state.user.id, limite_recentes=100) if st.session_state.user else []
+        _selecionadas_cards_set = set(str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", []))
 
         # Filtro de busca (texto digitado na caixa da barra de ações, acima):
         # compara com o título e com a empresa nos detalhes, sem acento/case,
@@ -36808,6 +36788,8 @@ html, body { background: transparent; overflow: hidden; }
                     _ui["label"] = _ui["label"] + " · lida"
 
                 _id_ativ = _a["id"]
+                _id_ativ_str = str(_id_ativ)
+                _selecionada_ativ = _id_ativ_str in _selecionadas_cards_set
                 _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
                 if not _empresa_ativ and _a.get("tipo") == "migracao_midia":
                     # Registro antigo sem 'empresa' nos detalhes (ver
@@ -36939,6 +36921,12 @@ html, body { background: transparent; overflow: hidden; }
                         </svg>
                     </span>
                 """ if _tem_detalhe else ""
+
+                _check_card_html = (
+                    f'<button class="notif-check{" is-selected" if _selecionada_ativ else ""}" '
+                    f'data-idx="{_id_ativ}" title="Selecionar notificação" aria-pressed="{str(_selecionada_ativ).lower()}">'
+                    f'<span class="notif-check-mark">✓</span></button>'
+                )
 
                 _excluir_svg = _svg_icone(
                     "M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z",
@@ -37076,6 +37064,7 @@ html, body { background: transparent; overflow: hidden; }
                 _cards_notif_html += f"""
     <div class="notif-card">
         <div class="notif-hdr{' has-detail' if _tem_detalhe else ''}" data-idx="{_id_ativ}">
+            {_check_card_html}
             <span class="notif-hdr-icon">{_svg_icone(_ui['path'], _ui['cor'])}</span>
             <div class="notif-title-wrap">
                 <span class="notif-title">{_titulo_safe}</span>
@@ -37214,6 +37203,15 @@ html, body { background: transparent; overflow: hidden; }
         0%   { background-position: 150% 0; }
         100% { background-position: -50% 0; }
     }
+    .notif-check {
+        width:20px; height:20px; min-width:20px; border-radius:5px;
+        border:1.5px solid #cbd5e1; background:#fff; color:transparent;
+        display:flex; align-items:center; justify-content:center; cursor:pointer;
+        transition:all .12s ease; flex-shrink:0; padding:0;
+    }
+    .notif-check:hover { border-color:#3a9fd6; background:#f0f9ff; }
+    .notif-check.is-selected { background:#2f8fd1; border-color:#2f8fd1; color:#fff; }
+    .notif-check-mark { font-size:13px; line-height:1; font-weight:800; transform:translateY(-.5px); }
     .btn-excluir {
         display:flex; align-items:center; justify-content:center;
         width:26px; height:26px; flex-shrink:0; border:none; border-radius:7px;
@@ -37369,6 +37367,14 @@ html, body { background: transparent; overflow: hidden; }
     }}
 
     document.addEventListener('click', function(e) {{
+        var ck = e.target.closest('.notif-check');
+        if (ck) {{
+            e.stopPropagation();
+            var btn = window.parent.document.querySelector('.st-key-btn_selecionar_ativ_' + ck.dataset.idx + ' button');
+            if (btn) btn.click();
+            return;
+        }}
+
         var ex = e.target.closest('.btn-excluir');
         if (ex) {{ e.stopPropagation(); excluirNotif(ex.dataset.idx); return; }}
 
@@ -37501,8 +37507,10 @@ html, body { background: transparent; overflow: hidden; }
             # no servidor. Isso elimina a lista nativa duplicada que ficava
             # embaixo dos cards.
             _acoes_excluir = {}
+            _acoes_selecionar = {}
             with _wrap_ghost_cards_notif:
                 for _eid in _excluir_ids:
+                    _acoes_selecionar[_eid] = st.button(f"_selecionar_ativ_{_eid}_", key=f"btn_selecionar_ativ_{_eid}")
                     _acoes_excluir[_eid] = st.button(f"_excluir_ativ_{_eid}_", key=f"btn_excluir_ativ_{_eid}")
 
             if _refazer_ids or _excluir_ids:
@@ -37511,6 +37519,17 @@ html, body { background: transparent; overflow: hidden; }
                 .st-key-_ghost_wrap_cards_notif { display: none !important; }
                 </style>
                 """, unsafe_allow_html=True)
+
+            for _eid in _excluir_ids:
+                if _acoes_selecionar.get(_eid):
+                    _sid = str(_eid)
+                    _sel_atual = set(str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", []))
+                    if _sid in _sel_atual:
+                        _sel_atual.remove(_sid)
+                    else:
+                        _sel_atual.add(_sid)
+                    st.session_state["_notificacoes_selecionadas_cards"] = list(_sel_atual)
+                    st.rerun()
 
             for _eid in _excluir_ids:
                 if _acoes_excluir.get(_eid):

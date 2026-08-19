@@ -5806,6 +5806,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 # perder a capacidade de reconhecer a linha de verdade.
                 if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
                     _partes_relacionados = _candidatos_relacionados
+                elif (
+                    _titulo_e_descricao_ja_fechados
+                    and not banda.get("sep_antes")
+                    and len(_candidatos_relacionados) == 2
+                    and all(re.search(r"\b(?:19|20)\d{2}\b", _p) for _p in _candidatos_relacionados)
+                ):
+                    # V41 — linha horizontal de DOIS links azuis. Caso real:
+                    # "Lollapalooza 2026 · Rock In Rio 2026". O ponto médio
+                    # visual foi lido pelo EasyOCR como hífen, então a proteção
+                    # antiga de 3+ candidatos mantinha os dois links grudados.
+                    #
+                    # Aceitamos 2 candidatos só neste cenário muito restrito:
+                    # o título+descrição principal já terminaram, NÃO existe hr
+                    # antes da banda (portanto não é um sitelink empilhado como
+                    # "BTS World Tour - Arirang") e os dois lados carregam um
+                    # ano de 4 dígitos. Assim preservamos nomes de eventos com
+                    # hífen no próprio título e ainda separamos corretamente a
+                    # fileira horizontal de dois links quando o separador "·"
+                    # vira "-" no OCR.
+                    _partes_relacionados = _candidatos_relacionados
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
             # Motivo: às vezes UM separador sobrevive (ex.: um traço

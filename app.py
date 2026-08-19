@@ -36066,12 +36066,33 @@ html, body { background: transparent; overflow: hidden; }
         except Exception:
             pass
 
-        _col_busca, _col_lidas, _col_limpar = st.columns([3, 1.3, 1.3])
+        # V16: filtro por STATUS ao lado da busca. Antes a página sempre
+        # mostrava as 50 atividades mais recentes misturadas; quando havia
+        # várias concluídas recentes, o sino podia indicar atividades em
+        # andamento/erro (ex.: badge "10") mas elas ficavam escondidas mais
+        # abaixo na lista. O filtro trabalha sobre a lista já carregada pelo
+        # fragment (sem query adicional no Supabase), então é praticamente
+        # gratuito em processamento.
+        _col_busca, _col_status, _col_lidas, _col_limpar = st.columns([2.55, 1.25, 1.3, 1.3])
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
                 key="_busca_notif",
                 placeholder="Buscar por empresa ou tipo de atividade...",
+                label_visibility="collapsed",
+            )
+        with _col_status:
+            st.selectbox(
+                "Filtrar por status",
+                options=[
+                    "Todos os status",
+                    "Em andamento",
+                    "Pendente",
+                    "Concluído",
+                    "Concluído com erros",
+                    "Erro",
+                ],
+                key="_filtro_status_notif",
                 label_visibility="collapsed",
             )
 
@@ -36233,15 +36254,41 @@ html, body { background: transparent; overflow: hidden; }
                 return _termo_busca in remover_acentos(_alvo.lower())
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
 
+        # V16 — filtro por status. "Concluído com erros" não é um status
+        # gravado no banco: é um concluído cujo detalhes.com_erro=True (mesma
+        # regra visual já usada nos cards). Mantemos "Concluído" separado,
+        # mostrando apenas os concluídos limpos quando esse filtro é escolhido.
+        _filtro_status_notif = st.session_state.get("_filtro_status_notif", "Todos os status")
+        if _filtro_status_notif != "Todos os status":
+            def _atividade_bate_status(a):
+                _status_a = a.get("status") or "pendente"
+                _com_erro_a = bool((a.get("detalhes") or {}).get("com_erro"))
+                if _filtro_status_notif == "Em andamento":
+                    return _status_a == "em_andamento"
+                if _filtro_status_notif == "Pendente":
+                    return _status_a == "pendente"
+                if _filtro_status_notif == "Erro":
+                    return _status_a == "erro"
+                if _filtro_status_notif == "Concluído com erros":
+                    return _status_a == "concluido" and _com_erro_a
+                if _filtro_status_notif == "Concluído":
+                    return _status_a == "concluido" and not _com_erro_a
+                return True
+            _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
+
         if not _todas_atividades:
             _bell_svg = _svg_icone(
                 "M12,22C13.1,22 14,21.1 14,20H10C10,21.1 10.9,22 12,22M18,16V11C18,7.93 16.36,5.36 13.5,4.68V4C13.5,3.17 12.83,2.5 12,2.5C11.17,2.5 10.5,3.17 10.5,4V4.68C7.63,5.36 6,7.92 6,11V16L4,18V19H20V18L18,16Z",
                 "#c7cdd6", 32,
             )
-            _msg_vazio_notif = (
-                "Nenhuma notificação encontrada pra essa busca."
-                if _termo_busca else "Nenhuma atividade registrada ainda."
-            )
+            if _termo_busca and _filtro_status_notif != "Todos os status":
+                _msg_vazio_notif = "Nenhuma notificação encontrada com essa busca e esse status."
+            elif _termo_busca:
+                _msg_vazio_notif = "Nenhuma notificação encontrada pra essa busca."
+            elif _filtro_status_notif != "Todos os status":
+                _msg_vazio_notif = f"Nenhuma notificação com status {_filtro_status_notif.lower()}."
+            else:
+                _msg_vazio_notif = "Nenhuma atividade registrada ainda."
             st.markdown(_html(f"""
             <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
                         text-align:center;background:#fff;margin-top:8px">

@@ -6162,7 +6162,66 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 and (bool(par_atual[1]) or _misto_parece_frase)
             )
 
-            if _misto_continua_descricao:
+            # V39 — em anúncios de TEXTO/Busca, os sitelinks podem aparecer em
+            # preto/cinza (classe "misto") em vez de azul. O sinal confiável
+            # desse layout é o separador horizontal antes de cada item.
+            # Caso real: depois do título + descrição vieram "Iron Maiden -
+            # 2026", "Harry Styles Together", "BTS World Tour - Arirang",
+            # "Fórmula 1" e "Rock In Rio 2026", todos com sep_antes=True.
+            # A V37 tratava o primeiro como CTA e descartava os demais.
+            # Aqui aplicamos a MESMA regra estrutural já usada para sitelinks
+            # cinza: se já existe o bloco principal/algum par anterior e há
+            # separador, fecha o par atual e abre um novo sitelink.
+            # V40 — há um segundo formato de sitelink preto/cinza em anúncios
+            # de Busca: além do título do sitelink, vêm 1–2 linhas de descrição
+            # logo abaixo. O primeiro item pode chegar num ponto em que
+            # `par_atual` já foi fechado pela heurística anterior, então a V39
+            # ainda deixava esse PRIMEIRO cabeçalho separado cair como CTA
+            # (ex.: "Quer Vender Seu Ingresso?"). Os itens seguintes então
+            # eram todos grudados na descrição principal.
+            #
+            # Sinal estrutural do layout: existem DOIS OU MAIS blocos `misto`
+            # com `sep_antes=True` depois do título/descrição principal. Isso é
+            # uma lista de sitelinks, não um CTA isolado. Um CTA real separado
+            # continua protegido pelo regex de CTA conhecido e, normalmente,
+            # aparece sozinho (não há vários separadores equivalentes depois).
+            _misto_separados_restantes = 0
+            if banda.get("sep_antes") and not _misto_cta_conhecido:
+                for _j_sl in range(idx, len(bandas_texto)):
+                    _b_sl = bandas_texto[_j_sl]
+                    if _b_sl.get("classe") == "misto" and _b_sl.get("sep_antes"):
+                        _misto_separados_restantes += 1
+
+            _misto_lista_sitelinks = (
+                banda.get("sep_antes")
+                and not _misto_cta_conhecido
+                and _titulo_ja_reconhecido
+                and _misto_separados_restantes >= 2
+            )
+            _misto_tem_contexto_sitelink = (
+                banda.get("sep_antes")
+                and not _misto_cta_conhecido
+                and (
+                    _misto_lista_sitelinks
+                    or (
+                        par_atual is not None
+                        and (bool(par_atual[1]) or bool(pares))
+                    )
+                )
+            )
+
+            if _misto_tem_contexto_sitelink:
+                if par_atual is not None:
+                    pares.append(par_atual)
+                par_atual = [texto, []]
+                _debug_bandas[idx]["decisao"] = (
+                    "misto → NOVO sitelink em texto preto/cinza "
+                    "(separador antes; lista de sitelinks detectada)"
+                    if _misto_lista_sitelinks else
+                    "misto → NOVO sitelink em texto preto/cinza "
+                    "(por causa de separador antes)"
+                )
+            elif _misto_continua_descricao:
                 par_atual[1].append(texto)
                 _debug_bandas[idx]["decisao"] = (
                     "misto → descrição do título/sitelink em andamento "

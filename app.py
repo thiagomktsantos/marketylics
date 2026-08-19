@@ -36568,25 +36568,49 @@ html, body { background: transparent; overflow: hidden; }
         </style>
         """, unsafe_allow_html=True)
 
+        # V29 — confirmação de exclusão em modal. Na V28 a confirmação era
+        # renderizada inline entre a toolbar e o "Selecionar todas". Como os
+        # blocos abaixo têm deslocamentos negativos para compactar a página,
+        # os botões de confirmação acabavam visualmente sobrepostos ao restante
+        # da interface. O modal não participa do fluxo vertical e elimina essa
+        # interferência sem desfazer a compactação da tela.
         _ids_confirmar = st.session_state.get("_confirmar_excluir_selecionadas") or []
         if _ids_confirmar:
-            st.warning(
-                f"Excluir {len(_ids_confirmar)} notificação(ões) selecionada(s)? "
-                "Isso remove somente o histórico dessas atividades e não pode ser desfeito."
-            )
-            _c1, _c2 = st.columns(2)
-            with _c1:
-                if st.button("Sim, excluir selecionadas", key="_btn_confirmar_excluir_sel", type="primary"):
-                    _n_removidas = excluir_atividades_por_ids(st.session_state.user.id, _ids_confirmar)
-                    st.session_state["_confirmar_excluir_selecionadas"] = []
-                    st.session_state["_notificacoes_selecionadas_cards"] = []
-                    st.session_state["_selecionar_todas_notif_cards"] = False
-                    st.toast(f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️")
-                    st.rerun()
-            with _c2:
-                if st.button("Cancelar", key="_btn_cancelar_excluir_sel"):
-                    st.session_state["_confirmar_excluir_selecionadas"] = []
-                    st.rerun()
+            @st.dialog("Excluir notificações")
+            def _dialog_confirmar_exclusao_notificacoes():
+                _ids_modal = list(st.session_state.get("_confirmar_excluir_selecionadas") or [])
+                st.write(
+                    f"Excluir **{len(_ids_modal)} notificação(ões)** selecionada(s)? "
+                    "Isso remove somente o histórico dessas atividades e não pode ser desfeito."
+                )
+                _c1, _c2 = st.columns(2)
+                with _c1:
+                    if st.button(
+                        "Excluir",
+                        key="_btn_confirmar_excluir_sel",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        _n_removidas = excluir_atividades_por_ids(
+                            st.session_state.user.id, _ids_modal
+                        )
+                        st.session_state["_confirmar_excluir_selecionadas"] = []
+                        st.session_state["_notificacoes_selecionadas_cards"] = []
+                        st.session_state["_selecionar_todas_notif_cards"] = False
+                        st.toast(
+                            f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️"
+                        )
+                        st.rerun()
+                with _c2:
+                    if st.button(
+                        "Cancelar",
+                        key="_btn_cancelar_excluir_sel",
+                        use_container_width=True,
+                    ):
+                        st.session_state["_confirmar_excluir_selecionadas"] = []
+                        st.rerun()
+
+            _dialog_confirmar_exclusao_notificacoes()
 
         # V28 — "Selecionar todas" com estado persistente.
         #

@@ -36588,26 +36588,50 @@ html, body { background: transparent; overflow: hidden; }
                     st.session_state["_confirmar_excluir_selecionadas"] = []
                     st.rerun()
 
-        # V26 — "Selecionar todas" alinhado à ESQUERDA, exatamente no mesmo
-        # eixo de início dos cards abaixo. Sem coluna-espaçadora: o próprio
-        # checkbox ocupa a largura natural e fica colado ao início do conteúdo.
-        # Também reduzimos os respiros verticais desta região para aproximar
-        # toolbar -> selecionar todas -> primeiro card, sem sobreposição.
+        # V28 — "Selecionar todas" com estado persistente.
+        #
+        # O bug anterior acontecia porque, em cada rerun, o código recalculava
+        # `_todos_devem_estar` usando a seleção ANTIGA e sobrescrevia o valor do
+        # próprio widget ANTES de o clique ser tratado. Resultado: o usuário
+        # clicava, o checkbox chegava como True no session_state, mas era
+        # imediatamente devolvido para False e visualmente "não ficava".
+        #
+        # A correção usa callback nativo do Streamlit. O callback roda antes do
+        # corpo do script no rerun e atualiza a lista de IDs selecionados com o
+        # valor que o usuário acabou de marcar/desmarcar. Depois disso a
+        # sincronização visual pode continuar sendo derivada da lista real sem
+        # apagar a interação do usuário.
+        st.session_state["_ids_visiveis_notif_cards"] = [str(x) for x in _ids_visiveis]
+
+        def _ao_alterar_selecionar_todas_notif_cards():
+            _marcado = bool(st.session_state.get("_selecionar_todas_notif_cards", False))
+            _ids_atuais = [
+                str(x) for x in st.session_state.get("_ids_visiveis_notif_cards", []) if x
+            ]
+            st.session_state["_notificacoes_selecionadas_cards"] = (
+                list(_ids_atuais) if _marcado else []
+            )
+
         with st.container(key="_bloco_todas_topo"):
-            _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
+            _sel_cards_agora = [
+                str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", [])
+            ]
+            _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards_agora) == set(
+                str(x) for x in _ids_visiveis
+            )
+
+            # Mantém o checkbox sincronizado quando a seleção muda por um card
+            # individual, sem quebrar o clique em "Selecionar todas" (o callback
+            # acima já atualizou a lista antes de chegarmos aqui).
             if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
                 st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
-            _todos_sel = st.checkbox(
+
+            st.checkbox(
                 f"Selecionar todas ({len(_ids_visiveis)})",
                 key="_selecionar_todas_notif_cards",
                 help="Seleciona todas as notificações visíveis no filtro atual.",
+                on_change=_ao_alterar_selecionar_todas_notif_cards,
             )
-            if _todos_sel and not _todos_devem_estar:
-                st.session_state["_notificacoes_selecionadas_cards"] = list(_ids_visiveis)
-                st.rerun()
-            elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
-                st.session_state["_notificacoes_selecionadas_cards"] = []
-                st.rerun()
 
         st.markdown("""
         <style>

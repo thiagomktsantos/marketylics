@@ -36400,10 +36400,15 @@ html, body { background: transparent; overflow: hidden; }
         elif _valor_status_antigo not in _STATUS_NOTIF_LABELS:
             st.session_state["_filtro_status_notif"] = "todos"
 
-        # V20 — barra em duas linhas: filtros na primeira e seleção/ações na segunda.
-        # A seleção é nativa do Streamlit (multiselect), portanto suporta várias
-        # notificações sem JS frágil e mantém os IDs no session_state entre reruns.
-        _col_busca, _col_status = st.columns([2.7, 1.3])
+        # V24 — tudo em 1 linha só: busca, status, seleção e ações lado a lado.
+        # Os 5 controles nascem do mesmo st.columns(...) pra ficarem alinhados na
+        # mesma linha; "Selecionar todas" e os botões só são preenchidos mais
+        # abaixo (precisam da contagem de itens visíveis/selecionados, calculada
+        # depois que a busca/status já filtraram a lista), mas continuam na
+        # mesma linha porque pertencem ao mesmo objeto de colunas criado aqui.
+        _col_busca, _col_status, _col_todos, _col_lidas, _col_excluir = st.columns(
+            [2.3, 1.05, 1.3, 1.15, 1.15]
+        )
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
@@ -36572,9 +36577,11 @@ html, body { background: transparent; overflow: hidden; }
         </script>
         """, height=0)
 
-        # V23 — seleção direta nos próprios cards. O multiselect da V20–V22
-        # foi removido: cada notificação passa a ter um checkbox visual à esquerda.
-        # A barra superior fica só com "Selecionar todas" + ações em lote.
+        # V24 — seleção direta nos próprios cards. O multiselect antigo foi
+        # removido: cada notificação passa a ter um checkbox visual à esquerda.
+        # "Selecionar todas" e os botões de ação abaixo entram na MESMA linha
+        # da busca/status (colunas já criadas lá em cima), então aqui só
+        # preenchemos as colunas que faltavam.
         _sel_antiga_cards = [str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", [])]
         _sel_valida_cards = [x for x in _sel_antiga_cards if x in _por_id_sel]
         if _sel_valida_cards != _sel_antiga_cards:
@@ -36586,7 +36593,6 @@ html, body { background: transparent; overflow: hidden; }
         _n_sel = len(_sel_cards)
         _n_lidas_elegiveis = len(_erros_nao_lidos_sel)
 
-        _col_todos, _col_spacer, _col_lidas, _col_excluir = st.columns([1.25, 2.15, 1.35, 1.25])
         with _col_todos:
             _todos_devem_estar = bool(_ids_visiveis) and set(_sel_cards) == set(_ids_visiveis)
             if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
@@ -36602,6 +36608,62 @@ html, body { background: transparent; overflow: hidden; }
             elif (not _todos_sel) and _todos_devem_estar and _ids_visiveis:
                 st.session_state["_notificacoes_selecionadas_cards"] = []
                 st.rerun()
+
+        # Dá ao checkbox "Selecionar todas" a mesma caixa (fundo branco, borda
+        # cinza clara, 40px de altura) do campo de busca e do select de status,
+        # pra tudo na linha ficar com o mesmo estilo visual. Segue o mesmo
+        # padrão de "achar pelo .st-key-<chave> + reaplicar com MutationObserver"
+        # já usado nos outros controles desta página, em vez de CSS por
+        # seletor solto — mais confiável entre versões do Streamlit.
+        components.html("""
+        <script>
+        (function() {
+            function estilizarCheckboxTodas() {
+                var doc = window.parent.document;
+                var host = doc.querySelector('.st-key-_selecionar_todas_notif_cards');
+                if (!host) return false;
+                host.style.setProperty('display', 'flex', 'important');
+                host.style.setProperty('align-items', 'center', 'important');
+                host.style.setProperty('height', '40px', 'important');
+                host.style.setProperty('min-height', '40px', 'important');
+                host.style.setProperty('background-color', '#ffffff', 'important');
+                host.style.setProperty('border', '1px solid #d1d5db', 'important');
+                host.style.setProperty('border-radius', '8px', 'important');
+                host.style.setProperty('padding', '0 12px', 'important');
+                host.style.setProperty('box-sizing', 'border-box', 'important');
+                host.style.setProperty('box-shadow', 'none', 'important');
+
+                var label = host.querySelector('label');
+                if (label) {
+                    label.style.setProperty('margin', '0', 'important');
+                    label.style.setProperty('display', 'flex', 'important');
+                    label.style.setProperty('align-items', 'center', 'important');
+                    label.style.setProperty('gap', '8px', 'important');
+                }
+                var texto = host.querySelector('p');
+                if (texto) {
+                    texto.style.setProperty('font-size', '14px', 'important');
+                    texto.style.setProperty('color', '#374151', 'important');
+                    texto.style.setProperty('font-weight', '600', 'important');
+                    texto.style.setProperty('white-space', 'nowrap', 'important');
+                }
+                return true;
+            }
+            if (!estilizarCheckboxTodas()) {
+                var tentativas = 0;
+                var iv = setInterval(function() {
+                    tentativas++;
+                    if (estilizarCheckboxTodas() || tentativas > 30) clearInterval(iv);
+                }, 150);
+            }
+            try {
+                var obs = new MutationObserver(function() { estilizarCheckboxTodas(); });
+                obs.observe(window.parent.document.body, {childList:true, subtree:true});
+                setTimeout(function(){ obs.disconnect(); }, 10000);
+            } catch(e) {}
+        })();
+        </script>
+        """, height=0)
 
         _check_svg_tb = _svg_icone(_ICONE_OK[0], "currentColor", 15)
         _lixeira_svg_tb = _svg_icone(

@@ -36645,6 +36645,23 @@ html, body { background: transparent; overflow: hidden; }
             padding-bottom: 0 !important;
         }
 
+        /* V27 — move também a LISTA, não só o "Selecionar todas".
+           O st.fragment é montado em um bloco irmão separado; margin-bottom
+           negativo no bloco do checkbox não consegue puxá-lo. Esta key envolve
+           o fragment e permite reduzir o espaço real até o primeiro card. */
+        .st-key-_lista_notificacoes_wrap {
+            transform: translateY(-28px) !important;
+            margin-bottom: -28px !important;
+            padding-top: 0 !important;
+        }
+        .st-key-_lista_notificacoes_wrap > div,
+        .st-key-_lista_notificacoes_wrap [data-testid="stVerticalBlock"] {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            gap: 0.45rem !important;
+            row-gap: 0.45rem !important;
+        }
+
         /* Cola o "Selecionar todas" na toolbar acima. O espaço visto na tela
            vem do gap do bloco PAI do Streamlit, não da margem do checkbox. */
         section.main [data-testid="stVerticalBlock"]:has(> .stElementContainer .st-key-_bloco_todas_topo),
@@ -37503,4 +37520,10 @@ html, body { background: transparent; overflow: hidden; }
                         st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
                     st.rerun()
 
-    _renderizar_atividades_ao_vivo()
+    # V27 — o fragment da lista é um bloco Streamlit independente do container
+    # "Selecionar todas". Por isso mover só o checkbox (V26) não fazia os
+    # cards acompanharem. Envolvemos a lista em um container com key própria
+    # para deslocar TODO o bloco de notificações junto e eliminar o espaço
+    # vertical que permanecia entre o checkbox e o primeiro card.
+    with st.container(key="_lista_notificacoes_wrap"):
+        _renderizar_atividades_ao_vivo()

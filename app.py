@@ -10,6 +10,8 @@ import trafilatura
 import requests
 import subprocess
 import sys
+import threading
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 import httpx
@@ -48,6 +50,48 @@ def _limitar_threads_cpu_ocr():
         print(f"[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}", flush=True)
 
 _limitar_threads_cpu_ocr()
+
+# ---------------------------------------------------
+# GERENCIADOR GLOBAL DE RECURSOS PESADOS
+# ---------------------------------------------------
+# O Streamlit Community Cloud tem CPU/RAM/processos bastante limitados.
+# Antes, cada subsistema controlava sua concorrência isoladamente: OCR
+# tinha um lock próprio, migração de mídia usava vários workers, ffmpeg
+# podia rodar em paralelo com OCR e Whisper etc. Individualmente cada
+# limite parecia seguro, mas juntos ainda podiam criar picos de CPU/RAM.
+#
+# A partir daqui, TODA tarefa realmente pesada de CPU/processo local
+# compartilha um único semáforo global. Downloads HTTP/Supabase continuam
+# concorrentes; só a parte pesada (EasyOCR, ffmpeg e Whisper) é serializada.
+# Isso troca um pouco de velocidade máxima por previsibilidade e estabilidade.
+_MAX_CPU_PESADA = int(st.secrets.get("MAX_CPU_PESADA_CONCORRENTE", 1))
+_MAX_DOWNLOADS_MIDIA = int(st.secrets.get("MAX_DOWNLOADS_MIDIA_CONCORRENTES", 3))
+_MAX_API_IO = int(st.secrets.get("MAX_API_IO_CONCORRENTE", 5))
+
+_semaforo_cpu_pesada = threading.BoundedSemaphore(max(1, _MAX_CPU_PESADA))
+_semaforo_api_io = threading.BoundedSemaphore(max(1, _MAX_API_IO))
+
+@contextmanager
+def _recurso_cpu_pesada(nome: str):
+    """Serializa tarefas pesadas locais (OCR/ffmpeg/Whisper).
+
+    O nome é só para debug. O semáforo é global ao processo, então um OCR
+    não roda ao mesmo tempo que uma compressão de vídeo/thumbnail/Whisper.
+    """
+    _semaforo_cpu_pesada.acquire()
+    try:
+        yield
+    finally:
+        _semaforo_cpu_pesada.release()
+
+@contextmanager
+def _recurso_api_io():
+    """Limita rajadas de I/O remoto sem transformar tudo em sequencial."""
+    _semaforo_api_io.acquire()
+    try:
+        yield
+    finally:
+        _semaforo_api_io.release()
 
 # ---------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -794,9 +838,10 @@ def _comprimir_video(conteudo: bytes, content_type: str):
                 "-movflags", "+faststart",
                 saida,
             ]
-            resultado = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300
-            )
+            with _recurso_cpu_pesada("ffmpeg-compressao-video"):
+                resultado = subprocess.run(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300
+                )
             if resultado.returncode != 0 or not os.path.exists(saida):
                 return conteudo, content_type, None
 
@@ -839,9 +884,10 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
                 "-vn", "-ac", "1", "-ar", "16000",
                 audio,
             ]
-            resultado = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180
-            )
+            with _recurso_cpu_pesada("ffmpeg-extracao-audio-whisper"):
+                resultado = subprocess.run(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=180
+                )
             if resultado.returncode != 0 or not os.path.exists(audio) or os.path.getsize(audio) == 0:
                 return ""  # sem faixa de áudio, ou falha ao extrair
 
@@ -865,8 +911,9 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
             # Whisper continua rodando sozinha em segundo plano até
             # terminar, mas não bloqueia mais ninguém.
             def _transcrever_sync():
-                segmentos, _info = _wm.transcribe(audio, language="pt", vad_filter=True)
-                return " ".join(s.text.strip() for s in segmentos).strip()
+                with _recurso_cpu_pesada("whisper-inferencia"):
+                    segmentos, _info = _wm.transcribe(audio, language="pt", vad_filter=True)
+                    return " ".join(s.text.strip() for s in segmentos).strip()
 
             from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
             _timeout_whisper = st.secrets.get("WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS", )
@@ -942,9 +989,10 @@ def _extrair_thumbnail_video(conteudo: bytes):
                     "-frames:v", "1", "-q:v", "3",
                     saida,
                 ]
-                resultado = subprocess.run(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60
-                )
+                with _recurso_cpu_pesada("ffmpeg-thumbnail"):
+                    resultado = subprocess.run(
+                        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60
+                    )
                 if resultado.returncode == 0 and os.path.exists(saida) and os.path.getsize(saida) > 0:
                     with open(saida, "rb") as f:
                         return f.read()
@@ -1093,7 +1141,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             resp = None
             for _i_tent, _headers_download in enumerate(_tentativas_headers):
                 try:
-                    _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
+                    with _recurso_api_io():
+                        _tentativa = requests.get(url_origem, timeout=15, stream=True, headers=_headers_download)
                 except Exception as _e_tent:
                     print(f"[MIDIA-DL:{ad_id}] tentativa={_i_tent} headers={list(_headers_download.keys())} EXCEÇÃO: {_e_tent!r}", flush=True)
                     continue
@@ -1145,7 +1194,8 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         if existente.data:
             _url_dedupe = existente.data[0]["url_cdn"]
             try:
-                _check = requests.head(_url_dedupe, timeout=5)
+                with _recurso_api_io():
+                    _check = requests.head(_url_dedupe, timeout=5)
                 _arquivo_existe = _check.status_code == 200
             except Exception:
                 _arquivo_existe = False
@@ -1413,7 +1463,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     ads_com_erro = {}    # ad_id -> título, pelo menos 1 mídia falhou
     ads_migrados = {}    # ad_id -> título, pelo menos 1 mídia migrou com sucesso
     try:
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, _MAX_DOWNLOADS_MIDIA)) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad in executor.map(_processar, tarefas):
                 if campo == "page_profile_picture":
                     resultado[empresa]["data"][ad_idx][campo] = nova_url
@@ -6010,7 +6060,8 @@ def _extrair_texto_paddleocr(url_imagem: str):
             if _espera > 0:
                 _time_ocr.sleep(_espera)
             _reader = _get_easyocr()
-            texto_bruto = _ocr_texto_bruto(_img, _reader)
+            with _recurso_cpu_pesada("easyocr-texto-bruto"):
+                texto_bruto = _ocr_texto_bruto(_img, _reader)
             _ultima_chamada_ocr[0] = _time_ocr.time()
         print(f"[OCR-DEBUG] _extrair_texto_paddleocr OK url={url_imagem!r} linhas={len(texto_bruto.splitlines())}", flush=True)
         return texto_bruto
@@ -6073,7 +6124,8 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
             if _espera > 0:
                 _time_ocr_estr.sleep(_espera)
             _reader = _get_easyocr()
-            _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
+            with _recurso_cpu_pesada("easyocr-estruturado"):
+                _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
                 # não reconheceu o padrão (ou não achou NENHUM campo de
                 # verdade — nem título/descrição, nem sequer a
@@ -6085,7 +6137,8 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
                 # fallback e perdia a URL já extraída corretamente,
                 # jogando tudo cru em "descricao" em vez de manter no
                 # campo certo.
-                texto_bruto = _ocr_texto_bruto(_img, _reader)
+                with _recurso_cpu_pesada("easyocr-fallback-bruto"):
+                    texto_bruto = _ocr_texto_bruto(_img, _reader)
                 # Heurística mínima pra não perder a separação título/
                 # descrição mesmo quando o reconhecimento de bandas falha
                 # por completo (ex: `_detectar_regiao_grafico_criativo`
@@ -9703,7 +9756,7 @@ def _estimar_timeout_migracao(entry: dict) -> int:
     # não entra mais nessa conta — ver comentário em persistir_midias_de_ads.
     SEGUNDOS_POR_IMAGEM = 20
     SEGUNDOS_POR_VIDEO = 60
-    PARALELISMO = 6  # bate com o max_workers do ThreadPoolExecutor
+    PARALELISMO = max(1, _MAX_DOWNLOADS_MIDIA)  # mesmo limite configurado em persistir_midias_de_ads
 
     tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
     return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h

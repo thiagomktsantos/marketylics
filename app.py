@@ -4686,6 +4686,38 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
             break
         corte = i + 1
 
+    # V34 — proteção para headline de UMA linha seguido de descrição longa
+    # quebrada em 2+ linhas. Em alguns layouts Display (ex.: BuyTicket
+    # "Venda Seu Ingresso Aqui"), a primeira linha da descrição tem bbox
+    # quase tão alto quanto o headline e passa no limiar de 80%, sendo
+    # promovida indevidamente para o título. A estrutura textual ajuda a
+    # desempatar sem depender de palavras específicas: headline curto na
+    # primeira linha + segunda linha claramente muito mais longa + pelo menos
+    # uma continuação abaixo indica que a descrição começou na linha 2.
+    # Não afeta headlines multilinha típicos ("Ingressos Para Copa / Do Mundo"
+    # ou "Volta, Bora / Viver Essa / Emoção?"), cujas linhas seguintes são
+    # curtas e de comprimento semelhante ao começo do título.
+    if len(linhas) >= 3 and corte > 1:
+        _txt0 = (linhas[0].get("texto") or "").strip()
+        _txt1 = (linhas[1].get("texto") or "").strip()
+        _h1 = alturas[1]
+        _h2 = alturas[2]
+        _descricao_wrap_coerente = (
+            _h1 > 0 and _h2 > 0 and 0.72 <= (_h2 / _h1) <= 1.28
+        )
+        if (
+            4 <= len(_txt0) <= 30
+            and len(_txt1) >= 32
+            and len(_txt1) >= len(_txt0) * 1.45
+            and _descricao_wrap_coerente
+        ):
+            print(
+                f"[OCR-DEBUG] split-display-v34: descrição longa detectada após headline de 1 linha; "
+                f"forçando corte=1 (titulo={_txt0!r}, prox={_txt1!r})",
+                flush=True,
+            )
+            corte = 1
+
     # Rede de segurança: se TODAS as linhas ficaram dentro do mesmo grupo,
     # procura uma queda relativa forte (>18%) e usa o primeiro ponto. Isso
     # evita transformar tudo em título em layouts com fontes muito próximas.

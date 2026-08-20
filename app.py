@@ -13177,6 +13177,19 @@ def _suporte_inventario_midias(user_id: str) -> list:
     _itens = []
     _vistos = set()
 
+    # Mapa do formato real de cada anúncio do Google Ads. Um anúncio em
+    # formato Vídeo pode carregar também uma imagem de capa/thumbnail em
+    # `images`; essa imagem NÃO é uma peça gráfica pendente de OCR.
+    _gads_formato_por_ad = {}
+    for _empresa_fmt, _entry_fmt in (_gads_cache or {}).items():
+        for _ad_fmt in (_entry_fmt.get("data") or []):
+            _aid_fmt = str(_ad_fmt.get("id") or "")
+            _fmt = (_ad_fmt.get("formato") or "").strip()
+            if _fmt == "Imagem":
+                _fmt = "Gráfico"
+            if _aid_fmt:
+                _gads_formato_por_ad[(_empresa_fmt or "Sem empresa", _aid_fmt)] = _fmt
+
     def _add_cache(_cache, _plataforma):
         for _empresa, _entry in (_cache or {}).items():
             for _ad in (_entry.get("data") or []):
@@ -13193,10 +13206,33 @@ def _suporte_inventario_midias(user_id: str) -> list:
                         _m = _por_cdn.get(_url) or _por_origem.get(_url) or {}
                         _trans = _m.get("transcricao")
                         _ocr = _m.get("ocr_texto")
+                        _empresa_norm = _empresa or "Sem empresa"
+                        _formato_ad = ""
+                        if _plataforma == "Google Ads":
+                            _formato_ad = _gads_formato_por_ad.get((_empresa_norm, _ad_id), "")
+                        # Imagem associada a anúncio de formato Vídeo é capa/thumbnail:
+                        # continua sendo inventariada como mídia, mas não entra como
+                        # "imagem sem OCR" e não oferece ação de refazer OCR.
+                        _ocr_elegivel = (
+                            _tipo == "imagem"
+                            and _plataforma == "Google Ads"
+                            and _formato_ad != "Vídeo"
+                        )
+                        if _tipo == "video":
+                            _motivo_ocr = "Vídeo — processamento por transcrição; OCR não se aplica"
+                        elif _plataforma != "Google Ads":
+                            _motivo_ocr = "Imagem fora do Google Ads — OCR não se aplica"
+                        elif _formato_ad == "Vídeo":
+                            _motivo_ocr = "Capa/thumbnail de anúncio em vídeo — OCR não se aplica"
+                        elif bool((_ocr or "").strip()):
+                            _motivo_ocr = "OCR concluído"
+                        else:
+                            _motivo_ocr = "OCR pendente ou não executado"
                         _itens.append({
-                            "empresa": _empresa or "Sem empresa",
+                            "empresa": _empresa_norm,
                             "plataforma": _plataforma,
                             "ad_id": _ad_id,
+                            "formato_anuncio": _formato_ad,
                             "tipo": _tipo,
                             "indice": _idx,
                             "url": _url,
@@ -13208,7 +13244,8 @@ def _suporte_inventario_midias(user_id: str) -> list:
                             "tem_transcricao": bool((_trans or "").strip()),
                             "ocr_texto": _ocr,
                             "tem_ocr": bool((_ocr or "").strip()),
-                            "ocr_elegivel": (_tipo == "imagem" and _plataforma == "Google Ads"),
+                            "ocr_elegivel": _ocr_elegivel,
+                            "motivo_ocr": _motivo_ocr,
                             "origem_cache": True,
                         })
 
@@ -13227,10 +13264,29 @@ def _suporte_inventario_midias(user_id: str) -> list:
         _tipo = _m.get("tipo") or ("video" if ("video" in (_m.get("mime_type") or "")) else "imagem")
         _trans = _m.get("transcricao")
         _ocr = _m.get("ocr_texto")
+        _empresa_norm = _m.get("empresa") or "Sem empresa"
+        _ad_id_norm = str(_m.get("ad_id") or "")
+        _formato_ad = _gads_formato_por_ad.get((_empresa_norm, _ad_id_norm), "") if _plat == "Google Ads" else ""
+        _ocr_elegivel = (
+            _tipo == "imagem"
+            and _plat == "Google Ads"
+            and _formato_ad != "Vídeo"
+        )
+        if _tipo == "video":
+            _motivo_ocr = "Vídeo — processamento por transcrição; OCR não se aplica"
+        elif _plat != "Google Ads":
+            _motivo_ocr = "Imagem fora do Google Ads — OCR não se aplica"
+        elif _formato_ad == "Vídeo":
+            _motivo_ocr = "Capa/thumbnail de anúncio em vídeo — OCR não se aplica"
+        elif bool((_ocr or "").strip()):
+            _motivo_ocr = "OCR concluído"
+        else:
+            _motivo_ocr = "OCR pendente ou não executado"
         _itens.append({
-            "empresa": _m.get("empresa") or "Sem empresa",
+            "empresa": _empresa_norm,
             "plataforma": _plat,
-            "ad_id": str(_m.get("ad_id") or ""),
+            "ad_id": _ad_id_norm,
+            "formato_anuncio": _formato_ad,
             "tipo": _tipo,
             "indice": 0,
             "url": _url,
@@ -13242,7 +13298,8 @@ def _suporte_inventario_midias(user_id: str) -> list:
             "tem_transcricao": bool((_trans or "").strip()),
             "ocr_texto": _ocr,
             "tem_ocr": bool((_ocr or "").strip()),
-            "ocr_elegivel": (_tipo == "imagem" and _plat == "Google Ads"),
+            "ocr_elegivel": _ocr_elegivel,
+            "motivo_ocr": _motivo_ocr,
             "origem_cache": False,
         })
     return _itens
@@ -37282,7 +37339,8 @@ html, body { background: transparent; overflow: hidden; }
         st.caption(
             "Acompanhe, por empresa, o que já está salvo permanentemente, o que ainda "
             "depende de link externo e o estado de transcrição/OCR. OCR é contabilizado "
-            "somente para imagens do Google Ads, que é onde essa rotina existe hoje."
+            "somente para imagens elegíveis do Google Ads. Capas/thumbnails de anúncios em vídeo "
+            "não entram na contagem de OCR, pois vídeos usam transcrição."
         )
 
         try:
@@ -37328,6 +37386,39 @@ html, body { background: transparent; overflow: hidden; }
                 },
             )
 
+            # Diagnóstico explícito: mostra exatamente quais peças entram na
+            # contagem de "Imagens s/ OCR" e o motivo. Thumbnails/capas de
+            # anúncios em vídeo ficam fora dessa lista.
+            _sem_ocr_diag = [
+                i for i in _suporte_itens
+                if i.get("ocr_elegivel") and not i.get("tem_ocr")
+            ]
+            with st.expander(f"Ver imagens realmente sem OCR ({len(_sem_ocr_diag)})", expanded=False):
+                if _sem_ocr_diag:
+                    _df_sem_ocr = pd.DataFrame([{
+                        "Empresa": i.get("empresa"),
+                        "Anúncio": i.get("ad_id") or "—",
+                        "Formato": i.get("formato_anuncio") or "—",
+                        "Salva": "Sim" if i.get("salva") else "Não",
+                        "Motivo": i.get("motivo_ocr") or "OCR pendente ou não executado",
+                        "URL": i.get("url") or "",
+                    } for i in _sem_ocr_diag])
+                    st.dataframe(
+                        _df_sem_ocr,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
+                            "Anúncio": st.column_config.TextColumn("Anúncio", width="medium"),
+                            "Formato": st.column_config.TextColumn("Formato", width="small"),
+                            "Salva": st.column_config.TextColumn("Salva", width="small"),
+                            "Motivo": st.column_config.TextColumn("Motivo", width="large"),
+                            "URL": st.column_config.LinkColumn("Abrir mídia", display_text="Abrir"),
+                        },
+                    )
+                else:
+                    st.success("Nenhuma imagem elegível está pendente de OCR.")
+
             st.markdown("**Refazer uma mídia específica**")
             _empresas_sup = [r["Empresa"] for r in _suporte_resumo]
             _c_emp_sup, _c_filtro_sup = st.columns([1, 1])
@@ -37361,7 +37452,7 @@ html, body { background: transparent; overflow: hidden; }
                 elif _i.get("ocr_elegivel"):
                     _proc = "com OCR" if _i.get("tem_ocr") else "sem OCR"
                 else:
-                    _proc = "sem OCR aplicável"
+                    _proc = _i.get("motivo_ocr") or "OCR não aplicável"
                 _aid = _i.get("ad_id") or "s/ id"
                 return f"{_i.get('plataforma')} · {_i.get('tipo')} · anúncio {_aid} · {_estado} · {_proc}"
 

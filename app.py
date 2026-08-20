@@ -28494,38 +28494,56 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # V63 — campos compactos: a largura de cada controle acompanha
-                # o maior valor possível daquele campo + uma margem. Os pesos
-                # das colunas usam a mesma estimativa para o layout não deixar
-                # selects curtos ocupando espaço desnecessário.
+                # V64 — filtros compactos + busca flexível.
+                # Tipo/Domínio/Status/Ordenação continuam com largura baseada
+                # no maior valor do próprio campo (+ margem). Todo o espaço que
+                # sobrar na linha é entregue ao campo "Pesquisar no copy", em
+                # vez de manter uma coluna vazia no final.
                 _opts_fmt = ["Tipo (todos)"] + formatos_disponiveis
                 _opts_dom = ["Domínio (todos)"] + dominios_disponiveis
                 _opts_status = ["Status (todos)", "Ativos", "Inativos (histórico)"]
                 _opts_ordem = ["Mais recentes", "Mais tempo ativo"]
-                def _largura_campo_px(valores, minimo=120, margem=46, por_char=7.4):
-                    _maior = max([len(str(v)) for v in valores] or [0])
-                    return int(max(minimo, min(360, _maior * por_char + margem)))
 
-                _w_busca = _largura_campo_px(["Pesquisar no copy…"], minimo=190, margem=42)
+                def _largura_campo_px(valores, minimo=112, margem=44, por_char=7.4, maximo=360):
+                    _maior = max([len(str(v)) for v in valores] or [0])
+                    return int(max(minimo, min(maximo, _maior * por_char + margem)))
+
                 _w_fmt = _largura_campo_px(_opts_fmt, minimo=120)
                 _w_dom = _largura_campo_px(_opts_dom, minimo=145)
                 _w_status = _largura_campo_px(_opts_status, minimo=145)
                 _w_ordem = _largura_campo_px(_opts_ordem, minimo=145)
+                _w_view = 44
+
+                # Base visual da barra (em "pixels de peso"). Como st.columns
+                # escala os pesos para a largura disponível, a busca cresce ou
+                # encolhe junto com a tela e os demais campos permanecem na
+                # proporção do conteúdo. Não há mais coluna-espaçador.
+                _largura_total_filtros = 1260
+                _w_busca = max(
+                    300,
+                    _largura_total_filtros - (_w_fmt + _w_dom + _w_status + _w_ordem + _w_view),
+                )
+
                 st.markdown(f"""
                 <style>
-                .st-key-gads_busca_{sk} {{max-width:{_w_busca}px !important;}}
-                .st-key-gads_fmt_{sk} {{max-width:{_w_fmt}px !important;}}
-                .st-key-gads_dominio_{sk} {{max-width:{_w_dom}px !important;}}
-                .st-key-gads_status_{sk} {{max-width:{_w_status}px !important;}}
-                .st-key-gads_ordem_{sk} {{max-width:{_w_ordem}px !important;}}
+                /* V64: busca ocupa integralmente sua coluna flexível. */
+                .st-key-gads_busca_{sk} {{width:100% !important; max-width:none !important;}}
+                .st-key-gads_busca_{sk} [data-testid="stTextInput"] {{width:100% !important; max-width:none !important;}}
+
+                /* Selects continuam compactos, conforme o maior valor + margem. */
+                .st-key-gads_fmt_{sk} {{width:100% !important; max-width:{_w_fmt}px !important;}}
+                .st-key-gads_dominio_{sk} {{width:100% !important; max-width:{_w_dom}px !important;}}
+                .st-key-gads_status_{sk} {{width:100% !important; max-width:{_w_status}px !important;}}
+                .st-key-gads_ordem_{sk} {{width:100% !important; max-width:{_w_ordem}px !important;}}
                 </style>
                 """, unsafe_allow_html=True)
 
                 with st.container(key=filtros_key):
-                    # Pesos em proporção aos pixels estimados + uma coluna
-                    # flexível final que absorve o espaço restante.
-                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6, _fespaco = st.columns(
-                        [_w_busca, _w_fmt, _w_dom, _w_status, _w_ordem, 44, 260]
+                    # A linha inteira é preenchida pelos 6 controles. A busca
+                    # recebe todo o espaço excedente; não existe coluna vazia.
+                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns(
+                        [_w_busca, _w_fmt, _w_dom, _w_status, _w_ordem, _w_view],
+                        gap="small",
                     )
                     with fcol1:
                         busca_texto = st.text_input(

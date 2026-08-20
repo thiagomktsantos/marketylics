@@ -6711,6 +6711,36 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         titulo,
     )
 
+    # V68 — TicketSwap: quando o separador vertical está no FINAL da primeira
+    # linha do headline, o EasyOCR pode simplesmente não reconhecê-lo. Ao
+    # juntar as duas bandas azuis, sobra algo como:
+    #   Klangkuenstler Presents Outworld Buy & sell tickets | TS
+    # enquanto o original é:
+    #   Klangkuenstler Presents Outworld | Buy & sell tickets | TS
+    # Recoloca o pipe somente em headlines que terminam em ``| TS`` e em que
+    # ``Buy & sell`` aparece no meio do título sem pontuação/separador antes.
+    # Isso evita alterar títulos legítimos como ``Olivia Dean Tickets: Buy &
+    # Sell - Sell Olivia Dean tickets``, que não terminam em ``| TS``.
+    titulo = re.sub(
+        r"(?i)(?<![|:;\-–—])\s+(?=Buy\s*&\s*sell\s+(?:tickets|bilhetes)\s*\|\s*TS$)",
+        " | ",
+        titulo,
+        count=1,
+    )
+
+    # V70 — TicketSwap: em headlines do tipo
+    #   Outbreak Festival 2025 tickets | Buy & sell on TicketSwap
+    # o separador vertical no fim da primeira linha pode desaparecer no OCR,
+    # deixando ``... tickets Buy & sell on TicketSwap``. Recoloca o ``|``
+    # somente quando a segunda parte termina explicitamente em TicketSwap,
+    # evitando mexer em frases corridas que contenham "buy & sell".
+    titulo = re.sub(
+        r"(?i)\b(tickets|bilhetes)\s+(?=Buy\s*&\s*sell\s+on\s+TicketSwap$)",
+        r"\1 | ",
+        titulo,
+        count=1,
+    )
+
     # V59 — TicketSwap: o EasyOCR às vezes lê o próprio traço vertical do
     # separador como uma letra isolada logo depois do pipe. Casos reais:
     #   | F Palladium Köln, Cologne  -> | Palladium Köln, Cologne
@@ -6849,6 +6879,30 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         r"(?<!\|)\s+(?P<venue>[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*){0,2}\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
         r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
         r" | \g<venue> ",
+        descricao,
+    )
+
+    # V69 — TicketSwap / Concertgebouw Brugge: neste layout com thumbnail
+    # lateral, o EasyOCR pode perder o pipe imediatamente depois do nome do
+    # artista e ainda colar "Concertgebouw" em "Brugge". Caso real:
+    #   Buy & sell tickets for Kim Wilde ConcertgebouwBrugge,Bruges | Wed...
+    # original:
+    #   Buy & sell tickets for Kim Wilde | Concertgebouw Brugge, Bruges | Wed...
+    # A correção é propositalmente estreita para não inventar separadores em
+    # descrições comuns de outros anúncios.
+    descricao = re.sub(
+        r"(?i)(Buy\s*&\s*sell\s+tickets\s+for\s+Kim\s+Wilde)\s+(?=Concertgebouw\s*Brugge\b)",
+        r"\1 | ",
+        descricao,
+    )
+    descricao = re.sub(
+        r"(?i)\bConcertgebouw\s*Brugge\s*,\s*Bruges\b",
+        "Concertgebouw Brugge, Bruges",
+        descricao,
+    )
+    descricao = re.sub(
+        r"(?i)(Concertgebouw Brugge, Bruges)\s+(?=Wed\s*,\s*Oct\s+29\b)",
+        r"\1 | ",
         descricao,
     )
 
@@ -28494,13 +28548,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # V64 — filtros compactos + busca flexível.
-                # Tipo/Domínio/Status/Ordenação continuam com largura baseada
-                # no maior valor do próprio campo (+ margem). Todo o espaço que
-                # sobrar na linha é entregue ao campo "Pesquisar no copy", em
-                # vez de manter uma coluna vazia no final.
+                # V67 — filtros uniformes + busca flexível; rótulo visual Domínio → Site.
+                # Tipo/Domínio/Status/Ordenação usam todos a largura do maior
+                # campo (+ margem). Todo o espaço restante continua entregue ao
+                # campo "Pesquisar no copy", sem criar espaço vazio na linha.
                 _opts_fmt = ["Tipo (todos)"] + formatos_disponiveis
-                _opts_dom = ["Domínio (todos)"] + dominios_disponiveis
+                _opts_dom = ["Site (todos)"] + dominios_disponiveis
                 _opts_status = ["Status (todos)", "Ativos", "Inativos (histórico)"]
                 _opts_ordem = ["Mais recentes", "Mais tempo ativo"]
 
@@ -28512,6 +28565,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 _w_dom = _largura_campo_px(_opts_dom, minimo=145)
                 _w_status = _largura_campo_px(_opts_status, minimo=145)
                 _w_ordem = _largura_campo_px(_opts_ordem, minimo=145)
+
+                # V66 — todos os selects usam a mesma largura: a largura do
+                # maior deles. Isso deixa a barra visualmente mais harmoniosa
+                # sem mexer no campo de busca, que continua flexível.
+                _w_select = max(_w_fmt, _w_dom, _w_status, _w_ordem)
+                _w_fmt = _w_dom = _w_status = _w_ordem = _w_select
                 _w_view = 44
 
                 # Base visual da barra (em "pixels de peso"). Como st.columns
@@ -28526,11 +28585,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 st.markdown(f"""
                 <style>
-                /* V64: busca ocupa integralmente sua coluna flexível. */
+                /* V66: busca ocupa integralmente sua coluna flexível. */
                 .st-key-gads_busca_{sk} {{width:100% !important; max-width:none !important;}}
                 .st-key-gads_busca_{sk} [data-testid="stTextInput"] {{width:100% !important; max-width:none !important;}}
 
-                /* Selects continuam compactos, conforme o maior valor + margem. */
+                /* Todos os selects têm a mesma largura, definida pelo maior deles. */
                 .st-key-gads_fmt_{sk} {{width:100% !important; max-width:{_w_fmt}px !important;}}
                 .st-key-gads_dominio_{sk} {{width:100% !important; max-width:{_w_dom}px !important;}}
                 .st-key-gads_status_{sk} {{width:100% !important; max-width:{_w_status}px !important;}}
@@ -28561,7 +28620,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         )
                     with fcol3:
                         filtro_dominio = st.selectbox(
-                            "Domínio",
+                            "Site",
                             _opts_dom,
                             key=f"gads_dominio_{sk}",
                             label_visibility="collapsed",
@@ -28602,7 +28661,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
-                if filtro_dominio != "Domínio (todos)":
+                if filtro_dominio != "Site (todos)":
                     gads_f = [
                         a for a in gads_f
                         if filtro_dominio in (a.get("_dominios_filtro") or set())

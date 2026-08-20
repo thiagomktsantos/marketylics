@@ -4266,6 +4266,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     # perdia silenciosamente. Verifica o trecho entre a borda esquerda
     # do recorte e o início da primeira palavra pra recuperar esse caso
     # — restrito à altura da PRIMEIRA linha (ver `_recorte_da_linha`).
+    # V42 — guarda em quais linhas recuperamos um hífen NO FINAL da linha.
+    # Além de montar `_texto_completo`, essa informação é reaplicada em
+    # `_linhas_out` quando `retornar_linhas=True`; sem isso, o caminho de
+    # separação de título/descrição por altura poderia perder novamente o
+    # hífen que acabamos de recuperar.
+    _linhas_com_hifen_final_recuperado = set()
+
     partes = []
     _recorte_primeira_linha = _recorte_da_linha(linha_idx_por_palavra[0])
     _bbox_primeira = palavras[0][0]
@@ -4278,11 +4285,35 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
-            # Palavras de LINHAS diferentes (fim de uma linha, começo da
-            # próxima) — nunca é um "vão dentro da mesma linha" pra
-            # tentar recuperar hífen/glifo; é só a quebra normal entre
-            # duas linhas. Só entra o espaço de sempre via
-            # `partes.append` mais abaixo.
+            # V42 — fim de uma linha + começo da próxima. Antes a gente
+            # pulava QUALQUER inspeção aqui, então um hífen visual no final
+            # da linha ("Ingressos Para Luan Santana -" / quebra / "Ingressos
+            # Do Luan Santana") desaparecia: o CRAFT não cria bbox pro traço
+            # e não existe "próxima palavra na mesma linha" para o laço normal
+            # testar o vão. Também não dá pra exigir que o hífen esteja perto
+            # da BORDA DIREITA da imagem — em anúncios de Busca sobra bastante
+            # espaço branco depois do título. Portanto olhamos só uma janela
+            # LOCAL de até `_LARGURA_MAX_VAO_GLIFO` pixels imediatamente depois
+            # da última palavra da linha anterior, restrita verticalmente à
+            # própria linha. Isso recupera o traço sem confundir texto/ícones
+            # distantes do lado direito.
+            _idx_linha_anterior = linha_idx_por_palavra[i - 1]
+            _recorte_linha_anterior = _recorte_da_linha(_idx_linha_anterior)
+            _bbox_fim_linha = palavras[i - 1][0]
+            _x_dir_fim_linha = int(max(p[0] for p in _bbox_fim_linha))
+            _x_lim_busca_hifen = min(
+                _recorte_linha_anterior.shape[1],
+                _x_dir_fim_linha + _LARGURA_MAX_VAO_GLIFO,
+            )
+            if _x_lim_busca_hifen > _x_dir_fim_linha + 2 and _detectar_hifen_no_intervalo(
+                _recorte_linha_anterior, _x_dir_fim_linha, _x_lim_busca_hifen
+            ):
+                partes.append("-")
+                _linhas_com_hifen_final_recuperado.add(_idx_linha_anterior)
+                print(
+                    f"[OCR-DEBUG] hífen recuperado no final da linha {_idx_linha_anterior} antes da quebra",
+                    flush=True,
+                )
             partes.append(palavras[i][1])
             continue
         _recorte_linha_atual = _recorte_da_linha(linha_idx_por_palavra[i])
@@ -4347,36 +4378,59 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     # linhas logo depois dele. Verifica o trecho entre o fim da última
     # palavra e a borda direita do recorte (mesma largura, restrito à
     # altura da ÚLTIMA linha) pra recuperar esse caso.
-    _recorte_ultima_linha = _recorte_da_linha(linha_idx_por_palavra[-1])
+    _idx_ultima_linha = linha_idx_por_palavra[-1]
+    _recorte_ultima_linha = _recorte_da_linha(_idx_ultima_linha)
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max(p[0] for p in _bbox_ultima))
     _x_borda_direita = recorte.shape[1]
-    if _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
-        if _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita):
-            partes.append("-")
-        else:
-            _pont = _detectar_pontuacao_curta_no_intervalo(
-                _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
-            )
-            if _pont == ",":
-                _ult_txt_pont = (palavras[-1][1] or "").strip()
-                _ult_base_pont = re.sub(r"[^A-Za-zÀ-ÿ]", "", _ult_txt_pont)
-                if len(_ult_base_pont) < 3:
-                    print(
-                        f"[OCR-DEBUG] vírgula geométrica final rejeitada após palavra curta: {_ult_txt_pont!r}",
-                        flush=True,
-                    )
-                    _pont = ""
-            if _pont:
-                partes.append(_pont)
-            elif _detectar_glifo_curto_no_intervalo(
-                _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
-            ):
-                _txt_recuperado = _recuperar_texto_no_intervalo(
-                    reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+
+    # V42 — procura hífen numa janela LOCAL depois da última palavra, em vez
+    # de só quando a palavra termina a <=70px da borda da imagem. Nos anúncios
+    # de Busca o título pode terminar no meio/lado esquerdo da tela e ainda
+    # assim possuir um "-" real no fim da linha; o espaço branco restante até
+    # a borda não deve impedir a detecção.
+    _x_lim_busca_hifen_final = min(
+        _recorte_ultima_linha.shape[1],
+        _x_dir_ultima + _LARGURA_MAX_VAO_GLIFO,
+    )
+    _hifen_final_recuperado = False
+    if _x_lim_busca_hifen_final > _x_dir_ultima + 2 and _detectar_hifen_no_intervalo(
+        _recorte_ultima_linha, _x_dir_ultima, _x_lim_busca_hifen_final
+    ):
+        partes.append("-")
+        _linhas_com_hifen_final_recuperado.add(_idx_ultima_linha)
+        _hifen_final_recuperado = True
+        print(
+            f"[OCR-DEBUG] hífen recuperado no final da linha {_idx_ultima_linha}",
+            flush=True,
+        )
+
+    # Mantém o comportamento antigo para pontuação/glifo genérico: estes
+    # continuam restritos ao caso em que a última palavra realmente fica
+    # perto da borda. Só o hífen ganhou a busca local mais ampla acima.
+    if (not _hifen_final_recuperado) and (_x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO):
+        _pont = _detectar_pontuacao_curta_no_intervalo(
+            _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+        )
+        if _pont == ",":
+            _ult_txt_pont = (palavras[-1][1] or "").strip()
+            _ult_base_pont = re.sub(r"[^A-Za-zÀ-ÿ]", "", _ult_txt_pont)
+            if len(_ult_base_pont) < 3:
+                print(
+                    f"[OCR-DEBUG] vírgula geométrica final rejeitada após palavra curta: {_ult_txt_pont!r}",
+                    flush=True,
                 )
-                if _txt_recuperado:
-                    partes.append(_txt_recuperado)
+                _pont = ""
+        if _pont:
+            partes.append(_pont)
+        elif _detectar_glifo_curto_no_intervalo(
+            _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+        ):
+            _txt_recuperado = _recuperar_texto_no_intervalo(
+                reader, _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
+            )
+            if _txt_recuperado:
+                partes.append(_txt_recuperado)
     _texto_completo = " ".join(partes)
     # Segunda passada só em bandas suspeitas. O recorte é ampliado para
     # dar mais pixels à pontuação fina, evitando "Tá 1 Na" / "1F".
@@ -4399,13 +4453,25 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             _idx_linha_atual = _idx_l
         if _idx_l != _idx_linha_atual:
             _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
-            _linhas_out.append({"texto": " ".join(_palavras_linha_atual), "altura": _y1_l - _y0_l})
+            _texto_linha_out = " ".join(_palavras_linha_atual).strip()
+            if (
+                _idx_linha_atual in _linhas_com_hifen_final_recuperado
+                and not _texto_linha_out.endswith("-")
+            ):
+                _texto_linha_out = (_texto_linha_out + " -").strip()
+            _linhas_out.append({"texto": _texto_linha_out, "altura": _y1_l - _y0_l})
             _palavras_linha_atual = []
             _idx_linha_atual = _idx_l
         _palavras_linha_atual.append(_txt)
     if _palavras_linha_atual:
         _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
-        _linhas_out.append({"texto": " ".join(_palavras_linha_atual), "altura": _y1_l - _y0_l})
+        _texto_linha_out = " ".join(_palavras_linha_atual).strip()
+        if (
+            _idx_linha_atual in _linhas_com_hifen_final_recuperado
+            and not _texto_linha_out.endswith("-")
+        ):
+            _texto_linha_out = (_texto_linha_out + " -").strip()
+        _linhas_out.append({"texto": _texto_linha_out, "altura": _y1_l - _y0_l})
     return _texto_completo, _linhas_out
 
 def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int) -> list:

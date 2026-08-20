@@ -4595,7 +4595,15 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
         (int(min(p[0] for p in bbox)), int(max(p[0] for p in bbox)), txt)
         for bbox, txt in palavras
     ]
-    _vaos = [_caixas[i][0] - _caixas[i - 1][1] for i in range(1, len(_caixas))]
+    # V82 — caixas do EasyOCR podem se sobrepor por 1+ px. Nesses casos
+    # o vão bruto fica negativo (ex.: -1) e a razão adaptativa mais abaixo
+    # fazia (gap + 1) no denominador, podendo virar divisão por zero.
+    # Sobreposição não representa um separador visual: para esta heurística
+    # ela equivale a vão zero. Normalizamos antes de ordenar/calcular razões.
+    _vaos = [
+        max(0, _caixas[i][0] - _caixas[i - 1][1])
+        for i in range(1, len(_caixas))
+    ]
     if not _vaos:
         return []
     # Limiar ADAPTATIVO em vez de fixo: acha o maior SALTO RELATIVO
@@ -4618,7 +4626,8 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     _melhor_idx = None
     _melhor_razao = 1.0
     for i in range(len(_vaos_ordenados) - 1):
-        _razao = (_vaos_ordenados[i + 1] + 1) / (_vaos_ordenados[i] + 1)
+        _den = max(1, _vaos_ordenados[i] + 1)
+        _razao = (_vaos_ordenados[i + 1] + 1) / _den
         if _razao > _melhor_razao:
             _melhor_razao = _razao
             _melhor_idx = i
@@ -7101,10 +7110,72 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
         return (_estruturado, None) if retornar_diagnostico else _estruturado
+    except ZeroDivisionError as e:
+        # V81 — alguns criativos reais chegam a uma heurística geométrica
+        # do parser estruturado com denominador zero. Isso NÃO deve manter a
+        # mídia eternamente pendente: a imagem e o EasyOCR estão válidos, só
+        # a etapa de estruturação falhou. Nesses casos degradamos para OCR
+        # bruto e salvamos o conteúdo, em vez de marcar a mídia como erro.
+        # Também registramos o traceback no debug para localizar a heurística
+        # exata sem interromper o processamento das demais mídias.
+        import traceback as _tb_v81
+        _trace_v81 = _tb_v81.format_exc()
+        print(
+            f"[OCR-DEBUG] parser estruturado ZeroDivisionError; "
+            f"usando fallback bruto url={url_imagem!r}\n{_trace_v81}",
+            flush=True,
+        )
+        try:
+            if '_img' not in locals() or _img is None:
+                raise RuntimeError("imagem indisponível para fallback após ZeroDivisionError")
+            if '_reader' not in locals() or _reader is None:
+                _reader = _get_easyocr()
+            _etapa_ocr_diag = "fallback_apos_zerodivision"
+            with _lock_easyocr_execucao:
+                with _recurso_cpu_pesada("easyocr-fallback-zerodivision"):
+                    _texto_v81 = _ocr_texto_bruto(_img, _reader)
+            _linhas_v81 = [l.strip() for l in (_texto_v81 or "").split("\n") if l.strip()]
+            _titulo_v81 = (
+                _normalizar_aspas_ocr(_linhas_v81[0])
+                if _linhas_v81 and len(_linhas_v81[0]) <= 80 else ""
+            )
+            _descricao_v81 = _normalizar_aspas_ocr(
+                "\n".join(_linhas_v81[1:] if _titulo_v81 else _linhas_v81)
+            )
+            _fallback_v81 = {
+                "titulo": _titulo_v81,
+                "descricao": _descricao_v81,
+                "url_exibida": "",
+                "url_final": "",
+                "cta": "",
+                "cta_subtitulo": "",
+                "sitelinks": [],
+                "_debug_bandas": [{
+                    "idx": 0, "y_min": 0, "y_max": 0,
+                    "classe": "fallback_zerodivision", "sep_antes": False,
+                    "texto": "Parser estruturado encontrou divisão por zero; OCR bruto preservado.",
+                    "decisao": "V81 → fallback bruto automático após ZeroDivisionError",
+                }],
+            }
+            # Mesmo que nenhum texto seja legível, a extração RODOU. Isso
+            # evita que uma imagem válida fique presa na fila para sempre.
+            return (_fallback_v81, None) if retornar_diagnostico else _fallback_v81
+        except Exception as _e_fb_v81:
+            _diag = {
+                "etapa": _etapa_ocr_diag,
+                "erro": f"{type(_e_fb_v81).__name__}: {_e_fb_v81}",
+                "erro_original": f"ZeroDivisionError: {e}",
+                "traceback_original": _trace_v81[-6000:],
+                "url": url_imagem,
+            }
+            print(f"[OCR-DEBUG] fallback após ZeroDivisionError também falhou: {_e_fb_v81!r}", flush=True)
+            return (None, _diag) if retornar_diagnostico else None
     except Exception as e:
+        import traceback as _tb_diag_v81
         _diag = {
             "etapa": _etapa_ocr_diag,
             "erro": f"{type(e).__name__}: {e}",
+            "traceback": _tb_diag_v81.format_exc()[-6000:],
             "url": url_imagem,
         }
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}", flush=True)

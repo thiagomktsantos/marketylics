@@ -7380,14 +7380,38 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None) ->
         print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r} formato={formato!r}: {e!r}", flush=True)
         return 0
 
+def _detalhes_atividade_ocr(atividade_id: str) -> dict:
+    """Lê o checkpoint persistido da atividade de OCR.
+
+    V74: o progresso não pode voltar para 0 quando somente a última imagem
+    falha e a fila é retomada. O banco é a fonte do checkpoint, não a thread.
+    """
+    if not atividade_id:
+        return {}
+    try:
+        _r = (supabase.table("atividades").select("status,detalhes")
+              .eq("id", atividade_id).limit(1).execute())
+        return ((_r.data or [{}])[0].get("detalhes") or {})
+    except Exception:
+        return {}
+
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
     """Processa a fila de OCR de UMA empresa até esvaziar — mesmo padrão
     (e mesma correção de loop infinito) de _transcrever_pendentes_background:
     cada linha só é tentada UMA VEZ por execução desta thread; sucesso ou
     falha, ela não volta pra fila até a próxima chamada."""
     _chave_ativa = (user_id, empresa)
-    processadas = 0
-    total = _contar_ocr_pendentes(user_id, empresa)
+    # V74 — retoma do checkpoint persistido. Se 2/3 já terminaram e a 3ª
+    # falhou, a nova tentativa começa em 2/3 (não em 0/3).
+    _checkpoint_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
+    processadas = int(_checkpoint_ocr.get("processadas") or 0)
+    _pendentes_inicio = _contar_ocr_pendentes(user_id, empresa)
+    total = max(int(_checkpoint_ocr.get("total") or 0), processadas + _pendentes_inicio)
+    if atividade_id:
+        atualizar_atividade(atividade_id, "em_andamento", {
+            "empresa": empresa, "processadas": processadas, "total": total,
+            "ultimo_heartbeat_em": _agora_iso(),
+        })
     _ids_tentados_neste_run = set()
     _ids_falharam = []
     try:
@@ -7410,6 +7434,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             pendentes = res.data or []
             if not pendentes:
                 break
+            # O total desta execução é estável. Não recalcula o lote a partir
+            # do zero a cada passagem, pois isso fazia o progresso regredir.
             total_real = processadas + _contar_ocr_pendentes(user_id, empresa)
             if total_real > total:
                 total = total_real
@@ -7428,7 +7454,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     # fazia a verificação de segurança dizer "tudo certo"
                     # com imagens que claramente tinham texto na tela.
                     _ids_falharam.append(str(midia["id"]))
-                    processadas += 1
+                    # V74: tentativa com erro NÃO é "processada". Mantém, por
+                    # exemplo, 2/3 e deixa a terceira pendente para retomar.
                     if atividade_id:
                         atualizar_atividade(atividade_id, "em_andamento", {
                             "empresa": empresa,
@@ -7438,6 +7465,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                         })
                     continue
                 texto = _achatar_ocr_estruturado(_estruturado)
+                _gravou_ocr = False
                 try:
                     supabase.table("midias").update({
                         "ocr_texto": texto or "",
@@ -7446,9 +7474,11 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                             if _ocr_estruturado_tem_conteudo(_estruturado) else None
                         ),
                     }).eq("id", midia["id"]).execute()
+                    _gravou_ocr = True
                 except Exception:
                     _ids_falharam.append(str(midia["id"]))
-                processadas += 1
+                if _gravou_ocr:
+                    processadas += 1
                 if atividade_id:
                     atualizar_atividade(atividade_id, "em_andamento", {
                         "empresa": empresa,
@@ -7463,7 +7493,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "aviso": (
-                        f"{len(_ids_falharam)} de {processadas} imagens não puderam ser "
+                        f"{len(_ids_falharam)} imagem(ns) não puderam ser processadas; "
+                        f"{processadas} de {max(total, processadas)} foram concluídas. "
                         f"processadas agora (falha de rede/IA ao ler a imagem) — "
                         f"continuam pendentes e serão tentadas de novo automaticamente "
                         f"(ou clique 'Refazer')."
@@ -7569,13 +7600,28 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
         return
     print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
+    _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
     if atividade_id:
-        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "processadas": 0, "total": total})
+        # V74 — NUNCA zera um checkpoint existente. Se estava 2/3, a
+        # retomada permanece 2/3 e só a mídia pendente volta para a fila.
+        _feitas_ocr = int(_det_ocr.get("processadas") or 0)
+        _total_ocr = max(int(_det_ocr.get("total") or 0), _feitas_ocr + total)
+        atualizar_atividade(atividade_id, "na_fila", {
+            "empresa": empresa, "processadas": _feitas_ocr, "total": _total_ocr,
+            "mensagem_fila": "Aguardando a vez de continuar o OCR.",
+        })
     else:
         atividade_id = criar_atividade(
             user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
-            {"empresa": empresa, "processadas": 0, "total": total},
+            {"empresa": empresa, "processadas": 0, "total": total,
+             "mensagem_fila": "Aguardando a vez de iniciar o OCR."},
         )
+        # criar_atividade pode nascer pendente conforme implementação antiga;
+        # normaliza explicitamente para o novo estado da fila.
+        atualizar_atividade(atividade_id, "na_fila", {
+            "empresa": empresa, "processadas": 0, "total": total,
+            "mensagem_fila": "Aguardando a vez de iniciar o OCR.",
+        })
     _fila_ocr_global.put((user_id, empresa, atividade_id))
     print(
         f"[OCR-DEBUG] enfileirado no worker global: empresa={empresa!r} fila={_fila_ocr_global.qsize()}",
@@ -7738,13 +7784,13 @@ def iniciar_transcricao_reels_pendente_background(user_id: str):
 #  LOG DE ATIVIDADES (sino de notificações)
 # ---------------------------------------------------
 # Registra ações de longa duração (coletas, migrações) com status
-# pendente → em_andamento → concluido/erro, pra exibir no sino da
+# na_fila → em_andamento → concluido/erro, pra exibir no sino da
 # sidebar e, mais pra frente, servir de base pro item 3 (jobs).
 
-def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None, status: str = "em_andamento") -> str:
+def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None, status: str = "na_fila") -> str:
     """Cria um registro de atividade e devolve o id (pra depois atualizar).
-    `status` default é "em_andamento" (caso de uso original: processo que
-    ainda vai rodar e será atualizado depois via atualizar_atividade). Pode
+    `status` default é "na_fila": o registro nasce aguardando sua vez e muda
+    para "em_andamento" assim que o worker realmente começa/processa. Pode
     ser criada já "concluido" pra fatos instantâneos que não têm uma etapa
     de processamento depois (ex: alerta de posts novos detectados)."""
     try:
@@ -7763,7 +7809,7 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
         return None
 
 def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
-    """Atualiza o status de uma atividade (concluido/erro/em_andamento).
+    """Atualiza o status de uma atividade (concluido/erro/na_fila/em_andamento).
 
     Statuses terminais ("concluido"/"erro") tentam de novo com backoff
     antes de desistir. É essa chamada que "fecha" o card pro usuário — se
@@ -7775,7 +7821,7 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     automático existente só cobre `migracao_midia`), então essa é a
     última chance de fechar o card corretamente.
 
-    Statuses intermediários (ex: "em_andamento" usado pra progresso
+    Statuses intermediários (ex: "na_fila"/"em_andamento" usado pra progresso
     dentro de loops) tentam só uma vez — perder um ping de progresso não
     é grave (o próximo substitui), e não vale a pena atrasar um loop que
     roda várias vezes por segundo.
@@ -7980,6 +8026,7 @@ def resumo_status_notificacoes(user_id: str) -> dict:
     cont = {
         "todos": 0,
         "em_andamento": 0,
+        "na_fila": 0,
         "pendente": 0,
         "concluido": 0,
         "concluido_com_erro": 0,
@@ -8001,6 +8048,9 @@ def resumo_status_notificacoes(user_id: str) -> dict:
             st_a = a.get("status") or "pendente"
             if st_a == "em_andamento":
                 cont["em_andamento"] += 1
+            elif st_a == "na_fila":
+                cont["na_fila"] += 1
+                cont["em_andamento"] += 1  # agrupamento visual Andamento = fila + processando
             elif st_a == "pendente":
                 cont["pendente"] += 1
             elif st_a == "erro":
@@ -8040,7 +8090,7 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
             supabase.table("atividades")
             .select("*")
             .eq("user_id", user_id)
-            .in_("status", ["pendente", "em_andamento", "erro"])
+            .in_("status", ["pendente", "na_fila", "em_andamento", "erro"])
             .order("criado_em", desc=True)
             .limit(300)
             .execute()
@@ -8076,7 +8126,7 @@ def resumo_sino_atividades(user_id: str) -> dict:
             supabase.table("atividades")
             .select("status, lida")
             .eq("user_id", user_id)
-            .in_("status", ["pendente", "em_andamento", "erro"])
+            .in_("status", ["pendente", "na_fila", "em_andamento", "erro"])
             .execute()
         )
         linhas = res.data or []
@@ -8095,11 +8145,13 @@ _ATIVIDADE_STATUS_UI = {
         "path": "M12,20a8,8 0 1,1 0,-16a8,8 0 0,1 0,16M12,2a10,10 0 1,0 0,20a10,10 0 0,0 0,-20M12.5,7h-1.5v6l5.2,3.1 0.75,-1.23 -4.45,-2.64Z",
         "cor": "#8a97ab", "label": "Pendente",
     },
+    "na_fila": {
+        "path": "M12,20a8,8 0 1,1 0,-16a8,8 0 0,1 0,16M12,2a10,10 0 1,0 0,20a10,10 0 0,0 0,-20M12.5,7h-1.5v6l5.2,3.1 0.75,-1.23 -4.45,-2.64Z",
+        "cor": "#8a97ab", "label": "Na fila",
+    },
     "em_andamento": {
         "path": "M12,4V2A10,10 0 0,0 2,12H4A8,8 0 0,1 12,4M12,4A8,8 0 0,1 20,12H22A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12H2A10,10 0 0,0 12,22A10,10 0 0,0 22,12H20A8,8 0 0,1 12,20",
-        # âmbar (em vez do azul antigo) — cor consistente com o sino, onde
-        # amarelo agora sinaliza "algo em andamento/incompleto".
-        "cor": "#f59e0b", "label": "Em andamento",
+        "cor": "#f59e0b", "label": "Processando",
     },
     "concluido": {
         "path": "M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z",
@@ -8233,7 +8285,7 @@ def _atividade_migracao_aberta_id(user_id: str, empresa: str, plataforma: str = 
             .select("id, detalhes")
             .eq("user_id", user_id)
             .eq("tipo", "migracao_midia")
-            .in_("status", ["pendente", "em_andamento"])
+            .in_("status", ["pendente", "na_fila", "em_andamento"])
             .order("criado_em", desc=True)
             .execute()
         )
@@ -8308,7 +8360,7 @@ def _atividade_transcricao_aberta_id(user_id: str, empresa: str):
             .select("id, detalhes")
             .eq("user_id", user_id)
             .eq("tipo", "transcricao_video")
-            .in_("status", ["pendente", "em_andamento"])
+            .in_("status", ["pendente", "na_fila", "em_andamento"])
             .order("criado_em", desc=True)
             .execute()
         )
@@ -20172,7 +20224,7 @@ elif st.session_state.pagina == "ads":
         st.session_state["_ads_ultima_atividade_id_vista"] = (
             _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
         )
-        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "em_andamento"):
+        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento"):
             # Chegou na página com uma coleta já rodando (ex: iniciada
             # antes de um refresh) — garante que o polling seja retomado.
             st.session_state["_coleta_ads_em_andamento"] = True
@@ -20209,7 +20261,7 @@ elif st.session_state.pagina == "ads":
         m["id"] for m in _migracoes_midia if m.get("status") in ("concluido", "erro")
     }
     _migracao_em_andamento = any(
-        m.get("status") in ("pendente", "em_andamento") for m in _migracoes_midia
+        m.get("status") in ("pendente", "na_fila", "em_andamento") for m in _migracoes_midia
     )
 
     if "_ads_migracao_ids_vistos" not in st.session_state:
@@ -25907,7 +25959,7 @@ elif st.session_state.pagina == "google_ads":
         st.session_state["_gads_ultima_atividade_id_vista"] = (
             _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
         )
-        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "em_andamento"):
+        if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento"):
             # Chegou na página com uma coleta já rodando (ex: iniciada
             # antes de um refresh) — garante que o polling seja retomado.
             st.session_state["_coleta_gads_em_andamento"] = True
@@ -25944,7 +25996,7 @@ elif st.session_state.pagina == "google_ads":
         m["id"] for m in _migracoes_midia if m.get("status") in ("concluido", "erro")
     }
     _migracao_em_andamento = any(
-        m.get("status") in ("pendente", "em_andamento") for m in _migracoes_midia
+        m.get("status") in ("pendente", "na_fila", "em_andamento") for m in _migracoes_midia
     )
 
     if "_gads_migracao_ids_vistos" not in st.session_state:
@@ -37855,7 +37907,7 @@ html, body { background: transparent; overflow: hidden; }
         _n_erros_nao_lidos = int(_cont_status_notif.get("erro_nao_lido", 0) or 0)
         _STATUS_NOTIF_LABELS = {
             "todos": "Todos os status",
-            "em_andamento": "Em andamento",
+            "em_andamento": "Andamento",
             "pendente": "Pendente",
             "concluido": "Concluído",
             "concluido_com_erro": "Concluído com erros",
@@ -37912,7 +37964,7 @@ html, body { background: transparent; overflow: hidden; }
             if _status_sel != "todos":
                 _st = a.get("status") or "pendente"
                 _com_erro = bool((a.get("detalhes") or {}).get("com_erro"))
-                if _status_sel == "em_andamento" and _st != "em_andamento": return False
+                if _status_sel == "em_andamento" and _st not in ("na_fila", "em_andamento"): return False
                 if _status_sel == "pendente" and _st != "pendente": return False
                 if _status_sel == "erro" and _st != "erro": return False
                 if _status_sel == "concluido_com_erro" and not (_st == "concluido" and _com_erro): return False
@@ -38288,7 +38340,7 @@ html, body { background: transparent; overflow: hidden; }
                 _status_a = a.get("status") or "pendente"
                 _com_erro_a = bool((a.get("detalhes") or {}).get("com_erro"))
                 if _filtro_status_notif == "em_andamento":
-                    return _status_a == "em_andamento"
+                    return _status_a in ("na_fila", "em_andamento")
                 if _filtro_status_notif == "pendente":
                     return _status_a == "pendente"
                 if _filtro_status_notif == "erro":

@@ -2014,7 +2014,7 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
         linhas.append(" ".join(t for _bbox, t in _grupo))
     return "\n".join(linhas)
 
-_REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|sponsoris[ée])$", re.IGNORECASE)
+_REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])$", re.IGNORECASE)
 # Mesmo rótulo, mas como PREFIXO da linha (não a linha inteira). Cobre
 # o caso em que "Patrocinado" cai grudado, na MESMA banda de cor, com
 # a linha seguinte (nome da página/anunciante) — gap vertical pequeno
@@ -2027,7 +2027,7 @@ _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|sponsori
 # num anúncio real da BuyTicket Brasil, ver print reportado pelo
 # usuário). `[\s:\-]*` absorve o espaço/pontuação residual que
 # costuma sobrar entre o rótulo e o texto seguinte.
-_REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|sponsoris[ée])", re.IGNORECASE)
+_REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])", re.IGNORECASE)
 # Formato de domínio/URL: precisa ter pelo menos um "." separando
 # letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
 # distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
@@ -3618,6 +3618,13 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     # de "|" e antes de uma palavra. Assim, não mexe em preços legítimos
     # ("$ 50"), e-mails/handles ("@usuario") nem em outros usos reais.
     texto = re.sub(r"(?<=\|)\s*[$@]\s+(?=[A-Za-zÀ-ÿ])", " ", texto)
+
+    # V52 — corrige um ruído composto observado em descrições de anúncios:
+    # o ponto final entre duas frases pode ser lido como "_," (ex.:
+    # "Descubra agora_, A TicketSwap..."). Quando esse padrão aparece entre
+    # uma palavra e o início claro de uma nova frase em maiúscula, restaura
+    # o ponto. A restrição evita mexer em underscores legítimos de nomes/URLs.
+    texto = re.sub(r"(?<=\w)_+\s*,\s+(?=[A-ZÀ-Ý])", ". ", texto)
 
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
 
@@ -6532,6 +6539,128 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         descricao_sl = _normalizar_aspas_ocr(" ".join(l for l in linhas_sl if l).strip())
         if titulo_sl:
             resultado["sitelinks"].append({"titulo": _normalizar_aspas_ocr(titulo_sl), "descricao": descricao_sl})
+
+    # V51 — pós-processamento restrito aos anúncios TicketSwap para repor
+    # separadores verticais e intervalos de data que o EasyOCR costuma
+    # fragmentar/embaralhar nesse layout específico.
+    resultado = _corrigir_estrutura_ticketswap_ocr(resultado, empresa=empresa)
+    return resultado
+
+
+def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> dict:
+    """V51 — corrige artefatos estruturais recorrentes dos anúncios TicketSwap.
+
+    O Google usa muitos separadores verticais (``|``) nos headlines e
+    descrições da TicketSwap. O EasyOCR às vezes: (1) lê uma barra como uma
+    letra isolada (ex.: ``| P Porto``), (2) perde a barra antes do ``TS`` e
+    (3) desloca o segundo dia de um intervalo de datas para perto da cidade,
+    deixando ruído ``1 ~`` no lugar do travessão.
+
+    As correções abaixo só rodam quando a empresa/URL é TicketSwap e exigem
+    padrões estruturais fortes, para não alterar anúncios de outras marcas.
+    """
+    if not isinstance(resultado, dict):
+        return resultado
+    _empresa_norm = re.sub(r"[^a-z0-9]+", "", (empresa or "").lower())
+    _url_norm = (resultado.get("url_exibida") or "").lower()
+    if "ticketswap" not in _empresa_norm and "ticketswap" not in _url_norm:
+        return resultado
+
+    titulo = re.sub(r"\s+", " ", (resultado.get("titulo") or "").strip())
+    descricao = re.sub(r"\s+", " ", (resultado.get("descricao") or "").strip())
+
+    # V53 — TicketSwap Alemanha. O EasyOCR confunde a aspa alemã de
+    # abertura „ com uma vírgula logo após "für" (caso real:
+    # `Tickets für, Frei.Wild"`). Quando existe a aspa de fechamento
+    # depois do nome, recompõe o par como aspas duplas normais. Restrito
+    # a TicketSwap e ao padrão linguístico alemão, para não transformar
+    # vírgulas reais em outros anúncios.
+    _eh_ticketswap_de = bool(re.search(r"ticketswap\.de(?:/|$)", _url_norm, re.IGNORECASE))
+    if _eh_ticketswap_de:
+        _rx_fuer_nome = re.compile(r'(?i)\bfür\s*,\s*([^"|]{2,80}?)"(?=\s*(?:\||kaufen|verkaufen|$))')
+        titulo = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', titulo)
+        descricao = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', descricao)
+
+        # No mesmo layout, os separadores verticais entre a ação, o local
+        # e a data podem sumir completamente no OCR. Exige termos fortes
+        # do anúncio TicketSwap DE antes de recolocar os pipes.
+        descricao = re.sub(
+            r'(?i)(\bund verkaufen)\s+(?=(?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)',
+            r'\1 | ',
+            descricao,
+        )
+        descricao = re.sub(
+            r'((?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)[^|]{2,80}?)\s+(?=(?:Mo|Di|Mi|Do|Fr|Sa|So)\.,\s*\d)',
+            r'\1 | ',
+            descricao,
+            flags=re.IGNORECASE,
+        )
+
+    # Barra vertical confundida com uma letra P isolada logo depois de outra
+    # barra. Caso real: ``Primavera Sound 2026 | P Porto``. Exige ano antes
+    # e palavra de lugar iniciada por maiúscula depois, reduzindo falsos
+    # positivos em textos normais.
+    titulo = re.sub(
+        r"(\b20\d{2})\s*\|\s*P\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\b",
+        r"\1 | \2 |",
+        titulo,
+    )
+
+    # Em headlines TicketSwap o sufixo curto ``| TS`` é muito comum e a
+    # barra pode desaparecer. Só repõe quando TS está literalmente no FIM.
+    titulo = re.sub(
+        r"(?i)(\b(?:bilhetes|tickets))\s+TS$",
+        r"\1 | TS",
+        titulo,
+    )
+
+    # Se uma cidade/termo curto ficou entre duas partes do headline e a barra
+    # posterior sumiu, repõe apenas antes de padrões muito típicos de segunda
+    # metade do título TicketSwap. Ex.: ``| Porto Compra e vende...``.
+    titulo = re.sub(
+        r"(\|\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+(?=(?:Compra e vende|Compre|Buy & sell|Koop en verkoop|Kaufe und verkaufe)\b)",
+        r"\1 | ",
+        titulo,
+        flags=re.IGNORECASE,
+    )
+
+    # Reparo estrutural de intervalo de datas que o OCR embaralha numa mesma
+    # linha. Exemplo real:
+    #   Porto 14/06. NOS Primavera Sound, Porto | 11/06 1 ~
+    # original:
+    #   Porto | NOS Primavera Sound, Porto | 11/06 – 14/06.
+    # Só aplica quando há exatamente esse formato de "data final deslocada"
+    # + ruído ``1 ~`` e quando as datas são do mesmo mês e a primeira data
+    # cronológica é menor que a segunda.
+    _rx_data_deslocada = re.compile(
+        r"(?P<local>[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+"
+        r"(?P<data_fim>\d{1,2}/\d{2})\.\s+"
+        r"(?P<miolo>[^|]{3,100}?)\s*\|\s*"
+        r"(?P<data_ini>\d{1,2}/\d{2})\s+(?:1\s*)?[~\-–—]+"
+    )
+
+    def _repor_intervalo(m):
+        try:
+            di, mi = [int(x) for x in m.group("data_ini").split("/")]
+            df, mf = [int(x) for x in m.group("data_fim").split("/")]
+            if mi != mf or di >= df:
+                return m.group(0)
+        except Exception:
+            return m.group(0)
+        return (
+            f"{m.group('local')} | {m.group('miolo').strip()} | "
+            f"{m.group('data_ini')} – {m.group('data_fim')}."
+        )
+
+    descricao = _rx_data_deslocada.sub(_repor_intervalo, descricao)
+
+    # Limpa restos isolados que podem sobrar no fim depois da recuperação de
+    # separadores/data, sem tocar em hífen/travessão que faça parte de frase.
+    descricao = re.sub(r"\s+(?:1\s*)?[~^]+\s*$", "", descricao).strip()
+    descricao = re.sub(r"\s+-\s*$", "", descricao).strip()
+
+    resultado["titulo"] = titulo
+    resultado["descricao"] = descricao
     return resultado
 
 def _extrair_texto_paddleocr(url_imagem: str):

@@ -2014,7 +2014,7 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
         linhas.append(" ".join(t for _bbox, t in _grupo))
     return "\n".join(linhas)
 
-_REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored)$", re.IGNORECASE)
+_REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|sponsoris[ée])$", re.IGNORECASE)
 # Mesmo rótulo, mas como PREFIXO da linha (não a linha inteira). Cobre
 # o caso em que "Patrocinado" cai grudado, na MESMA banda de cor, com
 # a linha seguinte (nome da página/anunciante) — gap vertical pequeno
@@ -2027,7 +2027,7 @@ _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored)$", re.IGNORECASE)
 # num anúncio real da BuyTicket Brasil, ver print reportado pelo
 # usuário). `[\s:\-]*` absorve o espaço/pontuação residual que
 # costuma sobrar entre o rótulo e o texto seguinte.
-_REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored)", re.IGNORECASE)
+_REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|sponsoris[ée])", re.IGNORECASE)
 # Formato de domínio/URL: precisa ter pelo menos um "." separando
 # letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
 # distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
@@ -2422,11 +2422,35 @@ def _normalizar_url_exibida(texto: str) -> str:
     # reconstrói o TLD como ".br" fixo sempre que o grupo 2 bate (não usa
     # o separador original), aceitar "_" aqui não muda nada pro caso
     # ".com.br" que já funcionava — só resolve o caso novo do "_".
-    _match_tld = re.search(r"\.?(com|net|org|io|shop|app)([._]?br)?(?=[l/]|$)", texto, flags=re.IGNORECASE)
+    # V45 — TLDs internacionais / ccTLDs.
+    #
+    # Alguns anúncios da TicketSwap usam domínios locais (.fr, .de, .nl,
+    # .pt etc.) e o EasyOCR frequentemente perde JUSTAMENTE o ponto antes
+    # do TLD e/ou lê a barra final como "l":
+    #   www.ticketswapfrl          -> www.ticketswap.fr/
+    #   http://www.ticketswapdel   -> http://www.ticketswap.de/
+    #   www.ticketswapptl          -> www.ticketswap.pt/
+    #
+    # O normalizador antigo só conhecia TLDs genéricos (com/net/org/io/
+    # shop/app) e .com.br, por isso esses domínios internacionais passavam
+    # sem correção. A lista abaixo inclui TLDs genéricos e ccTLDs comuns
+    # vistos em campanhas internacionais. O lookahead continua exigindo
+    # barra, "l" (barra lida errado) ou fim da linha, evitando casar TLD
+    # no meio de palavras comuns.
+    _tlds_ocr = (
+        "com|net|org|io|shop|app|"
+        "fr|de|nl|pt|be|es|it|uk|ie|at|ch|pl|cz|dk|se|no|fi|"
+        "br|us|ca|au|nz|mx|ar|cl|co|pe|uy|za|jp|kr|sg|in"
+    )
+    _match_tld = re.search(
+        rf"\.?({_tlds_ocr})([._]?br)?(?=[l/]|$)",
+        texto,
+        flags=re.IGNORECASE,
+    )
     if _match_tld:
         _antes, _resto = texto[:_match_tld.start()], texto[_match_tld.end():]
         _tld = _match_tld.group(1).lower()
-        if _match_tld.group(2):
+        if _match_tld.group(2) and _tld != "br":
             _tld += ".br"
         if _resto[:1].lower() == "l":
             _resto = _resto[1:]
@@ -5169,10 +5193,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         idx = 1
     elif _texto_apos_patrocinado:
         _debug_bandas[0]["decisao"] = (
-            f"'Patrocinado' grudado no início — removido, resto tratado como cabeçalho: {_texto_apos_patrocinado!r}"
+            f"rótulo de anúncio patrocinado grudado no início — removido, resto tratado como cabeçalho: {_texto_apos_patrocinado!r}"
         )
     else:
-        _debug_bandas[0]["decisao"] = "não é 'patrocinado'"
+        _debug_bandas[0]["decisao"] = "não é rótulo de anúncio patrocinado"
 
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
     # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
@@ -5610,6 +5634,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # SUBTÍTULO do CTA (ex: "pelo app WhatsApp"), não como mais uma
     # linha de descrição do sitelink anterior.
     _cta_aberto = False
+    # V43 — blocos automáticos de avaliação do Google Ads (ex.:
+    # "Rating for ticketswap.com" seguido de "4.5 ★★★★★ (505)") NÃO
+    # pertencem ao texto publicitário. Eles ficam entre a descrição e os
+    # sitelinks/botões e, sem um descarte explícito, podem virar descrição,
+    # CTA ou sitelink. Quando a linha de cabeçalho de rating aparecer,
+    # ignoramos ela e também a próxima banda textual não vazia (nota/estrelas).
+    _ignorar_proxima_linha_rating = False
+    # V44 — alguns anúncios de Busca/TicketSwap chegam com a descrição em
+    # uma tonalidade que o detector de cor classifica como AZUL, embora
+    # visualmente ela seja cinza. Isso fazia cada linha da descrição virar
+    # um novo sitelink. Quando uma linha textual logo após o headline começa
+    # com “Buy & sell”/“Buy and sell”, tratamos a partir dali como descrição
+    # corrida até a próxima estrutura de botões/separadores. A regra é
+    # estrutural + textual e não depende do nome TicketSwap.
+    _descricao_busca_forcada = False
     # Altura TÍPICA de uma linha de texto normal deste mesmo anúncio
     # (mediana das alturas de todas as bandas — robusta a um único
     # outlier). Usada logo abaixo como referência pra detectar bandas
@@ -5783,6 +5822,60 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             ).strip()
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
         _debug_bandas[idx]["texto"] = texto
+
+        # V43 — remove o bloco "Rating for <domínio>" + a linha logo abaixo
+        # (nota, estrelas e quantidade de avaliações). É um elemento nativo
+        # do Google, não conteúdo do anunciante. O descarte é estrutural e
+        # genérico: não depende de TicketSwap nem de um domínio específico.
+        _texto_rating_norm = re.sub(r"\s+", " ", (texto or "").strip())
+        if re.match(r"(?i)^rating\s+for\b", _texto_rating_norm):
+            _ignorar_proxima_linha_rating = True
+            _debug_bandas[idx]["decisao"] = "rating do Google → descartado (cabeçalho de avaliação)"
+            idx += 1
+            continue
+
+        if _ignorar_proxima_linha_rating and _texto_rating_norm:
+            # A linha normalmente é algo como "4.5 ★★★★★ (505)". Mesmo se o
+            # OCR perder as estrelas e deixar só "4.5 (505)", continuamos
+            # descartando porque é a primeira linha textual após o cabeçalho.
+            _ignorar_proxima_linha_rating = False
+            _debug_bandas[idx]["decisao"] = "rating do Google → descartado (nota/estrelas/avaliações)"
+            idx += 1
+            continue
+
+        # V44 — descrição de anúncio de Busca que foi classificada como azul.
+        # Caso real: após o headline "Concertgebouw Brugge - Wed, Oct 29,
+        # 8:00 PM", as linhas "Buy & sell tickets for Kim Wilde |",
+        # "Concertgebouw Brugge, Bruges |" e a data/hora seguinte chegaram
+        # com cor azul/mista e viravam sitelinks. O começo “Buy & sell” é um
+        # forte sinal de prosa descritiva quando já existe um headline aberto.
+        # Uma vez ativado, continua anexando as bandas seguintes SEM separador
+        # como descrição, independentemente de terem sido classificadas como
+        # azul/cinza/misto. Fileira de botões é tratada antes deste ponto e
+        # encerra o par normalmente, portanto não contamina os sitelinks.
+        _texto_desc_norm = re.sub(r"\s+", " ", (texto or "").strip())
+        if (
+            par_atual is not None
+            and _titulo_ja_reconhecido
+            and re.match(r"(?i)^buy\s*(?:&|and)\s*sell\b", _texto_desc_norm)
+        ):
+            _descricao_busca_forcada = True
+
+        if (
+            _descricao_busca_forcada
+            and par_atual is not None
+            and _texto_desc_norm
+            and not banda.get("sep_antes")
+            and banda["classe"] != "botao"
+        ):
+            par_atual[1].append(texto)
+            _debug_bandas[idx]["decisao"] = (
+                f"{banda['classe']} → descrição de Busca em andamento "
+                "(bloco iniciado por 'Buy & sell'; cor ignorada)"
+            )
+            idx += 1
+            continue
+
         if banda["classe"] == "azul":
             # Linha de "termos relacionados" no fim do anúncio (ex.:
             # "Fórmula 1 · Rock In Rio 2026 · Copa do Mundo 2026") — o

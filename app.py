@@ -2346,9 +2346,13 @@ def _normalizar_url_exibida(texto: str) -> str:
     """
     if not texto:
         return texto
-    # Corrige "http:ll" / "https:ll" -> "http://" / "https://" (item 3)
-    # ANTES do resto, pra não interferir na normalização do "www" que
-    # vem em seguida.
+    # V47 — preserva/recompõe explicitamente o protocolo exibido no anúncio.
+    # Além do caso já validado http:ll, cobre variações comuns do OCR nas
+    # barras/pontuação do protocolo (http;//, http//, http:/, httpl//).
+    # IMPORTANTE: só corrige quando a linha COMEÇA por http/https; nunca
+    # inventa protocolo em uma URL que no criativo mostra apenas www.
+    texto = re.sub(r"^(https?)\s*[;,.]?\s*[:;]?\s*[l|/]{1,3}(?=(?:www|[a-z0-9]))", r"\1://", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"^(https?)l(?=/{1,2}(?:www|[a-z0-9]))", r"\1:", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?):l{1,2}(?=[a-zA-Z0-9])", r"\1://", texto, flags=re.IGNORECASE)
     # Normaliza o prefixo "www" mesmo quando o ponto separador some
     # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
@@ -2763,7 +2767,7 @@ def _detectar_regiao_foto_embutida(img_bgr):
     )
     return (y0, y1, x0, x1)
 
-def _detectar_regiao_grafico_criativo(img_bgr):
+def _detectar_regiao_grafico_criativo(img_bgr, _regiao_foto_precalculada=None):
     """Detecta um bloco de CRIATIVO GRÁFICO (banner/imagem promocional
     embutida no anúncio — comum em anúncio de DISPLAY/gráfico, diferente
     do anúncio de TEXTO da Rede de Pesquisa que o resto deste arquivo
@@ -2842,7 +2846,25 @@ def _detectar_regiao_grafico_criativo(img_bgr):
     altura_total, largura_total = img_bgr.shape[:2]
     img_hsv = _cv2_graf.cvtColor(img_bgr, _cv2_graf.COLOR_BGR2HSV)
     matiz = img_hsv[:, :, 0].astype(_np_graf.int32)
-    saturacao = img_hsv[:, :, 1]
+    saturacao = img_hsv[:, :, 1].copy()
+
+    # V49: se já existe uma FOTO embutida lateral (ex.: thumbnail do
+    # show à direita do título/descrição num anúncio de Busca), não deixe
+    # a diversidade de cores dessa foto enganar o detector de CRIATIVO
+    # GRÁFICO. Antes, uma foto 200x200 à direita deixava várias faixas
+    # horizontais "quentes" e esta função devolvia a largura INTEIRA da
+    # imagem como gráfico; `_detectar_bandas_texto` então apagava também
+    # o título e a descrição reais à esquerda — resultado: só sobrava o
+    # cabeçalho no OCR. A foto já é tratada separadamente por
+    # `_detectar_regiao_foto_embutida`, então aqui zeramos sua saturação
+    # antes de procurar um banner/criativo de largura ampla.
+    _regiao_foto_local = _regiao_foto_precalculada
+    if _regiao_foto_local is None:
+        _regiao_foto_local = _detectar_regiao_foto_embutida(img_bgr)
+    if _regiao_foto_local is not None:
+        _yf0g, _yf1g, _xf0g, _xf1g = _regiao_foto_local
+        saturacao[_yf0g:_yf1g, _xf0g:_xf1g] = 0
+
     matiz_quantizada = matiz // 8
     tam_faixa = 20
     n_faixas = altura_total // tam_faixa
@@ -2960,7 +2982,7 @@ def _detectar_bandas_texto(img_bgr):
     # logo acima, produzindo uma leitura de OCR toda embaralhada. Roda
     # DEPOIS da exclusão de foto acima (independente uma da outra — um
     # anúncio pode ter as duas, ou só uma).
-    _regiao_grafico = _detectar_regiao_grafico_criativo(img_bgr)
+    _regiao_grafico = _detectar_regiao_grafico_criativo(img_bgr, _regiao_foto)
     if _regiao_grafico is not None:
         _yg0, _yg1, _xg0, _xg1 = _regiao_grafico
         nao_branco[_yg0:_yg1, _xg0:_xg1] = False
@@ -3173,7 +3195,13 @@ def _detectar_bandas_texto(img_bgr):
         # comum (baixa saturação, R≈G≈B) — só corta quando confirma que
         # tem cor de verdade ali, não só qualquer tinta.
         x_min_favicon = 0
-        if y_min < _y_limite_favicon:
+        # V49: uma banda AZUL é headline/sitelink, não cabeçalho com
+        # avatar. Se o título começar logo abaixo do cabeçalho, ele ainda
+        # pode cair dentro da janela vertical do favicon; como o próprio
+        # texto azul é saturado, a regra antiga confundia as primeiras
+        # letras do headline com o avatar e cortava ~13% da esquerda.
+        # Nunca aplique o recorte de favicon em banda azul.
+        if y_min < _y_limite_favicon and classe != "azul":
             _regiao_favicon = img_rgb[y_min:y_max + 1, 0:_x_ignorar_quebra]
             if _regiao_favicon.size:
                 _canal_max = _regiao_favicon.max(axis=2).astype(_np_bandas.int16)
@@ -3580,6 +3608,17 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     # está isolado por espaços e cercado por caracteres alfanuméricos.
     texto = re.sub(r"(?<=\w)\s+[~^]\s+(?=\w)", " ", texto)
     texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
+
+    # V48 — remove símbolos espúrios que o EasyOCR insere logo depois de
+    # separadores verticais em descrições de anúncios de Busca. Caso real:
+    #   "TicketSwap | $ Safe & fair ticket resale site | @ Buy & sell..."
+    # Na imagem original existem apenas os separadores "|"; os caracteres
+    # "$" e "@" são ruído de OCR. A regra é deliberadamente restrita:
+    # só remove $/@ quando aparecem como token isolado IMEDIATAMENTE depois
+    # de "|" e antes de uma palavra. Assim, não mexe em preços legítimos
+    # ("$ 50"), e-mails/handles ("@usuario") nem em outros usos reais.
+    texto = re.sub(r"(?<=\|)\s*[$@]\s+(?=[A-Za-zÀ-ÿ])", " ", texto)
+
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
 
     # V11: fallback textual MUITO restrito para uma caixa-ruído que pode
@@ -5471,6 +5510,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # fica só com a versão SEM o dígito líder (a mais limpa).
     def _chave_dedup_dominio(s: str) -> str:
         s2 = re.sub(r"^\d(?=[a-zA-Z])", "", s)
+        # V47: protocolo não muda a identidade da URL para deduplicação.
+        # Assim, se o OCR gerar as duas leituras "www.site.com/" e
+        # "http://www.site.com/", elas entram no mesmo grupo e podemos
+        # preferir abaixo a versão MAIS COMPLETA, com protocolo.
+        s2 = re.sub(r"^https?://", "", s2, flags=re.IGNORECASE)
         s2 = re.sub(r"^www\.", "", s2, flags=re.IGNORECASE)
         return s2.lower()
 
@@ -5489,7 +5533,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     for _k in _ordem_chaves_dominio:
         _candidatos = _grupos_dominio[_k]
         _limpos = [c for c in _candidatos if not _linha_com_digito_lider(c)]
-        _partes_dominio.append(_limpos[0] if _limpos else _candidatos[0])
+        _pool = _limpos if _limpos else _candidatos
+        # V47: quando duas leituras equivalentes existem, preserva a que
+        # contém http:// ou https:// porque é exatamente o que aparece no
+        # anúncio. Se nenhuma tiver protocolo, mantém o comportamento antigo.
+        _com_protocolo = [c for c in _pool if re.match(r"^https?://", c, re.IGNORECASE)]
+        _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
     # Junta as linhas já limpas/normalizadas com quebra de linha (não
     # espaço) pra reproduzir o layout real do Google Ads, onde
     # "kedu.com.br" e "www.kedu.com.br/" aparecem empilhadas em duas
@@ -5854,10 +5903,33 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # azul/cinza/misto. Fileira de botões é tratada antes deste ponto e
         # encerra o par normalmente, portanto não contamina os sitelinks.
         _texto_desc_norm = re.sub(r"\s+", " ", (texto or "").strip())
+
+        # V50 — NÃO transformar em descrição uma continuação azul do próprio
+        # headline só porque ela começa com “Buy & sell”. Caso real:
+        #   Klangkuenstler Presents Outworld |
+        #   Buy & sell tickets | TS
+        # A segunda linha é azul, não tem separador antes, o par ainda não tem
+        # descrição e termina com o identificador curto “| TS”; estruturalmente
+        # ela é continuação do título. A regra V44 era agressiva e ativava a
+        # descrição forçada antes do parser azul ter chance de juntá-la.
+        # Mantemos o comportamento V44 para prosa de descrição como
+        # “Buy & sell tickets for Kim Wilde | ...”, mas liberamos este padrão
+        # curto de headline para seguir pelo fluxo normal de banda azul.
+        _buy_sell_parece_continuacao_titulo = (
+            banda["classe"] == "azul"
+            and not banda.get("sep_antes")
+            and par_atual is not None
+            and not par_atual[1]
+            and bool(re.match(r"(?i)^buy\s*(?:&|and)\s*sell\b", _texto_desc_norm))
+            and bool(re.search(r"(?i)\|\s*(?:TS|TicketSwap)\s*$", _texto_desc_norm))
+            and len(_texto_desc_norm.split()) <= 8
+        )
+
         if (
             par_atual is not None
             and _titulo_ja_reconhecido
             and re.match(r"(?i)^buy\s*(?:&|and)\s*sell\b", _texto_desc_norm)
+            and not _buy_sell_parece_continuacao_titulo
         ):
             _descricao_busca_forcada = True
 

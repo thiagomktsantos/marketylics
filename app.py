@@ -6729,6 +6729,20 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     descricao = _rx_pipe_ruido_local.sub(r"\1 ", descricao)
     descricao = _rx_pipe_ruido_data.sub(r"\1 ", descricao)
 
+    # V61 — TicketSwap: em alguns headlines o EasyOCR lê o próprio traço
+    # vertical do separador como um ``P`` EXTRA mesmo quando o ``|`` real
+    # também foi reconhecido. Caso real:
+    #   Imagine Dragons | P LOOM World Tour
+    # original:
+    #   Imagine Dragons | LOOM World Tour
+    # Remove o P somente imediatamente após ``|`` e quando a próxima palavra
+    # é um token em CAIXA ALTA com pelo menos 3 caracteres (LOOM, ABBA, etc.).
+    # Isso NÃO interfere no reparo antigo ``| P Porto`` porque ``Porto`` não
+    # é caixa alta e continua sendo tratado pela regra específica acima.
+    _rx_pipe_p_extra_caps = re.compile(r"(\|)\s*P\s+(?=[A-ZÀ-Ý0-9]{3,}(?:\s|$))")
+    titulo = _rx_pipe_p_extra_caps.sub(r"\1 ", titulo)
+    descricao = _rx_pipe_p_extra_caps.sub(r"\1 ", descricao)
+
     # Também elimina um hífen/travessão órfão no FIM da descrição quando ele
     # não encerra uma palavra composta, ruído recorrente no corte do anúncio.
     descricao = re.sub(r"\s+[\-–—]+\s*$", "", descricao).strip()
@@ -6851,6 +6865,18 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # separadores/data, sem tocar em hífen/travessão que faça parte de frase.
     descricao = re.sub(r"\s+(?:1\s*)?[~^]+\s*$", "", descricao).strip()
     descricao = re.sub(r"\s+-\s*$", "", descricao).strip()
+
+    # V62 — TicketSwap PT: o EasyOCR pode inserir um ``r`` antes da
+    # conjunção ``e`` em frases muito comuns do anúncio, transformando
+    # ``comprar e vender ingressos`` em ``comprar re vender ingressos``.
+    # A correção é deliberadamente estreita: só altera a sequência exata
+    # comprar + r/re + vender, preservando qualquer uso legítimo de
+    # ``re`` em outros contextos e os demais idiomas da TicketSwap.
+    descricao = re.sub(
+        r"(?i)\bcomprar\s+r(?:e)?\s+vender\b",
+        "comprar e vender",
+        descricao,
+    )
 
     resultado["titulo"] = titulo
     resultado["descricao"] = descricao
@@ -28384,6 +28410,83 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     return ''.join(c for c in s if _ud.category(c) not in ('So','Sm','Sk','Mn')).strip()
                 formatos_disponiveis = sorted(set(_limpar_formato(a["formato"]) for a in gads_list))
 
+                # V63 — filtro por domínio na seção de busca.
+                #
+                # O domínio dos anúncios de Busca/Texto vem do OCR estruturado
+                # (url_exibida). Para não criar opções duplicadas como
+                # "http://www.ticketswap.com/", "www.ticketswap.com/" e
+                # "ticketswap.com", a chave do filtro ignora protocolo, www,
+                # barra/caminho final e caixa. A exibição também usa a forma
+                # limpa, ex.: "ticketswap.com".
+                #
+                # Esta consulta é feita UMA vez para todos os anúncios e o
+                # resultado é reaproveitado mais abaixo na renderização dos
+                # cards, evitando uma segunda consulta idêntica ao Supabase.
+                def _dominio_canonico_filtro(valor):
+                    _v = str(valor or "").strip()
+                    if not _v:
+                        return ""
+                    try:
+                        _v = _normalizar_url_exibida(_v)
+                    except Exception:
+                        pass
+                    _v = re.sub(r"\s+", "", _v).strip().lower()
+                    _v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", _v, flags=re.IGNORECASE)
+                    _v = _v.lstrip("/")
+                    _v = re.sub(r"^www\.", "", _v, flags=re.IGNORECASE)
+                    _v = _v.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+                    _v = _v.rstrip("./|\\")
+                    # evita transformar nome de anunciante (ex.: TicketSwap)
+                    # em opção de domínio; precisa ter TLD reconhecível.
+                    if not re.search(r"\.[a-z]{2,}(?::\d+)?$", _v, re.IGNORECASE):
+                        return ""
+                    return _v
+
+                _urls_img_todos_filtro = list({
+                    (ad.get("images") or [""])[0]
+                    for ad in gads_list
+                    if (ad.get("images") or [""])[0]
+                })
+                _ocr_lote_todos = {}
+                if _urls_img_todos_filtro:
+                    try:
+                        _res_ocr_filtros = (
+                            supabase.table("midias")
+                            .select("url_cdn, ocr_texto, ocr_estruturado")
+                            .in_("url_cdn", _urls_img_todos_filtro)
+                            .execute()
+                        )
+                        for _row_ocr_filtro in (_res_ocr_filtros.data or []):
+                            _u = _row_ocr_filtro.get("url_cdn")
+                            if _u:
+                                _ocr_lote_todos[_u] = _row_ocr_filtro
+                    except Exception:
+                        _ocr_lote_todos = {}
+
+                import json as _json_dominios_filtro
+                _dominios_por_url_img = {}
+                _dominios_disponiveis_set = set()
+                for _u_img, _row_ocr_filtro in _ocr_lote_todos.items():
+                    _estr = _row_ocr_filtro.get("ocr_estruturado")
+                    if _estr and not isinstance(_estr, dict):
+                        try:
+                            _estr = _json_dominios_filtro.loads(_estr)
+                        except Exception:
+                            _estr = None
+                    _doms = set()
+                    if isinstance(_estr, dict):
+                        for _linha_url in str(_estr.get("url_exibida") or "").splitlines():
+                            _d = _dominio_canonico_filtro(_linha_url)
+                            if _d:
+                                _doms.add(_d)
+                    _dominios_por_url_img[_u_img] = _doms
+                    _dominios_disponiveis_set.update(_doms)
+
+                dominios_disponiveis = sorted(_dominios_disponiveis_set)
+                for _ad_filtro_dom in gads_list:
+                    _img_dom = (_ad_filtro_dom.get("images") or [""])[0]
+                    _ad_filtro_dom["_dominios_filtro"] = set(_dominios_por_url_img.get(_img_dom, set()))
+
                 chave_criativo_ads = f"ia_gads_criativos_{sk}"
                 chave_copy_ads     = f"ia_gads_copys_{sk}"
                 chave_geral_ads    = f"ia_gads_geral_{sk}"
@@ -28391,8 +28494,39 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
+                # V63 — campos compactos: a largura de cada controle acompanha
+                # o maior valor possível daquele campo + uma margem. Os pesos
+                # das colunas usam a mesma estimativa para o layout não deixar
+                # selects curtos ocupando espaço desnecessário.
+                _opts_fmt = ["Tipo (todos)"] + formatos_disponiveis
+                _opts_dom = ["Domínio (todos)"] + dominios_disponiveis
+                _opts_status = ["Status (todos)", "Ativos", "Inativos (histórico)"]
+                _opts_ordem = ["Mais recentes", "Mais tempo ativo"]
+                def _largura_campo_px(valores, minimo=120, margem=46, por_char=7.4):
+                    _maior = max([len(str(v)) for v in valores] or [0])
+                    return int(max(minimo, min(360, _maior * por_char + margem)))
+
+                _w_busca = _largura_campo_px(["Pesquisar no copy…"], minimo=190, margem=42)
+                _w_fmt = _largura_campo_px(_opts_fmt, minimo=120)
+                _w_dom = _largura_campo_px(_opts_dom, minimo=145)
+                _w_status = _largura_campo_px(_opts_status, minimo=145)
+                _w_ordem = _largura_campo_px(_opts_ordem, minimo=145)
+                st.markdown(f"""
+                <style>
+                .st-key-gads_busca_{sk} {{max-width:{_w_busca}px !important;}}
+                .st-key-gads_fmt_{sk} {{max-width:{_w_fmt}px !important;}}
+                .st-key-gads_dominio_{sk} {{max-width:{_w_dom}px !important;}}
+                .st-key-gads_status_{sk} {{max-width:{_w_status}px !important;}}
+                .st-key-gads_ordem_{sk} {{max-width:{_w_ordem}px !important;}}
+                </style>
+                """, unsafe_allow_html=True)
+
                 with st.container(key=filtros_key):
-                    fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns([2.6, 2, 2.2, 2.2, 0.6])
+                    # Pesos em proporção aos pixels estimados + uma coluna
+                    # flexível final que absorve o espaço restante.
+                    fcol1, fcol2, fcol3, fcol4, fcol5, fcol6, _fespaco = st.columns(
+                        [_w_busca, _w_fmt, _w_dom, _w_status, _w_ordem, 44, 260]
+                    )
                     with fcol1:
                         busca_texto = st.text_input(
                             "Pesquisar no copy",
@@ -28403,25 +28537,32 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     with fcol2:
                         filtro_fmt = st.selectbox(
                             "Tipo",
-                            ["Tipo (todos)"] + formatos_disponiveis,
+                            _opts_fmt,
                             key=f"gads_fmt_{sk}",
                             label_visibility="collapsed",
                         )
                     with fcol3:
-                        filtro_status = st.selectbox(
-                            "Status",
-                            ["Status (todos)", "Ativos", "Inativos (histórico)"],
-                            key=f"gads_status_{sk}",
+                        filtro_dominio = st.selectbox(
+                            "Domínio",
+                            _opts_dom,
+                            key=f"gads_dominio_{sk}",
                             label_visibility="collapsed",
                         )
                     with fcol4:
-                        filtro_ordem = st.selectbox(
-                            "Ordenar",
-                            ["Mais recentes", "Mais tempo ativo"],
-                            key=f"gads_ordem_{sk}",
+                        filtro_status = st.selectbox(
+                            "Status",
+                            _opts_status,
+                            key=f"gads_status_{sk}",
                             label_visibility="collapsed",
                         )
                     with fcol5:
+                        filtro_ordem = st.selectbox(
+                            "Ordenar",
+                            _opts_ordem,
+                            key=f"gads_ordem_{sk}",
+                            label_visibility="collapsed",
+                        )
+                    with fcol6:
                         icon_url = (
                             "https://raw.githubusercontent.com/thiagomktsantos/marketylics/4f750a3205deb9b8a618997b3b8e300e3c3bf3f3/images/icons/3-Columns.png"
                             if n_cols_atual == 4
@@ -28443,6 +28584,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
+                if filtro_dominio != "Domínio (todos)":
+                    gads_f = [
+                        a for a in gads_f
+                        if filtro_dominio in (a.get("_dominios_filtro") or set())
+                    ]
                 if filtro_status == "Ativos":
                     gads_f = [a for a in gads_f if a.get("ativo", True)]
                 elif filtro_status == "Inativos (histórico)":
@@ -28594,13 +28740,13 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 if _urls_img_cards:
                     try:
                         import json as _json_ocr_cards
-                        _res_ocr = (
-                            supabase.table("midias")
-                            .select("url_cdn, ocr_texto, ocr_estruturado")
-                            .in_("url_cdn", _urls_img_cards)
-                            .execute()
-                        )
-                        for _row in (_res_ocr.data or []):
+                        # V63 — reaproveita a consulta feita antes dos filtros
+                        # para montar o campo Domínio. Assim a página não faz
+                        # duas leituras iguais de `midias` no mesmo rerun.
+                        for _url_consulta in _urls_img_cards:
+                            _row = _ocr_lote_todos.get(_url_consulta)
+                            if not _row:
+                                continue
                             _url_row = _row.get("url_cdn")
                             _val_ocr = _row.get("ocr_texto")
                             if _val_ocr is None:
@@ -28620,11 +28766,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                     except Exception:
                                         pass  # linha com JSON inválido — cai pro fallback de texto corrido
                     except Exception:
-                        # Falha na query em lote: mantém TODAS as URLs como
-                        # pendentes (o set já veio assim por padrão) em vez
-                        # de zerar `_urls_ocr_pendente` — mostrar "Extraindo
-                        # texto…" é mais seguro que afirmar (errado) que o
-                        # Google não disponibilizou o texto.
                         pass
 
                 def _escapar_html_ocr(s: str) -> str:

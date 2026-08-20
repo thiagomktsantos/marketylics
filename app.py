@@ -7835,12 +7835,21 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
     ser criada já "concluido" pra fatos instantâneos que não têm uma etapa
     de processamento depois (ex: alerta de posts novos detectados)."""
     try:
+        # Compatibilidade com o CHECK atual do Supabase: o banco ainda aceita
+        # apenas os status antigos (pendente/em_andamento/concluido/erro).
+        # "na_fila" é um status lógico/visual e é persistido como "pendente"
+        # + detalhes.status_visual="na_fila", evitando violar
+        # atividades_status_check sem exigir migração imediata do banco.
+        _status_db = "pendente" if status == "na_fila" else status
+        _detalhes_db = dict(detalhes or {})
+        if status == "na_fila":
+            _detalhes_db["status_visual"] = "na_fila"
         res = supabase.table("atividades").insert({
             "user_id": user_id,
             "tipo": tipo,
             "titulo": titulo,
-            "status": status,
-            "detalhes": detalhes or {},
+            "status": _status_db,
+            "detalhes": _detalhes_db,
         }).execute()
         _id_criado = res.data[0]["id"] if res.data else None
         print(f"[OCR-DEBUG] criar_atividade tipo={tipo!r} titulo={titulo!r} -> id={_id_criado!r} (res.data vazio={not res.data})", flush=True)
@@ -7870,9 +7879,16 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     if not atividade_id:
         return
     import time
-    payload = {"status": status}
+    # Mesmo mapeamento de compatibilidade usado em criar_atividade().
+    # O status lógico "na_fila" continua visível na UI, mas no banco é
+    # armazenado como "pendente" enquanto o CHECK não for migrado.
+    _status_db = "pendente" if status == "na_fila" else status
+    payload = {"status": _status_db}
     if detalhes is not None:
-        payload["detalhes"] = detalhes
+        _detalhes_db = dict(detalhes or {})
+        if status == "na_fila":
+            _detalhes_db["status_visual"] = "na_fila"
+        payload["detalhes"] = _detalhes_db
 
     _eh_terminal = status in ("concluido", "erro")
     _tentativas = 5 if _eh_terminal else 1
@@ -8049,6 +8065,20 @@ def _invalidar_cache_notificacoes_sessao():
     except Exception:
         pass
 
+def _status_logico_atividade(a: dict) -> str:
+    """Retorna o status exibido na UI sem depender de migração do CHECK do banco.
+
+    Enquanto `atividades.status` não aceitar `na_fila`, filas novas são salvas
+    como `pendente` com `detalhes.status_visual = "na_fila"`. Status reais
+    diferentes de pendente sempre prevalecem (ex.: em_andamento/concluido/erro).
+    """
+    _st_db = (a or {}).get("status") or "pendente"
+    if _st_db == "pendente":
+        _sv = ((a or {}).get("detalhes") or {}).get("status_visual")
+        if _sv == "na_fila":
+            return "na_fila"
+    return _st_db
+
 def resumo_status_notificacoes(user_id: str) -> dict:
     """Conta TODAS as notificações por status para alimentar o filtro.
 
@@ -8086,7 +8116,7 @@ def resumo_status_notificacoes(user_id: str) -> dict:
         )
         for a in (res.data or []):
             cont["todos"] += 1
-            st_a = a.get("status") or "pendente"
+            st_a = _status_logico_atividade(a)
             if st_a == "em_andamento":
                 cont["em_andamento"] += 1
             elif st_a == "na_fila":
@@ -8143,6 +8173,11 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
                 por_id[aid] = a
         itens = list(por_id.values())
         itens.sort(key=lambda a: a.get("criado_em") or "", reverse=True)
+        # Normaliza somente a cópia usada pela UI: fila persistida como
+        # pendente + status_visual passa a aparecer como "na_fila".
+        for _a in itens:
+            if isinstance(_a, dict):
+                _a["status"] = _status_logico_atividade(_a)
         _notif_cache_set(_cache_key_lista, {"user_id": str(user_id), "limite": int(limite_recentes), "itens": list(itens)})
         return itens
     except Exception as e:
@@ -8165,14 +8200,14 @@ def resumo_sino_atividades(user_id: str) -> dict:
     try:
         res = (
             supabase.table("atividades")
-            .select("status, lida")
+            .select("status, lida, detalhes")
             .eq("user_id", user_id)
             .in_("status", ["pendente", "na_fila", "em_andamento", "erro"])
             .execute()
         )
         linhas = res.data or []
-        n_erro = sum(1 for r in linhas if r.get("status") == "erro" and not r.get("lida"))
-        n_andamento = sum(1 for r in linhas if r.get("status") != "erro")
+        n_erro = sum(1 for r in linhas if _status_logico_atividade(r) == "erro" and not r.get("lida"))
+        n_andamento = sum(1 for r in linhas if _status_logico_atividade(r) != "erro")
         return {"total": n_erro + n_andamento, "erro": n_erro, "andamento": n_andamento}
     except Exception:
         return {"total": 0, "erro": 0, "andamento": 0}

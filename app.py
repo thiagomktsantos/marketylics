@@ -20225,7 +20225,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         _fn = ""
         if _ultima_ts:
             _d = {k: v for k, v in st.session_state.ads_cache.items()}
-            _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+            _djs = _json.dumps(list(_d.values()), ensure_ascii=False, default=str).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
             _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
  
         _emp_ativa_nome = st.session_state.get("ads_empresa_ativa", "")
@@ -26156,7 +26156,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         _fn = ""
         if _ultima_ts:
             _d = {k: v for k, v in st.session_state.gads_cache.items()}
-            _djs = _json.dumps(list(_d.values()), ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
+            _djs = _json.dumps(list(_d.values()), ensure_ascii=False, default=str).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'")
             _fn = f'dados_gads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
  
         _emp_ativa_nome = st.session_state.get("gads_empresa_ativa", "")

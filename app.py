@@ -1669,6 +1669,10 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
     total = _contar_transcricoes_pendentes(user_id, empresa)
     _ids_tentados_neste_run = set()
     _ids_falharam = []
+    # V75 — diagnóstico por mídia. Antes o card só dizia "falha de rede/IA",
+    # o que não permitia saber se o problema era download, arquivo inválido,
+    # inicialização do EasyOCR, leitura OCR ou gravação no banco.
+    _erros_detalhados = []
     _erros_update_amostra = []  # guarda a mensagem real de até 3 falhas, pra diagnosticar a causa (RLS, coluna estourada, etc.) sem precisar de acesso a log de servidor
     try:
         while True:
@@ -6991,7 +6995,7 @@ _OCR_GADS_CAMPOS_VAZIO = {
     "cta": "", "cta_subtitulo": "", "sitelinks": [],
 }
 
-def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
+def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retornar_diagnostico: bool = False):
     """Baixa a imagem (já no nosso R2) e separa, de forma ESTRUTURADA,
     os campos título/descrição/url_exibida/cta/sitelinks de um anúncio
     de TEXTO do Google Ads — sem nenhuma IA generativa, só EasyOCR +
@@ -7022,17 +7026,26 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
     Quem chama essa função trata None como 'tenta de novo depois' — não
     grava nada no banco, deixando `ocr_texto` como NULL (pendente) pra
     essa imagem voltar pra fila na próxima passada."""
+    _etapa_ocr_diag = "download"
     try:
         _img = _baixar_imagem_cv2(url_imagem)
         if _img is None:
+            _diag = {
+                "etapa": "decodificacao",
+                "erro": "A imagem foi baixada, mas o OpenCV não conseguiu decodificar o arquivo.",
+                "url": url_imagem,
+            }
             print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (imagem não decodificou) url={url_imagem!r}", flush=True)
-            return None
+            return (None, _diag) if retornar_diagnostico else None
         import time as _time_ocr_estr
+        _etapa_ocr_diag = "aguardando_easyocr"
         with _lock_easyocr_execucao:
             _espera = _MIN_INTERVALO_OCR_SEG - (_time_ocr_estr.time() - _ultima_chamada_ocr[0])
             if _espera > 0:
                 _time_ocr_estr.sleep(_espera)
+            _etapa_ocr_diag = "inicializacao_easyocr"
             _reader = _get_easyocr()
+            _etapa_ocr_diag = "leitura_ocr"
             with _recurso_cpu_pesada("easyocr-estruturado"):
                 _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
@@ -7046,6 +7059,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
                 # fallback e perdia a URL já extraída corretamente,
                 # jogando tudo cru em "descricao" em vez de manter no
                 # campo certo.
+                _etapa_ocr_diag = "fallback_ocr_bruto"
                 with _recurso_cpu_pesada("easyocr-fallback-bruto"):
                     texto_bruto = _ocr_texto_bruto(_img, _reader)
                 # Heurística mínima pra não perder a separação título/
@@ -7085,10 +7099,15 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None):
                 }
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
-        return _estruturado
+        return (_estruturado, None) if retornar_diagnostico else _estruturado
     except Exception as e:
+        _diag = {
+            "etapa": _etapa_ocr_diag,
+            "erro": f"{type(e).__name__}: {e}",
+            "url": url_imagem,
+        }
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}", flush=True)
-        return None
+        return (None, _diag) if retornar_diagnostico else None
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
     """True se algum campo veio preenchido — usado pra decidir se o
@@ -7419,7 +7438,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             try:
                 _query = (
                     supabase.table("midias")
-                    .select("id, url_cdn")
+                    .select("id, url_cdn, url_origem")
                     .eq("user_id", user_id)
                     .eq("empresa", empresa)
                     .eq("tipo", "imagem")
@@ -7442,7 +7461,9 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             for midia in pendentes:
                 _ids_tentados_neste_run.add(midia["id"])
                 import json as _json_ocr_fila
-                _estruturado = _extrair_ocr_estruturado_imagem(midia["url_cdn"], empresa=empresa)
+                _estruturado, _diag_ocr = _extrair_ocr_estruturado_imagem(
+                    midia["url_cdn"], empresa=empresa, retornar_diagnostico=True
+                )
                 if _estruturado is None:
                     # Falha real na extração (download, Gemini, ou parsing
                     # da resposta) — ver docstring de
@@ -7454,6 +7475,15 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     # fazia a verificação de segurança dizer "tudo certo"
                     # com imagens que claramente tinham texto na tela.
                     _ids_falharam.append(str(midia["id"]))
+                    _diag_ocr = _diag_ocr or {"etapa": "desconhecida", "erro": "A extração OCR retornou vazio sem diagnóstico."}
+                    _erros_detalhados.append({
+                        "id": str(midia.get("id") or ""),
+                        "etapa": str(_diag_ocr.get("etapa") or "desconhecida"),
+                        "erro": str(_diag_ocr.get("erro") or "Falha sem mensagem"),
+                        "url_cdn": str(midia.get("url_cdn") or ""),
+                        "url_origem": str(midia.get("url_origem") or ""),
+                        "tentativa_em": _agora_iso(),
+                    })
                     # V74: tentativa com erro NÃO é "processada". Mantém, por
                     # exemplo, 2/3 e deixa a terceira pendente para retomar.
                     if atividade_id:
@@ -7475,8 +7505,16 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                         ),
                     }).eq("id", midia["id"]).execute()
                     _gravou_ocr = True
-                except Exception:
+                except Exception as _e_gravar_ocr:
                     _ids_falharam.append(str(midia["id"]))
+                    _erros_detalhados.append({
+                        "id": str(midia.get("id") or ""),
+                        "etapa": "gravacao_banco",
+                        "erro": f"{type(_e_gravar_ocr).__name__}: {_e_gravar_ocr}",
+                        "url_cdn": str(midia.get("url_cdn") or ""),
+                        "url_origem": str(midia.get("url_origem") or ""),
+                        "tentativa_em": _agora_iso(),
+                    })
                 if _gravou_ocr:
                     processadas += 1
                 if atividade_id:
@@ -7493,12 +7531,14 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "aviso": (
-                        f"{len(_ids_falharam)} imagem(ns) não puderam ser processadas; "
-                        f"{processadas} de {max(total, processadas)} foram concluídas. "
-                        f"processadas agora (falha de rede/IA ao ler a imagem) — "
-                        f"continuam pendentes e serão tentadas de novo automaticamente "
-                        f"(ou clique 'Refazer')."
+                        f"{len(_ids_falharam)} imagem(ns) falharam nesta tentativa. "
+                        f"{processadas} de {max(total, processadas)} foram concluídas; "
+                        f"{len(_ids_falharam)} continuam pendentes. "
+                        f"Abra 'mais informações' para ver a etapa e o erro de cada imagem. "
+                        f"Elas serão tentadas novamente automaticamente (ou clique 'Refazer')."
                     ),
+                    "erros_detalhados": _erros_detalhados[:20],
+                    "total_erros_detalhados": len(_erros_detalhados),
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
@@ -38502,21 +38542,44 @@ html, body { background: transparent; overflow: hidden; }
                 _detalhes_dict_ativ = _a.get("detalhes") or {}
                 _anuncios_erro_ativ = _detalhes_dict_ativ.get("anuncios_com_erro") or []
                 _total_anuncios_erro_ativ = _detalhes_dict_ativ.get("total_anuncios_com_erro", len(_anuncios_erro_ativ))
-                _tem_mais_info_ativ = _a.get("status") == "erro" and bool(_anuncios_erro_ativ)
+                _erros_ocr_ativ = _detalhes_dict_ativ.get("erros_detalhados") or []
+                _total_erros_ocr_ativ = _detalhes_dict_ativ.get("total_erros_detalhados", len(_erros_ocr_ativ))
+                _tem_mais_info_ativ = (
+                    _a.get("status") == "erro"
+                    and (bool(_anuncios_erro_ativ) or bool(_erros_ocr_ativ))
+                )
 
                 _mais_info_html = ""
                 if _tem_mais_info_ativ:
-                    _itens_erro_html = "".join(
-                        '<li>'
-                        f'<span class="notif-mais-info-id">ID: {(_it.get("id") or "—")}</span> · '
-                        f'{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}'
-                        '</li>'
-                        for _it in _anuncios_erro_ativ
-                    )
-                    _nota_truncado_html = (
-                        f'<div class="notif-mais-info-nota">mostrando {len(_anuncios_erro_ativ)} de {_total_anuncios_erro_ativ}</div>'
-                        if _total_anuncios_erro_ativ > len(_anuncios_erro_ativ) else ""
-                    )
+                    if _erros_ocr_ativ:
+                        def _esc_notif(v):
+                            return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                        _itens_erro_html = "".join(
+                            '<li class="notif-erro-ocr-item">'
+                            f'<div><span class="notif-mais-info-id">Mídia: {_esc_notif(_it.get("id") or "—")}</span></div>'
+                            f'<div><strong>Etapa:</strong> {_esc_notif(_it.get("etapa") or "desconhecida")}</div>'
+                            f'<div><strong>Erro:</strong> {_esc_notif(_it.get("erro") or "Falha sem mensagem")}</div>'
+                            f'<div class="notif-erro-ocr-url"><strong>CDN:</strong> {_esc_notif(_it.get("url_cdn") or "—")}</div>'
+                            f'<div class="notif-erro-ocr-url"><strong>Origem:</strong> {_esc_notif(_it.get("url_origem") or "—")}</div>'
+                            '</li>'
+                            for _it in _erros_ocr_ativ
+                        )
+                        _nota_truncado_html = (
+                            f'<div class="notif-mais-info-nota">mostrando {len(_erros_ocr_ativ)} de {_total_erros_ocr_ativ} falhas</div>'
+                            if _total_erros_ocr_ativ > len(_erros_ocr_ativ) else ""
+                        )
+                    else:
+                        _itens_erro_html = "".join(
+                            '<li>'
+                            f'<span class="notif-mais-info-id">ID: {(_it.get("id") or "—")}</span> · '
+                            f'{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}'
+                            '</li>'
+                            for _it in _anuncios_erro_ativ
+                        )
+                        _nota_truncado_html = (
+                            f'<div class="notif-mais-info-nota">mostrando {len(_anuncios_erro_ativ)} de {_total_anuncios_erro_ativ}</div>'
+                            if _total_anuncios_erro_ativ > len(_anuncios_erro_ativ) else ""
+                        )
                     _mais_info_html = f"""
                         <span class="notif-mais-info" data-idx="{_id_ativ}">mais informações</span>
                         <div class="notif-mais-info-body" id="mi_{_id_ativ}" style="display:none">
@@ -38755,7 +38818,11 @@ html, body { background: transparent; overflow: hidden; }
         font-size:12.5px; color:#4b5563; line-height:1.6; word-break:break-word;
     }
     .notif-mais-info-id { color:#9ca3af; font-size:11.5px; }
-    .notif-mais-info-nota { font-size:11.5px; color:#9ca3af; margin-top:6px; font-style:italic; }
+        .notif-erro-ocr-item { margin-bottom:10px !important; padding-bottom:10px; border-bottom:1px solid #eef2f7; }
+    .notif-erro-ocr-item:last-child { border-bottom:0; margin-bottom:0 !important; padding-bottom:0; }
+    .notif-erro-ocr-item > div { margin-top:2px; }
+    .notif-erro-ocr-url { color:#6b7280; word-break:break-all; font-size:11px; }
+.notif-mais-info-nota { font-size:11.5px; color:#9ca3af; margin-top:6px; font-style:italic; }
     .btn-refazer {
         margin-top:10px; padding:8px 16px; border-radius:8px; border:1.5px solid #e5e7eb;
         background:#fff; font-size:13px; font-weight:700; color:#374151; cursor:pointer;

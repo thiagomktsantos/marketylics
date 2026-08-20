@@ -2446,8 +2446,13 @@ def _normalizar_url_exibida(texto: str) -> str:
         "fr|de|nl|pt|be|es|it|uk|ie|at|ch|pl|cz|dk|se|no|fi|"
         "br|us|ca|au|nz|mx|ar|cl|co|pe|uy|za|jp|kr|sg|in"
     )
+    # V60 — a barra final do domínio também pode ser lida como "I"
+    # maiúsculo (caso real TicketSwap NL: ``www.ticketswap.nlI``).
+    # Como a regex usa IGNORECASE, ``[lI/]`` cobre l/L/I/i somente na
+    # posição imediatamente depois de um TLD reconhecido, sem alterar
+    # letras no nome do domínio.
     _match_tld = re.search(
-        rf"\.?({_tlds_ocr})([._]?br)?(?=[l/]|$)",
+        rf"\.?({_tlds_ocr})([._]?br)?(?=[lI/]|$)",
         texto,
         flags=re.IGNORECASE,
     )
@@ -2456,7 +2461,9 @@ def _normalizar_url_exibida(texto: str) -> str:
         _tld = _match_tld.group(1).lower()
         if _match_tld.group(2) and _tld != "br":
             _tld += ".br"
-        if _resto[:1].lower() == "l":
+        # V60: remove o artefato que substituiu a barra final. Além de
+        # ``l/L``, aceita ``I/i`` (validado em ``ticketswap.nlI``).
+        if _resto[:1] in {"l", "L", "I", "i"}:
             _resto = _resto[1:]
         _resto = re.sub(r"^/+", "", _resto)  # evita barra dupla se já tinha "/"
         texto = _antes + "." + _tld + "/" + _resto
@@ -6703,6 +6710,28 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         r"\1 | TS",
         titulo,
     )
+
+    # V59 — TicketSwap: o EasyOCR às vezes lê o próprio traço vertical do
+    # separador como uma letra isolada logo depois do pipe. Casos reais:
+    #   | F Palladium Köln, Cologne  -> | Palladium Köln, Cologne
+    #   | I Mon, Sep 29, 8.00 PM     -> | Mon, Sep 29, 8.00 PM
+    # Remove apenas F/I isolados imediatamente após ``|`` e somente quando
+    # o restante tem padrão forte de local ou data, para não apagar texto
+    # legítimo.
+    _rx_pipe_ruido_local = re.compile(
+        r"(?i)(\|)\s*[FI]\s+(?=(?:Palladium|Arena|Stadium|Stadion|Dome|Hall|Theatre|Theater|Olympiahalle|Mercedes-Benz|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)"
+    )
+    _rx_pipe_ruido_data = re.compile(
+        r"(?i)(\|)\s*[FI]\s+(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Mo|Di|Mi|Do|Fr|Sa|So)[.,]?(?:\s|$))"
+    )
+    titulo = _rx_pipe_ruido_local.sub(r"\1 ", titulo)
+    titulo = _rx_pipe_ruido_data.sub(r"\1 ", titulo)
+    descricao = _rx_pipe_ruido_local.sub(r"\1 ", descricao)
+    descricao = _rx_pipe_ruido_data.sub(r"\1 ", descricao)
+
+    # Também elimina um hífen/travessão órfão no FIM da descrição quando ele
+    # não encerra uma palavra composta, ruído recorrente no corte do anúncio.
+    descricao = re.sub(r"\s+[\-–—]+\s*$", "", descricao).strip()
 
     # V58 — TicketSwap: em alguns headlines de turnê, o separador vertical
     # imediatamente antes do link/palavra final "Tickets" some no OCR.

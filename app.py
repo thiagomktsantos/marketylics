@@ -37487,27 +37487,59 @@ html, body { background: transparent; overflow: hidden; }
             ]
             with st.expander(f"Ver imagens realmente sem OCR ({len(_sem_ocr_diag)})", expanded=False):
                 if _sem_ocr_diag:
-                    _df_sem_ocr = pd.DataFrame([{
-                        "Empresa": i.get("empresa"),
-                        "Anúncio": i.get("ad_id") or "—",
-                        "Formato": i.get("formato_anuncio") or "—",
-                        "Salva": "Sim" if i.get("salva") else "Não",
-                        "Motivo": i.get("motivo_ocr") or "OCR pendente ou não executado",
-                        "URL": i.get("url") or "",
-                    } for i in _sem_ocr_diag])
-                    st.dataframe(
-                        _df_sem_ocr,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
-                            "Anúncio": st.column_config.TextColumn("Anúncio", width="medium"),
-                            "Formato": st.column_config.TextColumn("Formato", width="small"),
-                            "Salva": st.column_config.TextColumn("Salva", width="small"),
-                            "Motivo": st.column_config.TextColumn("Motivo", width="large"),
-                            "URL": st.column_config.LinkColumn("Abrir mídia", display_text="Abrir"),
-                        },
-                    )
+                    # V76 — visão acionável: cada imagem sem OCR pode ser refeita
+                    # diretamente nesta lista, sem precisar procurá-la novamente
+                    # no seletor de "Refazer uma mídia específica" abaixo.
+                    _h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns([1.15, 1.55, 0.75, 0.55, 2.15, 0.58, 0.72])
+                    _h1.markdown("**Empresa**")
+                    _h2.markdown("**Anúncio**")
+                    _h3.markdown("**Formato**")
+                    _h4.markdown("**Salva**")
+                    _h5.markdown("**Motivo**")
+                    _h6.markdown("**Mídia**")
+                    _h7.markdown("**Ação**")
+                    st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #d7dde5'>", unsafe_allow_html=True)
+
+                    for _pos_sem_ocr, _item_sem_ocr in enumerate(_sem_ocr_diag):
+                        _r1, _r2, _r3, _r4, _r5, _r6, _r7 = st.columns([1.15, 1.55, 0.75, 0.55, 2.15, 0.58, 0.72])
+                        _r1.write(_item_sem_ocr.get("empresa") or "—")
+                        _r2.write(_item_sem_ocr.get("ad_id") or "—")
+                        _r3.write(_item_sem_ocr.get("formato_anuncio") or "—")
+                        _r4.write("Sim" if _item_sem_ocr.get("salva") else "Não")
+                        _r5.write(_item_sem_ocr.get("motivo_ocr") or "OCR pendente ou não executado")
+
+                        _url_sem_ocr = _item_sem_ocr.get("url") or ""
+                        with _r6:
+                            if _url_sem_ocr:
+                                st.markdown(f'<a href="{html.escape(_url_sem_ocr, quote=True)}" target="_blank">Abrir</a>', unsafe_allow_html=True)
+                            else:
+                                st.write("—")
+
+                        _chave_sem_ocr = str(
+                            _item_sem_ocr.get("midia_id")
+                            or _item_sem_ocr.get("ad_id")
+                            or _item_sem_ocr.get("url_cdn")
+                            or _item_sem_ocr.get("url")
+                            or _pos_sem_ocr
+                        )
+                        _chave_sem_ocr = hashlib.md5(_chave_sem_ocr.encode("utf-8", errors="ignore")).hexdigest()[:12]
+                        with _r7:
+                            if st.button(
+                                "Refazer",
+                                key=f"_suporte_sem_ocr_refazer_{_chave_sem_ocr}",
+                                use_container_width=True,
+                            ):
+                                _ok_sem_ocr, _msg_sem_ocr = _suporte_refazer_midia_especifica(
+                                    st.session_state.user.id, _item_sem_ocr
+                                )
+                                if _ok_sem_ocr:
+                                    st.toast(_msg_sem_ocr, icon="🔄")
+                                else:
+                                    st.error(_msg_sem_ocr)
+                                st.rerun()
+
+                        if _pos_sem_ocr < len(_sem_ocr_diag) - 1:
+                            st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #e5e7eb'>", unsafe_allow_html=True)
                 else:
                     st.success("Nenhuma imagem elegível está pendente de OCR.")
 

@@ -13126,6 +13126,215 @@ def iniciar_migracao_pendente_geral_background(user_id: str):
 
 
 
+
+# ---------------------------------------------------
+# SUPORTE ADMINISTRATIVO — inventário de mídias por empresa
+# ---------------------------------------------------
+def _suporte_inventario_midias(user_id: str) -> list:
+    """Monta uma visão administrativa única das mídias salvas e pendentes.
+
+    A fonte principal é o cache dos anúncios (`ads_cache` + `gads_cache`),
+    porque é nele que conseguimos enxergar também as mídias que AINDA estão
+    apenas como link externo e nunca chegaram a gerar uma linha em `midias`.
+    A tabela `midias` entra como complemento para indicar transcrição/OCR e
+    também para incluir arquivos permanentes órfãos do cache atual.
+    """
+    if not user_id:
+        return []
+    try:
+        _ci = (
+            supabase.table("ci_dados")
+            .select("ads_cache,gads_cache")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        _row = _ci.data[0] if _ci.data else {}
+        _ads_cache = _row.get("ads_cache") or {}
+        _gads_cache = _row.get("gads_cache") or {}
+    except Exception:
+        _ads_cache, _gads_cache = {}, {}
+
+    try:
+        _mid_res = (
+            supabase.table("midias")
+            .select("id,empresa,ad_id,tipo,url_origem,url_cdn,storage_key,mime_type,transcricao,ocr_texto,ocr_estruturado,criado_em")
+            .eq("user_id", user_id)
+            .limit(10000)
+            .execute()
+        )
+        _mid_rows = _mid_res.data or []
+    except Exception:
+        _mid_rows = []
+
+    _por_cdn = {}
+    _por_origem = {}
+    for _m in _mid_rows:
+        if _m.get("url_cdn"):
+            _por_cdn[_m["url_cdn"]] = _m
+        if _m.get("url_origem"):
+            _por_origem[_m["url_origem"]] = _m
+
+    _itens = []
+    _vistos = set()
+
+    def _add_cache(_cache, _plataforma):
+        for _empresa, _entry in (_cache or {}).items():
+            for _ad in (_entry.get("data") or []):
+                _ad_id = str(_ad.get("id") or "")
+                for _tipo, _campo in (("imagem", "images"), ("video", "videos")):
+                    for _idx, _url in enumerate(_ad.get(_campo) or []):
+                        if not _url:
+                            continue
+                        _chave = (_plataforma, _empresa, _ad_id, _tipo, _url)
+                        if _chave in _vistos:
+                            continue
+                        _vistos.add(_chave)
+                        _salva = bool(R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE))
+                        _m = _por_cdn.get(_url) or _por_origem.get(_url) or {}
+                        _trans = _m.get("transcricao")
+                        _ocr = _m.get("ocr_texto")
+                        _itens.append({
+                            "empresa": _empresa or "Sem empresa",
+                            "plataforma": _plataforma,
+                            "ad_id": _ad_id,
+                            "tipo": _tipo,
+                            "indice": _idx,
+                            "url": _url,
+                            "salva": _salva,
+                            "midia_id": _m.get("id"),
+                            "url_origem": _m.get("url_origem") or (None if _salva else _url),
+                            "url_cdn": _m.get("url_cdn") or (_url if _salva else None),
+                            "transcricao": _trans,
+                            "tem_transcricao": bool((_trans or "").strip()),
+                            "ocr_texto": _ocr,
+                            "tem_ocr": bool((_ocr or "").strip()),
+                            "ocr_elegivel": (_tipo == "imagem" and _plataforma == "Google Ads"),
+                            "origem_cache": True,
+                        })
+
+    _add_cache(_ads_cache, "Meta Ads")
+    _add_cache(_gads_cache, "Google Ads")
+
+    # Inclui arquivos permanentes que ainda existem no banco, mas não aparecem
+    # mais no cache atual (útil pra suporte detectar sobra/orfandade de dados).
+    _urls_vistas = {i["url"] for i in _itens}
+    for _m in _mid_rows:
+        _url = _m.get("url_cdn")
+        if not _url or _url in _urls_vistas:
+            continue
+        _orig = _m.get("url_origem") or ""
+        _plat = _plataforma_da_url(_orig)
+        _tipo = _m.get("tipo") or ("video" if ("video" in (_m.get("mime_type") or "")) else "imagem")
+        _trans = _m.get("transcricao")
+        _ocr = _m.get("ocr_texto")
+        _itens.append({
+            "empresa": _m.get("empresa") or "Sem empresa",
+            "plataforma": _plat,
+            "ad_id": str(_m.get("ad_id") or ""),
+            "tipo": _tipo,
+            "indice": 0,
+            "url": _url,
+            "salva": True,
+            "midia_id": _m.get("id"),
+            "url_origem": _orig or None,
+            "url_cdn": _url,
+            "transcricao": _trans,
+            "tem_transcricao": bool((_trans or "").strip()),
+            "ocr_texto": _ocr,
+            "tem_ocr": bool((_ocr or "").strip()),
+            "ocr_elegivel": (_tipo == "imagem" and _plat == "Google Ads"),
+            "origem_cache": False,
+        })
+    return _itens
+
+
+def _suporte_resumo_midias_por_empresa(itens: list) -> list:
+    _grupos = {}
+    for _i in itens or []:
+        _g = _grupos.setdefault(_i["empresa"], {
+            "Empresa": _i["empresa"],
+            "Mídias": 0,
+            "Salvas": 0,
+            "Só link": 0,
+            "Vídeos": 0,
+            "Com transcrição": 0,
+            "Sem transcrição": 0,
+            "Imagens c/ OCR": 0,
+            "Imagens s/ OCR": 0,
+        })
+        _g["Mídias"] += 1
+        _g["Salvas" if _i.get("salva") else "Só link"] += 1
+        if _i.get("tipo") == "video":
+            _g["Vídeos"] += 1
+            _g["Com transcrição" if _i.get("tem_transcricao") else "Sem transcrição"] += 1
+        if _i.get("ocr_elegivel"):
+            _g["Imagens c/ OCR" if _i.get("tem_ocr") else "Imagens s/ OCR"] += 1
+    return sorted(_grupos.values(), key=lambda x: x["Empresa"].lower())
+
+
+def _suporte_refazer_midia_especifica(user_id: str, item: dict):
+    """Refaz apenas a etapa necessária da mídia escolhida no painel."""
+    if not item:
+        return False, "Mídia não encontrada."
+    _empresa = item.get("empresa") or ""
+    _tipo = item.get("tipo") or ""
+    _plataforma = item.get("plataforma") or "Meta Ads"
+
+    # Link externo: baixa somente ESTA URL, salva no R2 e troca a URL no
+    # cache inteiro via RPC atômica (sem reprocessar o anúncio completo).
+    if not item.get("salva"):
+        _url_antiga = item.get("url") or item.get("url_origem") or ""
+        if not _url_antiga:
+            return False, "Link original vazio."
+        _url_nova = baixar_e_persistir_midia(
+            _url_antiga, user_id, _empresa, _tipo,
+            item.get("ad_id") or None,
+        )
+        if not _url_nova or _url_nova == _url_antiga:
+            return False, "A mídia continuou apenas como link. Veja as notificações/logs para o motivo."
+        try:
+            supabase.rpc(_rpc_substituir_url_cache(_plataforma), {
+                "p_user_id": user_id,
+                "p_url_antiga": _url_antiga,
+                "p_url_nova": _url_nova,
+            }).execute()
+        except Exception as _e:
+            return False, f"Arquivo salvo, mas não consegui atualizar o cache: {_e}"
+        if _tipo == "video":
+            iniciar_transcricao_pendente_background(user_id, _empresa)
+        elif _tipo == "imagem" and _plataforma == "Google Ads":
+            iniciar_ocr_pendente_background(user_id, _empresa)
+        return True, "Mídia salva novamente e enviada para o processamento correspondente."
+
+    # Arquivo já permanente: refaz só o processamento derivado.
+    try:
+        if _tipo == "video":
+            _q = supabase.table("midias").update({"transcricao": None}).eq("user_id", user_id)
+            if item.get("midia_id"):
+                _q = _q.eq("id", item["midia_id"])
+            else:
+                _q = _q.eq("url_cdn", item.get("url_cdn") or item.get("url"))
+            _q.execute()
+            iniciar_transcricao_pendente_background(user_id, _empresa)
+            return True, "Transcrição desta mídia enviada para refazer."
+
+        if _tipo == "imagem" and _plataforma == "Google Ads":
+            _q = supabase.table("midias").update({
+                "ocr_texto": None,
+                "ocr_estruturado": None,
+            }).eq("user_id", user_id)
+            if item.get("midia_id"):
+                _q = _q.eq("id", item["midia_id"])
+            else:
+                _q = _q.eq("url_cdn", item.get("url_cdn") or item.get("url"))
+            _q.execute()
+            iniciar_ocr_pendente_background(user_id, _empresa)
+            return True, "OCR desta imagem enviado para refazer."
+
+        return False, "Essa mídia não tem uma etapa individual de OCR/transcrição para refazer."
+    except Exception as _e:
+        return False, f"Não foi possível refazer esta mídia: {_e}"
+
 # ---------------------------------------------------
 # HOME — Pagina - Minha Empresa
 # ---------------------------------------------------
@@ -37069,6 +37278,134 @@ html, body { background: transparent; overflow: hidden; }
         )
 
     with aba_perfil_suporte:
+        st.markdown("### Visão administrativa de mídias")
+        st.caption(
+            "Acompanhe, por empresa, o que já está salvo permanentemente, o que ainda "
+            "depende de link externo e o estado de transcrição/OCR. OCR é contabilizado "
+            "somente para imagens do Google Ads, que é onde essa rotina existe hoje."
+        )
+
+        try:
+            _suporte_itens = _suporte_inventario_midias(st.session_state.user.id)
+        except Exception as _e_inv:
+            _suporte_itens = []
+            st.warning(f"Não foi possível montar o inventário de mídias: {_e_inv}")
+
+        _suporte_resumo = _suporte_resumo_midias_por_empresa(_suporte_itens)
+        if _suporte_resumo:
+            _tot_mid = sum(r["Mídias"] for r in _suporte_resumo)
+            _tot_salvas = sum(r["Salvas"] for r in _suporte_resumo)
+            _tot_links = sum(r["Só link"] for r in _suporte_resumo)
+            _tot_trans = sum(r["Com transcrição"] for r in _suporte_resumo)
+            _tot_sem_trans = sum(r["Sem transcrição"] for r in _suporte_resumo)
+            _tot_ocr = sum(r["Imagens c/ OCR"] for r in _suporte_resumo)
+            _tot_sem_ocr = sum(r["Imagens s/ OCR"] for r in _suporte_resumo)
+
+            _m1, _m2, _m3, _m4, _m5, _m6, _m7 = st.columns(7)
+            _m1.metric("Mídias", _tot_mid)
+            _m2.metric("Salvas", _tot_salvas)
+            _m3.metric("Só link", _tot_links)
+            _m4.metric("Transcritas", _tot_trans)
+            _m5.metric("Sem transcrição", _tot_sem_trans)
+            _m6.metric("Com OCR", _tot_ocr)
+            _m7.metric("Sem OCR", _tot_sem_ocr)
+
+            _df_sup = pd.DataFrame(_suporte_resumo)
+            st.dataframe(
+                _df_sup,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
+                    "Mídias": st.column_config.NumberColumn("Mídias", format="%d"),
+                    "Salvas": st.column_config.NumberColumn("Salvas", format="%d"),
+                    "Só link": st.column_config.NumberColumn("Só link", format="%d"),
+                    "Vídeos": st.column_config.NumberColumn("Vídeos", format="%d"),
+                    "Com transcrição": st.column_config.NumberColumn("Com transcrição", format="%d"),
+                    "Sem transcrição": st.column_config.NumberColumn("Sem transcrição", format="%d"),
+                    "Imagens c/ OCR": st.column_config.NumberColumn("Imagens c/ OCR", format="%d"),
+                    "Imagens s/ OCR": st.column_config.NumberColumn("Imagens s/ OCR", format="%d"),
+                },
+            )
+
+            st.markdown("**Refazer uma mídia específica**")
+            _empresas_sup = [r["Empresa"] for r in _suporte_resumo]
+            _c_emp_sup, _c_filtro_sup = st.columns([1, 1])
+            with _c_emp_sup:
+                _emp_sup = st.selectbox(
+                    "Empresa",
+                    _empresas_sup,
+                    key="_suporte_admin_empresa_midia",
+                )
+            with _c_filtro_sup:
+                _filtro_sup = st.selectbox(
+                    "Mostrar",
+                    ["Todas", "Só links", "Vídeos sem transcrição", "Imagens sem OCR", "Processadas"],
+                    key="_suporte_admin_filtro_midia",
+                )
+
+            _cands = [i for i in _suporte_itens if i.get("empresa") == _emp_sup]
+            if _filtro_sup == "Só links":
+                _cands = [i for i in _cands if not i.get("salva")]
+            elif _filtro_sup == "Vídeos sem transcrição":
+                _cands = [i for i in _cands if i.get("tipo") == "video" and not i.get("tem_transcricao")]
+            elif _filtro_sup == "Imagens sem OCR":
+                _cands = [i for i in _cands if i.get("ocr_elegivel") and not i.get("tem_ocr")]
+            elif _filtro_sup == "Processadas":
+                _cands = [i for i in _cands if i.get("tem_transcricao") or i.get("tem_ocr")]
+
+            def _rotulo_item_sup(_i):
+                _estado = "salva" if _i.get("salva") else "só link"
+                if _i.get("tipo") == "video":
+                    _proc = "transcrita" if _i.get("tem_transcricao") else "sem transcrição"
+                elif _i.get("ocr_elegivel"):
+                    _proc = "com OCR" if _i.get("tem_ocr") else "sem OCR"
+                else:
+                    _proc = "sem OCR aplicável"
+                _aid = _i.get("ad_id") or "s/ id"
+                return f"{_i.get('plataforma')} · {_i.get('tipo')} · anúncio {_aid} · {_estado} · {_proc}"
+
+            if _cands:
+                _idx_sup = st.selectbox(
+                    "Mídia",
+                    range(len(_cands)),
+                    format_func=lambda x: _rotulo_item_sup(_cands[x]),
+                    key="_suporte_admin_midia_especifica",
+                )
+                _item_sup = _cands[_idx_sup]
+                _url_exib_sup = _item_sup.get("url") or ""
+                st.code(_url_exib_sup, language=None)
+                _acao_nome_sup = (
+                    "Salvar esta mídia novamente" if not _item_sup.get("salva")
+                    else ("Refazer transcrição" if _item_sup.get("tipo") == "video" else "Refazer OCR")
+                )
+                _acao_dis_sup = bool(
+                    _item_sup.get("salva")
+                    and _item_sup.get("tipo") == "imagem"
+                    and not _item_sup.get("ocr_elegivel")
+                )
+                if st.button(
+                    _acao_nome_sup,
+                    key="_suporte_admin_refazer_midia",
+                    disabled=_acao_dis_sup,
+                    type="primary",
+                ):
+                    _ok_sup, _msg_sup = _suporte_refazer_midia_especifica(
+                        st.session_state.user.id, _item_sup
+                    )
+                    if _ok_sup:
+                        st.toast(_msg_sup, icon="🔄")
+                    else:
+                        st.error(_msg_sup)
+                    st.rerun()
+                if _acao_dis_sup:
+                    st.caption("OCR individual não se aplica a imagens da Meta Ads.")
+            else:
+                st.info("Nenhuma mídia encontrada com esse filtro.")
+        else:
+            st.info("Ainda não há mídias para exibir no painel de suporte.")
+
+        st.divider()
         st.markdown("**Extração de texto (OCR) — Google Ads**")
         st.caption(
             "O Google Ads Transparency Center não entrega o texto do anúncio (nem "

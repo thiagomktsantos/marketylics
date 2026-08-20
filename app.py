@@ -12130,6 +12130,12 @@ with st.sidebar:
 
     if st.session_state.user:
         _auto_retry_migracoes_travadas()
+        # V78 — o resumo do sino era calculado ANTES do fragment acima.
+        # Se o fragment detectasse OCR/transcrição pendente e criasse a atividade
+        # nesse mesmo ciclo, o badge continuava usando o snapshot antigo (zero)
+        # até algum rerun completo posterior. Reconsulta depois de enfileirar para
+        # que "Na fila"/"Processando" apareçam no sino imediatamente.
+        _resumo_sino = resumo_sino_atividades(st.session_state.user.id)
 
     _qtd_atividades_pendentes = _resumo_sino["total"]
     # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/

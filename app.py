@@ -5861,6 +5861,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         ):
             _descricao_busca_forcada = True
 
+        # V46 — a descrição forçada de Busca (iniciada por "Buy & sell")
+        # termina quando aparece a faixa azul de links relacionados no rodapé.
+        # Exemplo real TicketSwap:
+        #   How TicketSwap works · Download TicketSwap ·
+        # Essa faixa pode NÃO ter separador horizontal detectável; por isso o
+        # ponto médio/bolinha entre links é também um delimitador estrutural.
+        # Sem esta exceção, `_descricao_busca_forcada` engolia os links como
+        # mais uma linha da descrição e eles nunca chegavam ao parser azul,
+        # que já sabe transformá-los em sitelinks separados por <hr>.
+        _azul_parece_links_relacionados = (
+            banda["classe"] == "azul"
+            and bool(re.search(r"[·•]", _texto_desc_norm))
+            and len([p for p in re.split(r"\s*[·•]\s*", _texto_desc_norm) if p.strip()]) >= 2
+        )
+        if _descricao_busca_forcada and _azul_parece_links_relacionados:
+            _descricao_busca_forcada = False
+
         if (
             _descricao_busca_forcada
             and par_atual is not None

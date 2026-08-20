@@ -486,6 +486,7 @@ supabase = get_supabase()
 import boto3
 from botocore.config import Config as _BotoConfig
 import hashlib
+import html
 import mimetypes
 
 R2_BUCKET      = st.secrets.get("R2_BUCKET_NAME", "")

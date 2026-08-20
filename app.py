@@ -5833,6 +5833,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             or (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
         ):
             _grupos_botoes = []
+
+        # V54 — foto/thumbnail lateral NÃO é uma segunda coluna de botão.
+        # Layout real de Busca/TicketSwap: o texto da descrição ocupa a
+        # esquerda e uma miniatura quadrada fica à direita na MESMA altura.
+        # O detector de colunas enxergava "texto + foto" como 2 blocos e
+        # convertia cada linha da descrição em fileira de botões/sitelinks.
+        # Sinal geométrico conservador: exatamente 2 grupos, banda cinza/mista,
+        # título ainda aberto, sem separador antes, e o segundo grupo começa
+        # já no terço direito da imagem (>= 62% da largura). Em fileiras reais
+        # de dois botões, a segunda coluna começa perto do meio; a miniatura
+        # lateral começa bem mais à direita.
+        if (
+            len(_grupos_botoes) == 2
+            and banda.get("classe") in ("misto", "cinza")
+            and par_atual is not None
+            and not banda.get("sep_antes")
+            and _grupos_botoes[1][0] >= int(img_bgr.shape[1] * 0.62)
+        ):
+            _grupos_botoes = []
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -5954,7 +5973,39 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and bool(re.search(r"[·•]", _texto_desc_norm))
             and len([p for p in re.split(r"\s*[·•]\s*", _texto_desc_norm) if p.strip()]) >= 2
         )
-        if _descricao_busca_forcada and _azul_parece_links_relacionados:
+
+        # V57 — TicketSwap: o ponto médio visual entre links do rodapé
+        # frequentemente vira hífen no OCR. Exemplo real:
+        #   How TicketSwap works · Download TicketSwap ·
+        # lido como:
+        #   How TicketSwap works - Download TicketSwap -
+        # Como a descrição de Busca já está em andamento, essa banda azul
+        # era engolida como descrição antes de chegar ao parser de sitelinks.
+        # Aqui encerramos a descrição forçada também para esse formato, mas
+        # apenas quando a linha azul contém 2+ itens de navegação típicos da
+        # TicketSwap separados por hífen/travessão.
+        _empresa_norm_v57 = str(empresa or "").strip().lower().replace(" ", "")
+        _partes_hifen_v57 = [
+            p.strip()
+            for p in re.split(r"\s+[\-–—]\s+", re.sub(r"\s*[\-–—]\s*$", "", _texto_desc_norm))
+            if p.strip()
+        ]
+        _azul_parece_links_relacionados_hifen = (
+            banda["classe"] == "azul"
+            and _empresa_norm_v57 == "ticketswap"
+            and len(_partes_hifen_v57) >= 2
+            and all(
+                re.search(
+                    r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\s+.*works|download|contact|sell\s+your|buy\s+&\s+sell|find\s+last|about)\b",
+                    _p,
+                )
+                for _p in _partes_hifen_v57
+            )
+        )
+
+        if _descricao_busca_forcada and (
+            _azul_parece_links_relacionados or _azul_parece_links_relacionados_hifen
+        ):
             _descricao_busca_forcada = False
 
         if (
@@ -6080,6 +6131,31 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     # hífen no próprio título e ainda separamos corretamente a
                     # fileira horizontal de dois links quando o separador "·"
                     # vira "-" no OCR.
+                    _partes_relacionados = _candidatos_relacionados
+                elif (
+                    _titulo_e_descricao_ja_fechados
+                    and not banda.get("sep_antes")
+                    and len(_candidatos_relacionados) == 2
+                    and str(empresa or "").strip().lower().replace(" ", "") == "ticketswap"
+                    and any(
+                        re.search(
+                            r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\s+.*works|download|contact|sell\s+your|buy\s+&\s+sell|find\s+last|about)\b",
+                            _p,
+                        )
+                        for _p in _candidatos_relacionados
+                    )
+                ):
+                    # V55 — TicketSwap também exibe, no rodapé de alguns anúncios,
+                    # DOIS links azuis na mesma linha separados visualmente por "·".
+                    # Em certas capturas o EasyOCR troca esse ponto médio por "-",
+                    # ex.: "Testimonials & Reviews - How TicketSwap works".
+                    #
+                    # O ramo genérico de hífen exige 3+ candidatos para proteger
+                    # nomes reais de eventos com traço. Aqui aceitamos 2 somente
+                    # depois de título+descrição já fechados, sem hr antes, e apenas
+                    # para TicketSwap quando ao menos um lado tem vocabulário típico
+                    # de navegação/sitelink. Assim o separador visual vira dois
+                    # sitelinks independentes e o card os renderiza com <hr>.
                     _partes_relacionados = _candidatos_relacionados
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
@@ -6346,8 +6422,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     par_atual = [texto, []]
                     _debug_bandas[idx]["decisao"] = "cinza → NOVO sitelink em texto preto (por causa de separador antes)"
                 else:
-                    par_atual[1].append(texto)
-                    _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
+                    # V54 — uma faixa cinza visual sem texto OCR não pode
+                    # "iniciar" a descrição. Isso acontecia logo abaixo do
+                    # headline quando havia uma foto lateral; a lista ficava
+                    # com [""] e fazia as próximas linhas parecerem um bloco
+                    # já estruturado. Ignora vazio e espera a primeira linha
+                    # textual de verdade.
+                    if (texto or "").strip():
+                        par_atual[1].append(texto)
+                        _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
+                    else:
+                        _debug_bandas[idx]["decisao"] = "cinza → vazia (sem texto OCR) — ignorada"
             else:
                 _debug_bandas[idx]["decisao"] = "cinza → descartada (sem título/sitelink aberto nem CTA)"
             # texto cinza sem nenhum título azul aberto antes nem CTA
@@ -6503,7 +6588,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     "(frase corrida sem separador; não é CTA)"
                 )
             elif _titulo_ja_reconhecido:
-                if not resultado["cta"]:
+                # V54 — banda mista vazia não é CTA. Em anúncios com imagem
+                # lateral pode sobrar uma faixa sem caracteres entre a
+                # descrição e os sitelinks; antes ela abria um CTA vazio.
+                if not (texto or "").strip():
+                    _debug_bandas[idx]["decisao"] = "misto → vazia (sem texto OCR) — ignorada"
+                elif not resultado["cta"]:
                     resultado["cta"] = texto
                     _cta_aberto = True
                     _debug_bandas[idx]["decisao"] = "misto → CTA"
@@ -6614,6 +6704,18 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         titulo,
     )
 
+    # V58 — TicketSwap: em alguns headlines de turnê, o separador vertical
+    # imediatamente antes do link/palavra final "Tickets" some no OCR.
+    # Caso real: "Bad Bunny ... World Tour | Tickets" era retornado como
+    # "Bad Bunny ... World Tour Tickets". Restrito ao padrão "World Tour
+    # Tickets" no FIM do headline para não separar títulos legítimos como
+    # "Olivia Dean tickets".
+    titulo = re.sub(
+        r"(?i)\bWorld\s+Tour\s+Tickets$",
+        lambda m: re.sub(r"\s+Tickets$", " | Tickets", m.group(0), flags=re.IGNORECASE),
+        titulo,
+    )
+
     # Se uma cidade/termo curto ficou entre duas partes do headline e a barra
     # posterior sumiu, repõe apenas antes de padrões muito típicos de segunda
     # metade do título TicketSwap. Ex.: ``| Porto Compra e vende...``.
@@ -6653,6 +6755,68 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         )
 
     descricao = _rx_data_deslocada.sub(_repor_intervalo, descricao)
+
+    # V56 — TicketSwap: corrige separadores de metadados de evento que o
+    # EasyOCR costuma confundir em descrições no formato:
+    #   Evento | Local, Cidade | Dia, Mês data, hora
+    # Caso real:
+    #   Live | = Ziggo Dome, Amsterdam Sun, Jun 14, 8.00 PM
+    # original:
+    #   Live | Ziggo Dome, Amsterdam | Sun, Jun 14, 8:00 PM
+    # Restrito a TicketSwap e a padrões fortes de local/data para não
+    # alterar sinais '=' ou pontos decimais legítimos em outros anúncios.
+
+    # Símbolos espúrios logo após um pipe (ex.: "| = Ziggo Dome").
+    descricao = re.sub(
+        r"\|\s*[=@$]+\s*(?=[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,5}\s*,)",
+        "| ",
+        descricao,
+    )
+
+    # Pipe perdido entre "Cidade" e um bloco de data em inglês. Exige
+    # vírgula no local/cidade e abreviação explícita do dia da semana.
+    descricao = re.sub(
+        r"(\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r"\1 | ",
+        descricao,
+    )
+
+    # Também cobre local simples como "Ziggo Dome, Amsterdam Sun, ..."
+    # quando o primeiro termo do local tem duas palavras antes da cidade.
+    descricao = re.sub(
+        r"(\b(?:[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,4})\s*,\s*"
+        r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r"\1 | ",
+        descricao,
+    )
+
+    # V57 — TicketSwap: em descrições de evento, o OCR às vezes perde os
+    # dois pipes que separam evento/local/data. Caso real:
+    #   Bad Bunny ... World Tour GelreDome, Arnhem Tue, Jun 23, 2026, ...
+    # original:
+    #   Bad Bunny ... World Tour | GelreDome, Arnhem | Tue, Jun 23, 2026, ...
+    # Primeiro repõe o pipe ANTES do local quando o sufixo final tem o padrão
+    # "Venue, City Day, Mon DD". Para não engolir palavras do nome do evento,
+    # usamos o último token/grupo curto antes da vírgula e exigimos o bloco de
+    # data logo depois. Depois, a regra já existente abaixo repõe o pipe entre
+    # cidade e data.
+    descricao = re.sub(
+        r"(?<!\|)\s+(?P<venue>[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*){0,2}\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r" | \g<venue> ",
+        descricao,
+    )
+
+    # Horário inglês: EasyOCR lê com frequência 8.00 PM em vez de 8:00 PM.
+    # Só converte quando há AM/PM imediatamente depois.
+    descricao = re.sub(
+        r"(?<!\d)(\d{1,2})\.(\d{2})\s*(AM|PM)\b",
+        r"\1:\2 \3",
+        descricao,
+        flags=re.IGNORECASE,
+    )
 
     # Limpa restos isolados que podem sobrar no fim depois da recuperação de
     # separadores/data, sem tocar em hífen/travessão que faça parte de frase.

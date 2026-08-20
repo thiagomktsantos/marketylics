@@ -7394,7 +7394,7 @@ def resetar_ocr_gads_forcado(user_id: str, empresa: str, formato: str = None) ->
                 "ocr_estruturado": None,
             }).in_("id", bloco).execute()
         print(f"[OCR-DEBUG] resetar_ocr_gads_forcado: {len(ids)} imagem(ns) resetada(s) à força em empresa={empresa!r} formato={formato!r}", flush=True)
-        iniciar_ocr_pendente_background(user_id, empresa)
+        iniciar_ocr_pendente_background(user_id, empresa, force=True)
         return len(ids)
     except Exception as e:
         print(f"[OCR-DEBUG] resetar_ocr_gads_forcado EXCEÇÃO user={user_id} empresa={empresa!r} formato={formato!r}: {e!r}", flush=True)
@@ -7434,6 +7434,13 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
         })
     _ids_tentados_neste_run = set()
     _ids_falharam = []
+    # V80 — precisa existir dentro desta execução. Na V79 a lista usada
+    # para detalhar falhas não era inicializada nesta função; quando o
+    # extrator devolvia uma falha real (ex.: ZeroDivisionError capturado),
+    # o append levantava NameError, liberava a trava da empresa e a
+    # verificação automática enfileirava tudo de novo. Resultado visual:
+    # Na fila -> Processando -> Na fila em loop.
+    _erros_detalhados = []
     try:
         while True:
             try:
@@ -7617,7 +7624,7 @@ def _garantir_worker_ocr_global():
         _worker_ocr_global_ativo[0] = True
         threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
-def iniciar_ocr_pendente_background(user_id: str, empresa: str):
+def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = False):
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
     das imagens do Google Ads dessa empresa que já foram migradas pro R2
     mas ainda não têm texto extraído. Mesmo padrão de
@@ -7642,6 +7649,28 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str):
     print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
     _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
+
+    # V80 — uma atividade que terminou em ERRO não pode voltar
+    # automaticamente para "Na fila" a cada polling. Isso fazia o mesmo
+    # card oscilar Na fila -> Processando -> Erro -> Na fila e repetia a
+    # mesma mídia defeituosa indefinidamente. Depois de erro, só uma ação
+    # explícita de Refazer (force=True) reabre a fila.
+    if atividade_id and not force:
+        try:
+            _r_status_ocr = (supabase.table("atividades").select("status")
+                             .eq("id", atividade_id).limit(1).execute())
+            _status_ocr_atual = ((_r_status_ocr.data or [{}])[0].get("status") or "")
+        except Exception:
+            _status_ocr_atual = ""
+        if _status_ocr_atual == "erro":
+            print(
+                f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: atividade em erro aguarda Refazer manual empresa={empresa!r}",
+                flush=True,
+            )
+            with _lock_ocr_pendente:
+                _ocr_empresas_ativas_agora.discard((user_id, empresa))
+            return
+
     if atividade_id:
         # V74 — NUNCA zera um checkpoint existente. Se estava 2/3, a
         # retomada permanece 2/3 e só a mídia pendente volta para a fila.

@@ -467,7 +467,10 @@ def get_supabase() -> Client:
         from supabase import ClientOptions
         _opcoes_supabase = ClientOptions(
             httpx_client=httpx.Client(
-                timeout=httpx.Timeout(30.0, connect=10.0)
+                # V87: coletas grandes de Google Ads podem atualizar um JSONB
+                # considerável. 30s ainda gerava "The read operation timed out"
+                # em instabilidades passageiras do gateway do Supabase.
+                timeout=httpx.Timeout(90.0, connect=15.0)
             ),
         )
         st.session_state["_supabase_client"] = create_client(url, key, options=_opcoes_supabase)
@@ -1469,7 +1472,12 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         # "não migrado" = a URL não mudou E não é porque já era do R2
         # (nesse caso o não-mudou é intencional, não uma falha)
         ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
-        nao_migrado = (nova_url == u) and not ja_era_r2
+        # V87: vídeo do Google Ads hospedado no YouTube é uma mídia externa
+        # permanente, não uma falha. `baixar_e_persistir_midia` devolve a URL
+        # original de propósito (não usamos yt-dlp). Antes isso era contado
+        # como `nao_migrado` e o card mostrava metade dos vídeos como erro.
+        _externo_permanente = (tipo == "video" and _e_url_youtube(u))
+        nao_migrado = (nova_url == u) and not ja_era_r2 and not _externo_permanente
         with _lock_progresso:
             _estado_progresso["concluidas"] += 1
             _concluidas_agora = _estado_progresso["concluidas"]
@@ -12867,14 +12875,17 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
                 except Exception:
                     pass
 
-        # Só descarta o base64 depois de saber o resultado final da
-        # migração (acima) — se ainda sobrou link cru do Google sem
-        # migrar, o card depende desse base64 pra mostrar alguma coisa
-        # (ver _imagem_precisa_de_b64_provisorio).
+        # V87 — NÃO persistir base64 das imagens no `gads_cache`.
+        # Com o teto antigo de 100 anúncios isso ainda era tolerável, mas ao
+        # coletar até 1.000 anúncios por anunciante cada `images_b64` podia
+        # acrescentar dezenas/centenas de KB ao JSONB. Como o cache inteiro é
+        # enviado em cada update, o payload chegava a dezenas de MB e o
+        # Supabase começava a responder 503 / read timeout. O link original
+        # continua em `images` e logo depois a fila de migração troca pelo R2;
+        # portanto base64 é apenas um fallback visual e não deve morar no banco.
         for entry_limpa in dados_limpos.values():
             for ad_limpo in entry_limpa.get("data", []):
-                if not _imagem_precisa_de_b64_provisorio(ad_limpo):
-                    ad_limpo.pop("images_b64", None)
+                ad_limpo.pop("images_b64", None)
 
         # Retry com backoff curto: cobre instabilidades transitórias do
         # Supabase (521, 57P03, timeouts de conexão) sem desistir na
@@ -12981,7 +12992,10 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         # ser só uma instabilidade passageira do gateway, e vale a pena
         # insistir um pouco mais antes de marcar a atividade como erro.
         ultimo_erro = None
-        for _tentativa in range(5):
+        # V87: retry mais resiliente para 5xx/timeout do gateway. O payload
+        # também ficou muito menor porque `images_b64` não vai mais pro banco.
+        _backoff_save = [2, 4, 8, 12, 20, 30]
+        for _tentativa in range(7):
             try:
                 supabase.table("ci_dados").update({
                     "gads_cache": dados_limpos,
@@ -12989,8 +13003,8 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 return True, None
             except Exception as e:
                 ultimo_erro = str(e)
-                if _tentativa < 4:
-                    time.sleep(2 * (_tentativa + 1))
+                if _tentativa < 6:
+                    time.sleep(_backoff_save[_tentativa])
         try:
             st.toast(f"Erro ao salvar cache de Google Ads: {ultimo_erro}", icon="⚠️")
         except Exception:
@@ -20241,6 +20255,20 @@ elif st.session_state.pagina == "ads":
 <script>{fechar_js}</script>
 """, unsafe_allow_html=True)
 
+    def _resumir_erro_coleta_salvar(erro) -> str:
+        """Mensagem curta para o card; detalhes técnicos continuam no log."""
+        txt = str(erro or "").strip()
+        low = txt.lower()
+        if "503" in low or "service unavailable" in low or "upstream connect" in low:
+            return "Falha temporária ao salvar no banco (Supabase 503). O sistema tentou novamente."
+        if "521" in low or "web server is down" in low:
+            return "Falha temporária ao salvar no banco (Supabase 521). O sistema tentou novamente."
+        if "read operation timed out" in low or "timed out" in low or "timeout" in low:
+            return "Tempo excedido ao salvar no banco. O sistema tentou novamente."
+        if "json could not be generated" in low:
+            return "Falha temporária de comunicação com o banco. O sistema tentou novamente."
+        return (txt[:220] + "…") if len(txt) > 220 else txt
+
     def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
         """Roda a coleta de verdade (chamadas à Apify) numa thread — não
         pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
@@ -25271,12 +25299,20 @@ elif st.session_state.pagina == "google_ads":
                     page.on("response", lambda resp: _checar_url(resp.url))
 
                     try:
-                        page.goto(pagina_url, wait_until="networkidle", timeout=20000)
+                        # V87: `networkidle` é ruim para a Transparency Center
+                        # (SPA mantém conexões abertas) e fazia cada fallback
+                        # esperar 20s mesmo quando a imagem já tinha aparecido.
+                        # `domcontentloaded` + pequena janela para os listeners
+                        # de rede reduz muito o tempo sem perder o asset.
+                        page.goto(pagina_url, wait_until="domcontentloaded", timeout=8000)
                     except Exception as e_goto:
                         print(f"[GADS-IMG] goto falhou/timeout: {e_goto!r}", flush=True)
 
                     if not achado[0]:
-                        page.wait_for_timeout(2000)
+                        for _ in range(8):  # até ~2s adicionais, sai assim que achar
+                            if achado[0]:
+                                break
+                            page.wait_for_timeout(250)
 
                     # fallback final: procura o link direto no HTML já
                     # renderizado, caso ele apareça só como atributo (src/
@@ -25720,11 +25756,11 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, region: str = "BR", on_chunk=None, chunk_size: int = 15) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50) -> tuple:
         # `on_chunk` (opcional): callback chamado a cada `chunk_size` anúncios
         # já normalizados (ver loop no fim da função). Existe pra quem chama
         # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
-        # de normalizar os até 100 anúncios de uma empresa inteiros (cada um
+        # de normalizar centenas de anúncios de uma empresa inteiros (cada um
         # podendo custar ~20-25s se cair no fallback de navegador headless
         # pra achar a imagem) pra só então salvar tudo de uma vez no final.
         # Empresa com muitos anúncios "difíceis" (sem imagem pronta da
@@ -25764,7 +25800,12 @@ elif st.session_state.pagina == "google_ads":
         # nada com region="BR" fixo. `buscar_anunciantes_google` (abaixo)
         # agora tenta de novo com region="" (todas as regiões) como
         # última etapa da cascata, quando as tentativas com BR falham.
-        payload = {"maxAds": limit}
+        # V87: removido o teto artificial de 100 do nosso app. O Actor
+        # `automation-lab/google-ads-scraper` aceita no máximo 1.000 anúncios
+        # por anunciante, então usamos o máximo suportado quando o chamador não
+        # pedir explicitamente um valor menor.
+        _max_ads_actor = max(1, min(int(limit or 1000), 1000))
+        payload = {"maxAds": _max_ads_actor}
         if region:
             payload["region"] = region
         if termo.upper().startswith("AR") and termo[2:].isdigit():
@@ -25818,20 +25859,34 @@ elif st.session_state.pagina == "google_ads":
         if not dataset_id:
             return [], [], "Apify não retornou dataset ID."
 
-        items_url = (
-            f"https://api.apify.com/v2/datasets/{dataset_id}/items"
-            f"?token={api_token}&limit={limit}&clean=true"
-        )
+        # V87: lê o dataset em páginas. Mesmo com `maxAds=1000`, não
+        # dependemos de uma única resposta HTTP grande (menos chance de timeout
+        # e pronto para mudanças de paginação do endpoint).
+        raw_items = []
+        _offset = 0
+        _page_size = 250
         try:
-            r_items = _http_get(items_url, timeout=30)
-            r_items.raise_for_status()
-            raw_items = r_items.json()
+            while _offset < _max_ads_actor:
+                _limite_pagina = min(_page_size, _max_ads_actor - _offset)
+                items_url = (
+                    f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+                    f"?token={api_token}&offset={_offset}&limit={_limite_pagina}&clean=true"
+                )
+                r_items = _http_get(items_url, timeout=60)
+                r_items.raise_for_status()
+                _pagina = r_items.json()
+                if not isinstance(_pagina, list):
+                    _pagina = _pagina.get("items", []) if isinstance(_pagina, dict) else []
+                if not _pagina:
+                    break
+                raw_items.extend(_pagina)
+                _offset += len(_pagina)
+                if len(_pagina) < _limite_pagina:
+                    break
         except Exception as e:
-            print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao ler dataset: {e!r}", flush=True)
+            print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao ler dataset offset={_offset}: {e!r}", flush=True)
             return [], [], f"Erro ao ler dataset Apify: {e}"
 
-        if not isinstance(raw_items, list):
-            raw_items = raw_items.get("items", []) if isinstance(raw_items, dict) else []
         print(f"[APIFY-DEBUG] termo={termo!r} raw_items retornados={len(raw_items)}", flush=True)
         if not raw_items:
             return [], [], None
@@ -25846,9 +25901,9 @@ elif st.session_state.pagina == "google_ads":
                     on_chunk(_chunk_normalizado)
                 except Exception as e_chunk:
                     print(f"[APIFY-DEBUG] termo={termo!r} on_chunk falhou: {e_chunk!r}", flush=True)
-        return gads_normalizados, raw_items[:100], None
+        return gads_normalizados, raw_items, None
 
-    def buscar_gads_apify(query: str, limit: int = 100, on_chunk=None) -> tuple:
+    def buscar_gads_apify(query: str, limit: int = 1000, on_chunk=None) -> tuple:
         return _apify_run_sync(query.strip(), limit=limit, on_chunk=on_chunk)
 
     def _render_loader(placeholder, progresso: list, total: int, atual: int, finalizado: bool = False):
@@ -25923,6 +25978,20 @@ elif st.session_state.pagina == "google_ads":
 </div></div>
 <script>{fechar_js}</script>
 """, unsafe_allow_html=True)
+
+    def _resumir_erro_coleta_salvar_gads(erro) -> str:
+        """Mensagem curta para o card; detalhes técnicos continuam no log."""
+        txt = str(erro or "").strip()
+        low = txt.lower()
+        if "503" in low or "service unavailable" in low or "upstream connect" in low:
+            return "Falha temporária ao salvar no banco (Supabase 503). O sistema tentou novamente."
+        if "521" in low or "web server is down" in low:
+            return "Falha temporária ao salvar no banco (Supabase 521). O sistema tentou novamente."
+        if "read operation timed out" in low or "timed out" in low or "timeout" in low:
+            return "Tempo excedido ao salvar no banco. O sistema tentou novamente."
+        if "json could not be generated" in low:
+            return "Falha temporária de comunicação com o banco. O sistema tentou novamente."
+        return (txt[:220] + "…") if len(txt) > 220 else txt
 
     def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
         """Roda a coleta de verdade (chamadas à Apify) numa thread — não
@@ -26020,9 +26089,13 @@ elif st.session_state.pagina == "google_ads":
                             "query": _query,
                         }
                         _cache_parcial = merge_ads(cache_atual, {_ck: _entry_parcial})
-                        _salvo_parcial_ok, _ = salvar_cache_gads(_cache_parcial, migrar_midia=False, user_id=user_id)
+                        _salvo_parcial_ok, _erro_parcial = salvar_cache_gads(_cache_parcial, migrar_midia=False, user_id=user_id)
                         if _salvo_parcial_ok:
                             cache_atual = _cache_parcial
+                        else:
+                            # Não aborta a coleta por uma falha transitória de
+                            # checkpoint. O save final da empresa tenta de novo.
+                            print(f"[GADS-SAVE] checkpoint parcial falhou empresa={_ck!r}: {_erro_parcial}", flush=True)
                         _status_por_empresa[_ck] = {
                             "status": "rodando",
                             "msg": f"{len(_ads_ck_acumulados)} anúncios coletados até agora…",
@@ -26054,8 +26127,9 @@ elif st.session_state.pagina == "google_ads":
                             cache_atual = _cache_com_uma
                             _status_por_empresa[ck] = {"status": "ok"}
                         else:
-                            erros[ck] = f"Coletado, mas falhou ao salvar: {_erro_salvar_ck}"
-                            _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_salvar_ck}
+                            _erro_curto_ck = _resumir_erro_coleta_salvar_gads(_erro_salvar_ck)
+                            erros[ck] = f"Coletado, mas não salvou: {_erro_curto_ck}"
+                            _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_curto_ck}
 
                 # Progresso incremental — sem isso, o card ficava mostrando só
                 # o rótulo genérico "Coleta de anúncios" do início ao fim,

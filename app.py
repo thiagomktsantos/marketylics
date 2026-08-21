@@ -5881,6 +5881,39 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and _grupos_botoes[1][0] >= int(img_bgr.shape[1] * 0.62)
         ):
             _grupos_botoes = []
+        # V88 — IMPORTANTE: o descarte de divisor visual precisa acontecer
+        # ANTES de transformar uma banda em "fileira de botões". Na V86 a
+        # proteção existia, mas vinha depois deste `if len(_grupos_botoes)`,
+        # portanto nunca era alcançada no caso real da FanTicket: uma linha
+        # horizontal do layout era fragmentada em 13 pequenos grupos e o fluxo
+        # já fechava `par_atual` como se fossem 13 botões. As linhas seguintes
+        # da descrição então caíam como CTA.
+        #
+        # Quando a banda foi dividida em 2+ grupos, fazemos UM OCR rápido da
+        # banda inteira antes de aceitar a interpretação de botões. Se o texto
+        # resultante for composto somente por barras/traços/artefatos verticais,
+        # é divisor gráfico — ignora a banda e, crucialmente, mantém o bloco
+        # título+descrição aberto.
+        if len(_grupos_botoes) >= 2:
+            _texto_pre_fileira_bruto = _ocr_banda(
+                reader, img_bgr, banda["y_min"], banda["y_max"]
+            ).strip()
+            _texto_pre_fileira = _limpar_pontuacao_ocr(_texto_pre_fileira_bruto)
+            _ruido_pre_compacto = re.sub(r"\s+", "", (_texto_pre_fileira or ""))
+            _ruido_pre_restante = re.sub(r"[|¦│┃!Il1_\-–—./\\]", "", _ruido_pre_compacto)
+            if (
+                len(_ruido_pre_compacto) >= 4
+                and not _ruido_pre_restante
+                and len(re.findall(r"[|¦│┃!Il1_\-–—./\\]", _ruido_pre_compacto)) >= 4
+            ):
+                _debug_bandas[idx]["texto"] = _texto_pre_fileira
+                _debug_bandas[idx]["decisao"] = (
+                    "divisor visual/ruído de OCR → ignorado ANTES da detecção de fileira; "
+                    "mantém descrição em andamento"
+                )
+                idx += 1
+                continue
+
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato

@@ -5919,6 +5919,31 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
         _debug_bandas[idx]["texto"] = texto
 
+        # V86 — algumas linhas horizontais/divisores do próprio layout do
+        # Google Ads são fragmentadas pelo detector em várias colunas e o OCR
+        # devolve apenas uma sequência de barras (ex.: "| | | | | | | |").
+        # Isso NÃO é uma fileira de botões e, principalmente, não pode fechar
+        # o par título+descrição em andamento. Caso real da FanTicket:
+        #   descrição linha 1
+        #   descrição linha 2
+        #   | | | | | | | | | | | | |   <- divisor visual
+        #   descrição linha 3
+        #   descrição linha 4
+        # Sem este descarte, a banda era classificada como 13 botões, fechava
+        # a descrição e as duas linhas seguintes viravam CTA em negrito.
+        _texto_ruido_sep = re.sub(r"\s+", "", (texto or ""))
+        _texto_ruido_restante = re.sub(r"[|¦│┃!Il1_\-–—./\\]", "", _texto_ruido_sep)
+        if (
+            len(_texto_ruido_sep) >= 4
+            and not _texto_ruido_restante
+            and len(re.findall(r"[|¦│┃!Il1_\-–—./\\]", _texto_ruido_sep)) >= 4
+        ):
+            _debug_bandas[idx]["decisao"] = (
+                "divisor visual/ruído de OCR → ignorado; mantém descrição em andamento"
+            )
+            idx += 1
+            continue
+
         # V43 — remove o bloco "Rating for <domínio>" + a linha logo abaixo
         # (nota, estrelas e quantidade de avaliações). É um elemento nativo
         # do Google, não conteúdo do anunciante. O descarte é estrutural e
@@ -6553,11 +6578,45 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _misto_palavras = [p for p in re.split(r"\s+", (texto or '').strip()) if p]
             _misto_parece_frase = len(_misto_palavras) >= 4 or len((texto or '').strip()) >= 28
             _misto_cta_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match((texto or '').strip()))
+            # V85 — alguns anúncios de Busca com imagem lateral geram um
+            # falso `sep_antes=True` exatamente na PRIMEIRA linha da descrição.
+            # Isso fazia uma frase longa do corpo virar CTA (e ficar em negrito
+            # na UI), enquanto a linha seguinte era descartada.
+            #
+            # Sinal seguro desse falso separador:
+            #   • já há um título azul aberto;
+            #   • a banda atual é claramente texto corrido (frase longa, com
+            #     pontuação de corpo);
+            #   • a próxima banda também é `misto`, sem separador, portanto é
+            #     continuação natural da mesma descrição.
+            _prox_banda_misto_sem_sep = False
+            if idx + 1 < len(bandas_texto):
+                _prox_b = bandas_texto[idx + 1]
+                _prox_banda_misto_sem_sep = (
+                    _prox_b.get("classe") == "misto"
+                    and not _prox_b.get("sep_antes")
+                    and bool((_prox_b.get("texto") or "").strip())
+                )
+            _misto_tem_pontuacao_corpo = bool(re.search(r"[.,;:!?]", (texto or "").strip()))
+            _misto_sep_falso_descricao = (
+                par_atual is not None
+                and bool(banda.get("sep_antes"))
+                and not _misto_cta_conhecido
+                and _prox_banda_misto_sem_sep
+                and _misto_tem_pontuacao_corpo
+                and (len(_misto_palavras) >= 7 or len((texto or "").strip()) >= 45)
+            )
+
             _misto_continua_descricao = (
                 par_atual is not None
-                and not banda.get("sep_antes")
                 and not _misto_cta_conhecido
-                and (bool(par_atual[1]) or _misto_parece_frase)
+                and (
+                    (
+                        not banda.get("sep_antes")
+                        and (bool(par_atual[1]) or _misto_parece_frase)
+                    )
+                    or _misto_sep_falso_descricao
+                )
             )
 
             # V39 — em anúncios de TEXTO/Busca, os sitelinks podem aparecer em
@@ -6622,6 +6681,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             elif _misto_continua_descricao:
                 par_atual[1].append(texto)
                 _debug_bandas[idx]["decisao"] = (
+                    "misto → descrição do título/sitelink em andamento "
+                    "(falso separador detectado; frase longa + continuação na linha seguinte; não é CTA)"
+                    if _misto_sep_falso_descricao else
                     "misto → descrição do título/sitelink em andamento "
                     "(frase corrida sem separador; não é CTA)"
                 )

@@ -5881,6 +5881,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and _grupos_botoes[1][0] >= int(img_bgr.shape[1] * 0.62)
         ):
             _grupos_botoes = []
+        # V89 — fallback geométrico para divisores fragmentados.
+        # Em alguns anúncios (caso FanTicket/ACDC) o EasyOCR não devolve
+        # texto útil ao reler a banda inteira, embora o detector geométrico
+        # enxergue a linha horizontal como muitos microblocos (ex.: 13).
+        # Uma fileira real de botões/sitelinks não tem 5+ colunas na mesma
+        # linha neste layout. Portanto, 5 ou mais grupos estreitos são
+        # tratados como divisor visual e NÃO fecham a descrição em andamento.
+        if len(_grupos_botoes) >= 5:
+            _debug_bandas[idx]["decisao"] = (
+                f"divisor visual geométrico ({len(_grupos_botoes)} microblocos) → "
+                "ignorado; mantém descrição em andamento"
+            )
+            idx += 1
+            continue
+
         # V88 — IMPORTANTE: o descarte de divisor visual precisa acontecer
         # ANTES de transformar uma banda em "fileira de botões". Na V86 a
         # proteção existia, mas vinha depois deste `if len(_grupos_botoes)`,

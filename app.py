@@ -6101,10 +6101,16 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
             _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
             _partes_relacionados = None
+            # V83 — marca quando a separação veio de um separador textual confiável.
+            # Nesse caso o fallback geométrico por gap NÃO pode quebrar novamente
+            # um dos links em palavras menores (caso real TicketSwap ES:
+            # "Cómo funciona TicketSwap · Regístrate o entra").
+            _relacionados_split_textual_confiavel = False
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
                 if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
+                    _relacionados_split_textual_confiavel = True
             elif re.search(r"\s[\-–—]\s", texto):
                 _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
                 _candidatos_relacionados = [
@@ -6178,6 +6184,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     # de navegação/sitelink. Assim o separador visual vira dois
                     # sitelinks independentes e o card os renderiza com <hr>.
                     _partes_relacionados = _candidatos_relacionados
+                    _relacionados_split_textual_confiavel = True
+            # V83 — correção OCR específica de navegação TicketSwap ES. O "o" curto
+            # entre "Regístrate" e "entra" pode sumir/virar vírgula no EasyOCR.
+            if (
+                str(empresa or "").strip().lower().replace(" ", "") == "ticketswap"
+                and _partes_relacionados
+            ):
+                _partes_relacionados = [
+                    re.sub(r"(?i)^reg[ií]strate\s*[,;:]\s*entra$", "Regístrate o entra", _p.strip())
+                    for _p in _partes_relacionados
+                ]
             # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
             # Motivo: às vezes UM separador sobrevive (ex.: um traço
@@ -6195,7 +6212,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # termos — mais termos é sempre sinal de que resolveu um
             # separador que a divisão por texto não pegou, nunca o
             # contrário (o fallback por vão só QUEBRA mais, nunca junta).
-            if _portao_seguranca_relacionados:
+            if _portao_seguranca_relacionados and not _relacionados_split_textual_confiavel:
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(
                     reader, img_bgr, banda["y_min"], banda["y_max"]
                 )
@@ -37593,19 +37610,46 @@ html, body { background: transparent; overflow: hidden; }
             _tot_ocr = sum(r["Imagens c/ OCR"] for r in _suporte_resumo)
             _tot_sem_ocr = sum(r["Imagens s/ OCR"] for r in _suporte_resumo)
 
-            _m1, _m2, _m3, _m4, _m5, _m6, _m7 = st.columns(7)
-            _m1.metric("Mídias", _tot_mid)
-            _m2.metric("Salvas", _tot_salvas)
-            _m3.metric("Só link", _tot_links)
-            _m4.metric("Transcritas", _tot_trans)
-            _m5.metric("Sem transcrição", _tot_sem_trans)
-            _m6.metric("Com OCR", _tot_ocr)
-            _m7.metric("Sem OCR", _tot_sem_ocr)
+            # V84 — painel de suporte com identidade visual do produto e
+            # detalhamento acionável para TODOS os indicadores do resumo.
+            st.markdown(
+                """
+                <style>
+                .support-admin-summary {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin:14px 0 18px 0;}
+                .support-admin-card {background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:14px 14px 12px;box-shadow:0 1px 2px rgba(15,43,77,.04);min-height:92px;}
+                .support-admin-card .label {color:#64748b;font-size:12px;font-weight:600;line-height:1.2;margin-bottom:7px;}
+                .support-admin-card .value {color:#0f2b4d;font-size:30px;font-weight:700;line-height:1;letter-spacing:-.5px;}
+                .support-admin-card .hint {color:#94a3b8;font-size:10px;margin-top:7px;}
+                div[data-testid="stExpander"] {background:#fff;border:1px solid #dbe4ef !important;border-radius:13px !important;box-shadow:0 1px 2px rgba(15,43,77,.035);overflow:hidden;margin-bottom:8px;}
+                div[data-testid="stExpander"] details > summary {background:#f7fafc;color:#0f2b4d;font-weight:600;min-height:48px;}
+                div[data-testid="stExpander"] details[open] > summary {background:#edf5fb;border-bottom:1px solid #dbe4ef;}
+                @media (max-width:1100px) {.support-admin-summary {grid-template-columns:repeat(4,minmax(0,1fr));}}
+                @media (max-width:720px) {.support-admin-summary {grid-template-columns:repeat(2,minmax(0,1fr));}}
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            _cards_sup = [
+                ("Mídias", _tot_mid, "inventário total"),
+                ("Salvas", _tot_salvas, "arquivo permanente"),
+                ("Só link", _tot_links, "ainda externas"),
+                ("Transcritas", _tot_trans, "vídeos concluídos"),
+                ("Sem transcrição", _tot_sem_trans, "vídeos pendentes"),
+                ("Com OCR", _tot_ocr, "imagens concluídas"),
+                ("Sem OCR", _tot_sem_ocr, "imagens pendentes"),
+            ]
+            _cards_html = "".join(
+                '<div class="support-admin-card"><div class="label">%s</div><div class="value">%d</div><div class="hint">%s</div></div>'
+                % (html.escape(str(_lbl)), int(_val), html.escape(str(_hint)))
+                for _lbl, _val, _hint in _cards_sup
+            )
+            st.markdown(f'<div class="support-admin-summary">{_cards_html}</div>', unsafe_allow_html=True)
 
             _df_sup = pd.DataFrame(_suporte_resumo)
             st.dataframe(
                 _df_sup,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
@@ -37620,70 +37664,69 @@ html, body { background: transparent; overflow: hidden; }
                 },
             )
 
-            # Diagnóstico explícito: mostra exatamente quais peças entram na
-            # contagem de "Imagens s/ OCR" e o motivo. Thumbnails/capas de
-            # anúncios em vídeo ficam fora dessa lista.
-            _sem_ocr_diag = [
-                i for i in _suporte_itens
-                if i.get("ocr_elegivel") and not i.get("tem_ocr")
-            ]
-            with st.expander(f"Ver imagens realmente sem OCR ({len(_sem_ocr_diag)})", expanded=False):
-                if _sem_ocr_diag:
-                    # V76 — visão acionável: cada imagem sem OCR pode ser refeita
-                    # diretamente nesta lista, sem precisar procurá-la novamente
-                    # no seletor de "Refazer uma mídia específica" abaixo.
-                    _h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns([1.15, 1.55, 0.75, 0.55, 2.15, 0.58, 0.72])
-                    _h1.markdown("**Empresa**")
-                    _h2.markdown("**Anúncio**")
-                    _h3.markdown("**Formato**")
-                    _h4.markdown("**Salva**")
-                    _h5.markdown("**Motivo**")
-                    _h6.markdown("**Mídia**")
-                    _h7.markdown("**Ação**")
-                    st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #d7dde5'>", unsafe_allow_html=True)
+            def _status_item_detalhe_sup(_item):
+                if not _item.get("salva"):
+                    return "Só link"
+                if _item.get("tipo") == "video":
+                    return "Transcrita" if _item.get("tem_transcricao") else "Sem transcrição"
+                if _item.get("ocr_elegivel"):
+                    return "Com OCR" if _item.get("tem_ocr") else "Sem OCR"
+                return _item.get("motivo_ocr") or "Processamento não aplicável"
 
-                    for _pos_sem_ocr, _item_sem_ocr in enumerate(_sem_ocr_diag):
-                        _r1, _r2, _r3, _r4, _r5, _r6, _r7 = st.columns([1.15, 1.55, 0.75, 0.55, 2.15, 0.58, 0.72])
-                        _r1.write(_item_sem_ocr.get("empresa") or "—")
-                        _r2.write(_item_sem_ocr.get("ad_id") or "—")
-                        _r3.write(_item_sem_ocr.get("formato_anuncio") or "—")
-                        _r4.write("Sim" if _item_sem_ocr.get("salva") else "Não")
-                        _r5.write(_item_sem_ocr.get("motivo_ocr") or "OCR pendente ou não executado")
-
-                        _url_sem_ocr = _item_sem_ocr.get("url") or ""
+            def _render_lista_detalhe_sup(_titulo, _itens_lista, _vazio, _key_prefix):
+                with st.expander(f"{_titulo} ({len(_itens_lista)})", expanded=False):
+                    if not _itens_lista:
+                        st.caption(_vazio)
+                        return
+                    _h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns([1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72])
+                    _h1.markdown("**Empresa**"); _h2.markdown("**Origem**"); _h3.markdown("**Anúncio**")
+                    _h4.markdown("**Tipo**"); _h5.markdown("**Situação**"); _h6.markdown("**Mídia**"); _h7.markdown("**Ação**")
+                    st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #dbe4ef'>", unsafe_allow_html=True)
+                    for _pos_det, _item_det in enumerate(_itens_lista):
+                        _r1, _r2, _r3, _r4, _r5, _r6, _r7 = st.columns([1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72])
+                        _r1.write(_item_det.get("empresa") or "—")
+                        _r2.write(_item_det.get("plataforma") or "—")
+                        _r3.write(_item_det.get("ad_id") or "—")
+                        _tipo_det = _item_det.get("tipo") or "—"
+                        _fmt_det = _item_det.get("formato_anuncio") or ""
+                        _r4.write(_fmt_det or _tipo_det)
+                        _r5.write(_status_item_detalhe_sup(_item_det))
+                        _url_det = _item_det.get("url") or ""
                         with _r6:
-                            if _url_sem_ocr:
-                                st.markdown(f'<a href="{html.escape(_url_sem_ocr, quote=True)}" target="_blank">Abrir</a>', unsafe_allow_html=True)
+                            if _url_det:
+                                st.markdown(f'<a href="{html.escape(_url_det, quote=True)}" target="_blank">Abrir</a>', unsafe_allow_html=True)
                             else:
                                 st.write("—")
-
-                        _chave_sem_ocr = str(
-                            _item_sem_ocr.get("midia_id")
-                            or _item_sem_ocr.get("ad_id")
-                            or _item_sem_ocr.get("url_cdn")
-                            or _item_sem_ocr.get("url")
-                            or _pos_sem_ocr
-                        )
-                        _chave_sem_ocr = hashlib.md5(_chave_sem_ocr.encode("utf-8", errors="ignore")).hexdigest()[:12]
+                        _chave_det = str(_item_det.get("midia_id") or _item_det.get("ad_id") or _item_det.get("url_cdn") or _item_det.get("url") or _pos_det)
+                        _chave_det = hashlib.md5(_chave_det.encode("utf-8", errors="ignore")).hexdigest()[:12]
+                        _acao_invalida = bool(_item_det.get("salva") and _item_det.get("tipo") == "imagem" and not _item_det.get("ocr_elegivel"))
                         with _r7:
-                            if st.button(
-                                "Refazer",
-                                key=f"_suporte_sem_ocr_refazer_{_chave_sem_ocr}",
-                                use_container_width=True,
-                            ):
-                                _ok_sem_ocr, _msg_sem_ocr = _suporte_refazer_midia_especifica(
-                                    st.session_state.user.id, _item_sem_ocr
-                                )
-                                if _ok_sem_ocr:
-                                    st.toast(_msg_sem_ocr, icon="🔄")
+                            if st.button("Refazer", key=f"{_key_prefix}_{_chave_det}_{_pos_det}", width="stretch", disabled=_acao_invalida):
+                                _ok_det, _msg_det = _suporte_refazer_midia_especifica(st.session_state.user.id, _item_det)
+                                if _ok_det:
+                                    st.toast(_msg_det, icon="🔄")
                                 else:
-                                    st.error(_msg_sem_ocr)
+                                    st.error(_msg_det)
                                 st.rerun()
+                        if _pos_det < len(_itens_lista) - 1:
+                            st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #edf2f7'>", unsafe_allow_html=True)
 
-                        if _pos_sem_ocr < len(_sem_ocr_diag) - 1:
-                            st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #e5e7eb'>", unsafe_allow_html=True)
-                else:
-                    st.success("Nenhuma imagem elegível está pendente de OCR.")
+            _det_todas = list(_suporte_itens)
+            _det_salvas = [i for i in _suporte_itens if i.get("salva")]
+            _det_links = [i for i in _suporte_itens if not i.get("salva")]
+            _det_trans = [i for i in _suporte_itens if i.get("tipo") == "video" and i.get("tem_transcricao")]
+            _det_sem_trans = [i for i in _suporte_itens if i.get("tipo") == "video" and not i.get("tem_transcricao")]
+            _det_ocr = [i for i in _suporte_itens if i.get("ocr_elegivel") and i.get("tem_ocr")]
+            _det_sem_ocr = [i for i in _suporte_itens if i.get("ocr_elegivel") and not i.get("tem_ocr")]
+
+            st.markdown("<div style='margin:18px 0 8px;color:#0f2b4d;font-weight:700;font-size:16px'>Detalhamento do inventário</div>", unsafe_allow_html=True)
+            _render_lista_detalhe_sup("Ver todas as mídias", _det_todas, "Nenhuma mídia cadastrada.", "_sup_det_todas")
+            _render_lista_detalhe_sup("Ver mídias salvas", _det_salvas, "Nenhuma mídia salva permanentemente.", "_sup_det_salvas")
+            _render_lista_detalhe_sup("Ver mídias somente com link", _det_links, "Nenhuma mídia depende apenas de link externo.", "_sup_det_links")
+            _render_lista_detalhe_sup("Ver vídeos transcritos", _det_trans, "Nenhum vídeo com transcrição.", "_sup_det_trans")
+            _render_lista_detalhe_sup("Ver vídeos sem transcrição", _det_sem_trans, "Nenhum vídeo pendente de transcrição.", "_sup_det_sem_trans")
+            _render_lista_detalhe_sup("Ver imagens com OCR", _det_ocr, "Nenhuma imagem elegível com OCR.", "_sup_det_ocr")
+            _render_lista_detalhe_sup("Ver imagens realmente sem OCR", _det_sem_ocr, "Nenhuma imagem elegível está pendente de OCR.", "_sup_det_sem_ocr")
 
             st.markdown("**Refazer uma mídia específica**")
             _empresas_sup = [r["Empresa"] for r in _suporte_resumo]

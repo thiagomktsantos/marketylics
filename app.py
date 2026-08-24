@@ -2058,8 +2058,11 @@ _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.
 # esse reconhecimento por texto ela era só mais uma linha de descrição
 # grudada no sitelink anterior. Lista inicial validada com anúncios
 # reais da kedu — dá pra ir completando conforme aparecerem outros CTAs.
+# V91 — inclui também a forma imperativa real do Google Ads em PT-BR: "Compre Agora".
+# A lista anterior só reconhecia "Comprar Agora", então o look-ahead da V90 não
+# identificava o CTA final e deixava o texto promocional interno da arte ocupar o CTA.
 _REGEX_CTA_TITULO_CONHECIDO = re.compile(
-    r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|saiba\s*mais|"
+    r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|compre\s*agora|saiba\s*mais|"
     r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
     r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já|"
     # "entre em contato" aceita um complemento CURTO e ESPECÍFICO colado

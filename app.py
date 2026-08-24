@@ -6683,10 +6683,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _prox_banda_misto_sem_sep = False
             if idx + 1 < len(bandas_texto):
                 _prox_b = bandas_texto[idx + 1]
+                # V92 — neste ponto do pipeline as bandas futuras ainda NÃO
+                # possuem `texto` preenchido; o OCR da banda só é feito quando
+                # ela chega à iteração principal. A V85 consultava
+                # `_prox_b.get("texto")`, que portanto vinha vazio e fazia a
+                # proteção de falso separador nunca disparar.
+                #
+                # Para detectar continuação de descrição basta a estrutura:
+                # próxima banda também é `misto` e NÃO tem separador antes.
+                # O conteúdo da próxima linha será lido normalmente na próxima
+                # iteração. Isso cobre o caso real da FanTicket em que
+                # "Imagine Dragons 2025. Ingressos de fã para fã, com"
+                # chegava com sep_antes=True e virava CTA/negrito.
                 _prox_banda_misto_sem_sep = (
                     _prox_b.get("classe") == "misto"
                     and not _prox_b.get("sep_antes")
-                    and bool((_prox_b.get("texto") or "").strip())
                 )
             _misto_tem_pontuacao_corpo = bool(re.search(r"[.,;:!?]", (texto or "").strip()))
             _misto_sep_falso_descricao = (

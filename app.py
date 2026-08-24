@@ -6576,8 +6576,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # depende de uma lista fechada de palavras como "Compre Agora".
             _texto_cta_limpo = (texto or "").strip()
             _cta_suspeito_curto = bool(_texto_cta_limpo) and len(re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", _texto_cta_limpo)) <= 4
+            _cta_atual_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match(_texto_cta_limpo))
             _ha_botao_valido_mais_abaixo = False
-            if _cta_suspeito_curto and not resultado["cta"]:
+            _ha_cta_conhecido_mais_abaixo = False
+            _txt_cta_conhecido_mais_abaixo = ""
+
+            # V90 — banners/peças criativas dentro de anúncios Display podem
+            # conter um retângulo sólido com texto promocional. O detector
+            # geométrico enxerga essa região como `botao`, embora ela faça
+            # parte da ARTE e não seja o CTA final do Google. Caso real:
+            # um banner interno com texto sobre cupom foi lido como uma
+            # frase longa/gibberish e ocupou `resultado["cta"]`; logo abaixo
+            # existia o CTA real, perfeitamente legível, "Compre Agora".
+            #
+            # Regra: se o botão atual NÃO bate numa expressão de CTA
+            # conhecida e existe mais abaixo outra banda `botao` que bate,
+            # damos prioridade ao CTA conhecido mais baixo e ignoramos a
+            # região interna da arte. Isso é mais seguro do que usar só
+            # comprimento do texto e preserva CTAs reais fora da nossa lista
+            # quando não há um CTA conhecido concorrente abaixo.
+            if not resultado["cta"]:
                 for _j_cta in range(idx + 1, len(bandas_texto)):
                     _b_cta_fut = bandas_texto[_j_cta]
                     if _b_cta_fut.get("classe") != "botao":
@@ -6595,9 +6613,23 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     _txt_cta_fut = _limpar_pontuacao_ocr(_txt_cta_fut)
                     if len(re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", _txt_cta_fut)) >= 5:
                         _ha_botao_valido_mais_abaixo = True
+                    if _REGEX_CTA_TITULO_CONHECIDO.match(_txt_cta_fut):
+                        _ha_cta_conhecido_mais_abaixo = True
+                        _txt_cta_conhecido_mais_abaixo = _txt_cta_fut
                         break
 
-            if _cta_suspeito_curto and _ha_botao_valido_mais_abaixo:
+            _ignorar_por_cta_conhecido_abaixo = (
+                bool(_texto_cta_limpo)
+                and not _cta_atual_conhecido
+                and _ha_cta_conhecido_mais_abaixo
+            )
+
+            if _ignorar_por_cta_conhecido_abaixo:
+                _debug_bandas[idx]["decisao"] = (
+                    "botao → ignorado como conteúdo interno da arte "
+                    f"(CTA conhecido mais abaixo: '{_txt_cta_conhecido_mais_abaixo}')"
+                )
+            elif _cta_suspeito_curto and _ha_botao_valido_mais_abaixo:
                 _debug_bandas[idx]["decisao"] = (
                     "botao → ignorado como falso CTA (texto curto e existe botão válido mais abaixo)"
                 )

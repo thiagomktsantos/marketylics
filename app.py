@@ -36,6 +36,10 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 _PROCESSO_INICIO_MONOTONIC = time.monotonic()
 
+# V98 — polling visual mais leve: reduz reruns automáticos e consultas repetidas.
+UI_POLL_INTERVAL_MS = int(st.secrets.get("UI_POLL_INTERVAL_MS", 8000))
+UI_POLL_INTERVAL_SEG = max(4.0, UI_POLL_INTERVAL_MS / 1000.0)
+
 # ---------------------------------------------------
 # LIMITE DE THREADS DE CPU (PyTorch/OpenCV) — corrige o throttle de CPU
 # do Streamlit Cloud no OCR (EasyOCR)
@@ -155,6 +159,26 @@ def _http_post(*args, **kwargs):
 def _http_head(*args, **kwargs):
     return _http_session().head(*args, **kwargs)
 
+
+
+# ---------------------------------------------------
+# V98 — HELPERS COMPARTILHADOS META ADS / GOOGLE ADS
+# ---------------------------------------------------
+def _ads_empresa_tem_dados(cache: dict, nome_empresa: str) -> bool:
+    entry = (cache or {}).get(nome_empresa) or {}
+    return bool(entry.get("data"))
+
+def _ads_empresas_com_dados(todas_empresas: list, cache: dict) -> list:
+    return [e for e in (todas_empresas or []) if _ads_empresa_tem_dados(cache, e.get("nome", ""))]
+
+def _ads_resolver_empresa_ativa(todas_empresas: list, cache: dict, ativa: str):
+    """Mantém uma empresa ativa somente se ela realmente tiver dados."""
+    com_dados = _ads_empresas_com_dados(todas_empresas, cache)
+    if ativa == "__comparativo__":
+        return ativa, com_dados
+    if any(e.get("nome") == ativa for e in com_dados):
+        return ativa, com_dados
+    return (com_dados[0]["nome"] if com_dados else ""), com_dados
 
 # ---------------------------------------------------
 # PLAYWRIGHT — GARANTE O CHROMIUM INSTALADO
@@ -478,7 +502,109 @@ def get_supabase() -> Client:
         st.session_state["_supabase_client"] = create_client(url, key, options=_opcoes_supabase)
     return st.session_state["_supabase_client"]
 
+
 supabase = get_supabase()
+
+# ---------------------------------------------------
+# V98 — CAMADA RESILIENTE DE SUPABASE
+# ---------------------------------------------------
+# Centraliza retry/backoff para operações críticas. Antes, cada área tinha
+# sua própria sequência de tentativas, com tempos e critérios diferentes.
+_SUPABASE_ERROS_TRANSITORIOS = (
+    "timeout", "timed out", "read operation", "connection reset",
+    "connection lost", "server disconnected", "521", "502", "503", "504",
+    "57p03", "database system is not accepting connections", "upstream",
+)
+
+def _erro_supabase_transitorio(exc) -> bool:
+    s = str(exc).lower()
+    return any(tok in s for tok in _SUPABASE_ERROS_TRANSITORIOS)
+
+def _supabase_resiliente(fn, *, operacao: str = "supabase", tentativas: int = 4,
+                         backoff=(1, 2, 4, 8), somente_transitorios: bool = True):
+    """Executa `fn()` com retry/backoff consistente.
+    Erros de regra/dado não ficam sendo repetidos à toa; instabilidade de
+    rede/gateway recebe novas tentativas automáticas."""
+    ultimo = None
+    for i in range(max(1, tentativas)):
+        try:
+            with _recurso_api_io():
+                return fn()
+        except Exception as exc:
+            ultimo = exc
+            if somente_transitorios and not _erro_supabase_transitorio(exc):
+                raise
+            if i >= tentativas - 1:
+                break
+            espera = backoff[min(i, len(backoff) - 1)] if backoff else 1
+            print(f"[SUPABASE-V98] retry {i+1}/{tentativas-1} operacao={operacao!r} "
+                  f"em {espera}s: {exc!r}", flush=True)
+            time.sleep(espera)
+    raise ultimo
+
+def _persistir_cache_ads_db(user_id: str, coluna: str, payload: dict,
+                            tentativas: int = 5):
+    """Persistência comum a Meta Ads e Google Ads."""
+    return _supabase_resiliente(
+        lambda: supabase.table("ci_dados").update({coluna: payload})
+                .eq("user_id", user_id).execute(),
+        operacao=f"salvar_{coluna}",
+        tentativas=tentativas,
+        backoff=(2, 4, 8, 12, 20),
+    )
+
+# ---------------------------------------------------
+# V98 — COORDENADOR CENTRAL DE JOBS
+# ---------------------------------------------------
+# OCR e migração já tinham travas próprias; agora compartilham também uma
+# visão única de "job lógico ativo" para impedir workers duplicados entre
+# subsistemas diferentes.
+_jobs_lock = threading.RLock()
+_jobs_ativos = set()
+
+def _job_key(tipo: str, user_id: str, escopo: str = ""):
+    return (str(tipo), str(user_id), str(escopo or ""))
+
+def _job_try_acquire(tipo: str, user_id: str, escopo: str = "") -> bool:
+    chave = _job_key(tipo, user_id, escopo)
+    with _jobs_lock:
+        if chave in _jobs_ativos:
+            return False
+        _jobs_ativos.add(chave)
+        return True
+
+def _job_release(tipo: str, user_id: str, escopo: str = ""):
+    with _jobs_lock:
+        _jobs_ativos.discard(_job_key(tipo, user_id, escopo))
+
+def _job_is_active(tipo: str, user_id: str, escopo: str = "") -> bool:
+    with _jobs_lock:
+        return _job_key(tipo, user_id, escopo) in _jobs_ativos
+
+def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
+    """Executa um job e sempre libera sua chave lógica ao terminar."""
+    try:
+        return target(*(args or ()), **(kwargs or {}))
+    finally:
+        _job_release(tipo, user_id, escopo)
+
+def _job_start_thread(tipo: str, user_id: str, escopo: str, target, *,
+                      args=(), kwargs=None, daemon=True, name=None) -> bool:
+    """Abre uma única thread para o job. False = já havia job igual ativo."""
+    if not _job_try_acquire(tipo, user_id, escopo):
+        return False
+    try:
+        threading.Thread(
+            target=_job_run_guarded,
+            args=(tipo, user_id, escopo, target, args, kwargs),
+            daemon=daemon,
+            name=name,
+        ).start()
+        return True
+    except Exception:
+        _job_release(tipo, user_id, escopo)
+        raise
+
 
 # ---------------------------------------------------
 #  CLOUDFLARE R2 (armazenamento permanente de mídias)
@@ -651,7 +777,7 @@ def _extrair_expiracao_url(url: str):
         oe = _urlparse.parse_qs(qs).get("oe", [None])[0]
         if not oe:
             return None
-        return _dt_exp.datetime.utcfromtimestamp(int(oe, 16))
+        return _dt_exp.datetime.fromtimestamp(int(oe, 16), _dt_exp.timezone.utc)
     except Exception:
         return None
 
@@ -668,7 +794,7 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
         quebrada agora) de um link que ainda funciona mas vai quebrar.
       - "expirando": ainda não venceu, mas vence dentro da janela.
 
-    "agora" é recalculado a cada chamada (datetime.utcnow()), então o
+    "agora" é recalculado a cada chamada em UTC, então o
     resultado reflete o instante real da renderização — cada rerun do
     Streamlit (refresh da página, navegação etc.) recalcula do zero
     contra o relógio atual, não guarda um valor "congelado" de uma
@@ -687,7 +813,7 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
     ver se o link realmente está quebrado), em vez de confiar cegamente
     no número agregado."""
     import datetime as _dt_exp
-    agora = _dt_exp.datetime.utcnow()
+    agora = _dt_exp.datetime.now(_dt_exp.timezone.utc)
     limite = agora + _dt_exp.timedelta(hours=horas)
     expirados = 0
     expirando = 0
@@ -734,7 +860,7 @@ def _montar_tooltip_ids(itens: list, agora=None) -> str:
     um tooltip gigante quando são centenas de anúncios; o restante só
     entra na contagem "+N outros"."""
     import datetime as _dt_tt
-    agora = agora or _dt_tt.datetime.utcnow()
+    agora = agora or _dt_tt.datetime.now(_dt_tt.timezone.utc)
     linhas = []
     for it in (itens or [])[:20]:
         _tit = f" — {it['titulo']}" if it.get("titulo") else ""
@@ -754,7 +880,7 @@ def _formatar_tempo_restante(quando, agora=None) -> str:
     adicionar depois se for importante ter atualização contínua sem
     precisar recarregar/interagir com a página)."""
     import datetime as _dt_fmt
-    agora = agora or _dt_fmt.datetime.utcnow()
+    agora = agora or _dt_fmt.datetime.now(_dt_fmt.timezone.utc)
     total_min = int((quando - agora).total_seconds() // 60)
     if total_min <= 0:
         return "menos de 1 min"
@@ -1104,7 +1230,7 @@ def _limpar_falha_midia(user_id: str, url_origem: str) -> None:
         pass
 
 _REGEX_YOUTUBE = re.compile(
-    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{6,20})"
+    r"(?:youtube\\.com/(?:watch\?(?:.*&)?v=|shorts/)|youtu\\.be/)([a-zA-Z0-9_-]{6,20})"
 )
 
 def _e_url_youtube(url: str) -> bool:
@@ -1476,7 +1602,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
                 tarefas_brutas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
 
     if not tarefas_brutas:
-        return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0, "assets_encontrados": 0, "assets_unicos": 0, "duplicados_ignorados": 0}
+        return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0, "assets_encontrados": 0, "assets_unicos": 0, "duplicados_ignorados": 0, "reutilizados_biblioteca": 0}
 
     # V93: uma única transferência por asset. Todas as ocorrências do mesmo
     # arquivo (images/carousel/profile e anúncios diferentes) recebem depois
@@ -1491,17 +1617,51 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         if _score_url(u, tipo) > _score_url(g["melhor"][4], tipo):
             g["melhor"] = t
 
+    # V98 — além do dedupe desta execução, consulta mídias já salvas em
+    # execuções anteriores. URLs da Meta mudam query string, mas preservam
+    # o pathname do asset; se a chave canônica já possui url_cdn, não baixa
+    # novamente.
+    _cdn_existente_por_chave = {}
+    try:
+        _res_midias_exist = _supabase_resiliente(
+            lambda: supabase.table("midias")
+                    .select("url_origem,url_cdn,tipo")
+                    .eq("user_id", user_id).execute(),
+            operacao="indice_midias_existentes",
+            tentativas=3,
+        )
+        for _m_exist in (_res_midias_exist.data or []):
+            _u_exist = _m_exist.get("url_origem") or ""
+            _cdn_exist = _m_exist.get("url_cdn") or ""
+            _tipo_exist = _m_exist.get("tipo") or ("video" if _e_url_video(_u_exist) else "imagem")
+            if _u_exist and _cdn_exist:
+                _cdn_existente_por_chave[_chave_asset(_u_exist, _tipo_exist)] = _cdn_exist
+    except Exception as _exc_indice:
+        print(f"[MIDIA-V98] índice prévio indisponível: {_exc_indice!r}", flush=True)
+
     tarefas = []
+    reutilizados_biblioteca = 0
     for chave, g in _grupos.items():
+        _cdn_previo = _cdn_existente_por_chave.get(chave)
+        if _cdn_previo:
+            reutilizados_biblioteca += 1
+            for _ref in g["refs"]:
+                _emp, _idx, _campo, _url_idx, _u, _tipo, _aid, _titulo, _rh = _ref
+                if _campo == "page_profile_picture":
+                    resultado[_emp]["data"][_idx][_campo] = _cdn_previo
+                else:
+                    resultado[_emp]["data"][_idx][_campo][_url_idx] = _cdn_previo
+            continue
         melhor = g["melhor"]
         tarefas.append((*melhor, chave))
 
     total_assets_encontrados = len(tarefas_brutas)
     total_tarefas = len(tarefas)
-    duplicados_ignorados = total_assets_encontrados - total_tarefas
+    duplicados_ignorados = total_assets_encontrados - len(_grupos)
     print(
-        f"[MIDIA-V93] assets={total_assets_encontrados} unicos={total_tarefas} "
-        f"duplicados_ignorados={duplicados_ignorados}", flush=True
+        f"[MIDIA-V98] assets={total_assets_encontrados} novos_unicos={total_tarefas} "
+        f"duplicados_execucao={duplicados_ignorados} reutilizados_biblioteca={reutilizados_biblioteca}",
+        flush=True
     )
 
     # Lock protege o contador de progresso (vários workers do
@@ -1650,6 +1810,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         "assets_encontrados": total_assets_encontrados,
         "assets_unicos": total_tarefas,
         "duplicados_ignorados": duplicados_ignorados,
+        "reutilizados_biblioteca": reutilizados_biblioteca,
     }
     return resultado, stats
 
@@ -2124,7 +2285,7 @@ _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponse
 # banda inteira sobrevivia intacta como se fosse cabeçalho — grudando
 # a palavra "Patrocinado" na frente do nome da página/URL (validado
 # num anúncio real da BuyTicket Brasil, ver print reportado pelo
-# usuário). `[\s:\-]*` absorve o espaço/pontuação residual que
+# usuário). `[\\s:\-]*` absorve o espaço/pontuação residual que
 # costuma sobrar entre o rótulo e o texto seguinte.
 _REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])", re.IGNORECASE)
 # Formato de domínio/URL: precisa ter pelo menos um "." separando
@@ -2133,7 +2294,7 @@ _REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|
 # linha que É a URL exibida das linhas que NÃO são (ex: nome da
 # página/anunciante ao lado do favicon, tipo "KEDU") — essas não têm
 # ponto e não devem ser misturadas no url_exibida.
-_REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
+_REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
 # CTA final do anúncio (ex: botão "Enviar mensagem" do WhatsApp, "Ligar
 # agora", etc.) — layout fixo da Central de Transparência: vem depois de
 # um separador, com um ícone colorido à esquerda (ignorado na
@@ -2148,9 +2309,9 @@ _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.
 # A lista anterior só reconhecia "Comprar Agora", então o look-ahead da V90 não
 # identificava o CTA final e deixava o texto promocional interno da arte ocupar o CTA.
 _REGEX_CTA_TITULO_CONHECIDO = re.compile(
-    r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|compre\s*agora|saiba\s*mais|"
-    r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
-    r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já|"
+    r"^(enviar\\s*mensagem|ligar\\s*agora|comprar\\s*agora|compre\\s*agora|saiba\\s*mais|"
+    r"cadastre-?se|fazer\\s*pedido|agendar(\\s*agora)?|reservar(\\s*agora)?|"
+    r"inscreva-?se|baixar\\s*agora|instalar(\\s*agora)?|pe(ç|c)a\\s*já|"
     # "entre em contato" aceita um complemento CURTO e ESPECÍFICO colado
     # na mesma linha ("no app WhatsApp") — validado em anúncio real da
     # isaac, onde o CTA e esse complemento saem juntos numa banda só do
@@ -2161,7 +2322,7 @@ _REGEX_CTA_TITULO_CONHECIDO = re.compile(
     # (ex: "Saiba Mais Descubra como o Isaac pode ajudar..."), então
     # aceitar texto livre depois dele fazia o meio da descrição virar
     # CTA por engano, cortando o parágrafo ao meio.
-    r"entre\s*em\s*contato(\s+no\s*app\s*whatsapp)?|fale\s*conosco|fale\s*com\s*a\s*gente)$",
+    r"entre\\s*em\\s*contato(\\s+no\\s*app\\s*whatsapp)?|fale\\s*conosco|fale\\s*com\\s*a\\s*gente)$",
     re.IGNORECASE,
 )
 
@@ -2303,7 +2464,7 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
         # direto no "senão" de baixo e saía sem negrito — como se fosse
         # um domínio comum, quando na verdade é o nome da empresa (que
         # todo outro tipo de anúncio já mostra em negrito).
-        _PADRAO_PARECE_DOMINIO = r"\bwww\b|\.[a-z]{2,4}(?:$|/)"
+        _PADRAO_PARECE_DOMINIO = r"\bwww\b|\\.[a-z]{2,4}(?:$|/)"
         if len(_linhas_url) >= 2:
             _nome_pagina = _linhas_url[0].rstrip("/")
             _resto_url = "\n".join(_linhas_url[1:])
@@ -2453,7 +2614,7 @@ def _normalizar_url_exibida(texto: str) -> str:
     # barras/pontuação do protocolo (http;//, http//, http:/, httpl//).
     # IMPORTANTE: só corrige quando a linha COMEÇA por http/https; nunca
     # inventa protocolo em uma URL que no criativo mostra apenas www.
-    texto = re.sub(r"^(https?)\s*[;,.]?\s*[:;]?\s*[l|/]{1,3}(?=(?:www|[a-z0-9]))", r"\1://", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"^(https?)\\s*[;,.]?\\s*[:;]?\\s*[l|/]{1,3}(?=(?:www|[a-z0-9]))", r"\1://", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?)l(?=/{1,2}(?:www|[a-z0-9]))", r"\1:", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?):l{1,2}(?=[a-zA-Z0-9])", r"\1://", texto, flags=re.IGNORECASE)
     # Normaliza o prefixo "www" mesmo quando o ponto separador some
@@ -2482,7 +2643,7 @@ def _normalizar_url_exibida(texto: str) -> str:
     #
     # A pontuação logo depois também passa a aceitar ":" além de ".",
     # em qualquer combinação de 0 a 2 caracteres (`[.:]{0,2}`, no lugar
-    # do antigo `\.?` que só cobria um ponto opcional) — no mesmo
+    # do antigo `\\.?` que só cobria um ponto opcional) — no mesmo
     # anúncio da BuyTicket o EasyOCR leu essa pontuação como ".:" (dois
     # caracteres colados) em vez de só ".". Continua opcional (mínimo
     # zero) pra não quebrar o caso "Wwwisaac_.com.br/" acima, que não
@@ -2495,7 +2656,7 @@ def _normalizar_url_exibida(texto: str) -> str:
     # de confusão de caractere já coberta pelo "N", só que numa letra
     # diferente). Sem o "V" aqui, esse prefixo nunca virava "www." e o
     # domínio final ficava com um "VWW." literal na frente.
-    texto = re.sub(r"^((?:https?://)?)[nNvVwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
+    texto = re.sub(r"^((?:https?://)?)[nNvVwW]{2,4}[.:]{0,2}\\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
     # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
     # removendo o "l" colado (item 2) SE ele existir, mas sem assumir
     # que ele sempre existe: quando o EasyOCR acerta a barra de verdade
@@ -2554,7 +2715,7 @@ def _normalizar_url_exibida(texto: str) -> str:
     # posição imediatamente depois de um TLD reconhecido, sem alterar
     # letras no nome do domínio.
     _match_tld = re.search(
-        rf"\.?({_tlds_ocr})([._]?br)?(?=[lI/]|$)",
+        rf"\\.?({_tlds_ocr})([._]?br)?(?=[lI/]|$)",
         texto,
         flags=re.IGNORECASE,
     )
@@ -2615,7 +2776,7 @@ def _normalizar_url_exibida(texto: str) -> str:
     # nessa posição, então é seguro remover. Mesma lista de TLDs do
     # item 2 acima (generalizado além de só ".com.br"), senão esse "_"
     # ficava preso em domínios genéricos ".com" (ex: "isaac_.com").
-    texto = re.sub(r"_+(?=\.?(?:com|net|org|io|shop|app)(?:\.?br)?)", "", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"_+(?=\\.?(?:com|net|org|io|shop|app)(?:\\.?br)?)", "", texto, flags=re.IGNORECASE)
     # Rede de segurança: colapsa qualquer barra dupla residual que ainda
     # tenha sobrado por outro caminho não previsto pelas regras acima —
     # EXCETO logo depois de "http:"/"https:", onde "//" é o protocolo
@@ -3583,7 +3744,7 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     # número legítimo ("Fórmula 1", "2026" etc.) continua intacto quando o
     # EasyOCR o detecta normalmente como caixa; esta trava só vale para o
     # fallback de recuperação de lacunas.
-    if re.match(r"^\d", texto):
+    if re.match(r"^\\d", texto):
         print(
             f"[OCR-DEBUG] glifo recuperado rejeitado (começa por dígito): {texto!r}",
             flush=True,
@@ -3599,7 +3760,7 @@ def _reler_banda_ampliada_se_suspeita(reader, recorte_bgr, texto_atual: str) -> 
     muito parecida com o texto original."""
     if not texto_atual or recorte_bgr is None or recorte_bgr.size == 0:
         return texto_atual
-    _rx_sus = re.compile(r"(?:^|\s)1(?:\s|(?=[A-Za-zÀ-ÿ]))|\b1[A-Za-zÀ-ÿ]")
+    _rx_sus = re.compile(r"(?:^|\\s)1(?:\\s|(?=[A-Za-zÀ-ÿ]))|\b1[A-Za-zÀ-ÿ]")
     _qtd_sus_atual = len(_rx_sus.findall(texto_atual))
     if _qtd_sus_atual == 0:
         return texto_atual
@@ -3617,8 +3778,8 @@ def _reler_banda_ampliada_se_suspeita(reader, recorte_bgr, texto_atual: str) -> 
         _cand = " ".join((it[1] or "").strip() for it in _res if (it[1] or "").strip()).strip()
         if not _cand:
             return texto_atual
-        _cand = re.sub(r"\s+([,.;:!?])", r"\1", _cand)
-        _cand = re.sub(r"\s{2,}", " ", _cand).strip()
+        _cand = re.sub(r"\\s+([,.;:!?])", r"\1", _cand)
+        _cand = re.sub(r"\\s{2,}", " ", _cand).strip()
         _qtd_sus_cand = len(_rx_sus.findall(_cand))
         if _qtd_sus_cand >= _qtd_sus_atual:
             return texto_atual
@@ -3638,7 +3799,7 @@ def _reler_banda_ampliada_se_suspeita(reader, recorte_bgr, texto_atual: str) -> 
         print(f"[OCR-DEBUG] releitura ampliada falhou: {e!r}", flush=True)
     return texto_atual
 
-_REGEX_ASPA_FECHAMENTO_TROCADA = re.compile(r'(["][^"\'\n]{1,60})[\'](?=\s|[.,;:!?)\]]|$)')
+_REGEX_ASPA_FECHAMENTO_TROCADA = re.compile(r'(["][^"\'\n]{1,60})[\'](?=\\s|[.,;:!?)\]]|$)')
 
 def _normalizar_aspas_ocr(texto: str) -> str:
     """Normaliza aspas lidas pelo OCR: unifica variantes tipográficas
@@ -3662,7 +3823,7 @@ def _normalizar_aspas_ocr(texto: str) -> str:
     texto = _REGEX_ASPA_FECHAMENTO_TROCADA.sub(lambda m: m.group(1) + '"', texto)
     return texto
 
-_REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
+_REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\\s+([,.;:!?])")
 # Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
 # sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
 # "O", ou — mais comum ainda — como o DÍGITO "0" (zero), porque na
@@ -3670,7 +3831,7 @@ _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
 # idêntico a um "O" maiúsculo (validado num anúncio real da isaac:
 # "Mensalidades em dia O ano todo" na tela veio de um "0" no dado bruto
 # do OCR, não de um "O" de verdade). Cobre os dois caracteres.
-_REGEX_O_OU_ZERO_ISOLADO = re.compile(r"(?<=\s)[O0](?=\s)")
+_REGEX_O_OU_ZERO_ISOLADO = re.compile(r"(?<=\\s)[O0](?=\\s)")
 
 def _corrigir_o_isolado(texto: str) -> str:
     """Troca um "O"/"0" isolado entre espaços pelo conectivo "o"
@@ -3709,14 +3870,14 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     # Pontuação solta ANTES do primeiro caractere alfanumérico é quase
     # sempre ruído de borda/ícone recuperado pelo OCR (bug real: o CTA
     # "Compre Agora" apareceu como ",Compre Agora").
-    texto = re.sub(r"^[,;:]+\s*", "", texto)
+    texto = re.sub(r"^[,;:]+\\s*", "", texto)
     texto = _REGEX_ESPACO_ANTES_PONTUACAO.sub(r"\1", texto)
     # Ruído OCR observado em headline: um pequeno artefato entre duas
     # palavras vira "~" isolado ("Ele ~ Tá"). Em texto publicitário comum,
     # til solto entre palavras não é pontuação válida; remove somente quando
     # está isolado por espaços e cercado por caracteres alfanuméricos.
-    texto = re.sub(r"(?<=\w)\s+[~^]\s+(?=\w)", " ", texto)
-    texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
+    texto = re.sub(r"(?<=\w)\\s+[~^]\\s+(?=\w)", " ", texto)
+    texto = re.sub(r"\\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
 
     # V48 — remove símbolos espúrios que o EasyOCR insere logo depois de
     # separadores verticais em descrições de anúncios de Busca. Caso real:
@@ -3726,16 +3887,16 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     # só remove $/@ quando aparecem como token isolado IMEDIATAMENTE depois
     # de "|" e antes de uma palavra. Assim, não mexe em preços legítimos
     # ("$ 50"), e-mails/handles ("@usuario") nem em outros usos reais.
-    texto = re.sub(r"(?<=\|)\s*[$@]\s+(?=[A-Za-zÀ-ÿ])", " ", texto)
+    texto = re.sub(r"(?<=\|)\\s*[$@]\\s+(?=[A-Za-zÀ-ÿ])", " ", texto)
 
     # V52 — corrige um ruído composto observado em descrições de anúncios:
     # o ponto final entre duas frases pode ser lido como "_," (ex.:
     # "Descubra agora_, A TicketSwap..."). Quando esse padrão aparece entre
     # uma palavra e o início claro de uma nova frase em maiúscula, restaura
     # o ponto. A restrição evita mexer em underscores legítimos de nomes/URLs.
-    texto = re.sub(r"(?<=\w)_+\s*,\s+(?=[A-ZÀ-Ý])", ". ", texto)
+    texto = re.sub(r"(?<=\w)_+\\s*,\\s+(?=[A-ZÀ-Ý])", ". ", texto)
 
-    texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
+    texto = re.sub(r"_+\\s*$", "", texto).rstrip()  # underscore solto no final
 
     # V11: fallback textual MUITO restrito para uma caixa-ruído que pode
     # chegar já FUNDIDA pelo EasyOCR e, por isso, escapar do filtro geométrico
@@ -3754,7 +3915,7 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
             return f"{_pont} {_palavra}"
         return _m.group(0)
     texto = re.sub(
-        r"([.!?])\s+([A-Za-zÀ-ÿ])\s+([A-Za-zÀ-ÿ]{2,})\b",
+        r"([.!?])\\s+([A-Za-zÀ-ÿ])\\s+([A-Za-zÀ-ÿ]{2,})\b",
         _remover_inicial_duplicada_pos_frase,
         texto,
     )
@@ -3762,7 +3923,7 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     # Em prosa longa, o EasyOCR às vezes cola um ruído fino à primeira
     # letra seguinte e devolve "1F", "1N" etc. Só removemos esse 1
     # quando não há nenhum outro dígito diferente de 1 na linha.
-    _digitos = re.findall(r"\d", texto)
+    _digitos = re.findall(r"\\d", texto)
     _palavras_alpha = re.findall(r"[A-Za-zÀ-ÿ]{2,}", texto)
     if len(_palavras_alpha) >= 4 and _digitos and all(d == "1" for d in _digitos):
         texto = re.sub(r"(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])", "", texto)
@@ -4093,8 +4254,8 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         # fragmento de antialiasing em `,` na ampliação. Só aceitamos a
         # vírgula relida quando a geometria forte acima também confirma um
         # componente realmente compatível com pontuação na linha de base.
-        if _virgula_geom_forte and _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
-            _novo = re.sub(r"\s*,\s*$", ",", _cand)
+        if _virgula_geom_forte and _base(_cand) == _base(_t) and re.search(r",\\s*$", _cand):
+            _novo = re.sub(r"\\s*,\\s*$", ",", _cand)
             print(f"[OCR-DEBUG] vírgula final recuperada na caixa + geometria: {_t!r} -> {_novo!r}", flush=True)
             return _novo
         if _virgula_geom_forte:
@@ -5071,7 +5232,7 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
     def _norm(txt):
         txt = (txt or "").strip().lower()
         txt = _re_grade.sub(r"[^a-z0-9áàâãéêíóôõúç ]+", " ", txt)
-        return _re_grade.sub(r"\s+", " ", txt).strip()
+        return _re_grade.sub(r"\\s+", " ", txt).strip()
 
     def _bbox_info(item):
         bbox, txt, conf = item
@@ -5198,7 +5359,7 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
             if txt:
                 partes.append(txt)
         titulo = " ".join(partes).strip()
-        titulo = _re_grade.sub(r"\s{2,}", " ", titulo)
+        titulo = _re_grade.sub(r"\\s{2,}", " ", titulo)
 
         if not titulo:
             continue
@@ -5470,7 +5631,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # 1 ingresso"); esse risco existe mas é bem mais raro que o
         # ruído de OCR que estamos corrigindo aqui.
         _txt_dominio = re.sub(r"(?<!\S)1[A-Z]?(?!\S)", "", _txt_dominio)
-        _txt_dominio = re.sub(r"\s{2,}", " ", _txt_dominio).strip()
+        _txt_dominio = re.sub(r"\\s{2,}", " ", _txt_dominio).strip()
         # Domínio/URL de verdade nunca tem espaço em branco interno —
         # remove qualquer espaço que o EasyOCR tenha inserido por engano
         # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br
@@ -5524,7 +5685,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # da página): tem "www" de verdade (ou a variante já coberta de
         # erro de caractere no prefixo, "VWW."/"NWW." etc.) ou começa
         # com protocolo "http(s)". Isso é bem diferente do sinal FRACO
-        # abaixo (`\.\s?[a-zA-Z]{2,4}\b`, que só olha se tem uma
+        # abaixo (`\\.\\s?[a-zA-Z]{2,4}\b`, que só olha se tem uma
         # "pontuação + 2-4 letras" em algum lugar do texto): o nome da
         # página às vezes é lido pelo EasyOCR já GRUDADO com um TLD
         # (ex: "BuyTicket Brasil" virando "ouyticketbrasil.com", sem
@@ -5541,13 +5702,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _txt_dominio, re.IGNORECASE
         ))
         _parece_dominio_ou_url = bool(re.search(
-            r"\bwww\b|\.\s?[a-zA-Z]{2,4}\b|^[nNvVwW]{2,4}[.:]",
+            r"\bwww\b|\\.\\s?[a-zA-Z]{2,4}\b|^[nNvVwW]{2,4}[.:]",
             _txt_dominio, re.IGNORECASE
         ))
         if _parece_dominio_ou_url:
-            _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
+            _txt_dominio_sem_espaco = re.sub(r"\\s+", "", _txt_dominio)
         else:
-            _txt_dominio_sem_espaco = re.sub(r"\s+", " ", _txt_dominio).strip()
+            _txt_dominio_sem_espaco = re.sub(r"\\s+", " ", _txt_dominio).strip()
         # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
         # início da linha — comum quando essa linha fica colada no
         # favicon/ícone e o EasyOCR devolve um símbolo/glifo espúrio do
@@ -5634,17 +5795,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # duas linhas batem por essa chave, é a mesma URL lida duas vezes;
     # fica só com a versão SEM o dígito líder (a mais limpa).
     def _chave_dedup_dominio(s: str) -> str:
-        s2 = re.sub(r"^\d(?=[a-zA-Z])", "", s)
+        s2 = re.sub(r"^\\d(?=[a-zA-Z])", "", s)
         # V47: protocolo não muda a identidade da URL para deduplicação.
         # Assim, se o OCR gerar as duas leituras "www.site.com/" e
         # "http://www.site.com/", elas entram no mesmo grupo e podemos
         # preferir abaixo a versão MAIS COMPLETA, com protocolo.
         s2 = re.sub(r"^https?://", "", s2, flags=re.IGNORECASE)
-        s2 = re.sub(r"^www\.", "", s2, flags=re.IGNORECASE)
+        s2 = re.sub(r"^www\\.", "", s2, flags=re.IGNORECASE)
         return s2.lower()
 
     def _linha_com_digito_lider(s: str) -> bool:
-        return bool(re.match(r"^\d[a-zA-Z]", s))
+        return bool(re.match(r"^\\d[a-zA-Z]", s))
 
     _grupos_dominio = {}
     _ordem_chaves_dominio = []
@@ -6003,7 +6164,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 reader, img_bgr, banda["y_min"], banda["y_max"]
             ).strip()
             _texto_pre_fileira = _limpar_pontuacao_ocr(_texto_pre_fileira_bruto)
-            _ruido_pre_compacto = re.sub(r"\s+", "", (_texto_pre_fileira or ""))
+            _ruido_pre_compacto = re.sub(r"\\s+", "", (_texto_pre_fileira or ""))
             _ruido_pre_restante = re.sub(r"[|¦│┃!Il1_\-–—./\\]", "", _ruido_pre_compacto)
             if (
                 len(_ruido_pre_compacto) >= 4
@@ -6076,7 +6237,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         #   descrição linha 4
         # Sem este descarte, a banda era classificada como 13 botões, fechava
         # a descrição e as duas linhas seguintes viravam CTA em negrito.
-        _texto_ruido_sep = re.sub(r"\s+", "", (texto or ""))
+        _texto_ruido_sep = re.sub(r"\\s+", "", (texto or ""))
         _texto_ruido_restante = re.sub(r"[|¦│┃!Il1_\-–—./\\]", "", _texto_ruido_sep)
         if (
             len(_texto_ruido_sep) >= 4
@@ -6093,8 +6254,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # (nota, estrelas e quantidade de avaliações). É um elemento nativo
         # do Google, não conteúdo do anunciante. O descarte é estrutural e
         # genérico: não depende de TicketSwap nem de um domínio específico.
-        _texto_rating_norm = re.sub(r"\s+", " ", (texto or "").strip())
-        if re.match(r"(?i)^rating\s+for\b", _texto_rating_norm):
+        _texto_rating_norm = re.sub(r"\\s+", " ", (texto or "").strip())
+        if re.match(r"(?i)^rating\\s+for\b", _texto_rating_norm):
             _ignorar_proxima_linha_rating = True
             _debug_bandas[idx]["decisao"] = "rating do Google → descartado (cabeçalho de avaliação)"
             idx += 1
@@ -6119,7 +6280,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # como descrição, independentemente de terem sido classificadas como
         # azul/cinza/misto. Fileira de botões é tratada antes deste ponto e
         # encerra o par normalmente, portanto não contamina os sitelinks.
-        _texto_desc_norm = re.sub(r"\s+", " ", (texto or "").strip())
+        _texto_desc_norm = re.sub(r"\\s+", " ", (texto or "").strip())
 
         # V50 — NÃO transformar em descrição uma continuação azul do próprio
         # headline só porque ela começa com “Buy & sell”. Caso real:
@@ -6137,15 +6298,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and not banda.get("sep_antes")
             and par_atual is not None
             and not par_atual[1]
-            and bool(re.match(r"(?i)^buy\s*(?:&|and)\s*sell\b", _texto_desc_norm))
-            and bool(re.search(r"(?i)\|\s*(?:TS|TicketSwap)\s*$", _texto_desc_norm))
+            and bool(re.match(r"(?i)^buy\\s*(?:&|and)\\s*sell\b", _texto_desc_norm))
+            and bool(re.search(r"(?i)\|\\s*(?:TS|TicketSwap)\\s*$", _texto_desc_norm))
             and len(_texto_desc_norm.split()) <= 8
         )
 
         if (
             par_atual is not None
             and _titulo_ja_reconhecido
-            and re.match(r"(?i)^buy\s*(?:&|and)\s*sell\b", _texto_desc_norm)
+            and re.match(r"(?i)^buy\\s*(?:&|and)\\s*sell\b", _texto_desc_norm)
             and not _buy_sell_parece_continuacao_titulo
         ):
             _descricao_busca_forcada = True
@@ -6162,7 +6323,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _azul_parece_links_relacionados = (
             banda["classe"] == "azul"
             and bool(re.search(r"[·•]", _texto_desc_norm))
-            and len([p for p in re.split(r"\s*[·•]\s*", _texto_desc_norm) if p.strip()]) >= 2
+            and len([p for p in re.split(r"\\s*[·•]\\s*", _texto_desc_norm) if p.strip()]) >= 2
         )
 
         # V57 — TicketSwap: o ponto médio visual entre links do rodapé
@@ -6178,7 +6339,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _empresa_norm_v57 = str(empresa or "").strip().lower().replace(" ", "")
         _partes_hifen_v57 = [
             p.strip()
-            for p in re.split(r"\s+[\-–—]\s+", re.sub(r"\s*[\-–—]\s*$", "", _texto_desc_norm))
+            for p in re.split(r"\\s+[\-–—]\\s+", re.sub(r"\\s*[\-–—]\\s*$", "", _texto_desc_norm))
             if p.strip()
         ]
         _azul_parece_links_relacionados_hifen = (
@@ -6187,7 +6348,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and len(_partes_hifen_v57) >= 2
             and all(
                 re.search(
-                    r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\s+.*works|download|contact|sell\s+your|buy\s+&\s+sell|find\s+last|about)\b",
+                    r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\\s+.*works|download|contact|sell\\s+your|buy\\s+&\\s+sell|find\\s+last|about)\b",
                     _p,
                 )
                 for _p in _partes_hifen_v57
@@ -6277,14 +6438,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # "Cómo funciona TicketSwap · Regístrate o entra").
             _relacionados_split_textual_confiavel = False
             if re.search(r"[·•]", texto):
-                _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
+                _candidatos_relacionados = [p.strip() for p in re.split(r"\\s*[·•]\\s*", texto) if p.strip()]
                 if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 2:
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
-            elif re.search(r"\s[\-–—]\s", texto):
-                _texto_sem_travessao_final = re.sub(r"\s*[\-–—]\s*$", "", texto)
+            elif re.search(r"\\s[\-–—]\\s", texto):
+                _texto_sem_travessao_final = re.sub(r"\\s*[\-–—]\\s*$", "", texto)
                 _candidatos_relacionados = [
-                    p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
+                    p.strip() for p in re.split(r"\\s+[\-–—]\\s+", _texto_sem_travessao_final) if p.strip()
                 ]
                 # Exige 3+ candidatos aqui (não 2): validado com um anúncio
                 # real da BuyTicket Brasil que "sep_antes" NÃO é exclusivo
@@ -6313,7 +6474,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     _titulo_e_descricao_ja_fechados
                     and not banda.get("sep_antes")
                     and len(_candidatos_relacionados) == 2
-                    and all(re.search(r"\b(?:19|20)\d{2}\b", _p) for _p in _candidatos_relacionados)
+                    and all(re.search(r"\b(?:19|20)\\d{2}\b", _p) for _p in _candidatos_relacionados)
                 ):
                     # V41 — linha horizontal de DOIS links azuis. Caso real:
                     # "Lollapalooza 2026 · Rock In Rio 2026". O ponto médio
@@ -6336,7 +6497,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     and str(empresa or "").strip().lower().replace(" ", "") == "ticketswap"
                     and any(
                         re.search(
-                            r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\s+.*works|download|contact|sell\s+your|buy\s+&\s+sell|find\s+last|about)\b",
+                            r"(?i)\b(?:ticketswap|testimonial(?:s)?|review(?:s)?|homepage|how\\s+.*works|download|contact|sell\\s+your|buy\\s+&\\s+sell|find\\s+last|about)\b",
                             _p,
                         )
                         for _p in _candidatos_relacionados
@@ -6362,7 +6523,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 and _partes_relacionados
             ):
                 _partes_relacionados = [
-                    re.sub(r"(?i)^reg[ií]strate\s*[,;:]\s*entra$", "Regístrate o entra", _p.strip())
+                    re.sub(r"(?i)^reg[ií]strate\\s*[,;:]\\s*entra$", "Regístrate o entra", _p.strip())
                     for _p in _partes_relacionados
                 ]
             # Roda o fallback por vão SEMPRE que o portão de segurança
@@ -6752,7 +6913,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # ou quando a descrição já começou. CTA misto de verdade continua
             # sendo aceito quando aparece fora desse bloco textual ou bate no
             # regex de CTA conhecido.
-            _misto_palavras = [p for p in re.split(r"\s+", (texto or '').strip()) if p]
+            _misto_palavras = [p for p in re.split(r"\\s+", (texto or '').strip()) if p]
             _misto_parece_frase = len(_misto_palavras) >= 4 or len((texto or '').strip()) >= 28
             _misto_cta_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match((texto or '').strip()))
             # V85 — alguns anúncios de Busca com imagem lateral geram um
@@ -6944,8 +7105,8 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     if "ticketswap" not in _empresa_norm and "ticketswap" not in _url_norm:
         return resultado
 
-    titulo = re.sub(r"\s+", " ", (resultado.get("titulo") or "").strip())
-    descricao = re.sub(r"\s+", " ", (resultado.get("descricao") or "").strip())
+    titulo = re.sub(r"\\s+", " ", (resultado.get("titulo") or "").strip())
+    descricao = re.sub(r"\\s+", " ", (resultado.get("descricao") or "").strip())
 
     # V53 — TicketSwap Alemanha. O EasyOCR confunde a aspa alemã de
     # abertura „ com uma vírgula logo após "für" (caso real:
@@ -6953,9 +7114,9 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # depois do nome, recompõe o par como aspas duplas normais. Restrito
     # a TicketSwap e ao padrão linguístico alemão, para não transformar
     # vírgulas reais em outros anúncios.
-    _eh_ticketswap_de = bool(re.search(r"ticketswap\.de(?:/|$)", _url_norm, re.IGNORECASE))
+    _eh_ticketswap_de = bool(re.search(r"ticketswap\\.de(?:/|$)", _url_norm, re.IGNORECASE))
     if _eh_ticketswap_de:
-        _rx_fuer_nome = re.compile(r'(?i)\bfür\s*,\s*([^"|]{2,80}?)"(?=\s*(?:\||kaufen|verkaufen|$))')
+        _rx_fuer_nome = re.compile(r'(?i)\bfür\\s*,\\s*([^"|]{2,80}?)"(?=\\s*(?:\||kaufen|verkaufen|$))')
         titulo = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', titulo)
         descricao = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', descricao)
 
@@ -6963,12 +7124,12 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         # e a data podem sumir completamente no OCR. Exige termos fortes
         # do anúncio TicketSwap DE antes de recolocar os pipes.
         descricao = re.sub(
-            r'(?i)(\bund verkaufen)\s+(?=(?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)',
+            r'(?i)(\bund verkaufen)\\s+(?=(?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)',
             r'\1 | ',
             descricao,
         )
         descricao = re.sub(
-            r'((?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)[^|]{2,80}?)\s+(?=(?:Mo|Di|Mi|Do|Fr|Sa|So)\.,\s*\d)',
+            r'((?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)[^|]{2,80}?)\\s+(?=(?:Mo|Di|Mi|Do|Fr|Sa|So)\\.,\\s*\\d)',
             r'\1 | ',
             descricao,
             flags=re.IGNORECASE,
@@ -6979,7 +7140,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # e palavra de lugar iniciada por maiúscula depois, reduzindo falsos
     # positivos em textos normais.
     titulo = re.sub(
-        r"(\b20\d{2})\s*\|\s*P\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\b",
+        r"(\b20\\d{2})\\s*\|\\s*P\\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\b",
         r"\1 | \2 |",
         titulo,
     )
@@ -6987,7 +7148,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Em headlines TicketSwap o sufixo curto ``| TS`` é muito comum e a
     # barra pode desaparecer. Só repõe quando TS está literalmente no FIM.
     titulo = re.sub(
-        r"(?i)(\b(?:bilhetes|tickets))\s+TS$",
+        r"(?i)(\b(?:bilhetes|tickets))\\s+TS$",
         r"\1 | TS",
         titulo,
     )
@@ -7003,7 +7164,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Isso evita alterar títulos legítimos como ``Olivia Dean Tickets: Buy &
     # Sell - Sell Olivia Dean tickets``, que não terminam em ``| TS``.
     titulo = re.sub(
-        r"(?i)(?<![|:;\-–—])\s+(?=Buy\s*&\s*sell\s+(?:tickets|bilhetes)\s*\|\s*TS$)",
+        r"(?i)(?<![|:;\-–—])\\s+(?=Buy\\s*&\\s*sell\\s+(?:tickets|bilhetes)\\s*\|\\s*TS$)",
         " | ",
         titulo,
         count=1,
@@ -7016,7 +7177,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # somente quando a segunda parte termina explicitamente em TicketSwap,
     # evitando mexer em frases corridas que contenham "buy & sell".
     titulo = re.sub(
-        r"(?i)\b(tickets|bilhetes)\s+(?=Buy\s*&\s*sell\s+on\s+TicketSwap$)",
+        r"(?i)\b(tickets|bilhetes)\\s+(?=Buy\\s*&\\s*sell\\s+on\\s+TicketSwap$)",
         r"\1 | ",
         titulo,
         count=1,
@@ -7030,10 +7191,10 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # o restante tem padrão forte de local ou data, para não apagar texto
     # legítimo.
     _rx_pipe_ruido_local = re.compile(
-        r"(?i)(\|)\s*[FI]\s+(?=(?:Palladium|Arena|Stadium|Stadion|Dome|Hall|Theatre|Theater|Olympiahalle|Mercedes-Benz|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)"
+        r"(?i)(\|)\\s*[FI]\\s+(?=(?:Palladium|Arena|Stadium|Stadion|Dome|Hall|Theatre|Theater|Olympiahalle|Mercedes-Benz|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)"
     )
     _rx_pipe_ruido_data = re.compile(
-        r"(?i)(\|)\s*[FI]\s+(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Mo|Di|Mi|Do|Fr|Sa|So)[.,]?(?:\s|$))"
+        r"(?i)(\|)\\s*[FI]\\s+(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun|Mo|Di|Mi|Do|Fr|Sa|So)[.,]?(?:\\s|$))"
     )
     titulo = _rx_pipe_ruido_local.sub(r"\1 ", titulo)
     titulo = _rx_pipe_ruido_data.sub(r"\1 ", titulo)
@@ -7050,13 +7211,13 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # é um token em CAIXA ALTA com pelo menos 3 caracteres (LOOM, ABBA, etc.).
     # Isso NÃO interfere no reparo antigo ``| P Porto`` porque ``Porto`` não
     # é caixa alta e continua sendo tratado pela regra específica acima.
-    _rx_pipe_p_extra_caps = re.compile(r"(\|)\s*P\s+(?=[A-ZÀ-Ý0-9]{3,}(?:\s|$))")
+    _rx_pipe_p_extra_caps = re.compile(r"(\|)\\s*P\\s+(?=[A-ZÀ-Ý0-9]{3,}(?:\\s|$))")
     titulo = _rx_pipe_p_extra_caps.sub(r"\1 ", titulo)
     descricao = _rx_pipe_p_extra_caps.sub(r"\1 ", descricao)
 
     # Também elimina um hífen/travessão órfão no FIM da descrição quando ele
     # não encerra uma palavra composta, ruído recorrente no corte do anúncio.
-    descricao = re.sub(r"\s+[\-–—]+\s*$", "", descricao).strip()
+    descricao = re.sub(r"\\s+[\-–—]+\\s*$", "", descricao).strip()
 
     # V58 — TicketSwap: em alguns headlines de turnê, o separador vertical
     # imediatamente antes do link/palavra final "Tickets" some no OCR.
@@ -7065,8 +7226,8 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Tickets" no FIM do headline para não separar títulos legítimos como
     # "Olivia Dean tickets".
     titulo = re.sub(
-        r"(?i)\bWorld\s+Tour\s+Tickets$",
-        lambda m: re.sub(r"\s+Tickets$", " | Tickets", m.group(0), flags=re.IGNORECASE),
+        r"(?i)\bWorld\\s+Tour\\s+Tickets$",
+        lambda m: re.sub(r"\\s+Tickets$", " | Tickets", m.group(0), flags=re.IGNORECASE),
         titulo,
     )
 
@@ -7074,7 +7235,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # posterior sumiu, repõe apenas antes de padrões muito típicos de segunda
     # metade do título TicketSwap. Ex.: ``| Porto Compra e vende...``.
     titulo = re.sub(
-        r"(\|\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+(?=(?:Compra e vende|Compre|Buy & sell|Koop en verkoop|Kaufe und verkaufe)\b)",
+        r"(\|\\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\\s+(?=(?:Compra e vende|Compre|Buy & sell|Koop en verkoop|Kaufe und verkaufe)\b)",
         r"\1 | ",
         titulo,
         flags=re.IGNORECASE,
@@ -7089,10 +7250,10 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # + ruído ``1 ~`` e quando as datas são do mesmo mês e a primeira data
     # cronológica é menor que a segunda.
     _rx_data_deslocada = re.compile(
-        r"(?P<local>[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+"
-        r"(?P<data_fim>\d{1,2}/\d{2})\.\s+"
-        r"(?P<miolo>[^|]{3,100}?)\s*\|\s*"
-        r"(?P<data_ini>\d{1,2}/\d{2})\s+(?:1\s*)?[~\-–—]+"
+        r"(?P<local>[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\\s+"
+        r"(?P<data_fim>\\d{1,2}/\\d{2})\\.\\s+"
+        r"(?P<miolo>[^|]{3,100}?)\\s*\|\\s*"
+        r"(?P<data_ini>\\d{1,2}/\\d{2})\\s+(?:1\\s*)?[~\-–—]+"
     )
 
     def _repor_intervalo(m):
@@ -7122,7 +7283,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
 
     # Símbolos espúrios logo após um pipe (ex.: "| = Ziggo Dome").
     descricao = re.sub(
-        r"\|\s*[=@$]+\s*(?=[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,5}\s*,)",
+        r"\|\\s*[=@$]+\\s*(?=[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,5}\\s*,)",
         "| ",
         descricao,
     )
@@ -7130,8 +7291,8 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Pipe perdido entre "Cidade" e um bloco de data em inglês. Exige
     # vírgula no local/cidade e abreviação explícita do dia da semana.
     descricao = re.sub(
-        r"(\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
-        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r"(\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+\\s*,\\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s*,\\s*[A-Z][a-z]{2}\\s+\\d{1,2}\b)",
         r"\1 | ",
         descricao,
     )
@@ -7139,9 +7300,9 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Também cobre local simples como "Ziggo Dome, Amsterdam Sun, ..."
     # quando o primeiro termo do local tem duas palavras antes da cidade.
     descricao = re.sub(
-        r"(\b(?:[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,4})\s*,\s*"
-        r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
-        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r"(\b(?:[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,4})\\s*,\\s*"
+        r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s*,\\s*[A-Z][a-z]{2}\\s+\\d{1,2}\b)",
         r"\1 | ",
         descricao,
     )
@@ -7157,8 +7318,8 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # data logo depois. Depois, a regra já existente abaixo repõe o pipe entre
     # cidade e data.
     descricao = re.sub(
-        r"(?<!\|)\s+(?P<venue>[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*){0,2}\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
-        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
+        r"(?<!\|)\\s+(?P<venue>[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*(?:\\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*){0,2}\\s*,\\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\\s+"
+        r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s*,\\s*[A-Z][a-z]{2}\\s+\\d{1,2}\b)",
         r" | \g<venue> ",
         descricao,
     )
@@ -7172,17 +7333,17 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # A correção é propositalmente estreita para não inventar separadores em
     # descrições comuns de outros anúncios.
     descricao = re.sub(
-        r"(?i)(Buy\s*&\s*sell\s+tickets\s+for\s+Kim\s+Wilde)\s+(?=Concertgebouw\s*Brugge\b)",
+        r"(?i)(Buy\\s*&\\s*sell\\s+tickets\\s+for\\s+Kim\\s+Wilde)\\s+(?=Concertgebouw\\s*Brugge\b)",
         r"\1 | ",
         descricao,
     )
     descricao = re.sub(
-        r"(?i)\bConcertgebouw\s*Brugge\s*,\s*Bruges\b",
+        r"(?i)\bConcertgebouw\\s*Brugge\\s*,\\s*Bruges\b",
         "Concertgebouw Brugge, Bruges",
         descricao,
     )
     descricao = re.sub(
-        r"(?i)(Concertgebouw Brugge, Bruges)\s+(?=Wed\s*,\s*Oct\s+29\b)",
+        r"(?i)(Concertgebouw Brugge, Bruges)\\s+(?=Wed\\s*,\\s*Oct\\s+29\b)",
         r"\1 | ",
         descricao,
     )
@@ -7190,7 +7351,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # Horário inglês: EasyOCR lê com frequência 8.00 PM em vez de 8:00 PM.
     # Só converte quando há AM/PM imediatamente depois.
     descricao = re.sub(
-        r"(?<!\d)(\d{1,2})\.(\d{2})\s*(AM|PM)\b",
+        r"(?<!\\d)(\\d{1,2})\\.(\\d{2})\\s*(AM|PM)\b",
         r"\1:\2 \3",
         descricao,
         flags=re.IGNORECASE,
@@ -7198,8 +7359,8 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
 
     # Limpa restos isolados que podem sobrar no fim depois da recuperação de
     # separadores/data, sem tocar em hífen/travessão que faça parte de frase.
-    descricao = re.sub(r"\s+(?:1\s*)?[~^]+\s*$", "", descricao).strip()
-    descricao = re.sub(r"\s+-\s*$", "", descricao).strip()
+    descricao = re.sub(r"\\s+(?:1\\s*)?[~^]+\\s*$", "", descricao).strip()
+    descricao = re.sub(r"\\s+-\\s*$", "", descricao).strip()
 
     # V62 — TicketSwap PT: o EasyOCR pode inserir um ``r`` antes da
     # conjunção ``e`` em frases muito comuns do anúncio, transformando
@@ -7208,7 +7369,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # comprar + r/re + vender, preservando qualquer uso legítimo de
     # ``re`` em outros contextos e os demais idiomas da TicketSwap.
     descricao = re.sub(
-        r"(?i)\bcomprar\s+r(?:e)?\s+vender\b",
+        r"(?i)\bcomprar\\s+r(?:e)?\\s+vender\b",
         "comprar e vender",
         descricao,
     )
@@ -7943,6 +8104,7 @@ def _worker_ocr_global():
                 with _lock_ocr_pendente:
                     _ocr_empresas_ativas_agora.discard((user_id, empresa))
             finally:
+                _job_release("ocr_gads", user_id, empresa)
                 _fila_ocr_global.task_done()
                 # Devolve memória temporária entre empresas antes de pegar a próxima.
                 gc.collect()
@@ -7973,8 +8135,12 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
     if not user_id or not empresa:
         print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r}", flush=True)
         return
+    if not _job_try_acquire("ocr_gads", user_id, empresa):
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: job central já ativo pra ({user_id!r}, {empresa!r})", flush=True)
+        return
     with _lock_ocr_pendente:
         if (user_id, empresa) in _ocr_empresas_ativas_agora:
+            _job_release("ocr_gads", user_id, empresa)
             print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: já tem fila ativa pra ({user_id!r}, {empresa!r})", flush=True)
             return
         _ocr_empresas_ativas_agora.add((user_id, empresa))
@@ -7983,6 +8149,7 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
         print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: total=0 pendentes pra empresa={empresa!r} (ver log de _contar_ocr_pendentes acima)", flush=True)
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard((user_id, empresa))
+        _job_release("ocr_gads", user_id, empresa)
         return
     print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
@@ -8211,13 +8378,17 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
         _detalhes_db = dict(detalhes or {})
         if status == "na_fila":
             _detalhes_db["status_visual"] = "na_fila"
-        res = supabase.table("atividades").insert({
-            "user_id": user_id,
-            "tipo": tipo,
-            "titulo": titulo,
-            "status": _status_db,
-            "detalhes": _detalhes_db,
-        }).execute()
+        res = _supabase_resiliente(
+            lambda: supabase.table("atividades").insert({
+                "user_id": user_id,
+                "tipo": tipo,
+                "titulo": titulo,
+                "status": _status_db,
+                "detalhes": _detalhes_db,
+            }).execute(),
+            operacao="criar_atividade",
+            tentativas=4,
+        )
         _id_criado = res.data[0]["id"] if res.data else None
         print(f"[OCR-DEBUG] criar_atividade tipo={tipo!r} titulo={titulo!r} -> id={_id_criado!r} (res.data vazio={not res.data})", flush=True)
         return _id_criado
@@ -8258,15 +8429,17 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
         payload["detalhes"] = _detalhes_db
 
     _eh_terminal = status in ("concluido", "erro")
-    _tentativas = 5 if _eh_terminal else 1
-    _backoffs = [1, 2, 4, 8, 15]
-    for _i in range(_tentativas):
-        try:
-            supabase.table("atividades").update(payload).eq("id", atividade_id).execute()
-            return
-        except Exception:
-            if _i < _tentativas - 1:
-                time.sleep(_backoffs[_i])
+    try:
+        _supabase_resiliente(
+            lambda: supabase.table("atividades").update(payload)
+                    .eq("id", atividade_id).execute(),
+            operacao=f"atualizar_atividade:{status}",
+            tentativas=5 if _eh_terminal else 2,
+            backoff=(1, 2, 4, 8, 15),
+        )
+        return
+    except Exception as exc:
+        print(f"[SUPABASE-V98] falha final ao atualizar atividade {atividade_id!r}: {exc!r}", flush=True)
     # Esgotou as tentativas (só acontece pra status terminal, depois de
     # ~30s tentando): não tem mais o que fazer aqui sem travar essa
     # thread pra sempre. O card fica em_andamento até o usuário clicar
@@ -9391,10 +9564,10 @@ def limpar_site(url):
     if not url:
         return ""
     url = url.strip().lower()
-    url = re.sub(r"^https?:\/\/", "", url, flags=re.IGNORECASE)
-    url = re.sub(r"^www\.", "", url, flags=re.IGNORECASE)
+    url = re.sub(r"^https?:\\/\\/", "", url, flags=re.IGNORECASE)
+    url = re.sub(r"^www\\.", "", url, flags=re.IGNORECASE)
     url = remover_acentos(url)
-    url = re.sub(r"[^a-z0-9\.\-\/]", "", url)
+    url = re.sub(r"[^a-z0-9\\.\-\\/]", "", url)
     url = url.rstrip("/")
     return url
 
@@ -9411,7 +9584,7 @@ def obter_instagram_handle(valor):
     if not valor:
         return ""
     valor = valor.strip()
-    valor = re.sub(r"^https?:\/\/(www\.)?instagram\.com\/", "", valor, flags=re.IGNORECASE)
+    valor = re.sub(r"^https?:\\/\\/(www\\.)?instagram\\.com\\/", "", valor, flags=re.IGNORECASE)
     valor = valor.strip("/")
     valor = valor.lstrip("@")
     if valor:
@@ -9422,7 +9595,7 @@ def obter_facebook_handle(valor):
     if not valor:
         return ""
     valor = valor.strip()
-    valor = re.sub(r"^https?:\/\/(www\.)?facebook\.com\/", "", valor, flags=re.IGNORECASE)
+    valor = re.sub(r"^https?:\\/\\/(www\\.)?facebook\\.com\\/", "", valor, flags=re.IGNORECASE)
     valor = valor.strip("/")
     return valor
 
@@ -9829,7 +10002,7 @@ def extrair_conteudo_site(url: str) -> str:
         texto_bruto = _re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=_re.DOTALL)
         texto_bruto = _re.sub(r"<style[^>]*>.*?</style>", " ", texto_bruto, flags=_re.DOTALL)
         texto_bruto = _re.sub(r"<[^>]+>", " ", texto_bruto)
-        texto_bruto = _re.sub(r"\s+", " ", texto_bruto).strip()
+        texto_bruto = _re.sub(r"\\s+", " ", texto_bruto).strip()
         return texto_bruto[:5000] if texto_bruto else ""
     except Exception as e:
         return f"[Erro ao acessar {url}: {e}]"
@@ -9860,7 +10033,7 @@ def extrair_seo_site(url: str) -> dict:
 
         m_title = _re.search(r'<title[^>]*>(.*?)</title>', html, _re.IGNORECASE | _re.DOTALL)
         if m_title:
-            resultado["title"] = _re.sub(r'\s+', ' ', m_title.group(1)).strip()
+            resultado["title"] = _re.sub(r'\\s+', ' ', m_title.group(1)).strip()
 
         m_desc = _re.search(
             r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']',
@@ -9870,7 +10043,7 @@ def extrair_seo_site(url: str) -> dict:
             html, _re.IGNORECASE
         )
         if m_desc:
-            resultado["description"] = _re.sub(r'\s+', ' ', m_desc.group(1)).strip()
+            resultado["description"] = _re.sub(r'\\s+', ' ', m_desc.group(1)).strip()
 
         m_h1 = _re.search(r'<h1[^>]*>(.*?)</h1>', html, _re.IGNORECASE | _re.DOTALL)
         if m_h1:
@@ -9887,32 +10060,32 @@ def extrair_seo_site(url: str) -> dict:
 
         # WhatsApp
         wa_link = _re.findall(
-            r'(?:wa\.me|whatsapp\.com/send|api\.whatsapp\.com/send)[^\d]*(\d{8,15})',
+            r'(?:wa\\.me|whatsapp\\.com/send|api\\.whatsapp\\.com/send)[^\\d]*(\\d{8,15})',
             html, _re.IGNORECASE
         )
         wa_href = _re.findall(
-            r'href=["\'][^"\']*(?:wa\.me|whatsapp)[^"\']*?(\d{10,15})[^"\']*["\']',
+            r'href=["\'][^"\']*(?:wa\\.me|whatsapp)[^"\']*?(\\d{10,15})[^"\']*["\']',
             html, _re.IGNORECASE
         )
         wa_texto_depois = _re.findall(
-            r'(?:whatsapp|whats|zap|wpp)\D{0,50}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+            r'(?:whatsapp|whats|zap|wpp)\D{0,50}(\(?\\d{2}\)?\\s?\\d{4,5}[-\\s]?\\d{4})',
             html, _re.IGNORECASE
         )
         wa_texto_antes = _re.findall(
-            r'(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})\D{0,50}(?:whatsapp|whats|zap|wpp)',
+            r'(\(?\\d{2}\)?\\s?\\d{4,5}[-\\s]?\\d{4})\D{0,50}(?:whatsapp|whats|zap|wpp)',
             html, _re.IGNORECASE
         )
         wa_todos = wa_link or wa_href or wa_texto_depois or wa_texto_antes
         ct["whatsapp"] = wa_todos[0] if wa_todos else ""
 
         # Telefone
-        tel_link = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
+        tel_link = _re.findall(r'href=["\']tel:([+\\d\\s()\-]{6,20})["\']', html, _re.IGNORECASE)
         tel_depois = _re.findall(
-            r'(?:telefone|fone|tel\.?|ligamos|ligue|celular|cel\.?)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
+            r'(?:telefone|fone|tel\\.?|ligamos|ligue|celular|cel\\.?)\D{0,20}(\(?\\d{2}\)?\\s?\\d{4,5}[-\\s]?\\d{4})',
             html, _re.IGNORECASE
         )
         tel_antes = _re.findall(
-            r'(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})\D{0,30}(?:telefone|fone|ligue|celular)',
+            r'(\(?\\d{2}\)?\\s?\\d{4,5}[-\\s]?\\d{4})\D{0,30}(?:telefone|fone|ligue|celular)',
             html, _re.IGNORECASE
         )
         wa_num_limpo = _re.sub(r'\D', '', ct.get("whatsapp", ""))
@@ -9933,18 +10106,18 @@ def extrair_seo_site(url: str) -> dict:
         cf_emails = _re.findall(r'data-cfemail=["\']([0-9a-fA-F]+)["\']', html)
         cf_decoded = [decode_cfemail(e) for e in cf_emails]
 
-        cf_script = _re.findall(r'__cf_email__["\s]*,["\s]*["\']([0-9a-fA-F]+)["\']', html)
+        cf_script = _re.findall(r'__cf_email__["\\s]*,["\\s]*["\']([0-9a-fA-F]+)["\']', html)
         cf_decoded += [decode_cfemail(e) for e in cf_script]
 
         import html as _html_parser
         html_decoded = _html_parser.unescape(html)
         html_decoded = html_decoded.replace('&#160;', '').replace('&nbsp;', '').replace('\u00a0', '')
 
-        mail_link = _re.findall(r'href=["\']mailto:([^"\'?\s]+)["\']', html, _re.IGNORECASE)
-        mail_link = [m for m in mail_link if not _re.search(r'\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
+        mail_link = _re.findall(r'href=["\']mailto:([^"\'?\\s]+)["\']', html, _re.IGNORECASE)
+        mail_link = [m for m in mail_link if not _re.search(r'\\.(png|jpg|svg|webp)$', m, _re.IGNORECASE)]
 
         mail_texto = _re.findall(
-            r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b',
+            r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\\.[a-zA-Z]{2,})\b',
             html_decoded, _re.IGNORECASE
         )
         mail_ignorar = {
@@ -9967,7 +10140,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # Chat ao vivo
         ct["chat_ao_vivo"] = bool(_re.search(
-            r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift|leadster)',
+            r'(intercom|zendesk|freshchat|tawk\\.to|livechat|crisp\\.chat|jivochat|hubspot.*chat|tidio|drift|leadster)',
             html, _re.IGNORECASE
         ))
 
@@ -9989,12 +10162,12 @@ def extrair_seo_site(url: str) -> dict:
                 r'|leadster|nld-chatbot|nld-avatar)',
                 html, _re.IGNORECASE
             ) or _re.search(
-                r'position\s*:\s*(fixed|sticky).{0,500}'
+                r'position\\s*:\\s*(fixed|sticky).{0,500}'
                 r'(button|btn|cta|chat|contato|whats|fale|ajuda|help|atendimento|speak|flutuante|float)',
                 html, _re.IGNORECASE | _re.DOTALL
             ) or _re.search(
                 r'(button|btn|cta|chat|contato|whats|fale|ajuda|atendimento).{0,500}'
-                r'position\s*:\s*(fixed|sticky)',
+                r'position\\s*:\\s*(fixed|sticky)',
                 html, _re.IGNORECASE | _re.DOTALL
             )
         )
@@ -10018,7 +10191,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # Instagram
         ig = _re.findall(
-            r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
+            r'instagram\\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\\s]|$)',
             html, _re.IGNORECASE
         )
         ig = [i for i in ig if i.lower() not in ('p', 'reel', 'reels', 'explore', 'stories', 'tv', 'share', 'accounts')]
@@ -10026,7 +10199,7 @@ def extrair_seo_site(url: str) -> dict:
 
         # Facebook
         fb = _re.findall(
-            r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
+            r'facebook\\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\\s]|$)',
             html, _re.IGNORECASE
         )
         fb = [f for f in fb if f.lower() not in ('sharer', 'share', 'tr', 'login', 'dialog', 'plugins', 'photo', 'watch')]
@@ -10034,14 +10207,14 @@ def extrair_seo_site(url: str) -> dict:
 
         # LinkedIn
         li = _re.findall(
-            r'linkedin\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            r'linkedin\\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\\s]|$)',
             html, _re.IGNORECASE
         )
         ct["linkedin"] = li[0] if li else ""
 
         # YouTube
         yt = _re.findall(
-            r'youtube\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
+            r'youtube\\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\\s]|$)',
             html, _re.IGNORECASE
         )
         ct["youtube"] = yt[0] if yt else ""
@@ -10093,7 +10266,7 @@ def extrair_sitemap(url: str) -> dict:
             conteudo = r.text
 
             # Sitemap index — contém outros sitemaps
-            sub_sitemaps = _re.findall(r'<loc>\s*(.*?sitemap.*?)\s*</loc>', conteudo, _re.IGNORECASE)
+            sub_sitemaps = _re.findall(r'<loc>\\s*(.*?sitemap.*?)\\s*</loc>', conteudo, _re.IGNORECASE)
             if sub_sitemaps:
                 todas = []
                 for sub in sub_sitemaps[:5]:
@@ -10101,7 +10274,7 @@ def extrair_sitemap(url: str) -> dict:
                 return todas
 
             # Sitemap normal — contém páginas
-            locs = _re.findall(r'<loc>\s*(https?://[^\s<]+)\s*</loc>', conteudo)
+            locs = _re.findall(r'<loc>\\s*(https?://[^\\s<]+)\\s*</loc>', conteudo)
             return [l.strip() for l in locs]
         except Exception:
             return []
@@ -10110,7 +10283,7 @@ def extrair_sitemap(url: str) -> dict:
     base = url_fmt.rstrip("/")
     try:
         robots = _http_get(f"{base}/robots.txt", headers=headers, timeout=8)
-        sm_declarado = _re.findall(r'(?i)sitemap:\s*(https?://\S+)', robots.text)
+        sm_declarado = _re.findall(r'(?i)sitemap:\\s*(https?://\S+)', robots.text)
     except Exception:
         sm_declarado = []
 
@@ -10995,7 +11168,7 @@ if not st.session_state.logado:
             with st.form("form_login"):
                 email_login = st.text_input("E-mail", placeholder="seu@email.com")
                 senha_login = st.text_input("Senha", type="password", placeholder="••••••••")
-                submit_login = st.form_submit_button("Entrar na plataforma →", use_container_width=True)
+                submit_login = st.form_submit_button("Entrar na plataforma →", width="stretch")
 
             if submit_login:
                 if email_login and senha_login:
@@ -11037,7 +11210,7 @@ if not st.session_state.logado:
                 email_cad  = st.text_input("E-mail", placeholder="seu@email.com", key="cad_email")
                 senha_cad  = st.text_input("Senha", type="password", placeholder="Mínimo 6 caracteres", key="cad_senha")
                 senha_cad2 = st.text_input("Confirmar senha", type="password", placeholder="Repita a senha", key="cad_senha2")
-                submit_cad = st.form_submit_button("Criar conta", use_container_width=True)
+                submit_cad = st.form_submit_button("Criar conta", width="stretch")
 
             if submit_cad:
                 if not nome_cad or not email_cad or not senha_cad:
@@ -11419,20 +11592,23 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
     for empresa, entry, atividade_id, plataforma in tarefas:
-        limite_segundos = _estimar_timeout_migracao(entry)
-        with _TPE(max_workers=1) as executor:
-            future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id, plataforma)
-            try:
-                future.result(timeout=limite_segundos)
-            except _TimeoutErr:
-                atualizar_atividade(atividade_id, "erro", {
-                    "empresa": empresa,
-                    "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
-                })
-                # a thread interna pode continuar rodando sozinha em segundo
-                # plano (Python não mata thread à força), mas a fila segue.
-            except Exception as e:
-                atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
+        try:
+            limite_segundos = _estimar_timeout_migracao(entry)
+            with _TPE(max_workers=1) as executor:
+                future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id, plataforma)
+                try:
+                    future.result(timeout=limite_segundos)
+                except _TimeoutErr:
+                    atualizar_atividade(atividade_id, "erro", {
+                        "empresa": empresa,
+                        "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
+                    })
+                    # a thread interna pode continuar rodando sozinha em segundo
+                    # plano (Python não mata thread à força), mas a fila segue.
+                except Exception as e:
+                    atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
+        finally:
+            _job_release("migracao_midia", user_id, f"{plataforma}:{empresa}")
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str = "Meta Ads"):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
@@ -11459,6 +11635,10 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
     mesmo."""
     tarefas = []
     for empresa, entry in novos.items():
+        _escopo_job_migr = f"{plataforma}:{empresa}"
+        if not _job_try_acquire("migracao_midia", user_id, _escopo_job_migr):
+            print(f"[MIGR-V98] ignorado job duplicado empresa={empresa!r} plataforma={plataforma!r}", flush=True)
+            continue
         atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa, plataforma)
         if atividade_id:
             atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "plataforma": plataforma})
@@ -12790,10 +12970,10 @@ body {{
 </body>
 <script>
 function nav(page) {{
-    var norm = page.split(/\s+/).join(' ').trim();
+    var norm = page.split(/\\s+/).join(' ').trim();
     const buttons = window.parent.document.querySelectorAll('[data-testid="stSidebar"] button');
     for (const btn of buttons) {{
-        if ((btn.innerText || btn.textContent || '').split(/\s+/).join(' ').trim() === norm) {{
+        if ((btn.innerText || btn.textContent || '').split(/\\s+/).join(' ').trim() === norm) {{
             btn.click();
             break;
         }}
@@ -12820,8 +13000,8 @@ setInterval(function() {{
 
     if st.session_state.get("mostrar_perfil_menu"):
         with st.container(border=True):
-            editar_clicado = st.button("Dados da conta", key="_perfil_menu_editar", use_container_width=True)
-            sair_clicado = st.button("Sair", key="_perfil_menu_sair", use_container_width=True)
+            editar_clicado = st.button("Dados da conta", key="_perfil_menu_editar", width="stretch")
+            sair_clicado = st.button("Sair", key="_perfil_menu_sair", width="stretch")
 
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -13067,20 +13247,12 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             for ad_limpo in entry_limpa.get("data", []):
                 ad_limpo.pop("images_b64", None)
 
-        # Retry com backoff curto: cobre instabilidades transitórias do
-        # Supabase (521, 57P03, timeouts de conexão) sem desistir na
-        # primeira tentativa.
         ultimo_erro = None
-        for _tentativa in range(3):
-            try:
-                supabase.table("ci_dados").update({
-                    "ads_cache": dados_limpos,
-                }).eq("user_id", user_id).execute()
-                return True, None
-            except Exception as e:
-                ultimo_erro = str(e)
-                if _tentativa < 2:
-                    time.sleep(2 * (_tentativa + 1))
+        try:
+            _persistir_cache_ads_db(user_id, "ads_cache", dados_limpos, tentativas=5)
+            return True, None
+        except Exception as e:
+            ultimo_erro = str(e)
         try:
             st.toast(f"Erro ao salvar cache de ads: {ultimo_erro}", icon="⚠️")
         except Exception:
@@ -13172,19 +13344,11 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         # ser só uma instabilidade passageira do gateway, e vale a pena
         # insistir um pouco mais antes de marcar a atividade como erro.
         ultimo_erro = None
-        # V87: retry mais resiliente para 5xx/timeout do gateway. O payload
-        # também ficou muito menor porque `images_b64` não vai mais pro banco.
-        _backoff_save = [2, 4, 8, 12, 20, 30]
-        for _tentativa in range(7):
-            try:
-                supabase.table("ci_dados").update({
-                    "gads_cache": dados_limpos,
-                }).eq("user_id", user_id).execute()
-                return True, None
-            except Exception as e:
-                ultimo_erro = str(e)
-                if _tentativa < 6:
-                    time.sleep(_backoff_save[_tentativa])
+        try:
+            _persistir_cache_ads_db(user_id, "gads_cache", dados_limpos, tentativas=7)
+            return True, None
+        except Exception as e:
+            ultimo_erro = str(e)
         try:
             st.toast(f"Erro ao salvar cache de Google Ads: {ultimo_erro}", icon="⚠️")
         except Exception:
@@ -14496,8 +14660,8 @@ html, body { background: transparent; overflow: hidden; }
                 form_divider()
 
                 col_salvar, col_cancelar = st.columns(2)
-                salvar   = col_salvar.form_submit_button("Salvar",   use_container_width=True, type="primary", key="btn_salvar_empresa")
-                cancelar = col_cancelar.form_submit_button("Cancelar", use_container_width=True, key="btn_cancelar_empresa")
+                salvar   = col_salvar.form_submit_button("Salvar",   width="stretch", type="primary", key="btn_salvar_empresa")
+                cancelar = col_cancelar.form_submit_button("Cancelar", width="stretch", key="btn_cancelar_empresa")
 
                 if cancelar:
                     if tem_dados:
@@ -14959,8 +15123,8 @@ function triggerAdicionar() {
             )
  
             col1, col2 = st.columns(2)
-            salvar   = col1.form_submit_button("Salvar",   use_container_width=True, type="primary", key="btn_salvar_concorrente")
-            cancelar = col2.form_submit_button("Cancelar", use_container_width=True, key="btn_cancelar_concorrente")
+            salvar   = col1.form_submit_button("Salvar",   width="stretch", type="primary", key="btn_salvar_concorrente")
+            cancelar = col2.form_submit_button("Cancelar", width="stretch", key="btn_cancelar_concorrente")
  
             if cancelar:
                 st.session_state.mostrar_form_concorrente = False
@@ -15246,12 +15410,12 @@ body {{ padding-bottom: 8px; }}
         for i, c in enumerate(concorrentes):
             b1, b2 = st.columns(2)
             with b1:
-                if st.button("Editar Concorrente", key=f"editar_{i}", use_container_width=True):
+                if st.button("Editar Concorrente", key=f"editar_{i}", width="stretch"):
                     st.session_state.editando_concorrente = i
                     st.session_state.mostrar_form_concorrente = False
                     st.rerun()
             with b2:
-                if st.button("Remover Concorrente", key=f"remove_{i}", use_container_width=True):
+                if st.button("Remover Concorrente", key=f"remove_{i}", width="stretch"):
                     nome_removido = st.session_state.dados["concorrentes"][i].get("nome", "")
                     st.session_state.dados["concorrentes"].pop(i)
                     if nome_removido and nome_removido in st.session_state.get("ads_cache", {}):
@@ -15827,7 +15991,7 @@ function selectItemGeral(i) {{
     var label = 'geral_filtro_' + i;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -16208,7 +16372,7 @@ function setHeightGeral(isOpen) {{
                 texto_nuvem = bio_txt_geral + " "
                 for p in posts_lista[:30]:
                     texto_nuvem += (p.get("caption") or "") + " "
-                tokens_nuvem = _re.sub(r'[^a-záéíóúàãõâêîôûçñü\s]', ' ', texto_nuvem.lower()).split()
+                tokens_nuvem = _re.sub(r'[^a-záéíóúàãõâêîôûçñü\\s]', ' ', texto_nuvem.lower()).split()
                 freq_nuvem = {}
                 for w in tokens_nuvem:
                     if len(w) >= 4 and w not in stop_words_bio:
@@ -17299,7 +17463,7 @@ function irParaInsightsConcorrente() {{
     var doc = window.parent.document;
     var btns = doc.querySelectorAll('[data-testid="stSidebar"] button');
     for (var i = 0; i < btns.length; i++) {{
-        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\s+/g, ' ').trim();
+        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\\s+/g, ' ').trim();
         if (txt === 'insights') {{ btns[i].click(); return; }}
     }}
 }}
@@ -17316,7 +17480,7 @@ function irParaAreaPrioritaria() {{
     var doc = window.parent.document;
     var btns = doc.querySelectorAll('[data-testid="stSidebar"] button');
     for (var i = 0; i < btns.length; i++) {{
-        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\s+/g, ' ').trim();
+        var txt = (btns[i].innerText || btns[i].textContent || '').replace(/\\s+/g, ' ').trim();
         if (txt === alvo) {{ btns[i].click(); return; }}
     }}
 }}
@@ -18835,10 +18999,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
             def _get_ol_match(line):
-                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                return _re.match(r'^(\\s*)(\\d+)\\.\\s+(.*)', line)
 
             def _get_ul_match(line):
-                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                return _re.match(r'^(\\s*)[\*\-]\\s+(.*)', line)
 
             lines = txt.split('\n')
             output = []
@@ -18861,7 +19025,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     i += 1
                     continue
                 stripped = line.strip()
-                if _re.match(r'^\s*<(h[123]|hr)', line):
+                if _re.match(r'^\\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
@@ -18903,7 +19067,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def _get_icon_for_title(title_clean):
                 t = title_clean.lower()
-                if _re.search(r'\bvs\.?\b', t):
+                if _re.search(r'\bvs\\.?\b', t):
                     return ICON_SVG['scale'], '#e0e7ff'
                 if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
                     return ICON_SVG['target'], '#dbeafe'
@@ -18925,7 +19089,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
             def _get_title_color(title_clean):
                 t = title_clean.lower()
-                if _re.search(r'\bvs\.?\b', t):
+                if _re.search(r'\bvs\\.?\b', t):
                     return '#4338ca'
                 if any(w in t for w in ['proposta', 'visão', 'missão', 'sobre', 'panorama', 'resumo', 'geral', 'identidade']):
                     return '#1d4ed8'
@@ -18950,7 +19114,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
                 # remove <hr> isolados (vêm dos "---" do markdown entre seções) —
                 # a separação visual já é feita pelos cards/banners.
-                html_str = _r2.sub(r'<hr\s*/?>', '', html_str)
+                html_str = _r2.sub(r'<hr\\s*/?>', '', html_str)
 
                 _EMOJI_RE = _r2.compile(
                     "["
@@ -18969,7 +19133,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                     limpo = _EMOJI_RE.sub('', limpo)
                     # remove espaços/pontuação que ficam sobrando após remover o emoji
-                    limpo = _r2.sub(r'^[\s:\-–—]+', '', limpo)
+                    limpo = _r2.sub(r'^[\\s:\-–—]+', '', limpo)
                     return limpo.strip()
 
                 def _make_card(hdr_txt_clean, conteudo):
@@ -19040,7 +19204,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
-                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         tag           = m_hdr.group(1)
                         hdr_txt       = m_hdr.group(2)
@@ -19059,7 +19223,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                                 output_parts.append(_make_plain_card(conteudo))
                         else:
                             lower_t       = hdr_txt_clean.lower()
-                            is_numbered   = bool(_r2.match(r'^\d+[\.\)]\s', hdr_txt_clean))
+                            is_numbered   = bool(_r2.match(r'^\\d+[\\.\)]\\s', hdr_txt_clean))
                             is_own        = lower_t.startswith('minha empresa')
                             is_competitor = lower_t.startswith('concorrente')
 
@@ -20605,11 +20769,21 @@ elif st.session_state.pagina == "ads":
         except Exception:
             pass
 
-        threading.Thread(
-            target=_executar_busca_background,
+        _iniciou_coleta = _job_start_thread(
+            "coleta_ads", st.session_state.user.id, "meta_ads",
+            _executar_busca_background,
             args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
             daemon=True,
-        ).start()
+            name="coleta-meta-ads",
+        )
+        if not _iniciou_coleta:
+            atualizar_atividade(_atividade_id, "concluido", {
+                "empresas": [e["nome"] for e in empresas],
+                "plataforma": "Meta Ads",
+                "aviso": "Já existe uma coleta de Meta Ads em processamento; não foi aberto outro worker.",
+            })
+            st.info("Já existe uma coleta de Meta Ads em processamento.")
+            return
 
         # Marca que tem uma coleta rodando — a página usa isso pra mostrar
         # um aviso em vez de fingir que os dados já estão atualizados.
@@ -20805,7 +20979,7 @@ elif st.session_state.pagina == "ads":
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === '_ads_verificar_coleta_trigger_') { btns[i].click(); return; }
             }
-        }, 4000);
+        }, 8000);
         </script>
         """, height=0)
 
@@ -20827,25 +21001,15 @@ elif st.session_state.pagina == "ads":
     # TODAS as empresas cadastradas, igual ao Google Ads. As que ainda não
     # possuem anúncios baixados/salvos continuam visíveis em cinza e ficam
     # desabilitadas; somente empresas com dados podem ser selecionadas.
-    def _meta_empresa_tem_dados(nome_emp: str) -> bool:
-        _entry = st.session_state.ads_cache.get(nome_emp) or {}
-        return bool(_entry.get("data"))
-
-    empresas_meta_com_dados = [
-        _e for _e in todas_empresas if _meta_empresa_tem_dados(_e["nome"])
-    ]
-
-    # Se a empresa ativa não tem anúncios (ex.: acabou de ser cadastrada,
-    # cache foi limpo ou a coleta ainda não terminou), troca automaticamente
-    # para a primeira empresa que realmente possui dados. Se nenhuma possui,
-    # deixa o seletor sem empresa ativa.
     _ativa_meta_atual = st.session_state.get("ads_empresa_ativa", "")
-    if _ativa_meta_atual != "__comparativo__" and not any(
-        _e["nome"] == _ativa_meta_atual for _e in empresas_meta_com_dados
-    ):
-        st.session_state.ads_empresa_ativa = (
-            empresas_meta_com_dados[0]["nome"] if empresas_meta_com_dados else ""
-        )
+    _ativa_meta_resolvida, empresas_meta_com_dados = _ads_resolver_empresa_ativa(
+        todas_empresas, st.session_state.ads_cache, _ativa_meta_atual
+    )
+    if _ativa_meta_atual != "__comparativo__":
+        st.session_state.ads_empresa_ativa = _ativa_meta_resolvida
+
+    def _meta_empresa_tem_dados(nome_emp: str) -> bool:
+        return _ads_empresa_tem_dados(st.session_state.ads_cache, nome_emp)
 
     if not st.session_state.get("ads_empresa_ativa"):
         _emps_conf_init = [e for e in todas_empresas if (
@@ -21350,7 +21514,7 @@ function triggerGhost(label, tentativas){{
     var btns=window.parent.document.querySelectorAll('button');
     var candidatos = [];
     for(var b of btns){{
-        var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
+        var txt=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();
         candidatos.push(txt);
         if(txt===String(label)){{ b.click(); return; }}
     }}
@@ -21742,7 +21906,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 function triggerTab(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -22243,7 +22407,7 @@ var SPINNER = '<svg style="animation:spin 0.8s linear infinite;display:inline-bl
 function triggerGhost(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === String(label)) {{ b.click(); return; }}
     }}
 }}
@@ -23170,7 +23334,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         toggle_cols = st.button(
                             f"![col]({icon_url})",
                             key=f"ads_toggle_cols_{sk}",
-                            use_container_width=False,
+                            width="content",
                             help="Alternar 3/4 colunas",
                         )
                         if toggle_cols:
@@ -24516,10 +24680,10 @@ setTimeout(syncHeightTabs, 800);
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
  
             def _get_ol_match(line):
-                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                return _re.match(r'^(\\s*)(\\d+)\\.\\s+(.*)', line)
  
             def _get_ul_match(line):
-                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                return _re.match(r'^(\\s*)[\*\-]\\s+(.*)', line)
  
             lines = txt.split('\n')
             output = []
@@ -24542,7 +24706,7 @@ setTimeout(syncHeightTabs, 800);
                     i += 1
                     continue
                 stripped = line.strip()
-                if _re.match(r'^\s*<(h[123]|hr)', line):
+                if _re.match(r'^\\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
@@ -24606,7 +24770,7 @@ setTimeout(syncHeightTabs, 800);
                 # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                 limpo = _EMOJI_RE_ADS.sub('', limpo)
                 # remove espaços/pontuação que ficam sobrando após remover o emoji
-                limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
+                limpo = _re.sub(r'^[\\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
             # ── FIX 2: matching por palavra inteira (\b...\b) ────────
@@ -24686,7 +24850,7 @@ setTimeout(syncHeightTabs, 800);
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
-                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         hdr_txt       = m_hdr.group(2)
                         hdr_txt_clean = _limpar_titulo_ads_local(hdr_txt)
@@ -25174,7 +25338,7 @@ function excluirAnalise(idx) {{
             if (porClasse) {{ porClasse.click(); return; }}
             var btns = doc.querySelectorAll('button');
             for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+                var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
                 if (txt === '_rm_ads_analise_' + idx + '_') {{ b.click(); return; }}
             }}
         }}
@@ -25270,7 +25434,7 @@ document.addEventListener('click', function(e) {{
 (function() {{
     var cards = document.querySelectorAll('[id^="rb_"]');
     if (cards.length === 1) {{
-        var m = cards[0].id.match(/rb_(\d+)/);
+        var m = cards[0].id.match(/rb_(\\d+)/);
         if (m) setTimeout(function() {{ toggleAds(parseInt(m[1])); }}, 150);
     }}
 }})();
@@ -25556,7 +25720,7 @@ elif st.session_state.pagina == "google_ads":
                             html = page.content()
                             print(f"[GADS-IMG] HTML renderizado tem {len(html)} chars", flush=True)
                             m = re.search(
-                                r"https://tpc\.googlesyndication\.com/archive/simgad/\d+",
+                                r"https://tpc\\.googlesyndication\\.com/archive/simgad/\\d+",
                                 html,
                             )
                             if m:
@@ -25599,7 +25763,7 @@ elif st.session_state.pagina == "google_ads":
 
             # previewservice.insertPreviewImageContent('containerId', 'imgId', 'https://...', largura, altura)
             m_img = re.search(
-                r"previewservice\.insertPreviewImageContent\([^,]+,\s*'[^']*',\s*'(https?://[^']+)'",
+                r"previewservice\\.insertPreviewImageContent\([^,]+,\\s*'[^']*',\\s*'(https?://[^']+)'",
                 texto,
             )
             if m_img:
@@ -25608,7 +25772,7 @@ elif st.session_state.pagina == "google_ads":
             # ID do vídeo do YouTube embutido na própria URL da thumbnail
             # (regex separado, direto no texto todo, funciona mesmo se a
             # chamada acima não bater)
-            m_yt = re.search(r"i\.ytimg\.com/vi/([a-zA-Z0-9_-]{11})/", texto)
+            m_yt = re.search(r"i\\.ytimg\\.com/vi/([a-zA-Z0-9_-]{11})/", texto)
             if m_yt:
                 vid = m_yt.group(1)
                 resultado["youtube_id"] = vid
@@ -26423,11 +26587,21 @@ elif st.session_state.pagina == "google_ads":
         except Exception:
             pass
 
-        threading.Thread(
-            target=_executar_busca_background,
+        _iniciou_coleta = _job_start_thread(
+            "coleta_ads_google", st.session_state.user.id, "google_ads",
+            _executar_busca_background,
             args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
             daemon=True,
-        ).start()
+            name="coleta-google-ads",
+        )
+        if not _iniciou_coleta:
+            atualizar_atividade(_atividade_id, "concluido", {
+                "empresas": [e["nome"] for e in empresas],
+                "plataforma": "Google Ads",
+                "aviso": "Já existe uma coleta de Google Ads em processamento; não foi aberto outro worker.",
+            })
+            st.info("Já existe uma coleta de Google Ads em processamento.")
+            return
 
         # Marca que tem uma coleta rodando — a página usa isso pra mostrar
         # um aviso em vez de fingir que os dados já estão atualizados.
@@ -26639,7 +26813,7 @@ elif st.session_state.pagina == "google_ads":
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === '_gads_verificar_coleta_trigger_') { btns[i].click(); return; }
             }
-        }, 4000);
+        }, 8000);
         </script>
         """, height=0)
 
@@ -27374,7 +27548,7 @@ function triggerGhost(label, tentativas){{
     var btns=window.parent.document.querySelectorAll('button');
     var candidatos = [];
     for(var b of btns){{
-        var txt=(b.textContent||b.innerText||'').split(/\s+/).join(' ').trim();
+        var txt=(b.textContent||b.innerText||'').split(/\\s+/).join(' ').trim();
         candidatos.push(txt);
         if(txt===String(label)){{ b.click(); return; }}
     }}
@@ -27791,7 +27965,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 function triggerTab(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -28477,7 +28651,7 @@ var SPINNER = '<svg style="animation:spin 0.8s linear infinite;display:inline-bl
 function triggerGhost(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === String(label)) {{ b.click(); return; }}
     }}
 }}
@@ -29379,15 +29553,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         _v = _normalizar_url_exibida(_v)
                     except Exception:
                         pass
-                    _v = re.sub(r"\s+", "", _v).strip().lower()
+                    _v = re.sub(r"\\s+", "", _v).strip().lower()
                     _v = re.sub(r"^[a-z][a-z0-9+.-]*://", "", _v, flags=re.IGNORECASE)
                     _v = _v.lstrip("/")
-                    _v = re.sub(r"^www\.", "", _v, flags=re.IGNORECASE)
+                    _v = re.sub(r"^www\\.", "", _v, flags=re.IGNORECASE)
                     _v = _v.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
                     _v = _v.rstrip("./|\\")
                     # evita transformar nome de anunciante (ex.: TicketSwap)
                     # em opção de domínio; precisa ter TLD reconhecível.
-                    if not re.search(r"\.[a-z]{2,}(?::\d+)?$", _v, re.IGNORECASE):
+                    if not re.search(r"\\.[a-z]{2,}(?::\\d+)?$", _v, re.IGNORECASE):
                         return ""
                     return _v
 
@@ -29543,7 +29717,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         toggle_cols = st.button(
                             f"![col]({icon_url})",
                             key=f"gads_toggle_cols_{sk}",
-                            use_container_width=False,
+                            width="content",
                             help="Alternar 3/4 colunas",
                         )
                         if toggle_cols:
@@ -30357,7 +30531,7 @@ function imgFallback_{uid}(img){{
                                 if len(_linhas_url_ad) >= 2:
                                     _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
-                                elif len(_linhas_url_ad) == 1 and not re.search(r"\bwww\b|\.[a-z]{2,4}(?:$|/)", _linhas_url_ad[0], re.IGNORECASE):
+                                elif len(_linhas_url_ad) == 1 and not re.search(r"\bwww\b|\\.[a-z]{2,4}(?:$|/)", _linhas_url_ad[0], re.IGNORECASE):
                                     _nome_pagina_ad = _linhas_url_ad[0]
                                     _resto_url_ad = ""
                                 else:
@@ -31310,10 +31484,10 @@ setTimeout(syncHeightTabs, 800);
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
  
             def _get_ol_match(line):
-                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                return _re.match(r'^(\\s*)(\\d+)\\.\\s+(.*)', line)
  
             def _get_ul_match(line):
-                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                return _re.match(r'^(\\s*)[\*\-]\\s+(.*)', line)
  
             lines = txt.split('\n')
             output = []
@@ -31336,7 +31510,7 @@ setTimeout(syncHeightTabs, 800);
                     i += 1
                     continue
                 stripped = line.strip()
-                if _re.match(r'^\s*<(h[123]|hr)', line):
+                if _re.match(r'^\\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
@@ -31400,7 +31574,7 @@ setTimeout(syncHeightTabs, 800);
                 # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                 limpo = _EMOJI_RE_ADS.sub('', limpo)
                 # remove espaços/pontuação que ficam sobrando após remover o emoji
-                limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
+                limpo = _re.sub(r'^[\\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
             # ── FIX 2: matching por palavra inteira (\b...\b) ────────
@@ -31480,7 +31654,7 @@ setTimeout(syncHeightTabs, 800);
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
-                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         hdr_txt       = m_hdr.group(2)
                         hdr_txt_clean = _limpar_titulo_gads_local(hdr_txt)
@@ -31968,7 +32142,7 @@ function excluirAnalise(idx) {{
             if (porClasse) {{ porClasse.click(); return; }}
             var btns = doc.querySelectorAll('button');
             for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+                var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
                 if (txt === '_rm_gads_analise_' + idx + '_') {{ b.click(); return; }}
             }}
         }}
@@ -32064,7 +32238,7 @@ document.addEventListener('click', function(e) {{
 (function() {{
     var cards = document.querySelectorAll('[id^="rb_"]');
     if (cards.length === 1) {{
-        var m = cards[0].id.match(/rb_(\d+)/);
+        var m = cards[0].id.match(/rb_(\\d+)/);
         if (m) setTimeout(function() {{ toggleAds(parseInt(m[1])); }}, 150);
     }}
 }})();
@@ -32487,10 +32661,10 @@ setHeight(false);
                 return _re_ins.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
             def _get_ol_match(line):
-                return _re_ins.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                return _re_ins.match(r'^(\\s*)(\\d+)\\.\\s+(.*)', line)
 
             def _get_ul_match(line):
-                return _re_ins.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                return _re_ins.match(r'^(\\s*)[\*\-]\\s+(.*)', line)
 
             lines = txt.split('\n')
             output = []
@@ -32513,7 +32687,7 @@ setHeight(false);
                     i += 1
                     continue
                 stripped = line.strip()
-                if _re_ins.match(r'^\s*<(h[123]|hr)', line):
+                if _re_ins.match(r'^\\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
@@ -32587,7 +32761,7 @@ setHeight(false);
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
-                    m_hdr = _re_ins.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_re_ins.DOTALL)
+                    m_hdr = _re_ins.match(r'<(h[23])[^>]*>(.*?)<\\/h[23]>', parte, flags=_re_ins.DOTALL)
                     if m_hdr:
                         hdr_txt = m_hdr.group(2)
                         hdr_txt_clean = _re_ins.sub(r'<[^>]+>', '', hdr_txt)
@@ -33642,7 +33816,7 @@ function triggerLimpar() {{
         function() {{
             var btns = window.parent.document.querySelectorAll('button');
             for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+                var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === 'limpar_cache_redes') {{ b.click(); return; }}
             }}
         }}
@@ -34275,7 +34449,7 @@ function setHeight(isOpen) {{
                     var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
                     if (txt === '_redes_verificar_coleta_trigger_') { btns[i].click(); return; }
                 }
-            }, 4000);
+            }, 8000);
             </script>
             """, height=0)
 
@@ -34490,7 +34664,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 function triggerTab(label) {{
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -34781,7 +34955,7 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
             if st.button(
                 f"![col]({icon_cols_url})",
                 key=cols_toggle_key,
-                use_container_width=False,
+                width="content",
                 help="Alternar 3/4 colunas",
             ):
                 st.session_state[posts_col_key] = 3 if n_cols_posts == 4 else 4
@@ -35449,9 +35623,9 @@ function upgradeCdnUrl(url) {{
     if (!url) return url;
     try {{
         var upgraded = url
-            .replace(/\/s\d+x\d+\//g, '/s1440x1440/')
-            .replace(/\/p\d+x\d+\//g, '/p1440x1440/')
-            .replace(/\/c\d+\.\d+\.\d+\.\d+\//g, '/');
+            .replace(/\\/s\\d+x\\d+\\//g, '/s1440x1440/')
+            .replace(/\\/p\\d+x\\d+\\//g, '/p1440x1440/')
+            .replace(/\\/c\\d+\\.\\d+\\.\\d+\\.\\d+\\//g, '/');
         return upgraded;
     }} catch(e) {{ return url; }}
 }}
@@ -35736,7 +35910,7 @@ function analisarPost(idx) {{
     var label = 'post_ia_{aba_ativa}_' + idx;
     var btns = window.parent.document.querySelectorAll('button');
     for (var b of btns) {{
-        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        var txt = (b.textContent || b.innerText || '').split(/\\s+/).join(' ').trim();
         if (txt === label) {{ b.click(); return; }}
     }}
 }}
@@ -35787,7 +35961,7 @@ function trigger(label) {{
         try {{
             var btns = searches[si].querySelectorAll('button');
             for (var bi = 0; bi < btns.length; bi++) {{
-                var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\s+/).join(' ').trim();
+                var txt = (btns[bi].textContent || btns[bi].innerText || '').split(/\\s+/).join(' ').trim();
                 if (txt === label) {{
                     var btn = btns[bi];
                     setTimeout(function() {{ btn.click(); }}, 50);
@@ -36306,10 +36480,10 @@ setTimeout(syncHeightTabs, 800);
                 return _re.sub(r'\*([^*\n]+?)\*', r'<em>\1</em>', s)
 
             def _get_ol_match(line):
-                return _re.match(r'^(\s*)(\d+)\.\s+(.*)', line)
+                return _re.match(r'^(\\s*)(\\d+)\\.\\s+(.*)', line)
 
             def _get_ul_match(line):
-                return _re.match(r'^(\s*)[\*\-]\s+(.*)', line)
+                return _re.match(r'^(\\s*)[\*\-]\\s+(.*)', line)
 
             lines = txt.split('\n')
             output = []
@@ -36332,7 +36506,7 @@ setTimeout(syncHeightTabs, 800);
                     i += 1
                     continue
                 stripped = line.strip()
-                if _re.match(r'^\s*<(h[123]|hr)', line):
+                if _re.match(r'^\\s*<(h[123]|hr)', line):
                     close_all()
                     output.append(stripped)
                     i += 1
@@ -36415,7 +36589,7 @@ setTimeout(syncHeightTabs, 800);
                 i2 = 0
                 while i2 < len(partes):
                     parte = partes[i2]
-                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\/h[23]>', parte, flags=_r2.DOTALL)
+                    m_hdr = _r2.match(r'<(h[23])[^>]*>(.*?)<\\/h[23]>', parte, flags=_r2.DOTALL)
                     if m_hdr:
                         hdr_txt       = m_hdr.group(2)
                         hdr_txt_clean = _r2.sub(r'<[^>]+>', '', hdr_txt)
@@ -36903,7 +37077,7 @@ function excluirAnalise(idx) {{
             if (porClasse) {{ porClasse.click(); return; }}
             var btns = doc.querySelectorAll('button');
             for (var b of btns) {{
-                var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+                var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
                 if (txt === '_rm_redes_analise_' + idx + '_') {{ b.click(); return; }}
             }}
         }}
@@ -36999,7 +37173,7 @@ document.addEventListener('click', function(e) {{
 (function() {{
     var cards = document.querySelectorAll('[id^="rb_"]');
     if (cards.length === 1) {{
-        var m = cards[0].id.match(/rb_(\d+)/);
+        var m = cards[0].id.match(/rb_(\\d+)/);
         if (m) setTimeout(function() {{ toggleRedes(parseInt(m[1])); }}, 150);
     }}
 }})();
@@ -39541,7 +39715,7 @@ html, body { background: transparent; overflow: hidden; }
         if (porClasse) {{ porClasse.click(); return; }}
         var btns = doc.querySelectorAll('button');
         for (var b of btns) {{
-            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
             if (txt === '_refazer_ativ_' + idx + '_') {{ b.click(); return; }}
         }}
     }}
@@ -39553,7 +39727,7 @@ html, body { background: transparent; overflow: hidden; }
         if (porClasse) {{ porClasse.click(); return; }}
         var btns = doc.querySelectorAll('button');
         for (var b of btns) {{
-            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
             if (txt === '_excluir_ativ_' + idx + '_') {{ b.click(); return; }}
         }}
     }}
@@ -39616,7 +39790,7 @@ html, body { background: transparent; overflow: hidden; }
         if (porClasse) {{ porClasse.click(); return; }}
         var btns = doc.querySelectorAll('button');
         for (var b of btns) {{
-            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            var txt = (b.textContent || b.innerText || '').replace(/\\s+/g, ' ').trim();
             if (txt === '_reparar_ativ_' + idx + '_') {{ b.click(); return; }}
         }}
     }}

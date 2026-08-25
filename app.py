@@ -41,7 +41,7 @@ UI_POLL_INTERVAL_MS = int(st.secrets.get("UI_POLL_INTERVAL_MS", 8000))
 UI_POLL_INTERVAL_SEG = max(4.0, UI_POLL_INTERVAL_MS / 1000.0)
 
 # ---------------------------------------------------
-# LIMITES DE CPU DO OCR — V111
+# LIMITES DE CPU DO OCR — V112
 # ---------------------------------------------------
 # NÃO importar torch/cv2 no startup da aplicação.
 #
@@ -74,7 +74,7 @@ def _limitar_threads_cpu_ocr_apos_import():
     except Exception as e:
         print(f"[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}", flush=True)
 
-# V111 — diagnóstico leve: confirma a memória da aplicação antes de qualquer OCR.
+# V112 — diagnóstico leve: confirma a memória da aplicação antes de qualquer OCR.
 def _rss_startup_sem_torch_mb():
     try:
         with open("/proc/self/status", "r", encoding="utf-8") as _f:
@@ -2234,29 +2234,31 @@ def _get_easyocr():
             return _easyocr_instancia[0]
         try:
             with _recurso_cpu_pesada("easyocr-init"):
-                _liberar_memoria_ocr("antes EasyOCR init")
+                # V112 — a trava de memória precisa olhar o RSS ANTES de
+                # importar EasyOCR/PyTorch. Na V111 ela era aplicada depois do
+                # import e, por isso, contava os ~650 MB normais do próprio
+                # PyTorch como se fossem memória ocupada pelo restante do app.
+                # Resultado observado: ~293 MB antes do import -> ~960 MB após
+                # o import -> bloqueio artificial no limite de 850 MB.
+                _rss_antes_easyocr = _liberar_memoria_ocr("antes EasyOCR init")
+                _LIMITE_RSS_ANTES_IMPORT_MB = int(
+                    st.secrets.get("OCR_MAX_RSS_ANTES_IMPORT_EASYOCR_MB", 650)
+                )
+                if _rss_antes_easyocr > _LIMITE_RSS_ANTES_IMPORT_MB:
+                    raise RuntimeError(
+                        f"Memória base alta demais para iniciar EasyOCR com segurança "
+                        f"(RSS={_rss_antes_easyocr:.0f} MB antes do import; limite="
+                        f"{_LIMITE_RSS_ANTES_IMPORT_MB} MB)"
+                    )
+
                 print("[OCR-DEBUG] inicializando EasyOCR (única instância global)...", flush=True)
                 import easyocr
 
-                # V111 — só agora torch/cv2 são carregados (como dependências
-                # do EasyOCR). Limita os pools antes de criar o Reader/modelos.
+                # Só agora torch/cv2 são carregados (como dependências do
+                # EasyOCR). O RSS daqui inclui o custo NORMAL do PyTorch e não
+                # deve ser usado como trava preventiva antes do Reader.
                 _limitar_threads_cpu_ocr_apos_import()
                 _liberar_memoria_ocr("apos import EasyOCR/torch, antes Reader")
-
-                # Proteção: se outra parte da aplicação já estiver consumindo
-                # memória demais, não força o carregamento dos modelos até o
-                # container morrer. A atividade permanece com erro recuperável
-                # em vez de derrubar o Streamlit inteiro.
-                _rss_pre_reader = _rss_processo_mb()
-                _LIMITE_RSS_PRE_READER_MB = int(
-                    st.secrets.get("OCR_MAX_RSS_ANTES_READER_MB", 850)
-                )
-                if _rss_pre_reader > _LIMITE_RSS_PRE_READER_MB:
-                    raise RuntimeError(
-                        f"Memória insuficiente para iniciar EasyOCR com segurança "
-                        f"(RSS={_rss_pre_reader:.0f} MB; limite preventivo="
-                        f"{_LIMITE_RSS_PRE_READER_MB} MB)"
-                    )
 
                 _easyocr_instancia[0] = easyocr.Reader(
                     ["pt"], gpu=False, verbose=False

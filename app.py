@@ -8901,6 +8901,22 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
             )
             with _lock_ocr_pendente:
                 _ocr_empresas_ativas_agora.discard((user_id, empresa))
+
+            # V113 — CORREÇÃO CRÍTICA:
+            # A função já adquiriu o job central no começo com
+            # _job_try_acquire("ocr_gads", ...). Ao sair aqui por existir
+            # uma atividade antiga em erro, a V112 esquecia de liberar essa
+            # chave. Resultado: o job ficava "ativo" para sempre em memória.
+            #
+            # Depois disso até o botão Refazer (force=True) era barrado logo
+            # no começo por "_job_try_acquire == False", portanto nenhum OCR
+            # chegava ao worker global.
+            _job_release("ocr_gads", user_id, empresa)
+            print(
+                f"[OCR-DEBUG] V113 liberou job central após atividade em erro "
+                f"empresa={empresa!r}; Refazer permanece disponível",
+                flush=True,
+            )
             return
 
     if atividade_id:

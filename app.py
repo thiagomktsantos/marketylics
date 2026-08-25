@@ -21295,9 +21295,9 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 
-.dd-item.dd-disabled { opacity:.42; cursor:not-allowed; background:#f8fafc; filter:grayscale(1); }
-.dd-item.dd-disabled:hover { background:#f8fafc; }
-.dd-item.dd-disabled .dd-nome { color:#9ca3af !important; }
+.dd-item.dd-disabled {{ opacity:.42; cursor:not-allowed; background:#f8fafc; filter:grayscale(1); }}
+.dd-item.dd-disabled:hover {{ background:#f8fafc; }}
+.dd-item.dd-disabled .dd-nome {{ color:#9ca3af !important; }}
 </style>
  
 <div class="ctrl-box">

@@ -1,6 +1,8 @@
 from playwright.sync_api import sync_playwright
 import datetime
 import streamlit as st
+
+# V94 — Meta Ads: seletor de empresas mostra somente empresas com anúncios já baixados.
 import streamlit.components.v1 as components
 import google.generativeai as genai
 import pandas as pd
@@ -1140,6 +1142,26 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     if not pode_baixar_midia(user_id):
         return url_origem
 
+    # V93: reaproveita uma URL de origem que já foi persistida antes SEM
+    # baixar o arquivo novamente. O dedupe antigo era apenas por hash e,
+    # portanto, só descobria a duplicata depois de gastar uma requisição ao
+    # CDN da Meta/Google. Como URLs da Meta podem se repetir entre anúncios
+    # da mesma coleta, este atalho elimina downloads desnecessários.
+    try:
+        _por_origem = (
+            supabase.table("midias")
+            .select("url_cdn")
+            .eq("user_id", user_id)
+            .eq("url_origem", url_origem)
+            .execute()
+        )
+        if _por_origem.data:
+            _url_existente = _por_origem.data[0].get("url_cdn")
+            if _url_existente:
+                return _url_existente
+    except Exception:
+        pass
+
     # Teto de tentativas — sem isso, QUALQUER chamador (a varredura
     # automática inclusive) tentava de novo pra sempre, mesmo pra uma
     # URL que já provou repetidamente que não vai baixar (ex: 403 do
@@ -1375,9 +1397,41 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
 
     from concurrent.futures import ThreadPoolExecutor
     import threading
+    from urllib.parse import urlsplit
 
     resultado = {}
-    tarefas = []  # (empresa, ad_idx, campo, url_idx, url, tipo, ad_id, titulo_ad, referer_hint)
+    tarefas_brutas = []  # referências de campos antes da deduplicação V93
+
+    def _chave_asset(url: str, tipo: str) -> str:
+        """Identifica o mesmo asset apesar dos query params temporários da Meta.
+        O pathname preserva o nome/id físico do arquivo; parâmetros `_nc_*`,
+        `oh`, `oe`, `stp` etc. não entram na chave. Para origens desconhecidas,
+        usa a URL completa para não juntar arquivos diferentes por engano.
+        """
+        if not url:
+            return f"{tipo}:vazio"
+        try:
+            ps = urlsplit(url)
+            host = (ps.hostname or "").lower()
+            if any(x in host for x in ("fbcdn.net", "facebook.com", "instagram.com")):
+                return f"{tipo}:meta:{ps.path}"
+        except Exception:
+            pass
+        return f"{tipo}:url:{url}"
+
+    def _score_url(url: str, tipo: str) -> int:
+        """Prefere vídeo/original e evita thumbnail s60 quando há alternativa."""
+        u = (url or "").lower()
+        if tipo == "video":
+            return 1000
+        score = 100
+        if "s60x60" in u or "_s60" in u:
+            score -= 90
+        elif "s600x600" in u or "_s600" in u:
+            score += 20
+        elif "stp=" not in u:
+            score += 40  # em geral é a variante original/maior
+        return score
 
     for empresa, entry in dados.items():
         entry_nova = dict(entry)
@@ -1403,28 +1457,52 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
             # página do próprio anúncio (ver comentário na função).
             _referer_hint_ad = ad.get("snapshot_url") or ""
             for url_idx, u in enumerate(ad.get("images") or []):
-                tarefas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
+                tarefas_brutas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
             # "carousel_images" (1 imagem por card do carrossel, sem as
             # duplicatas boa/ruim que "images" carrega) também precisa virar
             # link permanente — sem isso, anúncios novos ficariam certos por
             # ora mas com URL crua da Meta, que expira em algumas semanas e
             # quebraria o modal do carrossel mais pra frente.
             for url_idx, u in enumerate(ad.get("carousel_images") or []):
-                tarefas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
+                tarefas_brutas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
-                tarefas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad, _referer_hint_ad))
+                tarefas_brutas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad, _referer_hint_ad))
             # Foto de perfil da página — é a mesma URL pra todo anúncio
             # dessa empresa, mas o dedupe por hash já evita subir de novo;
             # sem isso, esse campo nunca passava pelo R2 e continuava
             # dependendo do link do Facebook, que expira.
             _foto_perfil = ad.get("page_profile_picture")
             if _foto_perfil:
-                tarefas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
+                tarefas_brutas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
 
-    if not tarefas:
-        return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0}
+    if not tarefas_brutas:
+        return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0, "assets_encontrados": 0, "assets_unicos": 0, "duplicados_ignorados": 0}
 
+    # V93: uma única transferência por asset. Todas as ocorrências do mesmo
+    # arquivo (images/carousel/profile e anúncios diferentes) recebem depois
+    # a mesma URL permanente. Isso evita baixar s60 + s600 + original do mesmo
+    # arquivo e evita repetir a foto de perfil em cada anúncio.
+    _grupos = {}
+    for t in tarefas_brutas:
+        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint = t
+        chave = _chave_asset(u, tipo)
+        g = _grupos.setdefault(chave, {"refs": [], "melhor": t})
+        g["refs"].append(t)
+        if _score_url(u, tipo) > _score_url(g["melhor"][4], tipo):
+            g["melhor"] = t
+
+    tarefas = []
+    for chave, g in _grupos.items():
+        melhor = g["melhor"]
+        tarefas.append((*melhor, chave))
+
+    total_assets_encontrados = len(tarefas_brutas)
     total_tarefas = len(tarefas)
+    duplicados_ignorados = total_assets_encontrados - total_tarefas
+    print(
+        f"[MIDIA-V93] assets={total_assets_encontrados} unicos={total_tarefas} "
+        f"duplicados_ignorados={duplicados_ignorados}", flush=True
+    )
 
     # Lock protege o contador de progresso (vários workers do
     # ThreadPoolExecutor terminam "ao mesmo tempo") e o timestamp da
@@ -1467,7 +1545,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         })
 
     def _processar(t):
-        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint = t
+        empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint, chave_asset = t
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id, referer_hint)
         # "não migrado" = a URL não mudou E não é porque já era do R2
         # (nesse caso o não-mudou é intencional, não uma falha)
@@ -1482,7 +1560,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
             _estado_progresso["concluidas"] += 1
             _concluidas_agora = _estado_progresso["concluidas"]
         _reportar_progresso_live(_concluidas_agora)
-        return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u, ad_id, titulo_ad)
+        return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u, ad_id, titulo_ad, chave_asset)
 
     # ── Heartbeat independente de tarefa concluída ──
     # _reportar_progresso_live só grava quando um item TERMINA. Com vídeo
@@ -1527,17 +1605,22 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     ads_migrados = {}    # ad_id -> título, pelo menos 1 mídia migrou com sucesso
     try:
         with ThreadPoolExecutor(max_workers=max(1, _MAX_DOWNLOADS_MIDIA)) as executor:
-            for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad in executor.map(_processar, tarefas):
-                if campo == "page_profile_picture":
-                    resultado[empresa]["data"][ad_idx][campo] = nova_url
-                else:
-                    resultado[empresa]["data"][ad_idx][campo][url_idx] = nova_url
+            for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad, chave_asset in executor.map(_processar, tarefas):
+                # Propaga o resultado para TODAS as referências equivalentes
+                # do asset, inclusive variantes s60/s600/original.
+                for _ref in _grupos[chave_asset]["refs"]:
+                    _emp, _idx, _campo, _url_idx, _u, _tipo, _aid, _titulo, _rh = _ref
+                    if _campo == "page_profile_picture":
+                        resultado[_emp]["data"][_idx][_campo] = nova_url
+                    else:
+                        resultado[_emp]["data"][_idx][_campo][_url_idx] = nova_url
+                    if nao_migrado:
+                        if _aid:
+                            ads_com_erro[_aid] = _titulo
+                    elif _aid:
+                        ads_migrados[_aid] = _titulo
                 if nao_migrado:
                     nao_migrados.append(url_original)
-                    if ad_id:
-                        ads_com_erro[ad_id] = titulo_ad
-                elif ad_id:
-                    ads_migrados[ad_id] = titulo_ad
     finally:
         _heartbeat_stop.set()
         if _heartbeat_thread:
@@ -1564,6 +1647,9 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         "total_anuncios_com_erro": len(ads_com_erro),
         "anuncios_migrados": [{"id": k, "titulo": v} for k, v in list(ads_migrados.items())[:LIMITE_AMOSTRA_LOG_ANUNCIOS]],
         "total_anuncios_migrados": len(ads_migrados),
+        "assets_encontrados": total_assets_encontrados,
+        "assets_unicos": total_tarefas,
+        "duplicados_ignorados": duplicados_ignorados,
     }
     return resultado, stats
 
@@ -19793,7 +19879,7 @@ elif st.session_state.pagina == "ads":
         try:
             ts_int = int(str(start_raw).strip())
             if ts_int > 10**9:
-                dto = _dt.datetime.utcfromtimestamp(ts_int)
+                dto = _dt.datetime.fromtimestamp(ts_int, _dt.timezone.utc)
             else:
                 raise ValueError
         except (ValueError, OSError):
@@ -20728,6 +20814,30 @@ elif st.session_state.pagina == "ads":
         if c.get("nome"):
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
 
+    # V94 — No seletor principal da Biblioteca de Meta Ads só entram
+    # empresas que já possuem anúncios efetivamente baixados/salvos no
+    # `ads_cache`. Configuração e coleta continuam enxergando TODAS as
+    # empresas cadastradas; este filtro vale apenas para navegação dos dados.
+    def _meta_empresa_tem_dados(nome_emp: str) -> bool:
+        _entry = st.session_state.ads_cache.get(nome_emp) or {}
+        return bool(_entry.get("data"))
+
+    empresas_meta_com_dados = [
+        _e for _e in todas_empresas if _meta_empresa_tem_dados(_e["nome"])
+    ]
+
+    # Se a empresa ativa não tem anúncios (ex.: acabou de ser cadastrada,
+    # cache foi limpo ou a coleta ainda não terminou), troca automaticamente
+    # para a primeira empresa que realmente possui dados. Se nenhuma possui,
+    # deixa o seletor sem empresa ativa.
+    _ativa_meta_atual = st.session_state.get("ads_empresa_ativa", "")
+    if _ativa_meta_atual != "__comparativo__" and not any(
+        _e["nome"] == _ativa_meta_atual for _e in empresas_meta_com_dados
+    ):
+        st.session_state.ads_empresa_ativa = (
+            empresas_meta_com_dados[0]["nome"] if empresas_meta_com_dados else ""
+        )
+
     if not st.session_state.get("ads_empresa_ativa"):
         _emps_conf_init = [e for e in todas_empresas if (
             emp.get("ads_id","").strip() if e["tipo"] == "minha" else concs[e["idx"]].get("ads_id","").strip()
@@ -20857,7 +20967,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
     with h2_col:
         # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
         _emp_dd_ghost_css_parts = []
-        for _ci_h, _e_h in enumerate(todas_empresas):
+        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
             _sk_h = safe_key(_e_h["nome"])
             _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
             _emp_dd_ghost_css_parts.append(f"""
@@ -20898,7 +21008,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         if "ads_empresa_ativa" not in st.session_state:
             st.session_state.ads_empresa_ativa = ""
  
-        for _ci_h, _e_h in enumerate(todas_empresas):
+        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
             _sk_h = safe_key(_e_h["nome"])
             _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
             if st.button(f"hdemp_{_sk_h}", key=_k_h):
@@ -20984,9 +21094,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _fn = f'dados_ads_{_ultima_ts.replace("/","_").replace(" ","_").replace(":","")}.json'
  
         _emp_ativa_nome = st.session_state.get("ads_empresa_ativa", "")
-        _emp_ativa_obj  = next((e for e in todas_empresas if e["nome"] == _emp_ativa_nome), None)
+        _emp_ativa_obj  = next((e for e in empresas_meta_com_dados if e["nome"] == _emp_ativa_nome), None)
         _comp_active    = (_emp_ativa_nome == "__comparativo__")
-        _n_dd_items     = len(todas_empresas) + 1
+        _n_dd_items     = len(empresas_meta_com_dados) + 1
  
         if _emp_ativa_obj:
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
@@ -21029,7 +21139,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
  
         _dropdown_items = ""
-        for _ci_h, _e_h in enumerate(todas_empresas):
+        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
             _is_m     = _e_h["tipo"] == "minha"
             _ads_id_d = emp.get("ads_id","") if _is_m else concs[_e_h["idx"]].get("ads_id","")
             _pp_d     = emp.get("ads_page_pic","") if _is_m else concs[_e_h["idx"]].get("ads_page_pic","")
@@ -25515,7 +25625,7 @@ elif st.session_state.pagina == "google_ads":
         try:
             ts_int = int(str(start_raw).strip())
             if ts_int > 10**9:
-                dto = _dt.datetime.utcfromtimestamp(ts_int)
+                dto = _dt.datetime.fromtimestamp(ts_int, _dt.timezone.utc)
             else:
                 raise ValueError
         except (ValueError, OSError):

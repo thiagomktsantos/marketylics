@@ -581,6 +581,12 @@ def _job_is_active(tipo: str, user_id: str, escopo: str = "") -> bool:
     with _jobs_lock:
         return _job_key(tipo, user_id, escopo) in _jobs_ativos
 
+def _job_any_active(tipo: str, user_id: str) -> bool:
+    _tipo = str(tipo)
+    _uid = str(user_id)
+    with _jobs_lock:
+        return any(k[0] == _tipo and k[1] == _uid for k in _jobs_ativos)
+
 def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
     """Executa um job e sempre libera sua chave lógica ao terminar."""
     try:
@@ -2163,6 +2169,34 @@ _ultima_chamada_ocr = [0.0]
 _easyocr_init_falhou_em = [0.0]
 _EASYOCR_INIT_COOLDOWN_SEG = 300.0
 
+def _rss_processo_mb() -> float:
+    """RSS real do processo no Linux/Streamlit Cloud."""
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as _f:
+            for _linha in _f:
+                if _linha.startswith("VmRSS:"):
+                    return float(_linha.split()[1]) / 1024.0
+    except Exception:
+        pass
+    return 0.0
+
+def _liberar_memoria_ocr(contexto: str = "") -> float:
+    """Limpa objetos Python e tenta devolver heap livre à libc."""
+    try:
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        import ctypes as _ctypes_mem
+        _ctypes_mem.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+    _rss = _rss_processo_mb()
+    if contexto:
+        print(f"[MEM-DEBUG] {contexto}: RSS={_rss:.1f} MB", flush=True)
+    return _rss
+
+
 def _get_easyocr():
     """Inicializa o EasyOCR uma única vez, de forma serializada e protegida.
 
@@ -2184,9 +2218,11 @@ def _get_easyocr():
             return _easyocr_instancia[0]
         try:
             with _recurso_cpu_pesada("easyocr-init"):
+                _liberar_memoria_ocr("antes EasyOCR init")
                 print("[OCR-DEBUG] inicializando EasyOCR (única instância global)...", flush=True)
                 import easyocr
                 _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False, verbose=False)
+                _liberar_memoria_ocr("depois EasyOCR init")
                 print("[OCR-DEBUG] EasyOCR inicializado com sucesso", flush=True)
         except BaseException:
             _easyocr_init_falhou_em[0] = time.monotonic()
@@ -5631,10 +5667,22 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
             _avatar_ignorados.append(_txt)
             continue
 
-        if _rx_cta_split.match(_txt) and _l["yc"] > h * 0.45:
+        # V108 — CTAs desse layout costumam vir acompanhados do chevron/
+        # seta do botão. O EasyOCR pode juntar tudo na mesma linha, por
+        # exemplo "Abrir >", "Abrir ›" ou "Abrir →". Para decidir se
+        # é CTA, remove SOMENTE símbolos direcionais no FINAL da linha; o
+        # restante do texto continua intacto. O valor salvo fica limpo
+        # ("Abrir"), sem o ícone visual do botão.
+        _txt_cta_split = _re_split.sub(
+            r"\s*[>›»→❯➜➤►]+\s*$",
+            "",
+            _txt,
+        ).strip()
+
+        if _rx_cta_split.match(_txt_cta_split) and _l["yc"] > h * 0.45:
             # Se houver mais de um candidato, o mais baixo é o CTA final.
             if _l["yc"] > _cta_y:
-                _cta = _txt
+                _cta = _txt_cta_split
                 _cta_y = _l["yc"]
             continue
 
@@ -6832,6 +6880,43 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     # para TicketSwap quando ao menos um lado tem vocabulário típico
                     # de navegação/sitelink. Assim o separador visual vira dois
                     # sitelinks independentes e o card os renderiza com <hr>.
+                    _partes_relacionados = _candidatos_relacionados
+                    _relacionados_split_textual_confiavel = True
+                elif (
+                    _titulo_e_descricao_ja_fechados
+                    and not banda.get("sep_antes")
+                    and len(_candidatos_relacionados) == 2
+                    # V109 — no rodapé de alguns anúncios o Google mostra
+                    # DOIS links azuis separados por "·" e ainda deixa um
+                    # separador no final. O EasyOCR frequentemente troca
+                    # ambos os pontos médios por hífen:
+                    #
+                    #   Eventos em São Paulo · Compre ou Venda Ingressos ·
+                    # vira
+                    #   Eventos em São Paulo - Compre ou Venda Ingressos -
+                    #
+                    # O traço final é um sinal estrutural forte de que o
+                    # primeiro traço também era separador visual. Para não
+                    # quebrar títulos legítimos com hífen, ainda exigimos que
+                    # OS DOIS lados tenham vocabulário típico de navegação.
+                    and bool(re.search(r"\s[\-–—]\s*$", texto or ""))
+                    and all(
+                        re.search(
+                            r"(?i)\b(?:"
+                            r"eventos?\s+em|"
+                            r"compre\s+ou\s+venda\s+ingressos?|"
+                            r"comprar\s+ou\s+vender\s+ingressos?|"
+                            r"compre\s+ingressos?|comprar\s+ingressos?|"
+                            r"venda\s+ingressos?|vender\s+ingressos?|"
+                            r"ingressos?\s+(?:show|shows|evento|eventos)|"
+                            r"shows?\s+em|"
+                            r"como\s+funciona|sobre\s+(?:a|o)|categorias?|homepage"
+                            r")\b",
+                            _p,
+                        )
+                        for _p in _candidatos_relacionados
+                    )
+                ):
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
             # V83 — correção OCR específica de navegação TicketSwap ES. O "o" curto
@@ -8566,9 +8651,11 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             for midia in pendentes:
                 _ids_tentados_neste_run.add(midia["id"])
                 import json as _json_ocr_fila
+                _liberar_memoria_ocr(f"antes OCR empresa={empresa} midia={midia.get('id')}")
                 _estruturado, _diag_ocr = _extrair_ocr_estruturado_imagem(
                     midia["url_cdn"], empresa=empresa, retornar_diagnostico=True
                 )
+                _liberar_memoria_ocr(f"apos OCR empresa={empresa} midia={midia.get('id')}")
                 if _estruturado is None:
                     # Falha real na extração (download, Gemini, ou parsing
                     # da resposta) — ver docstring de
@@ -8629,6 +8716,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                         "total": max(total, processadas),
                         "ultimo_heartbeat_em": _agora_iso(),
                     })
+                _liberar_memoria_ocr(f"fim midia empresa={empresa} processadas={processadas}")
         if atividade_id:
             if _ids_falharam:
                 atualizar_atividade(atividade_id, "erro", {
@@ -8705,7 +8793,7 @@ def _worker_ocr_global():
                 _job_release("ocr_gads", user_id, empresa)
                 _fila_ocr_global.task_done()
                 # Devolve memória temporária entre empresas antes de pegar a próxima.
-                gc.collect()
+                _liberar_memoria_ocr(f"fim empresa OCR={empresa}")
     finally:
         with _lock_worker_ocr_global:
             _worker_ocr_global_ativo[0] = False
@@ -27399,15 +27487,12 @@ elif st.session_state.pagina == "google_ads":
     # enquanto o OCR continuava no worker. O banco ficava atualizado, porém
     # a tela aberta permanecia com o snapshot antigo. Entrar em outra página
     # e voltar causava um novo render e então o OCR aparecia.
-    _atividades_ocr_visual = []
+    # V110 — usa o job realmente ativo nesta instância em vez de consultar
+    # até 100 atividades do Supabase em todo rerun. Atividades órfãs antigas
+    # não mantêm mais a página em polling infinito.
+    _ocr_em_andamento = False
     if st.session_state.get("user"):
-        _atividades_ocr_visual = _atividades_ocr_gads_recentes(
-            st.session_state.user.id
-        )
-    _ocr_em_andamento = any(
-        (a.get("status") or "") in ("pendente", "na_fila", "em_andamento")
-        for a in _atividades_ocr_visual
-    )
+        _ocr_em_andamento = _job_any_active("ocr_gads", st.session_state.user.id)
 
     _agora_poll_ocr = time.monotonic()
     if st.session_state.pop("_gads_armar_poll_ocr", False):
@@ -27460,15 +27545,19 @@ elif st.session_state.pagina == "google_ads":
         }
         </style>
         """, unsafe_allow_html=True)
-        components.html("""
+        # OCR mantém PyTorch/EasyOCR em RAM; evita rerender completo a cada
+        # 8 segundos durante essa etapa pesada. A atualização continua
+        # automática, só fica menos agressiva enquanto OCR está ativo.
+        _poll_ms_gads = 20000 if _ocr_em_andamento else UI_POLL_INTERVAL_MS
+        components.html(f"""
         <script>
-        setTimeout(function() {
+        setTimeout(function() {{
             var btns = window.parent.document.querySelectorAll('button');
-            for (var i = 0; i < btns.length; i++) {
+            for (var i = 0; i < btns.length; i++) {{
                 var txt = (btns[i].textContent || btns[i].innerText || '').split(/\\s+/).join(' ').trim();
-                if (txt === '_gads_verificar_coleta_trigger_') { btns[i].click(); return; }
-            }
-        }, 8000);
+                if (txt === '_gads_verificar_coleta_trigger_') {{ btns[i].click(); return; }}
+            }}
+        }}, {_poll_ms_gads});
         </script>
         """, height=0)
 

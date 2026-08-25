@@ -2633,6 +2633,18 @@ def _normalizar_url_exibida(texto: str) -> str:
         )
         _url_v102 = re.sub(r"\s+", "", _url_v102)
 
+        # V103 — o OCR também pode trocar o ponto entre o domínio e o TLD
+        # por vírgula/ponto-e-vírgula/dois-pontos. Exemplo real:
+        #   "www funbuynet , com brl" -> "www.funbuynet.com.br/"
+        # A troca é restrita ao separador imediatamente antes de um TLD
+        # conhecido, para não alterar pontuação legítima em caminhos da URL.
+        _url_v102 = re.sub(
+            r"(?<=[a-z0-9])[,;:_]+(?=(?:com|net|org|io|app|shop|fr|de|nl|pt|be|es|it|uk|br)(?:[._]?br[lI]?)?(?:/|$))",
+            ".",
+            _url_v102,
+            flags=re.IGNORECASE,
+        )
+
         # Normaliza separadores que o OCR troca por "_" ou simplesmente perde.
         _url_v102 = re.sub(
             r"\.?(?P<tld>com)[._]?br[lI]?(?=/|$)",

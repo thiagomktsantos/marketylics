@@ -19884,11 +19884,20 @@ elif st.session_state.pagina == "ads":
                 raise ValueError
         except (ValueError, OSError):
             try:
-                dto = _dt.datetime.strptime(str(start_raw)[:10], "%Y-%m-%d")
+                dto = _dt.datetime.strptime(str(start_raw)[:10], "%Y-%m-%d").replace(tzinfo=_dt.timezone.utc)
             except Exception:
                 return str(start_raw)[:10]
+
+        # V95: mantém ambos os lados timezone-aware.
+        # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
+        # mas datetime.now() continuou naive, causando TypeError na subtração.
+        if dto.tzinfo is None:
+            dto = dto.replace(tzinfo=_dt.timezone.utc)
+        else:
+            dto = dto.astimezone(_dt.timezone.utc)
+
         data_fmt = f"{dto.day:02d}/{dto.month:02d}/{dto.year}"
-        dias = (_dt.datetime.now() - dto).days
+        dias = (_dt.datetime.now(_dt.timezone.utc) - dto).days
         if dias == 0:
             dias_str = "hoje"
         elif dias == 1:
@@ -20814,10 +20823,10 @@ elif st.session_state.pagina == "ads":
         if c.get("nome"):
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
 
-    # V94 — No seletor principal da Biblioteca de Meta Ads só entram
-    # empresas que já possuem anúncios efetivamente baixados/salvos no
-    # `ads_cache`. Configuração e coleta continuam enxergando TODAS as
-    # empresas cadastradas; este filtro vale apenas para navegação dos dados.
+    # V96 — O seletor principal da Biblioteca de Meta Ads volta a mostrar
+    # TODAS as empresas cadastradas, igual ao Google Ads. As que ainda não
+    # possuem anúncios baixados/salvos continuam visíveis em cinza e ficam
+    # desabilitadas; somente empresas com dados podem ser selecionadas.
     def _meta_empresa_tem_dados(nome_emp: str) -> bool:
         _entry = st.session_state.ads_cache.get(nome_emp) or {}
         return bool(_entry.get("data"))
@@ -20967,7 +20976,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
     with h2_col:
         # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
         _emp_dd_ghost_css_parts = []
-        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
+        for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])
             _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
             _emp_dd_ghost_css_parts.append(f"""
@@ -21008,7 +21017,12 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         if "ads_empresa_ativa" not in st.session_state:
             st.session_state.ads_empresa_ativa = ""
  
-        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
+        for _ci_h, _e_h in enumerate(todas_empresas):
+            # Empresa sem anúncios permanece no menu, porém não recebe
+            # botão-fantasma clicável (mesmo comportamento visual/funcional
+            # adotado no Google Ads).
+            if not _meta_empresa_tem_dados(_e_h["nome"]):
+                continue
             _sk_h = safe_key(_e_h["nome"])
             _k_h = f"ads_header_emp_{_sk_h}_{_ci_h}"
             if st.button(f"hdemp_{_sk_h}", key=_k_h):
@@ -21139,8 +21153,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
  
         _dropdown_items = ""
-        for _ci_h, _e_h in enumerate(empresas_meta_com_dados):
+        for _ci_h, _e_h in enumerate(todas_empresas):
             _is_m     = _e_h["tipo"] == "minha"
+            _tem_dados_d = _meta_empresa_tem_dados(_e_h["nome"])
             _ads_id_d = emp.get("ads_id","") if _is_m else concs[_e_h["idx"]].get("ads_id","")
             _pp_d     = emp.get("ads_page_pic","") if _is_m else concs[_e_h["idx"]].get("ads_page_pic","")
             _cor_d    = get_minha_empresa_color() if _is_m else get_concorrente_color(_e_h["idx"])
@@ -21157,14 +21172,24 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
                 '</svg>'
             )
-            _dropdown_items += f"""
-            <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
-                <div class="dd-icon">{_av_item_html}</div>
-                <div class="dd-info">
-                    <span class="dd-nome">{_e_h["nome"]}</span>
-                </div>
-                <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
-            </div>"""
+            if _tem_dados_d:
+                _dropdown_items += f"""
+                <div class="dd-item{' selected' if _is_active_d else ''}" onclick="triggerGhost('{_ghost_lbl_d}');closeDropdown()">
+                    <div class="dd-icon">{_av_item_html}</div>
+                    <div class="dd-info">
+                        <span class="dd-nome">{_e_h["nome"]}</span>
+                    </div>
+                    <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
+                </div>"""
+            else:
+                _dropdown_items += f"""
+                <div class="dd-item dd-disabled" aria-disabled="true" title="Nenhum anúncio baixado">
+                    <div class="dd-icon">{_av_item_html}</div>
+                    <div class="dd-info">
+                        <span class="dd-nome">{_e_h["nome"]}</span>
+                    </div>
+                    <span class="{'dd-badge-minha' if _is_m else 'dd-badge-conc'}">{_badge_txt_d}</span>
+                </div>"""
  
         _dropdown_items += f"""
         <div class="dd-item{' selected' if _comp_active else ''}" onclick="triggerGhost('hdemp_comparativo');closeDropdown()">
@@ -21269,6 +21294,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .sep {{ color:#d1d5db; font-size:12px; }}
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
+
+.dd-item.dd-disabled { opacity:.42; cursor:not-allowed; background:#f8fafc; filter:grayscale(1); }
+.dd-item.dd-disabled:hover { background:#f8fafc; }
+.dd-item.dd-disabled .dd-nome { color:#9ca3af !important; }
 </style>
  
 <div class="ctrl-box">
@@ -25630,11 +25659,20 @@ elif st.session_state.pagina == "google_ads":
                 raise ValueError
         except (ValueError, OSError):
             try:
-                dto = _dt.datetime.strptime(str(start_raw)[:10], "%Y-%m-%d")
+                dto = _dt.datetime.strptime(str(start_raw)[:10], "%Y-%m-%d").replace(tzinfo=_dt.timezone.utc)
             except Exception:
                 return str(start_raw)[:10]
+
+        # V95: mantém ambos os lados timezone-aware.
+        # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
+        # mas datetime.now() continuou naive, causando TypeError na subtração.
+        if dto.tzinfo is None:
+            dto = dto.replace(tzinfo=_dt.timezone.utc)
+        else:
+            dto = dto.astimezone(_dt.timezone.utc)
+
         data_fmt = f"{dto.day:02d}/{dto.month:02d}/{dto.year}"
-        dias = (_dt.datetime.now() - dto).days
+        dias = (_dt.datetime.now(_dt.timezone.utc) - dto).days
         if dias == 0:
             dias_str = "hoje"
         elif dias == 1:

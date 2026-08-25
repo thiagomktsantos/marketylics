@@ -41,30 +41,31 @@ UI_POLL_INTERVAL_MS = int(st.secrets.get("UI_POLL_INTERVAL_MS", 8000))
 UI_POLL_INTERVAL_SEG = max(4.0, UI_POLL_INTERVAL_MS / 1000.0)
 
 # ---------------------------------------------------
-# LIMITE DE THREADS DE CPU (PyTorch/OpenCV) — corrige o throttle de CPU
-# do Streamlit Cloud no OCR (EasyOCR)
+# LIMITES DE CPU DO OCR — V111
 # ---------------------------------------------------
-# Por padrão, o PyTorch (motor por baixo do EasyOCR) e o OpenCV usam
-# TODOS os núcleos de CPU disponíveis em paralelo dentro de uma única
-# chamada (ex: `reader.readtext()`, `cv2.imdecode()`). Isso faz cada
-# inferência de OCR gerar um PICO de uso de CPU, que é exatamente o
-# que o limitador do Streamlit Community Cloud está medindo — e é por
-# isso que só aumentar o intervalo MÍNIMO entre chamadas (ver
-# `_lock_easyocr_execucao` / `_MIN_INTERVALO_OCR_SEG`, mais abaixo) não
-# foi suficiente da vez anterior: aquele intervalo dá respiro ENTRE
-# inferências, mas não reduz a altura do pico durante cada inferência.
+# NÃO importar torch/cv2 no startup da aplicação.
 #
-# Forçando 1 thread aqui, cada chamada de OCR fica mais lenta (não usa
-# mais vários núcleos de uma vez), mas o pico de CPU cai bastante —
-# troca deliberada de velocidade por não ser throttlado de novo. Isso
-# precisa rodar ANTES de qualquer uso de torch/cv2/easyocr no processo
-# (por isso está aqui em cima, logo após os imports, e não só dentro de
-# `_get_easyocr`) — o PyTorch fixa o número de threads na primeira
-# operação e não deixa mudar depois.
-def _limitar_threads_cpu_ocr():
+# A V110 revelou a causa do crash: o processo já estava em ~920 MB ANTES
+# de inicializar o EasyOCR. O motivo principal era esta própria seção,
+# que importava `torch` durante o startup só para limitar threads. Assim,
+# mesmo usuários que não estavam usando OCR carregavam toda a stack do
+# PyTorch na memória. Quando o EasyOCR carregava os modelos, o RSS saltava
+# para ~1,2 GB e o container podia ser encerrado por falta de memória.
+#
+# As variáveis OMP/MKL/OPENBLAS acima continuam limitando os pools nativos
+# desde o início do processo. `torch.set_num_threads(1)` e
+# `cv2.setNumThreads(1)` agora são aplicados DEPOIS que EasyOCR importar
+# essas bibliotecas, dentro de `_get_easyocr()`. Portanto a aplicação
+# normal permanece leve até o OCR ser realmente necessário.
+def _limitar_threads_cpu_ocr_apos_import():
     try:
         import torch
         torch.set_num_threads(1)
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            # Pode já ter sido fixado pela primeira operação do runtime.
+            pass
     except Exception as e:
         print(f"[OCR-DEBUG] não consegui limitar threads do torch: {e!r}", flush=True)
     try:
@@ -73,7 +74,22 @@ def _limitar_threads_cpu_ocr():
     except Exception as e:
         print(f"[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}", flush=True)
 
-_limitar_threads_cpu_ocr()
+# V111 — diagnóstico leve: confirma a memória da aplicação antes de qualquer OCR.
+def _rss_startup_sem_torch_mb():
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as _f:
+            for _linha in _f:
+                if _linha.startswith("VmRSS:"):
+                    return float(_linha.split()[1]) / 1024.0
+    except Exception:
+        pass
+    return 0.0
+
+print(
+    f"[MEM-DEBUG] startup sem import antecipado de torch: "
+    f"RSS={_rss_startup_sem_torch_mb():.1f} MB",
+    flush=True,
+)
 
 # ---------------------------------------------------
 # CONFIGURAÇÃO DA PÁGINA
@@ -2221,7 +2237,30 @@ def _get_easyocr():
                 _liberar_memoria_ocr("antes EasyOCR init")
                 print("[OCR-DEBUG] inicializando EasyOCR (única instância global)...", flush=True)
                 import easyocr
-                _easyocr_instancia[0] = easyocr.Reader(["pt"], gpu=False, verbose=False)
+
+                # V111 — só agora torch/cv2 são carregados (como dependências
+                # do EasyOCR). Limita os pools antes de criar o Reader/modelos.
+                _limitar_threads_cpu_ocr_apos_import()
+                _liberar_memoria_ocr("apos import EasyOCR/torch, antes Reader")
+
+                # Proteção: se outra parte da aplicação já estiver consumindo
+                # memória demais, não força o carregamento dos modelos até o
+                # container morrer. A atividade permanece com erro recuperável
+                # em vez de derrubar o Streamlit inteiro.
+                _rss_pre_reader = _rss_processo_mb()
+                _LIMITE_RSS_PRE_READER_MB = int(
+                    st.secrets.get("OCR_MAX_RSS_ANTES_READER_MB", 850)
+                )
+                if _rss_pre_reader > _LIMITE_RSS_PRE_READER_MB:
+                    raise RuntimeError(
+                        f"Memória insuficiente para iniciar EasyOCR com segurança "
+                        f"(RSS={_rss_pre_reader:.0f} MB; limite preventivo="
+                        f"{_LIMITE_RSS_PRE_READER_MB} MB)"
+                    )
+
+                _easyocr_instancia[0] = easyocr.Reader(
+                    ["pt"], gpu=False, verbose=False
+                )
                 _liberar_memoria_ocr("depois EasyOCR init")
                 print("[OCR-DEBUG] EasyOCR inicializado com sucesso", flush=True)
         except BaseException:

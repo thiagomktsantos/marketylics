@@ -2609,6 +2609,44 @@ def _normalizar_url_exibida(texto: str) -> str:
     """
     if not texto:
         return texto
+
+    # V102 — recuperação conservadora do ENDEREÇO DO SITE no cabeçalho.
+    # Casos reais:
+    # "NWW. funbuynet com brl" -> "www.funbuynet.com.br/"
+    # "NWW. fanticket. com_ brl" -> "www.fanticket.com.br/"
+    # "www. ticketswap. coml" -> "www.ticketswap.com/"
+    # Só roda quando já existe sinal inequívoco de URL.
+    _url_v102 = str(texto).strip()
+    _tem_sinal_url_v102 = bool(re.match(
+        r"^(?:https?\s*[:;/lI|.-]*\s*)?[nNvVwW]{2,4}[.:]?\s*|^https?\s*[:;/lI|.-]+",
+        _url_v102, flags=re.IGNORECASE
+    ))
+    if _tem_sinal_url_v102:
+        _url_v102 = re.sub(r"^([nNvVwW]{2,4})[.:]?\s*", "www.", _url_v102, flags=re.IGNORECASE)
+        _url_v102 = re.sub(
+            r"^(https?)[\s:;/lI|.-]+(?=(?:www|[a-z0-9]))",
+            r"\1://", _url_v102, flags=re.IGNORECASE
+        )
+        _url_v102 = re.sub(
+            r"^(https?://)[nNvVwW]{2,4}[.:]?\s*",
+            r"\1www.", _url_v102, flags=re.IGNORECASE
+        )
+        _url_v102 = re.sub(r"\s+", "", _url_v102)
+
+        # Normaliza separadores que o OCR troca por "_" ou simplesmente perde.
+        _url_v102 = re.sub(
+            r"\.?(?P<tld>com)[._]?br[lI]?(?=/|$)",
+            lambda m: ".com.br/",
+            _url_v102, flags=re.IGNORECASE
+        )
+        _url_v102 = re.sub(
+            r"\.?(?P<tld>com|net|org|io|app|shop|fr|de|nl|pt|be|es|it|uk|br)[lI]?(?=/|$)",
+            lambda m: "." + m.group("tld").lower() + "/",
+            _url_v102, flags=re.IGNORECASE
+        )
+        _url_v102 = re.sub(r"/+$", "/", _url_v102)
+        texto = _url_v102
+
     # V47 — preserva/recompõe explicitamente o protocolo exibido no anúncio.
     # Além do caso já validado http:ll, cobre variações comuns do OCR nas
     # barras/pontuação do protocolo (http;//, http//, http:/, httpl//).
@@ -7620,6 +7658,286 @@ def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
         or d.get("url_final") or d.get("cta") or d.get("sitelinks")
     )
 
+
+# ---------------------------------------------------
+# V101 — TESTES DE REGRESSÃO DO OCR
+# ---------------------------------------------------
+# IMPORTANTE: estes testes são SOMENTE LEITURA.
+# O `ocr_estruturado` que já está salvo na tabela `midias` é tratado como
+# baseline ("golden result"). O parser atual é executado novamente contra a
+# mesma imagem e o resultado é comparado com essa baseline. Nada é gravado
+# em `midias`, então uma versão nova do OCR não consegue "atualizar o
+# esperado" silenciosamente e esconder uma regressão.
+
+_OCR_REGRESSION_FIELDS = (
+    "titulo", "descricao", "url_exibida", "url_final",
+    "cta", "cta_subtitulo", "sitelinks",
+)
+
+def _ocr_regression_parse_dict(valor):
+    if isinstance(valor, dict):
+        return valor
+    if isinstance(valor, str) and valor.strip():
+        try:
+            import json as _json_reg
+            parsed = _json_reg.loads(valor)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return None
+
+def _ocr_regression_norm_text(valor) -> str:
+    # Normaliza apenas diferenças irrelevantes de espaço/linha.
+    # Pontuação, caixa, hífens, travessões, vírgulas etc. permanecem
+    # exatamente comparáveis — justamente os tipos de regressão que já
+    # apareceram no OCR real.
+    return re.sub(r"\s+", " ", str(valor or "")).strip()
+
+def _ocr_regression_norm_sitelinks(valor):
+    out = []
+    for item in (valor or []):
+        if isinstance(item, dict):
+            out.append({
+                "titulo": _ocr_regression_norm_text(item.get("titulo")),
+                "descricao": _ocr_regression_norm_text(item.get("descricao")),
+            })
+        else:
+            out.append({
+                "titulo": _ocr_regression_norm_text(item),
+                "descricao": "",
+            })
+    return out
+
+def _ocr_regression_normalizar(d: dict) -> dict:
+    d = d if isinstance(d, dict) else {}
+    return {
+        "titulo": _ocr_regression_norm_text(d.get("titulo")),
+        "descricao": _ocr_regression_norm_text(d.get("descricao")),
+        "url_exibida": _ocr_regression_norm_text(d.get("url_exibida")),
+        "url_final": _ocr_regression_norm_text(d.get("url_final")),
+        "cta": _ocr_regression_norm_text(d.get("cta")),
+        "cta_subtitulo": _ocr_regression_norm_text(d.get("cta_subtitulo")),
+        "sitelinks": _ocr_regression_norm_sitelinks(d.get("sitelinks")),
+    }
+
+def _ocr_regression_diff(esperado: dict, atual: dict) -> dict:
+    esperado_n = _ocr_regression_normalizar(esperado)
+    atual_n = _ocr_regression_normalizar(atual)
+    diff = {}
+    for campo in _OCR_REGRESSION_FIELDS:
+        if esperado_n.get(campo) != atual_n.get(campo):
+            diff[campo] = {
+                "esperado": esperado_n.get(campo),
+                "atual": atual_n.get(campo),
+            }
+    return diff
+
+def _carregar_baseline_regressao_ocr(user_id: str, empresa: str) -> list:
+    """Carrega resultados OCR já aprovados/salvos. Não modifica nada."""
+    try:
+        res = _supabase_resiliente(
+            lambda: (
+                supabase.table("midias")
+                .select("id,empresa,url_cdn,url_origem,ocr_estruturado")
+                .eq("user_id", user_id)
+                .eq("empresa", empresa)
+                .eq("tipo", "imagem")
+                .not_.is_("ocr_estruturado", "null")
+                .or_(_FILTRO_OCR_URL_GOOGLE)
+                .limit(5000)
+                .execute()
+            ),
+            operacao="baseline_regressao_ocr",
+            tentativas=4,
+        )
+        linhas = []
+        for row in (res.data or []):
+            baseline = _ocr_regression_parse_dict(row.get("ocr_estruturado"))
+            if baseline is None:
+                continue
+            url = row.get("url_cdn") or ""
+            if not url:
+                continue
+            row = dict(row)
+            row["_baseline"] = baseline
+            linhas.append(row)
+        return linhas
+    except Exception as exc:
+        print(f"[OCR-REGRESSION] falha carregando baseline empresa={empresa!r}: {exc!r}", flush=True)
+        return []
+
+def _contar_baseline_regressao_ocr(user_id: str, empresa: str) -> int:
+    """Contagem barata para a tela de Suporte."""
+    try:
+        res = _supabase_resiliente(
+            lambda: (
+                supabase.table("midias")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("empresa", empresa)
+                .eq("tipo", "imagem")
+                .not_.is_("ocr_estruturado", "null")
+                .or_(_FILTRO_OCR_URL_GOOGLE)
+                .execute()
+            ),
+            operacao="contar_baseline_regressao_ocr",
+            tentativas=3,
+        )
+        return int(res.count or 0)
+    except Exception:
+        return 0
+
+def _executar_regressao_ocr_background(user_id: str, empresa: str, atividade_id: str):
+    """Reexecuta o parser contra a baseline salva. NUNCA atualiza `midias`."""
+    inicio = time.monotonic()
+    linhas = _carregar_baseline_regressao_ocr(user_id, empresa)
+    total = len(linhas)
+    iguais = 0
+    divergentes = 0
+    falhas = 0
+    amostra_divergencias = []
+    amostra_falhas = []
+
+    if not total:
+        atualizar_atividade(atividade_id, "concluido", {
+            "empresa": empresa,
+            "resultado": "sem_baseline",
+            "total": 0,
+            "mensagem": "Não há OCR estruturado salvo para usar como baseline.",
+        })
+        return
+
+    atualizar_atividade(atividade_id, "em_andamento", {
+        "empresa": empresa,
+        "total": total,
+        "processados": 0,
+        "iguais": 0,
+        "divergentes": 0,
+        "falhas_execucao": 0,
+        "modo": "somente leitura — nenhuma OCR será alterada",
+    })
+
+    for pos, row in enumerate(linhas, start=1):
+        midia_id = row.get("id")
+        url = row.get("url_cdn") or ""
+        baseline = row.get("_baseline") or {}
+        try:
+            atual, diag = _extrair_ocr_estruturado_imagem(
+                url, empresa=empresa, retornar_diagnostico=True
+            )
+            if atual is None:
+                falhas += 1
+                if len(amostra_falhas) < 10:
+                    amostra_falhas.append({
+                        "midia_id": midia_id,
+                        "url_cdn": url,
+                        "erro": (diag or {}).get("erro") or "OCR não retornou resultado",
+                        "etapa": (diag or {}).get("etapa") or "",
+                    })
+            else:
+                diff = _ocr_regression_diff(baseline, atual)
+                if diff:
+                    divergentes += 1
+                    if len(amostra_divergencias) < 20:
+                        amostra_divergencias.append({
+                            "midia_id": midia_id,
+                            "url_cdn": url,
+                            "url_origem": row.get("url_origem") or "",
+                            "campos_alterados": list(diff.keys()),
+                            "diferencas": diff,
+                        })
+                else:
+                    iguais += 1
+        except Exception as exc:
+            falhas += 1
+            if len(amostra_falhas) < 10:
+                amostra_falhas.append({
+                    "midia_id": midia_id,
+                    "url_cdn": url,
+                    "erro": f"{type(exc).__name__}: {exc}",
+                })
+
+        # heartbeat/progresso sem gravar a cada imagem
+        if pos == total or pos % 5 == 0:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "empresa": empresa,
+                "total": total,
+                "processados": pos,
+                "iguais": iguais,
+                "divergentes": divergentes,
+                "falhas_execucao": falhas,
+                "modo": "somente leitura — nenhuma OCR será alterada",
+            })
+
+    tempo = round(time.monotonic() - inicio, 1)
+    aprovado = (divergentes == 0 and falhas == 0)
+    atualizar_atividade(atividade_id, "concluido", {
+        "empresa": empresa,
+        "resultado": "APROVADO" if aprovado else "ATENÇÃO",
+        "total": total,
+        "processados": total,
+        "iguais": iguais,
+        "divergentes": divergentes,
+        "falhas_execucao": falhas,
+        "tempo_segundos": tempo,
+        "amostra_divergencias": amostra_divergencias,
+        "amostra_falhas": amostra_falhas,
+        "modo": "somente leitura — nenhuma OCR foi alterada",
+        "mensagem": (
+            "Nenhuma regressão detectada."
+            if aprovado
+            else "Há diferenças em relação ao OCR atualmente salvo. Revise antes de reprocessar as mídias."
+        ),
+    })
+    print(
+        f"[OCR-REGRESSION] FIM empresa={empresa!r} total={total} iguais={iguais} "
+        f"divergentes={divergentes} falhas={falhas} tempo={tempo}s",
+        flush=True,
+    )
+
+def iniciar_teste_regressao_ocr(user_id: str, empresa: str):
+    """Inicia teste em background. Retorna (ok, mensagem)."""
+    escopo = str(empresa or "")
+    if _job_is_active("teste_regressao_ocr", user_id, escopo):
+        return False, f"Já existe um teste de regressão em andamento para {empresa}."
+
+    total = _contar_baseline_regressao_ocr(user_id, empresa)
+    if total <= 0:
+        return False, f"{empresa} ainda não possui OCR estruturado salvo para servir de baseline."
+
+    atividade_id = criar_atividade(
+        user_id,
+        "teste_regressao_ocr",
+        f"{empresa} · Teste de regressão do OCR",
+        status="pendente",
+        detalhes={
+            "empresa": empresa,
+            "total": total,
+            "processados": 0,
+            "modo": "somente leitura — nenhuma OCR será alterada",
+        },
+    )
+    if not atividade_id:
+        return False, "Não foi possível criar a atividade de teste."
+
+    ok = _job_start_thread(
+        "teste_regressao_ocr",
+        user_id,
+        escopo,
+        _executar_regressao_ocr_background,
+        args=(user_id, empresa, atividade_id),
+        daemon=True,
+        name=f"ocr-regression-{safe_key(empresa) if 'safe_key' in globals() else 'empresa'}",
+    )
+    if not ok:
+        atualizar_atividade(atividade_id, "concluido", {
+            "empresa": empresa,
+            "resultado": "ignorado",
+            "mensagem": "Já existia um teste equivalente em andamento.",
+        })
+        return False, f"Já existe um teste de regressão em andamento para {empresa}."
+    return True, f"Teste iniciado para {total} imagem(ns) de {empresa}. Acompanhe pelo sino."
+
 def _achatar_ocr_estruturado(d: dict) -> str:
     """Reduz o dict estruturado pra uma string 'uma linha por trecho' —
     mantém compatibilidade com o badge/tooltip do card e com o texto
@@ -8867,6 +9185,7 @@ _TIPO_ATIVIDADE_LABELS = {
         "M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.5L20.5,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z",
         "#3a9fd6", "Verificando anúncios do Google Ads pendentes de migração",
     ),
+    "teste_regressao_ocr": "Teste de regressão do OCR",
     "verificacao_ocr_pendente_gads": (
         "M15.5,14H14.71L14.43,13.73C15.41,12.59 16,11.11 16,9.5A6.5,6.5 0 0,0 9.5,3A6.5,6.5 0 0,0 3,9.5A6.5,6.5 0 0,0 9.5,16C11.11,16 12.59,15.41 13.73,14.43L14,14.71V15.5L19,20.5L20.5,19L15.5,14M9.5,14C7,14 5,12 5,9.5C5,7 7,5 9.5,5C12,5 14,7 14,9.5C14,12 12,14 9.5,14Z",
         "#f5a623", "Verificando anúncios do Google Ads pendentes de OCR",
@@ -38356,6 +38675,58 @@ html, body { background: transparent; overflow: hidden; }
                 st.info("Nenhuma mídia encontrada com esse filtro.")
         else:
             st.info("Ainda não há mídias para exibir no painel de suporte.")
+
+        st.divider()
+        st.markdown("**Proteção contra regressões do OCR**")
+        st.caption(
+            "Valida o parser atual contra os resultados estruturados que já estão "
+            "salvos e aprovados. O teste é somente leitura: não apaga, não refaz e "
+            "não altera nenhuma OCR. Se uma versão futura mudar título, descrição, "
+            "CTA, site ou sitelinks de um anúncio que hoje está correto, a diferença "
+            "aparece no resultado antes de você reprocessar os dados."
+        )
+
+        try:
+            _empresas_reg_ocr = _empresas_com_imagens_google_ads(st.session_state.user.id)
+        except Exception:
+            _empresas_reg_ocr = []
+
+        if _empresas_reg_ocr:
+            _col_reg_emp, _col_reg_info = st.columns([1.25, 1])
+            with _col_reg_emp:
+                _empresa_reg_ocr = st.selectbox(
+                    "Empresa para validar",
+                    options=_empresas_reg_ocr,
+                    key="_suporte_empresa_regressao_ocr",
+                )
+            _qtd_baseline_reg_ocr = _contar_baseline_regressao_ocr(
+                st.session_state.user.id, _empresa_reg_ocr
+            )
+            with _col_reg_info:
+                st.metric("OCRs na baseline", _qtd_baseline_reg_ocr)
+
+            st.caption(
+                f"O teste vai reler {_qtd_baseline_reg_ocr} imagem(ns) de "
+                f"**{_empresa_reg_ocr}** e comparar campo por campo com o resultado "
+                f"que já está salvo. Pode levar alguns minutos porque usa EasyOCR."
+            )
+
+            if st.button(
+                "Validar OCR sem alterar dados",
+                key="_btn_teste_regressao_ocr",
+                type="primary",
+                disabled=_qtd_baseline_reg_ocr <= 0,
+            ):
+                _ok_reg, _msg_reg = iniciar_teste_regressao_ocr(
+                    st.session_state.user.id, _empresa_reg_ocr
+                )
+                if _ok_reg:
+                    st.toast(_msg_reg, icon="🛡️")
+                else:
+                    st.warning(_msg_reg)
+                st.rerun()
+        else:
+            st.info("Ainda não há imagens do Google Ads com OCR salvo para validar.")
 
         st.divider()
         st.markdown("**Extração de texto (OCR) — Google Ads**")

@@ -3344,46 +3344,160 @@ def _daemon_worker():
 
 
 def _cli_single_image():
+    """Compatibilidade do nome; agora processa um LOTE sequencial.
+
+    O processo é iniciado uma única vez, o EasyOCR.Reader permanece em memória
+    durante todo o lote e cada imagem é liberada antes da seguinte.
+    """
     if len(sys.argv) != 3:
         print("uso: ocr_worker.py <input.json> <output.json>", file=sys.stderr)
         return 2
 
     entrada, saida = sys.argv[1], sys.argv[2]
-    _mem_snapshot_ocr('worker inicio')
+    _mem_snapshot_ocr("worker inicio")
+
     try:
         with open(entrada, "r", encoding="utf-8") as f:
             payload = json.load(f)
 
         empresa = payload.get("empresa")
-        item = payload.get("item") or {}
-        midia_id = str(item.get("id") or "")
-        url_cdn = str(item.get("url_cdn") or "")
-        if not url_cdn:
-            raise RuntimeError("url_cdn ausente")
 
-        estruturado, diag = _extrair_ocr_estruturado_imagem(
-            url_cdn,
-            empresa=empresa,
-            retornar_diagnostico=True,
+        itens = payload.get("itens")
+        if not isinstance(itens, list):
+            # Compatibilidade com app antigo.
+            item_unico = payload.get("item") or {}
+            itens = [item_unico] if item_unico else []
+
+        itens = [i for i in itens if isinstance(i, dict)]
+        if not itens:
+            raise RuntimeError("lote OCR sem itens")
+
+        print(
+            f"[OCR-WORKER] LOTE INICIO empresa={empresa!r} total={len(itens)}",
+            flush=True,
         )
-        resultado = {
-            "ok": estruturado is not None,
-            "id": midia_id,
-            "estruturado": estruturado,
-            "diag": diag,
+
+        resultados = []
+        sucessos = 0
+        falhas = 0
+
+        # O Reader NÃO é criado aqui à força. A primeira imagem que realmente
+        # precisar de OCR chama _get_easyocr(); a instância global será
+        # reutilizada pelas demais imagens do mesmo processo.
+        for idx, item in enumerate(itens, start=1):
+            midia_id = str(item.get("id") or "")
+            url_cdn = str(item.get("url_cdn") or "")
+
+            print(
+                f"[OCR-WORKER] ITEM INICIO {idx}/{len(itens)} id={midia_id}",
+                flush=True,
+            )
+            _mem_snapshot_ocr(f"antes item {idx}/{len(itens)}")
+
+            if not url_cdn:
+                falhas += 1
+                resultados.append({
+                    "id": midia_id,
+                    "ok": False,
+                    "estruturado": None,
+                    "erro": "url_cdn ausente",
+                    "diag": {
+                        "etapa": "worker_lote",
+                        "erro": "url_cdn ausente",
+                    },
+                })
+                continue
+
+            try:
+                estruturado, diag = _extrair_ocr_estruturado_imagem(
+                    url_cdn,
+                    empresa=empresa,
+                    retornar_diagnostico=True,
+                )
+
+                ok = estruturado is not None
+                if ok:
+                    sucessos += 1
+                else:
+                    falhas += 1
+
+                resultados.append({
+                    "id": midia_id,
+                    "ok": ok,
+                    "estruturado": estruturado,
+                    "diag": diag,
+                    "erro": None if ok else str(
+                        (diag or {}).get("erro")
+                        or "A extração OCR retornou vazio."
+                    ),
+                })
+
+            except BaseException as exc:
+                falhas += 1
+                resultados.append({
+                    "id": midia_id,
+                    "ok": False,
+                    "estruturado": None,
+                    "erro": f"{type(exc).__name__}: {exc}",
+                    "diag": {
+                        "etapa": "worker_lote",
+                        "erro": f"{type(exc).__name__}: {exc}",
+                        "traceback": traceback.format_exc(limit=8),
+                    },
+                })
+
+            finally:
+                # Remove referências temporárias entre imagens. O Reader global
+                # permanece vivo deliberadamente para não recarregar ~800 MB.
+                try:
+                    estruturado = None
+                    diag = None
+                except Exception:
+                    pass
+                try:
+                    import gc as _gc_lote
+                    _gc_lote.collect()
+                except Exception:
+                    pass
+
+                _mem_snapshot_ocr(f"depois item {idx}/{len(itens)}")
+                print(
+                    f"[OCR-WORKER] ITEM FIM {idx}/{len(itens)} "
+                    f"id={midia_id} sucessos={sucessos} falhas={falhas}",
+                    flush=True,
+                )
+
+        resultado_lote = {
+            # Falha de uma imagem não invalida o processo inteiro; o app grava
+            # os sucessos e deixa apenas as falhas para Refazer.
+            "ok": True,
+            "empresa": empresa,
+            "total": len(itens),
+            "sucessos": sucessos,
+            "falhas": falhas,
+            "resultados": resultados,
         }
+
         with open(saida, "w", encoding="utf-8") as f:
-            json.dump(resultado, f, ensure_ascii=False)
-        _mem_snapshot_ocr('worker fim antes return')
-        return 0 if resultado["ok"] else 3
+            json.dump(resultado_lote, f, ensure_ascii=False)
+
+        _mem_snapshot_ocr("worker fim lote")
+        print(
+            f"[OCR-WORKER] LOTE FIM empresa={empresa!r} "
+            f"total={len(itens)} sucessos={sucessos} falhas={falhas}",
+            flush=True,
+        )
+        return 0
+
     except BaseException as exc:
         try:
             with open(saida, "w", encoding="utf-8") as f:
                 json.dump({
                     "ok": False,
                     "erro": f"{type(exc).__name__}: {exc}",
+                    "resultados": [],
                     "diag": {
-                        "etapa": "worker_externo",
+                        "etapa": "worker_lote",
                         "erro": f"{type(exc).__name__}: {exc}",
                     },
                 }, f, ensure_ascii=False)

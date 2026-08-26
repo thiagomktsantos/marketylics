@@ -9420,7 +9420,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
             "resultados": [],
         }
 
-    _tmp_dir = tempfile.mkdtemp(prefix="ocr_v126_")
+    _tmp_dir = tempfile.mkdtemp(prefix="ocr_v127_")
     _entrada = Path(_tmp_dir) / "entrada.json"
     _saida = Path(_tmp_dir) / "saida.json"
 
@@ -9446,7 +9446,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     ]
 
     print(
-        f"[OCR-V126] externo INICIO empresa={empresa!r} "
+        f"[OCR-V127] externo INICIO empresa={empresa!r} "
         f"id={item.get('id')} RSS_pai={_rss_processo_mb():.1f} MB",
         flush=True,
     )
@@ -9463,12 +9463,12 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
         if _proc.stdout:
             print(
-                "[OCR-V126][worker stdout]\n" + _proc.stdout[-8000:],
+                "[OCR-V127][worker stdout]\n" + _proc.stdout[-8000:],
                 flush=True,
             )
         if _proc.stderr:
             print(
-                "[OCR-V126][worker stderr]\n" + _proc.stderr[-4000:],
+                "[OCR-V127][worker stderr]\n" + _proc.stderr[-4000:],
                 flush=True,
             )
 
@@ -9485,7 +9485,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
         _res = json.loads(_saida.read_text(encoding="utf-8"))
 
         print(
-            f"[OCR-V126] externo FIM empresa={empresa!r} "
+            f"[OCR-V127] externo FIM empresa={empresa!r} "
             f"id={item.get('id')} returncode={_proc.returncode} "
             f"RSS_pai={_rss_processo_mb():.1f} MB",
             flush=True,
@@ -9527,7 +9527,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
-    """V126 — processa OCR em processos Python externos de uma imagem.
+    """V127 — processa OCR em processos Python externos de uma imagem.
 
     O processo principal do Streamlit coordena fila/progresso/banco.
     EasyOCR e PyTorch vivem somente no worker externo e são destruídos ao fim
@@ -9548,7 +9548,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             "processadas": processadas,
             "total": total,
             "ultimo_heartbeat_em": _agora_iso(),
-            "modo_execucao": "ocr_externo_v126",
+            "modo_execucao": "ocr_externo_v127",
             "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
         })
 
@@ -9576,7 +9576,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 res = _query.limit(_OCR_ISOLADO_TAMANHO_LOTE).execute()
             except Exception as _exc_query:
                 print(
-                    f"[OCR-V125] falha consultando lote empresa={empresa!r}: "
+                    f"[OCR-V127] falha consultando imagem empresa={empresa!r}: "
                     f"{_exc_query!r}",
                     flush=True,
                 )
@@ -9601,6 +9601,13 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 for _m in pendentes
             ]
 
+            print(
+                f"[OCR-V127] CHAMANDO worker externo empresa={empresa!r} "
+                f"id={_payload[0].get('id') if _payload else None} "
+                f"processadas={processadas}/{max(total, processadas)} "
+                f"RSS_pai={_rss_processo_mb():.1f} MB",
+                flush=True,
+            )
             _ret = _executar_lote_ocr_isolado(empresa, _payload)
             _por_id = {
                 str(_r.get("id") or ""): _r
@@ -9697,12 +9704,12 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "ultimo_heartbeat_em": _agora_iso(),
-                    "modo_execucao": "ocr_externo_v126",
+                    "modo_execucao": "ocr_externo_v127",
                     "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
                 })
 
             _liberar_memoria_ocr(
-                f"V126 pai apos imagem empresa={empresa} processadas={processadas}"
+                f"V127 pai apos imagem empresa={empresa} processadas={processadas}"
             )
 
         if atividade_id:
@@ -9719,14 +9726,14 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     ),
                     "erros_detalhados": _erros_detalhados[:20],
                     "total_erros_detalhados": len(_erros_detalhados),
-                    "modo_execucao": "ocr_externo_v126",
+                    "modo_execucao": "ocr_externo_v127",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresa": empresa,
                     "processadas": processadas,
                     "total": max(total, processadas),
-                    "modo_execucao": "ocr_externo_v126",
+                    "modo_execucao": "ocr_externo_v127",
                 })
 
     except BaseException as e:
@@ -9740,7 +9747,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 "motivo": f"{type(e).__name__}: {e}",
                 "processadas": processadas,
                 "total": max(total, processadas),
-                "modo_execucao": "ocr_externo_v126",
+                "modo_execucao": "ocr_externo_v127",
             })
     finally:
         with _lock_ocr_pendente:
@@ -9757,17 +9764,26 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
 _fila_ocr_global = queue.Queue()
 _lock_worker_ocr_global = threading.Lock()
 _worker_ocr_global_ativo = [False]
-_OCR_DELAY_PRIMEIRO_START_SEG = 45.0
+_OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
 def _worker_ocr_global():
     try:
-        # Não carregamos PyTorch/EasyOCR durante o pico de boot do Streamlit,
-        # Playwright e demais caches. Isso reduz muito a chance de OOM no
-        # primeiro minuto após um deploy/restart.
+        # V127 — o OCR pesado agora roda em processo Python externo de
+        # uma imagem por vez. Não faz mais sentido segurar a fila por ~45s.
+        # Mantemos somente uma microespera de até 2s logo após boot/redeploy
+        # para o servidor terminar a inicialização básica.
         restante = _OCR_DELAY_PRIMEIRO_START_SEG - (time.monotonic() - _PROCESSO_INICIO_MONOTONIC)
         if restante > 0:
-            print(f"[OCR-DEBUG] worker global aguardando {restante:.1f}s para estabilizar o container", flush=True)
+            print(
+                f"[OCR-V127] worker global microespera {restante:.1f}s após boot",
+                flush=True,
+            )
             time.sleep(restante)
+        print(
+            f"[OCR-V127] worker global LIBERADO RSS_pai={_rss_processo_mb():.1f} MB "
+            f"fila={_fila_ocr_global.qsize()}",
+            flush=True,
+        )
 
         while True:
             try:
@@ -9775,7 +9791,11 @@ def _worker_ocr_global():
             except queue.Empty:
                 break
             try:
-                print(f"[OCR-DEBUG] worker global INICIO empresa={empresa!r}", flush=True)
+                print(
+                    f"[OCR-V127] worker global INICIO empresa={empresa!r} "
+                    f"atividade={atividade_id} RSS_pai={_rss_processo_mb():.1f} MB",
+                    flush=True,
+                )
                 _ocr_pendentes_background(user_id, empresa, atividade_id)
             except BaseException as exc:
                 print(f"[OCR-DEBUG] worker global FALHA empresa={empresa!r}: {exc!r}", flush=True)

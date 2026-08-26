@@ -9688,7 +9688,10 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
 
 
 # ===================================================
-# V125 — OCR ISOLADO EM PROCESSO FILHO
+# OCR LOCAL LEGADO — mantido para compatibilidade, mas não é iniciado.
+# O OCR ativo roda em serviço externo via ocr_worker.py.
+# ===================================================
+# OCR ISOLADO EM PROCESSO FILHO
 # ===================================================
 # O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
 # Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
@@ -10325,105 +10328,111 @@ def _worker_ocr_global():
                 threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
 def _garantir_worker_ocr_global():
-    with _lock_worker_ocr_global:
-        if _worker_ocr_global_ativo[0]:
-            return
-        _worker_ocr_global_ativo[0] = True
-        threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
+    """OCR é executado fora do Streamlit; mantido só por compatibilidade."""
+    return
+
 
 def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = False):
-    """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
-    das imagens do Google Ads dessa empresa que já foram migradas pro R2
-    mas ainda não têm texto extraído. Mesmo padrão de
-    iniciar_transcricao_pendente_background — chamada logo depois da
-    migração terminar, sem bloquear quem chamou. Empresas só-Meta (sem
-    nenhuma imagem do Google) simplesmente não têm nada pendente e a
-    função sai sem criar atividade nenhuma."""
+    """Enfileira OCR para o worker EXTERNO através da tabela `atividades`.
+
+    O Streamlit NÃO executa EasyOCR/PyTorch e NÃO cria subprocesso local.
+    A atividade `ocr_gads` em status pendente é a própria fila persistente.
+    Um serviço separado, executando `ocr_worker.py`, consome essa fila,
+    processa as imagens e grava o resultado no Supabase.
+
+    Isso elimina a coexistência Streamlit + PyTorch no mesmo container.
+    """
     if not user_id or not empresa:
-        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r}", flush=True)
+        print(
+            f"[OCR] fila externa ignorada: user_id={user_id!r} empresa={empresa!r}",
+            flush=True,
+        )
         return
-    if not _job_try_acquire("ocr_gads", user_id, empresa):
-        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: job central já ativo pra ({user_id!r}, {empresa!r})", flush=True)
-        return
-    with _lock_ocr_pendente:
-        if (user_id, empresa) in _ocr_empresas_ativas_agora:
-            _job_release("ocr_gads", user_id, empresa)
-            print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: já tem fila ativa pra ({user_id!r}, {empresa!r})", flush=True)
-            return
-        _ocr_empresas_ativas_agora.add((user_id, empresa))
+
     total = _contar_ocr_pendentes(user_id, empresa)
     if not total:
-        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: total=0 pendentes pra empresa={empresa!r} (ver log de _contar_ocr_pendentes acima)", flush=True)
-        with _lock_ocr_pendente:
-            _ocr_empresas_ativas_agora.discard((user_id, empresa))
-        _job_release("ocr_gads", user_id, empresa)
+        print(
+            f"[OCR] fila externa: nenhuma imagem pendente empresa={empresa!r}",
+            flush=True,
+        )
         return
-    print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
+
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
     _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
 
-    # V80 — uma atividade que terminou em ERRO não pode voltar
-    # automaticamente para "Na fila" a cada polling. Isso fazia o mesmo
-    # card oscilar Na fila -> Processando -> Erro -> Na fila e repetia a
-    # mesma mídia defeituosa indefinidamente. Depois de erro, só uma ação
-    # explícita de Refazer (force=True) reabre a fila.
-    if atividade_id and not force:
+    _status_atual = ""
+    if atividade_id:
         try:
-            _r_status_ocr = (supabase.table("atividades").select("status")
-                             .eq("id", atividade_id).limit(1).execute())
-            _status_ocr_atual = ((_r_status_ocr.data or [{}])[0].get("status") or "")
+            _r = (
+                supabase.table("atividades")
+                .select("status,detalhes")
+                .eq("id", atividade_id)
+                .limit(1)
+                .execute()
+            )
+            _row = (_r.data or [{}])[0]
+            _status_atual = str(_row.get("status") or "")
+            if _row.get("detalhes"):
+                _det_ocr = _row.get("detalhes") or _det_ocr
         except Exception:
-            _status_ocr_atual = ""
-        if _status_ocr_atual == "erro" and not force:
-            print(
-                f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: atividade em erro aguarda Refazer manual empresa={empresa!r}",
-                flush=True,
-            )
-            with _lock_ocr_pendente:
-                _ocr_empresas_ativas_agora.discard((user_id, empresa))
-            _job_release("ocr_gads", user_id, empresa)
-            print(
-                f"[OCR-DEBUG] liberou job central após atividade em erro empresa={empresa!r}; Refazer permanece disponível",
-                flush=True,
-            )
-            return
+            pass
 
-        if _status_ocr_atual == "erro" and force:
-            print(
-                f"[OCR-DEBUG] V114 force=True IGNORA atividade antiga em erro e continua para nova execução empresa={empresa!r}",
-                flush=True,
-            )
+    # Worker externo já está processando: não reabre nem reseta o card.
+    if _status_atual == "em_andamento" and not force:
+        print(
+            f"[OCR] fila externa: atividade já em processamento empresa={empresa!r}",
+            flush=True,
+        )
+        return
+
+    # Depois de erro, só Refazer explícito reabre a atividade.
+    if _status_atual == "erro" and not force:
+        print(
+            f"[OCR] fila externa: atividade em erro aguarda Refazer empresa={empresa!r}",
+            flush=True,
+        )
+        return
+
+    _feitas = int(_det_ocr.get("processadas") or 0)
+    _total = max(int(_det_ocr.get("total") or 0), _feitas + total)
+
+    _detalhes_fila = {
+        "empresa": empresa,
+        "processadas": _feitas,
+        "total": _total,
+        "worker": "externo",
+        "worker_externo": True,
+        "mensagem_fila": "Aguardando o worker de OCR.",
+        "status_visual": "na_fila",
+        "enfileirado_em": _agora_iso(),
+    }
 
     if atividade_id:
-        # V74 — NUNCA zera um checkpoint existente. Se estava 2/3, a
-        # retomada permanece 2/3 e só a mídia pendente volta para a fila.
-        _feitas_ocr = int(_det_ocr.get("processadas") or 0)
-        _total_ocr = max(int(_det_ocr.get("total") or 0), _feitas_ocr + total)
-        atualizar_atividade(atividade_id, "na_fila", {
-            "empresa": empresa, "processadas": _feitas_ocr, "total": _total_ocr,
-            "mensagem_fila": "Aguardando a vez de continuar o OCR.",
-        })
+        atualizar_atividade(
+            atividade_id,
+            "na_fila",
+            _detalhes_fila,
+        )
     else:
         atividade_id = criar_atividade(
-            user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
-            {"empresa": empresa, "processadas": 0, "total": total,
-             "mensagem_fila": "Aguardando a vez de iniciar o OCR."},
+            user_id,
+            "ocr_gads",
+            f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
+            _detalhes_fila,
+            status="na_fila",
         )
-        # criar_atividade pode nascer pendente conforme implementação antiga;
-        # normaliza explicitamente para o novo estado da fila.
-        atualizar_atividade(atividade_id, "na_fila", {
-            "empresa": empresa, "processadas": 0, "total": total,
-            "mensagem_fila": "Aguardando a vez de iniciar o OCR.",
-        })
-    _fila_ocr_global.put((user_id, empresa, atividade_id))
+
     print(
-        f"[OCR-DEBUG] enfileirado no worker global: empresa={empresa!r} fila={_fila_ocr_global.qsize()}",
+        f"[OCR] ENFILEIRADO NO SUPABASE empresa={empresa!r} "
+        f"atividade={atividade_id} pendentes={total}",
         flush=True,
     )
-    _garantir_worker_ocr_global()
+    # IMPORTANTE: não chamar _garantir_worker_ocr_global().
+    # O worker fica em outro serviço/container.
 
 
 # ---------------------------------------------------
+#  TRANSCRIÇÃO DE REELS# ---------------------------------------------------
 #  TRANSCRIÇÃO DE REELS (REDES SOCIAIS) — mesmo padrão dos vídeos de
 #  Anúncios acima, mas adaptado: aqui não existe uma tabela `midias` por
 #  vídeo — os posts de Redes Sociais vivem inteiros dentro do JSON

@@ -7290,16 +7290,27 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         r"(?i)\b(?:compre|comprar|venda|vender)\b.*\bingressos?\b",
                         _candidatos_relacionados[0],
                     )
-                    and re.fullmatch(
-                        r"(?i)(?:segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|"
-                        r"quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado|domingo)",
-                        _candidatos_relacionados[2].strip(),
+                    and (
+                        re.fullmatch(
+                            r"(?i)(?:segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|"
+                            r"quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado|domingo)",
+                            _candidatos_relacionados[2].strip(),
+                        )
+                        or re.fullmatch(
+                            r"(?i)\d{1,2}\s+dias?",
+                            _candidatos_relacionados[2].strip(),
+                        )
                     )
                 ):
-                    # V115 — caso real FunBuyNet:
+                    # V122 — caso real FunBuyNet:
                     # "Compre ou Venda Ingressos - GP Brasil - Sábado -"
-                    # Deve resultar em 2 links:
-                    # "Compre ou Venda Ingressos" e "GP Brasil - Sábado".
+                    # "Compre ou Venda Ingressos - GP Brasil - 3 Dias -"
+                    #
+                    # O primeiro fragmento é navegação/CTA; os dois seguintes
+                    # formam um único sitelink de evento + variante/período.
+                    # Junta somente quando o último fragmento é um dia da semana
+                    # OU uma duração explícita como "3 Dias", evitando quebrar
+                    # títulos comuns com hífen.
                     _partes_relacionados = [
                         _candidatos_relacionados[0],
                         f"{_candidatos_relacionados[1]} - {_candidatos_relacionados[2]}",
@@ -7327,6 +7338,33 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     # fileira horizontal de dois links quando o separador "·"
                     # vira "-" no OCR.
                     _partes_relacionados = _candidatos_relacionados
+                elif (
+                    _titulo_e_descricao_ja_fechados
+                    and len(_candidatos_relacionados) == 2
+                    and re.fullmatch(
+                        r"(?i)(?:compre|comprar)\s+ou\s+(?:venda|vender)\s+ingressos?",
+                        _candidatos_relacionados[0].strip(),
+                    )
+                    and re.fullmatch(
+                        r"(?i)ingressos?\s+(?:"
+                        r"artes?\s+e\s+teatro|"
+                        r"teatros?|shows?|esportes?|eventos?|festivais?|"
+                        r"futebol|música|musica|comédia|comedia"
+                        r")",
+                        _candidatos_relacionados[1].strip(),
+                    )
+                ):
+                    # V121 — dois links horizontais separados visualmente por "·".
+                    # Caso real FunBuyNet:
+                    # "Compre ou Venda Ingressos · Ingressos Artes e Teatro"
+                    # O EasyOCR pode trocar o ponto médio por hífen.
+                    #
+                    # Aceita 2 fragmentos somente quando o primeiro é uma
+                    # navegação explícita de compra/venda e o segundo é uma
+                    # categoria inequívoca. Assim não quebra nomes de eventos
+                    # que usam hífen de verdade.
+                    _partes_relacionados = _candidatos_relacionados
+                    _relacionados_split_textual_confiavel = True
                 elif (
                     _titulo_e_descricao_ja_fechados
                     and not banda.get("sep_antes")

@@ -1,6 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Core da aplicação
 streamlit==1.62.0
 supabase==2.31.0
 requests==2.34.2
@@ -10,21 +9,17 @@ numpy==2.5.2
 Pillow==12.3.0
 psutil
 
-# Coleta / scraping
 playwright==1.62.0
 trafilatura==2.2.0
 boto3==1.43.81
 botocore==1.43.81
 
-# IA / OCR / mídia
 google-generativeai==0.8.6
 faster-whisper==1.2.1
 opencv-python-headless==5.0.0.93
 easyocr==1.7.2
 
-# IMPORTANTE: CPU-only. Evita instalar o stack NVIDIA/CUDA no Streamlit Cloud.
 torch==2.13.0+cpu
 torchvision==0.28.0+cpu
 
-# Evita a versão que o próprio Streamlit Cloud marcou como problemática no deploy.
 pyarrow==24.0.0

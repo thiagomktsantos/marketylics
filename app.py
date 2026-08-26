@@ -1,6 +1,8 @@
 from playwright.sync_api import sync_playwright
 import datetime
 import streamlit as st
+import multiprocessing
+import tempfile
 
 # V94 — Meta Ads: seletor de empresas mostra somente empresas com anúncios já baixados.
 import streamlit.components.v1 as components
@@ -5526,6 +5528,234 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
 
 
 
+
+def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
+    """V124 — Display com cabeçalho em cima, FOTO CENTRAL grande e texto embaixo.
+
+    Estrutura típica:
+        [avatar] Nome da empresa
+        [        FOTO / ARTE GRANDE        ]
+        Título do anúncio
+        CTA
+
+    Exemplo real:
+        FunBuyNet
+        [foto show]
+        Oasis Tickets - FunBuyNet
+        Abrir
+
+    A foto central é ignorada. O detector usa a geometria vertical do OCR:
+    precisa existir um cabeçalho no topo e um grande vazio textual entre ele
+    e o bloco inferior. Assim não confunde esse formato com anúncios de Busca.
+    """
+    import re as _re_fc
+
+    if img_bgr is None or getattr(img_bgr, "size", 0) == 0:
+        return None
+
+    h, w = img_bgr.shape[:2]
+    if h < 320 or w < 360:
+        return None
+
+    # Esse formato costuma ser aproximadamente quadrado / levemente paisagem.
+    _ratio = w / max(float(h), 1.0)
+    if not (0.82 <= _ratio <= 1.55):
+        return None
+
+    try:
+        _ocr = reader.readtext(
+            img_bgr,
+            detail=1,
+            paragraph=False,
+            width_ths=0.55,
+            height_ths=0.55,
+            text_threshold=0.40,
+            low_text=0.25,
+            link_threshold=0.25,
+        )
+    except Exception as _exc:
+        print(f"[OCR-DEBUG] display-foto-central: OCR falhou: {_exc!r}", flush=True)
+        return None
+
+    _caixas = []
+    for _item in (_ocr or []):
+        if not _item or len(_item) < 3:
+            continue
+        _bbox, _txt, _conf = _item
+        _txt = _limpar_pontuacao_ocr((_txt or "").strip())
+        if not _txt:
+            continue
+        _xs = [float(p[0]) for p in _bbox]
+        _ys = [float(p[1]) for p in _bbox]
+        _caixas.append({
+            "texto": _txt,
+            "x0": min(_xs),
+            "x1": max(_xs),
+            "y0": min(_ys),
+            "y1": max(_ys),
+            "xc": (min(_xs) + max(_xs)) / 2.0,
+            "yc": (min(_ys) + max(_ys)) / 2.0,
+            "altura": max(1.0, max(_ys) - min(_ys)),
+        })
+
+    if len(_caixas) < 3:
+        return None
+
+    # Agrupa caixas da mesma linha.
+    _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
+    _linhas = []
+    for _c in _caixas:
+        _alocada = False
+        for _l in _linhas:
+            _tol = max(8.0, min(_c["altura"], _l["altura"]) * 0.55)
+            if abs(_c["yc"] - _l["yc"]) <= _tol:
+                _l["itens"].append(_c)
+                _l["yc"] = sum(x["yc"] for x in _l["itens"]) / len(_l["itens"])
+                _l["altura"] = max(_l["altura"], _c["altura"])
+                _alocada = True
+                break
+        if not _alocada:
+            _linhas.append({"yc": _c["yc"], "altura": _c["altura"], "itens": [_c]})
+
+    _linhas.sort(key=lambda l: l["yc"])
+    for _l in _linhas:
+        _l["itens"].sort(key=lambda c: c["x0"])
+        _l["texto"] = _limpar_pontuacao_ocr(
+            " ".join(c["texto"] for c in _l["itens"]).strip()
+        )
+        _l["x0"] = min(c["x0"] for c in _l["itens"])
+        _l["x1"] = max(c["x1"] for c in _l["itens"])
+        _l["xc"] = (_l["x0"] + _l["x1"]) / 2.0
+
+    _linhas = [l for l in _linhas if l.get("texto")]
+    if len(_linhas) < 3:
+        return None
+
+    def _norm(_s):
+        return _re_fc.sub(r"[^a-z0-9]", "", str(_s or "").lower())
+
+    _emp_norm = _norm(empresa)
+
+    # Cabeçalho: precisa estar no topo e casar com a empresa cadastrada.
+    _idx_header = None
+    for _i, _l in enumerate(_linhas):
+        if _l["yc"] > h * 0.24:
+            break
+        _n = _norm(_l["texto"])
+        if _emp_norm and _n and (
+            _n == _emp_norm or _emp_norm in _n or _n in _emp_norm
+        ):
+            _idx_header = _i
+            break
+
+    if _idx_header is None:
+        return None
+
+    # Procura o primeiro texto após um grande vão vertical: esse é o bloco
+    # inferior que fica abaixo da foto central.
+    _header = _linhas[_idx_header]
+    _idx_bloco_inferior = None
+    _maior_gap = 0.0
+
+    for _i in range(_idx_header + 1, len(_linhas)):
+        _prev = _linhas[_i - 1]
+        _cur = _linhas[_i]
+        _gap = float(_cur["yc"] - _prev["yc"])
+        if _gap > _maior_gap:
+            _maior_gap = _gap
+        if (
+            _gap >= h * 0.28
+            and _cur["yc"] >= h * 0.68
+        ):
+            _idx_bloco_inferior = _i
+            break
+
+    if _idx_bloco_inferior is None:
+        return None
+
+    _inferiores = _linhas[_idx_bloco_inferior:]
+    if not _inferiores:
+        return None
+
+    _rx_cta = _re_fc.compile(
+        r"^(?:abrir|saiba\s*mais|compre\s*agora|comprar\s*agora|"
+        r"acesse|acessar|ver\s*mais|conferir|comprar|reservar)"
+        r"(?:\s*[>›»→❯➜])?$",
+        _re_fc.IGNORECASE,
+    )
+
+    _cta = ""
+    _conteudo = []
+
+    for _l in _inferiores:
+        _txt = (_l["texto"] or "").strip()
+        _txt_cta = _re_fc.sub(r"\s*[>›»→❯➜]+\s*$", "", _txt).strip()
+        if _rx_cta.match(_txt):
+            if not _cta:
+                _cta = _txt_cta
+            continue
+        _conteudo.append({
+            "texto": _txt,
+            "altura": _l["altura"],
+            "yc": _l["yc"],
+        })
+
+    if not _conteudo:
+        return None
+
+    # Se o bloco inferior tiver mais de uma linha, usa a mesma heurística
+    # global por altura; caso real atual tem apenas título + CTA.
+    _titulo, _desc_linhas = _extrair_titulo_descricao_por_altura(
+        [{"texto": l["texto"], "altura": l["altura"]} for l in _conteudo]
+    )
+    _titulo = _limpar_pontuacao_ocr(_titulo or "")
+    _descricao = " ".join(
+        _limpar_pontuacao_ocr(x) for x in (_desc_linhas or []) if x
+    ).strip()
+
+    if not _titulo:
+        return None
+
+    # Rede de segurança: CTA precisa existir nesse padrão. Isso evita que um
+    # anúncio comum com grande área vazia seja classificado por engano.
+    if not _cta:
+        return None
+
+    _debug = [{
+        "idx": 0,
+        "classe": "display-foto-central",
+        "sep_antes": False,
+        "texto": f"{empresa or ''} | {_titulo} | {_descricao} | {_cta}".strip(" |"),
+        "decisao": (
+            "Display com cabeçalho superior + foto central grande + bloco inferior → "
+            "foto ignorada; nome da empresa tratado como cabeçalho; "
+            "título extraído abaixo da foto; CTA identificado separadamente"
+        ),
+        "y_min": 0,
+        "y_max": int(h),
+        "x_min_favicon": 0,
+    }]
+
+    print(
+        f"[OCR-DEBUG] display-foto-central detectado "
+        f"gap={_maior_gap:.1f}px/{h} "
+        f"empresa={empresa!r} titulo={_titulo!r} cta={_cta!r}",
+        flush=True,
+    )
+
+    return {
+        "titulo": _titulo,
+        "descricao": _descricao,
+        "url_exibida": empresa or "",
+        "url_final": "",
+        "cta": _cta,
+        "cta_subtitulo": "",
+        "sitelinks": [],
+        "_debug_bandas": _debug,
+        "_layout_ocr": "display_foto_central",
+    }
+
+
 def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = None):
     """V116 — detecta Display com FOTO grande em cima + card textual no rodapé.
 
@@ -6213,6 +6443,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     título nem descrição) — nesse caso quem chama deve cair no fallback
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
+
+    # V124 — Display com cabeçalho acima, foto central grande e bloco de
+    # título/CTA abaixo da foto.
+    _display_foto_central = _detectar_display_foto_central(
+        img_bgr, reader, empresa=empresa
+    )
+    if _display_foto_central is not None:
+        return _display_foto_central
 
     # V116 — Display com foto grande em cima e card textual no rodapé.
     # Precisa rodar antes do parser linear porque, nesse formato, o texto do
@@ -7314,6 +7552,45 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     _partes_relacionados = [
                         _candidatos_relacionados[0],
                         f"{_candidatos_relacionados[1]} - {_candidatos_relacionados[2]}",
+                    ]
+                    _relacionados_split_textual_confiavel = True
+                elif (
+                    _portao_seguranca_relacionados
+                    and len(_candidatos_relacionados) == 4
+                    and all(
+                        re.fullmatch(
+                            r"(?i)(?:segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|"
+                            r"quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado|domingo)",
+                            _candidatos_relacionados[_i_dia].strip(),
+                        )
+                        for _i_dia in (1, 3)
+                    )
+                    and all(
+                        not re.fullmatch(
+                            r"(?i)(?:segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|"
+                            r"quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado|domingo)",
+                            _candidatos_relacionados[_i_evento].strip(),
+                        )
+                        for _i_evento in (0, 2)
+                    )
+                ):
+                    # V123 — fileira horizontal com DOIS sitelinks de evento,
+                    # cada um contendo um dia da semana no próprio nome.
+                    # Caso real FunBuyNet:
+                    #
+                    #   GP Brasil - Domingo - GP Brasil - Sábado -
+                    #
+                    # A regra genérica via 4 fragmentos e renderizava quatro
+                    # links independentes. Quando os fragmentos 2 e 4 são
+                    # inequivocamente dias da semana, emparelha:
+                    #   "GP Brasil - Domingo"
+                    #   "GP Brasil - Sábado"
+                    #
+                    # É conservador: só ativa com exatamente 4 fragmentos e
+                    # padrão alternado EVENTO / DIA / EVENTO / DIA.
+                    _partes_relacionados = [
+                        f"{_candidatos_relacionados[0]} - {_candidatos_relacionados[1]}",
+                        f"{_candidatos_relacionados[2]} - {_candidatos_relacionados[3]}",
                     ]
                     _relacionados_split_textual_confiavel = True
                 elif _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
@@ -9107,32 +9384,218 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
     except Exception:
         return {}
 
+
+# ===================================================
+# V125 — OCR ISOLADO EM PROCESSO FILHO
+# ===================================================
+# O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
+# Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
+# Ao terminar, o kernel devolve toda a RAM do PyTorch/modelos automaticamente.
+_OCR_ISOLADO_TAMANHO_LOTE = 4
+_OCR_ISOLADO_TIMEOUT_SEG = 420
+
+
+def _ocr_isolado_child(empresa: str, itens: list, arquivo_saida: str):
+    """Executado somente no processo filho (Linux/fork)."""
+    import json as _json_child
+    import traceback as _traceback_child
+
+    try:
+        # Fork de processo multithread pode herdar locks ocupados. No filho,
+        # recriamos especificamente os locks/semaforos usados pelo OCR.
+        global _lock_easyocr_init
+        global _lock_easyocr_execucao
+        global _semaforo_cpu_pesada
+
+        _lock_easyocr_init = threading.Lock()
+        _lock_easyocr_execucao = threading.Lock()
+        _semaforo_cpu_pesada = threading.BoundedSemaphore(1)
+
+        # O pai da V125 não deve possuir Reader. Mesmo assim zeramos o estado
+        # local do filho para garantir uma inicialização limpa.
+        _easyocr_instancia[0] = None
+        _easyocr_init_falhou_em[0] = 0.0
+        _ultima_chamada_ocr[0] = 0.0
+
+        _resultados = []
+
+        for _item in (itens or []):
+            _id = str(_item.get("id") or "")
+            _url = str(_item.get("url_cdn") or "")
+            try:
+                _estruturado, _diag = _extrair_ocr_estruturado_imagem(
+                    _url,
+                    empresa=empresa,
+                    retornar_diagnostico=True,
+                )
+                if _estruturado is None:
+                    _resultados.append({
+                        "id": _id,
+                        "ok": False,
+                        "estruturado": None,
+                        "diag": _diag or {
+                            "etapa": "desconhecida",
+                            "erro": "A extração OCR retornou vazio.",
+                        },
+                    })
+                else:
+                    _resultados.append({
+                        "id": _id,
+                        "ok": True,
+                        "estruturado": _estruturado,
+                        "diag": _diag,
+                    })
+            except BaseException as _exc:
+                _resultados.append({
+                    "id": _id,
+                    "ok": False,
+                    "estruturado": None,
+                    "diag": {
+                        "etapa": "subprocesso_ocr",
+                        "erro": f"{type(_exc).__name__}: {_exc}",
+                        "traceback": _traceback_child.format_exc(limit=8),
+                    },
+                })
+
+        Path(arquivo_saida).write_text(
+            _json_child.dumps(
+                {"ok": True, "resultados": _resultados},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    except BaseException as _fatal:
+        try:
+            Path(arquivo_saida).write_text(
+                _json_child.dumps({
+                    "ok": False,
+                    "erro": f"{type(_fatal).__name__}: {_fatal}",
+                    "traceback": _traceback_child.format_exc(limit=12),
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+        # os._exit evita handlers/threads herdados do Streamlit no teardown
+        os._exit(2)
+
+    os._exit(0)
+
+
+def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
+    """Executa um lote OCR fora do processo principal do Streamlit."""
+    if not itens:
+        return {"ok": True, "resultados": []}
+
+    # Streamlit Cloud é Linux. `fork` permite reutilizar as funções já
+    # definidas sem reexecutar toda a UI do app.py no processo filho.
+    try:
+        _ctx = multiprocessing.get_context("fork")
+    except ValueError as _exc:
+        raise RuntimeError("OCR isolado V125 requer ambiente Linux com fork") from _exc
+
+    _tmp = tempfile.NamedTemporaryFile(
+        prefix="ocr_v125_",
+        suffix=".json",
+        delete=False,
+    )
+    _saida = _tmp.name
+    _tmp.close()
+
+    # Remove o arquivo vazio para conseguirmos detectar se o filho morreu
+    # antes de produzir uma resposta.
+    try:
+        os.unlink(_saida)
+    except Exception:
+        pass
+
+    _proc = _ctx.Process(
+        target=_ocr_isolado_child,
+        args=(empresa, itens, _saida),
+        daemon=False,
+        name="ocr-v125-isolado",
+    )
+
+    print(
+        f"[OCR-V125] lote isolado INICIO empresa={empresa!r} "
+        f"qtd={len(itens)} RSS_pai={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+
+    _proc.start()
+    _proc.join(_OCR_ISOLADO_TIMEOUT_SEG)
+
+    if _proc.is_alive():
+        print(
+            f"[OCR-V125] TIMEOUT empresa={empresa!r}; encerrando filho pid={_proc.pid}",
+            flush=True,
+        )
+        _proc.terminate()
+        _proc.join(10)
+        if _proc.is_alive():
+            _proc.kill()
+            _proc.join(5)
+
+    _exitcode = _proc.exitcode
+
+    try:
+        if not os.path.exists(_saida):
+            return {
+                "ok": False,
+                "erro": (
+                    "Processo OCR isolado terminou sem resposta "
+                    f"(exitcode={_exitcode})."
+                ),
+                "resultados": [],
+            }
+
+        _dados = json.loads(Path(_saida).read_text(encoding="utf-8"))
+    finally:
+        try:
+            os.unlink(_saida)
+        except Exception:
+            pass
+
+    print(
+        f"[OCR-V125] lote isolado FIM empresa={empresa!r} "
+        f"exitcode={_exitcode} RSS_pai={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+
+    return _dados
+
+
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
-    """Processa a fila de OCR de UMA empresa até esvaziar — mesmo padrão
-    (e mesma correção de loop infinito) de _transcrever_pendentes_background:
-    cada linha só é tentada UMA VEZ por execução desta thread; sucesso ou
-    falha, ela não volta pra fila até a próxima chamada."""
+    """V125 — processa OCR em subprocessos curtos.
+
+    O processo principal do Streamlit coordena fila/progresso/banco.
+    EasyOCR e PyTorch vivem somente no filho e são destruídos ao fim de cada
+    lote, evitando o RSS permanente de ~1.28 GB observado nos crashes.
+    """
     _chave_ativa = (user_id, empresa)
-    # V74 — retoma do checkpoint persistido. Se 2/3 já terminaram e a 3ª
-    # falhou, a nova tentativa começa em 2/3 (não em 0/3).
     _checkpoint_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
     processadas = int(_checkpoint_ocr.get("processadas") or 0)
     _pendentes_inicio = _contar_ocr_pendentes(user_id, empresa)
-    total = max(int(_checkpoint_ocr.get("total") or 0), processadas + _pendentes_inicio)
+    total = max(
+        int(_checkpoint_ocr.get("total") or 0),
+        processadas + _pendentes_inicio,
+    )
+
     if atividade_id:
         atualizar_atividade(atividade_id, "em_andamento", {
-            "empresa": empresa, "processadas": processadas, "total": total,
+            "empresa": empresa,
+            "processadas": processadas,
+            "total": total,
             "ultimo_heartbeat_em": _agora_iso(),
+            "modo_execucao": "ocr_isolado_v125",
+            "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
         })
+
     _ids_tentados_neste_run = set()
     _ids_falharam = []
-    # V80 — precisa existir dentro desta execução. Na V79 a lista usada
-    # para detalhar falhas não era inicializada nesta função; quando o
-    # extrator devolvia uma falha real (ex.: ZeroDivisionError capturado),
-    # o append levantava NameError, liberava a trava da empresa e a
-    # verificação automática enfileirava tudo de novo. Resultado visual:
-    # Na fila -> Processando -> Na fila em loop.
     _erros_detalhados = []
+
     try:
         while True:
             try:
@@ -9146,87 +9609,142 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     .or_(_FILTRO_OCR_URL_GOOGLE)
                 )
                 if _ids_tentados_neste_run:
-                    _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
-                res = _query.limit(5).execute()
-            except Exception:
+                    _query = _query.not_.in_(
+                        "id",
+                        list(_ids_tentados_neste_run),
+                    )
+                res = _query.limit(_OCR_ISOLADO_TAMANHO_LOTE).execute()
+            except Exception as _exc_query:
+                print(
+                    f"[OCR-V125] falha consultando lote empresa={empresa!r}: "
+                    f"{_exc_query!r}",
+                    flush=True,
+                )
                 break
+
             pendentes = res.data or []
             if not pendentes:
                 break
-            # O total desta execução é estável. Não recalcula o lote a partir
-            # do zero a cada passagem, pois isso fazia o progresso regredir.
+
             total_real = processadas + _contar_ocr_pendentes(user_id, empresa)
             if total_real > total:
                 total = total_real
-            for midia in pendentes:
-                _ids_tentados_neste_run.add(midia["id"])
-                import json as _json_ocr_fila
-                _liberar_memoria_ocr(f"antes OCR empresa={empresa} midia={midia.get('id')}")
-                _estruturado, _diag_ocr = _extrair_ocr_estruturado_imagem(
-                    midia["url_cdn"], empresa=empresa, retornar_diagnostico=True
+
+            for _m in pendentes:
+                _ids_tentados_neste_run.add(_m["id"])
+
+            _payload = [
+                {
+                    "id": str(_m.get("id") or ""),
+                    "url_cdn": str(_m.get("url_cdn") or ""),
+                }
+                for _m in pendentes
+            ]
+
+            _ret = _executar_lote_ocr_isolado(empresa, _payload)
+            _por_id = {
+                str(_r.get("id") or ""): _r
+                for _r in (_ret.get("resultados") or [])
+            }
+
+            # Se o processo inteiro morreu/timeout, todas as mídias do lote
+            # ficam pendentes para Refazer, mas o Streamlit principal continua.
+            _erro_lote = None
+            if not _ret.get("ok"):
+                _erro_lote = str(
+                    _ret.get("erro")
+                    or "Processo OCR isolado falhou sem mensagem."
                 )
-                _liberar_memoria_ocr(f"apos OCR empresa={empresa} midia={midia.get('id')}")
+
+            import json as _json_ocr_fila
+
+            for midia in pendentes:
+                _mid = str(midia.get("id") or "")
+                _r = _por_id.get(_mid)
+
+                if _r is None and _erro_lote:
+                    _r = {
+                        "id": _mid,
+                        "ok": False,
+                        "estruturado": None,
+                        "diag": {
+                            "etapa": "subprocesso_ocr",
+                            "erro": _erro_lote,
+                        },
+                    }
+                elif _r is None:
+                    _r = {
+                        "id": _mid,
+                        "ok": False,
+                        "estruturado": None,
+                        "diag": {
+                            "etapa": "subprocesso_ocr",
+                            "erro": "O processo OCR não devolveu resultado para esta mídia.",
+                        },
+                    }
+
+                _estruturado = _r.get("estruturado") if _r.get("ok") else None
+
                 if _estruturado is None:
-                    # Falha real na extração (download, Gemini, ou parsing
-                    # da resposta) — ver docstring de
-                    # _extrair_ocr_estruturado_imagem. NÃO grava nada:
-                    # ocr_texto continua NULL (pendente de verdade), pra
-                    # essa imagem ser tentada de novo na próxima passada
-                    # da fila em vez de ficar marcada como "processada,
-                    # sem texto" pra sempre — foi exatamente isso que
-                    # fazia a verificação de segurança dizer "tudo certo"
-                    # com imagens que claramente tinham texto na tela.
-                    _ids_falharam.append(str(midia["id"]))
-                    _diag_ocr = _diag_ocr or {"etapa": "desconhecida", "erro": "A extração OCR retornou vazio sem diagnóstico."}
+                    _ids_falharam.append(_mid)
+                    _diag = _r.get("diag") or {
+                        "etapa": "desconhecida",
+                        "erro": "Falha sem diagnóstico.",
+                    }
                     _erros_detalhados.append({
-                        "id": str(midia.get("id") or ""),
-                        "etapa": str(_diag_ocr.get("etapa") or "desconhecida"),
-                        "erro": str(_diag_ocr.get("erro") or "Falha sem mensagem"),
+                        "id": _mid,
+                        "etapa": str(_diag.get("etapa") or "desconhecida"),
+                        "erro": str(_diag.get("erro") or "Falha sem mensagem"),
                         "url_cdn": str(midia.get("url_cdn") or ""),
                         "url_origem": str(midia.get("url_origem") or ""),
                         "tentativa_em": _agora_iso(),
                     })
-                    # V74: tentativa com erro NÃO é "processada". Mantém, por
-                    # exemplo, 2/3 e deixa a terceira pendente para retomar.
-                    if atividade_id:
-                        atualizar_atividade(atividade_id, "em_andamento", {
-                            "empresa": empresa,
-                            "processadas": processadas,
-                            "total": max(total, processadas),
-                            "ultimo_heartbeat_em": _agora_iso(),
-                        })
                     continue
+
                 texto = _achatar_ocr_estruturado(_estruturado)
-                _gravou_ocr = False
+                _gravou = False
                 try:
                     supabase.table("midias").update({
                         "ocr_texto": texto or "",
                         "ocr_estruturado": (
-                            _json_ocr_fila.dumps(_estruturado, ensure_ascii=False)
-                            if _ocr_estruturado_tem_conteudo(_estruturado) else None
+                            _json_ocr_fila.dumps(
+                                _estruturado,
+                                ensure_ascii=False,
+                            )
+                            if _ocr_estruturado_tem_conteudo(_estruturado)
+                            else None
                         ),
                     }).eq("id", midia["id"]).execute()
-                    _gravou_ocr = True
-                except Exception as _e_gravar_ocr:
-                    _ids_falharam.append(str(midia["id"]))
+                    _gravou = True
+                except Exception as _e_gravar:
+                    _ids_falharam.append(_mid)
                     _erros_detalhados.append({
-                        "id": str(midia.get("id") or ""),
+                        "id": _mid,
                         "etapa": "gravacao_banco",
-                        "erro": f"{type(_e_gravar_ocr).__name__}: {_e_gravar_ocr}",
+                        "erro": f"{type(_e_gravar).__name__}: {_e_gravar}",
                         "url_cdn": str(midia.get("url_cdn") or ""),
                         "url_origem": str(midia.get("url_origem") or ""),
                         "tentativa_em": _agora_iso(),
                     })
-                if _gravou_ocr:
+
+                if _gravou:
                     processadas += 1
-                if atividade_id:
-                    atualizar_atividade(atividade_id, "em_andamento", {
-                        "empresa": empresa,
-                        "processadas": processadas,
-                        "total": max(total, processadas),
-                        "ultimo_heartbeat_em": _agora_iso(),
-                    })
-                _liberar_memoria_ocr(f"fim midia empresa={empresa} processadas={processadas}")
+
+            # Atualiza uma vez por lote; reduz carga da UI/Supabase.
+            if atividade_id:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "empresa": empresa,
+                    "processadas": processadas,
+                    "total": max(total, processadas),
+                    "ultimo_heartbeat_em": _agora_iso(),
+                    "modo_execucao": "ocr_isolado_v125",
+                    "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
+                })
+
+            _liberar_memoria_ocr(
+                f"V125 pai apos lote empresa={empresa} processadas={processadas}"
+            )
+
         if atividade_id:
             if _ids_falharam:
                 atualizar_atividade(atividade_id, "erro", {
@@ -9235,25 +9753,34 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "total": max(total, processadas),
                     "aviso": (
                         f"{len(_ids_falharam)} imagem(ns) falharam nesta tentativa. "
-                        f"{processadas} de {max(total, processadas)} foram concluídas; "
-                        f"{len(_ids_falharam)} continuam pendentes. "
-                        f"Abra 'mais informações' para ver a etapa e o erro de cada imagem. "
-                        f"Elas serão tentadas novamente automaticamente (ou clique 'Refazer')."
+                        f"{processadas} de {max(total, processadas)} foram concluídas. "
+                        "O processo principal permaneceu ativo; use 'Refazer' "
+                        "para tentar somente as pendentes."
                     ),
                     "erros_detalhados": _erros_detalhados[:20],
                     "total_erros_detalhados": len(_erros_detalhados),
+                    "modo_execucao": "ocr_isolado_v125",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresa": empresa,
                     "processadas": processadas,
                     "total": max(total, processadas),
+                    "modo_execucao": "ocr_isolado_v125",
                 })
-    except Exception as e:
+
+    except BaseException as e:
+        print(
+            f"[OCR-V125] coordenador falhou empresa={empresa!r}: {e!r}",
+            flush=True,
+        )
         if atividade_id:
             atualizar_atividade(atividade_id, "erro", {
-                "empresa": empresa, "motivo": str(e),
-                "processadas": processadas, "total": max(total, processadas),
+                "empresa": empresa,
+                "motivo": f"{type(e).__name__}: {e}",
+                "processadas": processadas,
+                "total": max(total, processadas),
+                "modo_execucao": "ocr_isolado_v125",
             })
     finally:
         with _lock_ocr_pendente:
@@ -28069,7 +28596,7 @@ elif st.session_state.pagina == "google_ads":
         # OCR mantém PyTorch/EasyOCR em RAM; evita rerender completo a cada
         # 8 segundos durante essa etapa pesada. A atualização continua
         # automática, só fica menos agressiva enquanto OCR está ativo.
-        _poll_ms_gads = 20000 if _ocr_em_andamento else UI_POLL_INTERVAL_MS
+        _poll_ms_gads = 60000 if _ocr_em_andamento else UI_POLL_INTERVAL_MS
         components.html(f"""
         <script>
         setTimeout(function() {{

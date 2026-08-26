@@ -5525,6 +5525,263 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
 
 
 
+
+def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = None):
+    """V116 — detecta Display com FOTO grande em cima + card textual no rodapé.
+
+    Exemplo real:
+      [ foto/arte ocupando ~2/3 superiores ]
+      [ headline                                     ]
+      [ avatar/logo ] [ descrição ] [ botão CTA     ]
+
+    Regras:
+      - ignora completamente a foto superior;
+      - usa o nome cadastrado da empresa como cabeçalho;
+      - ignora texto dentro do avatar/logo;
+      - separa headline, descrição e CTA pela geometria do rodapé.
+
+    Retorna None quando a geometria não é forte o suficiente, preservando os
+    parsers já existentes.
+    """
+    import cv2 as _cv2_top
+    import numpy as _np_top
+    import re as _re_top
+
+    if img_bgr is None or getattr(img_bgr, "size", 0) == 0:
+        return None
+
+    h, w = img_bgr.shape[:2]
+    if h < 320 or w < 420:
+        return None
+
+    _ratio = w / max(float(h), 1.0)
+    if not (0.90 <= _ratio <= 1.55):
+        return None
+
+    try:
+        _gray = _cv2_top.cvtColor(img_bgr, _cv2_top.COLOR_BGR2GRAY)
+    except Exception:
+        return None
+
+    # Procura uma transição horizontal forte de uma região visual/foto para um
+    # painel inferior muito claro. Limita a busca a 50%-82% da altura.
+    _row_mean = _gray.mean(axis=1)
+    _ini_y = int(h * 0.50)
+    _fim_y = int(h * 0.82)
+    _faixa = max(5, int(h * 0.012))
+    _melhor = None
+
+    for _y in range(_ini_y, _fim_y):
+        _acima = _row_mean[max(0, _y - _faixa):_y]
+        _abaixo = _row_mean[_y:min(h, _y + _faixa)]
+        if _acima.size == 0 or _abaixo.size == 0:
+            continue
+        _m_acima = float(_acima.mean())
+        _m_abaixo = float(_abaixo.mean())
+        _score = _m_abaixo - _m_acima
+        if _melhor is None or _score > _melhor[0]:
+            _melhor = (_score, _y, _m_acima, _m_abaixo)
+
+    if not _melhor:
+        return None
+
+    _score, _seam_y, _m_acima, _m_abaixo = _melhor
+    _rodape = _gray[_seam_y:, :]
+    _foto = _gray[:max(1, _seam_y - _faixa), :]
+    if _rodape.size == 0 or _foto.size == 0:
+        return None
+
+    _rodape_mean = float(_rodape.mean())
+    _foto_std = float(_foto.std())
+
+    # Sinais conservadores: rodapé predominantemente branco, salto claro
+    # relevante e imagem superior visualmente complexa.
+    if not (
+        _score >= 45
+        and _rodape_mean >= 205
+        and _foto_std >= 35
+        and 0.54 <= (_seam_y / float(h)) <= 0.78
+    ):
+        return None
+
+    _y0 = min(h - 1, _seam_y + 2)
+    _crop = img_bgr[_y0:h, :]
+    if _crop.size == 0:
+        return None
+
+    try:
+        _ocr = reader.readtext(
+            _crop,
+            detail=1,
+            paragraph=False,
+            width_ths=0.60,
+            height_ths=0.55,
+            text_threshold=0.40,
+            low_text=0.25,
+            link_threshold=0.25,
+        )
+    except Exception as _exc:
+        print(f"[OCR-DEBUG] top-card: OCR do rodapé falhou: {_exc!r}", flush=True)
+        return None
+
+    _caixas = []
+    for _item in (_ocr or []):
+        if not _item or len(_item) < 3:
+            continue
+        _bbox, _txt, _conf = _item
+        _txt = _limpar_pontuacao_ocr((_txt or "").strip())
+        if not _txt:
+            continue
+        _xs = [float(p[0]) for p in _bbox]
+        _ys = [float(p[1]) for p in _bbox]
+        _caixas.append({
+            "texto": _txt,
+            "conf": float(_conf or 0),
+            "x0": min(_xs), "x1": max(_xs),
+            "y0": min(_ys), "y1": max(_ys),
+            "xc": (min(_xs) + max(_xs)) / 2.0,
+            "yc": (min(_ys) + max(_ys)) / 2.0,
+            "altura": max(1.0, max(_ys) - min(_ys)),
+        })
+
+    if len(_caixas) < 3:
+        return None
+
+    # Agrupa itens na mesma linha.
+    _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
+    _linhas = []
+    for _c in _caixas:
+        _alocada = False
+        for _l in _linhas:
+            _tol = max(7.0, min(_c["altura"], _l["altura"]) * 0.55)
+            if abs(_c["yc"] - _l["yc"]) <= _tol:
+                _l["itens"].append(_c)
+                _l["yc"] = sum(x["yc"] for x in _l["itens"]) / len(_l["itens"])
+                _l["altura"] = max(_l["altura"], _c["altura"])
+                _alocada = True
+                break
+        if not _alocada:
+            _linhas.append({"yc": _c["yc"], "altura": _c["altura"], "itens": [_c]})
+
+    _linhas.sort(key=lambda l: l["yc"])
+    for _l in _linhas:
+        _l["itens"].sort(key=lambda c: c["x0"])
+        _l["texto"] = _limpar_pontuacao_ocr(
+            " ".join(c["texto"] for c in _l["itens"]).strip()
+        )
+        _l["x0"] = min(c["x0"] for c in _l["itens"])
+        _l["x1"] = max(c["x1"] for c in _l["itens"])
+        _l["xc"] = (_l["x0"] + _l["x1"]) / 2.0
+
+    _rx_cta = _re_top.compile(
+        r"^(?:abrir|saiba\s*mais|compre\s*agora|comprar\s*agora|"
+        r"acesse|acessar|ver\s*mais|conferir|comprar|reservar)"
+        r"(?:\s*[>›»→❯➜])?$",
+        _re_top.IGNORECASE,
+    )
+
+    def _norm_empresa(_s):
+        return _re_top.sub(r"[^a-z0-9]", "", str(_s or "").lower())
+
+    _empresa_norm = _norm_empresa(empresa)
+
+    _cta = ""
+    _conteudo = []
+    _avatar_ignorados = []
+
+    for _l in _linhas:
+        _txt = (_l.get("texto") or "").strip()
+        if not _txt:
+            continue
+
+        # CTA costuma estar no terço direito e na metade inferior do rodapé.
+        _txt_cta = _re_top.sub(r"\s*[>›»→❯➜]+\s*$", "", _txt).strip()
+        if (
+            _rx_cta.match(_txt)
+            and _l["xc"] >= w * 0.55
+            and _l["yc"] >= _crop.shape[0] * 0.35
+        ):
+            _cta = _txt_cta
+            continue
+
+        # Avatar/logo: fica à esquerda na metade inferior e normalmente traz
+        # apenas o nome da empresa em fonte pequena.
+        _eh_avatar = (
+            _l["xc"] <= w * 0.28
+            and _l["yc"] >= _crop.shape[0] * 0.32
+            and _empresa_norm
+            and (
+                _norm_empresa(_txt) == _empresa_norm
+                or _empresa_norm in _norm_empresa(_txt)
+                or _norm_empresa(_txt) in _empresa_norm
+            )
+        )
+        if _eh_avatar:
+            _avatar_ignorados.append(_txt)
+            continue
+
+        _conteudo.append(_l)
+
+    if len(_conteudo) < 2:
+        return None
+
+    # O headline é a primeira linha textual do rodapé e fica acima do bloco
+    # avatar/descrição/CTA. Não usa o texto da foto superior.
+    _conteudo.sort(key=lambda l: l["yc"])
+    _headline = _conteudo[0]
+    if _headline["yc"] > _crop.shape[0] * 0.42:
+        return None
+
+    _titulo = _limpar_pontuacao_ocr(_headline["texto"])
+
+    # Descrição: tudo que sobra abaixo do headline, excluindo elementos muito
+    # à direita (área do CTA) e o avatar já removido.
+    _desc_linhas = []
+    for _l in _conteudo[1:]:
+        if _l["xc"] >= w * 0.64:
+            continue
+        _desc_linhas.append(_l["texto"])
+
+    _descricao = " ".join(_desc_linhas).strip()
+
+    if not _titulo or not (_descricao or _cta):
+        return None
+
+    _debug = [{
+        "idx": 0,
+        "classe": "display-top-card",
+        "sep_antes": False,
+        "texto": f"{_titulo} | {_descricao} | {_cta}".strip(" |"),
+        "decisao": (
+            "Display com foto superior + card inferior → foto ignorada; "
+            "headline extraído do topo do rodapé; avatar/logo ignorado; "
+            "descrição extraída da área central; CTA extraído do botão à direita"
+        ),
+        "y_min": int(_seam_y),
+        "y_max": int(h),
+        "x_min_favicon": 0,
+    }]
+
+    print(
+        f"[OCR-DEBUG] display-top-card detectado seam={_seam_y}/{h} "
+        f"score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} "
+        f"titulo={_titulo!r} descricao={_descricao!r} cta={_cta!r}",
+        flush=True,
+    )
+
+    return {
+        "titulo": _titulo,
+        "descricao": _descricao,
+        "url_exibida": empresa or "",
+        "url_final": "",
+        "cta": _cta,
+        "cta_subtitulo": "",
+        "sitelinks": [],
+        "_debug_bandas": _debug,
+        "_layout_ocr": "display_top_card",
+    }
+
+
 def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     """Detecta anúncio gráfico em DUAS COLUNAS.
 
@@ -5815,6 +6072,15 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     título nem descrição) — nesse caso quem chama deve cair no fallback
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
+
+    # V116 — Display com foto grande em cima e card textual no rodapé.
+    # Precisa rodar antes do parser linear porque, nesse formato, o texto do
+    # avatar e do botão pode ser fundido com a descrição em uma única banda.
+    _display_top_card = _detectar_display_imagem_topo_card_rodape(
+        img_bgr, reader, empresa=empresa
+    )
+    if _display_top_card is not None:
+        return _display_top_card
 
     # V107 — anúncio gráfico em duas colunas: a coluna esquerda é ARTE/foto
     # e deve ser ignorada; a direita contém avatar + título + descrição + CTA.
@@ -6875,7 +7141,30 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 # Rock In Rio 2026 · Copa do Mundo 2026"), subir o piso de
                 # 2 pra 3 elimina os dois falsos positivos reais acima sem
                 # perder a capacidade de reconhecer a linha de verdade.
-                if _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
+                if (
+                    _portao_seguranca_relacionados
+                    and len(_candidatos_relacionados) == 3
+                    and bool(re.search(r"\s[\-–—]\s*$", texto or ""))
+                    and re.search(
+                        r"(?i)\b(?:compre|comprar|venda|vender)\b.*\bingressos?\b",
+                        _candidatos_relacionados[0],
+                    )
+                    and re.fullmatch(
+                        r"(?i)(?:segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|"
+                        r"quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado|domingo)",
+                        _candidatos_relacionados[2].strip(),
+                    )
+                ):
+                    # V115 — caso real FunBuyNet:
+                    # "Compre ou Venda Ingressos - GP Brasil - Sábado -"
+                    # Deve resultar em 2 links:
+                    # "Compre ou Venda Ingressos" e "GP Brasil - Sábado".
+                    _partes_relacionados = [
+                        _candidatos_relacionados[0],
+                        f"{_candidatos_relacionados[1]} - {_candidatos_relacionados[2]}",
+                    ]
+                    _relacionados_split_textual_confiavel = True
+                elif _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
                     _partes_relacionados = _candidatos_relacionados
                 elif (
                     _titulo_e_descricao_ja_fechados
@@ -6949,7 +7238,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                             r"comprar\s+ou\s+vender\s+ingressos?|"
                             r"compre\s+ingressos?|comprar\s+ingressos?|"
                             r"venda\s+ingressos?|vender\s+ingressos?|"
-                            r"ingressos?\s+(?:show|shows|evento|eventos)|"
+                            r"ingressos?\s+(?:show|shows|evento|eventos|esporte|esportes|"
+                            r"futebol|festival|festivais|teatro|teatros)|"
                             r"shows?\s+em|"
                             r"como\s+funciona|sobre\s+(?:a|o)|categorias?|homepage"
                             r")\b",

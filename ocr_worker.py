@@ -2957,13 +2957,343 @@ def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
 _MIN_INTERVALO_OCR_SEG = 0.0
 
 
-def _main_v126():
+
+def _achatar_ocr_estruturado(d: dict) -> str:
+    if not d:
+        return ""
+    linhas = []
+    for campo in ("titulo", "descricao", "url_exibida", "cta"):
+        v = str(d.get(campo) or "").strip()
+        if v:
+            linhas.append(v)
+    for sl in (d.get("sitelinks") or []):
+        if not sl:
+            continue
+        if isinstance(sl, dict):
+            if sl.get("titulo"):
+                linhas.append(str(sl["titulo"]))
+            if sl.get("descricao"):
+                linhas.append(str(sl["descricao"]))
+        else:
+            linhas.append(str(sl))
+    return "\n".join(linhas)
+
+
+
+def _agora_iso_worker():
+    import datetime as _dtw
+    return _dtw.datetime.now(_dtw.timezone.utc).isoformat()
+
+
+def _supabase_worker():
+    from supabase import create_client
+
+    url = (
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("PUBLIC_SUPABASE_URL")
+    )
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_KEY")
+        or os.environ.get("SUPABASE_ANON_KEY")
+    )
+    if not url or not key:
+        raise RuntimeError(
+            "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY "
+            "(ou SUPABASE_KEY) no serviço do worker."
+        )
+    return create_client(url, key)
+
+
+_FILTRO_OCR_URL_GOOGLE_WORKER = (
+    "url_origem.ilike.%googlesyndication.com%,"
+    "url_origem.ilike.%googleusercontent.com%"
+)
+
+
+def _atividade_update_worker(sb, atividade_id: str, status: str, detalhes: dict):
+    if not atividade_id:
+        return
+    payload = {
+        "status": "pendente" if status == "na_fila" else status,
+        "detalhes": dict(detalhes or {}),
+    }
+    if status == "na_fila":
+        payload["detalhes"]["status_visual"] = "na_fila"
+    sb.table("atividades").update(payload).eq("id", atividade_id).execute()
+
+
+def _buscar_proxima_atividade_worker(sb):
+    """Busca uma atividade OCR enfileirada ou abandonada após restart.
+
+    Um único replica/instância deste worker deve ser executado.
+    """
+    res = (
+        sb.table("atividades")
+        .select("id,user_id,tipo,status,detalhes,titulo")
+        .eq("tipo", "ocr_gads")
+        .in_("status", ["pendente", "em_andamento"])
+        .order("criado_em", desc=False)
+        .limit(50)
+        .execute()
+    )
+    rows = res.data or []
+
+    # Prioriza pendentes; em_andamento antigo é retomado depois.
+    for st in ("pendente", "em_andamento"):
+        for row in rows:
+            if row.get("status") != st:
+                continue
+            det = row.get("detalhes") or {}
+            if not det.get("empresa"):
+                continue
+            return row
+    return None
+
+
+def _buscar_midia_pendente_worker(sb, user_id: str, empresa: str):
+    res = (
+        sb.table("midias")
+        .select("id,url_cdn,url_origem")
+        .eq("user_id", user_id)
+        .eq("empresa", empresa)
+        .eq("tipo", "imagem")
+        .is_("ocr_texto", "null")
+        .or_(_FILTRO_OCR_URL_GOOGLE_WORKER)
+        .limit(1)
+        .execute()
+    )
+    return (res.data or [None])[0]
+
+
+def _contar_pendentes_worker(sb, user_id: str, empresa: str) -> int:
+    res = (
+        sb.table("midias")
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .eq("empresa", empresa)
+        .eq("tipo", "imagem")
+        .is_("ocr_texto", "null")
+        .or_(_FILTRO_OCR_URL_GOOGLE_WORKER)
+        .execute()
+    )
+    return int(res.count or 0)
+
+
+def _processar_atividade_worker(sb, atividade: dict):
+    atividade_id = atividade["id"]
+    user_id = atividade["user_id"]
+    det = atividade.get("detalhes") or {}
+    empresa = str(det.get("empresa") or "")
+    processadas = int(det.get("processadas") or 0)
+    total = max(
+        int(det.get("total") or 0),
+        processadas + _contar_pendentes_worker(sb, user_id, empresa),
+    )
+
+    _atividade_update_worker(
+        sb,
+        atividade_id,
+        "em_andamento",
+        {
+            "empresa": empresa,
+            "processadas": processadas,
+            "total": total,
+            "worker": "externo",
+            "worker_externo": True,
+            "ultimo_heartbeat_em": _agora_iso_worker(),
+            "aviso": "OCR em processamento no worker externo.",
+        },
+    )
+
+    print(
+        f"[OCR-WORKER] atividade INICIO id={atividade_id} "
+        f"empresa={empresa!r} processadas={processadas}/{total}",
+        flush=True,
+    )
+
+    erros = []
+
+    while True:
+        midia = _buscar_midia_pendente_worker(sb, user_id, empresa)
+        if not midia:
+            break
+
+        midia_id = str(midia.get("id") or "")
+        url_cdn = str(midia.get("url_cdn") or "")
+
+        if not url_cdn:
+            erros.append({
+                "id": midia_id,
+                "etapa": "worker_externo",
+                "erro": "url_cdn ausente",
+            })
+            # Não há coluna de erro garantida. Para evitar loop infinito,
+            # encerra a atividade e deixa a mídia pendente para Refazer.
+            break
+
+        try:
+            print(
+                f"[OCR-WORKER] imagem INICIO id={midia_id} "
+                f"empresa={empresa!r} RSS={_rss_processo_mb():.1f} MB",
+                flush=True,
+            )
+
+            estruturado, diag = _extrair_ocr_estruturado_imagem(
+                url_cdn,
+                empresa=empresa,
+                retornar_diagnostico=True,
+            )
+
+            if estruturado is None:
+                erros.append({
+                    "id": midia_id,
+                    "etapa": str((diag or {}).get("etapa") or "ocr"),
+                    "erro": str(
+                        (diag or {}).get("erro")
+                        or "A extração OCR retornou vazio."
+                    ),
+                    "url_cdn": url_cdn,
+                    "url_origem": str(midia.get("url_origem") or ""),
+                })
+                break
+
+            texto = _achatar_ocr_estruturado(estruturado)
+            sb.table("midias").update({
+                "ocr_texto": texto or "",
+                "ocr_estruturado": (
+                    json.dumps(estruturado, ensure_ascii=False)
+                    if _ocr_estruturado_tem_conteudo(estruturado)
+                    else None
+                ),
+            }).eq("id", midia_id).execute()
+
+            processadas += 1
+
+            _atividade_update_worker(
+                sb,
+                atividade_id,
+                "em_andamento",
+                {
+                    "empresa": empresa,
+                    "processadas": processadas,
+                    "total": max(total, processadas),
+                    "worker": "externo",
+                    "worker_externo": True,
+                    "ultimo_heartbeat_em": _agora_iso_worker(),
+                    "aviso": (
+                        f"OCR em processamento — "
+                        f"{processadas} de {max(total, processadas)}."
+                    ),
+                },
+            )
+
+            print(
+                f"[OCR-WORKER] imagem FIM id={midia_id} "
+                f"processadas={processadas}/{max(total, processadas)} "
+                f"RSS={_rss_processo_mb():.1f} MB",
+                flush=True,
+            )
+
+            # O Reader permanece carregado NESTE container de worker.
+            # Isso é intencional: não afeta a RAM do Streamlit e evita
+            # recarregar ~800 MB de modelo para cada imagem.
+
+        except BaseException as exc:
+            erros.append({
+                "id": midia_id,
+                "etapa": "worker_externo",
+                "erro": f"{type(exc).__name__}: {exc}",
+                "traceback": traceback.format_exc(limit=8),
+                "url_cdn": url_cdn,
+                "url_origem": str(midia.get("url_origem") or ""),
+            })
+            break
+
+    restantes = _contar_pendentes_worker(sb, user_id, empresa)
+
+    if erros:
+        _atividade_update_worker(
+            sb,
+            atividade_id,
+            "erro",
+            {
+                "empresa": empresa,
+                "processadas": processadas,
+                "total": max(total, processadas + restantes),
+                "worker": "externo",
+                "worker_externo": True,
+                "ultimo_heartbeat_em": _agora_iso_worker(),
+                "aviso": (
+                    f"{len(erros)} mídia(s) falharam. "
+                    "Use Refazer após corrigir/verificar."
+                ),
+                "erros_detalhados": erros[:20],
+                "total_erros_detalhados": len(erros),
+            },
+        )
+        print(
+            f"[OCR-WORKER] atividade ERRO id={atividade_id} "
+            f"empresa={empresa!r} restantes={restantes}",
+            flush=True,
+        )
+        return
+
+    _atividade_update_worker(
+        sb,
+        atividade_id,
+        "concluido",
+        {
+            "empresa": empresa,
+            "processadas": processadas,
+            "total": max(total, processadas),
+            "worker": "externo",
+            "worker_externo": True,
+            "ultimo_heartbeat_em": _agora_iso_worker(),
+        },
+    )
+    print(
+        f"[OCR-WORKER] atividade CONCLUIDA id={atividade_id} "
+        f"empresa={empresa!r} processadas={processadas}",
+        flush=True,
+    )
+
+
+def _daemon_worker():
+    sb = _supabase_worker()
+    poll = max(2.0, float(os.environ.get("OCR_POLL_SECONDS", "5")))
+    print(
+        f"[OCR-WORKER] daemon iniciado poll={poll}s "
+        f"RSS={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+
+    while True:
+        try:
+            atividade = _buscar_proxima_atividade_worker(sb)
+            if atividade:
+                _processar_atividade_worker(sb, atividade)
+            else:
+                time.sleep(poll)
+        except KeyboardInterrupt:
+            print("[OCR-WORKER] encerrado por sinal", flush=True)
+            return 0
+        except BaseException as exc:
+            print(
+                f"[OCR-WORKER] loop ERRO {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            traceback.print_exc()
+            time.sleep(min(30.0, poll * 2))
+
+
+def _cli_single_image():
     if len(sys.argv) != 3:
         print("uso: ocr_worker.py <input.json> <output.json>", file=sys.stderr)
         return 2
 
     entrada, saida = sys.argv[1], sys.argv[2]
-
     try:
         with open(entrada, "r", encoding="utf-8") as f:
             payload = json.load(f)
@@ -2972,68 +3302,42 @@ def _main_v126():
         item = payload.get("item") or {}
         midia_id = str(item.get("id") or "")
         url_cdn = str(item.get("url_cdn") or "")
-
         if not url_cdn:
             raise RuntimeError("url_cdn ausente")
-
-        print(
-            f"[OCR-WORKER] inicio id={midia_id} empresa={empresa!r} "
-            f"RSS={_rss_processo_mb():.1f} MB",
-            flush=True,
-        )
 
         estruturado, diag = _extrair_ocr_estruturado_imagem(
             url_cdn,
             empresa=empresa,
             retornar_diagnostico=True,
         )
-
         resultado = {
             "ok": estruturado is not None,
             "id": midia_id,
             "estruturado": estruturado,
             "diag": diag,
         }
-
-        if estruturado is None:
-            resultado["erro"] = str(
-                (diag or {}).get("erro")
-                or "A extração OCR retornou vazio."
-            )
-
-        print(
-            f"[OCR-WORKER] fim id={midia_id} ok={resultado['ok']} "
-            f"RSS={_rss_processo_mb():.1f} MB",
-            flush=True,
-        )
-
         with open(saida, "w", encoding="utf-8") as f:
             json.dump(resultado, f, ensure_ascii=False)
-
         return 0 if resultado["ok"] else 3
-
     except BaseException as exc:
-        erro = {
-            "ok": False,
-            "erro": f"{type(exc).__name__}: {exc}",
-            "diag": {
-                "etapa": "worker_externo_v126",
-                "erro": f"{type(exc).__name__}: {exc}",
-                "traceback": traceback.format_exc(limit=10),
-            },
-        }
         try:
             with open(saida, "w", encoding="utf-8") as f:
-                json.dump(erro, f, ensure_ascii=False)
+                json.dump({
+                    "ok": False,
+                    "erro": f"{type(exc).__name__}: {exc}",
+                    "diag": {
+                        "etapa": "worker_externo",
+                        "erro": f"{type(exc).__name__}: {exc}",
+                    },
+                }, f, ensure_ascii=False)
         except Exception:
             pass
-        print(
-            f"[OCR-WORKER] ERRO {erro['erro']}",
-            file=sys.stderr,
-            flush=True,
-        )
         return 4
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main_v126())
+    # Sem argumentos = serviço/daemon externo.
+    # Com dois argumentos = compatibilidade com teste local de uma imagem.
+    if len(sys.argv) == 1:
+        raise SystemExit(_daemon_worker() or 0)
+    raise SystemExit(_cli_single_image())

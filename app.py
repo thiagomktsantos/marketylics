@@ -118,7 +118,7 @@ st.set_page_config(
 # concorrentes; só a parte pesada (EasyOCR, ffmpeg e Whisper) é serializada.
 # Isso troca um pouco de velocidade máxima por previsibilidade e estabilidade.
 _MAX_CPU_PESADA = int(st.secrets.get("MAX_CPU_PESADA_CONCORRENTE", 1))
-_MAX_DOWNLOADS_MIDIA = int(st.secrets.get("MAX_DOWNLOADS_MIDIA_CONCORRENTES", 3))
+_MAX_DOWNLOADS_MIDIA = int(st.secrets.get("MAX_DOWNLOADS_MIDIA_CONCORRENTES", 1))
 _MAX_API_IO = int(st.secrets.get("MAX_API_IO_CONCORRENTE", 5))
 
 _semaforo_cpu_pesada = threading.BoundedSemaphore(max(1, _MAX_CPU_PESADA))
@@ -556,7 +556,7 @@ def _supabase_resiliente(fn, *, operacao: str = "supabase", tentativas: int = 4,
             if i >= tentativas - 1:
                 break
             espera = backoff[min(i, len(backoff) - 1)] if backoff else 1
-            print(f"[SUPABASE-V98] retry {i+1}/{tentativas-1} operacao={operacao!r} "
+            print(f"[SUPABASE] retry {i+1}/{tentativas-1} operacao={operacao!r} "
                   f"em {espera}s: {exc!r}", flush=True)
             time.sleep(espera)
     raise ultimo
@@ -573,7 +573,7 @@ def _persistir_cache_ads_db(user_id: str, coluna: str, payload: dict,
     )
 
 # ---------------------------------------------------
-# V98 — COORDENADOR CENTRAL DE JOBS
+# COORDENADOR CENTRAL DE JOBS
 # ---------------------------------------------------
 # OCR e migração já tinham travas próprias; agora compartilham também uma
 # visão única de "job lógico ativo" para impedir workers duplicados entre
@@ -1789,7 +1789,11 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     ads_com_erro = {}    # ad_id -> título, pelo menos 1 mídia falhou
     ads_migrados = {}    # ad_id -> título, pelo menos 1 mídia migrou com sucesso
     try:
-        with ThreadPoolExecutor(max_workers=max(1, _MAX_DOWNLOADS_MIDIA)) as executor:
+        # Migração pesada serial: um asset por vez. O limite configurável de
+        # downloads continua existindo para outros fluxos leves, mas aqui não
+        # permitimos fan-out de threads porque esta rotina convive com imagens,
+        # vídeos, ffmpeg e buffers grandes no processo principal.
+        with ThreadPoolExecutor(max_workers=1) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad, chave_asset in executor.map(_processar, tarefas):
                 # Propaga o resultado para TODAS as referências equivalentes
                 # do asset, inclusive variantes s60/s600/original.
@@ -10097,8 +10101,154 @@ def _sair_fila_acao_pesada():
     )
     _lock_fila_acoes_pesadas.release()
 
+
+# ------------------------------------------------------------------
+# Fila pesada persistente
+# ------------------------------------------------------------------
+# threading.Lock protege apenas o processo atual. Em restart/rerun forte,
+# usamos as atividades no Supabase como segunda camada de coordenação.
+# Heartbeat considerado "vivo" por até 90s. Atividades sem heartbeat recente
+# não bloqueiam indefinidamente a aplicação.
+_FILA_PESADA_HEARTBEAT_MAX_SEG = 90
+
+
+def _parse_iso_utc_seguro(valor):
+    if not valor:
+        return None
+    try:
+        import datetime as _dt_fp
+        _s = str(valor).strip().replace("Z", "+00:00")
+        _d = _dt_fp.datetime.fromisoformat(_s)
+        if _d.tzinfo is None:
+            _d = _d.replace(tzinfo=_dt_fp.timezone.utc)
+        return _d.astimezone(_dt_fp.timezone.utc)
+    except Exception:
+        return None
+
+
+def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
+    """Retorna atividade pesada com heartbeat recente, se existir.
+
+    Tipos observados:
+      - ocr_gads
+      - migracao_midia
+
+    `excluir_tipos` permite ao próprio OCR ignorar sua atividade e à própria
+    migração ignorar suas atividades enquanto verificam concorrentes.
+    """
+    try:
+        import datetime as _dt_fp
+        _agora = _dt_fp.datetime.now(_dt_fp.timezone.utc)
+        _r = (
+            supabase.table("atividades")
+            .select("id,tipo,titulo,status,detalhes")
+            .eq("user_id", user_id)
+            .in_("tipo", ["ocr_gads", "migracao_midia"])
+            .in_("status", ["pendente", "em_andamento"])
+            .execute()
+        )
+
+        for _a in (_r.data or []):
+            _tipo = str(_a.get("tipo") or "")
+            if _tipo in set(excluir_tipos or ()):
+                continue
+
+            _det = _a.get("detalhes") or {}
+            # Uma atividade apenas "na fila" não é execução pesada.
+            if _det.get("status_visual") == "na_fila":
+                continue
+            if _det.get("aguardando_fila_pesada") is True:
+                continue
+
+            _hb = (
+                _det.get("ultimo_heartbeat_em")
+                or _det.get("ultima_tentativa_em")
+                or _det.get("acao_pesada_heartbeat_em")
+            )
+            _dt_hb = _parse_iso_utc_seguro(_hb)
+            if _dt_hb is None:
+                # Sem heartbeat confiável, não prende a fila para sempre.
+                continue
+
+            _idade = (_agora - _dt_hb).total_seconds()
+            if 0 <= _idade <= _FILA_PESADA_HEARTBEAT_MAX_SEG:
+                return {
+                    "id": _a.get("id"),
+                    "tipo": _tipo,
+                    "titulo": _a.get("titulo"),
+                    "idade_seg": round(_idade, 1),
+                }
+    except Exception as _exc:
+        print(
+            f"[FILA-PESADA] verificação persistente falhou: {_exc!r}",
+            flush=True,
+        )
+    return None
+
+
+def _esperar_outra_acao_pesada_persistente(
+    user_id: str,
+    *,
+    excluir_tipos=(),
+    atividade_ids_espera=(),
+    descricao: str = "",
+):
+    """Espera outra ação pesada persistente terminar/expirar.
+
+    Poll de 5s. Não carrega modelos nem inicia downloads durante a espera.
+    """
+    while True:
+        _ativa = _atividade_pesada_persistente_ativa(
+            user_id,
+            excluir_tipos=excluir_tipos,
+        )
+        if not _ativa:
+            return
+
+        print(
+            f"[FILA-PESADA] PERSISTENTE aguardando {descricao!r}; "
+            f"ativa={_ativa}",
+            flush=True,
+        )
+
+        for _aid in (atividade_ids_espera or ()):
+            if not _aid:
+                continue
+            try:
+                atualizar_atividade(
+                    _aid,
+                    "em_andamento",
+                    {
+                        "aguardando_fila_pesada": True,
+                        "aviso": "Aguardando a ação pesada atual terminar.",
+                        "ultimo_heartbeat_em": _agora_iso(),
+                    },
+                )
+            except Exception:
+                pass
+
+        time.sleep(5.0)
+
 def _worker_ocr_global():
     _entrou_fila_pesada = False
+
+    # Pega o primeiro user da fila apenas para consultar o estado persistente
+    # antes de ocupar a faixa pesada local. A fila continua intacta.
+    _uid_fila = None
+    try:
+        with _fila_ocr_global.mutex:
+            if _fila_ocr_global.queue:
+                _uid_fila = _fila_ocr_global.queue[0][0]
+    except Exception:
+        _uid_fila = None
+
+    if _uid_fila:
+        _esperar_outra_acao_pesada_persistente(
+            _uid_fila,
+            excluir_tipos=("ocr_gads",),
+            descricao="OCR",
+        )
+
     _entrar_fila_acao_pesada("OCR", "fila global")
     _entrou_fila_pesada = True
     try:
@@ -10130,6 +10280,23 @@ def _worker_ocr_global():
                     f"atividade={atividade_id} RSS_pai={_rss_processo_mb():.1f} MB",
                     flush=True,
                 )
+                if atividade_id:
+                    try:
+                        _det_ocr_inicio = _detalhes_atividade_ocr(atividade_id)
+                        _det_ocr_inicio.update({
+                            "empresa": empresa,
+                            "modo_execucao": "ocr_externo",
+                            "ultimo_heartbeat_em": _agora_iso(),
+                            "acao_pesada_heartbeat_em": _agora_iso(),
+                        })
+                        atualizar_atividade(
+                            atividade_id,
+                            "em_andamento",
+                            _det_ocr_inicio,
+                        )
+                    except Exception:
+                        pass
+
                 _ocr_pendentes_background(user_id, empresa, atividade_id)
             except BaseException as exc:
                 print(f"[OCR-DEBUG] worker global FALHA empresa={empresa!r}: {exc!r}", flush=True)
@@ -10490,7 +10657,7 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
         )
         return
     except Exception as exc:
-        print(f"[SUPABASE-V98] falha final ao atualizar atividade {atividade_id!r}: {exc!r}", flush=True)
+        print(f"[SUPABASE] falha final ao atualizar atividade {atividade_id!r}: {exc!r}", flush=True)
     # Esgotou as tentativas (só acontece pra status terminal, depois de
     # ~30s tentando): não tem mais o que fazer aqui sem travar essa
     # thread pra sempre. O card fica em_andamento até o usuário clicar
@@ -13624,7 +13791,7 @@ def _estimar_timeout_migracao(entry: dict) -> int:
     # não entra mais nessa conta — ver comentário em persistir_midias_de_ads.
     SEGUNDOS_POR_IMAGEM = 20
     SEGUNDOS_POR_VIDEO = 60
-    PARALELISMO = max(1, _MAX_DOWNLOADS_MIDIA)  # mesmo limite configurado em persistir_midias_de_ads
+    PARALELISMO = 1  # migração pesada é deliberadamente serial
 
     tempo_estimado = (n_imagens * SEGUNDOS_POR_IMAGEM + n_videos * SEGUNDOS_POR_VIDEO) / PARALELISMO
     return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
@@ -13637,8 +13804,6 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     a sequência completa de migrações é liberada. Enquanto a migração
     estiver ativa, novos OCRs aguardam.
     """
-    from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
-
     if not tarefas:
         return
 
@@ -13664,6 +13829,16 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
 
     _entrou_fila_pesada = False
     try:
+        # Segunda camada: mesmo que o processo tenha reiniciado e perdido o
+        # threading.Lock anterior, uma atividade OCR com heartbeat recente
+        # impede que a migração comece imediatamente.
+        _esperar_outra_acao_pesada_persistente(
+            user_id,
+            excluir_tipos=("migracao_midia",),
+            atividade_ids_espera=[t[2] for t in tarefas],
+            descricao=f"MIGRAÇÃO {_detalhe}",
+        )
+
         _entrar_fila_acao_pesada("MIGRAÇÃO", _detalhe)
         _entrou_fila_pesada = True
 
@@ -13689,42 +13864,24 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                 except Exception:
                     pass
 
-                limite_segundos = _estimar_timeout_migracao(entry)
-                with _TPE(max_workers=1) as executor:
-                    future = executor.submit(
-                        _migrar_midia_background,
+                try:
+                    _migrar_midia_background(
                         user_id,
                         empresa,
                         entry,
                         atividade_id,
                         plataforma,
                     )
-                    try:
-                        future.result(timeout=limite_segundos)
-                    except _TimeoutErr:
-                        atualizar_atividade(
-                            atividade_id,
-                            "erro",
-                            {
-                                "empresa": empresa,
-                                "plataforma": plataforma,
-                                "motivo": (
-                                    f"excedeu o limite estimado de "
-                                    f"{limite_segundos // 60} min pra essa "
-                                    "quantidade de mídia"
-                                ),
-                            },
-                        )
-                    except Exception as e:
-                        atualizar_atividade(
-                            atividade_id,
-                            "erro",
-                            {
-                                "empresa": empresa,
-                                "plataforma": plataforma,
-                                "motivo": str(e),
-                            },
-                        )
+                except Exception as e:
+                    atualizar_atividade(
+                        atividade_id,
+                        "erro",
+                        {
+                            "empresa": empresa,
+                            "plataforma": plataforma,
+                            "motivo": str(e),
+                        },
+                    )
             finally:
                 _job_release(
                     "migracao_midia",

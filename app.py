@@ -1662,7 +1662,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
             if _u_exist and _cdn_exist:
                 _cdn_existente_por_chave[_chave_asset(_u_exist, _tipo_exist)] = _cdn_exist
     except Exception as _exc_indice:
-        print(f"[MIDIA-V98] índice prévio indisponível: {_exc_indice!r}", flush=True)
+        print(f"[MIDIA-DEBUG] índice prévio indisponível: {_exc_indice!r}", flush=True)
 
     tarefas = []
     reutilizados_biblioteca = 0
@@ -1684,7 +1684,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     total_tarefas = len(tarefas)
     duplicados_ignorados = total_assets_encontrados - len(_grupos)
     print(
-        f"[MIDIA-V98] assets={total_assets_encontrados} novos_unicos={total_tarefas} "
+        f"[MIDIA-DEBUG] assets={total_assets_encontrados} novos_unicos={total_tarefas} "
         f"duplicados_execucao={duplicados_ignorados} reutilizados_biblioteca={reutilizados_biblioteca}",
         flush=True
     )
@@ -5530,6 +5530,281 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
 
 
 
+
+def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
+    """Detecta Display vertical alto: foto no topo, conteúdo branco e CTA em faixa inferior.
+
+    Estrutura visual:
+        [ FOTO / ARTE ]
+        [ avatar/logo ]
+        [ TÍTULO grande ]
+        [ descrição ]
+        [ CTA em faixa colorida ]
+
+    A detecção é geométrica, não depende do texto do evento.
+    """
+    import cv2 as _cv2_v
+    import numpy as _np_v
+    import re as _re_v
+
+    if img_bgr is None or getattr(img_bgr, "size", 0) == 0:
+        return None
+
+    h, w = img_bgr.shape[:2]
+
+    # Card nitidamente vertical. Evita competir com Busca e demais layouts.
+    if h < 650 or w < 300 or (w / max(float(h), 1.0)) > 0.72:
+        return None
+
+    try:
+        _gray = _cv2_v.cvtColor(img_bgr, _cv2_v.COLOR_BGR2GRAY)
+        _hsv = _cv2_v.cvtColor(img_bgr, _cv2_v.COLOR_BGR2HSV)
+    except Exception:
+        return None
+
+    _sat_linha = _hsv[:, :, 1].mean(axis=1)
+    _gray_linha = _gray.mean(axis=1)
+
+    # 1) Detecta a foto/arte superior.
+    # Procura a primeira faixa branca sustentada após uma região visual.
+    _quase_branco = ((_gray >= 242) & (_hsv[:, :, 1] <= 35)).mean(axis=1)
+    _foto_fim = None
+    _run = 0
+    _inicio_busca = int(h * 0.16)
+    _fim_busca = int(h * 0.48)
+
+    for _y in range(_inicio_busca, _fim_busca):
+        if _quase_branco[_y] >= 0.88:
+            _run += 1
+            if _run >= max(12, int(h * 0.012)):
+                _foto_fim = _y - _run + 1
+                break
+        else:
+            _run = 0
+
+    if _foto_fim is None:
+        return None
+
+    # A região antes do corte precisa parecer realmente visual/fotográfica.
+    _topo = _hsv[:max(1, _foto_fim - 3), :, :]
+    if _topo.size == 0:
+        return None
+    _sat_topo = float(_topo[:, :, 1].mean())
+    _frac_topo_colorido = float((_topo[:, :, 1] >= 55).mean())
+    if _sat_topo < 55 or _frac_topo_colorido < 0.25:
+        return None
+
+    # 2) Detecta a faixa CTA inferior.
+    # Busca uma longa região colorida/escura começando depois de 65% da altura.
+    _mask_cta_row = (_sat_linha >= 55) & (_gray_linha <= 205)
+    _cta_inicio = None
+    _run = 0
+    _min_run_cta = max(24, int(h * 0.035))
+
+    for _y in range(int(h * 0.62), h - 2):
+        if _mask_cta_row[_y]:
+            _run += 1
+            if _run >= _min_run_cta:
+                _cta_inicio = _y - _run + 1
+                break
+        else:
+            _run = 0
+
+    if _cta_inicio is None:
+        return None
+
+    # A faixa precisa ocupar parte relevante do rodapé.
+    if not (0.72 <= (_cta_inicio / float(h)) <= 0.93):
+        return None
+    if (h - _cta_inicio) < h * 0.09:
+        return None
+
+    # O miolo entre foto e CTA deve ser majoritariamente claro.
+    _miolo = _hsv[_foto_fim:_cta_inicio, :, :]
+    if _miolo.size == 0:
+        return None
+    _miolo_gray = _gray[_foto_fim:_cta_inicio, :]
+    _miolo_claro = float((_miolo_gray >= 225).mean())
+    if _miolo_claro < 0.62:
+        return None
+
+    # 3) OCR separado: corpo branco e faixa CTA.
+    _margem_x = max(8, int(w * 0.035))
+    _body = img_bgr[_foto_fim:_cta_inicio, _margem_x:w-_margem_x]
+    _cta_crop = img_bgr[_cta_inicio:h, _margem_x:w-_margem_x]
+
+    try:
+        _ocr_body = reader.readtext(
+            _body,
+            detail=1,
+            paragraph=False,
+            width_ths=0.55,
+            height_ths=0.55,
+            text_threshold=0.35,
+            low_text=0.20,
+            link_threshold=0.20,
+        )
+    except Exception as _exc:
+        print(f"[OCR-DEBUG] display-vertical-card: OCR corpo falhou: {_exc!r}", flush=True)
+        return None
+
+    _caixas = []
+    for _item in (_ocr_body or []):
+        if not _item or len(_item) < 3:
+            continue
+        _bbox, _txt, _conf = _item
+        _txt = _limpar_pontuacao_ocr((_txt or "").strip())
+        if not _txt:
+            continue
+        _xs = [float(p[0]) for p in _bbox]
+        _ys = [float(p[1]) for p in _bbox]
+        _caixas.append({
+            "texto": _txt,
+            "x0": min(_xs), "x1": max(_xs),
+            "y0": min(_ys), "y1": max(_ys),
+            "yc": (min(_ys) + max(_ys)) / 2.0,
+            "altura": max(1.0, max(_ys) - min(_ys)),
+        })
+
+    if not _caixas:
+        return None
+
+    # Agrupa caixas OCR da mesma linha.
+    _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
+    _linhas = []
+    for _c in _caixas:
+        _alocada = False
+        for _l in _linhas:
+            _tol = max(9.0, min(_c["altura"], _l["altura"]) * 0.60)
+            if abs(_c["yc"] - _l["yc"]) <= _tol:
+                _l["itens"].append(_c)
+                _l["yc"] = sum(x["yc"] for x in _l["itens"]) / len(_l["itens"])
+                _l["altura"] = max(_l["altura"], _c["altura"])
+                _alocada = True
+                break
+        if not _alocada:
+            _linhas.append({
+                "yc": _c["yc"],
+                "altura": _c["altura"],
+                "itens": [_c],
+            })
+
+    _linhas.sort(key=lambda l: l["yc"])
+    _linhas_ok = []
+    _emp_norm = _re_v.sub(r"[^a-z0-9]", "", str(empresa or "").lower())
+
+    for _l in _linhas:
+        _itens = sorted(_l["itens"], key=lambda c: c["x0"])
+        _txt = _limpar_pontuacao_ocr(
+            " ".join(c["texto"] for c in _itens).strip()
+        )
+        if not _txt:
+            continue
+
+        _x0 = min(c["x0"] for c in _itens)
+        _norm = _re_v.sub(r"[^a-z0-9]", "", _txt.lower())
+
+        # Logo/avatar da empresa: normalmente no alto e à esquerda do corpo.
+        # Ignoramos apenas quando o texto reconhecido bate com a empresa cadastrada.
+        _eh_avatar = (
+            bool(_emp_norm)
+            and _l["yc"] <= _body.shape[0] * 0.38
+            and _x0 <= _body.shape[1] * 0.38
+            and _norm
+            and (
+                _norm == _emp_norm
+                or _emp_norm in _norm
+                or _norm in _emp_norm
+            )
+        )
+        if _eh_avatar:
+            continue
+
+        _linhas_ok.append({
+            "texto": _txt,
+            "altura": float(_l["altura"]),
+        })
+
+    if not _linhas_ok:
+        return None
+
+    _titulo, _desc_linhas = _extrair_titulo_descricao_por_altura(_linhas_ok)
+    _titulo = _limpar_pontuacao_ocr(_titulo or "")
+    _descricao = " ".join(
+        _limpar_pontuacao_ocr(x)
+        for x in (_desc_linhas or [])
+        if x
+    ).strip()
+
+    # 4) CTA é lido independentemente dentro da faixa inferior.
+    _cta = ""
+    try:
+        _ocr_cta = reader.readtext(
+            _cta_crop,
+            detail=1,
+            paragraph=False,
+            width_ths=0.70,
+            height_ths=0.70,
+            text_threshold=0.30,
+            low_text=0.18,
+            link_threshold=0.18,
+        )
+    except Exception:
+        _ocr_cta = []
+
+    _rx_cta = _re_v.compile(
+        r"(?i)\b(?:abrir|saiba\s*mais|compre\s*agora|comprar\s*agora|"
+        r"acesse|acessar|ver\s*mais|conferir|comprar|reservar)\b"
+    )
+    for _item in (_ocr_cta or []):
+        if not _item or len(_item) < 2:
+            continue
+        _txt = _limpar_pontuacao_ocr(str(_item[1] or "").strip())
+        _m = _rx_cta.search(_txt)
+        if _m:
+            _cta = _m.group(0).strip()
+            break
+
+    # Esse layout precisa ter título + CTA para ser aceito. É uma proteção
+    # forte contra falso positivo em screenshots verticais comuns.
+    if not _titulo or not _cta:
+        return None
+
+    _debug = [{
+        "idx": 0,
+        "classe": "display-vertical-card",
+        "sep_antes": False,
+        "texto": f"{_titulo} | {_descricao} | {_cta}".strip(" |"),
+        "decisao": (
+            "Display vertical → foto superior ignorada; avatar/logo ignorado; "
+            "título e descrição extraídos do corpo branco por altura de fonte; "
+            "CTA extraído separadamente da faixa inferior"
+        ),
+        "y_min": int(_foto_fim),
+        "y_max": int(h),
+        "x_min_favicon": 0,
+    }]
+
+    print(
+        f"[OCR-DEBUG] display-vertical-card detectado "
+        f"foto_fim={_foto_fim} cta_inicio={_cta_inicio} "
+        f"titulo={_titulo!r} descricao={_descricao!r} cta={_cta!r}",
+        flush=True,
+    )
+
+    return {
+        "titulo": _titulo,
+        "descricao": _descricao,
+        "url_exibida": empresa or "",
+        "url_final": "",
+        "cta": _cta,
+        "cta_subtitulo": "",
+        "sitelinks": [],
+        "_debug_bandas": _debug,
+        "_layout_ocr": "display_vertical_card",
+    }
+
+
 def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     """V124 — Display com cabeçalho em cima, FOTO CENTRAL grande e texto embaixo.
 
@@ -6374,10 +6649,26 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
 
     _conteudo.sort(key=lambda l: l["yc"])
 
-    # Reaproveita o mesmo separador por altura usado nos anúncios gráficos.
-    _titulo, _descricao_linhas = _extrair_titulo_descricao_por_altura(
-        [{"texto": l["texto"], "altura": l["altura"]} for l in _conteudo]
-    )
+    # Split-card: usa também o espaçamento vertical para separar headline
+    # da descrição quando as alturas OCR ficam artificialmente parecidas.
+    _corte_geo = None
+    if len(_conteudo) >= 2:
+        for _i_geo in range(1, len(_conteudo)):
+            _prev_geo = _conteudo[_i_geo - 1]
+            _cur_geo = _conteudo[_i_geo]
+            _gap_geo = float(_cur_geo["yc"] - _prev_geo["yc"])
+            _ref_geo = max(1.0, float(_prev_geo.get("altura") or 0), float(_cur_geo.get("altura") or 0))
+            if _cur_geo["yc"] < h * 0.82 and _gap_geo >= max(34.0, _ref_geo * 1.55):
+                _corte_geo = _i_geo
+                break
+    if _corte_geo is not None:
+        _titulo = " ".join(l["texto"] for l in _conteudo[:_corte_geo] if l.get("texto")).strip()
+        _descricao_linhas = [l["texto"] for l in _conteudo[_corte_geo:] if l.get("texto")]
+        print(f"[OCR-DEBUG] split-card corte geométrico={_corte_geo}", flush=True)
+    else:
+        _titulo, _descricao_linhas = _extrair_titulo_descricao_por_altura(
+            [{"texto": l["texto"], "altura": l["altura"]} for l in _conteudo]
+        )
     _titulo = _limpar_pontuacao_ocr(_titulo or "")
     _descricao_linhas = [
         _limpar_pontuacao_ocr(x) for x in (_descricao_linhas or []) if x
@@ -6447,6 +6738,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
 
     # V124 — Display com cabeçalho acima, foto central grande e bloco de
     # título/CTA abaixo da foto.
+    _display_vertical = _detectar_display_vertical_card(
+        img_bgr, reader, empresa=empresa
+    )
+    if _display_vertical is not None:
+        return _display_vertical
+
     _display_foto_central = _detectar_display_foto_central(
         img_bgr, reader, empresa=empresa
     )
@@ -9767,7 +10064,43 @@ _lock_worker_ocr_global = threading.Lock()
 _worker_ocr_global_ativo = [False]
 _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
+# Faixa exclusiva para tarefas pesadas do processo principal.
+# OCR e migração de mídia entram nesta mesma fila e nunca executam juntos.
+_lock_fila_acoes_pesadas = threading.Lock()
+_acao_pesada_atual = [None]
+
+
+def _entrar_fila_acao_pesada(tipo: str, detalhe: str = ""):
+    _descricao = f"{tipo}{' · ' + detalhe if detalhe else ''}"
+    if not _lock_fila_acoes_pesadas.acquire(blocking=False):
+        print(
+            f"[FILA-PESADA] AGUARDANDO {_descricao}; "
+            f"em_execucao={_acao_pesada_atual[0]!r} "
+            f"RSS={_rss_processo_mb():.1f} MB",
+            flush=True,
+        )
+        _lock_fila_acoes_pesadas.acquire()
+
+    _acao_pesada_atual[0] = _descricao
+    print(
+        f"[FILA-PESADA] INICIO {_descricao} RSS={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+
+
+def _sair_fila_acao_pesada():
+    _descricao = _acao_pesada_atual[0]
+    _acao_pesada_atual[0] = None
+    print(
+        f"[FILA-PESADA] FIM {_descricao!r} RSS={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+    _lock_fila_acoes_pesadas.release()
+
 def _worker_ocr_global():
+    _entrou_fila_pesada = False
+    _entrar_fila_acao_pesada("OCR", "fila global")
+    _entrou_fila_pesada = True
     try:
         # O OCR pesado roda em processo Python externo de
         # uma imagem por vez. Não faz mais sentido segurar a fila por ~45s.
@@ -9813,6 +10146,9 @@ def _worker_ocr_global():
                 # Devolve memória temporária entre empresas antes de pegar a próxima.
                 _liberar_memoria_ocr(f"fim empresa OCR={empresa}")
     finally:
+        if _entrou_fila_pesada:
+            _sair_fila_acao_pesada()
+
         with _lock_worker_ocr_global:
             _worker_ocr_global_ativo[0] = False
             # Corrida possível: um item pode ter entrado entre o empty() e
@@ -9880,7 +10216,7 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
                 _ocr_empresas_ativas_agora.discard((user_id, empresa))
             _job_release("ocr_gads", user_id, empresa)
             print(
-                f"[OCR-DEBUG] V114 liberou job central após atividade em erro empresa={empresa!r}; Refazer permanece disponível",
+                f"[OCR-DEBUG] liberou job central após atividade em erro empresa={empresa!r}; Refazer permanece disponível",
                 flush=True,
             )
             return
@@ -13294,37 +13630,111 @@ def _estimar_timeout_migracao(entry: dict) -> int:
     return int(max(180, min(tempo_estimado, 3600)))  # piso 3 min, teto 1 h
 
 def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
-    """Roda a migração de cada empresa uma depois da outra (não em
-    paralelo). Antes, cada empresa disparava sua própria thread ao
-    mesmo tempo — com vídeo, isso significava várias empresas rodando
-    ffmpeg/Whisper simultaneamente e esgotando o limite de processos do
-    sistema (Errno 11, "Resource temporarily unavailable"), o que
-    inclusive deixava outras migrações travadas em "Em andamento" pra
-    sempre. Rodar em sequência é mais lento no total, mas nunca trava.
+    """Executa migrações uma por vez e na mesma fila pesada do OCR.
 
-    Cada empresa tem um limite de tempo proporcional à sua própria
-    quantidade de mídia (ver _estimar_timeout_migracao) — se travar, a
-    fila segue pras próximas em vez de ficar parada pra sempre."""
+    Se OCR estiver rodando, esta função espera sem iniciar downloads,
+    ffmpeg, modelos ou qualquer outra etapa pesada. Quando o OCR termina,
+    a sequência completa de migrações é liberada. Enquanto a migração
+    estiver ativa, novos OCRs aguardam.
+    """
     from concurrent.futures import ThreadPoolExecutor as _TPE, TimeoutError as _TimeoutErr
 
-    for empresa, entry, atividade_id, plataforma in tarefas:
-        try:
-            limite_segundos = _estimar_timeout_migracao(entry)
-            with _TPE(max_workers=1) as executor:
-                future = executor.submit(_migrar_midia_background, user_id, empresa, entry, atividade_id, plataforma)
-                try:
-                    future.result(timeout=limite_segundos)
-                except _TimeoutErr:
-                    atualizar_atividade(atividade_id, "erro", {
+    if not tarefas:
+        return
+
+    _plataformas = sorted({str(t[3]) for t in tarefas})
+    _detalhe = f"{', '.join(_plataformas)} · {len(tarefas)} empresa(s)"
+
+    # Se a faixa estiver ocupada, mostra no sino que a migração está em fila.
+    if _lock_fila_acoes_pesadas.locked():
+        for empresa, _entry, atividade_id, plataforma in tarefas:
+            try:
+                atualizar_atividade(
+                    atividade_id,
+                    "em_andamento",
+                    {
                         "empresa": empresa,
-                        "motivo": f"excedeu o limite estimado de {limite_segundos // 60} min pra essa quantidade de mídia — pulou pra próxima empresa"
-                    })
-                    # a thread interna pode continuar rodando sozinha em segundo
-                    # plano (Python não mata thread à força), mas a fila segue.
-                except Exception as e:
-                    atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "motivo": str(e)})
-        finally:
-            _job_release("migracao_midia", user_id, f"{plataforma}:{empresa}")
+                        "plataforma": plataforma,
+                        "aguardando_fila_pesada": True,
+                        "aviso": "Aguardando a ação atual terminar para iniciar a migração de mídia.",
+                    },
+                )
+            except Exception:
+                pass
+
+    _entrou_fila_pesada = False
+    try:
+        _entrar_fila_acao_pesada("MIGRAÇÃO", _detalhe)
+        _entrou_fila_pesada = True
+
+        print(
+            f"[MIGR-DEBUG] migração liberada pela fila pesada: "
+            f"{[t[0] for t in tarefas]}",
+            flush=True,
+        )
+
+        for empresa, entry, atividade_id, plataforma in tarefas:
+            try:
+                try:
+                    atualizar_atividade(
+                        atividade_id,
+                        "em_andamento",
+                        {
+                            "empresa": empresa,
+                            "plataforma": plataforma,
+                            "aguardando_fila_pesada": False,
+                            "aviso": "Migração de mídia em processamento.",
+                        },
+                    )
+                except Exception:
+                    pass
+
+                limite_segundos = _estimar_timeout_migracao(entry)
+                with _TPE(max_workers=1) as executor:
+                    future = executor.submit(
+                        _migrar_midia_background,
+                        user_id,
+                        empresa,
+                        entry,
+                        atividade_id,
+                        plataforma,
+                    )
+                    try:
+                        future.result(timeout=limite_segundos)
+                    except _TimeoutErr:
+                        atualizar_atividade(
+                            atividade_id,
+                            "erro",
+                            {
+                                "empresa": empresa,
+                                "plataforma": plataforma,
+                                "motivo": (
+                                    f"excedeu o limite estimado de "
+                                    f"{limite_segundos // 60} min pra essa "
+                                    "quantidade de mídia"
+                                ),
+                            },
+                        )
+                    except Exception as e:
+                        atualizar_atividade(
+                            atividade_id,
+                            "erro",
+                            {
+                                "empresa": empresa,
+                                "plataforma": plataforma,
+                                "motivo": str(e),
+                            },
+                        )
+            finally:
+                _job_release(
+                    "migracao_midia",
+                    user_id,
+                    f"{plataforma}:{empresa}",
+                )
+    finally:
+        if _entrou_fila_pesada:
+            _sair_fila_acao_pesada()
+
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str = "Meta Ads"):
     """Migra as mídias das empresas recém-coletadas pro R2, sem travar
@@ -13353,7 +13763,7 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
     for empresa, entry in novos.items():
         _escopo_job_migr = f"{plataforma}:{empresa}"
         if not _job_try_acquire("migracao_midia", user_id, _escopo_job_migr):
-            print(f"[MIGR-V98] ignorado job duplicado empresa={empresa!r} plataforma={plataforma!r}", flush=True)
+            print(f"[MIGR-DEBUG] ignorado job duplicado empresa={empresa!r} plataforma={plataforma!r}", flush=True)
             continue
         atividade_id = _atividade_migracao_mais_recente_id(user_id, empresa, plataforma)
         if atividade_id:

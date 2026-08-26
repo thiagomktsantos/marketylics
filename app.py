@@ -5594,12 +5594,32 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     _rodape_mean = float(_rodape.mean())
     _foto_std = float(_foto.std())
 
-    # Sinais conservadores: rodapé predominantemente branco, salto claro
-    # relevante e imagem superior visualmente complexa.
+    # V119 — proteção contra falso positivo em anúncios de BUSCA.
+    #
+    # O detector V116 olhava principalmente "salto de luminosidade + textura".
+    # Uma página branca com muito texto também pode ter std alto o bastante
+    # para parecer "foto", e isso fez um anúncio normal de Busca da FunBuyNet
+    # ser tratado como display-top-card. O efeito foi grave: o parser cortou
+    # toda a parte de cima e perdeu o título real.
+    #
+    # Uma FOTO verdadeira ocupa visualmente a região superior e, portanto,
+    # NÃO é majoritariamente branca. Já um anúncio de Busca tem fundo branco
+    # em praticamente toda a área acima da suposta emenda.
+    _foto_frac_quase_branca = float((_foto >= 245).mean())
+    _foto_mean = float(_foto.mean())
+
+    # Sinais conservadores do layout:
+    #   - rodapé claro;
+    #   - transição horizontal forte;
+    #   - região superior realmente fotográfica/visual;
+    #   - no máximo 55% de pixels quase brancos na área superior.
     if not (
         _score >= 45
         and _rodape_mean >= 205
         and _foto_std >= 35
+        and _foto_mean <= 190
+        and _foto_frac_quase_branca <= 0.35
+        and float((_foto <= 100).mean()) >= 0.12
         and 0.54 <= (_seam_y / float(h)) <= 0.78
     ):
         return None
@@ -5689,6 +5709,81 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     _conteudo = []
     _avatar_ignorados = []
 
+    # V118 — neste layout o EasyOCR pode fundir, na MESMA linha OCR,
+    # a descrição central + o texto do avatar + o botão da direita.
+    # Caso real:
+    #   "O GP de Fórmula 1 de [Funbuynet São Paulo 2025 é um Abrir > evento imperdível"
+    #
+    # Portanto, antes de confiar no OCR geral do rodapé, fazemos duas
+    # leituras geométricas independentes:
+    #   (1) coluna central = descrição;
+    #   (2) bloco direito   = CTA.
+    #
+    # Isso replica a estrutura visual do anúncio e evita tentar "adivinhar"
+    # depois onde termina a descrição e começa o botão.
+    def _ocr_texto_regiao(_img_regiao):
+        if _img_regiao is None or getattr(_img_regiao, "size", 0) == 0:
+            return ""
+        try:
+            _itens_regiao = reader.readtext(
+                _img_regiao,
+                detail=1,
+                paragraph=False,
+                width_ths=0.55,
+                height_ths=0.55,
+                text_threshold=0.35,
+                low_text=0.20,
+                link_threshold=0.20,
+            )
+        except Exception:
+            return ""
+
+        _partes_regiao = []
+        for _item_regiao in (_itens_regiao or []):
+            if not _item_regiao or len(_item_regiao) < 3:
+                continue
+            _bbox_r, _txt_r, _conf_r = _item_regiao
+            _txt_r = _limpar_pontuacao_ocr((_txt_r or "").strip())
+            if not _txt_r:
+                continue
+            _ys_r = [float(p[1]) for p in _bbox_r]
+            _xs_r = [float(p[0]) for p in _bbox_r]
+            _partes_regiao.append((
+                min(_ys_r),
+                min(_xs_r),
+                _txt_r,
+            ))
+        _partes_regiao.sort(key=lambda x: (x[0], x[1]))
+        return " ".join(x[2] for x in _partes_regiao).strip()
+
+    _h_crop = _crop.shape[0]
+    _w_crop = _crop.shape[1]
+
+    # Área central: começa depois do avatar e termina antes do botão.
+    _desc_x0 = int(_w_crop * 0.20)
+    _desc_x1 = int(_w_crop * 0.62)
+    _desc_y0 = int(_h_crop * 0.30)
+    _descricao_geometrica = _ocr_texto_regiao(
+        _crop[_desc_y0:_h_crop, _desc_x0:_desc_x1]
+    )
+
+    # Área do botão à direita.
+    _cta_x0 = int(_w_crop * 0.61)
+    _cta_y0 = int(_h_crop * 0.28)
+    _cta_geometrico_bruto = _ocr_texto_regiao(
+        _crop[_cta_y0:_h_crop, _cta_x0:_w_crop]
+    )
+
+    # O crop do botão pode trazer somente "Abrir >", ou pequenas sobras
+    # visuais. Procura explicitamente um CTA conhecido dentro do resultado.
+    _m_cta_geo = _re_top.search(
+        r"(?i)\b(abrir|saiba\s*mais|compre\s*agora|comprar\s*agora|"
+        r"acesse|acessar|ver\s*mais|conferir|comprar|reservar)\b",
+        _cta_geometrico_bruto or "",
+    )
+    if _m_cta_geo:
+        _cta = _m_cta_geo.group(1).strip()
+
     for _l in _linhas:
         _txt = (_l.get("texto") or "").strip()
         if not _txt:
@@ -5701,8 +5796,24 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
             and _l["xc"] >= w * 0.55
             and _l["yc"] >= _crop.shape[0] * 0.35
         ):
-            _cta = _txt_cta
+            if not _cta:
+                _cta = _txt_cta
             continue
+
+        # Se o OCR geral fundiu o CTA dentro de uma linha maior, remove
+        # somente a palavra/frase de CTA e a seta. A descrição verdadeira
+        # será preferencialmente substituída pelo crop geométrico central
+        # mais abaixo.
+        if _cta:
+            _txt = _re_top.sub(
+                r"(?i)\b" + _re_top.escape(_cta) + r"\b\s*[>›»→❯➜]*",
+                "",
+                _txt,
+            ).strip()
+            if not _txt:
+                continue
+            _l = dict(_l)
+            _l["texto"] = _txt
 
         # Avatar/logo: fica à esquerda na metade inferior e normalmente traz
         # apenas o nome da empresa em fonte pequena.
@@ -5744,6 +5855,32 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
 
     _descricao = " ".join(_desc_linhas).strip()
 
+    # V118 — prefere a leitura isolada da coluna central. Ela não contém
+    # avatar nem botão, portanto é mais confiável que a linha OCR achatada
+    # do rodapé inteiro.
+    if _descricao_geometrica:
+        _descricao_geo_limpa = _descricao_geometrica
+
+        # Rede de segurança: caso a borda do avatar invada alguns pixels do
+        # crop central, remove um nome isolado da empresa apenas no COMEÇO.
+        if empresa:
+            _emp_rx = _re_top.escape(str(empresa).strip())
+            _descricao_geo_limpa = _re_top.sub(
+                rf"(?i)^\s*[\[\(]?[A-Za-z0-9._-]*{_emp_rx}[A-Za-z0-9._-]*[\]\)]?\s+",
+                "",
+                _descricao_geo_limpa,
+            ).strip()
+
+        if _cta:
+            _descricao_geo_limpa = _re_top.sub(
+                r"(?i)\b" + _re_top.escape(_cta) + r"\b\s*[>›»→❯➜]*",
+                "",
+                _descricao_geo_limpa,
+            ).strip()
+
+        if _descricao_geo_limpa:
+            _descricao = _descricao_geo_limpa
+
     if not _titulo or not (_descricao or _cta):
         return None
 
@@ -5753,9 +5890,10 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
         "sep_antes": False,
         "texto": f"{_titulo} | {_descricao} | {_cta}".strip(" |"),
         "decisao": (
-            "Display com foto superior + card inferior → foto ignorada; "
+            "Display com foto superior REAL + card inferior → foto ignorada; "
             "headline extraído do topo do rodapé; avatar/logo ignorado; "
-            "descrição extraída da área central; CTA extraído do botão à direita"
+            "descrição extraída por crop geométrico da coluna central; "
+            "CTA extraído por crop geométrico independente do botão à direita"
         ),
         "y_min": int(_seam_y),
         "y_max": int(h),
@@ -5764,7 +5902,10 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
 
     print(
         f"[OCR-DEBUG] display-top-card detectado seam={_seam_y}/{h} "
-        f"score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} "
+        f"score={_score:.1f} foto_mean={_foto_mean:.1f} "
+        f"foto_branca={_foto_frac_quase_branca:.2%} "
+        f"foto_escura={float((_foto <= 100).mean()):.2%} "
+        f"avatar_ignorado={_avatar_ignorados!r} "
         f"titulo={_titulo!r} descricao={_descricao!r} cta={_cta!r}",
         flush=True,
     )

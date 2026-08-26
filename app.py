@@ -9745,29 +9745,52 @@ _OCR_ISOLADO_TIMEOUT_SEG = 300
 
 
 def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
-    """Executa uma imagem em processo Python externo, sem fork do Streamlit.
+    """Executa uma imagem em processo Python externo e transmite o diagnóstico ao vivo.
 
-    O worker não importa app.py nem Streamlit. Ele contém somente o núcleo OCR.
-    Assim o filho começa pequeno e só então carrega OpenCV/EasyOCR/PyTorch.
+    O stdout/stderr do worker NÃO fica mais preso em capture_output. Cada linha
+    é encaminhada imediatamente ao log do Streamlit. Em paralelo, o app mede
+    RSS do pai, RSS do filho e RSS total enquanto o OCR estiver vivo.
+
+    Isso permite distinguir:
+      - worker não iniciado;
+      - erro Python;
+      - timeout;
+      - morte por sinal/OOM;
+      - pico de memória pai + filho.
     """
     if not itens:
         return {"ok": True, "resultados": []}
 
-    # O OCR trabalha deliberadamente com uma imagem por processo.
+    import hashlib as _hashlib_ocr
+    import datetime as _dt_ocr
+
     item = itens[0]
 
     _base_dir = Path(__file__).resolve().parent
-    _worker = _base_dir / "ocr_worker.py"
+    _worker = (_base_dir / "ocr_worker.py").resolve()
 
     if not _worker.exists():
         return {
             "ok": False,
             "erro": (
-                "Arquivo ocr_worker.py não encontrado na raiz do projeto. "
-                "O OCR externo precisa dos dois arquivos no mesmo diretório."
+                f"Arquivo ocr_worker.py não encontrado em {_worker}. "
+                "O OCR externo precisa do worker na raiz do projeto."
             ),
             "resultados": [],
         }
+
+    # Identifica inequivocamente qual worker está sendo executado.
+    try:
+        _worker_bytes = _worker.read_bytes()
+        _worker_sha = _hashlib_ocr.sha256(_worker_bytes).hexdigest()[:12]
+        _worker_size = len(_worker_bytes)
+        _worker_mtime = _dt_ocr.datetime.fromtimestamp(
+            _worker.stat().st_mtime
+        ).isoformat(timespec="seconds")
+    except Exception:
+        _worker_sha = "indisponivel"
+        _worker_size = -1
+        _worker_mtime = "indisponivel"
 
     _tmp_dir = tempfile.mkdtemp(prefix="ocr_")
     _entrada = Path(_tmp_dir) / "entrada.json"
@@ -9786,6 +9809,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     _env["MKL_NUM_THREADS"] = "1"
     _env["OPENBLAS_NUM_THREADS"] = "1"
     _env["NUMEXPR_NUM_THREADS"] = "1"
+    _env["PYTHONUNBUFFERED"] = "1"
 
     _cmd = [
         sys.executable,
@@ -9795,38 +9819,192 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     ]
 
     print(
-        f"[OCR] externo INICIO empresa={empresa!r} "
-        f"id={item.get('id')} RSS_pai={_rss_processo_mb():.1f} MB",
+        f"[OCR] worker_arquivo={str(_worker)!r} "
+        f"sha256={_worker_sha} bytes={_worker_size} mtime={_worker_mtime}",
+        flush=True,
+    )
+    print(
+        f"[OCR] externo INICIO empresa={empresa!r} id={item.get('id')} "
+        f"python={sys.executable!r} RSS_pai={_rss_processo_mb():.1f} MB",
+        flush=True,
+    )
+    print(
+        f"[OCR] comando={_cmd!r}",
         flush=True,
     )
 
+    _proc = None
+    _stdout_linhas = []
+    _stderr_linhas = []
+    _inicio_monotonic = time.monotonic()
+    _ultimo_monitor = 0.0
+
+    def _rss_pid_mb(_pid):
+        try:
+            import psutil as _ps_ocr
+            _p = _ps_ocr.Process(_pid)
+            _rss = _p.memory_info().rss / (1024 * 1024)
+            _filhos = 0.0
+            for _c in _p.children(recursive=True):
+                try:
+                    _filhos += _c.memory_info().rss / (1024 * 1024)
+                except Exception:
+                    pass
+            return _rss, _filhos
+        except Exception:
+            return -1.0, 0.0
+
+    def _drenar_pipe(_pipe, _prefixo, _destino):
+        try:
+            for _linha in iter(_pipe.readline, ""):
+                if not _linha:
+                    break
+                _linha = _linha.rstrip("\r\n")
+                _destino.append(_linha)
+                # Limita memória dos próprios logs.
+                if len(_destino) > 500:
+                    del _destino[:-500]
+                print(f"{_prefixo} {_linha}", flush=True)
+        except BaseException as _exc_pipe:
+            print(
+                f"[OCR] leitura {_prefixo} falhou: "
+                f"{type(_exc_pipe).__name__}: {_exc_pipe}",
+                flush=True,
+            )
+        finally:
+            try:
+                _pipe.close()
+            except Exception:
+                pass
+
     try:
-        _proc = subprocess.run(
+        _proc = subprocess.Popen(
             _cmd,
             cwd=str(_base_dir),
             env=_env,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=_OCR_ISOLADO_TIMEOUT_SEG,
+            bufsize=1,
         )
 
-        if _proc.stdout:
+        print(
+            f"[OCR] subprocesso CRIADO pid={_proc.pid} "
+            f"pai_pid={os.getpid()} RSS_pai={_rss_processo_mb():.1f} MB",
+            flush=True,
+        )
+
+        _t_out = threading.Thread(
+            target=_drenar_pipe,
+            args=(_proc.stdout, "[OCR][worker stdout]", _stdout_linhas),
+            daemon=True,
+            name=f"ocr-stdout-{_proc.pid}",
+        )
+        _t_err = threading.Thread(
+            target=_drenar_pipe,
+            args=(_proc.stderr, "[OCR][worker stderr]", _stderr_linhas),
+            daemon=True,
+            name=f"ocr-stderr-{_proc.pid}",
+        )
+        _t_out.start()
+        _t_err.start()
+
+        while True:
+            _rc = _proc.poll()
+            _agora = time.monotonic()
+
+            if (_agora - _ultimo_monitor) >= 1.0:
+                _rss_pai = _rss_processo_mb()
+                _rss_filho, _rss_netos = _rss_pid_mb(_proc.pid)
+                _total = (
+                    _rss_pai
+                    + (max(0.0, _rss_filho))
+                    + (max(0.0, _rss_netos))
+                )
+                print(
+                    f"[OCR-MONITOR] pid={_proc.pid} "
+                    f"tempo={_agora - _inicio_monotonic:.1f}s "
+                    f"RSS_pai={_rss_pai:.1f} MB "
+                    f"RSS_filho={_rss_filho:.1f} MB "
+                    f"RSS_netos={_rss_netos:.1f} MB "
+                    f"RSS_total_aprox={_total:.1f} MB",
+                    flush=True,
+                )
+                _ultimo_monitor = _agora
+
+            if _rc is not None:
+                break
+
+            if (_agora - _inicio_monotonic) > _OCR_ISOLADO_TIMEOUT_SEG:
+                print(
+                    f"[OCR] TIMEOUT pid={_proc.pid} "
+                    f"apos {_OCR_ISOLADO_TIMEOUT_SEG}s; encerrando worker",
+                    flush=True,
+                )
+                try:
+                    _proc.kill()
+                except Exception:
+                    pass
+                try:
+                    _proc.wait(timeout=10)
+                except Exception:
+                    pass
+                return {
+                    "ok": False,
+                    "erro": (
+                        f"Worker OCR externo excedeu "
+                        f"{_OCR_ISOLADO_TIMEOUT_SEG}s na mídia {item.get('id')}."
+                    ),
+                    "resultados": [],
+                }
+
+            time.sleep(0.20)
+
+        # Dá tempo para as threads drenarem as últimas linhas.
+        try:
+            _t_out.join(timeout=2)
+            _t_err.join(timeout=2)
+        except Exception:
+            pass
+
+        _rc = _proc.returncode
+        _rss_pai_final = _rss_processo_mb()
+
+        if _rc is not None and _rc < 0:
+            _sinal = -_rc
+            try:
+                import signal as _signal_ocr
+                _nome_sinal = _signal_ocr.Signals(_sinal).name
+            except Exception:
+                _nome_sinal = f"SIG{_sinal}"
             print(
-                "[OCR][worker stdout]\n" + _proc.stdout[-8000:],
+                f"[OCR] subprocesso MORTO POR SINAL pid={_proc.pid} "
+                f"returncode={_rc} sinal={_nome_sinal} "
+                f"RSS_pai={_rss_pai_final:.1f} MB",
                 flush=True,
             )
-        if _proc.stderr:
+        else:
             print(
-                "[OCR][worker stderr]\n" + _proc.stderr[-4000:],
+                f"[OCR] subprocesso TERMINOU pid={_proc.pid} "
+                f"returncode={_rc} RSS_pai={_rss_pai_final:.1f} MB",
                 flush=True,
             )
 
         if not _saida.exists():
+            _stderr_final = "\n".join(_stderr_linhas[-40:])
+            _stdout_final = "\n".join(_stdout_linhas[-40:])
+            print(
+                f"[OCR] worker terminou SEM SAIDA pid={_proc.pid} "
+                f"returncode={_rc}\n"
+                f"[OCR] ultimas_stdout={_stdout_final[-5000:]!r}\n"
+                f"[OCR] ultimas_stderr={_stderr_final[-5000:]!r}",
+                flush=True,
+            )
             return {
                 "ok": False,
                 "erro": (
                     "Worker OCR externo terminou sem arquivo de resposta "
-                    f"(returncode={_proc.returncode})."
+                    f"(returncode={_rc}, pid={_proc.pid})."
                 ),
                 "resultados": [],
             }
@@ -9835,12 +10013,11 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
         print(
             f"[OCR] externo FIM empresa={empresa!r} "
-            f"id={item.get('id')} returncode={_proc.returncode} "
-            f"RSS_pai={_rss_processo_mb():.1f} MB",
+            f"id={item.get('id')} pid={_proc.pid} returncode={_rc} "
+            f"RSS_pai={_rss_pai_final:.1f} MB",
             flush=True,
         )
 
-        # Adapta ao contrato que _ocr_pendentes_background já usa.
         return {
             "ok": True,
             "resultados": [{
@@ -9852,16 +10029,17 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
             }],
         }
 
-    except subprocess.TimeoutExpired:
-        return {
-            "ok": False,
-            "erro": (
-                f"Worker OCR externo excedeu {_OCR_ISOLADO_TIMEOUT_SEG}s "
-                f"na mídia {item.get('id')}."
-            ),
-            "resultados": [],
-        }
     except BaseException as _exc:
+        print(
+            f"[OCR] subprocesso EXCECAO "
+            f"{type(_exc).__name__}: {_exc}",
+            flush=True,
+        )
+        try:
+            if _proc is not None and _proc.poll() is None:
+                _proc.kill()
+        except Exception:
+            pass
         return {
             "ok": False,
             "erro": f"{type(_exc).__name__}: {_exc}",
@@ -9869,8 +10047,8 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
         }
     finally:
         try:
-            import shutil as _shutil_v126
-            _shutil_v126.rmtree(_tmp_dir, ignore_errors=True)
+            import shutil as _shutil_ocr
+            _shutil_ocr.rmtree(_tmp_dir, ignore_errors=True)
         except Exception:
             pass
 

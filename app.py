@@ -3,6 +3,7 @@ import datetime
 import streamlit as st
 import multiprocessing
 import tempfile
+import json
 
 # V94 — Meta Ads: seletor de empresas mostra somente empresas com anúncios já baixados.
 import streamlit.components.v1 as components
@@ -9396,7 +9397,7 @@ _OCR_ISOLADO_TIMEOUT_SEG = 300
 
 
 def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
-    """V126 — uma imagem em processo Python EXTERNO, sem fork do Streamlit.
+    """Executa uma imagem em processo Python externo, sem fork do Streamlit.
 
     O worker não importa app.py nem Streamlit. Ele contém somente o núcleo OCR.
     Assim o filho começa pequeno e só então carrega OpenCV/EasyOCR/PyTorch.
@@ -9404,7 +9405,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     if not itens:
         return {"ok": True, "resultados": []}
 
-    # V126 trabalha deliberadamente com uma imagem por processo.
+    # O OCR trabalha deliberadamente com uma imagem por processo.
     item = itens[0]
 
     _base_dir = Path(__file__).resolve().parent
@@ -9415,12 +9416,12 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
             "ok": False,
             "erro": (
                 "Arquivo ocr_worker.py não encontrado na raiz do projeto. "
-                "A V126 precisa dos dois arquivos no mesmo diretório."
+                "O OCR externo precisa dos dois arquivos no mesmo diretório."
             ),
             "resultados": [],
         }
 
-    _tmp_dir = tempfile.mkdtemp(prefix="ocr_v127_")
+    _tmp_dir = tempfile.mkdtemp(prefix="ocr_")
     _entrada = Path(_tmp_dir) / "entrada.json"
     _saida = Path(_tmp_dir) / "saida.json"
 
@@ -9446,7 +9447,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     ]
 
     print(
-        f"[OCR-V127] externo INICIO empresa={empresa!r} "
+        f"[OCR] externo INICIO empresa={empresa!r} "
         f"id={item.get('id')} RSS_pai={_rss_processo_mb():.1f} MB",
         flush=True,
     )
@@ -9463,12 +9464,12 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
         if _proc.stdout:
             print(
-                "[OCR-V127][worker stdout]\n" + _proc.stdout[-8000:],
+                "[OCR][worker stdout]\n" + _proc.stdout[-8000:],
                 flush=True,
             )
         if _proc.stderr:
             print(
-                "[OCR-V127][worker stderr]\n" + _proc.stderr[-4000:],
+                "[OCR][worker stderr]\n" + _proc.stderr[-4000:],
                 flush=True,
             )
 
@@ -9485,7 +9486,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
         _res = json.loads(_saida.read_text(encoding="utf-8"))
 
         print(
-            f"[OCR-V127] externo FIM empresa={empresa!r} "
+            f"[OCR] externo FIM empresa={empresa!r} "
             f"id={item.get('id')} returncode={_proc.returncode} "
             f"RSS_pai={_rss_processo_mb():.1f} MB",
             flush=True,
@@ -9527,7 +9528,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
-    """V127 — processa OCR em processos Python externos de uma imagem.
+    """Processa OCR em processos Python externos, uma imagem por vez.
 
     O processo principal do Streamlit coordena fila/progresso/banco.
     EasyOCR e PyTorch vivem somente no worker externo e são destruídos ao fim
@@ -9548,7 +9549,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             "processadas": processadas,
             "total": total,
             "ultimo_heartbeat_em": _agora_iso(),
-            "modo_execucao": "ocr_externo_v127",
+            "modo_execucao": "ocr_externo",
             "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
         })
 
@@ -9576,7 +9577,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 res = _query.limit(_OCR_ISOLADO_TAMANHO_LOTE).execute()
             except Exception as _exc_query:
                 print(
-                    f"[OCR-V127] falha consultando imagem empresa={empresa!r}: "
+                    f"[OCR] falha consultando imagem empresa={empresa!r}: "
                     f"{_exc_query!r}",
                     flush=True,
                 )
@@ -9602,7 +9603,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             ]
 
             print(
-                f"[OCR-V127] CHAMANDO worker externo empresa={empresa!r} "
+                f"[OCR] CHAMANDO worker externo empresa={empresa!r} "
                 f"id={_payload[0].get('id') if _payload else None} "
                 f"processadas={processadas}/{max(total, processadas)} "
                 f"RSS_pai={_rss_processo_mb():.1f} MB",
@@ -9704,12 +9705,12 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "ultimo_heartbeat_em": _agora_iso(),
-                    "modo_execucao": "ocr_externo_v127",
+                    "modo_execucao": "ocr_externo",
                     "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
                 })
 
             _liberar_memoria_ocr(
-                f"V127 pai apos imagem empresa={empresa} processadas={processadas}"
+                f"pai apos imagem empresa={empresa} processadas={processadas}"
             )
 
         if atividade_id:
@@ -9726,19 +9727,19 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     ),
                     "erros_detalhados": _erros_detalhados[:20],
                     "total_erros_detalhados": len(_erros_detalhados),
-                    "modo_execucao": "ocr_externo_v127",
+                    "modo_execucao": "ocr_externo",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresa": empresa,
                     "processadas": processadas,
                     "total": max(total, processadas),
-                    "modo_execucao": "ocr_externo_v127",
+                    "modo_execucao": "ocr_externo",
                 })
 
     except BaseException as e:
         print(
-            f"[OCR-V125] coordenador falhou empresa={empresa!r}: {e!r}",
+            f"[OCR] coordenador falhou empresa={empresa!r}: {e!r}",
             flush=True,
         )
         if atividade_id:
@@ -9747,7 +9748,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 "motivo": f"{type(e).__name__}: {e}",
                 "processadas": processadas,
                 "total": max(total, processadas),
-                "modo_execucao": "ocr_externo_v127",
+                "modo_execucao": "ocr_externo",
             })
     finally:
         with _lock_ocr_pendente:
@@ -9768,19 +9769,19 @@ _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
 def _worker_ocr_global():
     try:
-        # V127 — o OCR pesado agora roda em processo Python externo de
+        # O OCR pesado roda em processo Python externo de
         # uma imagem por vez. Não faz mais sentido segurar a fila por ~45s.
         # Mantemos somente uma microespera de até 2s logo após boot/redeploy
         # para o servidor terminar a inicialização básica.
         restante = _OCR_DELAY_PRIMEIRO_START_SEG - (time.monotonic() - _PROCESSO_INICIO_MONOTONIC)
         if restante > 0:
             print(
-                f"[OCR-V127] worker global microespera {restante:.1f}s após boot",
+                f"[OCR] worker global microespera {restante:.1f}s após boot",
                 flush=True,
             )
             time.sleep(restante)
         print(
-            f"[OCR-V127] worker global LIBERADO RSS_pai={_rss_processo_mb():.1f} MB "
+            f"[OCR] worker global LIBERADO RSS_pai={_rss_processo_mb():.1f} MB "
             f"fila={_fila_ocr_global.qsize()}",
             flush=True,
         )
@@ -9792,7 +9793,7 @@ def _worker_ocr_global():
                 break
             try:
                 print(
-                    f"[OCR-V127] worker global INICIO empresa={empresa!r} "
+                    f"[OCR] worker global INICIO empresa={empresa!r} "
                     f"atividade={atividade_id} RSS_pai={_rss_processo_mb():.1f} MB",
                     flush=True,
                 )

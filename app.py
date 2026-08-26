@@ -9391,187 +9391,147 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
 # O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
 # Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
 # Ao terminar, o kernel devolve toda a RAM do PyTorch/modelos automaticamente.
-_OCR_ISOLADO_TAMANHO_LOTE = 4
-_OCR_ISOLADO_TIMEOUT_SEG = 420
-
-
-def _ocr_isolado_child(empresa: str, itens: list, arquivo_saida: str):
-    """Executado somente no processo filho (Linux/fork)."""
-    import json as _json_child
-    import traceback as _traceback_child
-
-    try:
-        # Fork de processo multithread pode herdar locks ocupados. No filho,
-        # recriamos especificamente os locks/semaforos usados pelo OCR.
-        global _lock_easyocr_init
-        global _lock_easyocr_execucao
-        global _semaforo_cpu_pesada
-
-        _lock_easyocr_init = threading.Lock()
-        _lock_easyocr_execucao = threading.Lock()
-        _semaforo_cpu_pesada = threading.BoundedSemaphore(1)
-
-        # O pai da V125 não deve possuir Reader. Mesmo assim zeramos o estado
-        # local do filho para garantir uma inicialização limpa.
-        _easyocr_instancia[0] = None
-        _easyocr_init_falhou_em[0] = 0.0
-        _ultima_chamada_ocr[0] = 0.0
-
-        _resultados = []
-
-        for _item in (itens or []):
-            _id = str(_item.get("id") or "")
-            _url = str(_item.get("url_cdn") or "")
-            try:
-                _estruturado, _diag = _extrair_ocr_estruturado_imagem(
-                    _url,
-                    empresa=empresa,
-                    retornar_diagnostico=True,
-                )
-                if _estruturado is None:
-                    _resultados.append({
-                        "id": _id,
-                        "ok": False,
-                        "estruturado": None,
-                        "diag": _diag or {
-                            "etapa": "desconhecida",
-                            "erro": "A extração OCR retornou vazio.",
-                        },
-                    })
-                else:
-                    _resultados.append({
-                        "id": _id,
-                        "ok": True,
-                        "estruturado": _estruturado,
-                        "diag": _diag,
-                    })
-            except BaseException as _exc:
-                _resultados.append({
-                    "id": _id,
-                    "ok": False,
-                    "estruturado": None,
-                    "diag": {
-                        "etapa": "subprocesso_ocr",
-                        "erro": f"{type(_exc).__name__}: {_exc}",
-                        "traceback": _traceback_child.format_exc(limit=8),
-                    },
-                })
-
-        Path(arquivo_saida).write_text(
-            _json_child.dumps(
-                {"ok": True, "resultados": _resultados},
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
-        )
-
-    except BaseException as _fatal:
-        try:
-            Path(arquivo_saida).write_text(
-                _json_child.dumps({
-                    "ok": False,
-                    "erro": f"{type(_fatal).__name__}: {_fatal}",
-                    "traceback": _traceback_child.format_exc(limit=12),
-                }, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
-        # os._exit evita handlers/threads herdados do Streamlit no teardown
-        os._exit(2)
-
-    os._exit(0)
+_OCR_ISOLADO_TAMANHO_LOTE = 1
+_OCR_ISOLADO_TIMEOUT_SEG = 300
 
 
 def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
-    """Executa um lote OCR fora do processo principal do Streamlit."""
+    """V126 — uma imagem em processo Python EXTERNO, sem fork do Streamlit.
+
+    O worker não importa app.py nem Streamlit. Ele contém somente o núcleo OCR.
+    Assim o filho começa pequeno e só então carrega OpenCV/EasyOCR/PyTorch.
+    """
     if not itens:
         return {"ok": True, "resultados": []}
 
-    # Streamlit Cloud é Linux. `fork` permite reutilizar as funções já
-    # definidas sem reexecutar toda a UI do app.py no processo filho.
-    try:
-        _ctx = multiprocessing.get_context("fork")
-    except ValueError as _exc:
-        raise RuntimeError("OCR isolado V125 requer ambiente Linux com fork") from _exc
+    # V126 trabalha deliberadamente com uma imagem por processo.
+    item = itens[0]
 
-    _tmp = tempfile.NamedTemporaryFile(
-        prefix="ocr_v125_",
-        suffix=".json",
-        delete=False,
+    _base_dir = Path(__file__).resolve().parent
+    _worker = _base_dir / "ocr_worker.py"
+
+    if not _worker.exists():
+        return {
+            "ok": False,
+            "erro": (
+                "Arquivo ocr_worker.py não encontrado na raiz do projeto. "
+                "A V126 precisa dos dois arquivos no mesmo diretório."
+            ),
+            "resultados": [],
+        }
+
+    _tmp_dir = tempfile.mkdtemp(prefix="ocr_v126_")
+    _entrada = Path(_tmp_dir) / "entrada.json"
+    _saida = Path(_tmp_dir) / "saida.json"
+
+    _entrada.write_text(
+        json.dumps(
+            {"empresa": empresa, "item": item},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
     )
-    _saida = _tmp.name
-    _tmp.close()
 
-    # Remove o arquivo vazio para conseguirmos detectar se o filho morreu
-    # antes de produzir uma resposta.
-    try:
-        os.unlink(_saida)
-    except Exception:
-        pass
+    _env = dict(os.environ)
+    _env["OMP_NUM_THREADS"] = "1"
+    _env["MKL_NUM_THREADS"] = "1"
+    _env["OPENBLAS_NUM_THREADS"] = "1"
+    _env["NUMEXPR_NUM_THREADS"] = "1"
 
-    _proc = _ctx.Process(
-        target=_ocr_isolado_child,
-        args=(empresa, itens, _saida),
-        daemon=False,
-        name="ocr-v125-isolado",
-    )
+    _cmd = [
+        sys.executable,
+        str(_worker),
+        str(_entrada),
+        str(_saida),
+    ]
 
     print(
-        f"[OCR-V125] lote isolado INICIO empresa={empresa!r} "
-        f"qtd={len(itens)} RSS_pai={_rss_processo_mb():.1f} MB",
+        f"[OCR-V126] externo INICIO empresa={empresa!r} "
+        f"id={item.get('id')} RSS_pai={_rss_processo_mb():.1f} MB",
         flush=True,
     )
 
-    _proc.start()
-    _proc.join(_OCR_ISOLADO_TIMEOUT_SEG)
-
-    if _proc.is_alive():
-        print(
-            f"[OCR-V125] TIMEOUT empresa={empresa!r}; encerrando filho pid={_proc.pid}",
-            flush=True,
-        )
-        _proc.terminate()
-        _proc.join(10)
-        if _proc.is_alive():
-            _proc.kill()
-            _proc.join(5)
-
-    _exitcode = _proc.exitcode
-
     try:
-        if not os.path.exists(_saida):
+        _proc = subprocess.run(
+            _cmd,
+            cwd=str(_base_dir),
+            env=_env,
+            capture_output=True,
+            text=True,
+            timeout=_OCR_ISOLADO_TIMEOUT_SEG,
+        )
+
+        if _proc.stdout:
+            print(
+                "[OCR-V126][worker stdout]\n" + _proc.stdout[-8000:],
+                flush=True,
+            )
+        if _proc.stderr:
+            print(
+                "[OCR-V126][worker stderr]\n" + _proc.stderr[-4000:],
+                flush=True,
+            )
+
+        if not _saida.exists():
             return {
                 "ok": False,
                 "erro": (
-                    "Processo OCR isolado terminou sem resposta "
-                    f"(exitcode={_exitcode})."
+                    "Worker OCR externo terminou sem arquivo de resposta "
+                    f"(returncode={_proc.returncode})."
                 ),
                 "resultados": [],
             }
 
-        _dados = json.loads(Path(_saida).read_text(encoding="utf-8"))
+        _res = json.loads(_saida.read_text(encoding="utf-8"))
+
+        print(
+            f"[OCR-V126] externo FIM empresa={empresa!r} "
+            f"id={item.get('id')} returncode={_proc.returncode} "
+            f"RSS_pai={_rss_processo_mb():.1f} MB",
+            flush=True,
+        )
+
+        # Adapta ao contrato que _ocr_pendentes_background já usa.
+        return {
+            "ok": True,
+            "resultados": [{
+                "id": str(item.get("id") or ""),
+                "ok": bool(_res.get("ok")),
+                "estruturado": _res.get("estruturado"),
+                "diag": _res.get("diag"),
+                "erro": _res.get("erro"),
+            }],
+        }
+
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "erro": (
+                f"Worker OCR externo excedeu {_OCR_ISOLADO_TIMEOUT_SEG}s "
+                f"na mídia {item.get('id')}."
+            ),
+            "resultados": [],
+        }
+    except BaseException as _exc:
+        return {
+            "ok": False,
+            "erro": f"{type(_exc).__name__}: {_exc}",
+            "resultados": [],
+        }
     finally:
         try:
-            os.unlink(_saida)
+            import shutil as _shutil_v126
+            _shutil_v126.rmtree(_tmp_dir, ignore_errors=True)
         except Exception:
             pass
 
-    print(
-        f"[OCR-V125] lote isolado FIM empresa={empresa!r} "
-        f"exitcode={_exitcode} RSS_pai={_rss_processo_mb():.1f} MB",
-        flush=True,
-    )
-
-    return _dados
-
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
-    """V125 — processa OCR em subprocessos curtos.
+    """V126 — processa OCR em processos Python externos de uma imagem.
 
     O processo principal do Streamlit coordena fila/progresso/banco.
-    EasyOCR e PyTorch vivem somente no filho e são destruídos ao fim de cada
-    lote, evitando o RSS permanente de ~1.28 GB observado nos crashes.
+    EasyOCR e PyTorch vivem somente no worker externo e são destruídos ao fim
+    de cada imagem. O worker não importa Streamlit nem app.py.
     """
     _chave_ativa = (user_id, empresa)
     _checkpoint_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
@@ -9588,7 +9548,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             "processadas": processadas,
             "total": total,
             "ultimo_heartbeat_em": _agora_iso(),
-            "modo_execucao": "ocr_isolado_v125",
+            "modo_execucao": "ocr_externo_v126",
             "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
         })
 
@@ -9737,12 +9697,12 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "processadas": processadas,
                     "total": max(total, processadas),
                     "ultimo_heartbeat_em": _agora_iso(),
-                    "modo_execucao": "ocr_isolado_v125",
+                    "modo_execucao": "ocr_externo_v126",
                     "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
                 })
 
             _liberar_memoria_ocr(
-                f"V125 pai apos lote empresa={empresa} processadas={processadas}"
+                f"V126 pai apos imagem empresa={empresa} processadas={processadas}"
             )
 
         if atividade_id:
@@ -9759,14 +9719,14 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     ),
                     "erros_detalhados": _erros_detalhados[:20],
                     "total_erros_detalhados": len(_erros_detalhados),
-                    "modo_execucao": "ocr_isolado_v125",
+                    "modo_execucao": "ocr_externo_v126",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresa": empresa,
                     "processadas": processadas,
                     "total": max(total, processadas),
-                    "modo_execucao": "ocr_isolado_v125",
+                    "modo_execucao": "ocr_externo_v126",
                 })
 
     except BaseException as e:
@@ -9780,7 +9740,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 "motivo": f"{type(e).__name__}: {e}",
                 "processadas": processadas,
                 "total": max(total, processadas),
-                "modo_execucao": "ocr_isolado_v125",
+                "modo_execucao": "ocr_externo_v126",
             })
     finally:
         with _lock_ocr_pendente:

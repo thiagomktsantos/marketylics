@@ -1,0 +1,7 @@
+easyocr
+torch
+torchvision
+opencv-python-headless
+numpy
+requests
+supabase

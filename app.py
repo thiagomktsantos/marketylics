@@ -2083,6 +2083,39 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
         with _lock_transcricao_pendente:
             _transcricoes_empresa_ativas_agora.discard(_chave_ativa)
 
+def _transcrever_pendentes_na_fila_global(user_id: str, empresa: str, atividade_id: str = None):
+    """Executa a fila de transcrição sob a MESMA exclusividade do OCR/migração."""
+    _ticket = None
+    try:
+        _ticket = _entrar_fila_acao_pesada("TRANSCRIÇÃO", empresa)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "empresa": empresa,
+                "transcritas": 0,
+                "total": _contar_transcricoes_pendentes(user_id, empresa),
+                "ultimo_heartbeat_em": _agora_iso(),
+                "aviso": "Transcrição em processamento.",
+            })
+
+        # O modelo Whisper só é carregado DEPOIS que a transcrição ganha a
+        # vez na fila. Antes, iniciar_transcricao... carregava o modelo antes
+        # da fila e podia criar um pico de RAM enquanto o OCR estava ativo.
+        if whisper_model_ou_none() is None:
+            if atividade_id:
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresa": empresa,
+                    "motivo": "Whisper indisponível para transcrição.",
+                })
+            with _lock_transcricao_pendente:
+                _transcricoes_empresa_ativas_agora.discard((user_id, empresa))
+            return
+
+        _transcrever_pendentes_background(user_id, empresa, atividade_id)
+    finally:
+        if _ticket is not None:
+            _sair_fila_acao_pesada(_ticket)
+
+
 def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o
     processamento, em segundo plano, dos vídeos dessa empresa que já
@@ -2091,7 +2124,7 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
     mesmo jeito que iniciar_migracao_midia_background faz com
     `migracao_midia`. Retorna na hora — nunca bloqueia quem chamou
     (migração, retry automático, etc.)."""
-    if not user_id or not empresa or whisper_model_ou_none() is None:
+    if not user_id or not empresa:
         return
     with _lock_transcricao_pendente:
         if (user_id, empresa) in _transcricoes_empresa_ativas_agora:
@@ -2106,13 +2139,27 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
         return
     atividade_id = _atividade_transcricao_mais_recente_id(user_id, empresa)
     if atividade_id:
-        atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
+        atualizar_atividade(atividade_id, "na_fila", {
+            "empresa": empresa, "transcritas": 0, "total": total,
+            "status_visual": "na_fila",
+            "aviso": "Aguardando a vez na fila global de processamento.",
+        })
     else:
         atividade_id = criar_atividade(
             user_id, "transcricao_video", f"{empresa} · Transcrevendo vídeos de anúncios",
-            {"empresa": empresa, "transcritas": 0, "total": total},
+            {
+                "empresa": empresa, "transcritas": 0, "total": total,
+                "status_visual": "na_fila",
+                "aviso": "Aguardando a vez na fila global de processamento.",
+            },
+            status="na_fila",
         )
-    threading.Thread(target=_transcrever_pendentes_background, args=(user_id, empresa, atividade_id), daemon=True).start()
+    threading.Thread(
+        target=_transcrever_pendentes_na_fila_global,
+        args=(user_id, empresa, atividade_id),
+        daemon=True,
+        name=f"transcricao-global-{empresa}",
+    ).start()
 
 
 # ---------------------------------------------------
@@ -2125,8 +2172,8 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 #  mostrar o texto visível no criativo em vez de deixar o card sem
 #  nenhuma copy.
 #
-#  Mesmo padrão desacoplado da transcrição de vídeo acima: roda DEPOIS
-#  da migração, numa fila própria (ver iniciar_ocr_pendente_background
+#  OCR, migração e transcrição compartilham a MESMA fila global exclusiva.
+#  O OCR só começa quando nenhuma outra ação pesada está rodando (ver iniciar_ocr_pendente_background
 #  chamada em _migrar_midia_background), pra não segurar os workers de
 #  download/upload da migração com uma chamada de IA por imagem.
 #
@@ -9688,10 +9735,7 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
 
 
 # ===================================================
-# OCR LOCAL LEGADO — mantido para compatibilidade, mas não é iniciado.
-# O OCR ativo roda em serviço externo via ocr_worker.py.
-# ===================================================
-# OCR ISOLADO EM PROCESSO FILHO
+# V125 — OCR ISOLADO EM PROCESSO FILHO
 # ===================================================
 # O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
 # Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
@@ -10073,36 +10117,92 @@ _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
 # Faixa exclusiva para tarefas pesadas do processo principal.
 # OCR e migração de mídia entram nesta mesma fila e nunca executam juntos.
-_lock_fila_acoes_pesadas = threading.Lock()
+# Fila GLOBAL e EXCLUSIVA de ações pesadas.
+#
+# Regra: somente UMA ação pesada pode existir por vez no processo:
+# OCR -> termina tudo -> próxima ação;
+# MIGRAÇÃO -> termina tudo -> próxima ação;
+# TRANSCRIÇÃO -> termina tudo -> próxima ação.
+#
+# Diferente do Lock simples anterior, esta implementação usa tickets FIFO.
+# Quem chega primeiro entra primeiro, e nenhuma ação pesada consegue
+# ultrapassar outra que já esteja aguardando.
+_fila_pesada_cond = threading.Condition(threading.RLock())
+_fila_pesada_proximo_ticket = [0]
+_fila_pesada_ticket_atual = [0]
 _acao_pesada_atual = [None]
+_acao_pesada_owner_thread = [None]
+
+
+def _fila_pesada_esta_ocupada():
+    with _fila_pesada_cond:
+        return _acao_pesada_atual[0] is not None
 
 
 def _entrar_fila_acao_pesada(tipo: str, detalhe: str = ""):
+    """Entra na fila FIFO global e só retorna quando tiver exclusividade."""
     _descricao = f"{tipo}{' · ' + detalhe if detalhe else ''}"
-    if not _lock_fila_acoes_pesadas.acquire(blocking=False):
+    _tid = threading.get_ident()
+
+    with _fila_pesada_cond:
+        # Reentrada pela MESMA thread: útil para funções internas de uma ação
+        # já exclusiva. Não cria novo ticket nem bloqueia a si própria.
+        if _acao_pesada_owner_thread[0] == _tid:
+            print(f"[FILA-PESADA] REENTRADA {_descricao}", flush=True)
+            return None
+
+        _meu_ticket = _fila_pesada_proximo_ticket[0]
+        _fila_pesada_proximo_ticket[0] += 1
+
+        if (
+            _meu_ticket != _fila_pesada_ticket_atual[0]
+            or _acao_pesada_atual[0] is not None
+        ):
+            print(
+                f"[FILA-PESADA] AGUARDANDO ticket={_meu_ticket} "
+                f"acao={_descricao!r} atual={_acao_pesada_atual[0]!r}",
+                flush=True,
+            )
+
+        while (
+            _meu_ticket != _fila_pesada_ticket_atual[0]
+            or _acao_pesada_atual[0] is not None
+        ):
+            _fila_pesada_cond.wait(timeout=5.0)
+
+        _acao_pesada_atual[0] = _descricao
+        _acao_pesada_owner_thread[0] = _tid
         print(
-            f"[FILA-PESADA] AGUARDANDO {_descricao}; "
-            f"em_execucao={_acao_pesada_atual[0]!r} "
-            f"RSS={_rss_processo_mb():.1f} MB",
+            f"[FILA-PESADA] INICIO ticket={_meu_ticket} acao={_descricao!r}",
             flush=True,
         )
-        _lock_fila_acoes_pesadas.acquire()
-
-    _acao_pesada_atual[0] = _descricao
-    print(
-        f"[FILA-PESADA] INICIO {_descricao} RSS={_rss_processo_mb():.1f} MB",
-        flush=True,
-    )
+        return _meu_ticket
 
 
-def _sair_fila_acao_pesada():
-    _descricao = _acao_pesada_atual[0]
-    _acao_pesada_atual[0] = None
-    print(
-        f"[FILA-PESADA] FIM {_descricao!r} RSS={_rss_processo_mb():.1f} MB",
-        flush=True,
-    )
-    _lock_fila_acoes_pesadas.release()
+def _sair_fila_acao_pesada(ticket=None):
+    """Finaliza a ação atual e libera exatamente o próximo ticket FIFO."""
+    _tid = threading.get_ident()
+    with _fila_pesada_cond:
+        # Chamada de reentrada não é dona de um ticket novo.
+        if ticket is None:
+            return
+        if _acao_pesada_owner_thread[0] != _tid:
+            print(
+                f"[FILA-PESADA] AVISO tentativa de liberar por thread não dona "
+                f"ticket={ticket}",
+                flush=True,
+            )
+            return
+        _descricao = _acao_pesada_atual[0]
+        _acao_pesada_atual[0] = None
+        _acao_pesada_owner_thread[0] = None
+        _fila_pesada_ticket_atual[0] += 1
+        print(
+            f"[FILA-PESADA] FIM ticket={ticket} acao={_descricao!r}; "
+            f"proximo={_fila_pesada_ticket_atual[0]}",
+            flush=True,
+        )
+        _fila_pesada_cond.notify_all()
 
 
 # ------------------------------------------------------------------
@@ -10146,7 +10246,7 @@ def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
             supabase.table("atividades")
             .select("id,tipo,titulo,status,detalhes")
             .eq("user_id", user_id)
-            .in_("tipo", ["ocr_gads", "migracao_midia"])
+            .in_("tipo", ["ocr_gads", "migracao_midia", "transcricao_video"])
             .in_("status", ["pendente", "em_andamento"])
             .execute()
         )
@@ -10233,7 +10333,7 @@ def _esperar_outra_acao_pesada_persistente(
         time.sleep(5.0)
 
 def _worker_ocr_global():
-    _entrou_fila_pesada = False
+    _ticket_fila_pesada = None
 
     # Pega o primeiro user da fila apenas para consultar o estado persistente
     # antes de ocupar a faixa pesada local. A fila continua intacta.
@@ -10252,8 +10352,7 @@ def _worker_ocr_global():
             descricao="OCR",
         )
 
-    _entrar_fila_acao_pesada("OCR", "fila global")
-    _entrou_fila_pesada = True
+    _ticket_fila_pesada = _entrar_fila_acao_pesada("OCR", "fila global")
     try:
         # O OCR pesado roda em processo Python externo de
         # uma imagem por vez. Não faz mais sentido segurar a fila por ~45s.
@@ -10316,8 +10415,8 @@ def _worker_ocr_global():
                 # Devolve memória temporária entre empresas antes de pegar a próxima.
                 _liberar_memoria_ocr(f"fim empresa OCR={empresa}")
     finally:
-        if _entrou_fila_pesada:
-            _sair_fila_acao_pesada()
+        if _ticket_fila_pesada is not None:
+            _sair_fila_acao_pesada(_ticket_fila_pesada)
 
         with _lock_worker_ocr_global:
             _worker_ocr_global_ativo[0] = False
@@ -10328,111 +10427,105 @@ def _worker_ocr_global():
                 threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
 def _garantir_worker_ocr_global():
-    """OCR é executado fora do Streamlit; mantido só por compatibilidade."""
-    return
-
+    with _lock_worker_ocr_global:
+        if _worker_ocr_global_ativo[0]:
+            return
+        _worker_ocr_global_ativo[0] = True
+        threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
 def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = False):
-    """Enfileira OCR para o worker EXTERNO através da tabela `atividades`.
-
-    O Streamlit NÃO executa EasyOCR/PyTorch e NÃO cria subprocesso local.
-    A atividade `ocr_gads` em status pendente é a própria fila persistente.
-    Um serviço separado, executando `ocr_worker.py`, consome essa fila,
-    processa as imagens e grava o resultado no Supabase.
-
-    Isso elimina a coexistência Streamlit + PyTorch no mesmo container.
-    """
+    """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
+    das imagens do Google Ads dessa empresa que já foram migradas pro R2
+    mas ainda não têm texto extraído. Mesmo padrão de
+    iniciar_transcricao_pendente_background — chamada logo depois da
+    migração terminar, sem bloquear quem chamou. Empresas só-Meta (sem
+    nenhuma imagem do Google) simplesmente não têm nada pendente e a
+    função sai sem criar atividade nenhuma."""
     if not user_id or not empresa:
-        print(
-            f"[OCR] fila externa ignorada: user_id={user_id!r} empresa={empresa!r}",
-            flush=True,
-        )
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r}", flush=True)
         return
-
+    if not _job_try_acquire("ocr_gads", user_id, empresa):
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: job central já ativo pra ({user_id!r}, {empresa!r})", flush=True)
+        return
+    with _lock_ocr_pendente:
+        if (user_id, empresa) in _ocr_empresas_ativas_agora:
+            _job_release("ocr_gads", user_id, empresa)
+            print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: já tem fila ativa pra ({user_id!r}, {empresa!r})", flush=True)
+            return
+        _ocr_empresas_ativas_agora.add((user_id, empresa))
     total = _contar_ocr_pendentes(user_id, empresa)
     if not total:
-        print(
-            f"[OCR] fila externa: nenhuma imagem pendente empresa={empresa!r}",
-            flush=True,
-        )
+        print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: total=0 pendentes pra empresa={empresa!r} (ver log de _contar_ocr_pendentes acima)", flush=True)
+        with _lock_ocr_pendente:
+            _ocr_empresas_ativas_agora.discard((user_id, empresa))
+        _job_release("ocr_gads", user_id, empresa)
         return
-
+    print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
     _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
 
-    _status_atual = ""
-    if atividade_id:
+    # V80 — uma atividade que terminou em ERRO não pode voltar
+    # automaticamente para "Na fila" a cada polling. Isso fazia o mesmo
+    # card oscilar Na fila -> Processando -> Erro -> Na fila e repetia a
+    # mesma mídia defeituosa indefinidamente. Depois de erro, só uma ação
+    # explícita de Refazer (force=True) reabre a fila.
+    if atividade_id and not force:
         try:
-            _r = (
-                supabase.table("atividades")
-                .select("status,detalhes")
-                .eq("id", atividade_id)
-                .limit(1)
-                .execute()
-            )
-            _row = (_r.data or [{}])[0]
-            _status_atual = str(_row.get("status") or "")
-            if _row.get("detalhes"):
-                _det_ocr = _row.get("detalhes") or _det_ocr
+            _r_status_ocr = (supabase.table("atividades").select("status")
+                             .eq("id", atividade_id).limit(1).execute())
+            _status_ocr_atual = ((_r_status_ocr.data or [{}])[0].get("status") or "")
         except Exception:
-            pass
+            _status_ocr_atual = ""
+        if _status_ocr_atual == "erro" and not force:
+            print(
+                f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: atividade em erro aguarda Refazer manual empresa={empresa!r}",
+                flush=True,
+            )
+            with _lock_ocr_pendente:
+                _ocr_empresas_ativas_agora.discard((user_id, empresa))
+            _job_release("ocr_gads", user_id, empresa)
+            print(
+                f"[OCR-DEBUG] liberou job central após atividade em erro empresa={empresa!r}; Refazer permanece disponível",
+                flush=True,
+            )
+            return
 
-    # Worker externo já está processando: não reabre nem reseta o card.
-    if _status_atual == "em_andamento" and not force:
-        print(
-            f"[OCR] fila externa: atividade já em processamento empresa={empresa!r}",
-            flush=True,
-        )
-        return
-
-    # Depois de erro, só Refazer explícito reabre a atividade.
-    if _status_atual == "erro" and not force:
-        print(
-            f"[OCR] fila externa: atividade em erro aguarda Refazer empresa={empresa!r}",
-            flush=True,
-        )
-        return
-
-    _feitas = int(_det_ocr.get("processadas") or 0)
-    _total = max(int(_det_ocr.get("total") or 0), _feitas + total)
-
-    _detalhes_fila = {
-        "empresa": empresa,
-        "processadas": _feitas,
-        "total": _total,
-        "worker": "externo",
-        "worker_externo": True,
-        "mensagem_fila": "Aguardando o worker de OCR.",
-        "status_visual": "na_fila",
-        "enfileirado_em": _agora_iso(),
-    }
+        if _status_ocr_atual == "erro" and force:
+            print(
+                f"[OCR-DEBUG] V114 force=True IGNORA atividade antiga em erro e continua para nova execução empresa={empresa!r}",
+                flush=True,
+            )
 
     if atividade_id:
-        atualizar_atividade(
-            atividade_id,
-            "na_fila",
-            _detalhes_fila,
-        )
+        # V74 — NUNCA zera um checkpoint existente. Se estava 2/3, a
+        # retomada permanece 2/3 e só a mídia pendente volta para a fila.
+        _feitas_ocr = int(_det_ocr.get("processadas") or 0)
+        _total_ocr = max(int(_det_ocr.get("total") or 0), _feitas_ocr + total)
+        atualizar_atividade(atividade_id, "na_fila", {
+            "empresa": empresa, "processadas": _feitas_ocr, "total": _total_ocr,
+            "mensagem_fila": "Aguardando a vez de continuar o OCR.",
+        })
     else:
         atividade_id = criar_atividade(
-            user_id,
-            "ocr_gads",
-            f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
-            _detalhes_fila,
-            status="na_fila",
+            user_id, "ocr_gads", f"{empresa} · Extraindo texto dos anúncios do Google Ads (OCR)",
+            {"empresa": empresa, "processadas": 0, "total": total,
+             "mensagem_fila": "Aguardando a vez de iniciar o OCR."},
         )
-
+        # criar_atividade pode nascer pendente conforme implementação antiga;
+        # normaliza explicitamente para o novo estado da fila.
+        atualizar_atividade(atividade_id, "na_fila", {
+            "empresa": empresa, "processadas": 0, "total": total,
+            "mensagem_fila": "Aguardando a vez de iniciar o OCR.",
+        })
+    _fila_ocr_global.put((user_id, empresa, atividade_id))
     print(
-        f"[OCR] ENFILEIRADO NO SUPABASE empresa={empresa!r} "
-        f"atividade={atividade_id} pendentes={total}",
+        f"[OCR-DEBUG] enfileirado no worker global: empresa={empresa!r} fila={_fila_ocr_global.qsize()}",
         flush=True,
     )
-    # IMPORTANTE: não chamar _garantir_worker_ocr_global().
-    # O worker fica em outro serviço/container.
+    _garantir_worker_ocr_global()
 
 
 # ---------------------------------------------------
-#  TRANSCRIÇÃO DE REELS# ---------------------------------------------------
 #  TRANSCRIÇÃO DE REELS (REDES SOCIAIS) — mesmo padrão dos vídeos de
 #  Anúncios acima, mas adaptado: aqui não existe uma tabela `midias` por
 #  vídeo — os posts de Redes Sociais vivem inteiros dentro do JSON
@@ -13820,7 +13913,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     _detalhe = f"{', '.join(_plataformas)} · {len(tarefas)} empresa(s)"
 
     # Se a faixa estiver ocupada, mostra no sino que a migração está em fila.
-    if _lock_fila_acoes_pesadas.locked():
+    if _fila_pesada_esta_ocupada():
         for empresa, _entry, atividade_id, plataforma in tarefas:
             try:
                 atualizar_atividade(
@@ -13836,7 +13929,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
             except Exception:
                 pass
 
-    _entrou_fila_pesada = False
+    _ticket_fila_pesada = None
     try:
         # Segunda camada: mesmo que o processo tenha reiniciado e perdido o
         # threading.Lock anterior, uma atividade OCR com heartbeat recente
@@ -13848,8 +13941,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
             descricao=f"MIGRAÇÃO {_detalhe}",
         )
 
-        _entrar_fila_acao_pesada("MIGRAÇÃO", _detalhe)
-        _entrou_fila_pesada = True
+        _ticket_fila_pesada = _entrar_fila_acao_pesada("MIGRAÇÃO", _detalhe)
 
         print(
             f"[MIGR-DEBUG] migração liberada pela fila pesada: "
@@ -13898,8 +13990,8 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                     f"{plataforma}:{empresa}",
                 )
     finally:
-        if _entrou_fila_pesada:
-            _sair_fila_acao_pesada()
+        if _ticket_fila_pesada is not None:
+            _sair_fila_acao_pesada(_ticket_fila_pesada)
 
 
 def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str = "Meta Ads"):

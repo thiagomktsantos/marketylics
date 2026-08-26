@@ -35,6 +35,43 @@ class _StV126:
 
 st = _StV126()
 
+
+def _mem_snapshot_ocr(etapa: str):
+    """Log detalhado de memória do worker, incluindo filhos quando possível."""
+    import os as _os_mem
+    import gc as _gc_mem
+    rss_mb = -1.0
+    vms_mb = -1.0
+    filhos_rss_mb = 0.0
+    try:
+        import psutil as _ps_mem
+        _p = _ps_mem.Process(_os_mem.getpid())
+        _mi = _p.memory_info()
+        rss_mb = _mi.rss / (1024 * 1024)
+        vms_mb = _mi.vms / (1024 * 1024)
+        try:
+            for _c in _p.children(recursive=True):
+                try:
+                    filhos_rss_mb += _c.memory_info().rss / (1024 * 1024)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    except Exception:
+        try:
+            rss_mb = _rss_processo_mb()
+        except Exception:
+            pass
+
+    print(
+        f"[OCR-MEM] etapa={etapa!r} pid={_os_mem.getpid()} "
+        f"RSS={rss_mb:.1f} MB VMS={vms_mb:.1f} MB "
+        f"filhos_RSS={filhos_rss_mb:.1f} MB "
+        f"GC={_gc_mem.get_count()}",
+        flush=True,
+    )
+
+
 def _limitar_threads_cpu_ocr_apos_import():
     try:
         import torch
@@ -152,10 +189,14 @@ def _get_easyocr():
                 if _rss_antes_easyocr > _LIMITE_RSS_ANTES_IMPORT_MB:
                     raise RuntimeError(f'Memória base alta demais para iniciar EasyOCR com segurança (RSS={_rss_antes_easyocr:.0f} MB antes do import; limite={_LIMITE_RSS_ANTES_IMPORT_MB} MB)')
                 print('[OCR-DEBUG] inicializando EasyOCR (única instância global)...', flush=True)
+                _mem_snapshot_ocr('antes import easyocr')
                 import easyocr
+                _mem_snapshot_ocr('depois import easyocr/torch')
                 _limitar_threads_cpu_ocr_apos_import()
                 _liberar_memoria_ocr('apos import EasyOCR/torch, antes Reader')
+                _mem_snapshot_ocr('antes EasyOCR.Reader')
                 _easyocr_instancia[0] = easyocr.Reader(['pt'], gpu=False, verbose=False)
+                _mem_snapshot_ocr('depois EasyOCR.Reader')
                 _liberar_memoria_ocr('depois EasyOCR init')
                 print('[OCR-DEBUG] EasyOCR inicializado com sucesso', flush=True)
         except BaseException:
@@ -168,6 +209,7 @@ def _baixar_imagem_cv2(url_imagem: str):
     """Baixa a imagem (já no nosso R2) e devolve o array BGR decodificado
     (formato que o OpenCV/EasyOCR esperam), ou None se o download ou a
     decodificação falharem."""
+    _mem_snapshot_ocr('antes baixar imagem')
     import numpy as _np_ocr
     import cv2 as _cv2_ocr
     r = _http_get(url_imagem, timeout=20)
@@ -2854,7 +2896,20 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str=None) -> di
     resultado['descricao'] = descricao
     return resultado
 
+
+def _readtext_instrumentado(reader, imagem, *args, etapa="readtext", **kwargs):
+    _mem_snapshot_ocr(f"antes {etapa}")
+    try:
+        _res = reader.readtext(imagem, *args, **kwargs)
+        _mem_snapshot_ocr(f"depois {etapa}")
+        return _res
+    except BaseException:
+        _mem_snapshot_ocr(f"erro {etapa}")
+        raise
+
+
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):
+    _mem_snapshot_ocr('entrada extrair_ocr_estruturado')
     """Baixa a imagem (já no nosso R2) e separa, de forma ESTRUTURADA,
     os campos título/descrição/url_exibida/cta/sitelinks de um anúncio
     de TEXTO do Google Ads — sem nenhuma IA generativa, só EasyOCR +
@@ -3294,6 +3349,7 @@ def _cli_single_image():
         return 2
 
     entrada, saida = sys.argv[1], sys.argv[2]
+    _mem_snapshot_ocr('worker inicio')
     try:
         with open(entrada, "r", encoding="utf-8") as f:
             payload = json.load(f)
@@ -3318,6 +3374,7 @@ def _cli_single_image():
         }
         with open(saida, "w", encoding="utf-8") as f:
             json.dump(resultado, f, ensure_ascii=False)
+        _mem_snapshot_ocr('worker fim antes return')
         return 0 if resultado["ok"] else 3
     except BaseException as exc:
         try:

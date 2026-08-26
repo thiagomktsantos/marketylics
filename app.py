@@ -9740,8 +9740,8 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
 # O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
 # Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
 # Ao terminar, o kernel devolve toda a RAM do PyTorch/modelos automaticamente.
-_OCR_ISOLADO_TAMANHO_LOTE = 1
-_OCR_ISOLADO_TIMEOUT_SEG = 300
+_OCR_ISOLADO_TAMANHO_LOTE = 100
+_OCR_ISOLADO_TIMEOUT_SEG = 3600
 
 
 def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
@@ -9764,7 +9764,8 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     import hashlib as _hashlib_ocr
     import datetime as _dt_ocr
 
-    item = itens[0]
+    primeiro_item = itens[0]
+    total_itens = len(itens)
 
     _base_dir = Path(__file__).resolve().parent
     _worker = (_base_dir / "ocr_worker.py").resolve()
@@ -9798,7 +9799,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
     _entrada.write_text(
         json.dumps(
-            {"empresa": empresa, "item": item},
+            {"empresa": empresa, "itens": itens},
             ensure_ascii=False,
         ),
         encoding="utf-8",
@@ -9824,7 +9825,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
         flush=True,
     )
     print(
-        f"[OCR] externo INICIO empresa={empresa!r} id={item.get('id')} "
+        f"[OCR] externo INICIO empresa={empresa!r} lote={total_itens} "
         f"python={sys.executable!r} RSS_pai={_rss_processo_mb():.1f} MB",
         flush=True,
     )
@@ -9852,6 +9853,18 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
                     pass
             return _rss, _filhos
         except Exception:
+            # Streamlit Community Cloud pode não ter psutil disponível.
+            # Linux /proc fornece RSS do filho sem adicionar dependência.
+            try:
+                _status = Path(f"/proc/{int(_pid)}/status").read_text(
+                    encoding="utf-8",
+                    errors="ignore",
+                )
+                _m = re.search(r"^VmRSS:\s+(\d+)\s+kB", _status, re.M)
+                if _m:
+                    return int(_m.group(1)) / 1024.0, 0.0
+            except Exception:
+                pass
             return -1.0, 0.0
 
     def _drenar_pipe(_pipe, _prefixo, _destino):
@@ -9953,7 +9966,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
                     "ok": False,
                     "erro": (
                         f"Worker OCR externo excedeu "
-                        f"{_OCR_ISOLADO_TIMEOUT_SEG}s na mídia {item.get('id')}."
+                        f"{_OCR_ISOLADO_TIMEOUT_SEG}s no lote de {total_itens} mídia(s)."
                     ),
                     "resultados": [],
                 }
@@ -10010,23 +10023,30 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
             }
 
         _res = json.loads(_saida.read_text(encoding="utf-8"))
+        _resultados = _res.get("resultados")
+        if not isinstance(_resultados, list):
+            # Compatibilidade defensiva com worker antigo de item único.
+            _resultados = [{
+                "id": str(primeiro_item.get("id") or ""),
+                "ok": bool(_res.get("ok")),
+                "estruturado": _res.get("estruturado"),
+                "diag": _res.get("diag"),
+                "erro": _res.get("erro"),
+            }]
 
+        _ok_lote = bool(_res.get("ok", True))
         print(
             f"[OCR] externo FIM empresa={empresa!r} "
-            f"id={item.get('id')} pid={_proc.pid} returncode={_rc} "
+            f"lote={total_itens} resultados={len(_resultados)} "
+            f"pid={_proc.pid} returncode={_rc} "
             f"RSS_pai={_rss_pai_final:.1f} MB",
             flush=True,
         )
 
         return {
-            "ok": True,
-            "resultados": [{
-                "id": str(item.get("id") or ""),
-                "ok": bool(_res.get("ok")),
-                "estruturado": _res.get("estruturado"),
-                "diag": _res.get("diag"),
-                "erro": _res.get("erro"),
-            }],
+            "ok": _ok_lote,
+            "resultados": _resultados,
+            "erro": _res.get("erro"),
         }
 
     except BaseException as _exc:
@@ -10130,7 +10150,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
 
             print(
                 f"[OCR] CHAMANDO worker externo empresa={empresa!r} "
-                f"id={_payload[0].get('id') if _payload else None} "
+                f"lote={len(_payload)} primeiro_id={_payload[0].get('id') if _payload else None} "
                 f"processadas={processadas}/{max(total, processadas)} "
                 f"RSS_pai={_rss_processo_mb():.1f} MB",
                 flush=True,

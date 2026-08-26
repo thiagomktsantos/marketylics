@@ -1,18 +1,25 @@
-streamlit
-supabase
-requests
-httpx
-pandas
-numpy
-Pillow
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+streamlit==1.62.0
+supabase==2.31.0
+requests==2.34.2
+httpx==0.28.1
+pandas==3.0.5
+numpy==2.5.2
+Pillow==12.3.0
 psutil
 
-playwright
-trafilatura
-boto3
+playwright==1.62.0
+trafilatura==2.2.0
+boto3==1.43.81
+botocore==1.43.81
 
-google-generativeai
-faster-whisper
-opencv-python-headless
-easyocr
-yt-dlp
+google-generativeai==0.8.6
+faster-whisper==1.2.1
+opencv-python-headless==5.0.0.93
+easyocr==1.7.2
+
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+
+pyarrow==24.0.0

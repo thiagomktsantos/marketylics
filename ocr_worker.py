@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-OCR worker V126 — processo independente do Streamlit.
+OCR worker — processo independente do Streamlit.
 
-Gerado a partir do núcleo OCR da V125. Não importa Streamlit, Supabase,
+Worker isolado do núcleo OCR. Não importa Streamlit, Supabase,
 Playwright nem a interface do app. O objetivo é carregar EasyOCR/PyTorch
 em um processo pequeno e descartável, reduzindo o pico total de RAM.
 """
@@ -2977,7 +2977,7 @@ def _main_v126():
             raise RuntimeError("url_cdn ausente")
 
         print(
-            f"[OCR-WORKER-V126] inicio id={midia_id} empresa={empresa!r} "
+            f"[OCR-WORKER] inicio id={midia_id} empresa={empresa!r} "
             f"RSS={_rss_processo_mb():.1f} MB",
             flush=True,
         )
@@ -3002,7 +3002,7 @@ def _main_v126():
             )
 
         print(
-            f"[OCR-WORKER-V126] fim id={midia_id} ok={resultado['ok']} "
+            f"[OCR-WORKER] fim id={midia_id} ok={resultado['ok']} "
             f"RSS={_rss_processo_mb():.1f} MB",
             flush=True,
         )
@@ -3028,7 +3028,7 @@ def _main_v126():
         except Exception:
             pass
         print(
-            f"[OCR-WORKER-V126] ERRO {erro['erro']}",
+            f"[OCR-WORKER] ERRO {erro['erro']}",
             file=sys.stderr,
             flush=True,
         )

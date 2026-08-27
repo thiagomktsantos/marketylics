@@ -1439,7 +1439,7 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
 
 
 def _texto_ocr_parece_grudado(texto):
-    """V153 — detector geral de palavras fundidas, inclusive em títulos azuis.
+    """V154 — detector geral de palavras fundidas, inclusive em títulos azuis.
 
     Além de CamelCase e letra↔número, detecta tokens longos demais em relação
     ao número de espaços da banda e sequências de minúsculas muito extensas
@@ -1531,10 +1531,10 @@ def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
 
         if melhor is not None:
             _, alt2, cand, sim, ganho = melhor
-            print(f'[OCR-DEBUG] V153 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
+            print(f'[OCR-DEBUG] V154 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
             return alt2
     except Exception as e:
-        print(f'[OCR-DEBUG] V153 releitura anti-grudado falhou: {e!r}', flush=True)
+        print(f'[OCR-DEBUG] V154 releitura anti-grudado falhou: {e!r}', flush=True)
     return resultado_atual
 
 def _limpar_ruido_ocr_v152(txt):
@@ -1612,7 +1612,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V153 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V154 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
@@ -1755,6 +1755,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
                 partes.append(_txt_recuperado)
     _texto_completo = ' '.join(partes)
     _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
+    _texto_completo = _corrigir_espacos_pos_ocr_v154(_texto_completo)
     if not retornar_linhas:
         return _texto_completo
     _linhas_out = []
@@ -2723,7 +2724,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
         return None
     _conteudo.sort(key=lambda l: l['yc'])
 
-    # V153 — split-card é um card vertical no painel direito:
+    # V154 — split-card é um card vertical no painel direito:
     # primeiro bloco textual = título; tudo abaixo até o botão = descrição.
     # A heurística antiga por altura podia anexar a 1ª linha da descrição ao
     # título ("Fórmula 1 o GP de Fórmula 1 de") ou quebrar a descrição em partes.
@@ -2762,6 +2763,52 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título = primeiro bloco textual do painel direito; descrição = blocos seguintes até a bbox do botão; CTA separado pela região do botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
     print(f'[OCR-DEBUG] split-card detectado seam={_seam_x}/{w} score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
+
+def _normalizar_url_exibida_v154(url_txt):
+    """URLs exibidas devem ser normalizadas em minúsculas."""
+    s = (url_txt or '').strip()
+    if not s:
+        return ''
+    s = re.sub(r'\s+', '', s)
+    return s.lower()
+
+
+def _corrigir_espacos_pos_ocr_v154(s):
+    """Correções genéricas de espaçamento pós-OCR."""
+    t = (s or '').strip()
+    if not t:
+        return ''
+
+    t = re.sub(r'(?<!\.)\.(?=[A-ZÀ-Ý])', '. ', t)
+    t = re.sub(r',(?=[A-Za-zÀ-ÿ])', ', ', t)
+
+    def _split_token(m):
+        tok = m.group(0)
+        if len(tok) < 10:
+            return tok
+        out = re.sub(r'(?<=[a-zà-ÿ])(?=[A-ZÀ-Ý])', ' ', tok)
+        out = re.sub(r'(?<=[A-Za-zÀ-ÿ])(?=\d)', ' ', out)
+        out = re.sub(r'(?<=\d)(?=[A-Za-zÀ-ÿ])', ' ', out)
+        return out
+
+    t = re.sub(r'[A-Za-zÀ-ÿ0-9]{10,}', _split_token, t)
+    t = re.sub(r'\b(em|de|para|no|na|nos|nas)(?=\d)', r'\1 ', t, flags=re.I)
+    t = re.sub(r'\.,$|,\.$|;\.$|\.;$', '.', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+def _separar_links_azuis_hr_v154(texto):
+    """Separa dois links azuis lado a lado representados por hífen visual."""
+    s = (texto or '').strip()
+    if not s:
+        return []
+    s = re.sub(r'\s*[-–—]\s*$', '', s).strip()
+    partes = [p.strip() for p in re.split(r'\s+[-–—]\s+', s) if p.strip()]
+    if len(partes) == 2:
+        return partes
+    return []
+
 
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
@@ -2910,7 +2957,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _pool = _limpos if _limpos else _candidatos
         _com_protocolo = [c for c in _pool if re.match('^https?://', c, re.IGNORECASE)]
         _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
-    resultado['url_exibida'] = '\n'.join(_partes_dominio)
+    resultado['url_exibida'] = _normalizar_url_exibida_v154('\n'.join(_partes_dominio))
     pares = []
     par_atual = None
     while idx < len(bandas_texto) and bandas_texto[idx]['classe'] == 'azul':
@@ -2995,7 +3042,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 if len(_alfanum) >= 2:
                     _textos_botoes_validos.append(_texto_botao)
 
-            # V153 — uma fileira só existe quando há pelo menos dois blocos com
+            # V154 — uma fileira só existe quando há pelo menos dois blocos com
             # texto real. "| |", bordas de imagem e divisores não mudam o estado
             # do parser nem transformam a descrição seguinte em CTA.
             if len(_textos_botoes_validos) < 2:
@@ -3042,6 +3089,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _buy_sell_parece_continuacao_titulo = banda['classe'] == 'azul' and (not banda.get('sep_antes')) and (par_atual is not None) and (not par_atual[1]) and bool(re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm)) and bool(re.search('(?i)\\|\\s*(?:TS|TicketSwap)\\s*$', _texto_desc_norm)) and (len(_texto_desc_norm.split()) <= 8)
         if par_atual is not None and _titulo_ja_reconhecido and re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm) and (not _buy_sell_parece_continuacao_titulo):
             _descricao_busca_forcada = True
+        _links_hr_v154 = _separar_links_azuis_hr_v154(_texto_desc_norm) if banda['classe'] == 'azul' else []
+        if len(_links_hr_v154) == 2 and (not banda.get('sep_antes')):
+            if par_atual is not None:
+                pares.append(par_atual)
+                par_atual = None
+            for _lk in _links_hr_v154:
+                resultado['sitelinks'].append({'titulo': _lk, 'descricao': ''})
+            _debug_bandas[idx]['texto'] = ' <hr> '.join(_links_hr_v154)
+            _debug_bandas[idx]['decisao'] = 'azul → 2 links inferiores separados por <hr>'
+            idx += 1
+            continue
         _azul_parece_links_relacionados = banda['classe'] == 'azul' and bool(re.search('[·•]', _texto_desc_norm)) and (len([p for p in re.split('\\s*[·•]\\s*', _texto_desc_norm) if p.strip()]) >= 2)
         _empresa_norm_v57 = str(empresa or '').strip().lower().replace(' ', '')
         _partes_hifen_v57 = [p.strip() for p in re.split('\\s+[\\-–—]\\s+', re.sub('\\s*[\\-–—]\\s*$', '', _texto_desc_norm)) if p.strip()]
@@ -3119,7 +3177,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                     if _linhas_banda:
                         _primeira_linha_txt = _limpar_pontuacao_ocr(_linhas_banda[0]['texto'])
                         if _corrigir_nome_pagina_com_empresa(_primeira_linha_txt, empresa) == empresa:
-                            resultado['url_exibida'] = _melhor_nome_para_exibir(_primeira_linha_txt, empresa)
+                            resultado['url_exibida'] = _normalizar_url_exibida_v154(_melhor_nome_para_exibir(_primeira_linha_txt, empresa))
                             if _linhas_banda[1:]:
                                 _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(_linhas_banda[1:])
                             else:

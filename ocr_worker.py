@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
 # V159 — rollback controlado para o motor pré-global da V146.
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
@@ -2794,44 +2795,37 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             if str(empresa or '').strip().lower().replace(' ', '') == 'ticketswap' and _partes_relacionados:
                 _partes_relacionados = [re.sub('(?i)^reg[ií]strate\\s*[,;:]\\s*entra$', 'Regístrate o entra', _p.strip()) for _p in _partes_relacionados]
             if _portao_seguranca_relacionados and (not _relacionados_split_textual_confiavel):
-                # V160 — um único hífen interno em um sitelink vertical é parte
-                # do próprio texto: "GP Brasil - 3 Dias", "GP Brasil - Domingo",
-                # "GP Brasil - Sábado". Não usar o grande vão ao redor do hífen
-                # como evidência de dois links diferentes.
-                _texto_sem_fim_v160 = re.sub(r'\s*[-–—]\s*$', '', texto or '').strip()
-                _hifens_internos_v160 = re.findall(r'\s+[-–—]\s+', _texto_sem_fim_v160)
-                _tem_hifen_final_v160 = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
-                _hifen_unico_legitimo_v160 = (
+                # V161 — banda com separador ANTES normalmente é um sitelink
+                # vertical individual. Sem separador textual explícito dentro
+                # da própria linha, NÃO usar gaps entre palavras para inventar
+                # dois links.
+                _tem_sep_textual_v161 = bool(re.search(r'[|·•]', texto or ''))
+                _tem_hifen_final_v161 = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
+
+                _sitelink_vertical_individual_v161 = (
                     bool(banda.get('sep_antes'))
-                    and len(_hifens_internos_v160) == 1
-                    and not _tem_hifen_final_v160
-                    and not re.search(r'[|·•]', texto or '')
+                    and not _tem_sep_textual_v161
+                    and not _tem_hifen_final_v161
                 )
 
-                if _hifen_unico_legitimo_v160:
+                if _sitelink_vertical_individual_v161:
                     _candidatos_gap = []
                 else:
                     _candidatos_gap = _dividir_termos_relacionados_por_gap(
                         reader, img_bgr, banda['y_min'], banda['y_max']
                     )
 
-                # Dois CTAs/sitelinks lado a lado continuam válidos quando a
-                # geometria realmente indica dois blocos.
                 if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
-            # V160 — proteção final: mesmo que uma heurística textual anterior
-            # tenha dividido "GP Brasil - 3 Dias" em duas partes, restaura a linha
-            # como um único sitelink quando há só um hífen interno legítimo.
-            _texto_sem_fim_v160b = re.sub(r'\s*[-–—]\s*$', '', texto or '').strip()
-            _hifens_v160b = re.findall(r'\s+[-–—]\s+', _texto_sem_fim_v160b)
-            _hifen_final_v160b = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
+            # V161 — proteção final para sitelink vertical individual.
+            _sep_explicito_v161b = bool(re.search(r'[|·•]', texto or ''))
+            _hifen_final_v161b = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
             if (
                 _partes_relacionados
-                and len(_partes_relacionados) == 2
+                and len(_partes_relacionados) >= 2
                 and bool(banda.get('sep_antes'))
-                and len(_hifens_v160b) == 1
-                and not _hifen_final_v160b
-                and not re.search(r'[|·•]', texto or '')
+                and not _sep_explicito_v161b
+                and not _hifen_final_v161b
             ):
                 _partes_relacionados = None
 

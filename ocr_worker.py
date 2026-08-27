@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-# V163_V2 — parser experimental por blocos visuais para Google Search responsivo.
+# V165_V2 — sitelinks no padrão 'A - B -' são emitidos como 'A <hr> B'.
+# V165_V2 — split-card também tratado dentro do parser V2.
+# V165_V2 — parser experimental por blocos visuais para Google Search responsivo.
 # Mantém OCR local por banda e fallback automático para o parser legado.
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2498,7 +2500,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
 # ============================================================
-# V163_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
+# V165_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
 # ============================================================
 def _v2_limpar_texto(txt):
     s = _normalizar_aspas_ocr(_limpar_pontuacao_ocr((txt or '').strip()))
@@ -2603,8 +2605,271 @@ def _v2_split_horizontal_links(reader, img_bgr, banda, texto):
 
 
 
+def _v2_detectar_split_card(img_bgr, reader, empresa=None):
+    """V164 — split-card do Google Ads tratado pelo parser V2.
+
+    Detecta painel gráfico à esquerda + painel textual branco à direita.
+    O OCR é feito somente no painel direito. Depois:
+      - avatar/logo grande isolado no topo é ignorado;
+      - CTA é retirado pela própria linha/botão;
+      - título é o bloco de maior corpo no topo;
+      - descrição é TODO o texto entre título e CTA.
+    """
+    import cv2 as _cv2_v2s
+    import numpy as _np_v2s
+
+    if img_bgr is None or getattr(img_bgr, 'size', 0) == 0:
+        return None
+
+    h, w = img_bgr.shape[:2]
+    if h < 220 or w < 360:
+        return None
+
+    ratio = w / max(1.0, float(h))
+    if not (0.9 <= ratio <= 2.2):
+        return None
+
+    try:
+        gray = _cv2_v2s.cvtColor(img_bgr, _cv2_v2s.COLOR_BGR2GRAY)
+    except Exception:
+        return None
+
+    col_mean = gray.mean(axis=0)
+    ini_x = int(w * 0.28)
+    fim_x = int(w * 0.68)
+    faixa = max(6, int(w * 0.015))
+
+    melhor = None
+    for x in range(ini_x, fim_x):
+        esq = col_mean[max(0, x-faixa):x]
+        dire = col_mean[x:min(w, x+faixa)]
+        if esq.size == 0 or dire.size == 0:
+            continue
+        me = float(esq.mean())
+        md = float(dire.mean())
+        score = md - me
+        if melhor is None or score > melhor[0]:
+            melhor = (score, x, me, md)
+
+    if not melhor:
+        return None
+
+    score, seam_x, _, _ = melhor
+    painel_dir = gray[:, min(w-1, seam_x+faixa):]
+    painel_esq = gray[:, :max(1, seam_x-faixa)]
+    if painel_dir.size == 0 or painel_esq.size == 0:
+        return None
+
+    media_dir = float(painel_dir.mean())
+    media_esq = float(painel_esq.mean())
+
+    if not (
+        score >= 75
+        and media_dir >= 215
+        and (media_dir - media_esq >= 55)
+        and 0.34 <= seam_x / float(w) <= 0.62
+    ):
+        return None
+
+    x0 = min(w-1, seam_x + max(8, int(w*0.025)))
+    x1 = max(x0+1, w - max(5, int(w*0.012)))
+    crop = img_bgr[:, x0:x1]
+    if crop.size == 0:
+        return None
+
+    try:
+        ocr = reader.readtext(
+            crop,
+            detail=1,
+            paragraph=False,
+            width_ths=0.22,
+            height_ths=0.50,
+            text_threshold=0.40,
+            low_text=0.22,
+            link_threshold=0.20,
+        ) or []
+    except Exception as exc:
+        print(f"[OCR-V2] split-card OCR falhou: {exc!r}", flush=True)
+        return None
+
+    caixas = []
+    for item in ocr:
+        if not item or len(item) < 3:
+            continue
+        bbox, txt, conf = item
+        txt = _v2_limpar_texto(txt)
+        if not txt:
+            continue
+        xs = [float(p[0]) for p in bbox]
+        ys = [float(p[1]) for p in bbox]
+        altura = max(ys)-min(ys)
+        caixas.append({
+            "texto": txt,
+            "conf": float(conf or 0),
+            "x0": min(xs), "x1": max(xs),
+            "y0": min(ys), "y1": max(ys),
+            "yc": (min(ys)+max(ys))/2,
+            "altura": max(1.0, altura),
+        })
+
+    if len(caixas) < 2:
+        return None
+
+    # Agrupa caixas na mesma linha.
+    caixas.sort(key=lambda c: (c["yc"], c["x0"]))
+    linhas = []
+    for c in caixas:
+        alocada = False
+        for l in linhas:
+            tol = max(6.0, min(c["altura"], l["altura"]) * 0.48)
+            if abs(c["yc"] - l["yc"]) <= tol:
+                l["itens"].append(c)
+                l["yc"] = sum(x["yc"] for x in l["itens"]) / len(l["itens"])
+                l["altura"] = max(l["altura"], c["altura"])
+                alocada = True
+                break
+        if not alocada:
+            linhas.append({"yc": c["yc"], "altura": c["altura"], "itens": [c]})
+
+    linhas.sort(key=lambda l: l["yc"])
+    for l in linhas:
+        l["itens"].sort(key=lambda c: c["x0"])
+        l["texto"] = _v2_limpar_texto(" ".join(c["texto"] for c in l["itens"]))
+
+    alturas = [l["altura"] for l in linhas if l.get("texto")]
+    med_alt = float(_np_v2s.median(alturas)) if alturas else 0.0
+
+    # Remove avatar/logo grande isolado.
+    conteudo = []
+    avatar_ignorados = []
+    for l in linhas:
+        txt = (l.get("texto") or "").strip()
+        if not txt:
+            continue
+        compacto = re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", txt)
+        eh_avatar = (
+            l["yc"] < h * 0.42
+            and len(compacto) <= 2
+            and l["altura"] >= max(26.0, med_alt * 1.45)
+        )
+        if eh_avatar:
+            avatar_ignorados.append(txt)
+            continue
+        conteudo.append(dict(l))
+
+    if not conteudo:
+        return None
+
+    # CTA: linha curta na metade inferior. Inclui "Acessar o site".
+    rx_cta = re.compile(
+        r"^(?:abrir|acessar(?:\s+o\s+site)?|acesse(?:\s+o\s+site)?|"
+        r"saiba\s+mais|ver\s+mais|comprar|compre\s+agora|comprar\s+agora|"
+        r"reservar|conferir|inscreva-?se|cadastre-?se)$",
+        re.I
+    )
+    cta = ""
+    cta_y = -1.0
+    restantes = []
+    for l in conteudo:
+        txt = re.sub(r"\s*[>›»→❯➜➤►]+\s*$", "", l["texto"]).strip()
+        if rx_cta.fullmatch(txt) and l["yc"] > h * 0.45:
+            if l["yc"] > cta_y:
+                cta = txt
+                cta_y = l["yc"]
+            continue
+        restantes.append(l)
+
+    if cta_y > 0:
+        restantes = [l for l in restantes if l["yc"] < cta_y - 4]
+
+    if len(restantes) < 2:
+        return None
+
+    restantes.sort(key=lambda l: l["yc"])
+
+    # Título = maior corpo no topo. Pode ter quebra em 2 linhas se a linha
+    # seguinte mantiver praticamente o mesmo corpo e estiver muito próxima.
+    topo = restantes[:min(4, len(restantes))]
+    altura_max_topo = max(l["altura"] for l in topo)
+    idx_titulo_inicio = next(
+        (i for i, l in enumerate(restantes) if l["altura"] >= altura_max_topo * 0.88),
+        0
+    )
+
+    # Tudo antes de um título real é ruído/avatar residual.
+    base = restantes[idx_titulo_inicio:]
+    if len(base) < 2:
+        return None
+
+    titulo_linhas = [base[0]]
+    h_tit = base[0]["altura"]
+    y_prev = base[0]["yc"]
+
+    for l in base[1:3]:
+        gap = l["yc"] - y_prev
+        mesma_fonte = l["altura"] >= h_tit * 0.86
+        muito_proxima = gap <= max(28.0, h_tit * 1.40)
+        if mesma_fonte and muito_proxima:
+            titulo_linhas.append(l)
+            y_prev = l["yc"]
+        else:
+            break
+
+    n_tit = len(titulo_linhas)
+    desc_linhas = base[n_tit:]
+    if not desc_linhas:
+        return None
+
+    titulo = _v2_limpar_texto(" ".join(l["texto"] for l in titulo_linhas))
+    descricao = _v2_limpar_texto(" ".join(l["texto"] for l in desc_linhas))
+
+    if not titulo or not descricao:
+        return None
+
+    debug_texto = f"{titulo} | {descricao}"
+    if cta:
+        debug_texto += f" | {cta}"
+
+    debug = [{
+        "idx": 0,
+        "classe": "split-card-v2",
+        "sep_antes": False,
+        "texto": debug_texto,
+        "decisao": (
+            "V2 split-card → painel esquerdo ignorado; título pelo maior corpo "
+            "no topo; descrição = todos os blocos entre título e CTA; CTA separado"
+        ),
+        "y_min": 0,
+        "y_max": int(h),
+        "x_min_favicon": int(seam_x),
+    }]
+
+    resultado = {
+        "titulo": titulo,
+        "descricao": descricao,
+        "url_exibida": empresa or "",
+        "url_final": "",
+        "cta": cta,
+        "cta_subtitulo": "",
+        "sitelinks": [],
+        "_debug_bandas": debug,
+        "_layout_ocr": "split_card_v2",
+        "_parser_v2": True,
+        "_parser_v2_confidence": 0.96 if cta else 0.90,
+        "_parser_v2_confiavel": True,
+    }
+
+    print(
+        f"[OCR-V2] split-card adotado seam={seam_x}/{w} "
+        f"titulo={titulo!r} descricao={descricao!r} cta={cta!r}",
+        flush=True,
+    )
+    return resultado
+
+
+
 def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
-    """Parser por BLOCOS visuais para Google Search responsivo.
+    """Parser por BLOCOS visuais para Google Ads responsivo.
 
     Princípios:
     - OCR continua LOCAL por banda (não reintroduz cache global);
@@ -2613,6 +2878,11 @@ def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
     - separação horizontal exige evidência geométrica real;
     - sitelinks verticais nunca são quebrados por espaços internos.
     """
+    # Primeiro tenta formatos gráficos responsivos dentro do próprio V2.
+    _split_v2 = _v2_detectar_split_card(img_bgr, reader, empresa=empresa)
+    if _split_v2 is not None:
+        return _split_v2
+
     bandas = _detectar_bandas_texto(img_bgr)
     bandas_texto = []
     sep_pendente = False
@@ -2750,14 +3020,39 @@ def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
             continue
 
         if it['classe'] == 'azul':
-            horizontais = _v2_split_horizontal_links(reader, img_bgr, it['banda'], txt)
-            if len(horizontais) >= 2:
-                # representa dois CTAs da MESMA fileira em um único sitelink
+            # V165 — regra estrutural prioritária para sitelinks horizontais:
+            # "A - B -" é a representação OCR de dois links lado a lado.
+            # Os hífens são divisores visuais e NÃO pertencem aos textos.
+            _txt_sem_final_v165 = re.sub(r'\s*[-–—]\s*$', '', txt or '').strip()
+            _partes_hifen_v165 = [
+                p.strip()
+                for p in re.split(r'\s+[-–—]\s+', _txt_sem_final_v165)
+                if p.strip()
+            ]
+            _tem_hifen_terminal_v165 = bool(re.search(r'\s+[-–—]\s*$', txt or ''))
+
+            if _tem_hifen_terminal_v165 and len(_partes_hifen_v165) == 2:
+                _titulo_hr_v165 = ' <hr> '.join(_partes_hifen_v165)
                 resultado['sitelinks'].append({
-                    'titulo': ' <hr> '.join(horizontais),
+                    'titulo': _titulo_hr_v165,
                     'descricao': ''
                 })
-                it['papel'] = 'sitelinks_horizontais'
+                # O debug deve mostrar a estrutura FINAL, não o texto bruto com hífen.
+                it['texto'] = _titulo_hr_v165
+                it['papel'] = 'sitelinks_horizontais_hr'
+                bloco_vertical_atual = None
+                r += 1
+                continue
+
+            horizontais = _v2_split_horizontal_links(reader, img_bgr, it['banda'], txt)
+            if len(horizontais) >= 2:
+                _titulo_hr_v165 = ' <hr> '.join(horizontais)
+                resultado['sitelinks'].append({
+                    'titulo': _titulo_hr_v165,
+                    'descricao': ''
+                })
+                it['texto'] = _titulo_hr_v165
+                it['papel'] = 'sitelinks_horizontais_hr'
                 bloco_vertical_atual = None
                 r += 1
                 continue
@@ -3459,7 +3754,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _reader = _get_easyocr()
             _etapa_ocr_diag = 'leitura_ocr'
             with _recurso_cpu_pesada('easyocr-estruturado'):
-                # V163_V2 experimental: tenta primeiro o parser por blocos.
+                # V165_V2 experimental: tenta primeiro o parser por blocos.
                 # Se ele não tiver confiança suficiente, usa o parser legado.
                 _v2 = _estruturar_anuncio_google_ads_v2(_img, _reader, empresa=empresa)
                 if _v2 is not None and _v2.get('_parser_v2_confiavel'):

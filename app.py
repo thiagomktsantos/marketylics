@@ -41782,6 +41782,37 @@ html, body { background: transparent; overflow: hidden; }
                 list(_ids_atuais) if _marcado else []
             )
 
+        # V144 — "Selecionar todas" e paginação superior na MESMA linha.
+        # A paginação usa o padrão numérico (página atual, próxima, reticências,
+        # última página e Prev/Next), como no restante da interface de referência.
+        def _notif_paginas_visiveis_v144(_atual: int, _total: int):
+            if _total <= 1:
+                return [_atual]
+            _vals = []
+            # começo da sequência
+            if _atual <= 2:
+                _vals.extend(range(1, min(_total, 3) + 1))
+            else:
+                _vals.extend([_atual - 1, _atual])
+                if _atual + 1 <= _total:
+                    _vals.append(_atual + 1)
+            _vals = sorted(set(x for x in _vals if 1 <= x <= _total))
+            _out = []
+            _prev = None
+            for _v in _vals:
+                if _prev is not None and _v - _prev > 1:
+                    _out.append("…")
+                _out.append(_v)
+                _prev = _v
+            if _total not in _vals:
+                if _prev is not None and _total - _prev > 1:
+                    _out.append("…")
+                _out.append(_total)
+            return _out
+
+        def _notif_ir_pagina_topo_v144(_nova):
+            st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_pag_toolbar))
+
         with st.container(key="_bloco_todas_topo"):
             _sel_cards_agora = [
                 str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", [])
@@ -41790,18 +41821,59 @@ html, body { background: transparent; overflow: hidden; }
                 str(x) for x in _ids_visiveis
             )
 
-            # Mantém o checkbox sincronizado quando a seleção muda por um card
-            # individual, sem quebrar o clique em "Selecionar todas" (o callback
-            # acima já atualizou a lista antes de chegarmos aqui).
             if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
                 st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
 
-            st.checkbox(
-                f"Selecionar todas ({len(_ids_visiveis)})",
-                key="_selecionar_todas_notif_cards",
-                help="Seleciona todas as notificações visíveis no filtro atual.",
-                on_change=_ao_alterar_selecionar_todas_notif_cards,
-            )
+            _col_sel_topo, _col_pag_topo = st.columns([4.6, 3.4], vertical_alignment="center")
+            with _col_sel_topo:
+                st.checkbox(
+                    f"Selecionar todas ({len(_ids_visiveis)})",
+                    key="_selecionar_todas_notif_cards",
+                    help="Seleciona todas as notificações visíveis nesta página.",
+                    on_change=_ao_alterar_selecionar_todas_notif_cards,
+                )
+            with _col_pag_topo:
+                if _notif_total_pag_toolbar > 1:
+                    _tokens_top = _notif_paginas_visiveis_v144(_notif_pag_toolbar, _notif_total_pag_toolbar)
+                    _spec_top = []
+                    if _notif_pag_toolbar > 1:
+                        _spec_top.append(("‹ Prev", _notif_pag_toolbar - 1, "prev"))
+                    for _tok in _tokens_top:
+                        if _tok == "…":
+                            _spec_top.append(("…", None, f"dots{len(_spec_top)}"))
+                        else:
+                            _spec_top.append((str(_tok), int(_tok), f"p{_tok}"))
+                    if _notif_pag_toolbar < _notif_total_pag_toolbar:
+                        _spec_top.append(("Next ›", _notif_pag_toolbar + 1, "next"))
+                    _cols_top = st.columns([1.15 if ("Prev" in x[0] or "Next" in x[0]) else 0.62 for x in _spec_top], gap="small")
+                    for _cc, (_lbl, _dest, _suf) in zip(_cols_top, _spec_top):
+                        with _cc:
+                            if _dest is None:
+                                st.markdown('<div class="notif-pag-dots">…</div>', unsafe_allow_html=True)
+                            else:
+                                st.button(
+                                    _lbl, key=f"_notif_top_v144_{_suf}",
+                                    disabled=(_dest == _notif_pag_toolbar),
+                                    on_click=_notif_ir_pagina_topo_v144, args=(_dest,),
+                                    use_container_width=True,
+                                )
+
+
+        st.markdown("""
+        <style>
+        /* V144 — paginação numérica compacta, alinhada como na referência. */
+        .notif-pag-dots {
+            height: 38px; display:flex; align-items:center; justify-content:center;
+            font-size:14px; font-weight:700; color:#9ca3af; white-space:nowrap;
+        }
+        .st-key-_bloco_todas_topo button {
+            min-height: 38px !important;
+            border-radius: 9px !important;
+            padding-left: 8px !important; padding-right: 8px !important;
+            white-space: nowrap !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
         st.markdown("""
         <style>
@@ -41935,32 +42007,57 @@ html, body { background: transparent; overflow: hidden; }
             st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_paginas))
 
         def _render_paginacao_notif(_posicao: str):
-            if _notif_total_itens <= _notif_page_size:
+            # V144 — paginação numérica no padrão da referência. No topo ela
+            # já é desenhada ao lado de "Selecionar todas"; aqui renderizamos
+            # somente o rodapé, alinhado à direita.
+            if _notif_total_itens <= _notif_page_size or _posicao == "topo":
                 return
-            _espaco, _pag = st.columns([6.2, 2.0])
+
+            def _tokens(_atual, _total):
+                if _atual <= 2:
+                    _vals = list(range(1, min(_total, 3) + 1))
+                else:
+                    _vals = [_atual - 1, _atual]
+                    if _atual + 1 <= _total:
+                        _vals.append(_atual + 1)
+                _vals = sorted(set(x for x in _vals if 1 <= x <= _total))
+                _out, _prev = [], None
+                for _v in _vals:
+                    if _prev is not None and _v - _prev > 1:
+                        _out.append("…")
+                    _out.append(_v)
+                    _prev = _v
+                if _total not in _vals:
+                    if _prev is not None and _total - _prev > 1:
+                        _out.append("…")
+                    _out.append(_total)
+                return _out
+
+            _spec = []
+            if _notif_pagina > 1:
+                _spec.append(("‹ Prev", _notif_pagina - 1, "prev"))
+            for _tok in _tokens(_notif_pagina, _notif_total_paginas):
+                if _tok == "…":
+                    _spec.append(("…", None, f"dots{len(_spec)}"))
+                else:
+                    _spec.append((str(_tok), int(_tok), f"p{_tok}"))
+            if _notif_pagina < _notif_total_paginas:
+                _spec.append(("Next ›", _notif_pagina + 1, "next"))
+
+            _espaco, _pag = st.columns([4.7, 3.3])
             with _pag:
-                _c_prev, _c_info, _c_next = st.columns([0.75, 1.5, 0.75])
-                with _c_prev:
-                    st.button(
-                        "‹", key=f"_notif_prev_{_posicao}",
-                        disabled=(_notif_pagina <= 1),
-                        on_click=_notif_ir_pagina, args=(_notif_pagina - 1,),
-                        use_container_width=True,
-                    )
-                with _c_info:
-                    st.markdown(
-                        f'<div style="height:38px;display:flex;align-items:center;justify-content:center;'
-                        f'font-size:13px;font-weight:600;color:#6b7280;white-space:nowrap">'
-                        f'{_notif_pagina} de {_notif_total_paginas}</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _c_next:
-                    st.button(
-                        "›", key=f"_notif_next_{_posicao}",
-                        disabled=(_notif_pagina >= _notif_total_paginas),
-                        on_click=_notif_ir_pagina, args=(_notif_pagina + 1,),
-                        use_container_width=True,
-                    )
+                _cols = st.columns([1.15 if ("Prev" in x[0] or "Next" in x[0]) else 0.62 for x in _spec], gap="small")
+                for _cc, (_lbl, _dest, _suf) in zip(_cols, _spec):
+                    with _cc:
+                        if _dest is None:
+                            st.markdown('<div class="notif-pag-dots">…</div>', unsafe_allow_html=True)
+                        else:
+                            st.button(
+                                _lbl, key=f"_notif_{_posicao}_v144_{_suf}",
+                                disabled=(_dest == _notif_pagina),
+                                on_click=_notif_ir_pagina, args=(_dest,),
+                                use_container_width=True,
+                            )
 
         if _notif_total_itens:
             _render_paginacao_notif("topo")

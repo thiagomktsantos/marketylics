@@ -10496,7 +10496,7 @@ def _esperar_outra_acao_pesada_persistente(
             try:
                 atualizar_atividade(
                     _aid,
-                    "em_andamento",
+                    "na_fila",
                     {
                         "aguardando_fila_pesada": True,
                         "aviso": "Aguardando a ação pesada atual terminar.",
@@ -10918,6 +10918,12 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     # armazenado como "pendente" enquanto o CHECK não for migrado.
     _status_db = "pendente" if status == "na_fila" else status
     payload = {"status": _status_db}
+    # V143 — quando uma atividade antiga é RECOLOCADA NA FILA, ela passa a
+    # representar uma nova execução para o usuário. Renova o timestamp usado
+    # pela página de notificações para que suba para o topo e mostre o tempo
+    # correto. Heartbeats em ``em_andamento`` NÃO mexem nesse horário.
+    if status == "na_fila":
+        payload["criado_em"] = _agora_iso()
     if detalhes is not None:
         _detalhes_db = dict(detalhes or {})
         if status == "na_fila":
@@ -14760,28 +14766,39 @@ def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> 
     return True
 
 def refazer_ocr_gads(user_id: str, empresa: str, atividade_id: str) -> bool:
-    """Equivalente a refazer_transcricao_video, mas pra atividades
-    `ocr_gads`: usado pelo botão "🔄 Refazer" quando o OCR de uma empresa
-    terminou como 'erro' (ex: falha ao salvar o texto extraído no
-    banco). Devolve False sem religar nada se não sobrou nenhuma imagem
-    pendente dessa empresa."""
+    """V143 — recoloca OCR em erro na fila global, sem furar a fila.
+
+    Antes o botão Refazer iniciava ``_ocr_pendentes_background`` diretamente,
+    fazendo a atividade virar ``em_andamento`` mesmo quando outro job pesado
+    já estava rodando. Agora reutiliza o mesmo coordenador FIFO de OCR: nasce
+    como ``na_fila`` e só muda para ``em_andamento`` quando o worker global
+    realmente pegar a atividade.
+    """
     if not user_id or not empresa:
         return False
     total = _contar_ocr_pendentes(user_id, empresa)
     if not total:
         atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "processadas": 0, "total": 0})
         return False
-    with _lock_ocr_pendente:
-        if (user_id, empresa) in _ocr_empresas_ativas_agora:
-            return True
-        _ocr_empresas_ativas_agora.add((user_id, empresa))
-    atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "processadas": 0, "total": total})
-    threading.Thread(
-        target=_ocr_pendentes_background,
-        args=(user_id, empresa, atividade_id),
-        daemon=True,
-    ).start()
+
+    # Libera marcas locais antigas para que o coordenador único possa
+    # reencaminhar a empresa sem criar execução paralela.
+    try:
+        with _lock_ocr_pendente:
+            _ocr_empresas_ativas_agora.discard((user_id, empresa))
+    except Exception:
+        pass
+    try:
+        _job_release("ocr_gads", user_id, empresa)
+    except Exception:
+        pass
+
+    # Mantém a mesma atividade (histórico), mas dá a ela um novo timestamp
+    # ao recolocá-la em ``na_fila``; iniciar_ocr_pendente_background(force)
+    # cuida do FIFO e só a transforma em processando quando chegar a vez.
+    iniciar_ocr_pendente_background(user_id, empresa, force=True)
     return True
+
 
 def _refazer_coleta_redes_background(user_id: str, dados_atuais: list, alvos: list, atividade_id: str):
     """Roda em thread: recoleta só os perfis de `alvos` via RapidAPI e
@@ -41513,6 +41530,13 @@ html, body { background: transparent; overflow: hidden; }
             return True
 
         _atividades_selecao = [a for a in _atividades_selecao if _bate_filtros_toolbar(a)]
+        # V143 — com paginação, "Selecionar todas" significa todas as
+        # notificações VISÍVEIS na página atual, não todas as páginas do filtro.
+        _notif_page_size_toolbar = 10
+        _notif_total_pag_toolbar = max(1, (len(_atividades_selecao) + _notif_page_size_toolbar - 1) // _notif_page_size_toolbar)
+        _notif_pag_toolbar = max(1, min(int(st.session_state.get("_notif_pagina", 1) or 1), _notif_total_pag_toolbar))
+        _notif_ini_toolbar = (_notif_pag_toolbar - 1) * _notif_page_size_toolbar
+        _atividades_selecao = _atividades_selecao[_notif_ini_toolbar:_notif_ini_toolbar + _notif_page_size_toolbar]
         _por_id_sel = {str(a.get("id")): a for a in _atividades_selecao if a.get("id")}
         _ids_visiveis = list(_por_id_sel.keys())
 
@@ -41892,6 +41916,57 @@ html, body { background: transparent; overflow: hidden; }
                     return _status_a == "concluido" and not _com_erro_a
                 return True
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
+
+        # V143 — paginação das notificações. O filtro é aplicado ANTES da
+        # paginação; ao trocar busca/status voltamos automaticamente à página 1.
+        _notif_page_size = 10
+        _notif_filtro_sig = f"{_termo_busca}|{_filtro_status_notif}"
+        if st.session_state.get("_notif_paginacao_filtro_sig") != _notif_filtro_sig:
+            st.session_state["_notif_paginacao_filtro_sig"] = _notif_filtro_sig
+            st.session_state["_notif_pagina"] = 1
+
+        _notif_total_itens = len(_todas_atividades)
+        _notif_total_paginas = max(1, (_notif_total_itens + _notif_page_size - 1) // _notif_page_size)
+        _notif_pagina = int(st.session_state.get("_notif_pagina", 1) or 1)
+        _notif_pagina = max(1, min(_notif_pagina, _notif_total_paginas))
+        st.session_state["_notif_pagina"] = _notif_pagina
+
+        def _notif_ir_pagina(_nova):
+            st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_paginas))
+
+        def _render_paginacao_notif(_posicao: str):
+            if _notif_total_itens <= _notif_page_size:
+                return
+            _espaco, _pag = st.columns([6.2, 2.0])
+            with _pag:
+                _c_prev, _c_info, _c_next = st.columns([0.75, 1.5, 0.75])
+                with _c_prev:
+                    st.button(
+                        "‹", key=f"_notif_prev_{_posicao}",
+                        disabled=(_notif_pagina <= 1),
+                        on_click=_notif_ir_pagina, args=(_notif_pagina - 1,),
+                        use_container_width=True,
+                    )
+                with _c_info:
+                    st.markdown(
+                        f'<div style="height:38px;display:flex;align-items:center;justify-content:center;'
+                        f'font-size:13px;font-weight:600;color:#6b7280;white-space:nowrap">'
+                        f'{_notif_pagina} de {_notif_total_paginas}</div>',
+                        unsafe_allow_html=True,
+                    )
+                with _c_next:
+                    st.button(
+                        "›", key=f"_notif_next_{_posicao}",
+                        disabled=(_notif_pagina >= _notif_total_paginas),
+                        on_click=_notif_ir_pagina, args=(_notif_pagina + 1,),
+                        use_container_width=True,
+                    )
+
+        if _notif_total_itens:
+            _render_paginacao_notif("topo")
+            _notif_inicio = (_notif_pagina - 1) * _notif_page_size
+            _notif_fim = _notif_inicio + _notif_page_size
+            _todas_atividades = _todas_atividades[_notif_inicio:_notif_fim]
 
         if not _todas_atividades:
             _bell_svg = _svg_icone(
@@ -42582,6 +42657,8 @@ html, body { background: transparent; overflow: hidden; }
     setTimeout(syncH, 500);
     </script>
     """, height=_altura_estim_cards, scrolling=False)
+
+            _render_paginacao_notif("rodape")
 
             # Botões nativos ocultos (um por atividade que pode ser "refeita") —
             # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse

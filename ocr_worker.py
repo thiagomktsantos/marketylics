@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-# V165_V2 — sitelinks no padrão 'A - B -' são emitidos como 'A <hr> B'.
-# V165_V2 — split-card também tratado dentro do parser V2.
-# V165_V2 — parser experimental por blocos visuais para Google Search responsivo.
+# V166_V2 — permite domínio como nome da empresa acima da URL completa.
+# V166_V2 — sitelinks no padrão 'A - B -' são emitidos como 'A <hr> B'.
+# V166_V2 — split-card também tratado dentro do parser V2.
+# V166_V2 — parser experimental por blocos visuais para Google Search responsivo.
 # Mantém OCR local por banda e fallback automático para o parser legado.
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2500,7 +2501,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
 # ============================================================
-# V165_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
+# V166_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
 # ============================================================
 def _v2_limpar_texto(txt):
     s = _normalizar_aspas_ocr(_limpar_pontuacao_ocr((txt or '').strip()))
@@ -2939,16 +2940,53 @@ def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
         len(itens)
     )
     header = [it for it in itens[:primeiro_azul] if it['texto']]
-    for it in header:
-        if _v2_parece_url(it['texto']):
+
+    # V166 — em algumas variações responsivas o Google mostra o DOMÍNIO como
+    # nome da página e, logo abaixo, a URL completa:
+    #
+    #   funbuynet.com.br
+    #   www.funbuynet.com.br/
+    #
+    # Portanto, duas linhas URL-like consecutivas NÃO significam duplicação.
+    # A primeira, quando não tem prefixo forte www/http e a seguinte tem, é o
+    # nome exibido da empresa; a segunda é a URL.
+    for _hi, it in enumerate(header):
+        _txt_h = (it['texto'] or '').strip()
+        _eh_url_h = _v2_parece_url(_txt_h)
+        _tem_prefixo_forte_h = bool(
+            re.match(r'(?i)^\s*(?:https?://|www\.|[nNvVwW]{2,4}[.:])', _txt_h)
+        )
+        _prox = header[_hi + 1] if _hi + 1 < len(header) else None
+        _prox_txt = ((_prox or {}).get('texto') or '').strip() if _prox else ''
+        _prox_url = bool(_prox and _v2_parece_url(_prox_txt))
+        _prox_prefixo_forte = bool(
+            _prox and re.match(r'(?i)^\s*(?:https?://|www\.|[nNvVwW]{2,4}[.:])', _prox_txt)
+        )
+
+        if (
+            _eh_url_h
+            and not _tem_prefixo_forte_h
+            and _prox_url
+            and _prox_prefixo_forte
+            and not nome_pagina
+        ):
+            # Nome visual é o domínio da primeira linha. Limpa espaços OCR,
+            # mas NÃO acrescenta www nem barra, pois isso pertence à URL abaixo.
+            nome_pagina = re.sub(r'\s+', '', _txt_h).replace('\\', '')
+            nome_pagina = re.sub(r'\.br(?:l|1|i)$', '.br', nome_pagina, flags=re.I)
+            it['papel'] = 'empresa_dominio'
+            continue
+
+        if _eh_url_h:
             if not url:
-                url = _v2_normalizar_url(it['texto'])
+                url = _v2_normalizar_url(_txt_h)
                 it['papel'] = 'url'
+            else:
+                it['papel'] = 'url_extra'
         elif not nome_pagina:
-            nome_pagina = _v2_nome_empresa(it['texto'], empresa)
+            nome_pagina = _v2_nome_empresa(_txt_h, empresa)
             it['papel'] = 'empresa'
         else:
-            # cabeçalho extra não some: fica preservado
             it['papel'] = 'header_extra'
 
     if nome_pagina and url:
@@ -3754,7 +3792,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _reader = _get_easyocr()
             _etapa_ocr_diag = 'leitura_ocr'
             with _recurso_cpu_pesada('easyocr-estruturado'):
-                # V165_V2 experimental: tenta primeiro o parser por blocos.
+                # V166_V2 experimental: tenta primeiro o parser por blocos.
                 # Se ele não tiver confiança suficiente, usa o parser legado.
                 _v2 = _estruturar_anuncio_google_ads_v2(_img, _reader, empresa=empresa)
                 if _v2 is not None and _v2.get('_parser_v2_confiavel'):

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# V159 — rollback controlado para o motor pré-global da V146.
+# Mantém OCR local por banda + 2 threads + entrega incremental por item.
+# NÃO usa cache OCR global das V147+.
 """
 OCR worker — processo independente do Streamlit.
 
@@ -7,6 +10,7 @@ Playwright nem a interface do app. O objetivo é carregar EasyOCR/PyTorch
 em um processo pequeno e descartável, reduzindo o pico total de RAM.
 """
 import os
+import base64
 
 # V146 — equilíbrio de CPU do worker OCR: 2 threads internas, 1 imagem por vez.
 # IMPORTANTE: estas variáveis precisam ser definidas ANTES de numpy/cv2/torch/easyocr.
@@ -29,7 +33,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
 import json
-import base64
 import re
 import time
 import threading
@@ -163,83 +166,6 @@ _MIN_INTERVALO_OCR_SEG = 15.0
 
 _ultima_chamada_ocr = [0.0]
 
-# V147 — cache de uma única leitura global por imagem.
-# O parser estruturado consulta várias bandas da MESMA captura. Antes, cada
-# `_ocr_banda` disparava um novo CRAFT+recognizer do EasyOCR, o que transformava
-# uma imagem com 8 bandas em 8+ inferências completas. No Streamlit Cloud isso
-# chegou a ~190 s para a PRIMEIRA imagem. Agora fazemos uma leitura global com
-# bboxes uma vez no caminho padrão e recortamos geometricamente esses resultados
-# para cada banda. Se uma banda não tiver nenhuma caixa global compatível, ela
-# ainda cai no OCR local antigo como fallback — preservando os casos difíceis.
-_OCR_GLOBAL_CACHE = {}
-
-
-def _ocr_cache_limpar_imagem(img_bgr=None):
-    if img_bgr is None:
-        _OCR_GLOBAL_CACHE.clear()
-        return
-    _OCR_GLOBAL_CACHE.pop(id(img_bgr), None)
-
-
-def _ocr_precarregar_global(reader, img_bgr):
-    _k = id(img_bgr)
-    if _k in _OCR_GLOBAL_CACHE:
-        return _OCR_GLOBAL_CACHE[_k]
-    _mem_snapshot_ocr('antes readtext global V150')
-    _res = reader.readtext(
-        img_bgr,
-        detail=1,
-        paragraph=False,
-        width_ths=0.15,
-        height_ths=0.5,
-        text_threshold=0.4,
-        low_text=0.25,
-        link_threshold=0.25,
-    ) or []
-    _OCR_GLOBAL_CACHE[_k] = list(_res)
-    _mem_snapshot_ocr('depois readtext global V150')
-    print(f'[OCR-PERF] V150 leitura global cacheada: caixas={len(_res)}', flush=True)
-    return _OCR_GLOBAL_CACHE[_k]
-
-
-def _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1):
-    _res = _OCR_GLOBAL_CACHE.get(id(img_bgr))
-    if _res is None:
-        return None
-    _filtrados = []
-    for _item in _res:
-        if not _item or len(_item) < 3:
-            continue
-        _bbox, _txt, _conf = _item
-        if not (_txt or '').strip():
-            continue
-        try:
-            _xs = [float(p[0]) for p in _bbox]
-            _ys = [float(p[1]) for p in _bbox]
-            _bx0, _bx1 = min(_xs), max(_xs)
-            _by0, _by1 = min(_ys), max(_ys)
-            # V149 — associação estrita bbox -> banda.
-            # A V147/V148 aceitava qualquer interseção vertical; caixas altas
-            # acabavam reaparecendo em bandas vizinhas e duplicando cabeçalho,
-            # título e descrição. Agora a caixa entra se:
-            #   1) houver interseção horizontal real; e
-            #   2) o centro vertical estiver dentro da banda OU >=60% da caixa
-            #      estiver contida verticalmente na banda.
-            if _bx1 < x0 or _bx0 > x1:
-                continue
-            _altura_bbox = max(1.0, _by1 - _by0)
-            _overlap_y = max(0.0, min(_by1, float(y1)) - max(_by0, float(y0)))
-            _yc = (_by0 + _by1) / 2.0
-            _centro_na_banda = float(y0) <= _yc <= float(y1)
-            _overlap_ratio = _overlap_y / _altura_bbox
-            if not (_centro_na_banda or _overlap_ratio >= 0.60):
-                continue
-            _bbox_local = [[float(px)-x0, float(py)-y0] for px, py in _bbox]
-            _filtrados.append((_bbox_local, _txt, _conf))
-        except Exception:
-            continue
-    return _filtrados
-
 _easyocr_init_falhou_em = [0.0]
 
 _EASYOCR_INIT_COOLDOWN_SEG = 300.0
@@ -353,12 +279,7 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     tem nenhuma relação com a ordem de leitura (validado num anúncio
     real: o texto saiu com pedaços do título, da descrição e de um
     sitelink todos embaralhados entre si)."""
-    resultado = _OCR_GLOBAL_CACHE.get(id(img_bgr))
-    if resultado is None:
-        resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
-    else:
-        resultado = list(resultado)
-        print(f'[OCR-PERF] V147 fallback bruto reutilizou leitura global: caixas={len(resultado)}', flush=True)
+    resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ''
     _itens = [(bbox, (t or '').strip()) for bbox, t, _conf in resultado if (t or '').strip()]
@@ -1437,140 +1358,6 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         saida.append(it)
     return saida
 
-
-def _texto_ocr_parece_grudado(texto):
-    """V158 — detector geral de palavras fundidas, inclusive em títulos azuis.
-
-    Além de CamelCase e letra↔número, detecta tokens longos demais em relação
-    ao número de espaços da banda e sequências de minúsculas muito extensas
-    que normalmente resultam de várias palavras coladas.
-    """
-    t = (texto or '').strip()
-    if not t:
-        return False
-    tokens = re.findall(r'[A-Za-zÀ-ÿ0-9]+', t)
-    trans_total = 0
-    forte = 0
-    for tok in tokens:
-        camel = len(re.findall(r'(?<=[a-zà-ÿ])[A-ZÀ-Ý]', tok))
-        alnum = len(re.findall(r'(?<=[A-Za-zÀ-ÿ])(?=\d)|(?<=\d)(?=[A-Za-zÀ-ÿ])', tok))
-        trans_total += camel + alnum
-
-        if (len(tok) >= 11 and (camel + alnum) >= 1) or (len(tok) >= 8 and (camel + alnum) >= 2):
-            forte += 1
-        if re.search(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', tok) and len(tok) >= 4:
-            forte += 1
-        # palavras fundidas inteiramente em minúsculas: vendadeingressosparatodososeventos
-        if len(tok) >= 18 and tok.lower() == tok and re.search(r'[a-zà-ÿ]', tok):
-            forte += 1
-
-    letras = len(re.findall(r'[A-Za-zÀ-ÿ]', t))
-    espacos = t.count(' ')
-    muito_longo_sem_espaco = letras >= 18 and espacos <= 1
-    densidade_anormal = letras >= 28 and espacos <= max(2, letras // 18)
-
-    return forte >= 1 or trans_total >= 2 or muito_longo_sem_espaco or densidade_anormal
-
-
-def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
-    """V151 — releitura localizada anti-palavras-grudadas.
-
-    Testa mais de uma configuração de segmentação e escolhe a alternativa
-    semanticamente mais próxima do OCR original que cria fronteiras de palavra.
-    Não exige mais que o candidato fique 100% livre do detector de suspeita,
-    pois nomes próprios legítimos (SãoPaulo, MercadoLivre etc.) podiam fazer a
-    V150 rejeitar uma releitura claramente melhor.
-    """
-    try:
-        if recorte_bgr is None or recorte_bgr.size == 0:
-            return resultado_atual
-        atual_txt = ' '.join(((it[1] or '').strip() for it in (resultado_atual or []) if (it[1] or '').strip())).strip()
-        if not _texto_ocr_parece_grudado(atual_txt):
-            return resultado_atual
-
-        import cv2 as _cv2_sep
-        import difflib as _difflib_sep
-        amp_f = 1.9
-        amp = _cv2_sep.resize(recorte_bgr, None, fx=amp_f, fy=amp_f, interpolation=_cv2_sep.INTER_CUBIC)
-
-        def _norm(x):
-            x = unicodedata.normalize('NFKD', x).encode('ascii','ignore').decode('ascii')
-            return re.sub(r'[^a-z0-9]+','',x.lower())
-
-        na = _norm(atual_txt)
-        palavras_atual = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', atual_txt))
-        melhor = None
-
-        configs = [
-            dict(width_ths=0.01, height_ths=0.40, text_threshold=0.42, low_text=0.18, link_threshold=0.10),
-            dict(width_ths=0.03, height_ths=0.45, text_threshold=0.45, low_text=0.22, link_threshold=0.15),
-            dict(width_ths=0.06, height_ths=0.50, text_threshold=0.40, low_text=0.20, link_threshold=0.18),
-        ]
-        for cfg in configs:
-            alt = reader.readtext(amp, detail=1, paragraph=False, mag_ratio=1.0, **cfg) or []
-            alt2=[]
-            for bbox, txt, conf in alt:
-                bb=[[float(x)/amp_f, float(y)/amp_f] for x,y in bbox]
-                if (txt or '').strip():
-                    alt2.append((bb, txt, conf))
-            if not alt2:
-                continue
-            alt2.sort(key=lambda it: (sum(p[1] for p in it[0])/len(it[0]), min(p[0] for p in it[0])))
-            cand = ' '.join(((it[1] or '').strip() for it in alt2)).strip()
-            nb = _norm(cand)
-            if not na or not nb:
-                continue
-            sim = _difflib_sep.SequenceMatcher(None, na, nb).ratio()
-            palavras_cand = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', cand))
-            ganho = palavras_cand - palavras_atual
-            # Prioriza fidelidade e ganho de separação; pequena penalidade se
-            # ainda restar algum token suspeito, sem descartar o candidato.
-            score = sim + min(max(ganho, 0), 8) * 0.035 - (0.03 if _texto_ocr_parece_grudado(cand) else 0.0)
-            if sim >= 0.68 and ganho >= 1 and (melhor is None or score > melhor[0]):
-                melhor = (score, alt2, cand, sim, ganho)
-
-        if melhor is not None:
-            _, alt2, cand, sim, ganho = melhor
-            print(f'[OCR-DEBUG] V157 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
-            return alt2
-    except Exception as e:
-        print(f'[OCR-DEBUG] V157 releitura anti-grudado falhou: {e!r}', flush=True)
-    return resultado_atual
-
-def _limpar_ruido_ocr_v152(txt):
-    """Limpeza genérica pós-OCR sem adivinhar conteúdo."""
-    s = (txt or '').strip()
-    if not s:
-        return ''
-    # ruídos gráficos isolados
-    if re.fullmatch(r"[_~|`'´^•·\-–—]+", s):
-        return ''
-    if re.fullmatch(r"[A-Za-zÀ-ÿ]", s) and s.upper() in {"N"}:
-        return ''
-
-    # remove underscore solto próximo de hífen estrutural
-    s = re.sub(r'\s+_\s*-\s*', ' - ', s)
-    s = re.sub(r'\s+_\s*$', '', s)
-
-    # pontuação final estranha
-    s = re.sub(r"['´`]+\s*([:;,\.]+)$", r'\1', s)
-    s = re.sub(r'[:;,]+\.$', '.', s)
-    s = re.sub(r'\.,$|,\.$|;\.$|\.;$', '.', s)
-
-    # espaço após ponto quando começa nova palavra, preservando reticências
-    s = re.sub(r'(?<!\.)\.(?=[A-ZÀ-Ý])', '. ', s)
-
-    # pequeno ajuste de OCR 0/o apenas quando o zero está isolado entre palavras
-    s = re.sub(r'(?<=\bpara)\s+0(?=\s+[A-Za-zÀ-ÿ])', ' o', s, flags=re.I)
-
-    # marca conhecida
-    s = re.sub(r'\bFunbuynet\b', 'FunBuyNet', s, flags=re.I)
-
-    # espaços múltiplos
-    s = re.sub(r'\s+', ' ', s).strip()
-    return s
-
-
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -1606,27 +1393,17 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     x0 = max(0, x_min - 6) if x_min is not None else 0
-    x1 = min(largura_total, x_max + 16) if x_max is not None else largura_total
+    x1 = min(largura_total, x_max + 7) if x_max is not None else largura_total
     recorte = img_bgr[y0:y1, x0:x1]
-    resultado = _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1)
-    if resultado is None:
-        resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
-    else:
-        print(f'[OCR-PERF] V157 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+    resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
         return ('', []) if retornar_linhas else ''
-    # V151 — o OCR global às vezes devolve UMA caixa com várias palavras
-    # visualmente separadas, mas o texto interno vem sem espaços. Só nesses
-    # casos fazemos uma releitura localizada da banda.
-    resultado = _reler_banda_para_separar_palavras(reader, recorte, resultado)
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
         _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
-        _txt_corr_p = _limpar_ruido_ocr_v152(_txt_corr_p)
-        if _txt_corr_p:
-            _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
+        _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
     def _y_centro_bbox(bbox):
@@ -1755,7 +1532,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
                 partes.append(_txt_recuperado)
     _texto_completo = ' '.join(partes)
     _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
-    _texto_completo = _corrigir_espacos_pos_ocr_v154(_texto_completo)
     if not retornar_linhas:
         return _texto_completo
     _linhas_out = []
@@ -2208,18 +1984,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str=None):
         return None
     _ratio = w / max(float(h), 1.0)
     if not 0.82 <= _ratio <= 1.55:
-        return None
-    # V147: este detector era tentado em quase todo anúncio quadrado/retangular
-    # e fazia um OCR global caro ANTES de saber se existia foto central. Usa os
-    # detectores puramente visuais como porta de entrada; anúncio de Busca comum
-    # não paga mais essa inferência extra.
-    try:
-        _reg_fc = _detectar_regiao_foto_embutida(img_bgr)
-        _reg_graf_fc = _detectar_regiao_grafico_criativo(img_bgr, _reg_fc)
-    except Exception:
-        _reg_fc = None
-        _reg_graf_fc = None
-    if _reg_fc is None and _reg_graf_fc is None:
         return None
     try:
         _ocr = reader.readtext(img_bgr, detail=1, paragraph=False, width_ths=0.55, height_ths=0.55, text_threshold=0.4, low_text=0.25, link_threshold=0.25)
@@ -2694,12 +2458,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _avatar_ignorados = []
     _cta = ''
     _cta_y = -1.0
-    _rx_cta_split = _re_split.compile(
-        r'^(?:abrir|compre\\s*agora|comprar\\s*agora|saiba\\s*mais|'
-        r'acessar(?:\\s+o\\s+site)?|acesse(?:\\s+o\\s+site)?|'
-        r'ver\\s*mais|conferir|comprar|reservar|inscreva-?se|cadastre-?se)$',
-        _re_split.IGNORECASE
-    )
+    _rx_cta_split = _re_split.compile('^(?:abrir|compre\\s*agora|comprar\\s*agora|saiba\\s*mais|acessar|acesse|ver\\s*mais|conferir|comprar|reservar|inscreva-?se|cadastre-?se)$', _re_split.IGNORECASE)
     for _l in _linhas:
         _txt = (_l.get('texto') or '').strip()
         if not _txt:
@@ -2723,145 +2482,16 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     if not _conteudo:
         return None
     _conteudo.sort(key=lambda l: l['yc'])
-
-    # V158 — split-card é um card vertical no painel direito:
-    # primeiro bloco textual = título; tudo abaixo até o botão = descrição.
-    # A heurística antiga por altura podia anexar a 1ª linha da descrição ao
-    # título ("Fórmula 1 o GP de Fórmula 1 de") ou quebrar a descrição em partes.
-    _titulo_linhas = []
-    _descricao_linhas = []
-    if _conteudo:
-        _primeira = _conteudo[0]
-        _titulo_linhas.append(_primeira['texto'])
-        _h_titulo = float(_primeira.get('altura') or 1.0)
-        _y_anterior = float(_primeira.get('yc') or 0.0)
-
-        # Só aceita continuação de título quando a linha seguinte tem tamanho
-        # visual próximo e está imediatamente abaixo. Caso contrário, já é descrição.
-        _idx_desc = 1
-        for _j in range(1, min(len(_conteudo), 3)):
-            _l = _conteudo[_j]
-            _h = float(_l.get('altura') or 1.0)
-            _gap = float(_l.get('yc') or 0.0) - _y_anterior
-            _mesmo_corpo = (0.82 <= (_h / max(_h_titulo, 1.0)) <= 1.22)
-            _gap_curto = _gap <= max(34.0, _h_titulo * 1.85)
-            if _mesmo_corpo and _gap_curto:
-                _titulo_linhas.append(_l['texto'])
-                _idx_desc = _j + 1
-                _y_anterior = float(_l.get('yc') or 0.0)
-            else:
-                break
-
-        _descricao_linhas = [l['texto'] for l in _conteudo[_idx_desc:]]
-
-    _titulo = _limpar_pontuacao_ocr(' '.join(_titulo_linhas).strip())
+    _titulo, _descricao_linhas = _extrair_titulo_descricao_por_altura([{'texto': l['texto'], 'altura': l['altura']} for l in _conteudo])
+    _titulo = _limpar_pontuacao_ocr(_titulo or '')
     _descricao_linhas = [_limpar_pontuacao_ocr(x) for x in _descricao_linhas or [] if x]
     _descricao = ' '.join(_descricao_linhas).strip()
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     if not _titulo or not (_descricao or _cta):
         return None
-    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título = primeiro bloco textual do painel direito; descrição = blocos seguintes até a bbox do botão; CTA separado pela região do botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
+    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título/descrição separados por altura no painel direito; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
     print(f'[OCR-DEBUG] split-card detectado seam={_seam_x}/{w} score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
-
-def _normalizar_url_exibida_v156(url_txt):
-    """Normaliza URL exibida e corrige confusões OCR típicas SOMENTE em URL.
-
-    Exemplos:
-      VWW. FunBuyNet.com.brl -> www.funbuynet.com.br/
-      Www.funbuynet.com.brl  -> www.funbuynet.com.br/
-    """
-    s = (url_txt or '').strip()
-    if not s:
-        return ''
-
-    # remove espaços/escapes visuais produzidos pelo OCR/debug
-    s = s.replace('\\', '')
-    s = re.sub(r'\s+', '', s)
-    s = s.lower()
-
-    # prefixo www confundido com v/w pelo OCR
-    s = re.sub(r'^(?:https?://)?(?:vww|wvv|vvw|www)[\._-]*', 'www.', s)
-
-    # domínio brasileiro: EasyOCR frequentemente acrescenta l/1 ao final
-    s = re.sub(r'\.br(?:l|1|i)(?=$|/)', '.br', s)
-
-    # casos sem ponto entre www e domínio
-    s = re.sub(r'^www(?=[a-z0-9])', 'www.', s)
-
-    # remove pontuação OCR espúria no fim, preservando caminho
-    s = re.sub(r'[|_]+$', '', s)
-
-    # Para domínio raiz reconhecido sem barra, padroniza a exibição com "/".
-    if re.fullmatch(r'www\.[a-z0-9.-]+\.[a-z]{2,}', s):
-        s += '/'
-
-    return s
-
-
-
-def _corrigir_espacos_pos_ocr_v154(s):
-    """Correções genéricas de espaçamento pós-OCR."""
-    t = (s or '').strip()
-    if not t:
-        return ''
-
-    t = re.sub(r'(?<!\.)\.(?=[A-ZÀ-Ý])', '. ', t)
-    t = re.sub(r',(?=[A-Za-zÀ-ÿ])', ', ', t)
-
-    def _split_token(m):
-        tok = m.group(0)
-        if len(tok) < 10:
-            return tok
-        out = re.sub(r'(?<=[a-zà-ÿ])(?=[A-ZÀ-Ý])', ' ', tok)
-        out = re.sub(r'(?<=[A-Za-zÀ-ÿ])(?=\d)', ' ', out)
-        out = re.sub(r'(?<=\d)(?=[A-Za-zÀ-ÿ])', ' ', out)
-        return out
-
-    t = re.sub(r'[A-Za-zÀ-ÿ0-9]{10,}', _split_token, t)
-    t = re.sub(r'\b(em|de|para|no|na|nos|nas)(?=\d)', r'\1 ', t, flags=re.I)
-    t = re.sub(r'\.,$|,\.$|;\.$|\.;$', '.', t)
-    t = re.sub(r'\s+', ' ', t).strip()
-    return t
-
-
-def _separar_links_azuis_hr_v154(texto):
-    """Separa dois links azuis lado a lado representados por hífen visual."""
-    s = (texto or '').strip()
-    if not s:
-        return []
-    s = re.sub(r'\s*[-–—]\s*$', '', s).strip()
-    partes = [p.strip() for p in re.split(r'\s+[-–—]\s+', s) if p.strip()]
-    if len(partes) == 2:
-        return partes
-    return []
-
-
-def _nome_pagina_preservar_caixa_v157(nome_ocr, empresa):
-    """Preserva maiúsculas/minúsculas vistas no anúncio quando a marca bate.
-
-    Ex.: FunBuyNet, Funbuynet e FUNBUYNET são aceitos como variações visuais.
-    Se houver erro real de OCR (caractere faltando/trocado), usa o nome
-    cadastrado como fallback de correção.
-    """
-    bruto = re.sub(r'\s+', ' ', (nome_ocr or '').strip())
-    if not bruto or not empresa:
-        return bruto
-
-    def _norm(s):
-        s = unicodedata.normalize('NFKD', str(s)).encode('ascii','ignore').decode('ascii')
-        return re.sub(r'[^a-z0-9]+', '', s.lower())
-
-    n_ocr = _norm(bruto)
-    n_emp = _norm(empresa)
-    if n_ocr == n_emp:
-        return bruto
-
-    corrigido = _corrigir_nome_pagina_com_empresa(bruto, empresa)
-    if _norm(corrigido) == n_emp:
-        return str(empresa).strip()
-    return bruto
-
 
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
@@ -2897,14 +2527,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     _grade = _detectar_grade_cards_google_ads(img_bgr, reader, empresa=empresa)
     if _grade is not None:
         return _grade
-    # V147: caminho padrão de Busca/Display textual. Uma única inferência global
-    # abastece todas as chamadas seguintes de `_ocr_banda`.
-    try:
-        _ocr_precarregar_global(reader, img_bgr)
-    except Exception as _e_cache_v147:
-        # Não quebra compatibilidade: se a leitura global falhar, `_ocr_banda`
-        # continua usando o OCR local antigo banda a banda.
-        print(f'[OCR-PERF] V147 preload global falhou; usando fallback por banda: {_e_cache_v147!r}', flush=True)
     bandas = _detectar_bandas_texto(img_bgr)
     bandas_texto = []
     _sep_pendente = False
@@ -2941,10 +2563,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _debug_bandas[0]['decisao'] = f'rótulo de anúncio patrocinado grudado no início — removido, resto tratado como cabeçalho: {_texto_apos_patrocinado!r}'
     else:
         _debug_bandas[0]['decisao'] = 'não é rótulo de anúncio patrocinado'
-    # V158 — nome da página e URL são campos distintos.
-    # Nunca juntar o nome da empresa dentro de url_exibida.
     _partes_dominio = []
-    _nomes_pagina_cabecalho = []
     _altura_max_linha_cabecalho = 0
     while idx < len(bandas_texto) and bandas_texto[idx]['classe'] not in ('azul', 'botao') and (idx == 0 or bandas_texto[idx]['y_min'] - bandas_texto[idx - 1]['y_max'] <= 80) and (not (_altura_max_linha_cabecalho > 0 and bandas_texto[idx]['y_max'] - bandas_texto[idx]['y_min'] + 1 >= _altura_max_linha_cabecalho * 1.6)):
         if idx == 0 and _texto_apos_patrocinado is not None:
@@ -2969,29 +2588,22 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 _nome_corrigido_p_empresa = True
                 _parece_dominio_ou_url = False
         print(f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} corrigido_p_empresa={_nome_corrigido_p_empresa}", flush=True)
-        if _parece_dominio_ou_url:
-            _debug_bandas[idx]['texto'] = _normalizar_url_exibida_v156(_txt_dominio_sem_espaco)
-            _debug_bandas[idx]['decisao'] = f"cabeçalho (URL, limpo: {_debug_bandas[idx]['texto']!r})"
-        else:
-            _nome_debug_v157 = _nome_pagina_preservar_caixa_v157(_txt_dominio, empresa)
-            _debug_bandas[idx]['texto'] = _nome_debug_v157 or _txt_dominio
-            _debug_bandas[idx]['decisao'] = f"cabeçalho (nome da página, preservando maiúsculas/minúsculas: {_debug_bandas[idx]['texto']!r})"
+        _debug_bandas[idx]['texto'] = _txt_dominio
+        _debug_bandas[idx]['decisao'] = f"cabeçalho ({('URL' if _parece_dominio_ou_url else 'nome da página')}, limpo: {_txt_dominio_sem_espaco!r}" + (', corrigido p/ nome cadastrado da empresa' if _nome_corrigido_p_empresa else '') + ')' if _txt_dominio_sem_espaco else 'cabeçalho/URL (vazio após limpeza — descartada)'
         if _txt_dominio_sem_espaco:
-            if not _parece_dominio_ou_url:
-                # Nome da página: preservar a caixa visual do anúncio quando
-                # a grafia corresponde à empresa; não jogar isso na URL.
-                _nome_base_ocr = re.sub(r'\s+', ' ', (_txt_dominio or '').strip())
-                _nome_base_ocr = re.sub(r'^[^A-Za-zÀ-ÿ0-9]+|[^A-Za-zÀ-ÿ0-9 ]+$', '', _nome_base_ocr).strip()
-                _nome_exibicao = _nome_pagina_preservar_caixa_v157(
-                    _nome_base_ocr or _txt_dominio_sem_espaco,
-                    empresa
-                )
-                if _nome_exibicao:
-                    _nomes_pagina_cabecalho.append(_nome_exibicao)
+            if _nome_corrigido_p_empresa and (not _parece_dominio_ou_url):
+                _nome_exibicao = _txt_dominio_sem_espaco.strip()
+                if ' ' not in _nome_exibicao and _nome_exibicao.lower().endswith('brasil'):
+                    _marca = _nome_exibicao[:-6]
+                    if _marca.lower().endswith('ticket') and len(_marca) > 6:
+                        _prefixo = _marca[:-6]
+                        _marca = _prefixo[:1].upper() + _prefixo[1:].lower() + 'Ticket'
+                    else:
+                        _marca = _marca[:1].upper() + _marca[1:]
+                    _nome_exibicao = f'{_marca} Brasil'
+                _partes_dominio.append(_nome_exibicao)
             else:
-                _url_norm_v157 = _normalizar_url_exibida_v156(_txt_dominio_sem_espaco)
-                if _url_norm_v157:
-                    _partes_dominio.append(_url_norm_v157)
+                _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
             _altura_linha_cabecalho_atual = bandas_texto[idx]['y_max'] - bandas_texto[idx]['y_min'] + 1
             if _altura_linha_cabecalho_atual > _altura_max_linha_cabecalho:
                 _altura_max_linha_cabecalho = _altura_linha_cabecalho_atual
@@ -3020,25 +2632,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _pool = _limpos if _limpos else _candidatos
         _com_protocolo = [c for c in _pool if re.match('^https?://', c, re.IGNORECASE)]
         _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
-    # V158 — nome da página e URL permanecem separados internamente,
-    # mas `url_exibida` mantém as DUAS LINHAS na ordem visual do anúncio:
-    #
-    # FunBuyNet
-    # www.funbuynet.com.br/
-    #
-    # Importante: não passar a string combinada pelo normalizador de URL,
-    # porque ele remove espaços/quebras e voltaria a colar nome + domínio.
-    _url_pura_v158 = _normalizar_url_exibida_v156(
-        next((p for p in _partes_dominio if p), '')
-    )
-    _nome_pagina_v158 = next((n for n in _nomes_pagina_cabecalho if n), '')
-    resultado['_nome_pagina_ocr'] = _nome_pagina_v158
-    resultado['_url_exibida_pura'] = _url_pura_v158
-
-    if _nome_pagina_v158 and _url_pura_v158:
-        resultado['url_exibida'] = _nome_pagina_v158 + '\n' + _url_pura_v158
-    else:
-        resultado['url_exibida'] = _url_pura_v158 or _nome_pagina_v158
+    resultado['url_exibida'] = '\n'.join(_partes_dominio)
     pares = []
     par_atual = None
     while idx < len(bandas_texto) and bandas_texto[idx]['classe'] == 'azul':
@@ -3105,42 +2699,25 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             _texto_pre_fileira = _limpar_pontuacao_ocr(_texto_pre_fileira_bruto)
             _ruido_pre_compacto = re.sub('\\s+', '', _texto_pre_fileira or '')
             _ruido_pre_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _ruido_pre_compacto)
-            _so_simbolos_pre = bool(_ruido_pre_compacto) and (not _ruido_pre_restante)
-            if _so_simbolos_pre:
+            if len(_ruido_pre_compacto) >= 4 and (not _ruido_pre_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _ruido_pre_compacto)) >= 4):
                 _debug_bandas[idx]['texto'] = _texto_pre_fileira
                 _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado ANTES da detecção de fileira; mantém descrição em andamento'
                 idx += 1
                 continue
         if len(_grupos_botoes) >= 2:
-            _textos_botoes_debug = []
-            _textos_botoes_validos = []
-            for _x_ini, _x_fim in _grupos_botoes:
-                _texto_botao = _limpar_pontuacao_ocr(
-                    _ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max'], x_min=_x_ini, x_max=_x_fim).strip()
-                )
-                _textos_botoes_debug.append(_texto_botao)
-                _alfanum = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', _texto_botao or '')
-                if len(_alfanum) >= 2:
-                    _textos_botoes_validos.append(_texto_botao)
-
-            # V158 — uma fileira só existe quando há pelo menos dois blocos com
-            # texto real. "| |", bordas de imagem e divisores não mudam o estado
-            # do parser nem transformam a descrição seguinte em CTA.
-            if len(_textos_botoes_validos) < 2:
-                _debug_bandas[idx]['texto'] = ' | '.join([t for t in _textos_botoes_debug if t])
-                _debug_bandas[idx]['decisao'] = 'ruído gráfico/divisor sem 2 CTAs textuais reais → ignorado; mantém descrição em andamento'
-                idx += 1
-                continue
-
-            print(f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, {len(_textos_botoes_validos)} bloco(s) textuais: {_textos_botoes_validos}', flush=True)
-            _debug_bandas[idx]['decisao'] = f'fileira de botões ({len(_textos_botoes_validos)} bloco(s) textuais)'
+            print(f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, {len(_grupos_botoes)} bloco(s): {_grupos_botoes}', flush=True)
+            _debug_bandas[idx]['decisao'] = f'fileira de botões ({len(_grupos_botoes)} bloco(s))'
             if par_atual is not None:
                 pares.append(par_atual)
                 par_atual = None
             _cta_aberto = False
-            for _texto_botao in _textos_botoes_validos:
-                resultado['sitelinks'].append({'titulo': _texto_botao, 'descricao': ''})
-            _debug_bandas[idx]['texto'] = ' | '.join(_textos_botoes_validos)
+            _textos_botoes_debug = []
+            for _x_ini, _x_fim in _grupos_botoes:
+                _texto_botao = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max'], x_min=_x_ini, x_max=_x_fim).strip())
+                _textos_botoes_debug.append(_texto_botao)
+                if _texto_botao:
+                    resultado['sitelinks'].append({'titulo': _texto_botao, 'descricao': ''})
+            _debug_bandas[idx]['texto'] = ' | '.join(_textos_botoes_debug)
             idx += 1
             continue
         if banda['classe'] == 'botao' and banda.get('x_min_botao') is not None:
@@ -3148,14 +2725,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         else:
             _texto_banda_bruto = _ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max']).strip()
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
-        # V158 — URL/caminho exibido sempre em minúsculas; nome da página não.
-        _url_like_v155 = bool(re.search(r'(?i)(?:www\.|https?://|\.[a-z]{2,4}(?:/|$))', texto or ''))
-        if _url_like_v155:
-            texto = _normalizar_url_exibida_v156(texto)
         _debug_bandas[idx]['texto'] = texto
         _texto_ruido_sep = re.sub('\\s+', '', texto or '')
         _texto_ruido_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _texto_ruido_sep)
-        if _texto_ruido_sep and (not _texto_ruido_restante):
+        if len(_texto_ruido_sep) >= 4 and (not _texto_ruido_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _texto_ruido_sep)) >= 4):
             _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado; mantém descrição em andamento'
             idx += 1
             continue
@@ -3174,27 +2747,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _buy_sell_parece_continuacao_titulo = banda['classe'] == 'azul' and (not banda.get('sep_antes')) and (par_atual is not None) and (not par_atual[1]) and bool(re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm)) and bool(re.search('(?i)\\|\\s*(?:TS|TicketSwap)\\s*$', _texto_desc_norm)) and (len(_texto_desc_norm.split()) <= 8)
         if par_atual is not None and _titulo_ja_reconhecido and re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm) and (not _buy_sell_parece_continuacao_titulo):
             _descricao_busca_forcada = True
-        # V158 — <hr> só pode representar links INFERIORES depois que o
-        # anúncio principal já possui título + descrição. Antes disso, hífens
-        # em linhas azuis pertencem ao próprio título e devem continuar nele.
-        _titulo_desc_principal_pronto_v155 = bool(pares) or (
-            par_atual is not None and bool(par_atual[0]) and bool(par_atual[1])
-        )
-        _links_hr_v155 = (
-            _separar_links_azuis_hr_v154(_texto_desc_norm)
-            if banda['classe'] == 'azul' and _titulo_desc_principal_pronto_v155
-            else []
-        )
-        if len(_links_hr_v155) == 2 and (not banda.get('sep_antes')):
-            if par_atual is not None:
-                pares.append(par_atual)
-                par_atual = None
-            for _lk in _links_hr_v155:
-                resultado['sitelinks'].append({'titulo': _lk, 'descricao': ''})
-            _debug_bandas[idx]['texto'] = ' <hr> '.join(_links_hr_v155)
-            _debug_bandas[idx]['decisao'] = 'azul → 2 links inferiores separados por <hr> (após título+descrição principal)'
-            idx += 1
-            continue
         _azul_parece_links_relacionados = banda['classe'] == 'azul' and bool(re.search('[·•]', _texto_desc_norm)) and (len([p for p in re.split('\\s*[·•]\\s*', _texto_desc_norm) if p.strip()]) >= 2)
         _empresa_norm_v57 = str(empresa or '').strip().lower().replace(' ', '')
         _partes_hifen_v57 = [p.strip() for p in re.split('\\s+[\\-–—]\\s+', re.sub('\\s*[\\-–—]\\s*$', '', _texto_desc_norm)) if p.strip()]
@@ -3272,9 +2824,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                     if _linhas_banda:
                         _primeira_linha_txt = _limpar_pontuacao_ocr(_linhas_banda[0]['texto'])
                         if _corrigir_nome_pagina_com_empresa(_primeira_linha_txt, empresa) == empresa:
-                            _nome_fallback_v158 = _melhor_nome_para_exibir(_primeira_linha_txt, empresa)
-                            resultado['_nome_pagina_ocr'] = _nome_fallback_v158
-                            resultado['url_exibida'] = _nome_fallback_v158
+                            resultado['url_exibida'] = _melhor_nome_para_exibir(_primeira_linha_txt, empresa)
                             if _linhas_banda[1:]:
                                 _titulo_extraido, _descricao_linhas = _extrair_titulo_descricao_por_altura(_linhas_banda[1:])
                             else:
@@ -3570,7 +3120,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
                 _estruturado = {'titulo': _titulo_fallback, 'descricao': _descricao_fallback, 'url_exibida': '', 'url_final': '', 'cta': '', 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': [{'idx': 0, 'y_min': 0, 'y_max': 0, 'classe': 'fallback_bruto', 'sep_antes': False, 'texto': f'regiao_grafico_detectada={_regiao_grafico_dbg!r}', 'decisao': '_estruturar_anuncio_google_ads não reconheceu padrão de bandas — caiu no OCR bruto (título/descrição separados por heurística de 1ª linha)'}]}
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
-        _ocr_cache_limpar_imagem(_img)
         return (_estruturado, None) if retornar_diagnostico else _estruturado
     except ZeroDivisionError as e:
         import traceback as _tb_v81
@@ -3589,7 +3138,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _titulo_v81 = _normalizar_aspas_ocr(_linhas_v81[0]) if _linhas_v81 and len(_linhas_v81[0]) <= 80 else ''
             _descricao_v81 = _normalizar_aspas_ocr('\n'.join(_linhas_v81[1:] if _titulo_v81 else _linhas_v81))
             _fallback_v81 = {'titulo': _titulo_v81, 'descricao': _descricao_v81, 'url_exibida': '', 'url_final': '', 'cta': '', 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': [{'idx': 0, 'y_min': 0, 'y_max': 0, 'classe': 'fallback_zerodivision', 'sep_antes': False, 'texto': 'Parser estruturado encontrou divisão por zero; OCR bruto preservado.', 'decisao': 'V81 → fallback bruto automático após ZeroDivisionError'}]}
-            _ocr_cache_limpar_imagem(_img)
             return (_fallback_v81, None) if retornar_diagnostico else _fallback_v81
         except Exception as _e_fb_v81:
             _diag = {'etapa': _etapa_ocr_diag, 'erro': f'{type(_e_fb_v81).__name__}: {_e_fb_v81}', 'erro_original': f'ZeroDivisionError: {e}', 'traceback_original': _trace_v81[-6000:], 'url': url_imagem}
@@ -3599,11 +3147,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
         import traceback as _tb_diag_v81
         _diag = {'etapa': _etapa_ocr_diag, 'erro': f'{type(e).__name__}: {e}', 'traceback': _tb_diag_v81.format_exc()[-6000:], 'url': url_imagem}
         print(f'[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}', flush=True)
-        try:
-            if '_img' in locals() and _img is not None:
-                _ocr_cache_limpar_imagem(_img)
-        except Exception:
-            pass
         return (None, _diag) if retornar_diagnostico else None
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
@@ -3981,7 +3524,6 @@ def _emitir_resultado_incremental_v148(resultado: dict) -> None:
         print(f"[OCR-RESULT-V148] {_b64}", flush=True)
     except BaseException as _exc_emit:
         print(f"[OCR-WORKER] falha emitindo resultado incremental: {type(_exc_emit).__name__}: {_exc_emit}", flush=True)
-
 
 def _cli_single_image():
     """Compatibilidade do nome; agora processa um LOTE sequencial.

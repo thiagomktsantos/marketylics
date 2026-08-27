@@ -41824,7 +41824,7 @@ html, body { background: transparent; overflow: hidden; }
             if st.session_state.get("_selecionar_todas_notif_cards") != _todos_devem_estar:
                 st.session_state["_selecionar_todas_notif_cards"] = _todos_devem_estar
 
-            _col_sel_topo, _col_pag_topo = st.columns([6.15, 1.85], vertical_alignment="center")
+            _col_sel_topo, _col_pag_topo = st.columns([5.85, 2.15], vertical_alignment="center", gap="small")
             with _col_sel_topo:
                 st.checkbox(
                     f"Selecionar todas ({len(_ids_visiveis)})",
@@ -41845,7 +41845,7 @@ html, body { background: transparent; overflow: hidden; }
                             _spec_top.append((str(_tok), int(_tok), f"p{_tok}"))
                     if _notif_pag_toolbar < _notif_total_pag_toolbar:
                         _spec_top.append(("Next ›", _notif_pag_toolbar + 1, "next"))
-                    _cols_top = st.columns([1.45 if ("Prev" in x[0] or "Next" in x[0]) else 0.72 for x in _spec_top], gap="small")
+                    _cols_top = st.columns([1.35 if ("Prev" in x[0] or "Next" in x[0]) else 0.64 for x in _spec_top], gap=None)
                     for _cc, (_lbl, _dest, _suf) in zip(_cols_top, _spec_top):
                         with _cc:
                             if _dest is None:
@@ -41864,15 +41864,15 @@ html, body { background: transparent; overflow: hidden; }
         /* V145 — paginação compacta e alinhada ao checkbox. */
         .notif-pag-dots {
             height: 30px; display:flex; align-items:center; justify-content:center;
-            font-size:12px; font-weight:700; color:#9ca3af; white-space:nowrap;
+            font-size:11px; font-weight:700; color:#9ca3af; white-space:nowrap;
             line-height:30px;
         }
         .st-key-_bloco_todas_topo button {
             min-height: 30px !important;
             height: 30px !important;
-            border-radius: 7px !important;
-            padding: 0 6px !important;
-            font-size: 12px !important;
+            border-radius: 6px !important;
+            padding: 0 3px !important;
+            font-size: 11px !important;
             line-height: 1 !important;
             white-space: nowrap !important;
         }
@@ -42054,9 +42054,9 @@ html, body { background: transparent; overflow: hidden; }
             if _notif_pagina < _notif_total_paginas:
                 _spec.append(("Next ›", _notif_pagina + 1, "next"))
 
-            _espaco, _pag = st.columns([6.15, 1.85])
+            _espaco, _pag = st.columns([5.25, 2.75], gap="small")
             with _pag:
-                _cols = st.columns([1.45 if ("Prev" in x[0] or "Next" in x[0]) else 0.72 for x in _spec], gap="small")
+                _cols = st.columns([1.35 if ("Prev" in x[0] or "Next" in x[0]) else 0.64 for x in _spec], gap=None)
                 for _cc, (_lbl, _dest, _suf) in zip(_cols, _spec):
                     with _cc:
                         if _dest is None:

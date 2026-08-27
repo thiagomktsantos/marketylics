@@ -1439,7 +1439,7 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
 
 
 def _texto_ocr_parece_grudado(texto):
-    """V156 — detector geral de palavras fundidas, inclusive em títulos azuis.
+    """V157 — detector geral de palavras fundidas, inclusive em títulos azuis.
 
     Além de CamelCase e letra↔número, detecta tokens longos demais em relação
     ao número de espaços da banda e sequências de minúsculas muito extensas
@@ -1531,10 +1531,10 @@ def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
 
         if melhor is not None:
             _, alt2, cand, sim, ganho = melhor
-            print(f'[OCR-DEBUG] V156 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
+            print(f'[OCR-DEBUG] V157 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
             return alt2
     except Exception as e:
-        print(f'[OCR-DEBUG] V156 releitura anti-grudado falhou: {e!r}', flush=True)
+        print(f'[OCR-DEBUG] V157 releitura anti-grudado falhou: {e!r}', flush=True)
     return resultado_atual
 
 def _limpar_ruido_ocr_v152(txt):
@@ -1612,7 +1612,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V156 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V157 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
@@ -2724,7 +2724,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
         return None
     _conteudo.sort(key=lambda l: l['yc'])
 
-    # V156 — split-card é um card vertical no painel direito:
+    # V157 — split-card é um card vertical no painel direito:
     # primeiro bloco textual = título; tudo abaixo até o botão = descrição.
     # A heurística antiga por altura podia anexar a 1ª linha da descrição ao
     # título ("Fórmula 1 o GP de Fórmula 1 de") ou quebrar a descrição em partes.
@@ -2837,6 +2837,32 @@ def _separar_links_azuis_hr_v154(texto):
     return []
 
 
+def _nome_pagina_preservar_caixa_v157(nome_ocr, empresa):
+    """Preserva maiúsculas/minúsculas vistas no anúncio quando a marca bate.
+
+    Ex.: FunBuyNet, Funbuynet e FUNBUYNET são aceitos como variações visuais.
+    Se houver erro real de OCR (caractere faltando/trocado), usa o nome
+    cadastrado como fallback de correção.
+    """
+    bruto = re.sub(r'\s+', ' ', (nome_ocr or '').strip())
+    if not bruto or not empresa:
+        return bruto
+
+    def _norm(s):
+        s = unicodedata.normalize('NFKD', str(s)).encode('ascii','ignore').decode('ascii')
+        return re.sub(r'[^a-z0-9]+', '', s.lower())
+
+    n_ocr = _norm(bruto)
+    n_emp = _norm(empresa)
+    if n_ocr == n_emp:
+        return bruto
+
+    corrigido = _corrigir_nome_pagina_com_empresa(bruto, empresa)
+    if _norm(corrigido) == n_emp:
+        return str(empresa).strip()
+    return bruto
+
+
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
     Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
@@ -2915,7 +2941,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _debug_bandas[0]['decisao'] = f'rótulo de anúncio patrocinado grudado no início — removido, resto tratado como cabeçalho: {_texto_apos_patrocinado!r}'
     else:
         _debug_bandas[0]['decisao'] = 'não é rótulo de anúncio patrocinado'
+    # V157 — nome da página e URL são campos distintos.
+    # Nunca juntar o nome da empresa dentro de url_exibida.
     _partes_dominio = []
+    _nomes_pagina_cabecalho = []
     _altura_max_linha_cabecalho = 0
     while idx < len(bandas_texto) and bandas_texto[idx]['classe'] not in ('azul', 'botao') and (idx == 0 or bandas_texto[idx]['y_min'] - bandas_texto[idx - 1]['y_max'] <= 80) and (not (_altura_max_linha_cabecalho > 0 and bandas_texto[idx]['y_max'] - bandas_texto[idx]['y_min'] + 1 >= _altura_max_linha_cabecalho * 1.6)):
         if idx == 0 and _texto_apos_patrocinado is not None:
@@ -2940,22 +2969,29 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 _nome_corrigido_p_empresa = True
                 _parece_dominio_ou_url = False
         print(f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} bruto={_txt_dominio!r} limpo={_txt_dominio_sem_espaco!r} corrigido_p_empresa={_nome_corrigido_p_empresa}", flush=True)
-        _debug_bandas[idx]['texto'] = _txt_dominio
-        _debug_bandas[idx]['decisao'] = f"cabeçalho ({('URL' if _parece_dominio_ou_url else 'nome da página')}, limpo: {_txt_dominio_sem_espaco!r}" + (', corrigido p/ nome cadastrado da empresa' if _nome_corrigido_p_empresa else '') + ')' if _txt_dominio_sem_espaco else 'cabeçalho/URL (vazio após limpeza — descartada)'
+        if _parece_dominio_ou_url:
+            _debug_bandas[idx]['texto'] = _normalizar_url_exibida_v156(_txt_dominio_sem_espaco)
+            _debug_bandas[idx]['decisao'] = f"cabeçalho (URL, limpo: {_debug_bandas[idx]['texto']!r})"
+        else:
+            _nome_debug_v157 = _nome_pagina_preservar_caixa_v157(_txt_dominio, empresa)
+            _debug_bandas[idx]['texto'] = _nome_debug_v157 or _txt_dominio
+            _debug_bandas[idx]['decisao'] = f"cabeçalho (nome da página, preservando maiúsculas/minúsculas: {_debug_bandas[idx]['texto']!r})"
         if _txt_dominio_sem_espaco:
-            if _nome_corrigido_p_empresa and (not _parece_dominio_ou_url):
-                _nome_exibicao = _txt_dominio_sem_espaco.strip()
-                if ' ' not in _nome_exibicao and _nome_exibicao.lower().endswith('brasil'):
-                    _marca = _nome_exibicao[:-6]
-                    if _marca.lower().endswith('ticket') and len(_marca) > 6:
-                        _prefixo = _marca[:-6]
-                        _marca = _prefixo[:1].upper() + _prefixo[1:].lower() + 'Ticket'
-                    else:
-                        _marca = _marca[:1].upper() + _marca[1:]
-                    _nome_exibicao = f'{_marca} Brasil'
-                _partes_dominio.append(_nome_exibicao)
+            if not _parece_dominio_ou_url:
+                # Nome da página: preservar a caixa visual do anúncio quando
+                # a grafia corresponde à empresa; não jogar isso na URL.
+                _nome_base_ocr = re.sub(r'\s+', ' ', (_txt_dominio or '').strip())
+                _nome_base_ocr = re.sub(r'^[^A-Za-zÀ-ÿ0-9]+|[^A-Za-zÀ-ÿ0-9 ]+$', '', _nome_base_ocr).strip()
+                _nome_exibicao = _nome_pagina_preservar_caixa_v157(
+                    _nome_base_ocr or _txt_dominio_sem_espaco,
+                    empresa
+                )
+                if _nome_exibicao:
+                    _nomes_pagina_cabecalho.append(_nome_exibicao)
             else:
-                _partes_dominio.append(_normalizar_url_exibida(_txt_dominio_sem_espaco))
+                _url_norm_v157 = _normalizar_url_exibida_v156(_txt_dominio_sem_espaco)
+                if _url_norm_v157:
+                    _partes_dominio.append(_url_norm_v157)
             _altura_linha_cabecalho_atual = bandas_texto[idx]['y_max'] - bandas_texto[idx]['y_min'] + 1
             if _altura_linha_cabecalho_atual > _altura_max_linha_cabecalho:
                 _altura_max_linha_cabecalho = _altura_linha_cabecalho_atual
@@ -2984,7 +3020,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _pool = _limpos if _limpos else _candidatos
         _com_protocolo = [c for c in _pool if re.match('^https?://', c, re.IGNORECASE)]
         _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
-    resultado['url_exibida'] = _normalizar_url_exibida_v156('\n'.join(_partes_dominio))
+    resultado['url_exibida'] = _normalizar_url_exibida_v156(
+        next((p for p in _partes_dominio if p), '')
+    )
+    # Nome da página fica separado para debug/layout; não contamina url_exibida.
+    resultado['_nome_pagina_ocr'] = next((n for n in _nomes_pagina_cabecalho if n), '')
     pares = []
     par_atual = None
     while idx < len(bandas_texto) and bandas_texto[idx]['classe'] == 'azul':
@@ -3069,7 +3109,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 if len(_alfanum) >= 2:
                     _textos_botoes_validos.append(_texto_botao)
 
-            # V156 — uma fileira só existe quando há pelo menos dois blocos com
+            # V157 — uma fileira só existe quando há pelo menos dois blocos com
             # texto real. "| |", bordas de imagem e divisores não mudam o estado
             # do parser nem transformam a descrição seguinte em CTA.
             if len(_textos_botoes_validos) < 2:
@@ -3094,7 +3134,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         else:
             _texto_banda_bruto = _ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max']).strip()
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
-        # V156 — URL/caminho exibido sempre em minúsculas; nome da página não.
+        # V157 — URL/caminho exibido sempre em minúsculas; nome da página não.
         _url_like_v155 = bool(re.search(r'(?i)(?:www\.|https?://|\.[a-z]{2,4}(?:/|$))', texto or ''))
         if _url_like_v155:
             texto = _normalizar_url_exibida_v156(texto)
@@ -3120,7 +3160,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _buy_sell_parece_continuacao_titulo = banda['classe'] == 'azul' and (not banda.get('sep_antes')) and (par_atual is not None) and (not par_atual[1]) and bool(re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm)) and bool(re.search('(?i)\\|\\s*(?:TS|TicketSwap)\\s*$', _texto_desc_norm)) and (len(_texto_desc_norm.split()) <= 8)
         if par_atual is not None and _titulo_ja_reconhecido and re.match('(?i)^buy\\s*(?:&|and)\\s*sell\\b', _texto_desc_norm) and (not _buy_sell_parece_continuacao_titulo):
             _descricao_busca_forcada = True
-        # V156 — <hr> só pode representar links INFERIORES depois que o
+        # V157 — <hr> só pode representar links INFERIORES depois que o
         # anúncio principal já possui título + descrição. Antes disso, hífens
         # em linhas azuis pertencem ao próprio título e devem continuar nele.
         _titulo_desc_principal_pronto_v155 = bool(pares) or (

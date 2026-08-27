@@ -29,6 +29,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
 import json
+import base64
 import re
 import time
 import threading
@@ -3609,6 +3610,20 @@ def _daemon_worker():
             time.sleep(min(30.0, poll * 2))
 
 
+def _emitir_resultado_incremental_v148(resultado: dict) -> None:
+    """Entrega um resultado ao processo pai imediatamente, sem esperar o lote.
+
+    Usa base64 para que JSON, acentos e quebras internas nunca quebrem o protocolo
+    de uma-linha no stdout. O app reconhece apenas o prefixo OCR-RESULT-V148.
+    """
+    try:
+        _raw = json.dumps(resultado, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        _b64 = base64.b64encode(_raw).decode("ascii")
+        print(f"[OCR-RESULT-V148] {_b64}", flush=True)
+    except BaseException as _exc_emit:
+        print(f"[OCR-WORKER] falha emitindo resultado incremental: {type(_exc_emit).__name__}: {_exc_emit}", flush=True)
+
+
 def _cli_single_image():
     """Compatibilidade do nome; agora processa um LOTE sequencial.
 
@@ -3662,7 +3677,7 @@ def _cli_single_image():
 
             if not url_cdn:
                 falhas += 1
-                resultados.append({
+                _resultado_item = {
                     "id": midia_id,
                     "ok": False,
                     "estruturado": None,
@@ -3671,7 +3686,10 @@ def _cli_single_image():
                         "etapa": "worker_lote",
                         "erro": "url_cdn ausente",
                     },
-                })
+                }
+                resultados.append(_resultado_item)
+                _emitir_resultado_incremental_v148(_resultado_item)
+                print(f"[OCR-WORKER] ITEM ENTREGUE {idx}/{len(itens)} id={midia_id}", flush=True)
                 continue
 
             try:
@@ -3687,7 +3705,7 @@ def _cli_single_image():
                 else:
                     falhas += 1
 
-                resultados.append({
+                _resultado_item = {
                     "id": midia_id,
                     "ok": ok,
                     "estruturado": estruturado,
@@ -3696,11 +3714,14 @@ def _cli_single_image():
                         (diag or {}).get("erro")
                         or "A extração OCR retornou vazio."
                     ),
-                })
+                }
+                resultados.append(_resultado_item)
+                _emitir_resultado_incremental_v148(_resultado_item)
+                print(f"[OCR-WORKER] ITEM ENTREGUE {idx}/{len(itens)} id={midia_id}", flush=True)
 
             except BaseException as exc:
                 falhas += 1
-                resultados.append({
+                _resultado_item = {
                     "id": midia_id,
                     "ok": False,
                     "estruturado": None,
@@ -3710,7 +3731,10 @@ def _cli_single_image():
                         "erro": f"{type(exc).__name__}: {exc}",
                         "traceback": traceback.format_exc(limit=8),
                     },
-                })
+                }
+                resultados.append(_resultado_item)
+                _emitir_resultado_incremental_v148(_resultado_item)
+                print(f"[OCR-WORKER] ITEM ENTREGUE {idx}/{len(itens)} id={midia_id}", flush=True)
 
             finally:
                 # Remove referências temporárias entre imagens. O Reader global

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# V162_V2 — parser experimental por blocos visuais para Google Search responsivo.
+# V163_V2 — parser experimental por blocos visuais para Google Search responsivo.
 # Mantém OCR local por banda e fallback automático para o parser legado.
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2498,7 +2498,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
 # ============================================================
-# V162_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
+# V163_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
 # ============================================================
 def _v2_limpar_texto(txt):
     s = _normalizar_aspas_ocr(_limpar_pontuacao_ocr((txt or '').strip()))
@@ -2547,29 +2547,60 @@ def _v2_nome_empresa(txt, empresa):
 
 
 def _v2_split_horizontal_links(reader, img_bgr, banda, texto):
-    """Só divide em <hr> quando existem 2+ blocos horizontais textuais reais."""
+    """V163 — detecta 2+ sitelinks na mesma faixa horizontal.
+
+    Prioridade:
+    1) geometria real da banda;
+    2) fallback textual apenas quando há separador visual claro por hífen
+       terminal/intermediário e o anúncio principal já está fechado.
+
+    Não divide sitelinks verticais como "GP Brasil - 3 Dias".
+    """
+    txt = _v2_limpar_texto(texto)
+
+    # 1) Geometria real.
     try:
         grupos = _dividir_banda_em_botoes(
-            img_bgr, banda['y_min'], banda['y_max'], gap_minimo=None
+            img_bgr, banda['y_min'], banda['y_max'], gap_minimo=10
         ) or []
     except Exception:
         grupos = []
-    if len(grupos) < 2 or len(grupos) > 4:
-        return []
+
     validos = []
-    for x0, x1 in grupos:
-        t = _v2_limpar_texto(
-            _ocr_banda(
-                reader, img_bgr, banda['y_min'], banda['y_max'],
-                x_min=x0, x_max=x1
+    if 2 <= len(grupos) <= 4:
+        for x0, x1 in grupos:
+            t = _v2_limpar_texto(
+                _ocr_banda(
+                    reader, img_bgr, banda['y_min'], banda['y_max'],
+                    x_min=max(0, x0 - 8), x_max=x1 + 8
+                )
             )
-        )
-        if len(re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', t)) >= 2:
-            validos.append(t)
-    # só aceita quando os blocos realmente cobrem a linha e são distintos
-    if len(validos) >= 2 and len(set(v.lower() for v in validos)) == len(validos):
-        return validos
+            if len(re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', t)) >= 2:
+                validos.append(t)
+
+        # Rejeita falsa divisão se os textos reconstruídos são apenas pedaços
+        # do mesmo termo com hífen interno.
+        if len(validos) >= 2:
+            unidos = ' '.join(validos).lower()
+            original = re.sub(r'\s+', ' ', txt.lower()).strip()
+            if len(set(v.lower() for v in validos)) == len(validos):
+                # Se há um hífen terminal no OCR bruto e dois blocos válidos,
+                # é forte sinal de dois links lado a lado.
+                if re.search(r'\s[-–—]\s*$', txt) or len(validos) >= 2:
+                    return validos
+
+    # 2) Fallback textual para o padrão:
+    # "Eventos em São Paulo - Compre ou Venda Ingressos -"
+    # Só aceita quando existem DOIS segmentos não vazios e hífen terminal,
+    # o que diferencia de "GP Brasil - 3 Dias".
+    if re.search(r'\s[-–—]\s*$', txt):
+        sem_final = re.sub(r'\s*[-–—]\s*$', '', txt).strip()
+        partes = [p.strip() for p in re.split(r'\s+[-–—]\s+', sem_final) if p.strip()]
+        if len(partes) == 2:
+            return partes
+
     return []
+
 
 
 def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
@@ -3428,7 +3459,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _reader = _get_easyocr()
             _etapa_ocr_diag = 'leitura_ocr'
             with _recurso_cpu_pesada('easyocr-estruturado'):
-                # V162_V2 experimental: tenta primeiro o parser por blocos.
+                # V163_V2 experimental: tenta primeiro o parser por blocos.
                 # Se ele não tiver confiança suficiente, usa o parser legado.
                 _v2 = _estruturar_anuncio_google_ads_v2(_img, _reader, empresa=empresa)
                 if _v2 is not None and _v2.get('_parser_v2_confiavel'):

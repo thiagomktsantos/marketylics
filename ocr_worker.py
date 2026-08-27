@@ -162,6 +162,71 @@ _MIN_INTERVALO_OCR_SEG = 15.0
 
 _ultima_chamada_ocr = [0.0]
 
+# V147 — cache de uma única leitura global por imagem.
+# O parser estruturado consulta várias bandas da MESMA captura. Antes, cada
+# `_ocr_banda` disparava um novo CRAFT+recognizer do EasyOCR, o que transformava
+# uma imagem com 8 bandas em 8+ inferências completas. No Streamlit Cloud isso
+# chegou a ~190 s para a PRIMEIRA imagem. Agora fazemos uma leitura global com
+# bboxes uma vez no caminho padrão e recortamos geometricamente esses resultados
+# para cada banda. Se uma banda não tiver nenhuma caixa global compatível, ela
+# ainda cai no OCR local antigo como fallback — preservando os casos difíceis.
+_OCR_GLOBAL_CACHE = {}
+
+
+def _ocr_cache_limpar_imagem(img_bgr=None):
+    if img_bgr is None:
+        _OCR_GLOBAL_CACHE.clear()
+        return
+    _OCR_GLOBAL_CACHE.pop(id(img_bgr), None)
+
+
+def _ocr_precarregar_global(reader, img_bgr):
+    _k = id(img_bgr)
+    if _k in _OCR_GLOBAL_CACHE:
+        return _OCR_GLOBAL_CACHE[_k]
+    _mem_snapshot_ocr('antes readtext global V147')
+    _res = reader.readtext(
+        img_bgr,
+        detail=1,
+        paragraph=False,
+        width_ths=0.15,
+        height_ths=0.5,
+        text_threshold=0.4,
+        low_text=0.25,
+        link_threshold=0.25,
+    ) or []
+    _OCR_GLOBAL_CACHE[_k] = list(_res)
+    _mem_snapshot_ocr('depois readtext global V147')
+    print(f'[OCR-PERF] V147 leitura global cacheada: caixas={len(_res)}', flush=True)
+    return _OCR_GLOBAL_CACHE[_k]
+
+
+def _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1):
+    _res = _OCR_GLOBAL_CACHE.get(id(img_bgr))
+    if _res is None:
+        return None
+    _filtrados = []
+    for _item in _res:
+        if not _item or len(_item) < 3:
+            continue
+        _bbox, _txt, _conf = _item
+        if not (_txt or '').strip():
+            continue
+        try:
+            _xs = [float(p[0]) for p in _bbox]
+            _ys = [float(p[1]) for p in _bbox]
+            _bx0, _bx1 = min(_xs), max(_xs)
+            _by0, _by1 = min(_ys), max(_ys)
+            # Exige interseção real com a banda/coluna pedida. O centro sozinho
+            # falhava em caixas altas que cruzavam a borda de uma banda.
+            if _bx1 < x0 or _bx0 > x1 or _by1 < y0 or _by0 > y1:
+                continue
+            _bbox_local = [[float(px)-x0, float(py)-y0] for px, py in _bbox]
+            _filtrados.append((_bbox_local, _txt, _conf))
+        except Exception:
+            continue
+    return _filtrados
+
 _easyocr_init_falhou_em = [0.0]
 
 _EASYOCR_INIT_COOLDOWN_SEG = 300.0
@@ -275,7 +340,12 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     tem nenhuma relação com a ordem de leitura (validado num anúncio
     real: o texto saiu com pedaços do título, da descrição e de um
     sitelink todos embaralhados entre si)."""
-    resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
+    resultado = _OCR_GLOBAL_CACHE.get(id(img_bgr))
+    if resultado is None:
+        resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
+    else:
+        resultado = list(resultado)
+        print(f'[OCR-PERF] V147 fallback bruto reutilizou leitura global: caixas={len(resultado)}', flush=True)
     if not resultado:
         return ''
     _itens = [(bbox, (t or '').strip()) for bbox, t, _conf in resultado if (t or '').strip()]
@@ -1391,7 +1461,11 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     x0 = max(0, x_min - 6) if x_min is not None else 0
     x1 = min(largura_total, x_max + 7) if x_max is not None else largura_total
     recorte = img_bgr[y0:y1, x0:x1]
-    resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
+    resultado = _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1)
+    if resultado is None:
+        resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
+    else:
+        print(f'[OCR-PERF] V147 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
@@ -1981,6 +2055,18 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str=None):
     _ratio = w / max(float(h), 1.0)
     if not 0.82 <= _ratio <= 1.55:
         return None
+    # V147: este detector era tentado em quase todo anúncio quadrado/retangular
+    # e fazia um OCR global caro ANTES de saber se existia foto central. Usa os
+    # detectores puramente visuais como porta de entrada; anúncio de Busca comum
+    # não paga mais essa inferência extra.
+    try:
+        _reg_fc = _detectar_regiao_foto_embutida(img_bgr)
+        _reg_graf_fc = _detectar_regiao_grafico_criativo(img_bgr, _reg_fc)
+    except Exception:
+        _reg_fc = None
+        _reg_graf_fc = None
+    if _reg_fc is None and _reg_graf_fc is None:
+        return None
     try:
         _ocr = reader.readtext(img_bgr, detail=1, paragraph=False, width_ths=0.55, height_ths=0.55, text_threshold=0.4, low_text=0.25, link_threshold=0.25)
     except Exception as _exc:
@@ -2523,6 +2609,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     _grade = _detectar_grade_cards_google_ads(img_bgr, reader, empresa=empresa)
     if _grade is not None:
         return _grade
+    # V147: caminho padrão de Busca/Display textual. Uma única inferência global
+    # abastece todas as chamadas seguintes de `_ocr_banda`.
+    try:
+        _ocr_precarregar_global(reader, img_bgr)
+    except Exception as _e_cache_v147:
+        # Não quebra compatibilidade: se a leitura global falhar, `_ocr_banda`
+        # continua usando o OCR local antigo banda a banda.
+        print(f'[OCR-PERF] V147 preload global falhou; usando fallback por banda: {_e_cache_v147!r}', flush=True)
     bandas = _detectar_bandas_texto(img_bgr)
     bandas_texto = []
     _sep_pendente = False
@@ -3116,6 +3210,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
                 _estruturado = {'titulo': _titulo_fallback, 'descricao': _descricao_fallback, 'url_exibida': '', 'url_final': '', 'cta': '', 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': [{'idx': 0, 'y_min': 0, 'y_max': 0, 'classe': 'fallback_bruto', 'sep_antes': False, 'texto': f'regiao_grafico_detectada={_regiao_grafico_dbg!r}', 'decisao': '_estruturar_anuncio_google_ads não reconheceu padrão de bandas — caiu no OCR bruto (título/descrição separados por heurística de 1ª linha)'}]}
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
+        _ocr_cache_limpar_imagem(_img)
         return (_estruturado, None) if retornar_diagnostico else _estruturado
     except ZeroDivisionError as e:
         import traceback as _tb_v81
@@ -3134,6 +3229,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _titulo_v81 = _normalizar_aspas_ocr(_linhas_v81[0]) if _linhas_v81 and len(_linhas_v81[0]) <= 80 else ''
             _descricao_v81 = _normalizar_aspas_ocr('\n'.join(_linhas_v81[1:] if _titulo_v81 else _linhas_v81))
             _fallback_v81 = {'titulo': _titulo_v81, 'descricao': _descricao_v81, 'url_exibida': '', 'url_final': '', 'cta': '', 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': [{'idx': 0, 'y_min': 0, 'y_max': 0, 'classe': 'fallback_zerodivision', 'sep_antes': False, 'texto': 'Parser estruturado encontrou divisão por zero; OCR bruto preservado.', 'decisao': 'V81 → fallback bruto automático após ZeroDivisionError'}]}
+            _ocr_cache_limpar_imagem(_img)
             return (_fallback_v81, None) if retornar_diagnostico else _fallback_v81
         except Exception as _e_fb_v81:
             _diag = {'etapa': _etapa_ocr_diag, 'erro': f'{type(_e_fb_v81).__name__}: {_e_fb_v81}', 'erro_original': f'ZeroDivisionError: {e}', 'traceback_original': _trace_v81[-6000:], 'url': url_imagem}
@@ -3143,6 +3239,11 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
         import traceback as _tb_diag_v81
         _diag = {'etapa': _etapa_ocr_diag, 'erro': f'{type(e).__name__}: {e}', 'traceback': _tb_diag_v81.format_exc()[-6000:], 'url': url_imagem}
         print(f'[OCR-DEBUG] _extrair_ocr_estruturado_imagem FALHA (exceção): {e!r}', flush=True)
+        try:
+            if '_img' in locals() and _img is not None:
+                _ocr_cache_limpar_imagem(_img)
+        except Exception:
+            pass
         return (None, _diag) if retornar_diagnostico else None
 
 def _ocr_estruturado_tem_conteudo(d: dict) -> bool:

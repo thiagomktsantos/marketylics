@@ -9740,11 +9740,11 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
 # O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
 # Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
 # Ao terminar, o kernel devolve toda a RAM do PyTorch/modelos automaticamente.
-_OCR_ISOLADO_TAMANHO_LOTE = 100
+_OCR_ISOLADO_TAMANHO_LOTE = 100  # V142: worker fica vivo; resultados são persistidos item a item
 _OCR_ISOLADO_TIMEOUT_SEG = 3600
 
 
-def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
+def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> dict:
     """Executa uma imagem em processo Python externo e transmite o diagnóstico ao vivo.
 
     O stdout/stderr do worker NÃO fica mais preso em capture_output. Cada linha
@@ -9763,6 +9763,8 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
     import hashlib as _hashlib_ocr
     import datetime as _dt_ocr
+    import base64 as _base64_ocr
+    import queue as _queue_ocr
 
     primeiro_item = itens[0]
     total_itens = len(itens)
@@ -9839,6 +9841,33 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
     _stderr_linhas = []
     _inicio_monotonic = time.monotonic()
     _ultimo_monitor = 0.0
+    _resultados_incrementais = _queue_ocr.Queue()
+
+    def _entregar_resultados_incrementais_pendentes():
+        """Executa callback no thread coordenador, nunca no thread que lê stdout."""
+        if on_resultado is None:
+            # Ainda drena a fila para não acumular memória.
+            while True:
+                try:
+                    _resultados_incrementais.get_nowait()
+                except _queue_ocr.Empty:
+                    break
+            return
+        while True:
+            try:
+                _resultado_inc = _resultados_incrementais.get_nowait()
+            except _queue_ocr.Empty:
+                break
+            try:
+                on_resultado(_resultado_inc)
+            except BaseException as _exc_cb:
+                print(
+                    f"[OCR] V142 falha persistindo resultado incremental "
+                    f"id={str((_resultado_inc or {}).get('id') or '')!r}: "
+                    f"{type(_exc_cb).__name__}: {_exc_cb}",
+                    flush=True,
+                )
+
 
     def _rss_pid_mb(_pid):
         try:
@@ -9873,6 +9902,19 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
                 if not _linha:
                     break
                 _linha = _linha.rstrip("\r\n")
+                if _prefixo == "[OCR][worker stdout]" and _linha.startswith("[OCR-RESULT-V148] "):
+                    try:
+                        _b64 = _linha.split(" ", 1)[1].strip()
+                        _raw = _base64_ocr.b64decode(_b64.encode("ascii")).decode("utf-8")
+                        _resultado_inc = json.loads(_raw)
+                        _resultados_incrementais.put(_resultado_inc)
+                        print(
+                            f"[OCR] V142 resultado incremental recebido id={str((_resultado_inc or {}).get('id') or '')!r}",
+                            flush=True,
+                        )
+                    except BaseException as _exc_parse:
+                        print(f"[OCR] V142 falha decodificando resultado incremental: {type(_exc_parse).__name__}: {_exc_parse}", flush=True)
+                    continue
                 _destino.append(_linha)
                 # Limita memória dos próprios logs.
                 if len(_destino) > 500:
@@ -9925,6 +9967,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
         while True:
             _rc = _proc.poll()
             _agora = time.monotonic()
+            _entregar_resultados_incrementais_pendentes()
 
             if (_agora - _ultimo_monitor) >= 1.0:
                 _rss_pai = _rss_processo_mb()
@@ -9979,6 +10022,7 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
             _t_err.join(timeout=2)
         except Exception:
             pass
+        _entregar_resultados_incrementais_pendentes()
 
         _rc = _proc.returncode
         _rss_pai_final = _rss_processo_mb()
@@ -10074,28 +10118,23 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list) -> dict:
 
 
 def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = None):
-    """Processa OCR em processos Python externos, uma imagem por vez.
+    """V142 — mantém um único worker/Reader vivo, mas persiste cada OCR ao terminar.
 
-    O processo principal do Streamlit coordena fila/progresso/banco.
-    EasyOCR e PyTorch vivem somente no worker externo e são destruídos ao fim
-    de cada imagem. O worker não importa Streamlit nem app.py.
+    O lote grande continua existindo somente para evitar recarregar EasyOCR/PyTorch.
+    Cada ITEM FIM é entregue pelo stdout ao app e gravado no Supabase imediatamente.
+    Assim a consulta de pendentes cai durante a execução e a página pode refletir o
+    progresso sem esperar o lote inteiro terminar.
     """
     _chave_ativa = (user_id, empresa)
     _checkpoint_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
     processadas = int(_checkpoint_ocr.get("processadas") or 0)
     _pendentes_inicio = _contar_ocr_pendentes(user_id, empresa)
-    total = max(
-        int(_checkpoint_ocr.get("total") or 0),
-        processadas + _pendentes_inicio,
-    )
+    total = max(int(_checkpoint_ocr.get("total") or 0), processadas + _pendentes_inicio)
 
     if atividade_id:
         atualizar_atividade(atividade_id, "em_andamento", {
-            "empresa": empresa,
-            "processadas": processadas,
-            "total": total,
-            "ultimo_heartbeat_em": _agora_iso(),
-            "modo_execucao": "ocr_externo",
+            "empresa": empresa, "processadas": processadas, "total": total,
+            "ultimo_heartbeat_em": _agora_iso(), "modo_execucao": "ocr_externo_incremental_v142",
             "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
         })
 
@@ -10109,24 +10148,14 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 _query = (
                     supabase.table("midias")
                     .select("id, url_cdn, url_origem")
-                    .eq("user_id", user_id)
-                    .eq("empresa", empresa)
-                    .eq("tipo", "imagem")
-                    .is_("ocr_texto", "null")
-                    .or_(_FILTRO_OCR_URL_GOOGLE)
+                    .eq("user_id", user_id).eq("empresa", empresa).eq("tipo", "imagem")
+                    .is_("ocr_texto", "null").or_(_FILTRO_OCR_URL_GOOGLE)
                 )
                 if _ids_tentados_neste_run:
-                    _query = _query.not_.in_(
-                        "id",
-                        list(_ids_tentados_neste_run),
-                    )
+                    _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
                 res = _query.limit(_OCR_ISOLADO_TAMANHO_LOTE).execute()
             except Exception as _exc_query:
-                print(
-                    f"[OCR] falha consultando imagem empresa={empresa!r}: "
-                    f"{_exc_query!r}",
-                    flush=True,
-                )
+                print(f"[OCR] falha consultando imagem empresa={empresa!r}: {_exc_query!r}", flush=True)
                 break
 
             pendentes = res.data or []
@@ -10137,164 +10166,113 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             if total_real > total:
                 total = total_real
 
+            _midias_por_id = {str(_m.get("id") or ""): _m for _m in pendentes}
             for _m in pendentes:
                 _ids_tentados_neste_run.add(_m["id"])
 
-            _payload = [
-                {
-                    "id": str(_m.get("id") or ""),
-                    "url_cdn": str(_m.get("url_cdn") or ""),
-                }
-                for _m in pendentes
-            ]
-
-            print(
-                f"[OCR] CHAMANDO worker externo empresa={empresa!r} "
-                f"lote={len(_payload)} primeiro_id={_payload[0].get('id') if _payload else None} "
-                f"processadas={processadas}/{max(total, processadas)} "
-                f"RSS_pai={_rss_processo_mb():.1f} MB",
-                flush=True,
-            )
-            _ret = _executar_lote_ocr_isolado(empresa, _payload)
-            _por_id = {
-                str(_r.get("id") or ""): _r
-                for _r in (_ret.get("resultados") or [])
-            }
-
-            # Se o processo inteiro morreu/timeout, todas as mídias do lote
-            # ficam pendentes para Refazer, mas o Streamlit principal continua.
-            _erro_lote = None
-            if not _ret.get("ok"):
-                _erro_lote = str(
-                    _ret.get("erro")
-                    or "Processo OCR isolado falhou sem mensagem."
-                )
-
+            _payload = [{"id": str(_m.get("id") or ""), "url_cdn": str(_m.get("url_cdn") or "")} for _m in pendentes]
+            _ids_entregues = set()
             import json as _json_ocr_fila
 
-            for midia in pendentes:
-                _mid = str(midia.get("id") or "")
-                _r = _por_id.get(_mid)
-
-                if _r is None and _erro_lote:
-                    _r = {
-                        "id": _mid,
-                        "ok": False,
-                        "estruturado": None,
-                        "diag": {
-                            "etapa": "subprocesso_ocr",
-                            "erro": _erro_lote,
-                        },
-                    }
-                elif _r is None:
-                    _r = {
-                        "id": _mid,
-                        "ok": False,
-                        "estruturado": None,
-                        "diag": {
-                            "etapa": "subprocesso_ocr",
-                            "erro": "O processo OCR não devolveu resultado para esta mídia.",
-                        },
-                    }
-
+            def _persistir_resultado_incremental(_r):
+                nonlocal processadas
+                _mid = str((_r or {}).get("id") or "")
+                if not _mid or _mid in _ids_entregues:
+                    return
+                _ids_entregues.add(_mid)
+                midia = _midias_por_id.get(_mid) or {"id": _mid, "url_cdn": "", "url_origem": ""}
                 _estruturado = _r.get("estruturado") if _r.get("ok") else None
 
                 if _estruturado is None:
                     _ids_falharam.append(_mid)
-                    _diag = _r.get("diag") or {
-                        "etapa": "desconhecida",
-                        "erro": "Falha sem diagnóstico.",
-                    }
+                    _diag = _r.get("diag") or {"etapa": "desconhecida", "erro": str(_r.get("erro") or "Falha sem diagnóstico.")}
                     _erros_detalhados.append({
-                        "id": _mid,
-                        "etapa": str(_diag.get("etapa") or "desconhecida"),
-                        "erro": str(_diag.get("erro") or "Falha sem mensagem"),
-                        "url_cdn": str(midia.get("url_cdn") or ""),
-                        "url_origem": str(midia.get("url_origem") or ""),
+                        "id": _mid, "etapa": str(_diag.get("etapa") or "desconhecida"),
+                        "erro": str(_diag.get("erro") or _r.get("erro") or "Falha sem mensagem"),
+                        "url_cdn": str(midia.get("url_cdn") or ""), "url_origem": str(midia.get("url_origem") or ""),
                         "tentativa_em": _agora_iso(),
                     })
-                    continue
+                    print(f"[OCR] V142 ITEM ENTREGUE COM FALHA id={_mid}", flush=True)
+                    return
 
                 texto = _achatar_ocr_estruturado(_estruturado)
-                _gravou = False
                 try:
                     supabase.table("midias").update({
                         "ocr_texto": texto or "",
-                        "ocr_estruturado": (
-                            _json_ocr_fila.dumps(
-                                _estruturado,
-                                ensure_ascii=False,
-                            )
-                            if _ocr_estruturado_tem_conteudo(_estruturado)
-                            else None
-                        ),
-                    }).eq("id", midia["id"]).execute()
-                    _gravou = True
+                        "ocr_estruturado": (_json_ocr_fila.dumps(_estruturado, ensure_ascii=False)
+                            if _ocr_estruturado_tem_conteudo(_estruturado) else None),
+                    }).eq("id", _mid).execute()
+                    processadas += 1
+                    pendentes_agora = _contar_ocr_pendentes(user_id, empresa)
+                    print(
+                        f"[OCR] V142 SALVO IMEDIATAMENTE id={_mid} processadas={processadas}/{max(total, processadas)} pendentes_agora={pendentes_agora}",
+                        flush=True,
+                    )
+                    if atividade_id:
+                        atualizar_atividade(atividade_id, "em_andamento", {
+                            "empresa": empresa, "processadas": processadas, "total": max(total, processadas),
+                            "pendentes": pendentes_agora, "ultimo_heartbeat_em": _agora_iso(),
+                            "modo_execucao": "ocr_externo_incremental_v142", "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
+                            "ultimo_id_salvo": _mid,
+                        })
                 except Exception as _e_gravar:
                     _ids_falharam.append(_mid)
                     _erros_detalhados.append({
-                        "id": _mid,
-                        "etapa": "gravacao_banco",
+                        "id": _mid, "etapa": "gravacao_banco",
                         "erro": f"{type(_e_gravar).__name__}: {_e_gravar}",
-                        "url_cdn": str(midia.get("url_cdn") or ""),
-                        "url_origem": str(midia.get("url_origem") or ""),
+                        "url_cdn": str(midia.get("url_cdn") or ""), "url_origem": str(midia.get("url_origem") or ""),
                         "tentativa_em": _agora_iso(),
                     })
 
-                if _gravou:
-                    processadas += 1
-
-            # Atualiza uma vez por lote; reduz carga da UI/Supabase.
-            if atividade_id:
-                atualizar_atividade(atividade_id, "em_andamento", {
-                    "empresa": empresa,
-                    "processadas": processadas,
-                    "total": max(total, processadas),
-                    "ultimo_heartbeat_em": _agora_iso(),
-                    "modo_execucao": "ocr_externo",
-                    "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
-                })
-
-            _liberar_memoria_ocr(
-                f"pai apos imagem empresa={empresa} processadas={processadas}"
+            print(
+                f"[OCR] CHAMANDO worker externo empresa={empresa!r} lote={len(_payload)} "
+                f"primeiro_id={_payload[0].get('id') if _payload else None} "
+                f"processadas={processadas}/{max(total, processadas)} RSS_pai={_rss_processo_mb():.1f} MB",
+                flush=True,
             )
+            _ret = _executar_lote_ocr_isolado(empresa, _payload, on_resultado=_persistir_resultado_incremental)
+
+            # Compatibilidade/recuperação: se o worker terminou mas algum resultado final
+            # não chegou pelo canal incremental, usa saida.json somente para esses IDs.
+            for _r in (_ret.get("resultados") or []):
+                _mid = str((_r or {}).get("id") or "")
+                if _mid and _mid not in _ids_entregues:
+                    _persistir_resultado_incremental(_r)
+
+            if not _ret.get("ok"):
+                _erro_lote = str(_ret.get("erro") or "Processo OCR isolado falhou sem mensagem.")
+                for midia in pendentes:
+                    _mid = str(midia.get("id") or "")
+                    if _mid in _ids_entregues:
+                        continue
+                    _persistir_resultado_incremental({
+                        "id": _mid, "ok": False, "estruturado": None,
+                        "diag": {"etapa": "subprocesso_ocr", "erro": _erro_lote},
+                    })
+
+            _liberar_memoria_ocr(f"pai apos lote incremental empresa={empresa} processadas={processadas}")
 
         if atividade_id:
             if _ids_falharam:
                 atualizar_atividade(atividade_id, "erro", {
-                    "empresa": empresa,
-                    "processadas": processadas,
-                    "total": max(total, processadas),
-                    "aviso": (
-                        f"{len(_ids_falharam)} imagem(ns) falharam nesta tentativa. "
-                        f"{processadas} de {max(total, processadas)} foram concluídas. "
-                        "O processo principal permaneceu ativo; use 'Refazer' "
-                        "para tentar somente as pendentes."
-                    ),
-                    "erros_detalhados": _erros_detalhados[:20],
-                    "total_erros_detalhados": len(_erros_detalhados),
-                    "modo_execucao": "ocr_externo",
+                    "empresa": empresa, "processadas": processadas, "total": max(total, processadas),
+                    "aviso": f"{len(_ids_falharam)} imagem(ns) falharam nesta tentativa. {processadas} de {max(total, processadas)} foram concluídas.",
+                    "erros_detalhados": _erros_detalhados[:20], "total_erros_detalhados": len(_erros_detalhados),
+                    "modo_execucao": "ocr_externo_incremental_v142",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
-                    "empresa": empresa,
-                    "processadas": processadas,
-                    "total": max(total, processadas),
-                    "modo_execucao": "ocr_externo",
+                    "empresa": empresa, "processadas": processadas, "total": max(total, processadas),
+                    "pendentes": _contar_ocr_pendentes(user_id, empresa),
+                    "modo_execucao": "ocr_externo_incremental_v142",
                 })
-
     except BaseException as e:
-        print(
-            f"[OCR] coordenador falhou empresa={empresa!r}: {e!r}",
-            flush=True,
-        )
+        print(f"[OCR] coordenador falhou empresa={empresa!r}: {e!r}", flush=True)
         if atividade_id:
             atualizar_atividade(atividade_id, "erro", {
-                "empresa": empresa,
-                "motivo": f"{type(e).__name__}: {e}",
-                "processadas": processadas,
-                "total": max(total, processadas),
-                "modo_execucao": "ocr_externo",
+                "empresa": empresa, "motivo": f"{type(e).__name__}: {e}",
+                "processadas": processadas, "total": max(total, processadas),
+                "modo_execucao": "ocr_externo_incremental_v142",
             })
     finally:
         with _lock_ocr_pendente:

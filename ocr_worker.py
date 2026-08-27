@@ -1439,14 +1439,11 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
 
 
 def _texto_ocr_parece_grudado(texto):
-    """V151 — detector mais sensível para palavras que o OCR global fundiu.
+    """V152 — detector geral de palavras fundidas, inclusive em títulos azuis.
 
-    A V150 exigia sinais fortes demais e deixava passar casos como
-    `ComprarIngressosAndreaBocelliemSãoPaulo`, `BeloHorizonte,BrasiliaeSãoPaulo`
-    e `em22denovembro`. Aqui basta um token longo com múltiplas fronteiras
-    internas, ou uma sequência letra↔número, para pedir a releitura localizada.
-    Uma única transição curta continua não bastando, preservando marcas como
-    FunBuyNet.
+    Além de CamelCase e letra↔número, detecta tokens longos demais em relação
+    ao número de espaços da banda e sequências de minúsculas muito extensas
+    que normalmente resultam de várias palavras coladas.
     """
     t = (texto or '').strip()
     if not t:
@@ -1458,17 +1455,21 @@ def _texto_ocr_parece_grudado(texto):
         camel = len(re.findall(r'(?<=[a-zà-ÿ])[A-ZÀ-Ý]', tok))
         alnum = len(re.findall(r'(?<=[A-Za-zÀ-ÿ])(?=\d)|(?<=\d)(?=[A-Za-zÀ-ÿ])', tok))
         trans_total += camel + alnum
-        # Tokens longos com pelo menos uma fronteira interna são suspeitos;
-        # tokens médios só são fortes se tiverem várias fronteiras.
-        if (len(tok) >= 13 and (camel + alnum) >= 1) or (len(tok) >= 9 and (camel + alnum) >= 2):
+
+        if (len(tok) >= 11 and (camel + alnum) >= 1) or (len(tok) >= 8 and (camel + alnum) >= 2):
             forte += 1
-        # Número colado em preposição/palavra: em22denovembro, 12xNacionais etc.
-        if re.search(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', tok) and len(tok) >= 5:
+        if re.search(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', tok) and len(tok) >= 4:
             forte += 1
+        # palavras fundidas inteiramente em minúsculas: vendadeingressosparatodososeventos
+        if len(tok) >= 18 and tok.lower() == tok and re.search(r'[a-zà-ÿ]', tok):
+            forte += 1
+
     letras = len(re.findall(r'[A-Za-zÀ-ÿ]', t))
     espacos = t.count(' ')
-    muito_longo_sem_espaco = letras >= 20 and espacos <= 1
-    return forte >= 1 or trans_total >= 2 or muito_longo_sem_espaco
+    muito_longo_sem_espaco = letras >= 18 and espacos <= 1
+    densidade_anormal = letras >= 28 and espacos <= max(2, letras // 18)
+
+    return forte >= 1 or trans_total >= 2 or muito_longo_sem_espaco or densidade_anormal
 
 
 def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
@@ -1525,16 +1526,50 @@ def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
             # Prioriza fidelidade e ganho de separação; pequena penalidade se
             # ainda restar algum token suspeito, sem descartar o candidato.
             score = sim + min(max(ganho, 0), 8) * 0.035 - (0.03 if _texto_ocr_parece_grudado(cand) else 0.0)
-            if sim >= 0.72 and ganho >= 1 and (melhor is None or score > melhor[0]):
+            if sim >= 0.68 and ganho >= 1 and (melhor is None or score > melhor[0]):
                 melhor = (score, alt2, cand, sim, ganho)
 
         if melhor is not None:
             _, alt2, cand, sim, ganho = melhor
-            print(f'[OCR-DEBUG] V151 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
+            print(f'[OCR-DEBUG] V152 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
             return alt2
     except Exception as e:
-        print(f'[OCR-DEBUG] V151 releitura anti-grudado falhou: {e!r}', flush=True)
+        print(f'[OCR-DEBUG] V152 releitura anti-grudado falhou: {e!r}', flush=True)
     return resultado_atual
+
+def _limpar_ruido_ocr_v152(txt):
+    """Limpeza genérica pós-OCR sem adivinhar conteúdo."""
+    s = (txt or '').strip()
+    if not s:
+        return ''
+    # ruídos gráficos isolados
+    if re.fullmatch(r"[_~|`'´^•·\-–—]+", s):
+        return ''
+    if re.fullmatch(r"[A-Za-zÀ-ÿ]", s) and s.upper() in {"N"}:
+        return ''
+
+    # remove underscore solto próximo de hífen estrutural
+    s = re.sub(r'\s+_\s*-\s*', ' - ', s)
+    s = re.sub(r'\s+_\s*$', '', s)
+
+    # pontuação final estranha
+    s = re.sub(r"['´`]+\s*([:;,\.]+)$", r'\1', s)
+    s = re.sub(r'[:;,]+\.$', '.', s)
+    s = re.sub(r'\.,$|,\.$|;\.$|\.;$', '.', s)
+
+    # espaço após ponto quando começa nova palavra, preservando reticências
+    s = re.sub(r'(?<!\.)\.(?=[A-ZÀ-Ý])', '. ', s)
+
+    # pequeno ajuste de OCR 0/o apenas quando o zero está isolado entre palavras
+    s = re.sub(r'(?<=\bpara)\s+0(?=\s+[A-Za-zÀ-ÿ])', ' o', s, flags=re.I)
+
+    # marca conhecida
+    s = re.sub(r'\bFunbuynet\b', 'FunBuyNet', s, flags=re.I)
+
+    # espaços múltiplos
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
 
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
@@ -1571,13 +1606,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
     x0 = max(0, x_min - 6) if x_min is not None else 0
-    x1 = min(largura_total, x_max + 7) if x_max is not None else largura_total
+    x1 = min(largura_total, x_max + 16) if x_max is not None else largura_total
     recorte = img_bgr[y0:y1, x0:x1]
     resultado = _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1)
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V151 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V152 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
@@ -1589,7 +1624,9 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
         _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
-        _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
+        _txt_corr_p = _limpar_ruido_ocr_v152(_txt_corr_p)
+        if _txt_corr_p:
+            _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
     def _y_centro_bbox(bbox):

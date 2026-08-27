@@ -1438,46 +1438,47 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
     return saida
 
 
-def _texto_ocr_parece_grudado(texto: str) -> bool:
-    """Detecta quando o reconhecedor devolveu várias palavras dentro de UMA
-    caixa sem os espaços visuais que existem na imagem.
+def _texto_ocr_parece_grudado(texto):
+    """V151 — detector mais sensível para palavras que o OCR global fundiu.
 
-    Não tenta corrigir pelo dicionário. Usa só sinais estruturais muito fortes:
-    transições minúscula->Maiúscula no meio do token, letra->número/número->letra
-    e tokens alfabeticamente longos demais com várias maiúsculas internas.
-    Quando dispara, `_ocr_banda` faz UMA releitura localizada da faixa com
-    parâmetros mais agressivos para separar palavras. Assim o cache global
-    continua sendo o caminho rápido nos anúncios normais.
+    A V150 exigia sinais fortes demais e deixava passar casos como
+    `ComprarIngressosAndreaBocelliemSãoPaulo`, `BeloHorizonte,BrasiliaeSãoPaulo`
+    e `em22denovembro`. Aqui basta um token longo com múltiplas fronteiras
+    internas, ou uma sequência letra↔número, para pedir a releitura localizada.
+    Uma única transição curta continua não bastando, preservando marcas como
+    FunBuyNet.
     """
     t = (texto or '').strip()
     if not t:
         return False
-    # Casos reais: IngressosThiaguinho / emSãoPaulo / ArenaAnhembi /
-    # Compreingressos, etc. Uma transição isolada pode ser marca (FunBuyNet),
-    # por isso exigimos repetição ou token muito longo.
-    trans = re.findall(r'[a-zà-ÿ][A-ZÀ-Ý]', t)
-    alnum = re.findall(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', t)
     tokens = re.findall(r'[A-Za-zÀ-ÿ0-9]+', t)
-    tokens_sus = 0
+    trans_total = 0
+    forte = 0
     for tok in tokens:
-        if len(tok) < 10:
-            continue
-        internas = len(re.findall(r'(?<=[a-zà-ÿ])[A-ZÀ-Ý]', tok))
-        if internas >= 1:
-            tokens_sus += 1
-    # Também pega uma caixa extremamente longa com quase nenhum espaço.
+        camel = len(re.findall(r'(?<=[a-zà-ÿ])[A-ZÀ-Ý]', tok))
+        alnum = len(re.findall(r'(?<=[A-Za-zÀ-ÿ])(?=\d)|(?<=\d)(?=[A-Za-zÀ-ÿ])', tok))
+        trans_total += camel + alnum
+        # Tokens longos com pelo menos uma fronteira interna são suspeitos;
+        # tokens médios só são fortes se tiverem várias fronteiras.
+        if (len(tok) >= 13 and (camel + alnum) >= 1) or (len(tok) >= 9 and (camel + alnum) >= 2):
+            forte += 1
+        # Número colado em preposição/palavra: em22denovembro, 12xNacionais etc.
+        if re.search(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', tok) and len(tok) >= 5:
+            forte += 1
     letras = len(re.findall(r'[A-Za-zÀ-ÿ]', t))
     espacos = t.count(' ')
-    muito_longo_sem_espaco = letras >= 24 and espacos <= 1
-    return len(trans) >= 2 or len(alnum) >= 2 or tokens_sus >= 2 or muito_longo_sem_espaco
+    muito_longo_sem_espaco = letras >= 20 and espacos <= 1
+    return forte >= 1 or trans_total >= 2 or muito_longo_sem_espaco
 
 
 def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
-    """Fallback pontual para caixas globais cujo texto veio grudado.
+    """V151 — releitura localizada anti-palavras-grudadas.
 
-    Roda OCR SOMENTE na banda problemática, com `width_ths` bem baixo e leve
-    ampliação. Só troca o resultado se a alternativa preservar praticamente os
-    mesmos caracteres e aumentar de forma material a separação em palavras.
+    Testa mais de uma configuração de segmentação e escolhe a alternativa
+    semanticamente mais próxima do OCR original que cria fronteiras de palavra.
+    Não exige mais que o candidato fique 100% livre do detector de suspeita,
+    pois nomes próprios legítimos (SãoPaulo, MercadoLivre etc.) podiam fazer a
+    V150 rejeitar uma releitura claramente melhor.
     """
     try:
         if recorte_bgr is None or recorte_bgr.size == 0:
@@ -1485,44 +1486,54 @@ def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
         atual_txt = ' '.join(((it[1] or '').strip() for it in (resultado_atual or []) if (it[1] or '').strip())).strip()
         if not _texto_ocr_parece_grudado(atual_txt):
             return resultado_atual
+
         import cv2 as _cv2_sep
         import difflib as _difflib_sep
-        amp = _cv2_sep.resize(recorte_bgr, None, fx=1.65, fy=1.65, interpolation=_cv2_sep.INTER_CUBIC)
-        alt = reader.readtext(
-            amp, detail=1, paragraph=False,
-            width_ths=0.03, height_ths=0.45,
-            text_threshold=0.45, low_text=0.22, link_threshold=0.18,
-            mag_ratio=1.0,
-        ) or []
-        if not alt:
-            return resultado_atual
-        # volta bbox para a escala do recorte original
-        alt2=[]
-        for bbox, txt, conf in alt:
-            bb=[[float(x)/1.65, float(y)/1.65] for x,y in bbox]
-            if (txt or '').strip():
-                alt2.append((bb, txt, conf))
-        if not alt2:
-            return resultado_atual
-        alt2.sort(key=lambda it: (sum(p[1] for p in it[0])/len(it[0]), min(p[0] for p in it[0])))
-        cand = ' '.join(((it[1] or '').strip() for it in alt2)).strip()
-        if not cand:
-            return resultado_atual
-        def norm(x):
+        amp_f = 1.9
+        amp = _cv2_sep.resize(recorte_bgr, None, fx=amp_f, fy=amp_f, interpolation=_cv2_sep.INTER_CUBIC)
+
+        def _norm(x):
             x = unicodedata.normalize('NFKD', x).encode('ascii','ignore').decode('ascii')
             return re.sub(r'[^a-z0-9]+','',x.lower())
-        na, nb = norm(atual_txt), norm(cand)
-        if not na or not nb:
-            return resultado_atual
-        sim = _difflib_sep.SequenceMatcher(None, na, nb).ratio()
-        # A alternativa precisa realmente criar mais fronteiras de palavra.
+
+        na = _norm(atual_txt)
         palavras_atual = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', atual_txt))
-        palavras_cand = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', cand))
-        if sim >= 0.78 and palavras_cand >= palavras_atual + 2 and not _texto_ocr_parece_grudado(cand):
-            print(f'[OCR-DEBUG] V150 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f})', flush=True)
+        melhor = None
+
+        configs = [
+            dict(width_ths=0.01, height_ths=0.40, text_threshold=0.42, low_text=0.18, link_threshold=0.10),
+            dict(width_ths=0.03, height_ths=0.45, text_threshold=0.45, low_text=0.22, link_threshold=0.15),
+            dict(width_ths=0.06, height_ths=0.50, text_threshold=0.40, low_text=0.20, link_threshold=0.18),
+        ]
+        for cfg in configs:
+            alt = reader.readtext(amp, detail=1, paragraph=False, mag_ratio=1.0, **cfg) or []
+            alt2=[]
+            for bbox, txt, conf in alt:
+                bb=[[float(x)/amp_f, float(y)/amp_f] for x,y in bbox]
+                if (txt or '').strip():
+                    alt2.append((bb, txt, conf))
+            if not alt2:
+                continue
+            alt2.sort(key=lambda it: (sum(p[1] for p in it[0])/len(it[0]), min(p[0] for p in it[0])))
+            cand = ' '.join(((it[1] or '').strip() for it in alt2)).strip()
+            nb = _norm(cand)
+            if not na or not nb:
+                continue
+            sim = _difflib_sep.SequenceMatcher(None, na, nb).ratio()
+            palavras_cand = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', cand))
+            ganho = palavras_cand - palavras_atual
+            # Prioriza fidelidade e ganho de separação; pequena penalidade se
+            # ainda restar algum token suspeito, sem descartar o candidato.
+            score = sim + min(max(ganho, 0), 8) * 0.035 - (0.03 if _texto_ocr_parece_grudado(cand) else 0.0)
+            if sim >= 0.72 and ganho >= 1 and (melhor is None or score > melhor[0]):
+                melhor = (score, alt2, cand, sim, ganho)
+
+        if melhor is not None:
+            _, alt2, cand, sim, ganho = melhor
+            print(f'[OCR-DEBUG] V151 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
             return alt2
     except Exception as e:
-        print(f'[OCR-DEBUG] V150 releitura anti-grudado falhou: {e!r}', flush=True)
+        print(f'[OCR-DEBUG] V151 releitura anti-grudado falhou: {e!r}', flush=True)
     return resultado_atual
 
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
@@ -1566,12 +1577,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V150 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V151 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
         return ('', []) if retornar_linhas else ''
-    # V150 — o OCR global às vezes devolve UMA caixa com várias palavras
+    # V151 — o OCR global às vezes devolve UMA caixa com várias palavras
     # visualmente separadas, mas o texto interno vem sem espaços. Só nesses
     # casos fazemos uma releitura localizada da banda.
     resultado = _reler_banda_para_separar_palavras(reader, recorte, resultado)

@@ -185,7 +185,7 @@ def _ocr_precarregar_global(reader, img_bgr):
     _k = id(img_bgr)
     if _k in _OCR_GLOBAL_CACHE:
         return _OCR_GLOBAL_CACHE[_k]
-    _mem_snapshot_ocr('antes readtext global V147')
+    _mem_snapshot_ocr('antes readtext global V149')
     _res = reader.readtext(
         img_bgr,
         detail=1,
@@ -197,8 +197,8 @@ def _ocr_precarregar_global(reader, img_bgr):
         link_threshold=0.25,
     ) or []
     _OCR_GLOBAL_CACHE[_k] = list(_res)
-    _mem_snapshot_ocr('depois readtext global V147')
-    print(f'[OCR-PERF] V147 leitura global cacheada: caixas={len(_res)}', flush=True)
+    _mem_snapshot_ocr('depois readtext global V149')
+    print(f'[OCR-PERF] V149 leitura global cacheada: caixas={len(_res)}', flush=True)
     return _OCR_GLOBAL_CACHE[_k]
 
 
@@ -218,9 +218,21 @@ def _ocr_global_filtrar_para_recorte(img_bgr, y0, y1, x0, x1):
             _ys = [float(p[1]) for p in _bbox]
             _bx0, _bx1 = min(_xs), max(_xs)
             _by0, _by1 = min(_ys), max(_ys)
-            # Exige interseção real com a banda/coluna pedida. O centro sozinho
-            # falhava em caixas altas que cruzavam a borda de uma banda.
-            if _bx1 < x0 or _bx0 > x1 or _by1 < y0 or _by0 > y1:
+            # V149 — associação estrita bbox -> banda.
+            # A V147/V148 aceitava qualquer interseção vertical; caixas altas
+            # acabavam reaparecendo em bandas vizinhas e duplicando cabeçalho,
+            # título e descrição. Agora a caixa entra se:
+            #   1) houver interseção horizontal real; e
+            #   2) o centro vertical estiver dentro da banda OU >=60% da caixa
+            #      estiver contida verticalmente na banda.
+            if _bx1 < x0 or _bx0 > x1:
+                continue
+            _altura_bbox = max(1.0, _by1 - _by0)
+            _overlap_y = max(0.0, min(_by1, float(y1)) - max(_by0, float(y0)))
+            _yc = (_by0 + _by1) / 2.0
+            _centro_na_banda = float(y0) <= _yc <= float(y1)
+            _overlap_ratio = _overlap_y / _altura_bbox
+            if not (_centro_na_banda or _overlap_ratio >= 0.60):
                 continue
             _bbox_local = [[float(px)-x0, float(py)-y0] for px, py in _bbox]
             _filtrados.append((_bbox_local, _txt, _conf))
@@ -1466,7 +1478,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V147 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V149 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:

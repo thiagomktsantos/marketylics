@@ -1439,7 +1439,7 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
 
 
 def _texto_ocr_parece_grudado(texto):
-    """V152 — detector geral de palavras fundidas, inclusive em títulos azuis.
+    """V153 — detector geral de palavras fundidas, inclusive em títulos azuis.
 
     Além de CamelCase e letra↔número, detecta tokens longos demais em relação
     ao número de espaços da banda e sequências de minúsculas muito extensas
@@ -1531,10 +1531,10 @@ def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
 
         if melhor is not None:
             _, alt2, cand, sim, ganho = melhor
-            print(f'[OCR-DEBUG] V152 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
+            print(f'[OCR-DEBUG] V153 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f}, ganho={ganho})', flush=True)
             return alt2
     except Exception as e:
-        print(f'[OCR-DEBUG] V152 releitura anti-grudado falhou: {e!r}', flush=True)
+        print(f'[OCR-DEBUG] V153 releitura anti-grudado falhou: {e!r}', flush=True)
     return resultado_atual
 
 def _limpar_ruido_ocr_v152(txt):
@@ -1612,7 +1612,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V152 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V153 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
@@ -2693,7 +2693,12 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _avatar_ignorados = []
     _cta = ''
     _cta_y = -1.0
-    _rx_cta_split = _re_split.compile('^(?:abrir|compre\\s*agora|comprar\\s*agora|saiba\\s*mais|acessar|acesse|ver\\s*mais|conferir|comprar|reservar|inscreva-?se|cadastre-?se)$', _re_split.IGNORECASE)
+    _rx_cta_split = _re_split.compile(
+        r'^(?:abrir|compre\\s*agora|comprar\\s*agora|saiba\\s*mais|'
+        r'acessar(?:\\s+o\\s+site)?|acesse(?:\\s+o\\s+site)?|'
+        r'ver\\s*mais|conferir|comprar|reservar|inscreva-?se|cadastre-?se)$',
+        _re_split.IGNORECASE
+    )
     for _l in _linhas:
         _txt = (_l.get('texto') or '').strip()
         if not _txt:
@@ -2717,14 +2722,44 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     if not _conteudo:
         return None
     _conteudo.sort(key=lambda l: l['yc'])
-    _titulo, _descricao_linhas = _extrair_titulo_descricao_por_altura([{'texto': l['texto'], 'altura': l['altura']} for l in _conteudo])
-    _titulo = _limpar_pontuacao_ocr(_titulo or '')
+
+    # V153 — split-card é um card vertical no painel direito:
+    # primeiro bloco textual = título; tudo abaixo até o botão = descrição.
+    # A heurística antiga por altura podia anexar a 1ª linha da descrição ao
+    # título ("Fórmula 1 o GP de Fórmula 1 de") ou quebrar a descrição em partes.
+    _titulo_linhas = []
+    _descricao_linhas = []
+    if _conteudo:
+        _primeira = _conteudo[0]
+        _titulo_linhas.append(_primeira['texto'])
+        _h_titulo = float(_primeira.get('altura') or 1.0)
+        _y_anterior = float(_primeira.get('yc') or 0.0)
+
+        # Só aceita continuação de título quando a linha seguinte tem tamanho
+        # visual próximo e está imediatamente abaixo. Caso contrário, já é descrição.
+        _idx_desc = 1
+        for _j in range(1, min(len(_conteudo), 3)):
+            _l = _conteudo[_j]
+            _h = float(_l.get('altura') or 1.0)
+            _gap = float(_l.get('yc') or 0.0) - _y_anterior
+            _mesmo_corpo = (0.82 <= (_h / max(_h_titulo, 1.0)) <= 1.22)
+            _gap_curto = _gap <= max(34.0, _h_titulo * 1.85)
+            if _mesmo_corpo and _gap_curto:
+                _titulo_linhas.append(_l['texto'])
+                _idx_desc = _j + 1
+                _y_anterior = float(_l.get('yc') or 0.0)
+            else:
+                break
+
+        _descricao_linhas = [l['texto'] for l in _conteudo[_idx_desc:]]
+
+    _titulo = _limpar_pontuacao_ocr(' '.join(_titulo_linhas).strip())
     _descricao_linhas = [_limpar_pontuacao_ocr(x) for x in _descricao_linhas or [] if x]
     _descricao = ' '.join(_descricao_linhas).strip()
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     if not _titulo or not (_descricao or _cta):
         return None
-    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título/descrição separados por altura no painel direito; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
+    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título = primeiro bloco textual do painel direito; descrição = blocos seguintes até a bbox do botão; CTA separado pela região do botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
     print(f'[OCR-DEBUG] split-card detectado seam={_seam_x}/{w} score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
@@ -2942,25 +2977,42 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             _texto_pre_fileira = _limpar_pontuacao_ocr(_texto_pre_fileira_bruto)
             _ruido_pre_compacto = re.sub('\\s+', '', _texto_pre_fileira or '')
             _ruido_pre_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _ruido_pre_compacto)
-            if len(_ruido_pre_compacto) >= 4 and (not _ruido_pre_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _ruido_pre_compacto)) >= 4):
+            _so_simbolos_pre = bool(_ruido_pre_compacto) and (not _ruido_pre_restante)
+            if _so_simbolos_pre:
                 _debug_bandas[idx]['texto'] = _texto_pre_fileira
                 _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado ANTES da detecção de fileira; mantém descrição em andamento'
                 idx += 1
                 continue
         if len(_grupos_botoes) >= 2:
-            print(f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, {len(_grupos_botoes)} bloco(s): {_grupos_botoes}', flush=True)
-            _debug_bandas[idx]['decisao'] = f'fileira de botões ({len(_grupos_botoes)} bloco(s))'
+            _textos_botoes_debug = []
+            _textos_botoes_validos = []
+            for _x_ini, _x_fim in _grupos_botoes:
+                _texto_botao = _limpar_pontuacao_ocr(
+                    _ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max'], x_min=_x_ini, x_max=_x_fim).strip()
+                )
+                _textos_botoes_debug.append(_texto_botao)
+                _alfanum = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', _texto_botao or '')
+                if len(_alfanum) >= 2:
+                    _textos_botoes_validos.append(_texto_botao)
+
+            # V153 — uma fileira só existe quando há pelo menos dois blocos com
+            # texto real. "| |", bordas de imagem e divisores não mudam o estado
+            # do parser nem transformam a descrição seguinte em CTA.
+            if len(_textos_botoes_validos) < 2:
+                _debug_bandas[idx]['texto'] = ' | '.join([t for t in _textos_botoes_debug if t])
+                _debug_bandas[idx]['decisao'] = 'ruído gráfico/divisor sem 2 CTAs textuais reais → ignorado; mantém descrição em andamento'
+                idx += 1
+                continue
+
+            print(f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, {len(_textos_botoes_validos)} bloco(s) textuais: {_textos_botoes_validos}', flush=True)
+            _debug_bandas[idx]['decisao'] = f'fileira de botões ({len(_textos_botoes_validos)} bloco(s) textuais)'
             if par_atual is not None:
                 pares.append(par_atual)
                 par_atual = None
             _cta_aberto = False
-            _textos_botoes_debug = []
-            for _x_ini, _x_fim in _grupos_botoes:
-                _texto_botao = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max'], x_min=_x_ini, x_max=_x_fim).strip())
-                _textos_botoes_debug.append(_texto_botao)
-                if _texto_botao:
-                    resultado['sitelinks'].append({'titulo': _texto_botao, 'descricao': ''})
-            _debug_bandas[idx]['texto'] = ' | '.join(_textos_botoes_debug)
+            for _texto_botao in _textos_botoes_validos:
+                resultado['sitelinks'].append({'titulo': _texto_botao, 'descricao': ''})
+            _debug_bandas[idx]['texto'] = ' | '.join(_textos_botoes_validos)
             idx += 1
             continue
         if banda['classe'] == 'botao' and banda.get('x_min_botao') is not None:
@@ -2971,7 +3023,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _debug_bandas[idx]['texto'] = texto
         _texto_ruido_sep = re.sub('\\s+', '', texto or '')
         _texto_ruido_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _texto_ruido_sep)
-        if len(_texto_ruido_sep) >= 4 and (not _texto_ruido_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _texto_ruido_sep)) >= 4):
+        if _texto_ruido_sep and (not _texto_ruido_restante):
             _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado; mantém descrição em andamento'
             idx += 1
             continue

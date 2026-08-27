@@ -8,11 +8,11 @@ em um processo pequeno e descartável, reduzindo o pico total de RAM.
 """
 import os
 
-# V142 — trava de CPU do worker OCR.
+# V146 — equilíbrio de CPU do worker OCR: 2 threads internas, 1 imagem por vez.
 # IMPORTANTE: estas variáveis precisam ser definidas ANTES de numpy/cv2/torch/easyocr.
 # Usamos atribuição direta (e não setdefault) para impedir que valores herdados
 # do ambiente liberem múltiplas threads e provoquem picos de CPU no Streamlit.
-_CPU_THREADS_OCR = "1"
+_CPU_THREADS_OCR = "2"
 for _env_cpu in (
     "OMP_NUM_THREADS",
     "MKL_NUM_THREADS",
@@ -91,7 +91,7 @@ def _limitar_threads_cpu_ocr_apos_import():
     """Reforça em runtime o limite de 1 thread para Torch e OpenCV."""
     try:
         import torch
-        torch.set_num_threads(1)
+        torch.set_num_threads(2)
         try:
             torch.set_num_interop_threads(1)
         except RuntimeError:
@@ -111,8 +111,8 @@ def _limitar_threads_cpu_ocr_apos_import():
         print(f'[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}', flush=True)
 
     print(
-        '[OCR-CPU] limites ativos: OMP=1 MKL=1 OPENBLAS=1 NUMEXPR=1 '
-        'BLIS=1 VECLIB=1 torch=1 interop=1 cv2=1 opencl=off',
+        '[OCR-CPU] limites ativos: OMP=2 MKL=2 OPENBLAS=2 NUMEXPR=2 '
+        'BLIS=2 VECLIB=2 torch=2 interop=1 cv2=1 opencl=off',
         flush=True,
     )
 
@@ -3332,6 +3332,27 @@ def _processar_atividade_worker(sb, atividade: dict):
             break
 
         try:
+            # V146: heartbeat ANTES da inferência. Uma imagem pode levar mais tempo
+            # que o intervalo normal do daemon, então registramos explicitamente que
+            # o worker está vivo e entrou no OCR desta mídia.
+            _atividade_update_worker(
+                sb,
+                atividade_id,
+                "em_andamento",
+                {
+                    "empresa": empresa,
+                    "processadas": processadas,
+                    "total": max(total, processadas + 1),
+                    "worker": "externo",
+                    "worker_externo": True,
+                    "ultimo_heartbeat_em": _agora_iso_worker(),
+                    "aviso": (
+                        f"OCR processando imagem {processadas + 1} "
+                        f"de {max(total, processadas + 1)}."
+                    ),
+                },
+            )
+
             print(
                 f"[OCR-WORKER] imagem INICIO id={midia_id} "
                 f"empresa={empresa!r} RSS={_rss_processo_mb():.1f} MB",

@@ -7,10 +7,25 @@ Playwright nem a interface do app. O objetivo é carregar EasyOCR/PyTorch
 em um processo pequeno e descartável, reduzindo o pico total de RAM.
 """
 import os
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+# V142 — trava de CPU do worker OCR.
+# IMPORTANTE: estas variáveis precisam ser definidas ANTES de numpy/cv2/torch/easyocr.
+# Usamos atribuição direta (e não setdefault) para impedir que valores herdados
+# do ambiente liberem múltiplas threads e provoquem picos de CPU no Streamlit.
+_CPU_THREADS_OCR = "1"
+for _env_cpu in (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "BLIS_NUM_THREADS",
+):
+    os.environ[_env_cpu] = _CPU_THREADS_OCR
+
+# Evita pools auxiliares desnecessários em bibliotecas que possam ser carregadas
+# indiretamente pelo pipeline OCR.
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import sys
 import json
@@ -73,20 +88,33 @@ def _mem_snapshot_ocr(etapa: str):
 
 
 def _limitar_threads_cpu_ocr_apos_import():
+    """Reforça em runtime o limite de 1 thread para Torch e OpenCV."""
     try:
         import torch
         torch.set_num_threads(1)
         try:
             torch.set_num_interop_threads(1)
         except RuntimeError:
+            # PyTorch só permite alterar interop threads antes de certos trabalhos.
+            # Se já tiver sido fixado, mantemos o valor existente sem derrubar o worker.
             pass
     except Exception as e:
         print(f'[OCR-DEBUG] não consegui limitar threads do torch: {e!r}', flush=True)
     try:
         import cv2
         cv2.setNumThreads(1)
+        try:
+            cv2.ocl.setUseOpenCL(False)
+        except Exception:
+            pass
     except Exception as e:
         print(f'[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}', flush=True)
+
+    print(
+        '[OCR-CPU] limites ativos: OMP=1 MKL=1 OPENBLAS=1 NUMEXPR=1 '
+        'BLIS=1 VECLIB=1 torch=1 interop=1 cv2=1 opencl=off',
+        flush=True,
+    )
 
 _MAX_CPU_PESADA = int(st.secrets.get('MAX_CPU_PESADA_CONCORRENTE', 1))
 

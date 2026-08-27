@@ -1119,11 +1119,41 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
             return f'{_pont} {_palavra}'
         return _m.group(0)
     texto = re.sub('([.!?])\\s+([A-Za-zÀ-ÿ])\\s+([A-Za-zÀ-ÿ]{2,})\\b', _remover_inicial_duplicada_pos_frase, texto)
+
+    # V143 — ruído OCR observado em anúncio FunBuyNet:
+    # "esportes e f festivais." quando a imagem contém "esportes e festivais."
+    # A correção é deliberadamente estreita: só remove um "f" isolado
+    # imediatamente entre a conjunção "e" e "festival/festivais".
+    def _remover_f_fantasma_antes_festival(_m):
+        print(
+            f"[OCR-DEBUG] removido 'f' fantasma antes de {_m.group(2)!r}",
+            flush=True,
+        )
+        return f"{_m.group(1)} {_m.group(2)}"
+
+    texto = re.sub(
+        r'(?i)\\b(e)\\s+f\\s+(festival(?:is)?)\\b',
+        _remover_f_fantasma_antes_festival,
+        texto,
+    )
+
     _digitos = re.findall('\\d', texto)
     _palavras_alpha = re.findall('[A-Za-zÀ-ÿ]{2,}', texto)
     if len(_palavras_alpha) >= 4 and _digitos and all((d == '1' for d in _digitos)):
         texto = re.sub('(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])', '', texto)
     texto = _corrigir_o_isolado(texto)
+
+    # V144 — hífen solto no FINAL da banda é separador visual, não texto.
+    # Ex.: "Turnê Show do Cabaré 2026 -" -> "Turnê Show do Cabaré 2026".
+    # Hífens internos permanecem intactos, inclusive "On-Line".
+    texto = re.sub(r'\\s+-+\\s*$', '', texto)
+
+    # V145 — pontuação duplicada no FINAL do texto.
+    texto = re.sub(r'\\.(?:\\s*[,;.]\\s*)+$', '.', texto)
+    texto = re.sub(r'[,;](?:\\s*\\.\\s*)+$', '.', texto)
+    texto = re.sub(r',(?:\\s*,\\s*)+$', ',', texto)
+    texto = re.sub(r';(?:\\s*;\\s*)+$', ';', texto)
+
     return texto
 
 def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int=None) -> list:
@@ -2240,6 +2270,84 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str=None
     print(f'[OCR-DEBUG] display-top-card detectado seam={_seam_y}/{h} score={_score:.1f} foto_mean={_foto_mean:.1f} foto_branca={_foto_frac_quase_branca:.2%} foto_escura={float((_foto <= 100).mean()):.2%} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} descricao={_descricao!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'display_top_card'}
 
+def _corrigir_espacos_marca_na_descricao(texto: str, empresa: str=None) -> str:
+    """V145 — recupera espaços ao redor da marca cadastrada quando o OCR
+    funde a marca com palavras/pontuação vizinhas numa caixa larga.
+    Não quebra CamelCase genericamente, preservando marcas como FunBuyNet.
+    """
+    if not texto:
+        return texto
+    out = str(texto)
+    marca = (empresa or '').strip()
+    if marca:
+        compacta = re.sub(r'\s+', '', marca)
+        if compacta:
+            out = re.sub(r'(?<=[A-Za-zÀ-ÿ])(?=' + re.escape(compacta) + r'\b)', ' ', out, flags=re.IGNORECASE)
+            out = re.sub(re.escape(compacta), marca, out, flags=re.IGNORECASE)
+            out = re.sub(r'(' + re.escape(marca) + r'\s*[,.;:!?])(?=[A-Za-zÀ-ÿ])', r'\1 ', out, flags=re.IGNORECASE)
+    out = re.sub(r'([,.;:!?])(?=[A-Za-zÀ-ÿ])', r'\1 ', out)
+    out = re.sub(r'\b(fun)(?=(?:is|was|will|can)\b)', r'\1 ', out, flags=re.IGNORECASE)
+    return re.sub(r'\s{2,}', ' ', out).strip()
+
+
+def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
+    """V145 — leitura especial de Display/mobile vertical com texto e mídias.
+    Impede que o card inteiro vire uma única banda cinza/fallback bruto.
+    Gate estreito: proporção vertical; exige CTA reconhecível no terço inferior.
+    """
+    import numpy as _np_v145
+    import re as _re_v145
+    if img_bgr is None or getattr(img_bgr, 'size', 0) == 0:
+        return None
+    h, w = img_bgr.shape[:2]
+    if h < 500 or w < 250 or (w / max(1.0, float(h))) > 0.72:
+        return None
+    try:
+        rr = reader.readtext(img_bgr, detail=1, paragraph=False, width_ths=0.15, height_ths=0.45, text_threshold=0.4, low_text=0.25, link_threshold=0.25)
+    except Exception as exc:
+        print(f'[OCR-DEBUG] display-vertical-v145 falhou: {exc!r}', flush=True)
+        return None
+    caixas=[]
+    for item in rr or []:
+        if not item or len(item) < 3: continue
+        bbox, txt, conf = item
+        txt=_limpar_pontuacao_ocr((txt or '').strip())
+        if not txt: continue
+        xs=[float(p[0]) for p in bbox]; ys=[float(p[1]) for p in bbox]
+        caixas.append({'texto':txt,'x0':min(xs),'yc':(min(ys)+max(ys))/2,'altura':max(1.0,max(ys)-min(ys))})
+    if len(caixas) < 3: return None
+    caixas.sort(key=lambda c:(c['yc'],c['x0']))
+    linhas=[]
+    for c in caixas:
+        alvo=None
+        for l in linhas:
+            if abs(c['yc']-l['yc']) <= max(7.0,min(c['altura'],l['altura'])*0.55): alvo=l; break
+        if alvo is None:
+            alvo={'yc':c['yc'],'altura':c['altura'],'itens':[]}; linhas.append(alvo)
+        alvo['itens'].append(c); alvo['yc']=sum(x['yc'] for x in alvo['itens'])/len(alvo['itens']); alvo['altura']=max(alvo['altura'],c['altura'])
+    linhas.sort(key=lambda l:l['yc'])
+    for l in linhas:
+        l['itens'].sort(key=lambda c:c['x0']); l['texto']=_limpar_pontuacao_ocr(' '.join(c['texto'] for c in l['itens']).strip())
+    rx=_re_v145.compile(r'^(?:abrir|acessar(?: o site)?|acesse(?: o site)?|saiba mais|compre agora|comprar agora|ver mais|conferir|comprar|reservar)$',_re_v145.I)
+    cta=''; cab=''; uteis=[]
+    for l in linhas:
+        t=l['texto'].strip(); tc=_re_v145.sub(r'\s*[>›»→❯➜]+\s*$','',t).strip()
+        if rx.match(tc) and l['yc'] > h*.45: cta=tc; continue
+        if _REGEX_PATROCINADO.match(t): continue
+        if empresa and _corrigir_nome_pagina_com_empresa(t,empresa)==empresa and l['yc'] < h*.35: cab=empresa; continue
+        uteis.append(l)
+    if not cta or not uteis: return None
+    med=float(_np_v145.median([l['altura'] for l in uteis]))
+    cand=[l for l in uteis if l['altura'] >= max(med*1.25,med+3)]
+    tl=max(cand,key=lambda l:l['altura']) if cand else uteis[0]
+    titulo=_limpar_pontuacao_ocr(tl['texto'])
+    desc=' '.join(l['texto'] for l in uteis if l is not tl and l['yc'] > tl['yc']).strip()
+    desc=_corrigir_espacos_marca_na_descricao(_limpar_pontuacao_ocr(desc),empresa)
+    if not titulo or not (desc or cta): return None
+    dbg=[{'idx':0,'classe':'display-vertical-v145','sep_antes':False,'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),'decisao':'V145 → Display vertical: texto agrupado por geometria; mídias não estruturam bandas; título por tipografia; CTA separado','y_min':0,'y_max':int(h),'x_min_favicon':0}]
+    return {'titulo':titulo,'descricao':desc,'url_exibida':cab or (empresa or ''),'url_final':'','cta':cta,'cta_subtitulo':'','sitelinks':[],'_debug_bandas':dbg,'_layout_ocr':'display_vertical_v145'}
+
+
 def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     """Detecta anúncio gráfico em DUAS COLUNAS.
 
@@ -2374,6 +2482,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _titulo = _limpar_pontuacao_ocr(_titulo or '')
     _descricao_linhas = [_limpar_pontuacao_ocr(x) for x in _descricao_linhas or [] if x]
     _descricao = ' '.join(_descricao_linhas).strip()
+    _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     if not _titulo or not (_descricao or _cta):
         return None
     _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título/descrição separados por altura no painel direito; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
@@ -2399,6 +2508,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     título nem descrição) — nesse caso quem chama deve cair no fallback
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
+    _display_vertical_v145 = _detectar_display_vertical_v145(img_bgr, reader, empresa=empresa)
+    if _display_vertical_v145 is not None:
+        return _display_vertical_v145
     _display_foto_central = _detectar_display_foto_central(img_bgr, reader, empresa=empresa)
     if _display_foto_central is not None:
         return _display_foto_central
@@ -2678,15 +2790,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 _partes_relacionados = [re.sub('(?i)^reg[ií]strate\\s*[,;:]\\s*entra$', 'Regístrate o entra', _p.strip()) for _p in _partes_relacionados]
             if _portao_seguranca_relacionados and (not _relacionados_split_textual_confiavel):
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(reader, img_bgr, banda['y_min'], banda['y_max'])
-                if len(_candidatos_gap) >= 3 and len(_candidatos_gap) > len(_partes_relacionados or []):
+                # V145 — dois CTAs/sitelinks lado a lado também são válidos.
+                if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
             if _partes_relacionados and len(_partes_relacionados) >= 2:
                 _debug_bandas[idx]['decisao'] = f'azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) separados por hr, em vez de ficarem grudados)'
                 if par_atual is not None:
                     pares.append(par_atual)
                     par_atual = None
-                for _termo_rel in _partes_relacionados:
-                    resultado['sitelinks'].append({'titulo': _termo_rel, 'descricao': ''})
+                if len(_partes_relacionados) == 2 and (not banda.get('sep_antes')):
+                    resultado['sitelinks'].append({'titulo': ' <hr> '.join(_partes_relacionados), 'descricao': ''})
+                else:
+                    for _termo_rel in _partes_relacionados:
+                        resultado['sitelinks'].append({'titulo': _termo_rel, 'descricao': ''})
                 idx += 1
                 continue
             _cta_aberto = False

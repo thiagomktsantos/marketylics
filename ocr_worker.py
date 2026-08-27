@@ -185,7 +185,7 @@ def _ocr_precarregar_global(reader, img_bgr):
     _k = id(img_bgr)
     if _k in _OCR_GLOBAL_CACHE:
         return _OCR_GLOBAL_CACHE[_k]
-    _mem_snapshot_ocr('antes readtext global V149')
+    _mem_snapshot_ocr('antes readtext global V150')
     _res = reader.readtext(
         img_bgr,
         detail=1,
@@ -197,8 +197,8 @@ def _ocr_precarregar_global(reader, img_bgr):
         link_threshold=0.25,
     ) or []
     _OCR_GLOBAL_CACHE[_k] = list(_res)
-    _mem_snapshot_ocr('depois readtext global V149')
-    print(f'[OCR-PERF] V149 leitura global cacheada: caixas={len(_res)}', flush=True)
+    _mem_snapshot_ocr('depois readtext global V150')
+    print(f'[OCR-PERF] V150 leitura global cacheada: caixas={len(_res)}', flush=True)
     return _OCR_GLOBAL_CACHE[_k]
 
 
@@ -1437,6 +1437,94 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         saida.append(it)
     return saida
 
+
+def _texto_ocr_parece_grudado(texto: str) -> bool:
+    """Detecta quando o reconhecedor devolveu várias palavras dentro de UMA
+    caixa sem os espaços visuais que existem na imagem.
+
+    Não tenta corrigir pelo dicionário. Usa só sinais estruturais muito fortes:
+    transições minúscula->Maiúscula no meio do token, letra->número/número->letra
+    e tokens alfabeticamente longos demais com várias maiúsculas internas.
+    Quando dispara, `_ocr_banda` faz UMA releitura localizada da faixa com
+    parâmetros mais agressivos para separar palavras. Assim o cache global
+    continua sendo o caminho rápido nos anúncios normais.
+    """
+    t = (texto or '').strip()
+    if not t:
+        return False
+    # Casos reais: IngressosThiaguinho / emSãoPaulo / ArenaAnhembi /
+    # Compreingressos, etc. Uma transição isolada pode ser marca (FunBuyNet),
+    # por isso exigimos repetição ou token muito longo.
+    trans = re.findall(r'[a-zà-ÿ][A-ZÀ-Ý]', t)
+    alnum = re.findall(r'[A-Za-zÀ-ÿ]\d|\d[A-Za-zÀ-ÿ]', t)
+    tokens = re.findall(r'[A-Za-zÀ-ÿ0-9]+', t)
+    tokens_sus = 0
+    for tok in tokens:
+        if len(tok) < 10:
+            continue
+        internas = len(re.findall(r'(?<=[a-zà-ÿ])[A-ZÀ-Ý]', tok))
+        if internas >= 1:
+            tokens_sus += 1
+    # Também pega uma caixa extremamente longa com quase nenhum espaço.
+    letras = len(re.findall(r'[A-Za-zÀ-ÿ]', t))
+    espacos = t.count(' ')
+    muito_longo_sem_espaco = letras >= 24 and espacos <= 1
+    return len(trans) >= 2 or len(alnum) >= 2 or tokens_sus >= 2 or muito_longo_sem_espaco
+
+
+def _reler_banda_para_separar_palavras(reader, recorte_bgr, resultado_atual):
+    """Fallback pontual para caixas globais cujo texto veio grudado.
+
+    Roda OCR SOMENTE na banda problemática, com `width_ths` bem baixo e leve
+    ampliação. Só troca o resultado se a alternativa preservar praticamente os
+    mesmos caracteres e aumentar de forma material a separação em palavras.
+    """
+    try:
+        if recorte_bgr is None or recorte_bgr.size == 0:
+            return resultado_atual
+        atual_txt = ' '.join(((it[1] or '').strip() for it in (resultado_atual or []) if (it[1] or '').strip())).strip()
+        if not _texto_ocr_parece_grudado(atual_txt):
+            return resultado_atual
+        import cv2 as _cv2_sep
+        import difflib as _difflib_sep
+        amp = _cv2_sep.resize(recorte_bgr, None, fx=1.65, fy=1.65, interpolation=_cv2_sep.INTER_CUBIC)
+        alt = reader.readtext(
+            amp, detail=1, paragraph=False,
+            width_ths=0.03, height_ths=0.45,
+            text_threshold=0.45, low_text=0.22, link_threshold=0.18,
+            mag_ratio=1.0,
+        ) or []
+        if not alt:
+            return resultado_atual
+        # volta bbox para a escala do recorte original
+        alt2=[]
+        for bbox, txt, conf in alt:
+            bb=[[float(x)/1.65, float(y)/1.65] for x,y in bbox]
+            if (txt or '').strip():
+                alt2.append((bb, txt, conf))
+        if not alt2:
+            return resultado_atual
+        alt2.sort(key=lambda it: (sum(p[1] for p in it[0])/len(it[0]), min(p[0] for p in it[0])))
+        cand = ' '.join(((it[1] or '').strip() for it in alt2)).strip()
+        if not cand:
+            return resultado_atual
+        def norm(x):
+            x = unicodedata.normalize('NFKD', x).encode('ascii','ignore').decode('ascii')
+            return re.sub(r'[^a-z0-9]+','',x.lower())
+        na, nb = norm(atual_txt), norm(cand)
+        if not na or not nb:
+            return resultado_atual
+        sim = _difflib_sep.SequenceMatcher(None, na, nb).ratio()
+        # A alternativa precisa realmente criar mais fronteiras de palavra.
+        palavras_atual = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', atual_txt))
+        palavras_cand = len(re.findall(r'[A-Za-zÀ-ÿ0-9]+', cand))
+        if sim >= 0.78 and palavras_cand >= palavras_atual + 2 and not _texto_ocr_parece_grudado(cand):
+            print(f'[OCR-DEBUG] V150 releitura anti-grudado adotada: {atual_txt!r} -> {cand!r} (sim={sim:.2f})', flush=True)
+            return alt2
+    except Exception as e:
+        print(f'[OCR-DEBUG] V150 releitura anti-grudado falhou: {e!r}', flush=True)
+    return resultado_atual
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -1478,11 +1566,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if resultado is None:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     else:
-        print(f'[OCR-PERF] V149 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
+        print(f'[OCR-PERF] V150 banda y=({y_min},{y_max}) x=({x0},{x1}) reutilizou cache global: caixas={len(resultado)}', flush=True)
     if not resultado:
         resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5, text_threshold=0.4, low_text=0.3, link_threshold=0.3)
     if not resultado:
         return ('', []) if retornar_linhas else ''
+    # V150 — o OCR global às vezes devolve UMA caixa com várias palavras
+    # visualmente separadas, mas o texto interno vem sem espaços. Só nesses
+    # casos fazemos uma releitura localizada da banda.
+    resultado = _reler_banda_para_separar_palavras(reader, recorte, resultado)
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
         _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)

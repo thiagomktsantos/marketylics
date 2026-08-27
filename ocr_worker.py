@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# V162_V2 — parser experimental por blocos visuais para Google Search responsivo.
+# Mantém OCR local por banda e fallback automático para o parser legado.
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
 # V159 — rollback controlado para o motor pré-global da V146.
@@ -2495,6 +2497,295 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     print(f'[OCR-DEBUG] split-card detectado seam={_seam_x}/{w} score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
+# ============================================================
+# V162_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
+# ============================================================
+def _v2_limpar_texto(txt):
+    s = _normalizar_aspas_ocr(_limpar_pontuacao_ocr((txt or '').strip()))
+    s = re.sub(r'\s+', ' ', s).strip()
+    # ruído gráfico puro nunca vira conteúdo
+    if s and not re.search(r'[A-Za-zÀ-ÿ0-9]', s):
+        return ''
+    return s
+
+
+def _v2_parece_url(txt):
+    s = re.sub(r'\s+', '', (txt or '').lower())
+    return bool(
+        re.search(r'(?:https?://|www\.|[a-z0-9-]+\.(?:com|com\.br|br|net|org)(?:/|$))', s)
+        or re.match(r'^[nNvVwW]{2,4}[.:]', (txt or '').strip())
+    )
+
+
+def _v2_normalizar_url(txt):
+    """Normalização conservadora só para URL."""
+    s = re.sub(r'\s+', '', (txt or '').strip()).replace('\\', '').lower()
+    s = re.sub(r'^(?:nww|vww|wvv|vvw|www)[\._-]*', 'www.', s)
+    s = re.sub(r'\.br(?:l|1|i)(?=$|/)', '.br', s)
+    s = re.sub(r'^www(?=[a-z0-9])', 'www.', s)
+    if re.fullmatch(r'www\.[a-z0-9.-]+\.[a-z]{2,}', s):
+        s += '/'
+    return s
+
+
+def _v2_nome_empresa(txt, empresa):
+    """Preserva caixa visual quando já é a mesma marca; corrige só erro real."""
+    bruto = _v2_limpar_texto(txt)
+    if not bruto:
+        return ''
+    if not empresa:
+        return bruto
+    def _norm(s):
+        s = unicodedata.normalize('NFKD', str(s)).encode('ascii','ignore').decode('ascii')
+        return re.sub(r'[^a-z0-9]+', '', s.lower())
+    if _norm(bruto) == _norm(empresa):
+        return bruto
+    corr = _corrigir_nome_pagina_com_empresa(bruto, empresa)
+    if _norm(corr) == _norm(empresa):
+        return str(empresa).strip()
+    return bruto
+
+
+def _v2_split_horizontal_links(reader, img_bgr, banda, texto):
+    """Só divide em <hr> quando existem 2+ blocos horizontais textuais reais."""
+    try:
+        grupos = _dividir_banda_em_botoes(
+            img_bgr, banda['y_min'], banda['y_max'], gap_minimo=None
+        ) or []
+    except Exception:
+        grupos = []
+    if len(grupos) < 2 or len(grupos) > 4:
+        return []
+    validos = []
+    for x0, x1 in grupos:
+        t = _v2_limpar_texto(
+            _ocr_banda(
+                reader, img_bgr, banda['y_min'], banda['y_max'],
+                x_min=x0, x_max=x1
+            )
+        )
+        if len(re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', t)) >= 2:
+            validos.append(t)
+    # só aceita quando os blocos realmente cobrem a linha e são distintos
+    if len(validos) >= 2 and len(set(v.lower() for v in validos)) == len(validos):
+        return validos
+    return []
+
+
+def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
+    """Parser por BLOCOS visuais para Google Search responsivo.
+
+    Princípios:
+    - OCR continua LOCAL por banda (não reintroduz cache global);
+    - primeiro coleta tudo, depois agrupa, só então classifica;
+    - texto ambíguo é preservado;
+    - separação horizontal exige evidência geométrica real;
+    - sitelinks verticais nunca são quebrados por espaços internos.
+    """
+    bandas = _detectar_bandas_texto(img_bgr)
+    bandas_texto = []
+    sep_pendente = False
+    for b in bandas:
+        if b.get('classe') == 'separador':
+            sep_pendente = True
+            continue
+        bb = dict(b)
+        bb['sep_antes'] = sep_pendente
+        sep_pendente = False
+        bandas_texto.append(bb)
+
+    if not bandas_texto:
+        return None
+
+    # coleta primeiro; nenhuma decisão estrutural durante o OCR
+    itens = []
+    for i, b in enumerate(bandas_texto):
+        txt = _v2_limpar_texto(
+            _ocr_banda(reader, img_bgr, b['y_min'], b['y_max'])
+        )
+        itens.append({
+            'idx': i,
+            'classe': b.get('classe'),
+            'sep_antes': bool(b.get('sep_antes')),
+            'y_min': b['y_min'],
+            'y_max': b['y_max'],
+            'texto': txt,
+            'banda': b,
+        })
+
+    # remove Patrocinado, mas preserva todo o resto
+    for it in itens:
+        if re.fullmatch(r'(?i)patrocinado|sponsored|ad', it['texto'] or ''):
+            it['papel'] = 'patrocinado'
+            it['texto'] = ''
+
+    resultado = {
+        'titulo': '',
+        'descricao': '',
+        'url_exibida': '',
+        'url_final': '',
+        'cta': '',
+        'cta_subtitulo': '',
+        'sitelinks': [],
+    }
+    debug = []
+
+    # ---------- CABEÇALHO ----------
+    nome_pagina = ''
+    url = ''
+    primeiro_azul = next(
+        (k for k, it in enumerate(itens) if it['classe'] == 'azul' and it['texto']),
+        len(itens)
+    )
+    header = [it for it in itens[:primeiro_azul] if it['texto']]
+    for it in header:
+        if _v2_parece_url(it['texto']):
+            if not url:
+                url = _v2_normalizar_url(it['texto'])
+                it['papel'] = 'url'
+        elif not nome_pagina:
+            nome_pagina = _v2_nome_empresa(it['texto'], empresa)
+            it['papel'] = 'empresa'
+        else:
+            # cabeçalho extra não some: fica preservado
+            it['papel'] = 'header_extra'
+
+    if nome_pagina and url:
+        resultado['url_exibida'] = nome_pagina + '\n' + url
+    else:
+        resultado['url_exibida'] = url or nome_pagina
+
+    # ---------- TÍTULO PRINCIPAL ----------
+    # Primeiro bloco azul contínuo depois do header, antes do primeiro texto
+    # não-azul substancial.
+    titulo_idxs = []
+    k = primeiro_azul
+    while k < len(itens):
+        it = itens[k]
+        if not it['texto']:
+            k += 1
+            continue
+        if it['classe'] == 'azul' and not (titulo_idxs and it['sep_antes']):
+            titulo_idxs.append(k)
+            k += 1
+            continue
+        break
+
+    if titulo_idxs:
+        resultado['titulo'] = ' '.join(itens[j]['texto'] for j in titulo_idxs).strip()
+        for j in titulo_idxs:
+            itens[j]['papel'] = 'titulo'
+
+    # ---------- DESCRIÇÃO PRINCIPAL ----------
+    # Tudo não-azul após o título até o primeiro bloco azul pós-descrição.
+    desc_idxs = []
+    p = (titulo_idxs[-1] + 1) if titulo_idxs else primeiro_azul
+    viu_desc = False
+    while p < len(itens):
+        it = itens[p]
+        if not it['texto']:
+            p += 1
+            continue
+        if it['classe'] != 'azul':
+            desc_idxs.append(p)
+            viu_desc = True
+            p += 1
+            continue
+        if viu_desc:
+            break
+        # azul inesperado antes da descrição: preserva como continuação do título
+        if resultado['titulo'] and not it['sep_antes']:
+            resultado['titulo'] += ' ' + it['texto']
+            it['papel'] = 'titulo'
+            p += 1
+            continue
+        break
+
+    if desc_idxs:
+        resultado['descricao'] = ' '.join(itens[j]['texto'] for j in desc_idxs).strip()
+        for j in desc_idxs:
+            itens[j]['papel'] = 'descricao'
+
+    # ---------- RESTANTE: SITELINKS / CTAs ----------
+    # Agora classificamos depois de título+descrição, evitando "abrir estado"
+    # cedo demais.
+    r = p
+    bloco_vertical_atual = None
+    while r < len(itens):
+        it = itens[r]
+        txt = it['texto']
+        if not txt:
+            r += 1
+            continue
+
+        if it['classe'] == 'azul':
+            horizontais = _v2_split_horizontal_links(reader, img_bgr, it['banda'], txt)
+            if len(horizontais) >= 2:
+                # representa dois CTAs da MESMA fileira em um único sitelink
+                resultado['sitelinks'].append({
+                    'titulo': ' <hr> '.join(horizontais),
+                    'descricao': ''
+                })
+                it['papel'] = 'sitelinks_horizontais'
+                bloco_vertical_atual = None
+                r += 1
+                continue
+
+            # separador antes = novo sitelink vertical individual
+            if it['sep_antes'] or bloco_vertical_atual is None:
+                resultado['sitelinks'].append({'titulo': txt, 'descricao': ''})
+                bloco_vertical_atual = resultado['sitelinks'][-1]
+                it['papel'] = 'sitelink'
+            else:
+                # azul contíguo sem separador pode ser continuação multilinha
+                bloco_vertical_atual['titulo'] = (
+                    bloco_vertical_atual['titulo'] + ' ' + txt
+                ).strip()
+                it['papel'] = 'sitelink_continuacao'
+            r += 1
+            continue
+
+        # Texto não-azul após sitelink vira descrição dele, nunca descartado.
+        if bloco_vertical_atual is not None:
+            bloco_vertical_atual['descricao'] = (
+                (bloco_vertical_atual.get('descricao') or '') + ' ' + txt
+            ).strip()
+            it['papel'] = 'descricao_sitelink'
+        else:
+            # sem contexto: preserva na descrição principal
+            resultado['descricao'] = ((resultado['descricao'] + ' ' + txt).strip())
+            it['papel'] = 'descricao_preservada'
+        r += 1
+
+    # ---------- CONFIANÇA ----------
+    score = 0.0
+    if nome_pagina: score += 0.15
+    if url: score += 0.15
+    if resultado['titulo']: score += 0.35
+    if resultado['descricao']: score += 0.25
+    if resultado['sitelinks']: score += 0.10
+    # Search responsivo precisa no mínimo de título e algum texto principal.
+    confiavel = bool(resultado['titulo']) and bool(resultado['descricao']) and score >= 0.60
+
+    for it in itens:
+        debug.append({
+            'idx': it['idx'],
+            'classe': it['classe'],
+            'sep_antes': it['sep_antes'],
+            'texto': it['texto'],
+            'decisao': f"V2 bloco → {it.get('papel','preservado_sem_classificacao')}",
+            'y_min': it['y_min'],
+            'y_max': it['y_max'],
+        })
+
+    resultado['_debug_bandas'] = debug
+    resultado['_parser_v2'] = True
+    resultado['_parser_v2_confidence'] = round(score, 3)
+    resultado['_parser_v2_confiavel'] = confiavel
+    return resultado
+
+
+
 def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
     """Usa as bandas de cor pra separar um anúncio de TEXTO do Google
     Ads (Rede de Pesquisa) nos campos titulo/descricao/url_exibida/cta/
@@ -3137,7 +3428,24 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _reader = _get_easyocr()
             _etapa_ocr_diag = 'leitura_ocr'
             with _recurso_cpu_pesada('easyocr-estruturado'):
-                _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
+                # V162_V2 experimental: tenta primeiro o parser por blocos.
+                # Se ele não tiver confiança suficiente, usa o parser legado.
+                _v2 = _estruturar_anuncio_google_ads_v2(_img, _reader, empresa=empresa)
+                if _v2 is not None and _v2.get('_parser_v2_confiavel'):
+                    _estruturado = _v2
+                    print(
+                        f"[OCR-V2] adotado confidence={_v2.get('_parser_v2_confidence')} "
+                        f"titulo={_v2.get('titulo')!r}",
+                        flush=True,
+                    )
+                else:
+                    if _v2 is not None:
+                        print(
+                            f"[OCR-V2] fallback legado confidence={_v2.get('_parser_v2_confidence')} "
+                            f"titulo={_v2.get('titulo')!r}",
+                            flush=True,
+                        )
+                    _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
                 _etapa_ocr_diag = 'fallback_ocr_bruto'
                 with _recurso_cpu_pesada('easyocr-fallback-bruto'):

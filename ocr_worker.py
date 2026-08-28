@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-# V166_V2 — permite domínio como nome da empresa acima da URL completa.
-# V166_V2 — sitelinks no padrão 'A - B -' são emitidos como 'A <hr> B'.
-# V166_V2 — split-card também tratado dentro do parser V2.
-# V166_V2 — parser experimental por blocos visuais para Google Search responsivo.
+# V167_V2_STABLE — remove prepass pesado de split-card para evitar OOM/crash.
+# V167_V2_STABLE — permite domínio como nome da empresa acima da URL completa.
+# V167_V2_STABLE — sitelinks no padrão 'A - B -' são emitidos como 'A <hr> B'.
+# V167_V2_STABLE — split-card também tratado dentro do parser V2.
+# V167_V2_STABLE — parser experimental por blocos visuais para Google Search responsivo.
 # Mantém OCR local por banda e fallback automático para o parser legado.
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2501,7 +2502,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
 # ============================================================
-# V166_V2 — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
+# V167_V2_STABLE — PARSER EXPERIMENTAL DE GOOGLE SEARCH RESPONSIVO
 # ============================================================
 def _v2_limpar_texto(txt):
     s = _normalizar_aspas_ocr(_limpar_pontuacao_ocr((txt or '').strip()))
@@ -2879,11 +2880,16 @@ def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
     - separação horizontal exige evidência geométrica real;
     - sitelinks verticais nunca são quebrados por espaços internos.
     """
-    # Primeiro tenta formatos gráficos responsivos dentro do próprio V2.
-    _split_v2 = _v2_detectar_split_card(img_bgr, reader, empresa=empresa)
-    if _split_v2 is not None:
-        return _split_v2
-
+    # V167_STABLE:
+    # NÃO roda mais _v2_detectar_split_card aqui.
+    #
+    # A V164-V166 fazia um reader.readtext() adicional em um painel grande
+    # antes da leitura por bandas. Em imagens grandes isso elevava o RSS do
+    # worker para vários GB e podia provocar OOM/crash no Streamlit.
+    #
+    # O V2 continua ativo para Search Ads por bandas. Formatos gráficos
+    # (incluindo split-card) ficam para o parser legado no fallback abaixo,
+    # até termos uma versão de split-card que opere apenas em crops pequenos.
     bandas = _detectar_bandas_texto(img_bgr)
     bandas_texto = []
     sep_pendente = False
@@ -2914,6 +2920,14 @@ def _estruturar_anuncio_google_ads_v2(img_bgr, reader, empresa=None):
             'texto': txt,
             'banda': b,
         })
+
+    # Libera temporários do detector antes da classificação estrutural.
+    # Evita manter referências grandes vivas enquanto o restante do parser roda.
+    try:
+        import gc as _gc_v167
+        _gc_v167.collect()
+    except Exception:
+        pass
 
     # remove Patrocinado, mas preserva todo o resto
     for it in itens:
@@ -3792,7 +3806,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar
             _reader = _get_easyocr()
             _etapa_ocr_diag = 'leitura_ocr'
             with _recurso_cpu_pesada('easyocr-estruturado'):
-                # V166_V2 experimental: tenta primeiro o parser por blocos.
+                # V167_V2_STABLE experimental: tenta primeiro o parser por blocos.
                 # Se ele não tiver confiança suficiente, usa o parser legado.
                 _v2 = _estruturar_anuncio_google_ads_v2(_img, _reader, empresa=empresa)
                 if _v2 is not None and _v2.get('_parser_v2_confiavel'):

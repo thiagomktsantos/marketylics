@@ -1,3 +1,4 @@
+# V152_YOUTUBE_CC_RETRY_FALLBACK — não cacheia falha vazia de CC, permite retry real pós-standby e adiciona fallback YouTube timedtext.
 # V151_YOUTUBE_CC_AUTO_RECOVERY — verifica automaticamente vídeos YouTube sem CC após retomada/render, com retry pós-standby, trava concorrente e cooldown.
 # V150_YOUTUBE_CC — salva CC/legendas de vídeos YouTube no Google Ads, exibe no card, usa na busca e na análise.\n# V149_LOGIN_BUTTON_LOADING — autenticação exibe carregamento no próprio botão, sem spinner abaixo.\n# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
 # V147_SEARCH_IN_OCR — busca Google Ads inclui OCR bruto/estruturado e ignora caixa/acentos.\nfrom playwright.sync_api import sync_playwright
@@ -1389,7 +1390,12 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
             cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
     else:
         cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
-    if cached is not None:
+
+    # V152 — resultado vazio NÃO é sucesso e não pode impedir retries.
+    # Nas versões anteriores, uma falha temporária/standby podia armazenar
+    # {"text": ""} e todas as verificações automáticas seguintes retornavam
+    # imediatamente esse vazio sem consultar o YouTube novamente.
+    if cached is not None and str(cached.get("text") or "").strip():
         return dict(cached)
 
     result = {
@@ -1455,14 +1461,170 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     "language": lang,
                     "source": source if texto_cc else "",
                 })
+
+        # V152 — fallback para o endpoint timedtext.
+        #
+        # O HTML /watch nem sempre expõe captionTracks (consentimento,
+        # resposta simplificada, cold start, mudanças do YouTube). Quando a
+        # primeira estratégia não encontrou texto, tentamos listar as faixas
+        # diretamente e baixar a escolhida.
+        if not str(result.get("text") or "").strip():
+            try:
+                _list_url_v152 = (
+                    f"https://www.youtube.com/api/timedtext"
+                    f"?type=list&v={video_id}"
+                )
+                with _recurso_api_io():
+                    _list_resp_v152 = _http_get(
+                        _list_url_v152,
+                        timeout=20,
+                        headers=headers,
+                    )
+
+                _tracks_v152 = []
+                if _list_resp_v152.status_code == 200 and _list_resp_v152.text:
+                    try:
+                        _root_v152 = _ET_y150.fromstring(_list_resp_v152.text)
+                        for _tr_v152 in _root_v152.findall(".//track"):
+                            _lang_v152 = (
+                                _tr_v152.attrib.get("lang_code")
+                                or _tr_v152.attrib.get("lang")
+                                or ""
+                            )
+                            _kind_v152 = _tr_v152.attrib.get("kind") or ""
+                            _name_v152 = _tr_v152.attrib.get("name") or ""
+                            _tracks_v152.append({
+                                "languageCode": _lang_v152,
+                                "kind": _kind_v152,
+                                "name": {"simpleText": _name_v152},
+                                "_timedtext": True,
+                            })
+                    except Exception:
+                        _tracks_v152 = []
+
+                _track_v152 = _escolher_track_cc_youtube_v150([
+                    dict(_t_v152, baseUrl="timedtext")
+                    for _t_v152 in _tracks_v152
+                ])
+
+                if _track_v152:
+                    _lang_v152 = str(
+                        _track_v152.get("languageCode") or ""
+                    )
+                    _kind_v152 = str(_track_v152.get("kind") or "")
+                    _source_v152 = (
+                        "automatic"
+                        if _kind_v152.lower() == "asr"
+                        else "manual"
+                    )
+
+                    from urllib.parse import urlencode as _urlencode_v152
+
+                    _params_v152 = {
+                        "v": video_id,
+                        "lang": _lang_v152,
+                    }
+                    if _kind_v152:
+                        _params_v152["kind"] = _kind_v152
+
+                    _cap_url_v152 = (
+                        "https://www.youtube.com/api/timedtext?"
+                        + _urlencode_v152(_params_v152)
+                    )
+
+                    _texto_v152 = ""
+
+                    # Primeiro tenta json3.
+                    with _recurso_api_io():
+                        _cap_json_v152 = _http_get(
+                            _cap_url_v152 + "&fmt=json3",
+                            timeout=20,
+                            headers=headers,
+                        )
+                    if (
+                        _cap_json_v152.status_code == 200
+                        and _cap_json_v152.text
+                    ):
+                        try:
+                            _texto_v152 = _texto_json3_youtube_v150(
+                                _cap_json_v152.json()
+                            )
+                        except Exception:
+                            _texto_v152 = ""
+
+                    # Depois XML tradicional.
+                    if not _texto_v152:
+                        with _recurso_api_io():
+                            _cap_xml_v152 = _http_get(
+                                _cap_url_v152,
+                                timeout=20,
+                                headers=headers,
+                            )
+                        if (
+                            _cap_xml_v152.status_code == 200
+                            and _cap_xml_v152.text
+                        ):
+                            try:
+                                _root_cap_v152 = _ET_y150.fromstring(
+                                    _cap_xml_v152.text
+                                )
+                                _partes_v152 = []
+                                for _node_v152 in _root_cap_v152.findall(
+                                    ".//text"
+                                ):
+                                    _val_v152 = _html_y150.unescape(
+                                        "".join(_node_v152.itertext())
+                                    )
+                                    _val_v152 = " ".join(
+                                        _val_v152.replace("\n", " ").split()
+                                    )
+                                    if _val_v152:
+                                        _partes_v152.append(_val_v152)
+                                _texto_v152 = " ".join(
+                                    _partes_v152
+                                ).strip()
+                            except Exception:
+                                _texto_v152 = ""
+
+                    if _texto_v152:
+                        result.update({
+                            "text": _texto_v152,
+                            "language": _lang_v152,
+                            "source": _source_v152,
+                        })
+                        print(
+                            f"[YOUTUBE-CC] fallback timedtext OK "
+                            f"video_id={video_id} lang={_lang_v152} "
+                            f"source={_source_v152}",
+                            flush=True,
+                        )
+
+            except Exception as _exc_fallback_v152:
+                print(
+                    f"[YOUTUBE-CC] fallback timedtext falhou "
+                    f"video_id={video_id}: {_exc_fallback_v152!r}",
+                    flush=True,
+                )
+
     except Exception as exc:
         print(f"[YOUTUBE-CC] falha video_id={video_id}: {exc!r}", flush=True)
 
-    if _YOUTUBE_CC_LOCK_V150:
-        with _YOUTUBE_CC_LOCK_V150:
+    # V152 — cache positivo apenas. Falha temporária/sem texto fica elegível
+    # para a recuperação automática da V151 em uma próxima renderização.
+    if str(result.get("text") or "").strip():
+        if _YOUTUBE_CC_LOCK_V150:
+            with _YOUTUBE_CC_LOCK_V150:
+                _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+        else:
             _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
     else:
-        _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+        # Limpa inclusive eventual entrada vazia herdada no mesmo processo.
+        if _YOUTUBE_CC_LOCK_V150:
+            with _YOUTUBE_CC_LOCK_V150:
+                _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
+        else:
+            _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
+
     return result
 
 def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
@@ -1693,13 +1855,13 @@ def _verificar_cc_youtube_background_v151(user_id: str):
 def iniciar_verificacao_cc_youtube_automatica_v151(
     user_id: str,
     cache_sessao: dict,
-    intervalo_segundos: int = 900,
+    intervalo_segundos: int = 300,
 ) -> bool:
     """
     Dispara a recuperação automática se:
       1. há vídeo YouTube sem `video_cc_raw`;
       2. não existe outra verificação ativa para o usuário;
-      3. uma verificação concluída não ocorreu nos últimos 15 min.
+      3. uma verificação concluída não ocorreu nos últimos 5 min.
 
     Retorna True apenas quando uma nova thread foi iniciada.
     """
@@ -29807,7 +29969,7 @@ elif st.session_state.pagina == "google_ads":
         iniciar_verificacao_cc_youtube_automatica_v151(
             st.session_state.user.id,
             st.session_state.gads_cache,
-            intervalo_segundos=900,
+            intervalo_segundos=300,
         )
 
     # Verificação de segurança: roda uma vez por sessão (não a cada

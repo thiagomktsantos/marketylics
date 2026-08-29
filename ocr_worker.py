@@ -1,3 +1,4 @@
+# V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
 # V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
 # V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
 # V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
@@ -2410,13 +2411,123 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     #
     # Nessa situação fazemos UMA releitura somente do topo (72% da altura),
     # ampliada e com contraste local. Não repetimos OCR da peça inteira.
+    # V181 — detecta dinamicamente a separação entre o bloco textual e a mídia.
+    #
+    # Não usamos mais 38,5%/42% fixos: peças do mesmo formato podem ter títulos
+    # e descrições muito mais altos. Procuramos a maior faixa horizontal quase
+    # uniforme no miolo do anúncio. Quando ela é seguida por uma região
+    # visualmente complexa, ela funciona como o "respiro" entre copy e imagem.
+    _limite_texto_v181 = h * 0.62
+    _divisor_encontrado_v181 = False
+
+    try:
+        import cv2 as _cv2_v181
+        import numpy as _np_v181
+
+        _gray_div_v181 = _cv2_v181.cvtColor(img_bgr, _cv2_v181.COLOR_BGR2GRAY)
+        _x0_v181 = max(0, int(w * 0.04))
+        _x1_v181 = min(w, int(w * 0.96))
+        _roi_div_v181 = _gray_div_v181[:, _x0_v181:_x1_v181]
+
+        # Desvio por linha: fundo liso tende a ~0; texto/foto sobe bastante.
+        _row_std_v181 = _roi_div_v181.std(axis=1)
+
+        # Threshold conservador e adaptativo para considerar uma linha "vazia".
+        _p20_v181 = float(_np_v181.percentile(_row_std_v181, 20))
+        _thr_blank_v181 = max(4.0, min(9.0, _p20_v181 + 2.5))
+        _blank_v181 = _row_std_v181 <= _thr_blank_v181
+
+        _ini_busca_v181 = int(h * 0.24)
+        _fim_busca_v181 = int(h * 0.82)
+        _runs_v181 = []
+        _s_v181 = None
+
+        for _yy_v181 in range(_ini_busca_v181, _fim_busca_v181):
+            if bool(_blank_v181[_yy_v181]):
+                if _s_v181 is None:
+                    _s_v181 = _yy_v181
+            elif _s_v181 is not None:
+                _runs_v181.append(
+                    (_s_v181, _yy_v181 - 1, _yy_v181 - _s_v181)
+                )
+                _s_v181 = None
+
+        if _s_v181 is not None:
+            _runs_v181.append(
+                (_s_v181, _fim_busca_v181 - 1, _fim_busca_v181 - _s_v181)
+            )
+
+        # Exigimos um respiro significativo; escolhemos o maior.
+        _min_blank_v181 = max(28, int(h * 0.035))
+        _runs_valid_v181 = [
+            _r for _r in _runs_v181 if _r[2] >= _min_blank_v181
+        ]
+
+        if _runs_valid_v181:
+            _runs_valid_v181.sort(key=lambda _r: _r[2], reverse=True)
+
+            for _r_v181 in _runs_valid_v181:
+                _rs_v181, _re_v181, _rl_v181 = _r_v181
+
+                # A área logo depois do respiro precisa ter atividade visual,
+                # senão pode ser apenas um espaçamento interno entre parágrafos.
+                _a0_v181 = min(h - 1, _re_v181 + 1)
+                _a1_v181 = min(h, _a0_v181 + max(24, int(h * 0.08)))
+                if _a1_v181 <= _a0_v181:
+                    continue
+
+                _atividade_depois_v181 = float(
+                    _np_v181.percentile(
+                        _row_std_v181[_a0_v181:_a1_v181],
+                        70,
+                    )
+                )
+
+                # Também deve existir conteúdo visual/textual antes da faixa.
+                _b0_v181 = max(0, _rs_v181 - max(30, int(h * 0.12)))
+                _atividade_antes_v181 = float(
+                    _np_v181.percentile(
+                        _row_std_v181[_b0_v181:_rs_v181],
+                        70,
+                    )
+                ) if _rs_v181 > _b0_v181 else 0.0
+
+                if _atividade_depois_v181 >= 12.0 and _atividade_antes_v181 >= 8.0:
+                    # O texto válido termina no COMEÇO do grande respiro.
+                    _limite_texto_v181 = float(_rs_v181)
+                    _divisor_encontrado_v181 = True
+                    print(
+                        f"[OCR-DEBUG] display-vertical-v181 divisor mídia: "
+                        f"y={int(_limite_texto_v181)} "
+                        f"({(_limite_texto_v181 / max(1,h))*100:.1f}% da altura), "
+                        f"faixa_vazia={_rl_v181}px",
+                        flush=True,
+                    )
+                    break
+
+    except Exception as _exc_div_v181:
+        print(
+            f"[OCR-DEBUG] display-vertical-v181 falha ao detectar divisor: "
+            f"{_exc_div_v181!r}",
+            flush=True,
+        )
+
     _primeiro_y_v179 = min(float(l['yc']) for l in uteis) if uteis else float(h)
 
-    if _primeiro_y_v179 > h * 0.28:
+    # Recupera o topo quando o OCR global aparentemente começou dentro da mídia
+    # ou quando não encontrou conteúdo antes do divisor dinâmico.
+    _tem_texto_antes_divisor_v181 = any(
+        float(l['yc']) < _limite_texto_v181 for l in uteis
+    )
+
+    if (
+        _primeiro_y_v179 > h * 0.28
+        or not _tem_texto_antes_divisor_v181
+    ):
         try:
             import cv2 as _cv2_v179
 
-            _crop_h_v179 = int(h * 0.42)
+            _crop_h_v179 = max(80, min(h, int(_limite_texto_v181)))
             _crop_v179 = img_bgr[:_crop_h_v179, :]
 
             # Ampliação moderada + CLAHE melhora títulos grandes em azul/roxo
@@ -2522,11 +2633,9 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     cab = empresa
                     continue
 
-                # V180 — proteção dura contra OCR interno da mídia:
-                # só aceitamos linhas cujo centro esteja na região textual
-                # superior. A crop já corta em 42%, mas esta segunda barreira
-                # evita caixas na borda inferior do recorte.
-                if float(_l_v179['yc']) <= h * 0.385:
+                # V181 — proteção dura contra OCR interno da mídia:
+                # só entra conteúdo acima do divisor detectado na própria peça.
+                if float(_l_v179['yc']) < (_limite_texto_v181 - 2.0):
                     _uteis_top_v179.append(_l_v179)
 
             # Se a releitura achou texto realmente no topo, utilizamos esse
@@ -2534,8 +2643,8 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             # pela primeira quebra vertical forte depois de já haver conteúdo.
             if (
                 len(_uteis_top_v179) >= 2
-                and min(float(l['yc']) for l in _uteis_top_v179) < h * 0.28
-                and max(float(l['yc']) for l in _uteis_top_v179) <= h * 0.385
+                and min(float(l['yc']) for l in _uteis_top_v179) < _limite_texto_v181
+                and max(float(l['yc']) for l in _uteis_top_v179) < _limite_texto_v181
             ):
                 _gaps_top_v179 = [
                     float(_uteis_top_v179[i + 1]['yc'] - _uteis_top_v179[i]['yc'])
@@ -2578,21 +2687,23 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
         except Exception as _exc_v179:
             print(
-                f"[OCR-DEBUG] display-vertical-v180 recuperação superior falhou: "
+                f"[OCR-DEBUG] display-vertical-v181 recuperação superior falhou: "
                 f"{_exc_v179!r}",
                 flush=True,
             )
 
-    # V180 — trava estrutural: se, mesmo após a recuperação localizada, todas
-    # as linhas úteis continuam começando abaixo da região textual superior,
-    # elas pertencem à mídia/arte e não podem virar título/descrição.
-    #
-    # Preferimos devolver None para este detector e permitir fallback de outro
-    # layout a inventar estrutura com texto interno da foto.
-    if uteis and min(float(l['yc']) for l in uteis) > h * 0.385:
+    # V181 — trava estrutural dinâmica. Qualquer linha abaixo do divisor da
+    # mídia é removida antes da classificação. Se não sobrar texto estrutural,
+    # este detector abandona o caso em vez de usar texto interno da imagem.
+    uteis = [
+        l for l in uteis
+        if float(l['yc']) < (_limite_texto_v181 - 2.0)
+    ]
+
+    if not uteis:
         print(
-            "[OCR-DEBUG] display-vertical-v180: somente texto interno da mídia "
-            "detectado; descartando estrutura para evitar falso título.",
+            "[OCR-DEBUG] display-vertical-v181: não restou texto acima do "
+            "divisor da mídia; descartando estrutura para evitar falso título.",
             flush=True,
         )
         return None
@@ -2674,10 +2785,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v180',
+        'classe':'display-vertical-v181',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V180 → Display vertical: releitura estrita somente no topo; linhas da mídia são excluídas por limite geométrico; se não houver texto estrutural superior, detector não usa OCR da foto; CTA separado',
+        'decisao':'V181 → Display vertical: divisor texto/mídia detectado pela maior faixa horizontal vazia seguida de complexidade visual; só OCR acima desse divisor pode formar título/descrição; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0
@@ -2691,7 +2802,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         'cta_subtitulo':'',
         'sitelinks':[],
         '_debug_bandas':dbg,
-        '_layout_ocr':'display_vertical_v180'
+        '_layout_ocr':'display_vertical_v181'
     }
 
 

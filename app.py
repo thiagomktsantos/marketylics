@@ -1,3 +1,4 @@
+# V151_YOUTUBE_CC_AUTO_RECOVERY — verifica automaticamente vídeos YouTube sem CC após retomada/render, com retry pós-standby, trava concorrente e cooldown.
 # V150_YOUTUBE_CC — salva CC/legendas de vídeos YouTube no Google Ads, exibe no card, usa na busca e na análise.\n# V149_LOGIN_BUTTON_LOADING — autenticação exibe carregamento no próprio botão, sem spinner abaixo.\n# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
 # V147_SEARCH_IN_OCR — busca Google Ads inclui OCR bruto/estruturado e ignora caixa/acentos.\nfrom playwright.sync_api import sync_playwright
 import datetime
@@ -1544,6 +1545,188 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
                     ad["video_cc_source"] = escolhido.get("source") or ""
 
     return resultado
+
+
+# V151 — recuperação automática de CC pendente.
+#
+# Diferente de uma flag de session_state "já verificado", este controle vive
+# no processo e só registra cooldown DEPOIS de uma verificação concluída.
+# Se o Streamlit entrar em standby e a execução morrer no meio, o vídeo
+# continua sem `video_cc_raw`; no próximo render da página ele será elegível
+# novamente para nova tentativa.
+_YOUTUBE_CC_VERIFY_ACTIVE_V151 = set()
+_YOUTUBE_CC_VERIFY_LAST_OK_V151 = {}
+_YOUTUBE_CC_VERIFY_LOCK_V151 = threading.Lock()
+
+
+def _gads_youtube_sem_cc_v151(cache: dict) -> list:
+    """Retorna IDs únicos de vídeos YouTube existentes no cache e ainda sem CC."""
+    pendentes = {}
+    for _empresa, _entry in (cache or {}).items():
+        for _ad in (_entry or {}).get("data", []) or []:
+            _cc = str(_ad.get("video_cc_raw") or "").strip()
+            if _cc:
+                continue
+            for _url in (_ad.get("videos") or []):
+                _vid = _youtube_video_id_v150(_url)
+                if _vid:
+                    pendentes.setdefault(_vid, _url)
+    return list(pendentes.items())
+
+
+def _verificar_cc_youtube_background_v151(user_id: str):
+    """
+    Reabre o gads_cache diretamente do Supabase, tenta preencher SOMENTE vídeos
+    YouTube que continuam sem CC e persiste o cache enriquecido.
+
+    Importante: lê o banco novamente dentro da thread para não sobrescrever
+    uma coleta mais nova com um snapshot antigo da sessão.
+    """
+    import time as _time_cc151
+
+    try:
+        _res = _supabase_resiliente(
+            lambda: (
+                supabase.table("ci_dados")
+                .select("gads_cache")
+                .eq("user_id", user_id)
+                .execute()
+            ),
+            operacao="verificar_cc_youtube_automatico",
+            tentativas=3,
+            backoff=(1, 2, 4),
+        )
+        _cache_atual = (
+            (_res.data[0].get("gads_cache") or {})
+            if _res.data else {}
+        )
+
+        _pendentes_antes = _gads_youtube_sem_cc_v151(_cache_atual)
+        if not _pendentes_antes:
+            with _YOUTUBE_CC_VERIFY_LOCK_V151:
+                _YOUTUBE_CC_VERIFY_LAST_OK_V151[user_id] = _time_cc151.monotonic()
+            return
+
+        print(
+            f"[YOUTUBE-CC-AUTO] verificando {len(_pendentes_antes)} "
+            f"vídeo(s) sem CC para user={user_id}",
+            flush=True,
+        )
+
+        _cache_enriquecido = _enriquecer_gads_com_cc_youtube_v150(_cache_atual)
+
+        # Só persiste se algum CC novo entrou.
+        _antes = {
+            _vid: str(
+                next(
+                    (
+                        _ad.get("video_cc_raw") or ""
+                        for _entry in _cache_atual.values()
+                        for _ad in (_entry or {}).get("data", []) or []
+                        if _vid in [
+                            _youtube_video_id_v150(_u)
+                            for _u in (_ad.get("videos") or [])
+                        ]
+                    ),
+                    "",
+                )
+            ).strip()
+            for _vid, _url in _pendentes_antes
+        }
+        _depois = {}
+        for _vid, _url in _pendentes_antes:
+            _cc_encontrado = ""
+            for _entry in _cache_enriquecido.values():
+                for _ad in (_entry or {}).get("data", []) or []:
+                    _ids = [
+                        _youtube_video_id_v150(_u)
+                        for _u in (_ad.get("videos") or [])
+                    ]
+                    if _vid in _ids:
+                        _cc_encontrado = str(_ad.get("video_cc_raw") or "").strip()
+                        if _cc_encontrado:
+                            break
+                if _cc_encontrado:
+                    break
+            _depois[_vid] = _cc_encontrado
+
+        _novos = [
+            _vid for _vid in _depois
+            if (not _antes.get(_vid)) and _depois.get(_vid)
+        ]
+
+        if _novos:
+            _persistir_cache_ads_db(
+                user_id,
+                "gads_cache",
+                _cache_enriquecido,
+                tentativas=5,
+            )
+            print(
+                f"[YOUTUBE-CC-AUTO] {len(_novos)} CC(s) novo(s) salvo(s) "
+                f"automaticamente.",
+                flush=True,
+            )
+        else:
+            print(
+                "[YOUTUBE-CC-AUTO] nenhum CC novo disponível nesta tentativa.",
+                flush=True,
+            )
+
+        # O cooldown começa somente depois que a verificação chegou ao fim.
+        # Falha/standby antes daqui não bloqueia a próxima tentativa.
+        with _YOUTUBE_CC_VERIFY_LOCK_V151:
+            _YOUTUBE_CC_VERIFY_LAST_OK_V151[user_id] = _time_cc151.monotonic()
+
+    except Exception as _exc_cc151:
+        # Não grava LAST_OK: próxima renderização poderá tentar de novo.
+        print(
+            f"[YOUTUBE-CC-AUTO] falha; será elegível novamente no próximo "
+            f"render: {_exc_cc151!r}",
+            flush=True,
+        )
+    finally:
+        with _YOUTUBE_CC_VERIFY_LOCK_V151:
+            _YOUTUBE_CC_VERIFY_ACTIVE_V151.discard(user_id)
+
+
+def iniciar_verificacao_cc_youtube_automatica_v151(
+    user_id: str,
+    cache_sessao: dict,
+    intervalo_segundos: int = 900,
+) -> bool:
+    """
+    Dispara a recuperação automática se:
+      1. há vídeo YouTube sem `video_cc_raw`;
+      2. não existe outra verificação ativa para o usuário;
+      3. uma verificação concluída não ocorreu nos últimos 15 min.
+
+    Retorna True apenas quando uma nova thread foi iniciada.
+    """
+    import time as _time_cc151
+
+    if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
+        return False
+
+    _agora = _time_cc151.monotonic()
+    with _YOUTUBE_CC_VERIFY_LOCK_V151:
+        if user_id in _YOUTUBE_CC_VERIFY_ACTIVE_V151:
+            return False
+
+        _ultimo_ok = float(_YOUTUBE_CC_VERIFY_LAST_OK_V151.get(user_id) or 0)
+        if _ultimo_ok and (_agora - _ultimo_ok) < float(intervalo_segundos):
+            return False
+
+        _YOUTUBE_CC_VERIFY_ACTIVE_V151.add(user_id)
+
+    _thread = threading.Thread(
+        target=_verificar_cc_youtube_background_v151,
+        args=(user_id,),
+        daemon=True,
+        name=f"youtube-cc-auto-{str(user_id)[:8]}",
+    )
+    _thread.start()
+    return True
 
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
@@ -29611,6 +29794,21 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_cache = carregar_cache_ads()
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
+
+    # V151 — recuperação automática de CC do YouTube.
+    #
+    # A cada render da área Google Ads fazemos apenas a checagem local e
+    # barata: "existe vídeo YouTube sem CC?". Havendo pendência, uma thread
+    # consulta o cache fresco no Supabase e tenta o CC novamente. A trava
+    # global impede duplicidade entre reruns; o cooldown só é registrado
+    # quando a tentativa TERMINA. Portanto, standby/falha no meio não deixa
+    # uma flag permanente dizendo que o vídeo já foi verificado.
+    if st.session_state.get("user") and st.session_state.get("gads_cache"):
+        iniciar_verificacao_cc_youtube_automatica_v151(
+            st.session_state.user.id,
+            st.session_state.gads_cache,
+            intervalo_segundos=900,
+        )
 
     # Verificação de segurança: roda uma vez por sessão (não a cada
     # rerun) procurando qualquer anúncio — de qualquer coleta, antiga ou

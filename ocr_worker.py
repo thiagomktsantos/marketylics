@@ -1,3 +1,4 @@
+# V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
 # V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
 # V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
 # V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
@@ -2397,7 +2398,185 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         if empresa and _corrigir_nome_pagina_com_empresa(t,empresa)==empresa and l['yc'] < h*.35: cab=empresa; continue
         uteis.append(l)
     if not cta or not uteis: return None
-    # V178 — o título de Display vertical pode ocupar várias linhas grandes.
+
+    # V179 — recuperação localizada do bloco textual SUPERIOR.
+    #
+    # Alguns Displays verticais têm texto grande sobre fundo claro no topo e
+    # uma arte/imagem com texto embutido mais abaixo. Em certas leituras o OCR
+    # global perde completamente o topo e começa a reconhecer apenas o texto
+    # dentro da mídia. Sinal forte: o primeiro texto útil aparece muito tarde
+    # na peça (> 28% da altura).
+    #
+    # Nessa situação fazemos UMA releitura somente do topo (72% da altura),
+    # ampliada e com contraste local. Não repetimos OCR da peça inteira.
+    _primeiro_y_v179 = min(float(l['yc']) for l in uteis) if uteis else float(h)
+
+    if _primeiro_y_v179 > h * 0.28:
+        try:
+            import cv2 as _cv2_v179
+
+            _crop_h_v179 = int(h * 0.72)
+            _crop_v179 = img_bgr[:_crop_h_v179, :]
+
+            # Ampliação moderada + CLAHE melhora títulos grandes em azul/roxo
+            # sobre fundos muito claros sem depender de cor específica.
+            _esc_v179 = 1.65
+            _up_v179 = _cv2_v179.resize(
+                _crop_v179,
+                None,
+                fx=_esc_v179,
+                fy=_esc_v179,
+                interpolation=_cv2_v179.INTER_CUBIC,
+            )
+            _gray_v179 = _cv2_v179.cvtColor(_up_v179, _cv2_v179.COLOR_BGR2GRAY)
+            _clahe_v179 = _cv2_v179.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+            _gray_v179 = _clahe_v179.apply(_gray_v179)
+            _prep_v179 = _cv2_v179.cvtColor(_gray_v179, _cv2_v179.COLOR_GRAY2BGR)
+
+            _rr_top_v179 = reader.readtext(
+                _prep_v179,
+                detail=1,
+                paragraph=False,
+                width_ths=0.12,
+                height_ths=0.42,
+                text_threshold=0.34,
+                low_text=0.20,
+                link_threshold=0.22,
+            )
+
+            _caixas_top_v179 = []
+            for _item_v179 in _rr_top_v179 or []:
+                if not _item_v179 or len(_item_v179) < 3:
+                    continue
+                _bbox_v179, _txt_v179, _conf_v179 = _item_v179
+                _txt_v179 = _limpar_pontuacao_ocr((_txt_v179 or '').strip())
+                if not _txt_v179:
+                    continue
+
+                _xs_v179 = [float(p[0]) / _esc_v179 for p in _bbox_v179]
+                _ys_v179 = [float(p[1]) / _esc_v179 for p in _bbox_v179]
+                _caixas_top_v179.append({
+                    'texto': _txt_v179,
+                    'x0': min(_xs_v179),
+                    'yc': (min(_ys_v179) + max(_ys_v179)) / 2.0,
+                    'altura': max(1.0, max(_ys_v179) - min(_ys_v179)),
+                })
+
+            _caixas_top_v179.sort(key=lambda c: (c['yc'], c['x0']))
+            _linhas_top_v179 = []
+
+            for _c_v179 in _caixas_top_v179:
+                _alvo_v179 = None
+                for _l_v179 in _linhas_top_v179:
+                    if abs(_c_v179['yc'] - _l_v179['yc']) <= max(
+                        7.0,
+                        min(_c_v179['altura'], _l_v179['altura']) * 0.55,
+                    ):
+                        _alvo_v179 = _l_v179
+                        break
+
+                if _alvo_v179 is None:
+                    _alvo_v179 = {
+                        'yc': _c_v179['yc'],
+                        'altura': _c_v179['altura'],
+                        'itens': [],
+                    }
+                    _linhas_top_v179.append(_alvo_v179)
+
+                _alvo_v179['itens'].append(_c_v179)
+                _alvo_v179['yc'] = sum(
+                    x['yc'] for x in _alvo_v179['itens']
+                ) / len(_alvo_v179['itens'])
+                _alvo_v179['altura'] = max(
+                    _alvo_v179['altura'],
+                    _c_v179['altura'],
+                )
+
+            _linhas_top_v179.sort(key=lambda l: l['yc'])
+            _uteis_top_v179 = []
+
+            for _l_v179 in _linhas_top_v179:
+                _l_v179['itens'].sort(key=lambda c: c['x0'])
+                _l_v179['texto'] = _limpar_pontuacao_ocr(
+                    ' '.join(c['texto'] for c in _l_v179['itens']).strip()
+                )
+                _t_v179 = _l_v179['texto'].strip()
+                _tc_v179 = _re_v145.sub(
+                    r'\s*[>›»→❯➜]+\s*$',
+                    '',
+                    _t_v179,
+                ).strip()
+
+                if not _t_v179:
+                    continue
+                if _REGEX_PATROCINADO.match(_t_v179):
+                    continue
+                if rx.match(_tc_v179):
+                    continue
+                if (
+                    empresa
+                    and _corrigir_nome_pagina_com_empresa(_t_v179, empresa) == empresa
+                    and _l_v179['yc'] < h * 0.30
+                ):
+                    cab = empresa
+                    continue
+
+                _uteis_top_v179.append(_l_v179)
+
+            # Se a releitura achou texto realmente no topo, utilizamos esse
+            # bloco. Antes disso, cortamos eventual texto da mídia inferior
+            # pela primeira quebra vertical forte depois de já haver conteúdo.
+            if (
+                len(_uteis_top_v179) >= 2
+                and min(float(l['yc']) for l in _uteis_top_v179) < h * 0.28
+            ):
+                _gaps_top_v179 = [
+                    float(_uteis_top_v179[i + 1]['yc'] - _uteis_top_v179[i]['yc'])
+                    for i in range(len(_uteis_top_v179) - 1)
+                    if float(
+                        _uteis_top_v179[i + 1]['yc'] - _uteis_top_v179[i]['yc']
+                    ) > 0
+                ]
+
+                _gap_base_v179 = (
+                    float(_np_v145.median(_gaps_top_v179))
+                    if _gaps_top_v179
+                    else 24.0
+                )
+                _lim_gap_midia_v179 = max(
+                    h * 0.075,
+                    _gap_base_v179 * 2.45,
+                    70.0,
+                )
+
+                _bloco_top_v179 = []
+                _prev_top_v179 = None
+                for _l_v179 in _uteis_top_v179:
+                    if _prev_top_v179 is not None and len(_bloco_top_v179) >= 2:
+                        _gap_v179 = float(
+                            _l_v179['yc'] - _prev_top_v179['yc']
+                        )
+                        if _gap_v179 > _lim_gap_midia_v179:
+                            break
+                    _bloco_top_v179.append(_l_v179)
+                    _prev_top_v179 = _l_v179
+
+                if len(_bloco_top_v179) >= 2:
+                    uteis = _bloco_top_v179
+                    print(
+                        f"[OCR-DEBUG] display-vertical-v179: "
+                        f"recuperado bloco superior com {len(uteis)} linha(s)",
+                        flush=True,
+                    )
+
+        except Exception as _exc_v179:
+            print(
+                f"[OCR-DEBUG] display-vertical-v179 recuperação superior falhou: "
+                f"{_exc_v179!r}",
+                flush=True,
+            )
+
+    # V178/V179 — o título de Display vertical pode ocupar várias linhas grandes.
     # A implementação antiga pegava apenas UMA linha (a maior), fazendo:
     #   "Ingressos"                         -> título
     #   "Brasil x Marrocos ..."             -> descrição
@@ -2474,10 +2653,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v178',
+        'classe':'display-vertical-v179',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V178 → Display vertical: título multilinha por bloco tipográfico; descrição encerrada por quebra vertical antes da mídia; OCR interno da foto descartado; CTA separado',
+        'decisao':'V179 → Display vertical: título multilinha; se OCR global começa tarde, releitura localizada do topo com contraste; descrição cortada antes da mídia; OCR interno da arte descartado; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0
@@ -2491,7 +2670,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         'cta_subtitulo':'',
         'sitelinks':[],
         '_debug_bandas':dbg,
-        '_layout_ocr':'display_vertical_v178'
+        '_layout_ocr':'display_vertical_v179'
     }
 
 

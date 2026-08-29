@@ -1,4 +1,4 @@
-# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
+# V150_YOUTUBE_CC — salva CC/legendas de vídeos YouTube no Google Ads, exibe no card, usa na busca e na análise.\n# V149_LOGIN_BUTTON_LOADING — autenticação exibe carregamento no próprio botão, sem spinner abaixo.\n# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
 # V147_SEARCH_IN_OCR — busca Google Ads inclui OCR bruto/estruturado e ignora caixa/acentos.\nfrom playwright.sync_api import sync_playwright
 import datetime
 import streamlit as st
@@ -1264,6 +1264,286 @@ def _e_url_youtube(url: str) -> bool:
     YouTube — HTML, não um arquivo de vídeo. Não confundir com
     i.ytimg.com (thumbnail, essa sim é uma imagem de verdade)."""
     return bool(url) and bool(_REGEX_YOUTUBE.search(url))
+
+
+# V150 — cache em memória das legendas/CC do YouTube. O gads_cache é a
+# persistência definitiva; este cache só evita repetir GETs do mesmo vídeo
+# durante uma mesma execução/processo.
+_YOUTUBE_CC_CACHE_V150 = {}
+_YOUTUBE_CC_LOCK_V150 = threading.Lock() if "threading" in globals() else None
+
+def _youtube_video_id_v150(url: str) -> str:
+    m = _REGEX_YOUTUBE.search(url or "")
+    return m.group(1) if m else ""
+
+def _achar_caption_tracks_v150(obj):
+    """Procura recursivamente `captionTracks` dentro do player response."""
+    if isinstance(obj, dict):
+        tracks = obj.get("captionTracks")
+        if isinstance(tracks, list) and tracks:
+            return tracks
+        for v in obj.values():
+            achou = _achar_caption_tracks_v150(v)
+            if achou:
+                return achou
+    elif isinstance(obj, list):
+        for v in obj:
+            achou = _achar_caption_tracks_v150(v)
+            if achou:
+                return achou
+    return []
+
+def _extrair_player_response_youtube_v150(html_text: str):
+    """Extrai ytInitialPlayerResponse sem depender de biblioteca externa."""
+    import json as _json_y150
+    decoder = _json_y150.JSONDecoder()
+    marcadores = (
+        "ytInitialPlayerResponse = ",
+        "var ytInitialPlayerResponse = ",
+        "window['ytInitialPlayerResponse'] = ",
+    )
+    for marcador in marcadores:
+        pos = html_text.find(marcador)
+        if pos < 0:
+            continue
+        inicio = pos + len(marcador)
+        while inicio < len(html_text) and html_text[inicio].isspace():
+            inicio += 1
+        try:
+            obj, _fim = decoder.raw_decode(html_text[inicio:])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+
+    # Fallback para páginas que serializam o player response dentro de uma
+    # propriedade JSON. O raw_decode começa exatamente no objeto após a chave.
+    for marcador in ('"playerResponse":', '"ytInitialPlayerResponse":'):
+        pos = html_text.find(marcador)
+        if pos < 0:
+            continue
+        inicio = pos + len(marcador)
+        while inicio < len(html_text) and html_text[inicio].isspace():
+            inicio += 1
+        try:
+            obj, _fim = decoder.raw_decode(html_text[inicio:])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    return {}
+
+def _escolher_track_cc_youtube_v150(tracks):
+    """Prioridade: pt-BR manual, pt manual, pt-BR auto, pt auto,
+    depois legenda manual em qualquer idioma e, por último, automática."""
+    def score(t):
+        lang = str(t.get("languageCode") or "").lower()
+        auto = str(t.get("kind") or "").lower() == "asr"
+        if lang in ("pt-br", "pt_br"):
+            base = 0
+        elif lang == "pt" or lang.startswith("pt-"):
+            base = 10
+        else:
+            base = 30
+        if auto:
+            base += 5
+        return base
+    validas = [t for t in (tracks or []) if t.get("baseUrl")]
+    return min(validas, key=score) if validas else None
+
+def _texto_json3_youtube_v150(payload):
+    partes = []
+    for ev in (payload or {}).get("events", []) or []:
+        segs = ev.get("segs") or []
+        linha = "".join(str(s.get("utf8") or "") for s in segs)
+        linha = " ".join(linha.replace("\n", " ").split())
+        if linha:
+            partes.append(linha)
+    # remove repetições consecutivas comuns em captions segmentadas
+    saida = []
+    anterior = None
+    for p in partes:
+        if p != anterior:
+            saida.append(p)
+        anterior = p
+    return " ".join(saida).strip()
+
+def obter_cc_youtube_v150(url_video: str) -> dict:
+    """Obtém CC/legenda já disponibilizada pelo YouTube.
+
+    Não baixa o vídeo e não usa Whisper. Retorna:
+      text, language, source ('manual' ou 'automatic'), video_id, url
+    Em vídeo sem legenda disponível retorna text vazio.
+    """
+    import json as _json_y150
+    import html as _html_y150
+    import xml.etree.ElementTree as _ET_y150
+
+    video_id = _youtube_video_id_v150(url_video)
+    if not video_id:
+        return {"text": "", "language": "", "source": "", "video_id": "", "url": url_video or ""}
+
+    if _YOUTUBE_CC_LOCK_V150:
+        with _YOUTUBE_CC_LOCK_V150:
+            cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
+    else:
+        cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
+    if cached is not None:
+        return dict(cached)
+
+    result = {
+        "text": "",
+        "language": "",
+        "source": "",
+        "video_id": video_id,
+        "url": url_video,
+    }
+
+    try:
+        watch_url = f"https://www.youtube.com/watch?v={video_id}&hl=pt-BR"
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+        }
+        with _recurso_api_io():
+            resp = _http_get(watch_url, timeout=20, headers=headers)
+        if resp.status_code == 200 and resp.text:
+            player = _extrair_player_response_youtube_v150(resp.text)
+            tracks = _achar_caption_tracks_v150(player)
+            track = _escolher_track_cc_youtube_v150(tracks)
+
+            if track:
+                base_url = _html_y150.unescape(str(track.get("baseUrl") or ""))
+                lang = str(track.get("languageCode") or "")
+                source = "automatic" if str(track.get("kind") or "").lower() == "asr" else "manual"
+                texto_cc = ""
+
+                # json3 é mais simples e preserva melhor Unicode.
+                sep = "&" if "?" in base_url else "?"
+                with _recurso_api_io():
+                    cap = _http_get(base_url + sep + "fmt=json3", timeout=20, headers=headers)
+                if cap.status_code == 200 and cap.text:
+                    try:
+                        texto_cc = _texto_json3_youtube_v150(cap.json())
+                    except Exception:
+                        texto_cc = ""
+
+                # Fallback: endpoint pode responder XML mesmo com fmt=json3.
+                if not texto_cc:
+                    try:
+                        with _recurso_api_io():
+                            cap_xml = _http_get(base_url, timeout=20, headers=headers)
+                        if cap_xml.status_code == 200 and cap_xml.text:
+                            root = _ET_y150.fromstring(cap_xml.text)
+                            partes = []
+                            for node in root.findall(".//text"):
+                                val = _html_y150.unescape("".join(node.itertext()))
+                                val = " ".join(val.replace("\n", " ").split())
+                                if val:
+                                    partes.append(val)
+                            texto_cc = " ".join(partes).strip()
+                    except Exception:
+                        texto_cc = ""
+
+                result.update({
+                    "text": texto_cc,
+                    "language": lang,
+                    "source": source if texto_cc else "",
+                })
+    except Exception as exc:
+        print(f"[YOUTUBE-CC] falha video_id={video_id}: {exc!r}", flush=True)
+
+    if _YOUTUBE_CC_LOCK_V150:
+        with _YOUTUBE_CC_LOCK_V150:
+            _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+    else:
+        _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+    return result
+
+def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
+    """Anexa CC do YouTube aos anúncios antes de persistir no gads_cache.
+
+    Campos persistidos no próprio anúncio:
+      youtube_video_id
+      youtube_url
+      video_cc_raw
+      video_cc_language
+      video_cc_source
+
+    Busca todos os IDs únicos em paralelo (I/O de rede), sem baixar vídeo.
+    """
+    from concurrent.futures import ThreadPoolExecutor as _TPE_y150
+
+    resultado = {}
+    urls_por_id = {}
+
+    for empresa, entry in (dados or {}).items():
+        entry_nova = dict(entry)
+        ads_novos = [dict(ad) for ad in entry.get("data", [])]
+        entry_nova["data"] = ads_novos
+        resultado[empresa] = entry_nova
+
+        for ad in ads_novos:
+            for u in (ad.get("videos") or []):
+                vid = _youtube_video_id_v150(u)
+                if vid:
+                    urls_por_id.setdefault(vid, u)
+
+    if not urls_por_id:
+        return resultado
+
+    cc_por_id = {}
+    def _fetch(item):
+        vid, url = item
+        return vid, obter_cc_youtube_v150(url)
+
+    with _TPE_y150(max_workers=min(4, max(1, len(urls_por_id)))) as ex:
+        for vid, info in ex.map(_fetch, list(urls_por_id.items())):
+            cc_por_id[vid] = info
+
+    for empresa, entry in resultado.items():
+        for ad in entry.get("data", []):
+            # Se já existe CC salvo, preserva. Ainda assim garante metadados.
+            cc_existente = str(ad.get("video_cc_raw") or "").strip()
+            escolhido = None
+            escolhido_url = ""
+            for u in (ad.get("videos") or []):
+                vid = _youtube_video_id_v150(u)
+                if not vid:
+                    continue
+                info = cc_por_id.get(vid) or {}
+                if cc_existente:
+                    escolhido = {
+                        "text": cc_existente,
+                        "language": ad.get("video_cc_language") or "",
+                        "source": ad.get("video_cc_source") or "",
+                        "video_id": ad.get("youtube_video_id") or vid,
+                    }
+                    escolhido_url = ad.get("youtube_url") or u
+                    break
+                if (info.get("text") or "").strip():
+                    escolhido = info
+                    escolhido_url = u
+                    break
+                if escolhido is None:
+                    escolhido = info
+                    escolhido_url = u
+
+            if escolhido:
+                ad["youtube_video_id"] = escolhido.get("video_id") or _youtube_video_id_v150(escolhido_url)
+                ad["youtube_url"] = escolhido_url
+                # Só grava os campos de CC quando há conteúdo. Isso distingue
+                # "vídeo YouTube sem CC" de "CC encontrado".
+                if (escolhido.get("text") or "").strip():
+                    ad["video_cc_raw"] = escolhido["text"].strip()
+                    ad["video_cc_language"] = escolhido.get("language") or ""
+                    ad["video_cc_source"] = escolhido.get("source") or ""
+
+    return resultado
 
 def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                               tipo: str = "imagem", ad_id: str = None,
@@ -13669,44 +13949,88 @@ if not st.session_state.logado:
         aba = st.tabs(["Já tenho conta", "Criar conta"])
 
         with aba[0]:
+            # V149 — estado de carregamento aparece no próprio botão de login.
+            if "_login_autenticando" not in st.session_state:
+                st.session_state["_login_autenticando"] = False
+
             with st.form("form_login"):
-                email_login = st.text_input("E-mail", placeholder="seu@email.com")
-                senha_login = st.text_input("Senha", type="password", placeholder="••••••••")
-                submit_login = st.form_submit_button("Entrar na plataforma →", width="stretch")
+                email_login = st.text_input(
+                    "E-mail",
+                    placeholder="seu@email.com",
+                    key="_login_email_input",
+                    disabled=st.session_state["_login_autenticando"],
+                )
+                senha_login = st.text_input(
+                    "Senha",
+                    type="password",
+                    placeholder="••••••••",
+                    key="_login_senha_input",
+                    disabled=st.session_state["_login_autenticando"],
+                )
+                submit_login = st.form_submit_button(
+                    "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar na plataforma →",
+                    width="stretch",
+                    disabled=st.session_state["_login_autenticando"],
+                )
+
+            # Exibe eventual erro após o estado do botão voltar ao normal.
+            if (not st.session_state["_login_autenticando"]) and st.session_state.get("_login_erro"):
+                st.error(st.session_state.pop("_login_erro"))
 
             if submit_login:
                 if email_login and senha_login:
-                    with st.spinner("Autenticando..."):
-                        user, err = login_supabase(email_login, senha_login)
-                    if user:
-                        st.session_state.logado = True
-                        st.session_state.user = user
-                        dados_db = carregar_dados_usuario(user.id)
-                        minha_emp = dados_db["minha_empresa"] or {
-                            "nome": "", "setor": "Marketing", "tipo": "",
-                            "estado": "", "cidade": "",
-                            "instagram": "@", "fb_page": "", "site": "",
-                            "servicos": [], "ads_id": "", "ads_page_pic": ""
-                        }
-                        if "ads_id" not in minha_emp:
-                            minha_emp["ads_id"] = ""
-                        if "ads_page_pic" not in minha_emp:
-                            minha_emp["ads_page_pic"] = ""
-                        st.session_state.dados = {
-                            "minha_empresa": minha_emp,
-                            "concorrentes": dados_db.get("concorrentes", []),
-                        }
-                        st.session_state.metricas_redes = dados_db.get("metricas_redes", {})
-                        st.session_state.ads_cache = dados_db.get("ads_cache", {})
-                        st.session_state.analises_salvas = dados_db.get("analises_salvas", [])
-                        st.session_state.redes_analises_salvas = dados_db.get("redes_analises_salvas", [])
-                        st.session_state.ads_analises_salvas = dados_db.get("ads_analises_salvas", [])
-                        st.session_state.seo_cache = dados_db.get("seo_cache", {})
-                        st.rerun()
-                    else:
-                        st.error(f"Erro ao entrar: {err}")
+                    # Guarda os dados apenas para atravessar o rerun que troca o
+                    # estado visual do botão antes de iniciar a chamada externa.
+                    st.session_state["_login_email_pendente"] = email_login
+                    st.session_state["_login_senha_pendente"] = senha_login
+                    st.session_state["_login_autenticando"] = True
+                    st.session_state.pop("_login_erro", None)
+                    st.rerun()
                 else:
                     st.warning("Preencha e-mail e senha.")
+
+            # No rerun seguinte o botão já foi renderizado como
+            # "Autenticando..." e desabilitado; só então fazemos o login.
+            if st.session_state["_login_autenticando"]:
+                _email_pendente = st.session_state.get("_login_email_pendente", "")
+                _senha_pendente = st.session_state.get("_login_senha_pendente", "")
+                user, err = login_supabase(_email_pendente, _senha_pendente)
+
+                # Senha não permanece guardada após a tentativa.
+                st.session_state.pop("_login_senha_pendente", None)
+
+                if user:
+                    st.session_state["_login_autenticando"] = False
+                    st.session_state.pop("_login_email_pendente", None)
+                    st.session_state.logado = True
+                    st.session_state.user = user
+                    dados_db = carregar_dados_usuario(user.id)
+                    minha_emp = dados_db["minha_empresa"] or {
+                        "nome": "", "setor": "Marketing", "tipo": "",
+                        "estado": "", "cidade": "",
+                        "instagram": "@", "fb_page": "", "site": "",
+                        "servicos": [], "ads_id": "", "ads_page_pic": ""
+                    }
+                    if "ads_id" not in minha_emp:
+                        minha_emp["ads_id"] = ""
+                    if "ads_page_pic" not in minha_emp:
+                        minha_emp["ads_page_pic"] = ""
+                    st.session_state.dados = {
+                        "minha_empresa": minha_emp,
+                        "concorrentes": dados_db.get("concorrentes", []),
+                    }
+                    st.session_state.metricas_redes = dados_db.get("metricas_redes", {})
+                    st.session_state.ads_cache = dados_db.get("ads_cache", {})
+                    st.session_state.analises_salvas = dados_db.get("analises_salvas", [])
+                    st.session_state.redes_analises_salvas = dados_db.get("redes_analises_salvas", [])
+                    st.session_state.ads_analises_salvas = dados_db.get("ads_analises_salvas", [])
+                    st.session_state.seo_cache = dados_db.get("seo_cache", {})
+                    st.rerun()
+                else:
+                    st.session_state["_login_autenticando"] = False
+                    st.session_state.pop("_login_email_pendente", None)
+                    st.session_state["_login_erro"] = f"Erro ao entrar: {err}"
+                    st.rerun()
 
         with aba[1]:
             with st.form("form_cadastro"):
@@ -13878,7 +14202,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "erro", {"empresa": empresa, "plataforma": plataforma, "motivo": "empresa alterada/removida antes da migração"})
             return
 
-        migrado, stats_midia = persistir_midias_de_ads({empresa: entry}, user_id, atividade_id=atividade_id, plataforma=plataforma)
+        _dados_para_migrar = {empresa: entry}
+        if plataforma == "Google Ads":
+            _dados_para_migrar = _enriquecer_gads_com_cc_youtube_v150(_dados_para_migrar)
+        migrado, stats_midia = persistir_midias_de_ads(
+            _dados_para_migrar, user_id, atividade_id=atividade_id, plataforma=plataforma
+        )
         print(f"[MIGR-DEBUG] _migrar_midia_background persistir_midias_de_ads concluiu: empresa={empresa!r} stats={stats_midia}", flush=True)
 
         # Os vídeos que acabaram de ser migrados já estão salvos no R2 e no
@@ -15795,9 +16124,15 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         # jeito (com os links originais), nunca pode travar o essencial.
         # migrar_midia=False pula essa etapa (usado no save "rápido" logo
         # após a coleta — a migração real roda depois, em background).
+        # V150 — YouTube é fonte externa permanente: salva CC/legenda no
+        # próprio anúncio independentemente de R2/Whisper.
+        dados_limpos = _enriquecer_gads_com_cc_youtube_v150(dados_limpos)
+
         if migrar_midia:
             try:
-                dados_limpos, _stats_midia = persistir_midias_de_ads(dados_limpos, user_id)
+                dados_limpos, _stats_midia = persistir_midias_de_ads(
+                    dados_limpos, user_id, plataforma="Google Ads"
+                )
                 if _stats_midia.get("nao_migrados"):
                     try:
                         st.toast(
@@ -25298,7 +25633,12 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
+                            # V150 — para YouTube, prioriza o CC salvo no
+                            # gads_cache; Whisper continua como fallback para
+                            # vídeos baixáveis normais.
+                            transcricao_vid = (a.get("video_cc_raw") or "").strip()
+                            if not transcricao_vid:
+                                transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
                             if transcricao_vid:
                                 parts.append(
                                     f"\nTranscrição do áudio do vídeo do Anúncio {i+1}: "
@@ -26227,7 +26567,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # simplesmente esconder tudo (o que antes deixava
                         # "sem transcrição ainda" indistinguível de "nunca vai
                         # ter transcrição").
-                        _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
+                        # V150 — vídeo YouTube usa primeiro o CC persistido
+                        # no próprio anúncio. Para vídeo comum continua usando
+                        # a transcrição Whisper da tabela `midias`.
+                        _transcricao_txt = (
+                            (a.get("video_cc_raw") or "").strip()
+                            or _mapa_transcricoes.get(vid_thumb)
+                            or _mapa_transcricoes.get(vid_modal)
+                            or ""
+                        )
                         _transcricao_esta_pendente = (
                             not _transcricao_txt
                             and (vid_thumb in _urls_transcricao_pendente or vid_modal in _urls_transcricao_pendente)
@@ -26245,7 +26593,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_TRANSCRICAO} Transcrição
+        {_SVG_ICONE_TRANSCRICAO} {'CC YouTube' if (a.get("video_cc_raw") or "").strip() else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = f"""
@@ -31619,7 +31967,12 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
+                            # V150 — para YouTube, prioriza o CC salvo no
+                            # gads_cache; Whisper continua como fallback para
+                            # vídeos baixáveis normais.
+                            transcricao_vid = (a.get("video_cc_raw") or "").strip()
+                            if not transcricao_vid:
+                                transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
                             if transcricao_vid:
                                 parts.append(
                                     f"\nTranscrição do áudio do vídeo do Anúncio {i+1}: "
@@ -32407,6 +32760,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         ad.get("body") or "",
                         ad.get("title") or "",
                         ad.get("body_raw") or "",
+                        ad.get("video_cc_raw") or "",
+                        ad.get("video_cc_language") or "",
+                        ad.get("video_cc_source") or "",
                     ]
 
                     # V148 — agrega OCR de TODAS as imagens do anúncio.

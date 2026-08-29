@@ -1,4 +1,7 @@
-# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
+# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
+# V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
+# V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
+# V174_PRESERVE_COMPANY_CASE — nome exibido preserva capitalização do anúncio; lower() apenas para comparação e URL.\n# V173_TRIM_TRAILING_HYPHEN — remove hífen terminal visual dos sitelinks, preservando hífens internos.\n# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -1095,7 +1098,57 @@ def _corrigir_o_isolado(texto: str) -> str:
         return 'o'
     return _REGEX_O_OU_ZERO_ISOLADO.sub(_troca, texto)
 
+
+def _normalizar_artigo_os_em_descricao_v175(texto):
+    """
+    Corrige um erro recorrente do OCR em frases corridas:
+      "para OS maiores eventos" -> "para os maiores eventos"
+      "todos OS eventos"        -> "todos os eventos"
+
+    Regras de segurança:
+    - atua apenas no token isolado "OS";
+    - exige contexto de frase corrida, com palavra antes e depois;
+    - não altera "OS" no início absoluto da string;
+    - não altera tokens maiores/siglas como SOS, iOS, OSB etc.
+    """
+    if not texto or 'OS' not in texto:
+        return texto
+
+    # Token "OS" entre palavras normais. A palavra seguinte deve começar
+    # em minúscula, o que caracteriza fortemente artigo no meio de frase.
+    return re.sub(
+        r'(\b[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ]*)\s+OS\s+(?=[a-zà-öø-ÿ])',
+        lambda _m: _m.group(1) + ' os ',
+        texto
+    )
+
+
+
+def _corrigir_seguraça_v177(texto):
+    """
+    Corrige erro OCR recorrente:
+      seguraça -> segurança
+
+    Preserva capitalização:
+      Seguraça -> Segurança
+      SEGURAÇA -> SEGURANÇA
+    """
+    if not texto:
+        return texto
+
+    def _repl(_m):
+        palavra = _m.group(0)
+        if palavra.isupper():
+            return 'SEGURANÇA'
+        if palavra[:1].isupper():
+            return 'Segurança'
+        return 'segurança'
+
+    return re.sub(r'(?i)\bseguraça\b', _repl, texto)
+
+
 def _limpar_pontuacao_ocr(texto: str) -> str:
+    texto = _corrigir_seguraça_v177(texto)
     """Corrige espaçamento que o EasyOCR insere por engano ao redor de
     pontuação — ele costuma tratar cada caractere de pontuação como se
     fosse uma 'palavra' separada, com espaço antes (ex:
@@ -2549,6 +2602,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     ]
     _descricao = ' '.join(_descricao_linhas).strip()
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
+    _descricao = _normalizar_artigo_os_em_descricao_v175(_descricao)
 
     # V172 — se o OCR colar o texto do botão no fim da última linha da
     # descrição, separa o CTA antes de montar o resultado. Esta regra roda
@@ -3308,10 +3362,23 @@ def _posprocessar_google_ads_v168(resultado):
                     continue
 
             base['titulo'] = titulo
-            base['descricao'] = descricao
+            base['descricao'] = _normalizar_artigo_os_em_descricao_v175(descricao)
             _novos_sitelinks_v170.append(base)
 
         resultado['sitelinks'] = _novos_sitelinks_v170
+
+        # V173 — remove somente hífen visual no FINAL do sitelink.
+        # Preserva hífens internos legítimos:
+        #   "On-Line" -> "On-Line"
+        #   "GP Brasil - 3 Dias" -> "GP Brasil - 3 Dias"
+        #   "Turnê Show do Cabaré 2026 -" -> "Turnê Show do Cabaré 2026"
+        for _sl_v173 in resultado.get('sitelinks') or []:
+            if not isinstance(_sl_v173, dict):
+                continue
+            _titulo_v173 = str(_sl_v173.get('titulo') or '').strip()
+            if _titulo_v173:
+                _titulo_v173 = re.sub(r'\s+[-–—]\s*$', '', _titulo_v173).strip()
+                _sl_v173['titulo'] = _titulo_v173
 
     # -------- CABEÇALHO empresa/domínio: usa SOMENTE debug já existente --------
     debug = resultado.get('_debug_bandas') or []
@@ -3363,10 +3430,19 @@ def _posprocessar_google_ads_v168(resultado):
             b_prefixo = bool(re.match(r'(?i)^(?:https?://|www\.|[vwn]{2,4}[.:])', b_compacto))
 
             if (not a_prefixo) and b_prefixo:
-                nome = re.sub(r'\s+', '', a).lower()
-                nome = re.sub(r'(?i)\.br[l1i]$', '.br', nome)
-                url = _normalizar_url_v168(b)
-                resultado['url_exibida'] = nome + '\n' + url
+                # V174 — preserve exatamente a capitalização visual do nome.
+                # A versão minúscula existe somente para comparações internas;
+                # nunca é usada como texto de exibição.
+                nome_exibicao = re.sub(r'\s+', '', a).strip()
+                nome_exibicao = re.sub(
+                    r'(?i)\.br[l1i]$',
+                    lambda _m: '.br',
+                    nome_exibicao
+                )
+                _nome_normalizado_comparacao = nome_exibicao.lower()
+
+                url = _normalizar_url_v168(b)  # URL continua normalizada/minúscula
+                resultado['url_exibida'] = nome_exibicao + '\n' + url
                 break
 
     resultado['_parser_v168_single_pass'] = True

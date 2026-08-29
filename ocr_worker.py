@@ -1,4 +1,4 @@
-# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
+# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2461,7 +2461,19 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _avatar_ignorados = []
     _cta = ''
     _cta_y = -1.0
-    _rx_cta_split = _re_split.compile('^(?:abrir|compre\\s*agora|comprar\\s*agora|saiba\\s*mais|acessar|acesse|ver\\s*mais|conferir|comprar|reservar|inscreva-?se|cadastre-?se)$', _re_split.IGNORECASE)
+    _rx_cta_split = _re_split.compile(
+        '^(?:'
+        'abrir|'
+        'compre\\s*agora|comprar\\s*agora|'
+        'saiba\\s*mais|'
+        'acessar(?:\\s+o\\s+site)?|'
+        'acesse(?:\\s+o\\s+site)?|'
+        'ver\\s*mais|'
+        'conferir|comprar|reservar|'
+        'inscreva-?se|cadastre-?se'
+        ')$',
+        _re_split.IGNORECASE
+    )
     for _l in _linhas:
         _txt = (_l.get('texto') or '').strip()
         if not _txt:
@@ -2537,6 +2549,43 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     ]
     _descricao = ' '.join(_descricao_linhas).strip()
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
+
+    # V172 — se o OCR colar o texto do botão no fim da última linha da
+    # descrição, separa o CTA antes de montar o resultado. Esta regra roda
+    # somente no layout split-card e somente no FINAL da descrição.
+    #
+    # Exemplos:
+    #   "... esperados do ano. Acessar o site"
+    #       -> descricao="... esperados do ano."
+    #          cta="Acessar o site"
+    #
+    #   "... ingressos disponíveis Saiba mais"
+    #       -> descricao="... ingressos disponíveis"
+    #          cta="Saiba mais"
+    _rx_cta_tail_v172 = _re_split.compile(
+        r'(?i)(?:^|\\s+)('
+        r'abrir|'
+        r'compre\\s+agora|comprar\\s+agora|'
+        r'saiba\\s+mais|'
+        r'acessar(?:\\s+o\\s+site)?|'
+        r'acesse(?:\\s+o\\s+site)?|'
+        r'ver\\s+mais|'
+        r'conferir|comprar|reservar|'
+        r'inscreva-?se|cadastre-?se'
+        r')\\s*$'
+    )
+    _m_cta_tail_v172 = _rx_cta_tail_v172.search(_descricao or '')
+    if _m_cta_tail_v172:
+        _cta_tail_v172 = (_m_cta_tail_v172.group(1) or '').strip()
+        if _cta_tail_v172:
+            # Se o detector geométrico não conseguiu isolar o botão, usamos
+            # o CTA encontrado no final da descrição. Se já conseguiu, apenas
+            # removemos a duplicação da descrição.
+            if not _cta:
+                _cta = _cta_tail_v172
+            _descricao = (_descricao[:_m_cta_tail_v172.start()] or '').rstrip()
+            _descricao = _descricao.rstrip(' |:-–—').strip()
+
     if not _titulo or not (_descricao or _cta):
         return None
     _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título e descrição separados por blocos visuais/gap vertical; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
@@ -2749,25 +2798,70 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             _texto_pre_fileira = _limpar_pontuacao_ocr(_texto_pre_fileira_bruto)
             _ruido_pre_compacto = re.sub('\\s+', '', _texto_pre_fileira or '')
             _ruido_pre_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _ruido_pre_compacto)
-            if len(_ruido_pre_compacto) >= 4 and (not _ruido_pre_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _ruido_pre_compacto)) >= 4):
+            if len(_ruido_pre_compacto) >= 1 and (not _ruido_pre_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _ruido_pre_compacto)) >= 1):
                 _debug_bandas[idx]['texto'] = _texto_pre_fileira
                 _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado ANTES da detecção de fileira; mantém descrição em andamento'
                 idx += 1
                 continue
         if len(_grupos_botoes) >= 2:
-            print(f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, {len(_grupos_botoes)} bloco(s): {_grupos_botoes}', flush=True)
-            _debug_bandas[idx]['decisao'] = f'fileira de botões ({len(_grupos_botoes)} bloco(s))'
+            # V171 — geometria sozinha NÃO transforma uma banda em fileira de botões.
+            # Primeiro lemos os mesmos grupos que a regra antiga já lia e exigimos
+            # conteúdo textual real. Bordas/divisores como "| |", "_", "~", etc.
+            # não podem fechar o título/descrição nem criar CTA/sitelink.
+            _textos_botoes_debug = []
+            _botoes_textuais_validos = []
+            for _x_ini, _x_fim in _grupos_botoes:
+                _texto_botao = _limpar_pontuacao_ocr(
+                    _ocr_banda(
+                        reader, img_bgr,
+                        banda['y_min'], banda['y_max'],
+                        x_min=_x_ini, x_max=_x_fim
+                    ).strip()
+                )
+                _textos_botoes_debug.append(_texto_botao)
+
+                # Exige pelo menos 2 caracteres alfanuméricos no bloco.
+                # Isso aceita CTAs/sitelinks curtos reais, mas rejeita linhas,
+                # barras, pipes e artefatos puramente gráficos.
+                _alfanum = re.sub(r'[^0-9A-Za-zÀ-ÖØ-öø-ÿ]', '', _texto_botao or '')
+                if len(_alfanum) >= 2:
+                    _botoes_textuais_validos.append((_texto_botao, _x_ini, _x_fim))
+
+            _debug_bandas[idx]['texto'] = ' | '.join(
+                t for t in _textos_botoes_debug if t
+            )
+
+            if len(_botoes_textuais_validos) < 2:
+                _debug_bandas[idx]['decisao'] = (
+                    f'divisor/arte gráfica ignorado: geometria sugeriu '
+                    f'{len(_grupos_botoes)} bloco(s), mas só '
+                    f'{len(_botoes_textuais_validos)} tinha texto alfanumérico real; '
+                    f'mantém título/descrição em andamento'
+                )
+                idx += 1
+                continue
+
+            print(
+                f'[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões '
+                f'VALIDADA por texto, {len(_botoes_textuais_validos)} bloco(s)',
+                flush=True
+            )
+            _debug_bandas[idx]['decisao'] = (
+                f'fileira de botões validada por texto '
+                f'({len(_botoes_textuais_validos)} bloco(s))'
+            )
+
             if par_atual is not None:
                 pares.append(par_atual)
                 par_atual = None
             _cta_aberto = False
-            _textos_botoes_debug = []
-            for _x_ini, _x_fim in _grupos_botoes:
-                _texto_botao = _limpar_pontuacao_ocr(_ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max'], x_min=_x_ini, x_max=_x_fim).strip())
-                _textos_botoes_debug.append(_texto_botao)
-                if _texto_botao:
-                    resultado['sitelinks'].append({'titulo': _texto_botao, 'descricao': ''})
-            _debug_bandas[idx]['texto'] = ' | '.join(_textos_botoes_debug)
+
+            for _texto_botao, _x_ini, _x_fim in _botoes_textuais_validos:
+                resultado['sitelinks'].append({
+                    'titulo': _texto_botao,
+                    'descricao': ''
+                })
+
             idx += 1
             continue
         if banda['classe'] == 'botao' and banda.get('x_min_botao') is not None:
@@ -2778,7 +2872,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         _debug_bandas[idx]['texto'] = texto
         _texto_ruido_sep = re.sub('\\s+', '', texto or '')
         _texto_ruido_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _texto_ruido_sep)
-        if len(_texto_ruido_sep) >= 4 and (not _texto_ruido_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _texto_ruido_sep)) >= 4):
+        if len(_texto_ruido_sep) >= 1 and (not _texto_ruido_restante) and (len(re.findall('[|¦│┃!Il1_\\-–—./\\\\]', _texto_ruido_sep)) >= 1):
             _debug_bandas[idx]['decisao'] = 'divisor visual/ruído de OCR → ignorado; mantém descrição em andamento'
             idx += 1
             continue

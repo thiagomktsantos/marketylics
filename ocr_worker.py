@@ -1,3 +1,4 @@
+# V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
 # V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
 # V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
 # V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
@@ -2415,7 +2416,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         try:
             import cv2 as _cv2_v179
 
-            _crop_h_v179 = int(h * 0.72)
+            _crop_h_v179 = int(h * 0.42)
             _crop_v179 = img_bgr[:_crop_h_v179, :]
 
             # Ampliação moderada + CLAHE melhora títulos grandes em azul/roxo
@@ -2521,7 +2522,12 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     cab = empresa
                     continue
 
-                _uteis_top_v179.append(_l_v179)
+                # V180 — proteção dura contra OCR interno da mídia:
+                # só aceitamos linhas cujo centro esteja na região textual
+                # superior. A crop já corta em 42%, mas esta segunda barreira
+                # evita caixas na borda inferior do recorte.
+                if float(_l_v179['yc']) <= h * 0.385:
+                    _uteis_top_v179.append(_l_v179)
 
             # Se a releitura achou texto realmente no topo, utilizamos esse
             # bloco. Antes disso, cortamos eventual texto da mídia inferior
@@ -2529,6 +2535,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             if (
                 len(_uteis_top_v179) >= 2
                 and min(float(l['yc']) for l in _uteis_top_v179) < h * 0.28
+                and max(float(l['yc']) for l in _uteis_top_v179) <= h * 0.385
             ):
                 _gaps_top_v179 = [
                     float(_uteis_top_v179[i + 1]['yc'] - _uteis_top_v179[i]['yc'])
@@ -2571,12 +2578,26 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
         except Exception as _exc_v179:
             print(
-                f"[OCR-DEBUG] display-vertical-v179 recuperação superior falhou: "
+                f"[OCR-DEBUG] display-vertical-v180 recuperação superior falhou: "
                 f"{_exc_v179!r}",
                 flush=True,
             )
 
-    # V178/V179 — o título de Display vertical pode ocupar várias linhas grandes.
+    # V180 — trava estrutural: se, mesmo após a recuperação localizada, todas
+    # as linhas úteis continuam começando abaixo da região textual superior,
+    # elas pertencem à mídia/arte e não podem virar título/descrição.
+    #
+    # Preferimos devolver None para este detector e permitir fallback de outro
+    # layout a inventar estrutura com texto interno da foto.
+    if uteis and min(float(l['yc']) for l in uteis) > h * 0.385:
+        print(
+            "[OCR-DEBUG] display-vertical-v180: somente texto interno da mídia "
+            "detectado; descartando estrutura para evitar falso título.",
+            flush=True,
+        )
+        return None
+
+    # V178/V179/V180 — o título de Display vertical pode ocupar várias linhas grandes.
     # A implementação antiga pegava apenas UMA linha (a maior), fazendo:
     #   "Ingressos"                         -> título
     #   "Brasil x Marrocos ..."             -> descrição
@@ -2653,10 +2674,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v179',
+        'classe':'display-vertical-v180',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V179 → Display vertical: título multilinha; se OCR global começa tarde, releitura localizada do topo com contraste; descrição cortada antes da mídia; OCR interno da arte descartado; CTA separado',
+        'decisao':'V180 → Display vertical: releitura estrita somente no topo; linhas da mídia são excluídas por limite geométrico; se não houver texto estrutural superior, detector não usa OCR da foto; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0
@@ -2670,7 +2691,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         'cta_subtitulo':'',
         'sitelinks':[],
         '_debug_bandas':dbg,
-        '_layout_ocr':'display_vertical_v179'
+        '_layout_ocr':'display_vertical_v180'
     }
 
 

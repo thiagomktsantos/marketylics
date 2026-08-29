@@ -1,3 +1,4 @@
+# V153_YOUTUBE_CC_NOTIFICATIONS_SUPPORT — CC YouTube ganha atividade no sino, auto-check global e métricas de vídeos Google com/sem CC no Suporte.
 # V152_YOUTUBE_CC_RETRY_FALLBACK — não cacheia falha vazia de CC, permite retry real pós-standby e adiciona fallback YouTube timedtext.
 # V151_YOUTUBE_CC_AUTO_RECOVERY — verifica automaticamente vídeos YouTube sem CC após retomada/render, com retry pós-standby, trava concorrente e cooldown.
 # V150_YOUTUBE_CC — salva CC/legendas de vídeos YouTube no Google Ads, exibe no card, usa na busca e na análise.\n# V149_LOGIN_BUTTON_LOADING — autenticação exibe carregamento no próprio botão, sem spinner abaixo.\n# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
@@ -1736,7 +1737,70 @@ def _gads_youtube_sem_cc_v151(cache: dict) -> list:
     return list(pendentes.items())
 
 
-def _verificar_cc_youtube_background_v151(user_id: str):
+
+def _atividade_cc_youtube_mais_recente_id_v153(user_id: str):
+    """Reaproveita um único card de atividade para verificações de CC YouTube."""
+    if not user_id:
+        return None
+    try:
+        _res = (
+            supabase.table("atividades")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("tipo", "cc_youtube")
+            .order("criado_em", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return _res.data[0]["id"] if _res.data else None
+    except Exception:
+        return None
+
+
+def _obter_ou_criar_atividade_cc_youtube_v153(user_id: str, total: int):
+    """Cria só o primeiro card; verificações futuras reutilizam e renovam o mesmo."""
+    _aid = _atividade_cc_youtube_mais_recente_id_v153(user_id)
+    _det = {
+        "verificados": 0,
+        "total": int(total or 0),
+        "salvos": 0,
+        "pendentes": int(total or 0),
+        "plataforma": "Google Ads",
+        "status_visual": "na_fila",
+    }
+    if _aid:
+        atualizar_atividade(_aid, "na_fila", _det)
+        return _aid
+    return criar_atividade(
+        user_id,
+        "cc_youtube",
+        "Verificando CC dos vídeos do Google Ads",
+        _det,
+        status="na_fila",
+    )
+
+
+def _carregar_gads_cache_cc_v153(user_id: str) -> dict:
+    """Leitura barata do gads_cache para o check global da sidebar."""
+    if not user_id:
+        return {}
+    try:
+        _res = _supabase_resiliente(
+            lambda: (
+                supabase.table("ci_dados")
+                .select("gads_cache")
+                .eq("user_id", user_id)
+                .execute()
+            ),
+            operacao="carregar_gads_cache_cc",
+            tentativas=2,
+            backoff=(1, 2),
+        )
+        return ((_res.data[0].get("gads_cache") or {}) if _res.data else {})
+    except Exception:
+        return {}
+
+def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None):
     """
     Reabre o gads_cache diretamente do Supabase, tenta preencher SOMENTE vídeos
     YouTube que continuam sem CC e persiste o cache enriquecido.
@@ -1765,9 +1829,27 @@ def _verificar_cc_youtube_background_v151(user_id: str):
 
         _pendentes_antes = _gads_youtube_sem_cc_v151(_cache_atual)
         if not _pendentes_antes:
+            if atividade_id:
+                atualizar_atividade(atividade_id, "concluido", {
+                    "verificados": 0,
+                    "total": 0,
+                    "salvos": 0,
+                    "pendentes": 0,
+                    "plataforma": "Google Ads",
+                    "mensagem": "Todos os vídeos do Google Ads já possuem CC disponível no cache.",
+                })
             with _YOUTUBE_CC_VERIFY_LOCK_V151:
                 _YOUTUBE_CC_VERIFY_LAST_OK_V151[user_id] = _time_cc151.monotonic()
             return
+
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "verificados": 0,
+                "total": len(_pendentes_antes),
+                "salvos": 0,
+                "pendentes": len(_pendentes_antes),
+                "plataforma": "Google Ads",
+            })
 
         print(
             f"[YOUTUBE-CC-AUTO] verificando {len(_pendentes_antes)} "
@@ -1835,6 +1917,18 @@ def _verificar_cc_youtube_background_v151(user_id: str):
                 flush=True,
             )
 
+        _pendentes_depois = sum(
+            1 for _vid in _depois if not str(_depois.get(_vid) or "").strip()
+        )
+        if atividade_id:
+            atualizar_atividade(atividade_id, "concluido", {
+                "verificados": len(_pendentes_antes),
+                "total": len(_pendentes_antes),
+                "salvos": len(_novos),
+                "pendentes": _pendentes_depois,
+                "plataforma": "Google Ads",
+            })
+
         # O cooldown começa somente depois que a verificação chegou ao fim.
         # Falha/standby antes daqui não bloqueia a próxima tentativa.
         with _YOUTUBE_CC_VERIFY_LOCK_V151:
@@ -1842,6 +1936,15 @@ def _verificar_cc_youtube_background_v151(user_id: str):
 
     except Exception as _exc_cc151:
         # Não grava LAST_OK: próxima renderização poderá tentar de novo.
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {
+                "verificados": 0,
+                "total": 0,
+                "salvos": 0,
+                "pendentes": 0,
+                "plataforma": "Google Ads",
+                "motivo": str(_exc_cc151),
+            })
         print(
             f"[YOUTUBE-CC-AUTO] falha; será elegível novamente no próximo "
             f"render: {_exc_cc151!r}",
@@ -1881,9 +1984,15 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
 
         _YOUTUBE_CC_VERIFY_ACTIVE_V151.add(user_id)
 
+    _total_pendente_v153 = len(_gads_youtube_sem_cc_v151(cache_sessao))
+    _atividade_cc_v153 = _obter_ou_criar_atividade_cc_youtube_v153(
+        user_id,
+        _total_pendente_v153,
+    )
+
     _thread = threading.Thread(
         target=_verificar_cc_youtube_background_v151,
-        args=(user_id,),
+        args=(user_id, _atividade_cc_v153),
         daemon=True,
         name=f"youtube-cc-auto-{str(user_id)[:8]}",
     )
@@ -11959,6 +12068,10 @@ _TIPO_ATIVIDADE_LABELS = {
         "M12,14A3,3 0 0,0 15,11V5A3,3 0 0,0 12,2A3,3 0 0,0 9,5V11A3,3 0 0,0 12,14M19,11H17.7C17.7,14 15.19,15.9 12,15.9C8.81,15.9 6.3,14 6.3,11H5C5,14.41 7.72,17.23 11,17.72V21H13V17.72C16.28,17.23 19,14.41 19,11Z",
         "#8b5cf6", "Transcrevendo áudio dos vídeos de anúncios",
     ),
+    "cc_youtube": (
+        "M4,5H20V19H4V5M10,9V15L15,12L10,9Z",
+        "#ef4444", "Verificando CC dos vídeos do Google Ads",
+    ),
     "reprocessamento_midia": (
         "M20,6H16.83L15,4H9L7.17,6H4C2.89,6 2,6.89 2,8V19C2,20.1 2.89,21 4,21H20C21.1,21 22,20.1 22,19V8C22,6.89 21.1,6 20,6M12,17A4,4 0 0,1 8,13A4,4 0 0,1 12,9A4,4 0 0,1 16,13A4,4 0 0,1 12,17Z",
         "#8a97ab", "Otimizando espaço da Biblioteca de Arquivos Permanente",
@@ -12252,6 +12365,7 @@ _PARES_PROGRESSO_POR_TIPO = {
     # contagem "x de y" pareada.
     "migracao_midia":        ("migradas", "total"),
     "transcricao_video":     ("transcritas", "total"),
+    "cc_youtube":             ("verificados", "total"),
     "reprocessamento_midia": ("processadas", "total"),
     "reconciliacao_midia":   ("corrigidos", "verificados"),
     "retentativa_midia":     ("recuperadas", "verificadas"),
@@ -12413,6 +12527,31 @@ def _formatar_detalhes_atividade(atividade: dict):
         texto = f"{d['transcritas']} de {total_t} vídeos de anúncios transcritos."
         if atividade.get("status") == "em_andamento":
             texto += " · Rodando agora."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "cc_youtube":
+        _total_cc = int(d.get("total") or 0)
+        _verif_cc = int(d.get("verificados") or 0)
+        _salvos_cc = int(d.get("salvos") or 0)
+        _pend_cc = int(d.get("pendentes") or 0)
+        if atividade.get("status") == "erro":
+            path, _cor = _ICONE_AVISO
+            texto = "A verificação de CC dos vídeos do Google Ads falhou e será tentada novamente automaticamente."
+            if d.get("motivo"):
+                texto += f" Motivo: {d.get('motivo')}."
+            return _svg_icone(path, "currentColor", 14), texto
+        if atividade.get("status") == "em_andamento":
+            path, _cor = _ICONE_INFO
+            texto = f"Verificando CC em {_total_cc} vídeo(s) do Google Ads. · Rodando agora."
+            return _svg_icone(path, "currentColor", 14), texto
+        path, _cor = _ICONE_OK if _pend_cc == 0 else _ICONE_INFO
+        if _total_cc == 0:
+            texto = d.get("mensagem") or "Nenhum vídeo do Google Ads está pendente de CC."
+        else:
+            texto = (
+                f"{_verif_cc} vídeo(s) verificado(s): {_salvos_cc} CC novo(s) salvo(s) "
+                f"e {_pend_cc} vídeo(s) ainda sem CC disponível."
+            )
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo == "transcricao_reel" and "transcritas" in d:
@@ -15948,6 +16087,18 @@ with st.sidebar:
             # esperando um clique manual em "Refazer" pra sempre.
             retentar_transcricoes_com_erro_automaticamente(st.session_state.user.id)
 
+            # V153 — CC do YouTube/Google Ads entra no mesmo auto-poll global
+            # da sidebar. Assim a recuperação continua funcionando em qualquer
+            # página aberta do app, não apenas quando a tela de Google Ads está
+            # renderizada. O starter tem trava concorrente + cooldown próprio.
+            _gads_cache_cc_auto = _carregar_gads_cache_cc_v153(st.session_state.user.id)
+            if _gads_cache_cc_auto:
+                iniciar_verificacao_cc_youtube_automatica_v151(
+                    st.session_state.user.id,
+                    _gads_cache_cc_auto,
+                    intervalo_segundos=300,
+                )
+
             # Mesmo religamento automático acima, mas pra fila de OCR
             # (ver bloco "OCR DE IMAGENS DO GOOGLE ADS"). Antes, o OCR só
             # disparava UMA VEZ, no momento exato da migração — se essa
@@ -17059,6 +17210,47 @@ def iniciar_migracao_pendente_geral_background(user_id: str):
 # ---------------------------------------------------
 # SUPORTE ADMINISTRATIVO — inventário de mídias por empresa
 # ---------------------------------------------------
+
+def _suporte_resumo_cc_youtube_v153(user_id: str) -> dict:
+    """
+    Conta vídeos únicos do YouTube presentes no Google Ads diretamente no
+    gads_cache. Não usa `midias`, porque links YouTube são externos e o CC
+    fica salvo no próprio anúncio (`video_cc_raw`).
+    """
+    _cache = _carregar_gads_cache_cc_v153(user_id)
+    _videos = {}
+    _por_empresa = {}
+
+    for _empresa, _entry in (_cache or {}).items():
+        _empresa_map = {}
+        for _ad in (_entry or {}).get("data", []) or []:
+            _cc = str(_ad.get("video_cc_raw") or "").strip()
+            for _url in (_ad.get("videos") or []):
+                _vid = _youtube_video_id_v150(_url)
+                if not _vid:
+                    continue
+                # Se qualquer ocorrência do mesmo vídeo tiver CC, considera CC.
+                _prev = _videos.get(_vid, False)
+                _videos[_vid] = bool(_prev or _cc)
+                _prev_emp = _empresa_map.get(_vid, False)
+                _empresa_map[_vid] = bool(_prev_emp or _cc)
+        if _empresa_map:
+            _por_empresa[_empresa] = {
+                "total": len(_empresa_map),
+                "com_cc": sum(1 for _ok in _empresa_map.values() if _ok),
+                "sem_cc": sum(1 for _ok in _empresa_map.values() if not _ok),
+            }
+
+    _total = len(_videos)
+    _com = sum(1 for _ok in _videos.values() if _ok)
+    return {
+        "total": _total,
+        "com_cc": _com,
+        "sem_cc": _total - _com,
+        "por_empresa": _por_empresa,
+    }
+
+
 def _suporte_inventario_midias(user_id: str) -> list:
     """Monta uma visão administrativa única das mídias salvas e pendentes.
 
@@ -41630,7 +41822,8 @@ html, body { background: transparent; overflow: hidden; }
             "Acompanhe, por empresa, o que já está salvo permanentemente, o que ainda "
             "depende de link externo e o estado de transcrição/OCR. OCR é contabilizado "
             "somente para imagens elegíveis do Google Ads. Capas/thumbnails de anúncios em vídeo "
-            "não entram na contagem de OCR, pois vídeos usam transcrição."
+            "não entram na contagem de OCR. Para vídeos do Google Ads em YouTube, o painel também "
+            "contabiliza separadamente CC capturado e vídeos ainda sem CC."
         )
 
         try:
@@ -41639,6 +41832,7 @@ html, body { background: transparent; overflow: hidden; }
             _suporte_itens = []
             st.warning(f"Não foi possível montar o inventário de mídias: {_e_inv}")
 
+        _suporte_cc_google = _suporte_resumo_cc_youtube_v153(st.session_state.user.id)
         _suporte_resumo = _suporte_resumo_midias_por_empresa(_suporte_itens)
         if _suporte_resumo:
             _tot_mid = sum(r["Mídias"] for r in _suporte_resumo)
@@ -41648,13 +41842,16 @@ html, body { background: transparent; overflow: hidden; }
             _tot_sem_trans = sum(r["Sem transcrição"] for r in _suporte_resumo)
             _tot_ocr = sum(r["Imagens c/ OCR"] for r in _suporte_resumo)
             _tot_sem_ocr = sum(r["Imagens s/ OCR"] for r in _suporte_resumo)
+            _tot_gads_vid_cc = int((_suporte_cc_google or {}).get("total") or 0)
+            _tot_gads_com_cc = int((_suporte_cc_google or {}).get("com_cc") or 0)
+            _tot_gads_sem_cc = int((_suporte_cc_google or {}).get("sem_cc") or 0)
 
             # V84 — painel de suporte com identidade visual do produto e
             # detalhamento acionável para TODOS os indicadores do resumo.
             st.markdown(
                 """
                 <style>
-                .support-admin-summary {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;margin:14px 0 18px 0;}
+                .support-admin-summary {display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:14px 0 18px 0;}
                 .support-admin-card {background:#fff;border:1px solid #dbe4ef;border-radius:14px;padding:14px 14px 12px;box-shadow:0 1px 2px rgba(15,43,77,.04);min-height:92px;}
                 .support-admin-card .label {color:#64748b;font-size:12px;font-weight:600;line-height:1.2;margin-bottom:7px;}
                 .support-admin-card .value {color:#0f2b4d;font-size:30px;font-weight:700;line-height:1;letter-spacing:-.5px;}
@@ -41677,6 +41874,9 @@ html, body { background: transparent; overflow: hidden; }
                 ("Sem transcrição", _tot_sem_trans, "vídeos pendentes"),
                 ("Com OCR", _tot_ocr, "imagens concluídas"),
                 ("Sem OCR", _tot_sem_ocr, "imagens pendentes"),
+                ("Vídeos Google", _tot_gads_vid_cc, "YouTube únicos"),
+                ("Google com CC", _tot_gads_com_cc, "CC capturado"),
+                ("Google sem CC", _tot_gads_sem_cc, "pendentes de CC"),
             ]
             _cards_html = "".join(
                 '<div class="support-admin-card"><div class="label">%s</div><div class="value">%d</div><div class="hint">%s</div></div>'

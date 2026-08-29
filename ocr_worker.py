@@ -1,4 +1,4 @@
-# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
+# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2477,7 +2477,13 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
                 _cta = _txt_cta_split
                 _cta_y = _l['yc']
             continue
-        _conteudo.append({'texto': _txt, 'altura': _l['altura'], 'yc': _l['yc']})
+        _conteudo.append({
+            'texto': _txt,
+            'altura': _l['altura'],
+            'yc': _l['yc'],
+            'y0': _l['yc'] - (_l['altura'] / 2.0),
+            'y1': _l['yc'] + (_l['altura'] / 2.0),
+        })
     if not _conteudo:
         return None
     if _cta_y > 0:
@@ -2485,14 +2491,55 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     if not _conteudo:
         return None
     _conteudo.sort(key=lambda l: l['yc'])
-    _titulo, _descricao_linhas = _extrair_titulo_descricao_por_altura([{'texto': l['texto'], 'altura': l['altura']} for l in _conteudo])
-    _titulo = _limpar_pontuacao_ocr(_titulo or '')
-    _descricao_linhas = [_limpar_pontuacao_ocr(x) for x in _descricao_linhas or [] if x]
+
+    # V169 — split-card por BLOCOS VISUAIS, não por "maior altura".
+    #
+    # O primeiro bloco textual útil após avatar/logo é o título. Ele só recebe
+    # uma linha seguinte como continuação quando essa linha está visualmente
+    # colada ao título (gap curto) e tem tipografia próxima. Quando há um gap
+    # vertical claro, inicia a descrição. Assim:
+    #
+    #   Fórmula 1
+    #
+    #   O GP de Fórmula 1 de
+    #   São Paulo é ...
+    #
+    # vira título="Fórmula 1" e o restante descrição.
+    _titulo_linhas = [_conteudo[0]]
+    _desc_inicio = 1
+
+    for _idx_bloco in range(1, len(_conteudo)):
+        _ant = _titulo_linhas[-1]
+        _atu = _conteudo[_idx_bloco]
+        _gap = max(0.0, float(_atu['y0']) - float(_ant['y1']))
+        _alt_ref = max(1.0, float(_ant['altura']))
+        _alt_atu = max(1.0, float(_atu['altura']))
+        _ratio_alt = min(_alt_ref, _alt_atu) / max(_alt_ref, _alt_atu)
+
+        # Continuação de título só quando realmente forma o mesmo bloco visual.
+        # Limite relativo evita depender de pixels fixos em screenshots maiores.
+        _gap_curto = _gap <= max(8.0, min(_alt_ref, _alt_atu) * 0.55)
+        _tipografia_proxima = _ratio_alt >= 0.78
+
+        if _gap_curto and _tipografia_proxima and len(_titulo_linhas) < 3:
+            _titulo_linhas.append(_atu)
+            _desc_inicio = _idx_bloco + 1
+            continue
+        break
+
+    _titulo = _limpar_pontuacao_ocr(
+        ' '.join(l['texto'] for l in _titulo_linhas).strip()
+    )
+    _descricao_linhas = [
+        _limpar_pontuacao_ocr(l['texto'])
+        for l in _conteudo[_desc_inicio:]
+        if l.get('texto')
+    ]
     _descricao = ' '.join(_descricao_linhas).strip()
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     if not _titulo or not (_descricao or _cta):
         return None
-    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título/descrição separados por altura no painel direito; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
+    _debug = [{'idx': 0, 'classe': 'split-card', 'sep_antes': False, 'texto': f'{_titulo} | {_descricao} | {_cta}'.strip(' |'), 'decisao': 'anúncio gráfico em duas colunas → painel esquerdo/foto ignorado; avatar grande isolado ignorado; título e descrição separados por blocos visuais/gap vertical; CTA identificado no botão', 'y_min': 0, 'y_max': int(h), 'x_min_favicon': int(_seam_x)}]
     print(f'[OCR-DEBUG] split-card detectado seam={_seam_x}/{w} score={_score:.1f} avatar_ignorado={_avatar_ignorados!r} titulo={_titulo!r} cta={_cta!r}', flush=True)
     return {'titulo': _titulo, 'descricao': _descricao, 'url_exibida': empresa or '', 'url_final': '', 'cta': _cta, 'cta_subtitulo': '', 'sitelinks': [], '_debug_bandas': _debug, '_layout_ocr': 'split_card'}
 
@@ -2831,15 +2878,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 _partes_relacionados = None
 
             if _partes_relacionados and len(_partes_relacionados) >= 2:
-                _debug_bandas[idx]['decisao'] = f'azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) separados por hr, em vez de ficarem grudados)'
+                _debug_bandas[idx]['decisao'] = f'azul → linha de termos relacionados ({len(_partes_relacionados)} link(s) estruturados separadamente; nenhum HTML inserido no texto)'
                 if par_atual is not None:
                     pares.append(par_atual)
                     par_atual = None
-                if len(_partes_relacionados) == 2 and (not banda.get('sep_antes')):
-                    resultado['sitelinks'].append({'titulo': ' <hr> '.join(_partes_relacionados), 'descricao': ''})
-                else:
-                    for _termo_rel in _partes_relacionados:
-                        resultado['sitelinks'].append({'titulo': _termo_rel, 'descricao': ''})
+
+                # V170 — cada link horizontal vira um objeto próprio.
+                # Nunca grava '<hr>' dentro do campo titulo.
+                for _termo_rel in _partes_relacionados:
+                    _termo_rel = str(_termo_rel or '').strip()
+                    if _termo_rel:
+                        resultado['sitelinks'].append({
+                            'titulo': _termo_rel,
+                            'descricao': '',
+                            '_linha_horizontal': True,
+                        })
                 idx += 1
                 continue
             _cta_aberto = False
@@ -3095,7 +3148,7 @@ def _posprocessar_google_ads_v168(resultado):
     Objetivo: preservar a estabilidade da base V161 (uma única passagem OCR)
     e aplicar somente transformações sobre os textos já extraídos.
 
-    1) Sitelinks horizontais OCR "A - B -" -> "A <hr> B".
+    1) Sitelinks horizontais OCR "A - B -" -> dois itens estruturados, sem HTML.
        Não divide "GP Brasil - 3 Dias", pois não possui hífen terminal.
     2) Quando o cabeçalho já lido contém:
            dominio.com.br
@@ -3105,17 +3158,45 @@ def _posprocessar_google_ads_v168(resultado):
     if not isinstance(resultado, dict):
         return resultado
 
-    # -------- SITELINKS: apenas transformação textual; ZERO OCR --------
+    # -------- SITELINKS: estrutura, nunca HTML no texto; ZERO OCR --------
     sitelinks = resultado.get('sitelinks')
     if isinstance(sitelinks, list):
+        _novos_sitelinks_v170 = []
+
         for sl in sitelinks:
-            if not isinstance(sl, dict):
-                continue
-            titulo = str(sl.get('titulo') or '').strip()
+            if isinstance(sl, dict):
+                titulo = str(sl.get('titulo') or '').strip()
+                descricao = str(sl.get('descricao') or '').strip()
+                base = dict(sl)
+            else:
+                titulo = str(sl or '').strip()
+                descricao = ''
+                base = {'titulo': titulo, 'descricao': ''}
+
             if not titulo:
                 continue
 
-            # O hífen final é o sinal de divisor visual de uma fileira horizontal.
+            # Sanitiza tags que possam vir de regras antigas ou dados reaproveitados.
+            # Aceita <hr>, <hr/>, <hr /> e também "\<hr>".
+            _titulo_sem_escape = titulo.replace('\\<hr>', '<hr>')
+            _partes_html = [
+                p.strip()
+                for p in re.split(r'(?i)\s*<hr\s*/?>\s*', _titulo_sem_escape)
+                if p.strip()
+            ]
+
+            if len(_partes_html) >= 2:
+                for _i_part, _parte in enumerate(_partes_html):
+                    _novos_sitelinks_v170.append({
+                        'titulo': _parte,
+                        'descricao': descricao if _i_part == 0 else '',
+                        '_linha_horizontal': True,
+                    })
+                continue
+
+            # Estrutura OCR típica de uma fileira horizontal: "A - B -".
+            # O hífen terminal funciona como evidência de que o hífen interno
+            # é separador visual, sem quebrar "GP Brasil - 3 Dias".
             if re.search(r'\s+[-–—]\s*$', titulo):
                 sem_final = re.sub(r'\s*[-–—]\s*$', '', titulo).strip()
                 partes = [
@@ -3123,8 +3204,20 @@ def _posprocessar_google_ads_v168(resultado):
                     for p in re.split(r'\s+[-–—]\s+', sem_final)
                     if p.strip()
                 ]
-                if len(partes) == 2:
-                    sl['titulo'] = ' <hr> '.join(partes)
+                if len(partes) >= 2:
+                    for _i_part, _parte in enumerate(partes):
+                        _novos_sitelinks_v170.append({
+                            'titulo': _parte,
+                            'descricao': descricao if _i_part == 0 else '',
+                            '_linha_horizontal': True,
+                        })
+                    continue
+
+            base['titulo'] = titulo
+            base['descricao'] = descricao
+            _novos_sitelinks_v170.append(base)
+
+        resultado['sitelinks'] = _novos_sitelinks_v170
 
     # -------- CABEÇALHO empresa/domínio: usa SOMENTE debug já existente --------
     debug = resultado.get('_debug_bandas') or []

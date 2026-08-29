@@ -1,4 +1,5 @@
-from playwright.sync_api import sync_playwright
+# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
+# V147_SEARCH_IN_OCR — busca Google Ads inclui OCR bruto/estruturado e ignora caixa/acentos.\nfrom playwright.sync_api import sync_playwright
 import datetime
 import streamlit as st
 import multiprocessing
@@ -32199,10 +32200,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         return ""
                     return _v
 
+                # V148 — carregar OCR de TODAS as imagens/variações do anúncio.
+                # Antes só a primeira URL de `images` entrava no lote. Em anúncios
+                # responsivos, o texto pesquisado pode estar em outra peça/variante.
                 _urls_img_todos_filtro = list({
-                    (ad.get("images") or [""])[0]
+                    _u_img_gads
                     for ad in gads_list
-                    if (ad.get("images") or [""])[0]
+                    for _u_img_gads in (ad.get("images") or [])
+                    if _u_img_gads
                 })
                 _ocr_lote_todos = {}
                 if _urls_img_todos_filtro:
@@ -32261,8 +32266,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 dominios_disponiveis = sorted(_dominios_disponiveis_set)
                 for _ad_filtro_dom in gads_list:
-                    _img_dom = (_ad_filtro_dom.get("images") or [""])[0]
-                    _ad_filtro_dom["_dominios_filtro"] = set(_dominios_por_url_img.get(_img_dom, set()))
+                    _doms_ad_v148 = set()
+                    for _img_dom in (_ad_filtro_dom.get("images") or []):
+                        _doms_ad_v148.update(_dominios_por_url_img.get(_img_dom, set()))
+                    _ad_filtro_dom["_dominios_filtro"] = _doms_ad_v148
 
                 chave_criativo_ads = f"ia_gads_criativos_{sk}"
                 chave_copy_ads     = f"ia_gads_copys_{sk}"
@@ -32378,10 +32385,77 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             st.session_state[col_key] = 3 if n_cols_atual == 4 else 4
                             st.rerun()
 
+                # V147 — índice de busca inclui copy original + OCR.
+                #
+                # Antes a busca olhava somente body/title/body_raw do payload
+                # do Google. Como muitos anúncios responsive/display têm o
+                # conteúdo textual apenas na imagem, palavras visíveis no card
+                # (e já extraídas por OCR) não eram encontradas.
+                #
+                # A normalização remove acentos e ignora caixa:
+                #   segurança == SEGURANÇA == seguranca
+                import unicodedata as _ud_busca_gads
+
+                def _normalizar_busca_gads_v147(valor):
+                    _s = str(valor or "")
+                    _s = _ud_busca_gads.normalize("NFKD", _s)
+                    _s = "".join(_c for _c in _s if not _ud_busca_gads.combining(_c))
+                    return " ".join(_s.casefold().split())
+
+                def _texto_ocr_busca_gads_v148(ad):
+                    _partes = [
+                        ad.get("body") or "",
+                        ad.get("title") or "",
+                        ad.get("body_raw") or "",
+                    ]
+
+                    # V148 — agrega OCR de TODAS as imagens do anúncio.
+                    for _img_busca in (ad.get("images") or []):
+                        if not _img_busca:
+                            continue
+
+                        _row_busca = _ocr_lote_todos.get(_img_busca) or {}
+
+                        # OCR bruto/achatado.
+                        _partes.append(_row_busca.get("ocr_texto") or "")
+
+                        # OCR estruturado: todos os campos exibidos nos cards.
+                        _estr_busca = _row_busca.get("ocr_estruturado")
+                        if _estr_busca and not isinstance(_estr_busca, dict):
+                            try:
+                                _estr_busca = _json_dominios_filtro.loads(_estr_busca)
+                            except Exception:
+                                _estr_busca = None
+
+                        if isinstance(_estr_busca, dict):
+                            for _campo_busca in (
+                                "titulo", "descricao", "url_exibida",
+                                "url_final", "cta", "cta_subtitulo",
+                            ):
+                                _partes.append(_estr_busca.get(_campo_busca) or "")
+
+                            _sitelinks_busca = _estr_busca.get("sitelinks") or []
+                            if not isinstance(_sitelinks_busca, (list, tuple)):
+                                _sitelinks_busca = [_sitelinks_busca]
+
+                            for _sl_busca in _sitelinks_busca:
+                                if isinstance(_sl_busca, dict):
+                                    _partes.append(_sl_busca.get("titulo") or "")
+                                    _partes.append(_sl_busca.get("descricao") or "")
+                                elif _sl_busca is not None:
+                                    _partes.append(str(_sl_busca))
+
+                    return _normalizar_busca_gads_v147(" ".join(
+                        str(_p) for _p in _partes if _p is not None
+                    ))
+
                 gads_f = gads_list
                 if busca_texto:
-                    q = busca_texto.lower()
-                    gads_f = [a for a in gads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
+                    q = _normalizar_busca_gads_v147(busca_texto)
+                    gads_f = [
+                        a for a in gads_f
+                        if q and q in _texto_ocr_busca_gads_v148(a)
+                    ]
                 if filtro_fmt != "Tipo (todos)":
                     gads_f = [a for a in gads_f if a["formato"] == filtro_fmt]
                 if filtro_dominio != "Site (todos)":

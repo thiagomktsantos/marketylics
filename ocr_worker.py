@@ -1,4 +1,4 @@
-# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
+# V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
 # V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
 # V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
 # V174_PRESERVE_COMPANY_CASE — nome exibido preserva capitalização do anúncio; lower() apenas para comparação e URL.\n# V173_TRIM_TRAILING_HYPHEN — remove hífen terminal visual dos sitelinks, preservando hífens internos.\n# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
@@ -2397,15 +2397,102 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         if empresa and _corrigir_nome_pagina_com_empresa(t,empresa)==empresa and l['yc'] < h*.35: cab=empresa; continue
         uteis.append(l)
     if not cta or not uteis: return None
+    # V178 — o título de Display vertical pode ocupar várias linhas grandes.
+    # A implementação antiga pegava apenas UMA linha (a maior), fazendo:
+    #   "Ingressos"                         -> título
+    #   "Brasil x Marrocos ..."             -> descrição
+    # Agora usamos a linha de maior tipografia como âncora e agregamos linhas
+    # vizinhas com tipografia compatível, formando um bloco visual de título.
     med=float(_np_v145.median([l['altura'] for l in uteis]))
     cand=[l for l in uteis if l['altura'] >= max(med*1.25,med+3)]
     tl=max(cand,key=lambda l:l['altura']) if cand else uteis[0]
-    titulo=_limpar_pontuacao_ocr(tl['texto'])
-    desc=' '.join(l['texto'] for l in uteis if l is not tl and l['yc'] > tl['yc']).strip()
+    idx_tl=uteis.index(tl)
+    altura_titulo_ref=float(tl['altura'])
+
+    idx_ini=idx_tl
+    idx_fim=idx_tl
+
+    # Expande para cima/baixo enquanto a linha tiver altura de título e
+    # proximidade vertical plausível. Isso é geométrico, sem depender do texto.
+    lim_altura=max(med*1.18, altura_titulo_ref*0.58)
+
+    while idx_ini > 0:
+        atual=uteis[idx_ini]
+        ant=uteis[idx_ini-1]
+        gap=float(atual['yc']-ant['yc'])
+        limite_gap=max(22.0, (float(atual['altura'])+float(ant['altura']))*0.95)
+        if float(ant['altura']) >= lim_altura and gap <= limite_gap:
+            idx_ini-=1
+        else:
+            break
+
+    while idx_fim+1 < len(uteis):
+        atual=uteis[idx_fim]
+        prox=uteis[idx_fim+1]
+        gap=float(prox['yc']-atual['yc'])
+        limite_gap=max(22.0, (float(atual['altura'])+float(prox['altura']))*0.95)
+        if float(prox['altura']) >= lim_altura and gap <= limite_gap:
+            idx_fim+=1
+        else:
+            break
+
+    linhas_titulo=uteis[idx_ini:idx_fim+1]
+    titulo=_limpar_pontuacao_ocr(' '.join(l['texto'] for l in linhas_titulo).strip())
+
+    # V178 — descrição termina antes da área de mídia.
+    # Em Display vertical, OCR pode encontrar números/textos incidentais dentro
+    # da foto (camisa "10", placas, banners etc.). Uma quebra vertical muito
+    # maior que o espaçamento das linhas da descrição indica que a mídia começou.
+    pos_desc=[l for l in uteis[idx_fim+1:] if l['yc'] < h*.93]
+    linhas_desc=[]
+
+    if pos_desc:
+        # Espaçamento típico entre linhas candidatas. Trabalhamos com centros
+        # porque as caixas podem ter alturas diferentes.
+        gaps=[
+            float(pos_desc[i+1]['yc']-pos_desc[i]['yc'])
+            for i in range(len(pos_desc)-1)
+            if float(pos_desc[i+1]['yc']-pos_desc[i]['yc']) > 0
+        ]
+        gap_tipico=float(_np_v145.median(gaps)) if gaps else max(20.0, med*1.5)
+        limite_quebra=max(h*0.055, gap_tipico*2.25, med*3.0)
+
+        anterior=None
+        for l in pos_desc:
+            # Só aplica corte depois que já existe descrição real.
+            if anterior is not None and linhas_desc:
+                gap=float(l['yc']-anterior['yc'])
+                if gap > limite_quebra:
+                    break
+            linhas_desc.append(l)
+            anterior=l
+
+    desc=' '.join(l['texto'] for l in linhas_desc).strip()
     desc=_corrigir_espacos_marca_na_descricao(_limpar_pontuacao_ocr(desc),empresa)
+
     if not titulo or not (desc or cta): return None
-    dbg=[{'idx':0,'classe':'display-vertical-v145','sep_antes':False,'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),'decisao':'V145 → Display vertical: texto agrupado por geometria; mídias não estruturam bandas; título por tipografia; CTA separado','y_min':0,'y_max':int(h),'x_min_favicon':0}]
-    return {'titulo':titulo,'descricao':desc,'url_exibida':cab or (empresa or ''),'url_final':'','cta':cta,'cta_subtitulo':'','sitelinks':[],'_debug_bandas':dbg,'_layout_ocr':'display_vertical_v145'}
+
+    dbg=[{
+        'idx':0,
+        'classe':'display-vertical-v178',
+        'sep_antes':False,
+        'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
+        'decisao':'V178 → Display vertical: título multilinha por bloco tipográfico; descrição encerrada por quebra vertical antes da mídia; OCR interno da foto descartado; CTA separado',
+        'y_min':0,
+        'y_max':int(h),
+        'x_min_favicon':0
+    }]
+    return {
+        'titulo':titulo,
+        'descricao':desc,
+        'url_exibida':cab or (empresa or ''),
+        'url_final':'',
+        'cta':cta,
+        'cta_subtitulo':'',
+        'sitelinks':[],
+        '_debug_bandas':dbg,
+        '_layout_ocr':'display_vertical_v178'
+    }
 
 
 def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):

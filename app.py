@@ -1,3 +1,5 @@
+# V161_YOUTUBE_CC_ORPHAN_ACTIVITY_RECOVERY — recupera/encerra atividade CC órfã após restart/redeploy, preservando anti-loop V159 e badge branco V160.
+# V160_YOUTUBE_CC_WHITE_BADGE — badge CC YouTube com fundo branco.
 # V159_YOUTUBE_CC_STOP_INFINITE_LOOP — impede que vídeos já verificados com sem_cc_confirmado/erro_captura voltem para a fila automática a cada ciclo.
 # V158_YOUTUBE_CC_CARD_ATTRIBUTE_FIX — remove uso indevido de `_html.escape` nos data-* do badge CC YouTube, preservando tooltip e exibição do CC.
 # V157_YOUTUBE_CC_CARD_UNBOUND_FIX — corrige referência `a`→`ad` na segunda rota de cards Google Ads; preserva toda a lógica da V156.
@@ -2307,6 +2309,82 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             _YOUTUBE_CC_VERIFY_ACTIVE_V151.discard(user_id)
 
 
+
+def _recuperar_atividade_cc_youtube_orfa_v161(user_id: str, cache_sessao: dict) -> None:
+    """
+    Recupera o card de CC que ficou persistido como `em_andamento`
+    depois que a thread responsável deixou de existir (restart/redeploy).
+
+    Se ainda houver vídeos realmente pendentes, volta a atividade para a fila.
+    Se não houver mais pendências segundo a regra V159, fecha como concluída.
+    """
+    try:
+        _uid = str(user_id or "").strip()
+        if not _uid:
+            return
+
+        # Se há worker vivo neste processo, a atividade não é órfã.
+        with _YOUTUBE_CC_VERIFY_LOCK_V151:
+            if _uid in _YOUTUBE_CC_VERIFY_ACTIVE_V151:
+                return
+
+        _aid = _atividade_cc_youtube_mais_recente_id_v153(_uid)
+        if not _aid:
+            return
+
+        _res = (
+            supabase.table("atividades")
+            .select("id,status,detalhes")
+            .eq("id", _aid)
+            .limit(1)
+            .execute()
+        )
+        _rows = getattr(_res, "data", None) or []
+        if not _rows:
+            return
+
+        _row = _rows[0] or {}
+        _status_db = str(_row.get("status") or "").strip().lower()
+        _det = _row.get("detalhes") or {}
+        if not isinstance(_det, dict):
+            _det = {}
+
+        _status_visual = str(_det.get("status_visual") or "").strip().lower()
+        if _status_db != "em_andamento" and _status_visual != "em_andamento":
+            return
+
+        _pendentes = len(_gads_youtube_sem_cc_v151(cache_sessao or {}))
+        _det_novo = dict(_det)
+        _det_novo["recuperada_v161"] = True
+        _det_novo["motivo_recuperacao"] = (
+            "Worker anterior não existe mais em memória após restart/redeploy."
+        )
+        _det_novo["pendentes"] = int(_pendentes)
+
+        if _pendentes > 0:
+            _det_novo["status_visual"] = "na_fila"
+            atualizar_atividade(_aid, "na_fila", _det_novo)
+            print(
+                f"[YOUTUBE-CC][RECOVERY-V161] atividade={_aid} user={_uid} "
+                f"órfã recuperada -> na_fila; pendentes={_pendentes}",
+                flush=True,
+            )
+        else:
+            _det_novo["status_visual"] = "concluido"
+            atualizar_atividade(_aid, "concluido", _det_novo)
+            print(
+                f"[YOUTUBE-CC][RECOVERY-V161] atividade={_aid} user={_uid} "
+                "órfã encerrada -> concluido; pendentes=0",
+                flush=True,
+            )
+
+    except Exception as _e:
+        print(
+            f"[YOUTUBE-CC][RECOVERY-V161][ERRO] user={user_id} erro={_e!r}",
+            flush=True,
+        )
+
+
 def iniciar_verificacao_cc_youtube_automatica_v151(
     user_id: str,
     cache_sessao: dict,
@@ -2321,6 +2399,9 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     Retorna True apenas quando uma nova thread foi iniciada.
     """
     import time as _time_cc151
+
+    # V161 — corrige card órfão antes de avaliar se há uma nova rodada a iniciar.
+    _recuperar_atividade_cc_youtube_orfa_v161(user_id, cache_sessao)
 
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
         return False
@@ -27488,7 +27569,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
+         style="position:absolute;top:7px;right:7px;background:white;color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -34199,7 +34280,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.65);color:#fff;
+         style="position:absolute;top:7px;right:7px;background:white;color:#fff;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">

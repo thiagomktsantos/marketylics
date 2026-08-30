@@ -1,4 +1,4 @@
-# V198 — recupera fragmento final antes de reticências usando contexto ampliado da linha.
+# V199 — mascara reticências antes de reler a palavra final.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1142,6 +1142,73 @@ def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_
     return ''
 
 
+
+def _mascarar_pontos_reticencias_v199(img_bgr):
+    try:
+        img = img_bgr.copy()
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(
+            gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        n, _, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
+        h, w = gray.shape[:2]
+
+        pontos = []
+        for i in range(1, n):
+            x, y, cw, ch, area = [int(v) for v in stats[i]]
+            cx, cy = cents[i]
+
+            if area < 2 or area > max(90, int(h * h * 0.18)):
+                continue
+            if cw > max(10, int(h * 0.34)):
+                continue
+            if ch > max(10, int(h * 0.38)):
+                continue
+            if cy < h * 0.48:
+                continue
+            if cx < w * 0.45:
+                continue
+
+            pontos.append((x, y, cw, ch, cx, cy))
+
+        if len(pontos) < 2:
+            return img
+
+        pontos.sort(key=lambda p: p[4])
+        grupo = []
+        for p in reversed(pontos):
+            if not grupo:
+                grupo.append(p)
+                continue
+            prev = grupo[-1]
+            if abs(prev[5] - p[5]) <= max(5, int(h * 0.20)) and prev[4] - p[4] <= max(22, int(h * 0.85)):
+                grupo.append(p)
+            elif len(grupo) >= 2:
+                break
+
+        if len(grupo) < 2:
+            return img
+
+        # Apaga somente os microcomponentes dos pontos, preservando letras.
+        fundo = int(gray[0: max(1, h // 4), :].mean())
+        cor = (fundo, fundo, fundo)
+        for x, y, cw, ch, _, _ in grupo[:4]:
+            pad = 2
+            cv2.rectangle(
+                img,
+                (max(0, x - pad), max(0, y - pad)),
+                (min(w - 1, x + cw + pad), min(h - 1, y + ch + pad)),
+                cor,
+                thickness=-1,
+            )
+
+        return img
+    except Exception:
+        return img_bgr
+
+
 def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
     atual = re.sub(r'\.{3}$', '', str(texto_atual or '')).strip()
     if not atual:
@@ -1153,8 +1220,6 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
             return ''
 
         ultimo_atual = atual_tokens[-1].lower()
-
-        # Usa praticamente toda a parte útil da linha para dar contexto ao OCR.
         x_bbox = int(min(p[0] for p in bbox))
         x0 = max(0, x_bbox - 220)
         roi = recorte_bgr[:, x0:]
@@ -1163,75 +1228,74 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
 
         candidatos = []
 
-        for escala in (2.0, 2.8, 3.5):
-            up = cv2.resize(
-                roi, None, fx=escala, fy=escala,
-                interpolation=cv2.INTER_CUBIC
-            )
+        # A versão mascarada remove visualmente os pontos antes da releitura.
+        bases = [roi, _mascarar_pontos_reticencias_v199(roi)]
 
-            gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(
-                clipLimit=2.4, tileGridSize=(4, 4)
-            ).apply(gray)
-
-            _, binaria = cv2.threshold(
-                clahe, 0, 255,
-                cv2.THRESH_BINARY + cv2.THRESH_OTSU
-            )
-
-            imgs = [
-                up,
-                cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
-                cv2.cvtColor(binaria, cv2.COLOR_GRAY2BGR),
-            ]
-
-            for img in imgs:
-                itens = reader.readtext(
-                    img,
-                    detail=1,
-                    decoder='beamsearch',
-                    beamWidth=7,
-                    allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
-                    width_ths=0.12,
-                    height_ths=0.65,
-                    text_threshold=0.12,
-                    low_text=0.06,
-                    link_threshold=0.08,
-                    contrast_ths=0.02,
-                    adjust_contrast=0.9,
+        for base_img in bases:
+            for escala in (2.0, 2.8, 3.5):
+                up = cv2.resize(
+                    base_img, None, fx=escala, fy=escala,
+                    interpolation=cv2.INTER_CUBIC
                 )
 
-                itens.sort(key=lambda item: min(p[0] for p in item[0]))
-                frase = ' '.join(
-                    re.sub(r'\s+', ' ', str(txt or '')).strip()
-                    for _, txt, _ in itens
-                    if str(txt or '').strip()
+                gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+                clahe = cv2.createCLAHE(
+                    clipLimit=2.4, tileGridSize=(4, 4)
+                ).apply(gray)
+
+                _, binaria = cv2.threshold(
+                    clahe, 0, 255,
+                    cv2.THRESH_BINARY + cv2.THRESH_OTSU
                 )
-                frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', ' ', frase)
-                frase = re.sub(r'\s+', ' ', frase).strip()
-                if not frase:
-                    continue
 
-                tokens = frase.split()
+                imgs = [
+                    up,
+                    cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
+                    cv2.cvtColor(binaria, cv2.COLOR_GRAY2BGR),
+                ]
 
-                # Procura, da direita para a esquerda, uma palavra que comece
-                # pelo fragmento reconhecido (ex.: C -> Compre).
-                for i in range(len(tokens) - 1, -1, -1):
-                    token = tokens[i]
-                    tn = token.lower()
+                for img in imgs:
+                    itens = reader.readtext(
+                        img,
+                        detail=1,
+                        decoder='beamsearch',
+                        beamWidth=7,
+                        allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
+                        width_ths=0.12,
+                        height_ths=0.65,
+                        text_threshold=0.10,
+                        low_text=0.05,
+                        link_threshold=0.08,
+                        contrast_ths=0.02,
+                        adjust_contrast=0.9,
+                    )
 
-                    if not tn.startswith(ultimo_atual):
+                    itens.sort(key=lambda item: min(p[0] for p in item[0]))
+                    frase = ' '.join(
+                        re.sub(r'\s+', ' ', str(txt or '')).strip()
+                        for _, txt, _ in itens
+                        if str(txt or '').strip()
+                    )
+                    frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', ' ', frase)
+                    frase = re.sub(r'\s+', ' ', frase).strip()
+                    if not frase:
                         continue
-                    if len(token) <= len(ultimo_atual):
-                        continue
 
-                    # Para fragmentos de 1 letra, exige palavra recuperada com
-                    # ao menos 3 letras para evitar falso positivo.
-                    if len(ultimo_atual) == 1 and len(token) < 3:
-                        continue
+                    tokens = frase.split()
 
-                    candidatos.append(token)
-                    break
+                    for i in range(len(tokens) - 1, -1, -1):
+                        token = tokens[i]
+                        tn = token.lower()
+
+                        if not tn.startswith(ultimo_atual):
+                            continue
+                        if len(token) <= len(ultimo_atual):
+                            continue
+                        if len(ultimo_atual) == 1 and len(token) < 3:
+                            continue
+
+                        candidatos.append(token)
+                        break
 
         if not candidatos:
             return ''

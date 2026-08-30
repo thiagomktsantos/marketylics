@@ -1,3 +1,4 @@
+# V162_YOUTUBE_CC_WHITE_BADGE_BLACK_TEXT — badge CC YouTube com fundo branco e conteúdo preto.
 # V161_YOUTUBE_CC_ORPHAN_ACTIVITY_RECOVERY — recupera/encerra atividade CC órfã após restart/redeploy, preservando anti-loop V159 e badge branco V160.
 # V160_YOUTUBE_CC_WHITE_BADGE — badge CC YouTube com fundo branco.
 # V159_YOUTUBE_CC_STOP_INFINITE_LOOP — impede que vídeos já verificados com sem_cc_confirmado/erro_captura voltem para a fila automática a cada ciclo.
@@ -27569,7 +27570,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:white;color:#fff;
+         style="position:absolute;top:7px;right:7px;background:white;color:#000;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
@@ -34280,7 +34281,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:white;color:#fff;
+         style="position:absolute;top:7px;right:7px;background:white;color:#000;
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">

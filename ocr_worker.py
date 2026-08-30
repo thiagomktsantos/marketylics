@@ -1,3 +1,4 @@
+# V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
 # V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
 # V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
 # V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
@@ -2627,17 +2628,19 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             # - titulo mantém todas as chamadas visíveis para interfaces antigas;
             # - campo `chamadas` preserva a estrutura correta para evolução da UI;
             # - sitelinks NÃO é usado, porque essas chamadas não são sitelinks.
-            # V184 — no multicard, cada chamada representa um card independente.
-            # Usamos <hr> como separador visual/estrutural em vez de "|" para
-            # impedir que várias chamadas pareçam um único título corrido.
-            _titulo_final_v183 = ' <hr> '.join(_calls_unicas_v183)
+            # V185 — não inserir HTML dentro do dado textual.
+            # O renderer da aplicação escapa o conteúdo do título, portanto <hr>
+            # vira texto literal. Mantemos as chamadas estruturadas no campo
+            # `chamadas` e usamos quebra de linha no fallback textual.
+            # A UI pode desenhar o <hr> REAL entre os itens de `chamadas`.
+            _titulo_final_v183 = '\n'.join(_calls_unicas_v183)
 
             _dbg_v183 = [{
                 'idx': 0,
                 'classe': 'display-multicard-v183',
                 'sep_antes': False,
                 'texto': (
-                    f"{_titulo_final_v183} <hr> CTA: {_cta_final_v183}"
+                    f"{_titulo_final_v183} | CTA: {_cta_final_v183}"
                     if _cta_final_v183
                     else _titulo_final_v183
                 ),
@@ -2646,7 +2649,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     'lê somente a chamada externa imediatamente acima de cada botão '
                     'na mesma coluna; todo texto dentro das imagens é ignorado; '
                     'CTAs idênticos são consolidados em um único CTA; '
-                    'V184 separa cada chamada por <hr> em vez de |'
+                    'V185 mantém chamadas separadas estruturalmente; o <hr> deve ser renderizado pela UI, nunca salvo como texto'
                 ),
                 'y_min': 0,
                 'y_max': int(h),

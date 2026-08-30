@@ -1,3 +1,4 @@
+# V159_YOUTUBE_CC_STOP_INFINITE_LOOP — impede que vídeos já verificados com sem_cc_confirmado/erro_captura voltem para a fila automática a cada ciclo.
 # V158_YOUTUBE_CC_CARD_ATTRIBUTE_FIX — remove uso indevido de `_html.escape` nos data-* do badge CC YouTube, preservando tooltip e exibição do CC.
 # V157_YOUTUBE_CC_CARD_UNBOUND_FIX — corrige referência `a`→`ad` na segunda rota de cards Google Ads; preserva toda a lógica da V156.
 # V156_YOUTUBE_CC_CARD_FIX — corrige a segunda rota de renderização dos cards Google Ads para exibir video_cc_raw como badge CC YouTube.
@@ -1927,13 +1928,37 @@ _YOUTUBE_CC_VERIFY_LAST_OK_V151 = {}
 _YOUTUBE_CC_VERIFY_LOCK_V151 = threading.Lock()
 
 
+_YOUTUBE_CC_STATUS_FINAL_V159 = {
+    "com_cc",
+    "sem_cc_confirmado",
+    "erro_captura",
+}
+
+
+def _youtube_cc_deve_reprocessar_v159(ad: dict) -> bool:
+    """
+    V159 — evita loop infinito do verificador automático.
+
+    Um anúncio só volta para a fila automática quando:
+      - ainda não possui `video_cc_raw`; E
+      - ainda não recebeu um estado final nesta coleta.
+
+    `sem_cc_confirmado` e `erro_captura` continuam visíveis nos diagnósticos,
+    mas não são reprocessados a cada ciclo de 5 minutos. Uma nova coleta pode
+    trazer um anúncio/estado novo e torná-lo elegível novamente.
+    """
+    if str((ad or {}).get("video_cc_raw") or "").strip():
+        return False
+    _status = str((ad or {}).get("video_cc_status") or "").strip().lower()
+    return _status not in _YOUTUBE_CC_STATUS_FINAL_V159
+
+
 def _gads_youtube_sem_cc_v151(cache: dict) -> list:
-    """Retorna IDs únicos de vídeos YouTube existentes no cache e ainda sem CC."""
+    """Retorna vídeos YouTube realmente pendentes de verificação automática."""
     pendentes = {}
     for _empresa, _entry in (cache or {}).items():
         for _ad in (_entry or {}).get("data", []) or []:
-            _cc = str(_ad.get("video_cc_raw") or "").strip()
-            if _cc:
+            if not _youtube_cc_deve_reprocessar_v159(_ad):
                 continue
             for _url in (_ad.get("videos") or []):
                 _vid = _youtube_video_id_v150(_url)
@@ -2007,12 +2032,12 @@ def _carregar_gads_cache_cc_v153(user_id: str) -> dict:
 
 
 def _gads_youtube_sem_cc_por_empresa_v154(cache: dict) -> dict:
-    """Agrupa vídeos YouTube pendentes por empresa para lotes menores."""
+    """Agrupa apenas vídeos realmente pendentes por empresa para lotes menores."""
     _out = {}
     for _empresa, _entry in (cache or {}).items():
         _seen = {}
         for _ad in (_entry or {}).get("data", []) or []:
-            if str(_ad.get("video_cc_raw") or "").strip():
+            if not _youtube_cc_deve_reprocessar_v159(_ad):
                 continue
             for _url in (_ad.get("videos") or []):
                 _vid = _youtube_video_id_v150(_url)
@@ -2237,13 +2262,16 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             )
         else:
             print(
-                "[YOUTUBE-CC-AUTO] nenhum CC novo disponível nesta tentativa.",
+                "[YOUTUBE-CC-AUTO] nenhum CC novo nesta rodada; vídeos com "
+                "sem_cc_confirmado/erro_captura foram finalizados e não "
+                "voltarão automaticamente para a fila nesta coleta.",
                 flush=True,
             )
 
-        _pendentes_depois = sum(
-            1 for _vid in _depois if not str(_depois.get(_vid) or "").strip()
-        )
+        # V159 — "pendentes" agora significa apenas vídeos que ainda precisam
+        # de uma tentativa automática. Estados finais sem texto (sem CC real ou
+        # erro técnico) não mantêm a atividade aberta indefinidamente.
+        _pendentes_depois = len(_gads_youtube_sem_cc_v151(_cache_enriquecido))
         if atividade_id:
             atualizar_atividade(atividade_id, "concluido", {
                 "verificados": len(_pendentes_antes),

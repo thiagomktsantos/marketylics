@@ -1,4 +1,4 @@
-# V194 — recuperação reforçada da palavra final antes de reticências.
+# V195 — completa a palavra final antes de aplicar reticências.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1054,53 +1054,61 @@ def _detectar_reticencias_apos_bbox_v188(recorte_linha_bgr, x_inicio: int, x_fim
 
 def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
     base = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(texto_atual or ''))
-    if not base or len(base) > 3:
+    if not base or len(base) > 4:
         return ''
 
     try:
-        x0 = max(0, int(min(p[0] for p in bbox)) - 10)
-        x1 = min(recorte_bgr.shape[1], int(max(p[0] for p in bbox)) + 80)
+        x0 = max(0, int(min(p[0] for p in bbox)) - 8)
+        x1 = recorte_bgr.shape[1]
         roi = recorte_bgr[:, x0:x1]
         if roi.size == 0:
             return ''
 
-        variantes = [roi]
+        variantes = []
+        for escala in (2.0, 3.0):
+            up = cv2.resize(
+                roi, None, fx=escala, fy=escala,
+                interpolation=cv2.INTER_CUBIC
+            )
+            variantes.append(up)
 
-        escala = 2.2
-        up = cv2.resize(
-            roi,
-            None,
-            fx=escala,
-            fy=escala,
-            interpolation=cv2.INTER_CUBIC,
-        )
-        variantes.append(up)
+            gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(
+                clipLimit=2.2, tileGridSize=(4, 4)
+            ).apply(gray)
+            variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
 
-        gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
-        variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+            _, th = cv2.threshold(
+                clahe, 0, 255,
+                cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+            variantes.append(cv2.cvtColor(th, cv2.COLOR_GRAY2BGR))
 
         candidatos = []
+
         for img in variantes:
             itens = reader.readtext(
                 img,
                 detail=1,
+                decoder='beamsearch',
+                beamWidth=5,
                 allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
-                width_ths=0.05,
-                height_ths=0.55,
-                text_threshold=0.18,
-                low_text=0.10,
-                link_threshold=0.12,
-                contrast_ths=0.05,
-                adjust_contrast=0.7,
+                width_ths=0.03,
+                height_ths=0.60,
+                text_threshold=0.15,
+                low_text=0.08,
+                link_threshold=0.10,
+                contrast_ths=0.03,
+                adjust_contrast=0.8,
             )
+
             itens.sort(key=lambda item: min(p[0] for p in item[0]))
 
             for _, txt, conf in itens:
                 palavra = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(txt or ''))
                 if (
                     len(palavra) > len(base)
-                    and len(palavra) <= 18
+                    and len(palavra) <= 20
                     and palavra.lower().startswith(base.lower())
                 ):
                     candidatos.append((float(conf or 0), palavra))
@@ -1111,14 +1119,23 @@ def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_
             )
             if (
                 len(bruto) > len(base)
-                and len(bruto) <= 18
+                and len(bruto) <= 20
                 and bruto.lower().startswith(base.lower())
             ):
-                candidatos.append((0.25, bruto))
+                candidatos.append((0.20, bruto))
 
-        if candidatos:
-            candidatos.sort(key=lambda x: (len(x[1]), x[0]), reverse=True)
-            return candidatos[0][1]
+        if not candidatos:
+            return ''
+
+        candidatos.sort(
+            key=lambda item: (len(item[1]), item[0]),
+            reverse=True
+        )
+        melhor = candidatos[0][1]
+
+        if len(melhor) >= len(base) + 2 or len(base) <= 2:
+            return melhor
+
     except Exception:
         pass
 
@@ -1731,7 +1748,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _ultima_txt_v188 = str(palavras[-1][1] or "").strip()
 
     _base_final_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', _ultima_txt_v188)
-    if _ultima_txt_v188.endswith("...") and len(_base_final_v193) <= 2:
+    if _ultima_txt_v188.endswith("...") and len(_base_final_v193) <= 4:
         _rec_v193 = _recuperar_palavra_final_antes_reticencias(
             reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
         )
@@ -1785,7 +1802,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         )
     ):
         _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
-        if len(_base_pre_ret_v193) <= 2:
+        if len(_base_pre_ret_v193) <= 4:
             _rec_v193 = _recuperar_palavra_final_antes_reticencias(
                 reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
             )

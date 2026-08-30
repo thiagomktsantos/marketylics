@@ -1,3 +1,4 @@
+# V156_YOUTUBE_CC_CARD_FIX — corrige a segunda rota de renderização dos cards Google Ads para exibir video_cc_raw como badge CC YouTube.
 # V155_YOUTUBE_CC_YTDLP_PRIMARY — yt-dlp como rota principal; timedtext WEB apenas fallback; distingue ausência real de falha técnica.
 # V154_YOUTUBE_CC_COMPANY_BATCH_LOGS — CC por empresa, persistência por lote e logs detalhados por vídeo com status, método e motivo.
 # V153_YOUTUBE_CC_NOTIFICATIONS_SUPPORT — CC YouTube ganha atividade no sino, auto-check global e métricas de vídeos Google com/sem CC no Suporte.
@@ -34143,7 +34144,18 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # simplesmente esconder tudo (o que antes deixava
                         # "sem transcrição ainda" indistinguível de "nunca vai
                         # ter transcrição").
-                        _transcricao_txt = _mapa_transcricoes.get(vid_thumb) or _mapa_transcricoes.get(vid_modal) or ""
+                        # V156 — esta segunda rota de renderização dos cards
+                        # também precisa priorizar o CC persistido no próprio
+                        # anúncio. Antes ela consultava apenas `_mapa_transcricoes`
+                        # da tabela `midias`, por isso o backend capturava o CC
+                        # corretamente mas o card não mostrava nada.
+                        _cc_youtube_txt_v156 = (a.get("video_cc_raw") or "").strip()
+                        _transcricao_txt = (
+                            _cc_youtube_txt_v156
+                            or _mapa_transcricoes.get(vid_thumb)
+                            or _mapa_transcricoes.get(vid_modal)
+                            or ""
+                        )
                         _transcricao_esta_pendente = (
                             not _transcricao_txt
                             and (vid_thumb in _urls_transcricao_pendente or vid_modal in _urls_transcricao_pendente)
@@ -34154,6 +34166,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _transcricao_tt += "…"
                             transcricao_badge_html = f"""
     <div data-texto="{_transcricao_tt}"
+         data-cc-status="{_html.escape(str(a.get('video_cc_status') or '')) if _cc_youtube_txt_v156 else ''}"
+         data-cc-idioma="{_html.escape(str(a.get('video_cc_language') or '')) if _cc_youtube_txt_v156 else ''}"
+         data-cc-origem="{_html.escape(str(a.get('video_cc_source') or '')) if _cc_youtube_txt_v156 else ''}"
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
@@ -34161,7 +34176,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_TRANSCRICAO} Transcrição
+        {_SVG_ICONE_TRANSCRICAO} {'CC YouTube' if _cc_youtube_txt_v156 else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = f"""

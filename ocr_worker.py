@@ -1,3 +1,4 @@
+# V191_FIX_RE_SCOPE_OCR_QUEUE — corrige NameError de `_re_v145` nas regras V188-V190 de reticências; restaura processamento da fila OCR.
 # V190_ELLIPSIS_TRAILING_NOISE_FIX — recupera reticências quando o OCR termina em resíduos como . _ - |, desde que a geometria visual confirme os pontos.
 # V189_ELLIPSIS_VISUAL_RECOVERY_FLEXIBLE_END — permite reconstruir reticências mesmo quando OCR termina em vírgula, ponto ou sem pontuação, sempre com evidência visual.
 # V188_ELLIPSIS_VISUAL_RECOVERY — recupera reticências finais por geometria dos microcomponentes visíveis à direita da última caixa OCR.
@@ -1693,7 +1694,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     # transforma os últimos pontos em pequenos resíduos gráficos como "_", "-",
     # "|" ou combinações deles. Consideramos esse final compatível SOMENTE
     # para a recuperação visual de reticências.
-    _ultima_sem_ruido_v190 = _re_v145.sub(
+    _ultima_sem_ruido_v190 = re.sub(
         r'[\s._\-|/\\~]+$',
         '',
         _ultima_txt_v188,
@@ -1725,7 +1726,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     ):
         # Remove apenas pontuação terminal que pode ser confusão do OCR
         # e reconstrói a reticência completa.
-        partes[-1] = _re_v145.sub(
+        partes[-1] = re.sub(
             r'[\s.,_\\-|/~]+$',
             '',
             str(partes[-1]),

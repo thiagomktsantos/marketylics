@@ -1,3 +1,4 @@
+# V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
 # V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
 # V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
 # V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
@@ -2476,11 +2477,15 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                 if _a1_v181 <= _a0_v181:
                     continue
 
+                _after_rows_v182 = _row_std_v181[_a0_v181:_a1_v181]
                 _atividade_depois_v181 = float(
-                    _np_v181.percentile(
-                        _row_std_v181[_a0_v181:_a1_v181],
-                        70,
-                    )
+                    _np_v181.percentile(_after_rows_v182, 70)
+                )
+                _mediana_depois_v182 = float(
+                    _np_v181.median(_after_rows_v182)
+                )
+                _fracao_complexa_v182 = float(
+                    _np_v181.mean(_after_rows_v182 >= 12.0)
                 )
 
                 # Também deve existir conteúdo visual/textual antes da faixa.
@@ -2492,15 +2497,30 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     )
                 ) if _rs_v181 > _b0_v181 else 0.0
 
-                if _atividade_depois_v181 >= 12.0 and _atividade_antes_v181 >= 8.0:
-                    # O texto válido termina no COMEÇO do grande respiro.
+                # V182 — um espaço entre título e descrição também pode ser
+                # grande, mas abaixo dele há TEXTO sobre fundo liso: alternam
+                # linhas muito ativas e linhas quase vazias. Uma foto/arte, ao
+                # contrário, mantém complexidade visual em praticamente toda a
+                # janela logo após o respiro. Exigimos essa continuidade para
+                # não cortar a descrição como se fosse mídia.
+                _parece_midia_v182 = (
+                    _atividade_depois_v181 >= 12.0
+                    and _mediana_depois_v182 >= 16.0
+                    and _fracao_complexa_v182 >= 0.88
+                )
+
+                if _parece_midia_v182 and _atividade_antes_v181 >= 8.0:
+                    # O texto válido termina no COMEÇO do respiro que realmente
+                    # antecede uma região visual contínua (foto/arte).
                     _limite_texto_v181 = float(_rs_v181)
                     _divisor_encontrado_v181 = True
                     print(
-                        f"[OCR-DEBUG] display-vertical-v181 divisor mídia: "
+                        f"[OCR-DEBUG] display-vertical-v182 divisor mídia: "
                         f"y={int(_limite_texto_v181)} "
                         f"({(_limite_texto_v181 / max(1,h))*100:.1f}% da altura), "
-                        f"faixa_vazia={_rl_v181}px",
+                        f"faixa_vazia={_rl_v181}px "
+                        f"mediana_depois={_mediana_depois_v182:.1f} "
+                        f"fracao_complexa={_fracao_complexa_v182:.2f}",
                         flush=True,
                     )
                     break
@@ -2725,7 +2745,12 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     # Expande para cima/baixo enquanto a linha tiver altura de título e
     # proximidade vertical plausível. Isso é geométrico, sem depender do texto.
-    lim_altura=max(med*1.18, altura_titulo_ref*0.58)
+    # V182 — EasyOCR pode devolver alturas bem diferentes para linhas do
+    # MESMO título (principalmente palavras com ascendentes/descendentes ou
+    # linhas mais curtas). O limiar antigo 1.18×mediana / 0.58×âncora era
+    # agressivo e quebrava, por exemplo, "Compre / Agora Seu / Ingresso".
+    # Continuamos separando do corpo menor, mas toleramos variação tipográfica.
+    lim_altura=max(med*1.00, altura_titulo_ref*0.48)
 
     while idx_ini > 0:
         atual=uteis[idx_ini]
@@ -2785,10 +2810,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v181',
+        'classe':'display-vertical-v182',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V181 → Display vertical: divisor texto/mídia detectado pela maior faixa horizontal vazia seguida de complexidade visual; só OCR acima desse divisor pode formar título/descrição; CTA separado',
+        'decisao':'V182 → Display vertical: divisor texto/mídia exige faixa vazia seguida de complexidade visual contínua (evita confundir espaço entre título e descrição com início da mídia); título multilinha com tolerância de altura; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0
@@ -2802,7 +2827,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         'cta_subtitulo':'',
         'sitelinks':[],
         '_debug_bandas':dbg,
-        '_layout_ocr':'display_vertical_v181'
+        '_layout_ocr':'display_vertical_v182'
     }
 
 

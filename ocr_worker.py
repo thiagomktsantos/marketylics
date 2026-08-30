@@ -1,3 +1,5 @@
+# V188_ELLIPSIS_VISUAL_RECOVERY — recupera reticências finais por geometria dos microcomponentes visíveis à direita da última caixa OCR.
+# V187_MULTICARD_COMMA_SEMICOLON_FIX — corrige confusão OCR de ponto e vírgula por vírgula somente em chamadas curtas do display multicard.
 # V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
 # V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
 # V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
@@ -971,6 +973,101 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
         return ','
     return ''
 
+
+def _detectar_reticencias_apos_bbox_v188(recorte_linha_bgr, x_inicio: int, x_fim: int) -> bool:
+    """
+    V188 — recupera reticências visíveis que o EasyOCR reduz a um único ponto.
+
+    A regra é geométrica, não textual:
+    - examina somente uma faixa curta à direita da última caixa OCR;
+    - procura pelo menos 2 microcomponentes arredondados/baixos;
+    - os componentes precisam estar alinhados na região inferior da linha;
+    - limita tamanho/área para não confundir letras, ícones ou bordas.
+
+    Retorna True quando há evidência visual forte de que existem pontos
+    adicionais após o ponto já reconhecido no texto.
+    """
+    try:
+        if recorte_linha_bgr is None or recorte_linha_bgr.size == 0:
+            return False
+
+        _h, _w = recorte_linha_bgr.shape[:2]
+        _x0 = max(0, int(x_inicio))
+        _x1 = min(_w, int(x_fim))
+        if _x1 - _x0 < 4:
+            return False
+
+        _roi = recorte_linha_bgr[:, _x0:_x1]
+        if _roi.size == 0:
+            return False
+
+        _gray = cv2.cvtColor(_roi, cv2.COLOR_BGR2GRAY)
+
+        # Fundo local estimado pelas bordas; funciona tanto em fundo branco
+        # quanto em pequenos desvios de cinza/antialiasing.
+        import numpy as _np_v188
+        _bordas = _np_v188.concatenate([
+            _gray[:, :max(1, min(3, _gray.shape[1]))].reshape(-1),
+            _gray[:, -max(1, min(3, _gray.shape[1])):].reshape(-1),
+        ])
+        _fundo = float(_np_v188.median(_bordas)) if _bordas.size else 255.0
+        _delta = _np_v188.abs(_gray.astype(_np_v188.float32) - _fundo)
+
+        # Pixels suficientemente diferentes do fundo.
+        _mask = (_delta >= 28).astype("uint8") * 255
+
+        # Remove ruído isolado sem unir pontos distintos.
+        _num, _labels, _stats, _cent = cv2.connectedComponentsWithStats(
+            _mask,
+            connectivity=8,
+        )
+
+        _micro = []
+        for _lab in range(1, _num):
+            _x, _y, _cw, _ch, _area = [int(v) for v in _stats[_lab]]
+            if _area < 2:
+                continue
+
+            # Ponto de reticências: pequeno em relação à altura da linha.
+            if _cw > max(9, int(_h * 0.28)):
+                continue
+            if _ch > max(9, int(_h * 0.34)):
+                continue
+            if _area > max(55, int(_h * _h * 0.13)):
+                continue
+
+            _cy = float(_cent[_lab][1])
+            _cx = float(_cent[_lab][0])
+
+            # Pontos ficam próximos da baseline / metade inferior.
+            if _cy < _h * 0.48:
+                continue
+
+            _micro.append((_cx, _cy, _cw, _ch, _area))
+
+        if len(_micro) < 2:
+            return False
+
+        _micro.sort(key=lambda z: z[0])
+
+        # Procura pelo menos um par de pontos quase alinhados horizontalmente.
+        for _i in range(len(_micro) - 1):
+            _a = _micro[_i]
+            _b = _micro[_i + 1]
+            _dx = _b[0] - _a[0]
+            _dy = abs(_b[1] - _a[1])
+            if 2 <= _dx <= max(18, int(_h * 0.72)) and _dy <= max(4, int(_h * 0.18)):
+                return True
+
+        return False
+    except Exception as _e_v188:
+        print(
+            f"[OCR-DEBUG] V188 falha detector reticências: {_e_v188!r}",
+            flush=True,
+        )
+        return False
+
+
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
     vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
@@ -1575,12 +1672,42 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _x_borda_direita = recorte.shape[1]
     _x_lim_busca_hifen_final = min(_recorte_ultima_linha.shape[1], _x_dir_ultima + _LARGURA_MAX_VAO_GLIFO)
     _hifen_final_recuperado = False
-    if _x_lim_busca_hifen_final > _x_dir_ultima + 2 and _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_lim_busca_hifen_final):
+
+    # V188 — se o OCR já terminou a última palavra com "." mas há dois
+    # microcomponentes adicionais alinhados logo à direita, reconstruímos "...".
+    # Isso preserva pontos finais normais, porque a mudança só ocorre com
+    # evidência visual dos pontos restantes.
+    _reticencias_v188 = False
+    _ultima_txt_v188 = str(palavras[-1][1] or "").strip()
+    _x_lim_reticencias_v188 = min(
+        _recorte_ultima_linha.shape[1],
+        _x_dir_ultima + max(28, int(_recorte_ultima_linha.shape[0] * 1.8)),
+    )
+    if (
+        _ultima_txt_v188.endswith(".")
+        and not _ultima_txt_v188.endswith("...")
+        and _x_lim_reticencias_v188 > _x_dir_ultima + 3
+        and _detectar_reticencias_apos_bbox_v188(
+            _recorte_ultima_linha,
+            _x_dir_ultima,
+            _x_lim_reticencias_v188,
+        )
+    ):
+        # `partes[-1]` corresponde à última palavra reconhecida.
+        partes[-1] = str(partes[-1]).rstrip(".") + "..."
+        _reticencias_v188 = True
+        print(
+            f"[OCR-DEBUG] V188 reticências recuperadas visualmente: "
+            f"{_ultima_txt_v188!r} -> {partes[-1]!r}",
+            flush=True,
+        )
+
+    if (not _reticencias_v188) and _x_lim_busca_hifen_final > _x_dir_ultima + 2 and _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_lim_busca_hifen_final):
         partes.append('-')
         _linhas_com_hifen_final_recuperado.add(_idx_ultima_linha)
         _hifen_final_recuperado = True
         print(f'[OCR-DEBUG] hífen recuperado no final da linha {_idx_ultima_linha}', flush=True)
-    if not _hifen_final_recuperado and _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
+    if (not _reticencias_v188) and (not _hifen_final_recuperado) and _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
         _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
         if _pont == ',':
             _ult_txt_pont = (palavras[-1][1] or '').strip()
@@ -2585,6 +2712,25 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                 _call_v183 = _limpar_pontuacao_ocr(
                     ' '.join(_l['texto'] for _l in _bloco_v183).strip()
                 )
+
+                # V187 — EasyOCR pode confundir vírgula com ponto e vírgula
+                # em headlines curtas de cards. Limitamos a correção SOMENTE
+                # ao multicard e somente a chamadas curtas, para não alterar
+                # pontuação válida de descrições/títulos de outros layouts.
+                #
+                # Ex.: "Falta Só Alguns Cliques; Volta Vai."
+                #   -> "Falta Só Alguns Cliques, Volta Vai."
+                if (
+                    len(_call_v183) <= 90
+                    and _call_v183.count(';') == 1
+                ):
+                    _call_v183 = _re_v145.sub(
+                        r'(?<=\w)\s*;\s*(?=\w)',
+                        ', ',
+                        _call_v183,
+                        count=1,
+                    )
+
                 _call_v183 = _corrigir_espacos_marca_na_descricao(
                     _call_v183,
                     empresa,
@@ -2650,7 +2796,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     'lê somente a chamada externa imediatamente acima de cada botão '
                     'na mesma coluna; todo texto dentro das imagens é ignorado; '
                     'CTAs idênticos são consolidados em um único CTA; '
-                    'V185 mantém chamadas separadas estruturalmente; o <hr> deve ser renderizado pela UI, nunca salvo como texto'
+                    'V185 mantém chamadas separadas estruturalmente; V187 normaliza confusão OCR de ; por , em chamadas curtas; o <hr> deve ser renderizado pela UI'
                 ),
                 'y_min': 0,
                 'y_max': int(h),

@@ -1,3 +1,4 @@
+# V165_GADS_MULTICARD_HR_RENDER — renderiza o campo estruturado `chamadas` como blocos separados por linha horizontal real no preview e nos cards Google Ads.
 # V164_SUPPORT_LAZY_DETAIL_LOAD — detalhamento da aba Suporte só é filtrado/renderizado após clique; remove custo dos expanders fechados.
 # V163_SUPPORT_SEPARATE_YOUTUBE_LINKS — separa links pendentes de mídia dos links permanentes do YouTube na aba Suporte.
 # V162_YOUTUBE_CC_WHITE_BADGE_BLACK_TEXT — badge CC YouTube com fundo branco e conteúdo preto.
@@ -3786,7 +3787,32 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
             + f'<div>{_coluna_texto}</div>'
             + '</div>'
         )
-    if ocr_estr.get("titulo"):
+    _chamadas_multicard_preview_v165 = ocr_estr.get("chamadas") or []
+    if isinstance(_chamadas_multicard_preview_v165, str):
+        _chamadas_multicard_preview_v165 = [
+            _x.strip()
+            for _x in re.split(r"\r?\n|<br\s*/?>", _chamadas_multicard_preview_v165, flags=re.I)
+            if _x.strip()
+        ]
+
+    if isinstance(_chamadas_multicard_preview_v165, (list, tuple)) and len(_chamadas_multicard_preview_v165) >= 2:
+        _blocos_chamadas_preview_v165 = []
+        for _idx_ch_v165, _ch_v165 in enumerate(_chamadas_multicard_preview_v165):
+            _txt_ch_v165 = str(_ch_v165 or "").strip()
+            if not _txt_ch_v165:
+                continue
+            _blocos_chamadas_preview_v165.append(
+                (
+                    '<div style="font-size:13px;font-weight:700;color:#3a9fd6;'
+                    + ('margin-top:7px;padding-top:7px;border-top:1px solid #d9dee7;' if _idx_ch_v165 > 0 else '')
+                    + 'margin-bottom:4px">'
+                    + _escapar_html_ocr_preview(_txt_ch_v165)
+                    + '</div>'
+                )
+            )
+        if _blocos_chamadas_preview_v165:
+            _campos.append("".join(_blocos_chamadas_preview_v165))
+    elif ocr_estr.get("titulo"):
         _campos.append(
             f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr_preview(ocr_estr["titulo"])}</div>'
         )
@@ -34031,6 +34057,30 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                                 elif not isinstance(_v_render, str):
                                                     _estr_render[_campo_txt_render] = str(_v_render)
 
+                                            # V165 — preserva/sanitiza chamadas de anúncios multicard.
+                                            _ch_render_raw = _estr_render.get("chamadas") or []
+                                            if isinstance(_ch_render_raw, str):
+                                                _ch_render_raw = [
+                                                    _x.strip()
+                                                    for _x in re.split(r"\r?\n|<br\s*/?>", _ch_render_raw, flags=re.I)
+                                                    if _x.strip()
+                                                ]
+                                            elif not isinstance(_ch_render_raw, (list, tuple)):
+                                                _ch_render_raw = [_ch_render_raw] if _ch_render_raw else []
+
+                                            _ch_render_limpos = []
+                                            _ch_seen_v165 = set()
+                                            for _ch_render in _ch_render_raw:
+                                                _ch_txt_v165 = str(_ch_render or "").strip()
+                                                if not _ch_txt_v165:
+                                                    continue
+                                                _ch_key_v165 = re.sub(r"\s+", " ", _ch_txt_v165).casefold()
+                                                if _ch_key_v165 in _ch_seen_v165:
+                                                    continue
+                                                _ch_seen_v165.add(_ch_key_v165)
+                                                _ch_render_limpos.append(_ch_txt_v165)
+                                            _estr_render["chamadas"] = _ch_render_limpos
+
                                             _sl_render_limpos = []
                                             _sl_render_raw = _estr_render.get("sitelinks") or []
                                             if not isinstance(_sl_render_raw, (list, tuple)):
@@ -34707,7 +34757,36 @@ function imgFallback_{uid}(img){{
                                     + f'<div>{_coluna_texto_ad_html}</div>'
                                     + '</div>'
                                 )
-                            if _ocr_estr_ad.get("titulo"):
+                            _chamadas_multicard_card_v165 = _ocr_estr_ad.get("chamadas") or []
+                            if isinstance(_chamadas_multicard_card_v165, str):
+                                _chamadas_multicard_card_v165 = [
+                                    _x.strip()
+                                    for _x in re.split(r"\r?\n|<br\s*/?>", _chamadas_multicard_card_v165, flags=re.I)
+                                    if _x.strip()
+                                ]
+
+                            if isinstance(_chamadas_multicard_card_v165, (list, tuple)) and len(_chamadas_multicard_card_v165) >= 2:
+                                _blocos_chamadas_card_v165 = []
+                                for _idx_ch_card_v165, _ch_card_v165 in enumerate(_chamadas_multicard_card_v165):
+                                    _txt_ch_card_v165 = str(_ch_card_v165 or "").strip()
+                                    if not _txt_ch_card_v165:
+                                        continue
+                                    _blocos_chamadas_card_v165.append(
+                                        (
+                                            '<div style="font-size:13px;font-weight:700;color:#3a9fd6;'
+                                            + (
+                                                'margin-top:7px;padding-top:7px;border-top:1px solid #d9dee7;'
+                                                if _idx_ch_card_v165 > 0
+                                                else ''
+                                            )
+                                            + 'margin-bottom:4px">'
+                                            + _escapar_html_ocr(_txt_ch_card_v165)
+                                            + '</div>'
+                                        )
+                                    )
+                                if _blocos_chamadas_card_v165:
+                                    _campos_ocr_html.append("".join(_blocos_chamadas_card_v165))
+                            elif _ocr_estr_ad.get("titulo"):
                                 _campos_ocr_html.append(
                                     f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
                                 )

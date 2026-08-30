@@ -1,3 +1,4 @@
+# V154_YOUTUBE_CC_COMPANY_BATCH_LOGS — CC por empresa, persistência por lote e logs detalhados por vídeo com status, método e motivo.
 # V153_YOUTUBE_CC_NOTIFICATIONS_SUPPORT — CC YouTube ganha atividade no sino, auto-check global e métricas de vídeos Google com/sem CC no Suporte.
 # V152_YOUTUBE_CC_RETRY_FALLBACK — não cacheia falha vazia de CC, permite retry real pós-standby e adiciona fallback YouTube timedtext.
 # V151_YOUTUBE_CC_AUTO_RECOVERY — verifica automaticamente vídeos YouTube sem CC após retomada/render, com retry pós-standby, trava concorrente e cooldown.
@@ -1405,6 +1406,11 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
         "source": "",
         "video_id": video_id,
         "url": url_video,
+        # V154 — motivo técnico/auditável do resultado de CC.
+        "cc_status": "pendente",
+        "cc_reason": "",
+        "cc_method": "",
+        "http_status": None,
     }
 
     try:
@@ -1461,6 +1467,9 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     "text": texto_cc,
                     "language": lang,
                     "source": source if texto_cc else "",
+                    "cc_status": "com_cc" if texto_cc else "sem_cc",
+                    "cc_reason": "CC capturado pela faixa de legendas do player." if texto_cc else "Faixa de legenda encontrada, mas retornou texto vazio.",
+                    "cc_method": "player_captionTracks",
                 })
 
         # V152 — fallback para o endpoint timedtext.
@@ -1507,6 +1516,20 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     dict(_t_v152, baseUrl="timedtext")
                     for _t_v152 in _tracks_v152
                 ])
+
+                if not _track_v152:
+                    result.update({
+                        "cc_status": "sem_cc",
+                        "cc_reason": "YouTube não informou nenhuma faixa de legenda/CC para este vídeo.",
+                        "cc_method": "timedtext",
+                        "http_status": getattr(_list_resp_v152, "status_code", None),
+                    })
+                    print(
+                        f"[YOUTUBE-CC][SEM-CC] video_id={video_id} "
+                        f"motivo=nenhuma_faixa_de_legenda "
+                        f"http={getattr(_list_resp_v152, 'status_code', None)}",
+                        flush=True,
+                    )
 
                 if _track_v152:
                     _lang_v152 = str(
@@ -1592,6 +1615,9 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                             "text": _texto_v152,
                             "language": _lang_v152,
                             "source": _source_v152,
+                            "cc_status": "com_cc",
+                            "cc_reason": "CC capturado pelo fallback timedtext.",
+                            "cc_method": "timedtext",
                         })
                         print(
                             f"[YOUTUBE-CC] fallback timedtext OK "
@@ -1601,14 +1627,27 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                         )
 
             except Exception as _exc_fallback_v152:
+                result.update({
+                    "cc_status": "erro",
+                    "cc_reason": f"Erro no fallback timedtext: {_exc_fallback_v152!r}",
+                    "cc_method": "timedtext",
+                })
                 print(
-                    f"[YOUTUBE-CC] fallback timedtext falhou "
+                    f"[YOUTUBE-CC][ERRO] fallback timedtext falhou "
                     f"video_id={video_id}: {_exc_fallback_v152!r}",
                     flush=True,
                 )
 
     except Exception as exc:
-        print(f"[YOUTUBE-CC] falha video_id={video_id}: {exc!r}", flush=True)
+        result.update({
+            "cc_status": "erro",
+            "cc_reason": f"Falha na consulta ao YouTube: {exc!r}",
+            "cc_method": result.get("cc_method") or "player",
+        })
+        print(
+            f"[YOUTUBE-CC][ERRO] falha video_id={video_id}: {exc!r}",
+            flush=True,
+        )
 
     # V152 — cache positivo apenas. Falha temporária/sem texto fica elegível
     # para a recuperação automática da V151 em uma próxima renderização.
@@ -1625,6 +1664,23 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                 _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
         else:
             _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
+
+    if not str(result.get("text") or "").strip() and result.get("cc_status") == "pendente":
+        result.update({
+            "cc_status": "sem_cc",
+            "cc_reason": "Nenhuma legenda/CC foi retornada pelas estratégias disponíveis.",
+            "cc_method": result.get("cc_method") or "player+timedtext",
+        })
+
+    print(
+        f"[YOUTUBE-CC][RESULTADO] video_id={video_id} "
+        f"status={result.get('cc_status')} "
+        f"metodo={result.get('cc_method') or '-'} "
+        f"idioma={result.get('language') or '-'} "
+        f"origem={result.get('source') or '-'} "
+        f"motivo={result.get('cc_reason') or '-'}",
+        flush=True,
+    )
 
     return result
 
@@ -1800,6 +1856,51 @@ def _carregar_gads_cache_cc_v153(user_id: str) -> dict:
     except Exception:
         return {}
 
+
+def _gads_youtube_sem_cc_por_empresa_v154(cache: dict) -> dict:
+    """Agrupa vídeos YouTube pendentes por empresa para lotes menores."""
+    _out = {}
+    for _empresa, _entry in (cache or {}).items():
+        _seen = {}
+        for _ad in (_entry or {}).get("data", []) or []:
+            if str(_ad.get("video_cc_raw") or "").strip():
+                continue
+            for _url in (_ad.get("videos") or []):
+                _vid = _youtube_video_id_v150(_url)
+                if _vid:
+                    _seen.setdefault(_vid, _url)
+        if _seen:
+            _out[_empresa] = list(_seen.items())
+    return _out
+
+
+def _aplicar_resultado_cc_empresa_v154(cache: dict, empresa: str, resultado_por_vid: dict) -> int:
+    """Aplica CC e metadados de diagnóstico apenas nos anúncios da empresa."""
+    _salvos = 0
+    _entry = (cache or {}).get(empresa) or {}
+    for _ad in (_entry.get("data") or []):
+        _ids_urls = [
+            (_youtube_video_id_v150(_u), _u)
+            for _u in (_ad.get("videos") or [])
+        ]
+        for _vid, _url in _ids_urls:
+            if not _vid or _vid not in resultado_por_vid:
+                continue
+            _r = resultado_por_vid[_vid]
+            _txt = str(_r.get("text") or "").strip()
+            _ad["youtube_video_id"] = _vid
+            _ad["youtube_url"] = _url
+            _ad["video_cc_status"] = _r.get("cc_status") or ""
+            _ad["video_cc_reason"] = _r.get("cc_reason") or ""
+            _ad["video_cc_method"] = _r.get("cc_method") or ""
+            _ad["video_cc_language"] = _r.get("language") or ""
+            _ad["video_cc_source"] = _r.get("source") or ""
+            if _txt and not str(_ad.get("video_cc_raw") or "").strip():
+                _ad["video_cc_raw"] = _txt
+                _salvos += 1
+    return _salvos
+
+
 def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None):
     """
     Reabre o gads_cache diretamente do Supabase, tenta preencher SOMENTE vídeos
@@ -1857,7 +1958,81 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             flush=True,
         )
 
-        _cache_enriquecido = _enriquecer_gads_com_cc_youtube_v150(_cache_atual)
+        # V154 — processa e persiste empresa por empresa para evitar lote grande.
+        _cache_enriquecido = _cache_atual
+        _pend_por_empresa_v154 = _gads_youtube_sem_cc_por_empresa_v154(_cache_atual)
+        _total_empresas_v154 = len(_pend_por_empresa_v154)
+        _empresa_idx_v154 = 0
+        _diag_v154 = {}
+
+        for _empresa_v154, _videos_v154 in _pend_por_empresa_v154.items():
+            _empresa_idx_v154 += 1
+            print(
+                f"[YOUTUBE-CC][EMPRESA] inicio "
+                f"empresa={_empresa_v154!r} "
+                f"lote={_empresa_idx_v154}/{_total_empresas_v154} "
+                f"videos={len(_videos_v154)}",
+                flush=True,
+            )
+
+            if atividade_id:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "verificados": 0,
+                    "total": len(_videos_v154),
+                    "salvos": 0,
+                    "pendentes": len(_videos_v154),
+                    "plataforma": "Google Ads",
+                    "empresa": _empresa_v154,
+                    "lote_empresa": _empresa_idx_v154,
+                    "total_empresas": _total_empresas_v154,
+                })
+
+            _resultados_emp_v154 = {}
+            for _vid_v154, _url_v154 in _videos_v154:
+                print(
+                    f"[YOUTUBE-CC][VIDEO] empresa={_empresa_v154!r} "
+                    f"video_id={_vid_v154} inicio",
+                    flush=True,
+                )
+                _r_v154 = obter_cc_youtube_v150(_url_v154)
+                _resultados_emp_v154[_vid_v154] = _r_v154
+                _diag_v154[_vid_v154] = _r_v154
+
+                print(
+                    f"[YOUTUBE-CC][VIDEO] empresa={_empresa_v154!r} "
+                    f"video_id={_vid_v154} "
+                    f"status={_r_v154.get('cc_status')} "
+                    f"metodo={_r_v154.get('cc_method') or '-'} "
+                    f"motivo={_r_v154.get('cc_reason') or '-'}",
+                    flush=True,
+                )
+
+            _salvos_emp_v154 = _aplicar_resultado_cc_empresa_v154(
+                _cache_enriquecido,
+                _empresa_v154,
+                _resultados_emp_v154,
+            )
+
+            # Persiste ao terminar CADA empresa. Se houver standby depois,
+            # as empresas já concluídas não entram de novo no lote.
+            _persistir_cache_ads_db(
+                user_id,
+                "gads_cache",
+                _cache_enriquecido,
+                tentativas=5,
+            )
+
+            _sem_cc_emp_v154 = sum(
+                1 for _r in _resultados_emp_v154.values()
+                if not str(_r.get("text") or "").strip()
+            )
+            print(
+                f"[YOUTUBE-CC][EMPRESA] fim "
+                f"empresa={_empresa_v154!r} "
+                f"salvos={_salvos_emp_v154} "
+                f"sem_cc={_sem_cc_emp_v154}",
+                flush=True,
+            )
 
         # Só persiste se algum CC novo entrou.
         _antes = {
@@ -12542,7 +12717,17 @@ def _formatar_detalhes_atividade(atividade: dict):
             return _svg_icone(path, "currentColor", 14), texto
         if atividade.get("status") == "em_andamento":
             path, _cor = _ICONE_INFO
-            texto = f"Verificando CC em {_total_cc} vídeo(s) do Google Ads. · Rodando agora."
+            _emp_cc = d.get("empresa")
+            if _emp_cc:
+                _lote_cc = d.get("lote_empresa")
+                _tot_emp_cc = d.get("total_empresas")
+                texto = (
+                    f"Verificando CC — {_emp_cc}: {_total_cc} vídeo(s)"
+                    + (f" · empresa {_lote_cc}/{_tot_emp_cc}" if _lote_cc and _tot_emp_cc else "")
+                    + " · Rodando agora."
+                )
+            else:
+                texto = f"Verificando CC em {_total_cc} vídeo(s) do Google Ads. · Rodando agora."
             return _svg_icone(path, "currentColor", 14), texto
         path, _cor = _ICONE_OK if _pend_cc == 0 else _ICONE_INFO
         if _total_cc == 0:

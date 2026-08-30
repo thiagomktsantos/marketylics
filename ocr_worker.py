@@ -1,3 +1,4 @@
+# V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
 # V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
 # V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
 # V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
@@ -2626,18 +2627,26 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             # - titulo mantém todas as chamadas visíveis para interfaces antigas;
             # - campo `chamadas` preserva a estrutura correta para evolução da UI;
             # - sitelinks NÃO é usado, porque essas chamadas não são sitelinks.
-            _titulo_final_v183 = ' | '.join(_calls_unicas_v183)
+            # V184 — no multicard, cada chamada representa um card independente.
+            # Usamos <hr> como separador visual/estrutural em vez de "|" para
+            # impedir que várias chamadas pareçam um único título corrido.
+            _titulo_final_v183 = ' <hr> '.join(_calls_unicas_v183)
 
             _dbg_v183 = [{
                 'idx': 0,
                 'classe': 'display-multicard-v183',
                 'sep_antes': False,
-                'texto': f"{_titulo_final_v183} | {_cta_final_v183}".strip(' |'),
+                'texto': (
+                    f"{_titulo_final_v183} <hr> CTA: {_cta_final_v183}"
+                    if _cta_final_v183
+                    else _titulo_final_v183
+                ),
                 'decisao': (
                     'V183 → Display multicard: CTAs repetidos usados como âncoras; '
                     'lê somente a chamada externa imediatamente acima de cada botão '
                     'na mesma coluna; todo texto dentro das imagens é ignorado; '
-                    'CTAs idênticos são consolidados em um único CTA'
+                    'CTAs idênticos são consolidados em um único CTA; '
+                    'V184 separa cada chamada por <hr> em vez de |'
                 ),
                 'y_min': 0,
                 'y_max': int(h),

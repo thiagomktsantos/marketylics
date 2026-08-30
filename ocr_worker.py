@@ -1,4 +1,4 @@
-# V199 — mascara reticências antes de reler a palavra final.
+# V200 — recuperação de reticências usa a largura real da imagem.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1904,6 +1904,18 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         partes.append(palavras[i][1])
     _idx_ultima_linha = linha_idx_por_palavra[-1]
     _recorte_ultima_linha = _recorte_da_linha(_idx_ultima_linha)
+
+    _y_linha_top, _y_linha_bottom = linhas_y_range[_idx_ultima_linha]
+    _y_full0 = max(0, y0 + _y_linha_top - 5)
+    _y_full1 = min(altura_total, y0 + _y_linha_bottom + 6)
+
+    # Para recuperar o final antes de "...", não usar o x_max da banda:
+    # ele pode ter sido calculado a partir de um OCR já truncado.
+    _recorte_ultima_linha_full = img_bgr[
+        _y_full0:_y_full1,
+        x0:largura_total
+    ]
+
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max((p[0] for p in _bbox_ultima)))
     _x_borda_direita = recorte.shape[1]
@@ -1919,7 +1931,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _base_final_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', _ultima_txt_v188)
     if _ultima_txt_v188.endswith("..."):
         _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
-            reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
+            reader, _recorte_ultima_linha_full, _bbox_ultima, _ultima_txt_v188
         )
         if _rec_final_v196:
             partes[-1] = _rec_final_v196 + "..."
@@ -1931,15 +1943,15 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             )
         elif len(_base_final_v193) <= 4:
             _rec_v193 = _recuperar_palavra_final_antes_reticencias(
-                reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
+                reader, _recorte_ultima_linha_full, _bbox_ultima, _ultima_txt_v188
             )
             if _rec_v193:
                 partes[-1] = _rec_v193 + "..."
                 _ultima_txt_v188 = partes[-1]
 
     _x_lim_reticencias_v188 = min(
-        _recorte_ultima_linha.shape[1],
-        _x_dir_ultima + max(28, int(_recorte_ultima_linha.shape[0] * 1.8)),
+        _recorte_ultima_linha_full.shape[1],
+        _x_dir_ultima + max(80, int(_recorte_ultima_linha_full.shape[0] * 4.0)),
     )
     # o OCR pode interpretar o primeiro ponto das reticências como ".", ","
     # ou simplesmente não capturá-lo. A decisão continua sendo VISUAL:
@@ -1972,13 +1984,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         _final_compativel_reticencias_v189
         and _x_lim_reticencias_v188 > _x_dir_ultima + 3
         and _detectar_reticencias_apos_bbox_v188(
-            _recorte_ultima_linha,
+            _recorte_ultima_linha_full,
             _x_dir_ultima,
             _x_lim_reticencias_v188,
         )
     ):
         _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
-            reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
+            reader, _recorte_ultima_linha_full, _bbox_ultima, str(partes[-1])
         )
         if _rec_final_v196:
             partes[-1] = _rec_final_v196
@@ -1986,7 +1998,7 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
             if len(_base_pre_ret_v193) <= 4:
                 _rec_v193 = _recuperar_palavra_final_antes_reticencias(
-                    reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
+                    reader, _recorte_ultima_linha_full, _bbox_ultima, str(partes[-1])
                 )
                 if _rec_v193:
                     partes[-1] = _rec_v193

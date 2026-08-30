@@ -1,4 +1,4 @@
-# V197 — recuperação contextual do texto antes de reticências.
+# V198 — recupera fragmento final antes de reticências usando contexto ampliado da linha.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1148,21 +1148,22 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
         return ''
 
     try:
-        x_esq = int(min(p[0] for p in bbox))
-        altura = max(1, int(max(p[1] for p in bbox) - min(p[1] for p in bbox)))
-        x0 = max(0, x_esq - max(120, altura * 5))
-        roi = recorte_bgr[:, x0:]
-        if roi.size == 0:
-            return ''
-
         atual_tokens = re.findall(r'[A-Za-zÀ-ÿ]+', atual)
         if not atual_tokens:
             return ''
 
         ultimo_atual = atual_tokens[-1].lower()
+
+        # Usa praticamente toda a parte útil da linha para dar contexto ao OCR.
+        x_bbox = int(min(p[0] for p in bbox))
+        x0 = max(0, x_bbox - 220)
+        roi = recorte_bgr[:, x0:]
+        if roi.size == 0:
+            return ''
+
         candidatos = []
 
-        for escala in (2.0, 3.0):
+        for escala in (2.0, 2.8, 3.5):
             up = cv2.resize(
                 roi, None, fx=escala, fy=escala,
                 interpolation=cv2.INTER_CUBIC
@@ -1170,12 +1171,18 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
 
             gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
             clahe = cv2.createCLAHE(
-                clipLimit=2.2, tileGridSize=(4, 4)
+                clipLimit=2.4, tileGridSize=(4, 4)
             ).apply(gray)
+
+            _, binaria = cv2.threshold(
+                clahe, 0, 255,
+                cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
 
             imgs = [
                 up,
                 cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
+                cv2.cvtColor(binaria, cv2.COLOR_GRAY2BGR),
             ]
 
             for img in imgs:
@@ -1183,15 +1190,15 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
                     img,
                     detail=1,
                     decoder='beamsearch',
-                    beamWidth=5,
+                    beamWidth=7,
                     allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
-                    width_ths=0.10,
-                    height_ths=0.60,
-                    text_threshold=0.15,
-                    low_text=0.08,
-                    link_threshold=0.10,
-                    contrast_ths=0.03,
-                    adjust_contrast=0.8,
+                    width_ths=0.12,
+                    height_ths=0.65,
+                    text_threshold=0.12,
+                    low_text=0.06,
+                    link_threshold=0.08,
+                    contrast_ths=0.02,
+                    adjust_contrast=0.9,
                 )
 
                 itens.sort(key=lambda item: min(p[0] for p in item[0]))
@@ -1206,35 +1213,35 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
                     continue
 
                 tokens = frase.split()
-                for i, token in enumerate(tokens):
+
+                # Procura, da direita para a esquerda, uma palavra que comece
+                # pelo fragmento reconhecido (ex.: C -> Compre).
+                for i in range(len(tokens) - 1, -1, -1):
+                    token = tokens[i]
                     tn = token.lower()
+
                     if not tn.startswith(ultimo_atual):
                         continue
+                    if len(token) <= len(ultimo_atual):
+                        continue
 
-                    # O token relido precisa completar o que já havia sido visto,
-                    # ou revelar palavra(s) adicionais antes das reticências.
-                    trecho = ' '.join(tokens[i:])
-                    if len(trecho) > len(atual_tokens[-1]):
-                        candidatos.append(trecho)
+                    # Para fragmentos de 1 letra, exige palavra recuperada com
+                    # ao menos 3 letras para evitar falso positivo.
+                    if len(ultimo_atual) == 1 and len(token) < 3:
+                        continue
+
+                    candidatos.append(token)
+                    break
 
         if not candidatos:
             return ''
 
         candidatos = list(dict.fromkeys(candidatos))
-        candidatos.sort(
-            key=lambda s: (len(s.split()), len(s)),
-            reverse=True
-        )
-
+        candidatos.sort(key=lambda s: len(s), reverse=True)
         melhor = candidatos[0]
 
-        # Se o OCR original continha mais de uma palavra no mesmo box,
-        # substitui apenas o último trecho truncado.
         prefixo = atual_tokens[:-1]
-        if prefixo:
-            return ' '.join(prefixo + melhor.split())
-
-        return melhor
+        return ' '.join(prefixo + [melhor]) if prefixo else melhor
 
     except Exception:
         return ''

@@ -1,4 +1,4 @@
-# V196 — recupera palavra(s) omitida(s) antes de reticências.
+# V197 — recuperação contextual do texto antes de reticências.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1148,11 +1148,18 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
         return ''
 
     try:
-        x0 = max(0, int(min(p[0] for p in bbox)) - 16)
+        x_esq = int(min(p[0] for p in bbox))
+        altura = max(1, int(max(p[1] for p in bbox) - min(p[1] for p in bbox)))
+        x0 = max(0, x_esq - max(120, altura * 5))
         roi = recorte_bgr[:, x0:]
         if roi.size == 0:
             return ''
 
+        atual_tokens = re.findall(r'[A-Za-zÀ-ÿ]+', atual)
+        if not atual_tokens:
+            return ''
+
+        ultimo_atual = atual_tokens[-1].lower()
         candidatos = []
 
         for escala in (2.0, 3.0):
@@ -1161,12 +1168,15 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
                 interpolation=cv2.INTER_CUBIC
             )
 
-            imgs = [up]
             gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
             clahe = cv2.createCLAHE(
                 clipLimit=2.2, tileGridSize=(4, 4)
             ).apply(gray)
-            imgs.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+            imgs = [
+                up,
+                cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
+            ]
 
             for img in imgs:
                 itens = reader.readtext(
@@ -1185,37 +1195,49 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
                 )
 
                 itens.sort(key=lambda item: min(p[0] for p in item[0]))
-                partes = [
+                frase = ' '.join(
                     re.sub(r'\s+', ' ', str(txt or '')).strip()
                     for _, txt, _ in itens
                     if str(txt or '').strip()
-                ]
-                frase = ' '.join(partes).strip()
-                frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', '', frase)
+                )
+                frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', ' ', frase)
                 frase = re.sub(r'\s+', ' ', frase).strip()
-
                 if not frase:
                     continue
 
-                atual_norm = re.sub(r'[^A-Za-zÀ-ÿ]', '', atual).lower()
-                frase_norm = re.sub(r'[^A-Za-zÀ-ÿ]', '', frase).lower()
+                tokens = frase.split()
+                for i, token in enumerate(tokens):
+                    tn = token.lower()
+                    if not tn.startswith(ultimo_atual):
+                        continue
 
-                if (
-                    frase_norm.startswith(atual_norm)
-                    and len(frase_norm) > len(atual_norm)
-                    and len(frase) <= 40
-                ):
-                    candidatos.append(frase)
+                    # O token relido precisa completar o que já havia sido visto,
+                    # ou revelar palavra(s) adicionais antes das reticências.
+                    trecho = ' '.join(tokens[i:])
+                    if len(trecho) > len(atual_tokens[-1]):
+                        candidatos.append(trecho)
 
-        if candidatos:
-            candidatos.sort(key=lambda s: (len(s.split()), len(s)), reverse=True)
-            return candidatos[0]
+        if not candidatos:
+            return ''
+
+        candidatos = list(dict.fromkeys(candidatos))
+        candidatos.sort(
+            key=lambda s: (len(s.split()), len(s)),
+            reverse=True
+        )
+
+        melhor = candidatos[0]
+
+        # Se o OCR original continha mais de uma palavra no mesmo box,
+        # substitui apenas o último trecho truncado.
+        prefixo = atual_tokens[:-1]
+        if prefixo:
+            return ' '.join(prefixo + melhor.split())
+
+        return melhor
 
     except Exception:
-        pass
-
-    return ''
-
+        return ''
 
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um

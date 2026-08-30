@@ -1,3 +1,4 @@
+# V166 — ícone SVG do badge CC YouTube em preto.
 # V165_GADS_MULTICARD_HR_RENDER — renderiza o campo estruturado `chamadas` como blocos separados por linha horizontal real no preview e nos cards Google Ads.
 # V164_SUPPORT_LAZY_DETAIL_LOAD — detalhamento da aba Suporte só é filtrado/renderizado após clique; remove custo dos expanders fechados.
 # V163_SUPPORT_SEPARATE_YOUTUBE_LINKS — separa links pendentes de mídia dos links permanentes do YouTube na aba Suporte.

@@ -1,3 +1,5 @@
+# V164_SUPPORT_LAZY_DETAIL_LOAD — detalhamento da aba Suporte só é filtrado/renderizado após clique; remove custo dos expanders fechados.
+# V163_SUPPORT_SEPARATE_YOUTUBE_LINKS — separa links pendentes de mídia dos links permanentes do YouTube na aba Suporte.
 # V162_YOUTUBE_CC_WHITE_BADGE_BLACK_TEXT — badge CC YouTube com fundo branco e conteúdo preto.
 # V161_YOUTUBE_CC_ORPHAN_ACTIVITY_RECOVERY — recupera/encerra atividade CC órfã após restart/redeploy, preservando anti-loop V159 e badge branco V160.
 # V160_YOUTUBE_CC_WHITE_BADGE — badge CC YouTube com fundo branco.
@@ -17793,6 +17795,7 @@ def _suporte_inventario_midias(user_id: str) -> list:
                             _motivo_ocr = "OCR concluído"
                         else:
                             _motivo_ocr = "OCR pendente ou não executado"
+                        _eh_youtube = bool(_tipo == "video" and _e_url_youtube(_url))
                         _itens.append({
                             "empresa": _empresa_norm,
                             "plataforma": _plataforma,
@@ -17801,6 +17804,10 @@ def _suporte_inventario_midias(user_id: str) -> list:
                             "tipo": _tipo,
                             "indice": _idx,
                             "url": _url,
+                            "eh_youtube": _eh_youtube,
+                            # V163: "Só link" representa mídia externa que ainda precisa
+                            # virar arquivo permanente. YouTube é uma categoria própria.
+                            "so_link_pendente": bool((not _salva) and (not _eh_youtube)),
                             "salva": _salva,
                             "midia_id": _m.get("id"),
                             "url_origem": _m.get("url_origem") or (None if _salva else _url),
@@ -17847,6 +17854,7 @@ def _suporte_inventario_midias(user_id: str) -> list:
             _motivo_ocr = "OCR concluído"
         else:
             _motivo_ocr = "OCR pendente ou não executado"
+        _eh_youtube = bool(_tipo == "video" and _e_url_youtube(_orig or _url))
         _itens.append({
             "empresa": _empresa_norm,
             "plataforma": _plat,
@@ -17855,6 +17863,8 @@ def _suporte_inventario_midias(user_id: str) -> list:
             "tipo": _tipo,
             "indice": 0,
             "url": _url,
+            "eh_youtube": _eh_youtube,
+            "so_link_pendente": False,
             "salva": True,
             "midia_id": _m.get("id"),
             "url_origem": _orig or None,
@@ -17871,6 +17881,14 @@ def _suporte_inventario_midias(user_id: str) -> list:
 
 
 def _suporte_resumo_midias_por_empresa(itens: list) -> list:
+    """Resumo de suporte separando mídia pendente de link YouTube.
+
+    V163:
+    - `Só link` = mídia externa ainda não persistida (exclui YouTube);
+    - `YouTube` = links de vídeo hospedados no YouTube, que permanecem externos
+      por desenho e só desaparecem se o anúncio/link for removido;
+    - transcrição normal contabiliza apenas vídeos não-YouTube; YouTube usa CC.
+    """
     _grupos = {}
     for _i in itens or []:
         _g = _grupos.setdefault(_i["empresa"], {
@@ -17878,6 +17896,7 @@ def _suporte_resumo_midias_por_empresa(itens: list) -> list:
             "Mídias": 0,
             "Salvas": 0,
             "Só link": 0,
+            "YouTube": 0,
             "Vídeos": 0,
             "Com transcrição": 0,
             "Sem transcrição": 0,
@@ -17885,8 +17904,15 @@ def _suporte_resumo_midias_por_empresa(itens: list) -> list:
             "Imagens s/ OCR": 0,
         })
         _g["Mídias"] += 1
-        _g["Salvas" if _i.get("salva") else "Só link"] += 1
-        if _i.get("tipo") == "video":
+        _eh_youtube = bool(_i.get("eh_youtube"))
+        if _eh_youtube:
+            _g["YouTube"] += 1
+        elif _i.get("salva"):
+            _g["Salvas"] += 1
+        elif _i.get("so_link_pendente", not _i.get("salva")):
+            _g["Só link"] += 1
+
+        if _i.get("tipo") == "video" and not _eh_youtube:
             _g["Vídeos"] += 1
             _g["Com transcrição" if _i.get("tem_transcricao") else "Sem transcrição"] += 1
         if _i.get("ocr_elegivel"):
@@ -42277,7 +42303,9 @@ html, body { background: transparent; overflow: hidden; }
             "Acompanhe, por empresa, o que já está salvo permanentemente, o que ainda "
             "depende de link externo e o estado de transcrição/OCR. OCR é contabilizado "
             "somente para imagens elegíveis do Google Ads. Capas/thumbnails de anúncios em vídeo "
-            "não entram na contagem de OCR. Para vídeos do Google Ads em YouTube, o painel também "
+            "não entram na contagem de OCR. O indicador ‘Só link’ mostra apenas mídias externas que ainda precisam "
+            "ser salvas e, portanto, deve cair conforme a persistência avança. Links do YouTube ficam em uma categoria "
+            "separada porque permanecem externos por desenho. Para vídeos do Google Ads em YouTube, o painel também "
             "contabiliza separadamente CC capturado e vídeos ainda sem CC."
         )
 
@@ -42293,6 +42321,7 @@ html, body { background: transparent; overflow: hidden; }
             _tot_mid = sum(r["Mídias"] for r in _suporte_resumo)
             _tot_salvas = sum(r["Salvas"] for r in _suporte_resumo)
             _tot_links = sum(r["Só link"] for r in _suporte_resumo)
+            _tot_youtube_links = sum(r["YouTube"] for r in _suporte_resumo)
             _tot_trans = sum(r["Com transcrição"] for r in _suporte_resumo)
             _tot_sem_trans = sum(r["Sem transcrição"] for r in _suporte_resumo)
             _tot_ocr = sum(r["Imagens c/ OCR"] for r in _suporte_resumo)
@@ -42324,8 +42353,9 @@ html, body { background: transparent; overflow: hidden; }
             _cards_sup = [
                 ("Mídias", _tot_mid, "inventário total"),
                 ("Salvas", _tot_salvas, "arquivo permanente"),
-                ("Só link", _tot_links, "ainda externas"),
-                ("Transcritas", _tot_trans, "vídeos concluídos"),
+                ("Só link", _tot_links, "aguardando ser salva"),
+                ("Links YouTube", _tot_youtube_links, "permanecem externos"),
+                ("Transcritas", _tot_trans, "vídeos não-YouTube"),
                 ("Sem transcrição", _tot_sem_trans, "vídeos pendentes"),
                 ("Com OCR", _tot_ocr, "imagens concluídas"),
                 ("Sem OCR", _tot_sem_ocr, "imagens pendentes"),
@@ -42349,8 +42379,9 @@ html, body { background: transparent; overflow: hidden; }
                     "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
                     "Mídias": st.column_config.NumberColumn("Mídias", format="%d"),
                     "Salvas": st.column_config.NumberColumn("Salvas", format="%d"),
-                    "Só link": st.column_config.NumberColumn("Só link", format="%d"),
-                    "Vídeos": st.column_config.NumberColumn("Vídeos", format="%d"),
+                    "Só link": st.column_config.NumberColumn("Só link", help="Mídia ainda externa e aguardando persistência. Não inclui YouTube.", format="%d"),
+                    "YouTube": st.column_config.NumberColumn("YouTube", help="Links de vídeos YouTube, mantidos externos por desenho.", format="%d"),
+                    "Vídeos": st.column_config.NumberColumn("Vídeos", help="Vídeos não-YouTube sujeitos à transcrição normal.", format="%d"),
                     "Com transcrição": st.column_config.NumberColumn("Com transcrição", format="%d"),
                     "Sem transcrição": st.column_config.NumberColumn("Sem transcrição", format="%d"),
                     "Imagens c/ OCR": st.column_config.NumberColumn("Imagens c/ OCR", format="%d"),
@@ -42359,68 +42390,286 @@ html, body { background: transparent; overflow: hidden; }
             )
 
             def _status_item_detalhe_sup(_item):
-                if not _item.get("salva"):
-                    return "Só link"
+                if _item.get("eh_youtube"):
+                    _cc = "com CC" if (_item.get("tem_cc") or str(_item.get("video_cc_raw") or "").strip()) else "link externo"
+                    return f"YouTube · {_cc}"
+                if _item.get("so_link_pendente", not _item.get("salva")):
+                    return "Só link · aguardando ser salva"
                 if _item.get("tipo") == "video":
                     return "Transcrita" if _item.get("tem_transcricao") else "Sem transcrição"
                 if _item.get("ocr_elegivel"):
                     return "Com OCR" if _item.get("tem_ocr") else "Sem OCR"
                 return _item.get("motivo_ocr") or "Processamento não aplicável"
 
-            def _render_lista_detalhe_sup(_titulo, _itens_lista, _vazio, _key_prefix):
-                with st.expander(f"{_titulo} ({len(_itens_lista)})", expanded=False):
-                    if not _itens_lista:
-                        st.caption(_vazio)
-                        return
-                    _h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns([1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72])
-                    _h1.markdown("**Empresa**"); _h2.markdown("**Origem**"); _h3.markdown("**Anúncio**")
-                    _h4.markdown("**Tipo**"); _h5.markdown("**Situação**"); _h6.markdown("**Mídia**"); _h7.markdown("**Ação**")
-                    st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #dbe4ef'>", unsafe_allow_html=True)
-                    for _pos_det, _item_det in enumerate(_itens_lista):
-                        _r1, _r2, _r3, _r4, _r5, _r6, _r7 = st.columns([1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72])
-                        _r1.write(_item_det.get("empresa") or "—")
-                        _r2.write(_item_det.get("plataforma") or "—")
-                        _r3.write(_item_det.get("ad_id") or "—")
-                        _tipo_det = _item_det.get("tipo") or "—"
-                        _fmt_det = _item_det.get("formato_anuncio") or ""
-                        _r4.write(_fmt_det or _tipo_det)
-                        _r5.write(_status_item_detalhe_sup(_item_det))
-                        _url_det = _item_det.get("url") or ""
-                        with _r6:
-                            if _url_det:
-                                st.markdown(f'<a href="{html.escape(_url_det, quote=True)}" target="_blank">Abrir</a>', unsafe_allow_html=True)
+            # V164 — lazy load real do detalhamento.
+            #
+            # st.expander NÃO é lazy no Streamlit: mesmo fechado, todo o corpo
+            # é executado em cada rerun. Antes desta versão, as oito listas de
+            # detalhamento eram montadas e todas as linhas/colunas/botões eram
+            # renderizados mesmo sem o usuário abrir nenhum menu.
+            #
+            # Agora:
+            # - a tela inicial mostra somente os botões/contadores;
+            # - apenas UMA categoria fica ativa por vez;
+            # - a lista daquela categoria é filtrada e renderizada somente
+            #   depois do clique;
+            # - clicar novamente na categoria aberta fecha o detalhamento.
+            _SUPORTE_DETALHE_KEY_V164 = "_suporte_detalhe_aberto_v164"
+
+            def _toggle_detalhe_sup_v164(_chave):
+                _atual = st.session_state.get(_SUPORTE_DETALHE_KEY_V164)
+                st.session_state[_SUPORTE_DETALHE_KEY_V164] = (
+                    None if _atual == _chave else _chave
+                )
+
+            def _filtrar_detalhe_sup_v164(_chave):
+                # IMPORTANTE: somente a categoria escolhida percorre/filtra
+                # o inventário. As demais não geram listas intermediárias.
+                if _chave == "todas":
+                    return list(_suporte_itens)
+                if _chave == "salvas":
+                    return [i for i in _suporte_itens if i.get("salva")]
+                if _chave == "links":
+                    return [
+                        i for i in _suporte_itens
+                        if i.get(
+                            "so_link_pendente",
+                            (not i.get("salva") and not i.get("eh_youtube"))
+                        )
+                    ]
+                if _chave == "youtube":
+                    return [i for i in _suporte_itens if i.get("eh_youtube")]
+                if _chave == "trans":
+                    return [
+                        i for i in _suporte_itens
+                        if i.get("tipo") == "video"
+                        and not i.get("eh_youtube")
+                        and i.get("tem_transcricao")
+                    ]
+                if _chave == "sem_trans":
+                    return [
+                        i for i in _suporte_itens
+                        if i.get("tipo") == "video"
+                        and not i.get("eh_youtube")
+                        and not i.get("tem_transcricao")
+                    ]
+                if _chave == "ocr":
+                    return [
+                        i for i in _suporte_itens
+                        if i.get("ocr_elegivel") and i.get("tem_ocr")
+                    ]
+                if _chave == "sem_ocr":
+                    return [
+                        i for i in _suporte_itens
+                        if i.get("ocr_elegivel") and not i.get("tem_ocr")
+                    ]
+                return []
+
+            def _render_conteudo_detalhe_sup_v164(
+                _titulo,
+                _itens_lista,
+                _vazio,
+                _key_prefix,
+            ):
+                st.markdown(
+                    f"""
+                    <div style="
+                        margin:8px 0 10px;
+                        padding:11px 14px;
+                        background:#edf5fb;
+                        border:1px solid #dbe4ef;
+                        border-radius:12px;
+                        color:#0f2b4d;
+                        font-weight:700;
+                    ">
+                        {html.escape(_titulo)} ({len(_itens_lista)})
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if not _itens_lista:
+                    st.caption(_vazio)
+                    return
+
+                _h1, _h2, _h3, _h4, _h5, _h6, _h7 = st.columns(
+                    [1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72]
+                )
+                _h1.markdown("**Empresa**")
+                _h2.markdown("**Origem**")
+                _h3.markdown("**Anúncio**")
+                _h4.markdown("**Tipo**")
+                _h5.markdown("**Situação**")
+                _h6.markdown("**Mídia**")
+                _h7.markdown("**Ação**")
+                st.markdown(
+                    "<hr style='margin:2px 0 6px;border:none;border-top:1px solid #dbe4ef'>",
+                    unsafe_allow_html=True,
+                )
+
+                for _pos_det, _item_det in enumerate(_itens_lista):
+                    _r1, _r2, _r3, _r4, _r5, _r6, _r7 = st.columns(
+                        [1.10, 0.80, 1.55, 0.72, 1.40, 0.55, 0.72]
+                    )
+                    _r1.write(_item_det.get("empresa") or "—")
+                    _r2.write(_item_det.get("plataforma") or "—")
+                    _r3.write(_item_det.get("ad_id") or "—")
+
+                    _tipo_det = _item_det.get("tipo") or "—"
+                    _fmt_det = _item_det.get("formato_anuncio") or ""
+                    _r4.write(_fmt_det or _tipo_det)
+                    _r5.write(_status_item_detalhe_sup(_item_det))
+
+                    _url_det = _item_det.get("url") or ""
+                    with _r6:
+                        if _url_det:
+                            st.markdown(
+                                f'<a href="{html.escape(_url_det, quote=True)}" target="_blank">Abrir</a>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.write("—")
+
+                    _chave_det = str(
+                        _item_det.get("midia_id")
+                        or _item_det.get("ad_id")
+                        or _item_det.get("url_cdn")
+                        or _item_det.get("url")
+                        or _pos_det
+                    )
+                    _chave_det = hashlib.md5(
+                        _chave_det.encode("utf-8", errors="ignore")
+                    ).hexdigest()[:12]
+
+                    _acao_invalida = bool(
+                        _item_det.get("salva")
+                        and _item_det.get("tipo") == "imagem"
+                        and not _item_det.get("ocr_elegivel")
+                    )
+                    with _r7:
+                        if st.button(
+                            "Refazer",
+                            key=f"{_key_prefix}_{_chave_det}_{_pos_det}",
+                            width="stretch",
+                            disabled=_acao_invalida,
+                        ):
+                            _ok_det, _msg_det = _suporte_refazer_midia_especifica(
+                                st.session_state.user.id,
+                                _item_det,
+                            )
+                            if _ok_det:
+                                st.toast(_msg_det, icon="🔄")
                             else:
-                                st.write("—")
-                        _chave_det = str(_item_det.get("midia_id") or _item_det.get("ad_id") or _item_det.get("url_cdn") or _item_det.get("url") or _pos_det)
-                        _chave_det = hashlib.md5(_chave_det.encode("utf-8", errors="ignore")).hexdigest()[:12]
-                        _acao_invalida = bool(_item_det.get("salva") and _item_det.get("tipo") == "imagem" and not _item_det.get("ocr_elegivel"))
-                        with _r7:
-                            if st.button("Refazer", key=f"{_key_prefix}_{_chave_det}_{_pos_det}", width="stretch", disabled=_acao_invalida):
-                                _ok_det, _msg_det = _suporte_refazer_midia_especifica(st.session_state.user.id, _item_det)
-                                if _ok_det:
-                                    st.toast(_msg_det, icon="🔄")
-                                else:
-                                    st.error(_msg_det)
-                                st.rerun()
-                        if _pos_det < len(_itens_lista) - 1:
-                            st.markdown("<hr style='margin:2px 0 6px;border:none;border-top:1px solid #edf2f7'>", unsafe_allow_html=True)
+                                st.error(_msg_det)
+                            st.rerun()
 
-            _det_todas = list(_suporte_itens)
-            _det_salvas = [i for i in _suporte_itens if i.get("salva")]
-            _det_links = [i for i in _suporte_itens if not i.get("salva")]
-            _det_trans = [i for i in _suporte_itens if i.get("tipo") == "video" and i.get("tem_transcricao")]
-            _det_sem_trans = [i for i in _suporte_itens if i.get("tipo") == "video" and not i.get("tem_transcricao")]
-            _det_ocr = [i for i in _suporte_itens if i.get("ocr_elegivel") and i.get("tem_ocr")]
-            _det_sem_ocr = [i for i in _suporte_itens if i.get("ocr_elegivel") and not i.get("tem_ocr")]
+                    if _pos_det < len(_itens_lista) - 1:
+                        st.markdown(
+                            "<hr style='margin:2px 0 6px;border:none;border-top:1px solid #edf2f7'>",
+                            unsafe_allow_html=True,
+                        )
 
-            st.markdown("<div style='margin:18px 0 8px;color:#0f2b4d;font-weight:700;font-size:16px'>Detalhamento do inventário</div>", unsafe_allow_html=True)
-            _render_lista_detalhe_sup("Ver todas as mídias", _det_todas, "Nenhuma mídia cadastrada.", "_sup_det_todas")
-            _render_lista_detalhe_sup("Ver mídias salvas", _det_salvas, "Nenhuma mídia salva permanentemente.", "_sup_det_salvas")
-            _render_lista_detalhe_sup("Ver mídias somente com link", _det_links, "Nenhuma mídia depende apenas de link externo.", "_sup_det_links")
-            _render_lista_detalhe_sup("Ver vídeos transcritos", _det_trans, "Nenhum vídeo com transcrição.", "_sup_det_trans")
-            _render_lista_detalhe_sup("Ver vídeos sem transcrição", _det_sem_trans, "Nenhum vídeo pendente de transcrição.", "_sup_det_sem_trans")
-            _render_lista_detalhe_sup("Ver imagens com OCR", _det_ocr, "Nenhuma imagem elegível com OCR.", "_sup_det_ocr")
-            _render_lista_detalhe_sup("Ver imagens realmente sem OCR", _det_sem_ocr, "Nenhuma imagem elegível está pendente de OCR.", "_sup_det_sem_ocr")
+            st.markdown(
+                "<div style='margin:18px 0 8px;color:#0f2b4d;font-weight:700;font-size:16px'>Detalhamento do inventário</div>",
+                unsafe_allow_html=True,
+            )
+            st.caption(
+                "Os detalhes são carregados somente quando você abre uma categoria."
+            )
+
+            _det_aberto_v164 = st.session_state.get(_SUPORTE_DETALHE_KEY_V164)
+
+            # Os contadores abaixo usam os totais já calculados para os cards.
+            # Nenhuma lista detalhada é criada apenas para exibir estes números.
+            _menus_det_v164 = [
+                ("todas", "Todas as mídias", _tot_mid),
+                ("salvas", "Mídias salvas", _tot_salvas),
+                ("links", "Só links pendentes", _tot_links),
+                ("youtube", "Links YouTube", _tot_youtube_links),
+                ("trans", "Vídeos transcritos", _tot_trans),
+                ("sem_trans", "Vídeos sem transcrição", _tot_sem_trans),
+                ("ocr", "Imagens com OCR", _tot_ocr),
+                ("sem_ocr", "Imagens sem OCR", _tot_sem_ocr),
+            ]
+
+            # Botões compactos em duas colunas. Apenas o clique altera a seção
+            # ativa; o conteúdo pesado é renderizado mais abaixo somente para ela.
+            for _menu_row_v164 in range(0, len(_menus_det_v164), 2):
+                _cols_menu_v164 = st.columns(2)
+                for _offset_v164, _col_menu_v164 in enumerate(_cols_menu_v164):
+                    _idx_menu_v164 = _menu_row_v164 + _offset_v164
+                    if _idx_menu_v164 >= len(_menus_det_v164):
+                        continue
+                    _chave_v164, _rotulo_v164, _qtd_v164 = _menus_det_v164[_idx_menu_v164]
+                    _esta_aberto_v164 = _det_aberto_v164 == _chave_v164
+                    _icone_v164 = "▾" if _esta_aberto_v164 else "›"
+                    with _col_menu_v164:
+                        if st.button(
+                            f"{_icone_v164} {_rotulo_v164} ({int(_qtd_v164)})",
+                            key=f"_sup_lazy_menu_v164_{_chave_v164}",
+                            width="stretch",
+                            type="primary" if _esta_aberto_v164 else "secondary",
+                        ):
+                            _toggle_detalhe_sup_v164(_chave_v164)
+                            st.rerun()
+
+            # LAZY LOAD REAL: este filtro/render só existe para a categoria
+            # atualmente aberta. Com nenhuma seção aberta, nenhuma linha de
+            # detalhamento é construída.
+            _det_aberto_v164 = st.session_state.get(_SUPORTE_DETALHE_KEY_V164)
+            if _det_aberto_v164:
+                _meta_det_v164 = {
+                    "todas": (
+                        "Todas as mídias",
+                        "Nenhuma mídia cadastrada.",
+                        "_sup_det_todas_v164",
+                    ),
+                    "salvas": (
+                        "Mídias salvas",
+                        "Nenhuma mídia salva permanentemente.",
+                        "_sup_det_salvas_v164",
+                    ),
+                    "links": (
+                        "Só links pendentes",
+                        "Nenhuma mídia pendente depende apenas de link externo.",
+                        "_sup_det_links_v164",
+                    ),
+                    "youtube": (
+                        "Links YouTube",
+                        "Nenhum link do YouTube no inventário.",
+                        "_sup_det_youtube_v164",
+                    ),
+                    "trans": (
+                        "Vídeos transcritos",
+                        "Nenhum vídeo não-YouTube com transcrição.",
+                        "_sup_det_trans_v164",
+                    ),
+                    "sem_trans": (
+                        "Vídeos sem transcrição",
+                        "Nenhum vídeo pendente de transcrição.",
+                        "_sup_det_sem_trans_v164",
+                    ),
+                    "ocr": (
+                        "Imagens com OCR",
+                        "Nenhuma imagem elegível com OCR.",
+                        "_sup_det_ocr_v164",
+                    ),
+                    "sem_ocr": (
+                        "Imagens sem OCR",
+                        "Nenhuma imagem elegível está pendente de OCR.",
+                        "_sup_det_sem_ocr_v164",
+                    ),
+                }
+                _titulo_lazy_v164, _vazio_lazy_v164, _key_lazy_v164 = _meta_det_v164[
+                    _det_aberto_v164
+                ]
+                _itens_lazy_v164 = _filtrar_detalhe_sup_v164(_det_aberto_v164)
+                _render_conteudo_detalhe_sup_v164(
+                    _titulo_lazy_v164,
+                    _itens_lazy_v164,
+                    _vazio_lazy_v164,
+                    _key_lazy_v164,
+                )
 
             st.markdown("**Refazer uma mídia específica**")
             _empresas_sup = [r["Empresa"] for r in _suporte_resumo]
@@ -42434,23 +42683,32 @@ html, body { background: transparent; overflow: hidden; }
             with _c_filtro_sup:
                 _filtro_sup = st.selectbox(
                     "Mostrar",
-                    ["Todas", "Só links", "Vídeos sem transcrição", "Imagens sem OCR", "Processadas"],
+                    ["Todas", "Só links pendentes", "Links YouTube", "Vídeos sem transcrição", "Imagens sem OCR", "Processadas"],
                     key="_suporte_admin_filtro_midia",
                 )
 
             _cands = [i for i in _suporte_itens if i.get("empresa") == _emp_sup]
-            if _filtro_sup == "Só links":
-                _cands = [i for i in _cands if not i.get("salva")]
+            if _filtro_sup == "Só links pendentes":
+                _cands = [i for i in _cands if i.get("so_link_pendente", (not i.get("salva") and not i.get("eh_youtube")))]
+            elif _filtro_sup == "Links YouTube":
+                _cands = [i for i in _cands if i.get("eh_youtube")]
             elif _filtro_sup == "Vídeos sem transcrição":
-                _cands = [i for i in _cands if i.get("tipo") == "video" and not i.get("tem_transcricao")]
+                _cands = [i for i in _cands if i.get("tipo") == "video" and not i.get("eh_youtube") and not i.get("tem_transcricao")]
             elif _filtro_sup == "Imagens sem OCR":
                 _cands = [i for i in _cands if i.get("ocr_elegivel") and not i.get("tem_ocr")]
             elif _filtro_sup == "Processadas":
                 _cands = [i for i in _cands if i.get("tem_transcricao") or i.get("tem_ocr")]
 
             def _rotulo_item_sup(_i):
-                _estado = "salva" if _i.get("salva") else "só link"
-                if _i.get("tipo") == "video":
+                if _i.get("eh_youtube"):
+                    _estado = "YouTube"
+                elif _i.get("salva"):
+                    _estado = "salva"
+                else:
+                    _estado = "só link pendente"
+                if _i.get("tipo") == "video" and _i.get("eh_youtube"):
+                    _proc = "CC tratado separadamente"
+                elif _i.get("tipo") == "video":
                     _proc = "transcrita" if _i.get("tem_transcricao") else "sem transcrição"
                 elif _i.get("ocr_elegivel"):
                     _proc = "com OCR" if _i.get("tem_ocr") else "sem OCR"

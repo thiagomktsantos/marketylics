@@ -1,3 +1,4 @@
+# V158_YOUTUBE_CC_CARD_ATTRIBUTE_FIX — remove uso indevido de `_html.escape` nos data-* do badge CC YouTube, preservando tooltip e exibição do CC.
 # V157_YOUTUBE_CC_CARD_UNBOUND_FIX — corrige referência `a`→`ad` na segunda rota de cards Google Ads; preserva toda a lógica da V156.
 # V156_YOUTUBE_CC_CARD_FIX — corrige a segunda rota de renderização dos cards Google Ads para exibir video_cc_raw como badge CC YouTube.
 # V155_YOUTUBE_CC_YTDLP_PRIMARY — yt-dlp como rota principal; timedtext WEB apenas fallback; distingue ausência real de falha técnica.
@@ -34167,9 +34168,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _transcricao_tt += "…"
                             transcricao_badge_html = f"""
     <div data-texto="{_transcricao_tt}"
-         data-cc-status="{_html.escape(str(ad.get('video_cc_status') or '')) if _cc_youtube_txt_v156 else ''}"
-         data-cc-idioma="{_html.escape(str(ad.get('video_cc_language') or '')) if _cc_youtube_txt_v156 else ''}"
-         data-cc-origem="{_html.escape(str(ad.get('video_cc_source') or '')) if _cc_youtube_txt_v156 else ''}"
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"

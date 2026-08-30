@@ -1,3 +1,4 @@
+# V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
 # V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
 # V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
 # V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
@@ -2378,7 +2379,15 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         txt=_limpar_pontuacao_ocr((txt or '').strip())
         if not txt: continue
         xs=[float(p[0]) for p in bbox]; ys=[float(p[1]) for p in bbox]
-        caixas.append({'texto':txt,'x0':min(xs),'yc':(min(ys)+max(ys))/2,'altura':max(1.0,max(ys)-min(ys))})
+        caixas.append({
+            'texto': txt,
+            'x0': min(xs),
+            'x1': max(xs),
+            'y0': min(ys),
+            'y1': max(ys),
+            'yc': (min(ys)+max(ys))/2,
+            'altura': max(1.0,max(ys)-min(ys)),
+        })
     if len(caixas) < 3: return None
     caixas.sort(key=lambda c:(c['yc'],c['x0']))
     linhas=[]
@@ -2393,6 +2402,281 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     for l in linhas:
         l['itens'].sort(key=lambda c:c['x0']); l['texto']=_limpar_pontuacao_ocr(' '.join(c['texto'] for c in l['itens']).strip())
     rx=_re_v145.compile(r'^(?:abrir|acessar(?: o site)?|acesse(?: o site)?|saiba mais|compre agora|comprar agora|ver mais|conferir|comprar|reservar)$',_re_v145.I)
+
+    # V183 — DISPLAY MULTICARD / GRADE DE CRIATIVOS
+    #
+    # Alguns anúncios do Google exibem vários cards em grade. Cada card tem:
+    #   [ IMAGEM / ARTE COM TEXTO INTERNO ]
+    #   Chamada externa do card
+    #   [ CTA ]
+    #
+    # O texto DENTRO da imagem não pertence à estrutura do anúncio e deve ser
+    # ignorado. A leitura correta é feita usando cada CTA como âncora e buscando
+    # somente o bloco de texto imediatamente acima dele, na MESMA coluna.
+    #
+    # Exemplo:
+    #   Não Deixei Seu Momento Passar        [Compre Agora]
+    #   Volte Na Buy E Mude Seu Dia          [Compre Agora]
+    #   Volte Agora E Pegue Seu Lugar        [Compre Agora]
+    #   Falta Só Alguns Cliques, Volta Vai.  [Compre Agora]
+    #   Ele Tá No Site Esperando Você        [Compre Agora]
+    #
+    # Se todos os CTAs forem iguais, retornamos apenas UM CTA consolidado.
+    def _detectar_multicard_externo_v183():
+        try:
+            if len(caixas) < 6:
+                return None
+
+            def _norm_v183(_s):
+                _s = _limpar_pontuacao_ocr(str(_s or '').strip())
+                _s = _re_v145.sub(r'\s*[>›»→❯➜]+\s*$', '', _s).strip()
+                return _s
+
+            # CTA precisa ser caixa individual; não usamos "linhas" globais,
+            # porque duas colunas na mesma altura seriam unidas pelo parser comum.
+            _ctas_v183 = []
+            for _c in caixas:
+                _t = _norm_v183(_c.get('texto'))
+                if rx.match(_t):
+                    _cc = dict(_c)
+                    _cc['texto_norm'] = _t
+                    _cc['xc'] = (float(_cc['x0']) + float(_cc['x1'])) / 2.0
+                    _cc['largura'] = max(1.0, float(_cc['x1']) - float(_cc['x0']))
+                    _ctas_v183.append(_cc)
+
+            # Gate forte para não roubar o display vertical tradicional:
+            # exige pelo menos 3 CTAs reconhecidos e distribuição espacial de grade.
+            if len(_ctas_v183) < 3:
+                return None
+
+            _ctas_v183.sort(key=lambda _c: (float(_c['yc']), float(_c['x0'])))
+
+            _xs_cta_v183 = [float(_c['xc']) for _c in _ctas_v183]
+            _ys_cta_v183 = [float(_c['yc']) for _c in _ctas_v183]
+
+            _tem_multiplas_colunas_v183 = (
+                max(_xs_cta_v183) - min(_xs_cta_v183) >= w * 0.22
+            )
+            _tem_multiplas_linhas_v183 = (
+                max(_ys_cta_v183) - min(_ys_cta_v183) >= h * 0.12
+            )
+            if not (_tem_multiplas_colunas_v183 or _tem_multiplas_linhas_v183):
+                return None
+
+            _calls_v183 = []
+
+            # Largura de coluna inferida pela posição dos CTAs.
+            # Mantém busca local e impede texto da coluna vizinha de entrar.
+            for _idx_cta_v183, _cta_box_v183 in enumerate(_ctas_v183):
+                _xc_v183 = float(_cta_box_v183['xc'])
+                _yc_cta_v183 = float(_cta_box_v183['yc'])
+                _cta_h_v183 = float(_cta_box_v183['altura'])
+
+                # Distância horizontal até CTA vizinho; usada para limitar coluna.
+                _dist_x_v183 = sorted(
+                    abs(_xc_v183 - float(_outro['xc']))
+                    for _outro in _ctas_v183
+                    if _outro is not _cta_box_v183
+                    and abs(_yc_cta_v183 - float(_outro['yc'])) < h * 0.06
+                )
+                if _dist_x_v183:
+                    _meia_coluna_v183 = max(w * 0.13, min(w * 0.28, _dist_x_v183[0] * 0.44))
+                else:
+                    _meia_coluna_v183 = w * 0.24
+
+                # Candidatos SOMENTE acima do CTA e próximos à mesma coluna.
+                # Janela vertical pequena: suficiente para chamada externa,
+                # curta demais para alcançar texto interno da imagem.
+                _janela_acima_v183 = max(
+                    h * 0.115,
+                    _cta_h_v183 * 7.0,
+                    95.0,
+                )
+                _cands_v183 = []
+                for _b in caixas:
+                    _txt_b_v183 = _norm_v183(_b.get('texto'))
+                    if not _txt_b_v183 or rx.match(_txt_b_v183):
+                        continue
+                    if _REGEX_PATROCINADO.match(_txt_b_v183):
+                        continue
+
+                    _yc_b_v183 = float(_b['yc'])
+                    if _yc_b_v183 >= _yc_cta_v183:
+                        continue
+                    if (_yc_cta_v183 - _yc_b_v183) > _janela_acima_v183:
+                        continue
+
+                    _xc_b_v183 = (float(_b['x0']) + float(_b['x1'])) / 2.0
+                    if abs(_xc_b_v183 - _xc_v183) > _meia_coluna_v183:
+                        continue
+
+                    # Cabeçalho superior nunca é chamada de card.
+                    if _yc_b_v183 < h * 0.06:
+                        continue
+
+                    _bb = dict(_b)
+                    _bb['texto_norm'] = _txt_b_v183
+                    _bb['xc'] = _xc_b_v183
+                    _cands_v183.append(_bb)
+
+                if not _cands_v183:
+                    continue
+
+                # Agrupa candidatos em linhas LOCAIS dentro da coluna.
+                _cands_v183.sort(key=lambda _b: (float(_b['yc']), float(_b['x0'])))
+                _linhas_loc_v183 = []
+                for _b in _cands_v183:
+                    _alvo = None
+                    for _l in _linhas_loc_v183:
+                        if abs(float(_b['yc']) - float(_l['yc'])) <= max(
+                            7.0,
+                            min(float(_b['altura']), float(_l['altura'])) * 0.58
+                        ):
+                            _alvo = _l
+                            break
+                    if _alvo is None:
+                        _alvo = {
+                            'yc': float(_b['yc']),
+                            'altura': float(_b['altura']),
+                            'itens': [],
+                        }
+                        _linhas_loc_v183.append(_alvo)
+                    _alvo['itens'].append(_b)
+                    _alvo['yc'] = sum(float(x['yc']) for x in _alvo['itens']) / len(_alvo['itens'])
+                    _alvo['altura'] = max(float(_alvo['altura']), float(_b['altura']))
+
+                for _l in _linhas_loc_v183:
+                    _l['itens'].sort(key=lambda _x: float(_x['x0']))
+                    _l['texto'] = _limpar_pontuacao_ocr(
+                        ' '.join(str(_x['texto_norm']) for _x in _l['itens']).strip()
+                    )
+                _linhas_loc_v183.sort(key=lambda _l: float(_l['yc']))
+
+                # Começa pela linha imediatamente acima do CTA e cresce para cima
+                # somente enquanto as linhas forem um bloco tipográfico contínuo.
+                _ultima_v183 = _linhas_loc_v183[-1]
+                _bloco_rev_v183 = [_ultima_v183]
+                _atual_v183 = _ultima_v183
+
+                for _ant_v183 in reversed(_linhas_loc_v183[:-1]):
+                    _gap_v183 = float(_atual_v183['yc']) - float(_ant_v183['yc'])
+                    _altura_ref_v183 = max(
+                        float(_atual_v183['altura']),
+                        float(_ant_v183['altura']),
+                    )
+                    _lim_gap_v183 = max(32.0, _altura_ref_v183 * 1.85)
+
+                    if _gap_v183 <= _lim_gap_v183:
+                        _bloco_rev_v183.append(_ant_v183)
+                        _atual_v183 = _ant_v183
+                    else:
+                        break
+
+                _bloco_v183 = list(reversed(_bloco_rev_v183))
+
+                # Limite defensivo: chamadas externas são curtas. Se o OCR criou
+                # muitas linhas, mantemos as mais próximas do CTA, não a arte.
+                if len(_bloco_v183) > 3:
+                    _bloco_v183 = _bloco_v183[-3:]
+
+                _call_v183 = _limpar_pontuacao_ocr(
+                    ' '.join(_l['texto'] for _l in _bloco_v183).strip()
+                )
+                _call_v183 = _corrigir_espacos_marca_na_descricao(
+                    _call_v183,
+                    empresa,
+                )
+
+                # Evita aceitar resíduos minúsculos / ruído gráfico.
+                if len(_re_v145.sub(r'[^A-Za-zÀ-ÿ0-9]+', '', _call_v183)) < 5:
+                    continue
+
+                _calls_v183.append(_call_v183)
+
+            # Dedupe preservando ordem visual.
+            _calls_unicas_v183 = []
+            _seen_calls_v183 = set()
+            for _c in _calls_v183:
+                _k = _re_v145.sub(r'\W+', '', _c, flags=_re_v145.UNICODE).casefold()
+                if not _k or _k in _seen_calls_v183:
+                    continue
+                _seen_calls_v183.add(_k)
+                _calls_unicas_v183.append(_c)
+
+            if len(_calls_unicas_v183) < 2:
+                return None
+
+            # CTA consolidado: se todos são iguais, apenas um.
+            _ctas_unicos_v183 = []
+            _seen_cta_v183 = set()
+            for _c in _ctas_v183:
+                _t = str(_c['texto_norm']).strip()
+                _k = _t.casefold()
+                if _k not in _seen_cta_v183:
+                    _seen_cta_v183.add(_k)
+                    _ctas_unicos_v183.append(_t)
+
+            _cta_final_v183 = (
+                _ctas_unicos_v183[0]
+                if len(_ctas_unicos_v183) == 1
+                else ' | '.join(_ctas_unicos_v183)
+            )
+
+            # Compatibilidade:
+            # - titulo mantém todas as chamadas visíveis para interfaces antigas;
+            # - campo `chamadas` preserva a estrutura correta para evolução da UI;
+            # - sitelinks NÃO é usado, porque essas chamadas não são sitelinks.
+            _titulo_final_v183 = ' | '.join(_calls_unicas_v183)
+
+            _dbg_v183 = [{
+                'idx': 0,
+                'classe': 'display-multicard-v183',
+                'sep_antes': False,
+                'texto': f"{_titulo_final_v183} | {_cta_final_v183}".strip(' |'),
+                'decisao': (
+                    'V183 → Display multicard: CTAs repetidos usados como âncoras; '
+                    'lê somente a chamada externa imediatamente acima de cada botão '
+                    'na mesma coluna; todo texto dentro das imagens é ignorado; '
+                    'CTAs idênticos são consolidados em um único CTA'
+                ),
+                'y_min': 0,
+                'y_max': int(h),
+                'x_min_favicon': 0,
+            }]
+
+            print(
+                f"[OCR-DEBUG] display-multicard-v183: "
+                f"cards={len(_calls_unicas_v183)} "
+                f"ctas_detectados={len(_ctas_v183)} "
+                f"ctas_unicos={len(_ctas_unicos_v183)}",
+                flush=True,
+            )
+
+            return {
+                'titulo': _titulo_final_v183,
+                'descricao': '',
+                'url_exibida': empresa or '',
+                'url_final': '',
+                'cta': _cta_final_v183,
+                'cta_subtitulo': '',
+                'sitelinks': [],
+                'chamadas': _calls_unicas_v183,
+                'ctas': _ctas_unicos_v183,
+                '_debug_bandas': _dbg_v183,
+                '_layout_ocr': 'display_multicard_v183',
+            }
+
+        except Exception as _exc_v183:
+            print(
+                f"[OCR-DEBUG] display-multicard-v183 falhou: {_exc_v183!r}",
+                flush=True,
+            )
+            return None
+
+    _multicard_v183 = _detectar_multicard_externo_v183()
+    if _multicard_v183 is not None:
+        return _multicard_v183
+
     cta=''; cab=''; uteis=[]
     for l in linhas:
         t=l['texto'].strip(); tc=_re_v145.sub(r'\s*[>›»→❯➜]+\s*$','',t).strip()

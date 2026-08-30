@@ -1,3 +1,4 @@
+# V193 — recupera palavra final truncada antes de reticências.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1050,6 +1051,47 @@ def _detectar_reticencias_apos_bbox_v188(recorte_linha_bgr, x_inicio: int, x_fim
         return False
 
 
+
+def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
+    base = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(texto_atual or ''))
+    if not base or len(base) > 2:
+        return ''
+
+    try:
+        x0 = max(0, int(min(p[0] for p in bbox)) - 4)
+        x1 = min(recorte_bgr.shape[1], int(max(p[0] for p in bbox)) + 42)
+        roi = recorte_bgr[:, x0:x1]
+        if roi.size == 0:
+            return ''
+
+        itens = reader.readtext(
+            roi,
+            detail=1,
+            width_ths=0.15,
+            height_ths=0.5,
+            text_threshold=0.25,
+            low_text=0.15,
+            link_threshold=0.15,
+        )
+        if not itens:
+            return ''
+
+        itens.sort(key=lambda item: item[0][0][0])
+        bruto = ''.join((t or '').strip() for _, t, _ in itens if (t or '').strip())
+        palavra = re.sub(r'[^A-Za-zÀ-ÿ]', '', bruto)
+
+        if (
+            len(palavra) > len(base)
+            and len(palavra) <= 15
+            and palavra.lower().startswith(base.lower())
+        ):
+            return palavra
+    except Exception:
+        pass
+
+    return ''
+
+
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
     vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
@@ -1655,6 +1697,21 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     # evidência visual dos pontos restantes.
     _reticencias_v188 = False
     _ultima_txt_v188 = str(palavras[-1][1] or "").strip()
+
+    _base_final_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', _ultima_txt_v188)
+    if _ultima_txt_v188.endswith("...") and len(_base_final_v193) <= 2:
+        _rec_v193 = _recuperar_palavra_final_antes_reticencias(
+            reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
+        )
+        if _rec_v193:
+            partes[-1] = _rec_v193 + "..."
+            _ultima_txt_v188 = partes[-1]
+            print(
+                f"[OCR-DEBUG] palavra final recuperada antes de reticências: "
+                f"{palavras[-1][1]!r} -> {partes[-1]!r}",
+                flush=True,
+            )
+
     _x_lim_reticencias_v188 = min(
         _recorte_ultima_linha.shape[1],
         _x_dir_ultima + max(28, int(_recorte_ultima_linha.shape[0] * 1.8)),
@@ -1695,8 +1752,14 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             _x_lim_reticencias_v188,
         )
     ):
-        # Remove apenas pontuação terminal que pode ser confusão do OCR
-        # e reconstrói a reticência completa.
+        _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
+        if len(_base_pre_ret_v193) <= 2:
+            _rec_v193 = _recuperar_palavra_final_antes_reticencias(
+                reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
+            )
+            if _rec_v193:
+                partes[-1] = _rec_v193
+
         partes[-1] = re.sub(
             r'[\s.,_\\-|/~]+$',
             '',

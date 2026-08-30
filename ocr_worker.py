@@ -1,24 +1,4 @@
-# V191_FIX_RE_SCOPE_OCR_QUEUE — corrige NameError de `_re_v145` nas regras V188-V190 de reticências; restaura processamento da fila OCR.
-# V190_ELLIPSIS_TRAILING_NOISE_FIX — recupera reticências quando o OCR termina em resíduos como . _ - |, desde que a geometria visual confirme os pontos.
-# V189_ELLIPSIS_VISUAL_RECOVERY_FLEXIBLE_END — permite reconstruir reticências mesmo quando OCR termina em vírgula, ponto ou sem pontuação, sempre com evidência visual.
-# V188_ELLIPSIS_VISUAL_RECOVERY — recupera reticências finais por geometria dos microcomponentes visíveis à direita da última caixa OCR.
-# V187_MULTICARD_COMMA_SEMICOLON_FIX — corrige confusão OCR de ponto e vírgula por vírgula somente em chamadas curtas do display multicard.
-# V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
-# V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
-# V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
-# V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
-# V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
-# V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
-# V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
-# V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
-# V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
-# V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
-# V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
-# V174_PRESERVE_COMPANY_CASE — nome exibido preserva capitalização do anúncio; lower() apenas para comparação e URL.\n# V173_TRIM_TRAILING_HYPHEN — remove hífen terminal visual dos sitelinks, preservando hífens internos.\n# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
 # -*- coding: utf-8 -*-
-# V161 — não divide sitelinks verticais por gaps internos entre palavras.
-# V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
-# V159 — rollback controlado para o motor pré-global da V146.
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
 """
@@ -31,7 +11,6 @@ em um processo pequeno e descartável, reduzindo o pico total de RAM.
 import os
 import base64
 
-# V146 — equilíbrio de CPU do worker OCR: 2 threads internas, 1 imagem por vez.
 # IMPORTANTE: estas variáveis precisam ser definidas ANTES de numpy/cv2/torch/easyocr.
 # Usamos atribuição direta (e não setdefault) para impedir que valores herdados
 # do ambiente liberem múltiplas threads e provoquem picos de CPU no Streamlit.
@@ -1231,7 +1210,6 @@ def _normalizar_artigo_os_em_descricao_v175(texto):
     )
 
 
-
 def _corrigir_seguraça_v177(texto):
     """
     Corrige erro OCR recorrente:
@@ -1288,9 +1266,7 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         return _m.group(0)
     texto = re.sub('([.!?])\\s+([A-Za-zÀ-ÿ])\\s+([A-Za-zÀ-ÿ]{2,})\\b', _remover_inicial_duplicada_pos_frase, texto)
 
-    # V143 — ruído OCR observado em anúncio FunBuyNet:
     # "esportes e f festivais." quando a imagem contém "esportes e festivais."
-    # A correção é deliberadamente estreita: só remove um "f" isolado
     # imediatamente entre a conjunção "e" e "festival/festivais".
     def _remover_f_fantasma_antes_festival(_m):
         print(
@@ -1311,12 +1287,10 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         texto = re.sub('(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])', '', texto)
     texto = _corrigir_o_isolado(texto)
 
-    # V144 — hífen solto no FINAL da banda é separador visual, não texto.
     # Ex.: "Turnê Show do Cabaré 2026 -" -> "Turnê Show do Cabaré 2026".
     # Hífens internos permanecem intactos, inclusive "On-Line".
     texto = re.sub(r'\\s+-+\\s*$', '', texto)
 
-    # V145 — pontuação duplicada no FINAL do texto.
     texto = re.sub(r'\\.(?:\\s*[,;.]\\s*)+$', '.', texto)
     texto = re.sub(r'[,;](?:\\s*\\.\\s*)+$', '.', texto)
     texto = re.sub(r',(?:\\s*,\\s*)+$', ',', texto)
@@ -1676,7 +1650,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _x_lim_busca_hifen_final = min(_recorte_ultima_linha.shape[1], _x_dir_ultima + _LARGURA_MAX_VAO_GLIFO)
     _hifen_final_recuperado = False
 
-    # V188 — se o OCR já terminou a última palavra com "." mas há dois
     # microcomponentes adicionais alinhados logo à direita, reconstruímos "...".
     # Isso preserva pontos finais normais, porque a mudança só ocorre com
     # evidência visual dos pontos restantes.
@@ -1686,11 +1659,9 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         _recorte_ultima_linha.shape[1],
         _x_dir_ultima + max(28, int(_recorte_ultima_linha.shape[0] * 1.8)),
     )
-    # V189 — amplia a recuperação visual:
     # o OCR pode interpretar o primeiro ponto das reticências como ".", ","
     # ou simplesmente não capturá-lo. A decisão continua sendo VISUAL:
     # só corrigimos quando os microcomponentes à direita confirmam reticências.
-    # V190 — além de ".", "," ou ausência de pontuação, o OCR às vezes
     # transforma os últimos pontos em pequenos resíduos gráficos como "_", "-",
     # "|" ou combinações deles. Consideramos esse final compatível SOMENTE
     # para a recuperação visual de reticências.
@@ -2569,7 +2540,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         l['itens'].sort(key=lambda c:c['x0']); l['texto']=_limpar_pontuacao_ocr(' '.join(c['texto'] for c in l['itens']).strip())
     rx=_re_v145.compile(r'^(?:abrir|acessar(?: o site)?|acesse(?: o site)?|saiba mais|compre agora|comprar agora|ver mais|conferir|comprar|reservar)$',_re_v145.I)
 
-    # V183 — DISPLAY MULTICARD / GRADE DE CRIATIVOS
     #
     # Alguns anúncios do Google exibem vários cards em grade. Cada card tem:
     #   [ IMAGEM / ARTE COM TEXTO INTERNO ]
@@ -2581,11 +2551,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     # somente o bloco de texto imediatamente acima dele, na MESMA coluna.
     #
     # Exemplo:
-    #   Não Deixei Seu Momento Passar        [Compre Agora]
-    #   Volte Na Buy E Mude Seu Dia          [Compre Agora]
-    #   Volte Agora E Pegue Seu Lugar        [Compre Agora]
-    #   Falta Só Alguns Cliques, Volta Vai.  [Compre Agora]
-    #   Ele Tá No Site Esperando Você        [Compre Agora]
     #
     # Se todos os CTAs forem iguais, retornamos apenas UM CTA consolidado.
     def _detectar_multicard_externo_v183():
@@ -2749,8 +2714,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     ' '.join(_l['texto'] for _l in _bloco_v183).strip()
                 )
 
-                # V187 — EasyOCR pode confundir vírgula com ponto e vírgula
-                # em headlines curtas de cards. Limitamos a correção SOMENTE
                 # ao multicard e somente a chamadas curtas, para não alterar
                 # pontuação válida de descrições/títulos de outros layouts.
                 #
@@ -2811,7 +2774,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             # - titulo mantém todas as chamadas visíveis para interfaces antigas;
             # - campo `chamadas` preserva a estrutura correta para evolução da UI;
             # - sitelinks NÃO é usado, porque essas chamadas não são sitelinks.
-            # V185 — não inserir HTML dentro do dado textual.
             # O renderer da aplicação escapa o conteúdo do título, portanto <hr>
             # vira texto literal. Mantemos as chamadas estruturadas no campo
             # `chamadas` e usamos quebra de linha no fallback textual.
@@ -2881,7 +2843,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         uteis.append(l)
     if not cta or not uteis: return None
 
-    # V179 — recuperação localizada do bloco textual SUPERIOR.
     #
     # Alguns Displays verticais têm texto grande sobre fundo claro no topo e
     # uma arte/imagem com texto embutido mais abaixo. Em certas leituras o OCR
@@ -2891,7 +2852,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     #
     # Nessa situação fazemos UMA releitura somente do topo (72% da altura),
     # ampliada e com contraste local. Não repetimos OCR da peça inteira.
-    # V181 — detecta dinamicamente a separação entre o bloco textual e a mídia.
     #
     # Não usamos mais 38,5%/42% fixos: peças do mesmo formato podem ter títulos
     # e descrições muito mais altos. Procuramos a maior faixa horizontal quase
@@ -2976,7 +2936,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     )
                 ) if _rs_v181 > _b0_v181 else 0.0
 
-                # V182 — um espaço entre título e descrição também pode ser
                 # grande, mas abaixo dele há TEXTO sobre fundo liso: alternam
                 # linhas muito ativas e linhas quase vazias. Uma foto/arte, ao
                 # contrário, mantém complexidade visual em praticamente toda a
@@ -3132,7 +3091,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     cab = empresa
                     continue
 
-                # V181 — proteção dura contra OCR interno da mídia:
                 # só entra conteúdo acima do divisor detectado na própria peça.
                 if float(_l_v179['yc']) < (_limite_texto_v181 - 2.0):
                     _uteis_top_v179.append(_l_v179)
@@ -3191,7 +3149,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                 flush=True,
             )
 
-    # V181 — trava estrutural dinâmica. Qualquer linha abaixo do divisor da
     # mídia é removida antes da classificação. Se não sobrar texto estrutural,
     # este detector abandona o caso em vez de usar texto interno da imagem.
     uteis = [
@@ -3207,11 +3164,9 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         )
         return None
 
-    # V178/V179/V180 — o título de Display vertical pode ocupar várias linhas grandes.
     # A implementação antiga pegava apenas UMA linha (a maior), fazendo:
     #   "Ingressos"                         -> título
     #   "Brasil x Marrocos ..."             -> descrição
-    # Agora usamos a linha de maior tipografia como âncora e agregamos linhas
     # vizinhas com tipografia compatível, formando um bloco visual de título.
     med=float(_np_v145.median([l['altura'] for l in uteis]))
     cand=[l for l in uteis if l['altura'] >= max(med*1.25,med+3)]
@@ -3224,10 +3179,8 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     # Expande para cima/baixo enquanto a linha tiver altura de título e
     # proximidade vertical plausível. Isso é geométrico, sem depender do texto.
-    # V182 — EasyOCR pode devolver alturas bem diferentes para linhas do
     # MESMO título (principalmente palavras com ascendentes/descendentes ou
     # linhas mais curtas). O limiar antigo 1.18×mediana / 0.58×âncora era
-    # agressivo e quebrava, por exemplo, "Compre / Agora Seu / Ingresso".
     # Continuamos separando do corpo menor, mas toleramos variação tipográfica.
     lim_altura=max(med*1.00, altura_titulo_ref*0.48)
 
@@ -3251,9 +3204,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
-    # V186 — correção de "title/body cliff".
     #
-    # Em alguns displays, a tolerância tipográfica da V182 faz a primeira
     # linha do corpo entrar no título. Isso acontece quando:
     #   - o título é grande e curto, ocupando várias linhas;
     #   - a descrição começa logo abaixo, com fonte claramente menor;
@@ -3333,7 +3284,6 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     linhas_titulo=uteis[idx_ini:idx_fim+1]
     titulo=_limpar_pontuacao_ocr(' '.join(l['texto'] for l in linhas_titulo).strip())
 
-    # V178 — descrição termina antes da área de mídia.
     # Em Display vertical, OCR pode encontrar números/textos incidentais dentro
     # da foto (camisa "10", placas, banners etc.). Uma quebra vertical muito
     # maior que o espaçamento das linhas da descrição indica que a mídia começou.
@@ -3538,7 +3488,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
         return None
     _conteudo.sort(key=lambda l: l['yc'])
 
-    # V169 — split-card por BLOCOS VISUAIS, não por "maior altura".
     #
     # O primeiro bloco textual útil após avatar/logo é o título. Ele só recebe
     # uma linha seguinte como continuação quando essa linha está visualmente
@@ -3585,7 +3534,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     _descricao = _normalizar_artigo_os_em_descricao_v175(_descricao)
 
-    # V172 — se o OCR colar o texto do botão no fim da última linha da
     # descrição, separa o CTA antes de montar o resultado. Esta regra roda
     # somente no layout split-card e somente no FINAL da descrição.
     #
@@ -3839,7 +3787,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 idx += 1
                 continue
         if len(_grupos_botoes) >= 2:
-            # V171 — geometria sozinha NÃO transforma uma banda em fileira de botões.
             # Primeiro lemos os mesmos grupos que a regra antiga já lia e exigimos
             # conteúdo textual real. Bordas/divisores como "| |", "_", "~", etc.
             # não podem fechar o título/descrição nem criar CTA/sitelink.
@@ -3972,7 +3919,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             if str(empresa or '').strip().lower().replace(' ', '') == 'ticketswap' and _partes_relacionados:
                 _partes_relacionados = [re.sub('(?i)^reg[ií]strate\\s*[,;:]\\s*entra$', 'Regístrate o entra', _p.strip()) for _p in _partes_relacionados]
             if _portao_seguranca_relacionados and (not _relacionados_split_textual_confiavel):
-                # V161 — banda com separador ANTES normalmente é um sitelink
                 # vertical individual. Sem separador textual explícito dentro
                 # da própria linha, NÃO usar gaps entre palavras para inventar
                 # dois links.
@@ -3994,7 +3940,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
 
                 if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
-            # V161 — proteção final para sitelink vertical individual.
             _sep_explicito_v161b = bool(re.search(r'[|·•]', texto or ''))
             _hifen_final_v161b = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
             if (
@@ -4012,7 +3957,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                     pares.append(par_atual)
                     par_atual = None
 
-                # V170 — cada link horizontal vira um objeto próprio.
                 # Nunca grava '<hr>' dentro do campo titulo.
                 for _termo_rel in _partes_relacionados:
                     _termo_rel = str(_termo_rel or '').strip()
@@ -4348,7 +4292,6 @@ def _posprocessar_google_ads_v168(resultado):
 
         resultado['sitelinks'] = _novos_sitelinks_v170
 
-        # V173 — remove somente hífen visual no FINAL do sitelink.
         # Preserva hífens internos legítimos:
         #   "On-Line" -> "On-Line"
         #   "GP Brasil - 3 Dias" -> "GP Brasil - 3 Dias"
@@ -4411,7 +4354,6 @@ def _posprocessar_google_ads_v168(resultado):
             b_prefixo = bool(re.match(r'(?i)^(?:https?://|www\.|[vwn]{2,4}[.:])', b_compacto))
 
             if (not a_prefixo) and b_prefixo:
-                # V174 — preserve exatamente a capitalização visual do nome.
                 # A versão minúscula existe somente para comparações internas;
                 # nunca é usada como texto de exibição.
                 nome_exibicao = re.sub(r'\s+', '', a).strip()
@@ -4428,7 +4370,6 @@ def _posprocessar_google_ads_v168(resultado):
 
     resultado['_parser_v168_single_pass'] = True
     return resultado
-
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):
@@ -4537,7 +4478,6 @@ def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
 _MIN_INTERVALO_OCR_SEG = 0.0
 
 
-
 def _achatar_ocr_estruturado(d: dict) -> str:
     if not d:
         return ""
@@ -4557,7 +4497,6 @@ def _achatar_ocr_estruturado(d: dict) -> str:
         else:
             linhas.append(str(sl))
     return "\n".join(linhas)
-
 
 
 def _agora_iso_worker():
@@ -4713,7 +4652,6 @@ def _processar_atividade_worker(sb, atividade: dict):
             break
 
         try:
-            # V146: heartbeat ANTES da inferência. Uma imagem pode levar mais tempo
             # que o intervalo normal do daemon, então registramos explicitamente que
             # o worker está vivo e entrou no OCR desta mídia.
             _atividade_update_worker(

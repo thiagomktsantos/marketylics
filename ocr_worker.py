@@ -1,3 +1,4 @@
+# V189_ELLIPSIS_VISUAL_RECOVERY_FLEXIBLE_END — permite reconstruir reticências mesmo quando OCR termina em vírgula, ponto ou sem pontuação, sempre com evidência visual.
 # V188_ELLIPSIS_VISUAL_RECOVERY — recupera reticências finais por geometria dos microcomponentes visíveis à direita da última caixa OCR.
 # V187_MULTICARD_COMMA_SEMICOLON_FIX — corrige confusão OCR de ponto e vírgula por vírgula somente em chamadas curtas do display multicard.
 # V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
@@ -1683,9 +1684,22 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         _recorte_ultima_linha.shape[1],
         _x_dir_ultima + max(28, int(_recorte_ultima_linha.shape[0] * 1.8)),
     )
+    # V189 — amplia a recuperação visual:
+    # o OCR pode interpretar o primeiro ponto das reticências como ".", ","
+    # ou simplesmente não capturá-lo. A decisão continua sendo VISUAL:
+    # só corrigimos quando os microcomponentes à direita confirmam reticências.
+    _final_compativel_reticencias_v189 = (
+        not _ultima_txt_v188.endswith("...")
+        and bool(_ultima_txt_v188)
+        and (
+            _ultima_txt_v188[-1].isalnum()
+            or _ultima_txt_v188.endswith(".")
+            or _ultima_txt_v188.endswith(",")
+        )
+    )
+
     if (
-        _ultima_txt_v188.endswith(".")
-        and not _ultima_txt_v188.endswith("...")
+        _final_compativel_reticencias_v189
         and _x_lim_reticencias_v188 > _x_dir_ultima + 3
         and _detectar_reticencias_apos_bbox_v188(
             _recorte_ultima_linha,
@@ -1693,11 +1707,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             _x_lim_reticencias_v188,
         )
     ):
-        # `partes[-1]` corresponde à última palavra reconhecida.
-        partes[-1] = str(partes[-1]).rstrip(".") + "..."
+        # Remove apenas pontuação terminal que pode ser confusão do OCR
+        # e reconstrói a reticência completa.
+        partes[-1] = str(partes[-1]).rstrip(".,") + "..."
         _reticencias_v188 = True
         print(
-            f"[OCR-DEBUG] V188 reticências recuperadas visualmente: "
+            f"[OCR-DEBUG] V189 reticências recuperadas visualmente: "
             f"{_ultima_txt_v188!r} -> {partes[-1]!r}",
             flush=True,
         )

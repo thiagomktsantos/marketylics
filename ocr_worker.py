@@ -1,3 +1,4 @@
+# V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
 # V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
 # V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
 # V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
@@ -3068,6 +3069,85 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
+    # V186 — correção de "title/body cliff".
+    #
+    # Em alguns displays, a tolerância tipográfica da V182 faz a primeira
+    # linha do corpo entrar no título. Isso acontece quando:
+    #   - o título é grande e curto, ocupando várias linhas;
+    #   - a descrição começa logo abaixo, com fonte claramente menor;
+    #   - a primeira linha da descrição é bem mais densa em palavras.
+    #
+    # Não usamos texto específico. A quebra só ocorre quando há, AO MESMO TEMPO:
+    #   1) queda forte de altura em relação ao headline;
+    #   2) aumento claro de densidade textual;
+    #   3) já existem pelo menos 2 linhas anteriores com perfil de headline.
+    #
+    # Dessa forma preservamos títulos multilinha legítimos em que o EasyOCR
+    # varia bastante a altura, mas não muda o "ritmo" do texto.
+    if idx_fim > idx_ini:
+        _bloco_pre_v186 = uteis[idx_ini:idx_fim+1]
+        _altura_max_v186 = max(float(l['altura']) for l in _bloco_pre_v186)
+
+        _novo_fim_v186 = idx_fim
+        for _rel_v186 in range(2, len(_bloco_pre_v186)):
+            _linha_v186 = _bloco_pre_v186[_rel_v186]
+            _anteriores_v186 = _bloco_pre_v186[:_rel_v186]
+
+            _h_v186 = float(_linha_v186['altura'])
+            _ratio_h_v186 = (
+                _h_v186 / _altura_max_v186
+                if _altura_max_v186 > 0
+                else 1.0
+            )
+
+            _palavras_v186 = [
+                p for p in _re_v145.findall(
+                    r"[A-Za-zÀ-ÿ0-9]+",
+                    str(_linha_v186.get('texto') or ''),
+                )
+                if p
+            ]
+            _n_palavras_v186 = len(_palavras_v186)
+
+            _contagens_prev_v186 = []
+            for _lp_v186 in _anteriores_v186:
+                _pp_v186 = _re_v145.findall(
+                    r"[A-Za-zÀ-ÿ0-9]+",
+                    str(_lp_v186.get('texto') or ''),
+                )
+                _contagens_prev_v186.append(len(_pp_v186))
+
+            _media_prev_v186 = (
+                sum(_contagens_prev_v186) / len(_contagens_prev_v186)
+                if _contagens_prev_v186
+                else 99.0
+            )
+
+            _queda_tipografica_v186 = _ratio_h_v186 <= 0.60
+            _linha_densa_v186 = (
+                _n_palavras_v186 >= 5
+                and _n_palavras_v186 >= (_media_prev_v186 * 1.65)
+            )
+            _headline_prev_curto_v186 = _media_prev_v186 <= 4.0
+
+            if (
+                _queda_tipografica_v186
+                and _linha_densa_v186
+                and _headline_prev_curto_v186
+            ):
+                _novo_fim_v186 = idx_ini + _rel_v186 - 1
+                print(
+                    "[OCR-DEBUG] display-vertical-v186: quebra título/descrição "
+                    f"por queda tipográfica em rel={_rel_v186} "
+                    f"ratio_altura={_ratio_h_v186:.2f} "
+                    f"palavras_linha={_n_palavras_v186} "
+                    f"media_palavras_headline={_media_prev_v186:.2f}",
+                    flush=True,
+                )
+                break
+
+        idx_fim = _novo_fim_v186
+
     linhas_titulo=uteis[idx_ini:idx_fim+1]
     titulo=_limpar_pontuacao_ocr(' '.join(l['texto'] for l in linhas_titulo).strip())
 
@@ -3106,10 +3186,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v182',
+        'classe':'display-vertical-v186',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V182 → Display vertical: divisor texto/mídia exige faixa vazia seguida de complexidade visual contínua (evita confundir espaço entre título e descrição com início da mídia); título multilinha com tolerância de altura; CTA separado',
+        'decisao':'V186 → Display vertical: preserva divisor mídia da V182 e adiciona quebra título/descrição por queda tipográfica + aumento de densidade textual; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0
@@ -3123,7 +3203,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         'cta_subtitulo':'',
         'sitelinks':[],
         '_debug_bandas':dbg,
-        '_layout_ocr':'display_vertical_v182'
+        '_layout_ocr':'display_vertical_v186'
     }
 
 

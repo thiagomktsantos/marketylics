@@ -1,4 +1,4 @@
-# V193 — recupera palavra final truncada antes de reticências.
+# V194 — recuperação reforçada da palavra final antes de reticências.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1054,43 +1054,75 @@ def _detectar_reticencias_apos_bbox_v188(recorte_linha_bgr, x_inicio: int, x_fim
 
 def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
     base = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(texto_atual or ''))
-    if not base or len(base) > 2:
+    if not base or len(base) > 3:
         return ''
 
     try:
-        x0 = max(0, int(min(p[0] for p in bbox)) - 4)
-        x1 = min(recorte_bgr.shape[1], int(max(p[0] for p in bbox)) + 42)
+        x0 = max(0, int(min(p[0] for p in bbox)) - 10)
+        x1 = min(recorte_bgr.shape[1], int(max(p[0] for p in bbox)) + 80)
         roi = recorte_bgr[:, x0:x1]
         if roi.size == 0:
             return ''
 
-        itens = reader.readtext(
+        variantes = [roi]
+
+        escala = 2.2
+        up = cv2.resize(
             roi,
-            detail=1,
-            width_ths=0.15,
-            height_ths=0.5,
-            text_threshold=0.25,
-            low_text=0.15,
-            link_threshold=0.15,
+            None,
+            fx=escala,
+            fy=escala,
+            interpolation=cv2.INTER_CUBIC,
         )
-        if not itens:
-            return ''
+        variantes.append(up)
 
-        itens.sort(key=lambda item: item[0][0][0])
-        bruto = ''.join((t or '').strip() for _, t, _ in itens if (t or '').strip())
-        palavra = re.sub(r'[^A-Za-zÀ-ÿ]', '', bruto)
+        gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4)).apply(gray)
+        variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
 
-        if (
-            len(palavra) > len(base)
-            and len(palavra) <= 15
-            and palavra.lower().startswith(base.lower())
-        ):
-            return palavra
+        candidatos = []
+        for img in variantes:
+            itens = reader.readtext(
+                img,
+                detail=1,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
+                width_ths=0.05,
+                height_ths=0.55,
+                text_threshold=0.18,
+                low_text=0.10,
+                link_threshold=0.12,
+                contrast_ths=0.05,
+                adjust_contrast=0.7,
+            )
+            itens.sort(key=lambda item: min(p[0] for p in item[0]))
+
+            for _, txt, conf in itens:
+                palavra = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(txt or ''))
+                if (
+                    len(palavra) > len(base)
+                    and len(palavra) <= 18
+                    and palavra.lower().startswith(base.lower())
+                ):
+                    candidatos.append((float(conf or 0), palavra))
+
+            bruto = ''.join(
+                re.sub(r'[^A-Za-zÀ-ÿ]', '', str(txt or ''))
+                for _, txt, _ in itens
+            )
+            if (
+                len(bruto) > len(base)
+                and len(bruto) <= 18
+                and bruto.lower().startswith(base.lower())
+            ):
+                candidatos.append((0.25, bruto))
+
+        if candidatos:
+            candidatos.sort(key=lambda x: (len(x[1]), x[0]), reverse=True)
+            return candidatos[0][1]
     except Exception:
         pass
 
     return ''
-
 
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um

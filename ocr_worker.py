@@ -1,4 +1,4 @@
-# V195 — completa a palavra final antes de aplicar reticências.
+# V196 — recupera palavra(s) omitida(s) antes de reticências.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1141,6 +1141,82 @@ def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_
 
     return ''
 
+
+def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
+    atual = re.sub(r'\.{3}$', '', str(texto_atual or '')).strip()
+    if not atual:
+        return ''
+
+    try:
+        x0 = max(0, int(min(p[0] for p in bbox)) - 16)
+        roi = recorte_bgr[:, x0:]
+        if roi.size == 0:
+            return ''
+
+        candidatos = []
+
+        for escala in (2.0, 3.0):
+            up = cv2.resize(
+                roi, None, fx=escala, fy=escala,
+                interpolation=cv2.INTER_CUBIC
+            )
+
+            imgs = [up]
+            gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(
+                clipLimit=2.2, tileGridSize=(4, 4)
+            ).apply(gray)
+            imgs.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+            for img in imgs:
+                itens = reader.readtext(
+                    img,
+                    detail=1,
+                    decoder='beamsearch',
+                    beamWidth=5,
+                    allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
+                    width_ths=0.10,
+                    height_ths=0.60,
+                    text_threshold=0.15,
+                    low_text=0.08,
+                    link_threshold=0.10,
+                    contrast_ths=0.03,
+                    adjust_contrast=0.8,
+                )
+
+                itens.sort(key=lambda item: min(p[0] for p in item[0]))
+                partes = [
+                    re.sub(r'\s+', ' ', str(txt or '')).strip()
+                    for _, txt, _ in itens
+                    if str(txt or '').strip()
+                ]
+                frase = ' '.join(partes).strip()
+                frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', '', frase)
+                frase = re.sub(r'\s+', ' ', frase).strip()
+
+                if not frase:
+                    continue
+
+                atual_norm = re.sub(r'[^A-Za-zÀ-ÿ]', '', atual).lower()
+                frase_norm = re.sub(r'[^A-Za-zÀ-ÿ]', '', frase).lower()
+
+                if (
+                    frase_norm.startswith(atual_norm)
+                    and len(frase_norm) > len(atual_norm)
+                    and len(frase) <= 40
+                ):
+                    candidatos.append(frase)
+
+        if candidatos:
+            candidatos.sort(key=lambda s: (len(s.split()), len(s)), reverse=True)
+            return candidatos[0]
+
+    except Exception:
+        pass
+
+    return ''
+
+
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
     vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
@@ -1748,18 +1824,25 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _ultima_txt_v188 = str(palavras[-1][1] or "").strip()
 
     _base_final_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', _ultima_txt_v188)
-    if _ultima_txt_v188.endswith("...") and len(_base_final_v193) <= 4:
-        _rec_v193 = _recuperar_palavra_final_antes_reticencias(
+    if _ultima_txt_v188.endswith("..."):
+        _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
             reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
         )
-        if _rec_v193:
-            partes[-1] = _rec_v193 + "..."
+        if _rec_final_v196:
+            partes[-1] = _rec_final_v196 + "..."
             _ultima_txt_v188 = partes[-1]
             print(
-                f"[OCR-DEBUG] palavra final recuperada antes de reticências: "
+                f"[OCR-DEBUG] final da linha recuperado antes de reticências: "
                 f"{palavras[-1][1]!r} -> {partes[-1]!r}",
                 flush=True,
             )
+        elif len(_base_final_v193) <= 4:
+            _rec_v193 = _recuperar_palavra_final_antes_reticencias(
+                reader, _recorte_ultima_linha, _bbox_ultima, _ultima_txt_v188
+            )
+            if _rec_v193:
+                partes[-1] = _rec_v193 + "..."
+                _ultima_txt_v188 = partes[-1]
 
     _x_lim_reticencias_v188 = min(
         _recorte_ultima_linha.shape[1],
@@ -1801,13 +1884,19 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             _x_lim_reticencias_v188,
         )
     ):
-        _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
-        if len(_base_pre_ret_v193) <= 4:
-            _rec_v193 = _recuperar_palavra_final_antes_reticencias(
-                reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
-            )
-            if _rec_v193:
-                partes[-1] = _rec_v193
+        _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
+            reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
+        )
+        if _rec_final_v196:
+            partes[-1] = _rec_final_v196
+        else:
+            _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
+            if len(_base_pre_ret_v193) <= 4:
+                _rec_v193 = _recuperar_palavra_final_antes_reticencias(
+                    reader, _recorte_ultima_linha, _bbox_ultima, str(partes[-1])
+                )
+                if _rec_v193:
+                    partes[-1] = _rec_v193
 
         partes[-1] = re.sub(
             r'[\s.,_\\-|/~]+$',

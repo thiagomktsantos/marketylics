@@ -1,3 +1,4 @@
+# V155_YOUTUBE_CC_YTDLP_PRIMARY — yt-dlp como rota principal; timedtext WEB apenas fallback; distingue ausência real de falha técnica.
 # V154_YOUTUBE_CC_COMPANY_BATCH_LOGS — CC por empresa, persistência por lote e logs detalhados por vídeo com status, método e motivo.
 # V153_YOUTUBE_CC_NOTIFICATIONS_SUPPORT — CC YouTube ganha atividade no sino, auto-check global e métricas de vídeos Google com/sem CC no Suporte.
 # V152_YOUTUBE_CC_RETRY_FALLBACK — não cacheia falha vazia de CC, permite retry real pós-standby e adiciona fallback YouTube timedtext.
@@ -1372,6 +1373,123 @@ def _texto_json3_youtube_v150(payload):
         anterior = p
     return " ".join(saida).strip()
 
+
+def _limpar_texto_legenda_v155(texto: str) -> str:
+    """Converte VTT/SRT simples em texto corrido."""
+    import re as _re_v155
+    linhas=[]
+    anterior=None
+    for ln in str(texto or "").replace("\r", "\n").split("\n"):
+        ln=ln.strip()
+        if not ln or ln.upper()=="WEBVTT" or ln.isdigit() or "-->" in ln:
+            continue
+        if ln.startswith(("NOTE", "Kind:", "Language:")):
+            continue
+        ln=_re_v155.sub(r"<[^>]+>", "", ln)
+        ln=" ".join(ln.split())
+        if ln and ln != anterior:
+            linhas.append(ln)
+            anterior=ln
+    return " ".join(linhas).strip()
+
+
+def _obter_cc_ytdlp_v155(url_video: str, video_id: str) -> dict:
+    """Rota principal de CC usando o yt-dlp já instalado no deployment."""
+    import glob as _glob_v155
+    import json as _json_v155
+    import os as _os_v155
+    import tempfile as _tempfile_v155
+
+    r={
+        "text":"", "language":"", "source":"", "video_id":video_id,
+        "url":url_video, "cc_status":"pendente", "cc_reason":"",
+        "cc_method":"yt-dlp", "http_status":None,
+    }
+    try:
+        import yt_dlp as _yt_dlp_v155
+    except Exception as exc:
+        r.update(cc_status="erro_captura", cc_reason=f"yt-dlp indisponível: {exc!r}", cc_method="yt-dlp-import")
+        print(f"[YOUTUBE-CC][YTDLP][ERRO] video_id={video_id} import={exc!r}", flush=True)
+        return r
+
+    opts={
+        "quiet":True, "no_warnings":True, "skip_download":True,
+        "noplaylist":True, "socket_timeout":25, "retries":2,
+        "extractor_retries":2,
+        "extractor_args":{"youtube":{"player_client":["android","ios","web"]}},
+    }
+    try:
+        with _yt_dlp_v155.YoutubeDL(dict(opts)) as ydl:
+            info=ydl.extract_info(url_video, download=False) or {}
+        manual=info.get("subtitles") or {}
+        auto=info.get("automatic_captions") or {}
+        print(f"[YOUTUBE-CC][YTDLP][TRACKS] video_id={video_id} manual={sorted(manual)} auto={sorted(auto)}", flush=True)
+
+        def score(lang, is_auto):
+            l=str(lang or "").lower().replace("_","-")
+            if l == "pt-br": s=0
+            elif l == "pt" or l.startswith("pt-"): s=10
+            elif l.startswith("en"): s=20
+            else: s=30
+            return s + (5 if is_auto else 0)
+
+        cands=[]
+        cands += [(score(k,False), k, False) for k in manual]
+        cands += [(score(k,True), k, True) for k in auto]
+        cands.sort(key=lambda x:x[0])
+        if not cands:
+            r.update(cc_status="sem_cc_confirmado", cc_reason="yt-dlp não encontrou faixas manuais nem automáticas.")
+            print(f"[YOUTUBE-CC][YTDLP][SEM-CC] video_id={video_id} motivo=nenhuma_faixa", flush=True)
+            return r
+
+        tentativas=[]
+        for _, lang, is_auto in cands:
+            src_cc="automatic" if is_auto else "manual"
+            try:
+                with _tempfile_v155.TemporaryDirectory(prefix="ytcc_") as tmp:
+                    dlopts=dict(opts)
+                    dlopts.update({
+                        "outtmpl":_os_v155.path.join(tmp,"%(id)s.%(ext)s"),
+                        "writesubtitles":not is_auto,
+                        "writeautomaticsub":is_auto,
+                        "subtitleslangs":[lang],
+                        "subtitlesformat":"json3/vtt/srv1/best",
+                    })
+                    with _yt_dlp_v155.YoutubeDL(dlopts) as ydl2:
+                        ydl2.download([url_video])
+                    files=[p for p in _glob_v155.glob(_os_v155.path.join(tmp,"*")) if _os_v155.path.isfile(p)]
+                    texto=""
+                    arq=""
+                    for p in files:
+                        raw=Path(p).read_text(encoding="utf-8",errors="ignore")
+                        if p.lower().endswith(".json3"):
+                            try: texto=_texto_json3_youtube_v150(_json_v155.loads(raw))
+                            except Exception: texto=""
+                        else:
+                            texto=_limpar_texto_legenda_v155(raw)
+                        if texto.strip():
+                            arq=_os_v155.path.basename(p)
+                            break
+                    if texto.strip():
+                        r.update(text=texto.strip(), language=lang, source=src_cc,
+                                 cc_status="com_cc", cc_reason=f"CC capturado pelo yt-dlp ({src_cc}).", cc_method="yt-dlp")
+                        print(f"[YOUTUBE-CC][YTDLP][OK] video_id={video_id} lang={lang} source={src_cc} arquivo={arq} chars={len(texto)}", flush=True)
+                        return r
+                    tentativas.append(f"{lang}:{src_cc}:vazio")
+                    print(f"[YOUTUBE-CC][YTDLP][VAZIO] video_id={video_id} lang={lang} source={src_cc} files={[ _os_v155.path.basename(p) for p in files ]}", flush=True)
+            except Exception as exc:
+                tentativas.append(f"{lang}:{src_cc}:{type(exc).__name__}")
+                print(f"[YOUTUBE-CC][YTDLP][ERRO-FAIXA] video_id={video_id} lang={lang} source={src_cc} erro={exc!r}", flush=True)
+
+        r.update(cc_status="erro_captura",
+                 cc_reason="yt-dlp encontrou faixa(s), mas não conseguiu baixar o conteúdo: " + "; ".join(tentativas[:12]),
+                 language=cands[0][1], source="automatic" if cands[0][2] else "manual")
+        return r
+    except Exception as exc:
+        r.update(cc_status="erro_captura", cc_reason=f"Falha do yt-dlp ao consultar vídeo: {exc!r}")
+        print(f"[YOUTUBE-CC][YTDLP][ERRO] video_id={video_id} erro={exc!r}", flush=True)
+        return r
+
 def obter_cc_youtube_v150(url_video: str) -> dict:
     """Obtém CC/legenda já disponibilizada pelo YouTube.
 
@@ -1406,12 +1524,24 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
         "source": "",
         "video_id": video_id,
         "url": url_video,
-        # V154 — motivo técnico/auditável do resultado de CC.
+        # V154/V155 — motivo técnico/auditável do resultado de CC.
         "cc_status": "pendente",
         "cc_reason": "",
         "cc_method": "",
         "http_status": None,
     }
+
+    # V155 — rota principal via yt-dlp/InnerTube; WEB/timedtext fica fallback.
+    _diag_ytdlp_v155 = _obter_cc_ytdlp_v155(url_video, video_id)
+    if str(_diag_ytdlp_v155.get("text") or "").strip():
+        result.update(_diag_ytdlp_v155)
+        if _YOUTUBE_CC_LOCK_V150:
+            with _YOUTUBE_CC_LOCK_V150:
+                _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+        else:
+            _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
+        print(f"[YOUTUBE-CC][RESULTADO] video_id={video_id} status=com_cc metodo=yt-dlp idioma={result.get('language') or '-'} origem={result.get('source') or '-'} motivo={result.get('cc_reason') or '-'}", flush=True)
+        return result
 
     try:
         watch_url = f"https://www.youtube.com/watch?v={video_id}&hl=pt-BR"
@@ -1665,12 +1795,28 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
         else:
             _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
 
-    if not str(result.get("text") or "").strip() and result.get("cc_status") == "pendente":
-        result.update({
-            "cc_status": "sem_cc",
-            "cc_reason": "Nenhuma legenda/CC foi retornada pelas estratégias disponíveis.",
-            "cc_method": result.get("cc_method") or "player+timedtext",
-        })
+    if not str(result.get("text") or "").strip():
+        _st_ytdlp_v155 = str((_diag_ytdlp_v155 or {}).get("cc_status") or "")
+        if _st_ytdlp_v155 == "erro_captura":
+            result.update({
+                "cc_status":"erro_captura",
+                "cc_reason":(_diag_ytdlp_v155 or {}).get("cc_reason") or "Falha técnica na captura do CC.",
+                "cc_method":"yt-dlp+legacy",
+                "language":result.get("language") or (_diag_ytdlp_v155 or {}).get("language") or "",
+                "source":result.get("source") or (_diag_ytdlp_v155 or {}).get("source") or "",
+            })
+        elif _st_ytdlp_v155 == "sem_cc_confirmado":
+            result.update({
+                "cc_status":"sem_cc_confirmado",
+                "cc_reason":"yt-dlp não encontrou faixas manuais/automáticas e os fallbacks também não retornaram CC.",
+                "cc_method":"yt-dlp+legacy",
+            })
+        elif result.get("cc_status") == "pendente":
+            result.update({
+                "cc_status":"erro_captura",
+                "cc_reason":"Nenhuma estratégia retornou texto, sem confirmação segura de ausência de CC.",
+                "cc_method":result.get("cc_method") or "yt-dlp+legacy",
+            })
 
     print(
         f"[YOUTUBE-CC][RESULTADO] video_id={video_id} "

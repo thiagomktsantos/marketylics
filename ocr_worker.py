@@ -1,4 +1,4 @@
-# V204 — separação de título/corpo por espaço branco entre bordas das linhas.
+# V205 — Display vertical separa título/descrição pelas faixas de pixels da imagem.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -3176,67 +3176,95 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
-    # Separa headline/corpo pelo espaço branco REAL entre as bordas das linhas.
-    # Distância entre centros é enganosa quando o próprio título usa fonte muito grande.
-    if idx_fim >= idx_ini + 2:
-        _bloco_v204 = uteis[idx_ini:idx_fim + 1]
-        _hmax_v204 = max(float(l['altura']) for l in _bloco_v204)
+    # Separa título/corpo pelas faixas de pixels da imagem, não pelas caixas OCR.
+    try:
+        _gray_v205 = _cv2_v181.cvtColor(img_bgr, _cv2_v181.COLOR_BGR2GRAY)
+        _roi_v205 = _gray_v205[:, max(0, int(w * 0.03)):min(w, int(w * 0.97))]
+        _std_v205 = _roi_v205.std(axis=1)
 
-        for _rel_v204 in range(2, len(_bloco_v204)):
-            _cur_v204 = _bloco_v204[_rel_v204]
-            _prev_v204 = _bloco_v204[_rel_v204 - 1]
+        _thr_v205 = max(8.0, float(_np_v145.percentile(_std_v205, 55)) * 0.45)
+        _ativos_v205 = _np_v145.where(_std_v205 > _thr_v205)[0]
 
-            _hcur_v204 = float(_cur_v204['altura'])
-            _hprev_v204 = float(_prev_v204['altura'])
+        _runs_v205 = []
+        if len(_ativos_v205):
+            _s_v205 = _p_v205 = int(_ativos_v205[0])
+            for _yy_v205 in _ativos_v205[1:]:
+                _yy_v205 = int(_yy_v205)
+                if _yy_v205 > _p_v205 + 1:
+                    if _p_v205 - _s_v205 + 1 >= 4:
+                        _runs_v205.append((_s_v205, _p_v205))
+                    _s_v205 = _yy_v205
+                _p_v205 = _yy_v205
+            if _p_v205 - _s_v205 + 1 >= 4:
+                _runs_v205.append((_s_v205, _p_v205))
 
-            _ratio_v204 = (
-                _hcur_v204 / _hmax_v204
-                if _hmax_v204 > 0 else 1.0
+        _runs_texto_v205 = [
+            r for r in _runs_v205
+            if r[1] < (_limite_texto_v181 - 2)
+            and r[1] > h * 0.07
+        ]
+
+        if len(_runs_texto_v205) >= 3:
+            _yc_anchor_v205 = float(tl['yc'])
+            _idx_run_anchor_v205 = min(
+                range(len(_runs_texto_v205)),
+                key=lambda i: min(
+                    abs(_yc_anchor_v205 - _runs_texto_v205[i][0]),
+                    abs(_yc_anchor_v205 - _runs_texto_v205[i][1]),
+                    0.0 if _runs_texto_v205[i][0] <= _yc_anchor_v205 <= _runs_texto_v205[i][1] else 9999.0,
+                ),
             )
 
-            _top_cur_v204 = float(_cur_v204['yc']) - (_hcur_v204 / 2.0)
-            _bottom_prev_v204 = float(_prev_v204['yc']) + (_hprev_v204 / 2.0)
-            _edge_gap_v204 = max(0.0, _top_cur_v204 - _bottom_prev_v204)
+            _run_anchor_v205 = _runs_texto_v205[_idx_run_anchor_v205]
+            _h_anchor_v205 = float(_run_anchor_v205[1] - _run_anchor_v205[0] + 1)
 
-            _edge_gaps_head_v204 = []
-            for _i_v204 in range(1, _rel_v204):
-                _a_v204 = _bloco_v204[_i_v204 - 1]
-                _b_v204 = _bloco_v204[_i_v204]
+            _fim_head_v205 = _idx_run_anchor_v205
+            for _j_v205 in range(_idx_run_anchor_v205 + 1, len(_runs_texto_v205)):
+                _r_v205 = _runs_texto_v205[_j_v205]
+                _h_v205 = float(_r_v205[1] - _r_v205[0] + 1)
 
-                _bottom_a_v204 = (
-                    float(_a_v204['yc']) + float(_a_v204['altura']) / 2.0
-                )
-                _top_b_v204 = (
-                    float(_b_v204['yc']) - float(_b_v204['altura']) / 2.0
-                )
-                _eg_v204 = max(0.0, _top_b_v204 - _bottom_a_v204)
-                _edge_gaps_head_v204.append(_eg_v204)
-
-            _edge_head_v204 = (
-                float(_np_v145.median(_edge_gaps_head_v204))
-                if _edge_gaps_head_v204
-                else 0.0
-            )
-
-            _queda_v204 = _ratio_v204 <= 0.72
-            _salto_borda_v204 = (
-                _edge_gap_v204 >= max(
-                    16.0,
-                    _edge_head_v204 * 1.55,
-                    _hprev_v204 * 0.24,
-                )
-            )
-
-            if _queda_v204 and _salto_borda_v204:
-                idx_fim = idx_ini + _rel_v204 - 1
-                print(
-                    "[OCR-DEBUG] display-vertical-v204: quebra título/descrição "
-                    f"ratio_altura={_ratio_v204:.2f} "
-                    f"edge_gap={_edge_gap_v204:.1f} "
-                    f"edge_gap_head={_edge_head_v204:.1f}",
-                    flush=True,
-                )
+                if _h_v205 >= _h_anchor_v205 * 0.68:
+                    _fim_head_v205 = _j_v205
+                    continue
                 break
+
+            _prox_v205 = _fim_head_v205 + 1
+            if (
+                _fim_head_v205 > _idx_run_anchor_v205
+                and _prox_v205 < len(_runs_texto_v205)
+            ):
+                _r_head_v205 = _runs_texto_v205[_fim_head_v205]
+                _r_body_v205 = _runs_texto_v205[_prox_v205]
+                _h_body_v205 = float(_r_body_v205[1] - _r_body_v205[0] + 1)
+                _gap_v205 = float(_r_body_v205[0] - _r_head_v205[1] - 1)
+
+                if (
+                    _h_body_v205 <= _h_anchor_v205 * 0.67
+                    and _gap_v205 >= max(18.0, _h_anchor_v205 * 0.35)
+                ):
+                    _cut_v205 = (
+                        float(_r_head_v205[1]) + float(_r_body_v205[0])
+                    ) / 2.0
+
+                    _idxs_head_v205 = [
+                        i for i, l in enumerate(uteis)
+                        if idx_ini <= i <= idx_fim
+                        and float(l['yc']) < _cut_v205
+                    ]
+
+                    if len(_idxs_head_v205) >= 2:
+                        idx_fim = max(_idxs_head_v205)
+                        print(
+                            "[OCR-DEBUG] display-vertical-v205: "
+                            f"pixel_bands cut={_cut_v205:.1f} "
+                            f"title_run={_r_head_v205} body_run={_r_body_v205}",
+                            flush=True,
+                        )
+    except Exception as _exc_v205:
+        print(
+            f"[OCR-DEBUG] display-vertical-v205 pixel bands falhou: {_exc_v205!r}",
+            flush=True,
+        )
 
     # V186 — correção de "title/body cliff".
     #
@@ -3355,10 +3383,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v204',
+        'classe':'display-vertical-v205',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V204 → Display vertical: separa título/corpo por queda tipográfica + espaço branco entre bordas; preserva V186 como fallback; CTA separado',
+        'decisao':'V205 → Display vertical: separa título/corpo por faixas reais de pixels; V186 permanece como fallback; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0

@@ -1,4 +1,4 @@
-# V209 — recupera cauda curta perdida no fim de uma linha OCR.
+# V210 — recupera '/' no pós-processamento da banda OCR.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -1751,6 +1751,82 @@ def _aplicar_reticencias_sem_mexer_letras_v202(texto):
     return base + '...'
 
 
+
+def _recuperar_barras_na_banda_v210(reader, recorte_bgr, texto):
+    s = str(texto or '')
+    suspeitos = [
+        tok for tok in re.findall(r'\b[A-Za-zÀ-ÿ0-9]{4,14}\b', s)
+        if '/' not in tok
+        and re.search(r'[A-Za-zÀ-ÿ][I1l][A-Za-zÀ-ÿ]', tok)
+    ]
+    if not suspeitos:
+        return s
+
+    try:
+        variantes = [recorte_bgr]
+        up = cv2.resize(
+            recorte_bgr, None, fx=2.8, fy=2.8,
+            interpolation=cv2.INTER_CUBIC
+        )
+        variantes.append(up)
+
+        gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(
+            clipLimit=2.2, tileGridSize=(4, 4)
+        ).apply(gray)
+        variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+        candidatos = []
+        for img in variantes:
+            rr = reader.readtext(
+                img,
+                detail=1,
+                paragraph=False,
+                decoder='beamsearch',
+                beamWidth=7,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç0123456789/',
+                width_ths=0.03,
+                height_ths=0.80,
+                text_threshold=0.12,
+                low_text=0.06,
+                link_threshold=0.08,
+            )
+            rr.sort(key=lambda it: min(p[0] for p in it[0]))
+
+            for _, txt, conf in rr:
+                cand = re.sub(r'\s+', '', str(txt or ''))
+                if '/' not in cand:
+                    continue
+                base = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', cand).lower()
+                if base:
+                    candidatos.append((cand, base, float(conf or 0)))
+
+        for tok in suspeitos:
+            base_tok = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', tok).lower()
+            validos = [c for c in candidatos if c[1] == base_tok]
+            if not validos:
+                continue
+
+            validos.sort(key=lambda c: c[2], reverse=True)
+            melhor = validos[0][0]
+
+            s = re.sub(
+                rf'\b{re.escape(tok)}\b',
+                melhor,
+                s,
+            )
+            print(
+                f"[OCR-DEBUG] V210 barra recuperada na banda: "
+                f"{tok!r} -> {melhor!r}",
+                flush=True,
+            )
+
+    except Exception:
+        pass
+
+    return s
+
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -1929,7 +2005,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
             if _txt_recuperado:
                 partes.append(_txt_recuperado)
     _texto_completo = ' '.join(partes)
-    _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
+    _texto_completo = _reler_banda_ampliada_se_suspeita(
+        reader, recorte, _texto_completo
+    )
+    _texto_completo = _recuperar_barras_na_banda_v210(
+        reader, recorte, _texto_completo
+    )
 
     _gx_ultima_v202 = x0 + _x_dir_ultima
     _gy0_v202 = y0 + linhas_y_range[_idx_ultima_linha][0]
@@ -1971,6 +2052,11 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         if _idx_l != _idx_linha_atual:
             _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
             _texto_linha_out = ' '.join(_palavras_linha_atual).strip()
+            _texto_linha_out = _recuperar_barras_na_banda_v210(
+                reader,
+                _recorte_da_linha(_idx_linha_atual),
+                _texto_linha_out,
+            )
             if _idx_linha_atual in _linhas_com_hifen_final_recuperado and (not _texto_linha_out.endswith('-')):
                 _texto_linha_out = (_texto_linha_out + ' -').strip()
             _linhas_out.append({'texto': _texto_linha_out, 'altura': _y1_l - _y0_l})
@@ -1980,8 +2066,13 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if _palavras_linha_atual:
         _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
         _texto_linha_out = ' '.join(_palavras_linha_atual).strip()
+        _texto_linha_out = _recuperar_barras_na_banda_v210(
+            reader,
+            _recorte_da_linha(_idx_linha_atual),
+            _texto_linha_out,
+        )
 
-        _bbox_fim_v209 = palavras[_fim_idx_palavra_linha_atual][0]
+        _bbox_fim_v209 = palavras[-1][0]
         _x_fim_v209 = int(max(p[0] for p in _bbox_fim_v209))
         _cauda_v209 = _recuperar_cauda_fim_linha_v209(
             reader,

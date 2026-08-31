@@ -1,4 +1,4 @@
-# V207 — recupera travessão visual antes da regra de reticências.
+# V209 — recupera cauda curta perdida no fim de uma linha OCR.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -1274,6 +1274,114 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int=No
     print(f'[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}', flush=True)
     return grupos
 
+
+def _recuperar_barra_interna_v208(reader, recorte_bgr, bbox, texto: str) -> str:
+    t = (texto or '').strip()
+    if (
+        not t
+        or '/' in t
+        or ' ' in t
+        or not re.fullmatch(r'[A-Za-zÀ-ÿ0-9]{4,14}', t)
+    ):
+        return t
+
+    try:
+        xs = [int(round(p[0])) for p in bbox]
+        ys = [int(round(p[1])) for p in bbox]
+        x0 = max(0, min(xs) - 5)
+        x1 = min(recorte_bgr.shape[1], max(xs) + 6)
+        y0 = max(0, min(ys) - 5)
+        y1 = min(recorte_bgr.shape[0], max(ys) + 6)
+
+        crop = recorte_bgr[y0:y1, x0:x1]
+        if crop.size == 0:
+            return t
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 45, 130)
+
+        min_len = max(7, int(crop.shape[0] * 0.32))
+        lines = cv2.HoughLinesP(
+            edges,
+            1,
+            3.141592653589793 / 180.0,
+            threshold=max(6, int(crop.shape[0] * 0.22)),
+            minLineLength=min_len,
+            maxLineGap=max(2, int(crop.shape[0] * 0.12)),
+        )
+
+        diagonal = False
+        if lines is not None:
+            for ln in lines[:, 0]:
+                xa, ya, xb, yb = [float(v) for v in ln]
+                dx = xb - xa
+                dy = yb - ya
+                if abs(dx) < 2:
+                    continue
+                ang = abs(__import__('math').degrees(__import__('math').atan2(dy, dx)))
+                if 28 <= ang <= 72:
+                    diagonal = True
+                    break
+
+        if not diagonal:
+            return t
+
+        up = cv2.resize(
+            crop, None, fx=3.2, fy=3.2,
+            interpolation=cv2.INTER_CUBIC
+        )
+
+        resultados = []
+        for img in (
+            up,
+            cv2.cvtColor(
+                cv2.createCLAHE(
+                    clipLimit=2.0, tileGridSize=(4, 4)
+                ).apply(cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)),
+                cv2.COLOR_GRAY2BGR,
+            ),
+        ):
+            rr = reader.readtext(
+                img,
+                detail=1,
+                paragraph=False,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç0123456789/',
+                decoder='beamsearch',
+                beamWidth=5,
+                width_ths=0.05,
+                height_ths=0.7,
+                text_threshold=0.20,
+                low_text=0.12,
+                link_threshold=0.15,
+            )
+            rr.sort(key=lambda it: min(p[0] for p in it[0]))
+            cand = ''.join(
+                (it[1] or '').strip()
+                for it in rr
+                if (it[1] or '').strip()
+            )
+            if cand:
+                resultados.append(cand)
+
+        base_t = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', t).lower()
+
+        for cand in resultados:
+            if '/' not in cand:
+                continue
+            base_c = re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', cand).lower()
+            if base_c == base_t:
+                print(
+                    f"[OCR-DEBUG] V208 barra interna recuperada: {t!r} -> {cand!r}",
+                    flush=True,
+                )
+                return cand
+
+    except Exception:
+        pass
+
+    return t
+
+
 def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> str:
     """Releitura localizada quando o EasyOCR parece confundir vírgula.
 
@@ -1479,6 +1587,98 @@ def _aplicar_travessao_v207(texto):
     return (base + ' —') if base else s
 
 
+
+def _recuperar_cauda_fim_linha_v209(reader, img_bgr, y0, y1, x_ref):
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        altura = max(1, int(y1 - y0))
+
+        yy0 = max(0, int(y0 - altura * 0.20))
+        yy1 = min(h_img, int(y1 + altura * 0.20))
+        xx0 = max(0, int(x_ref - 5))
+        xx1 = min(w_img, int(x_ref + max(110, altura * 4.5)))
+
+        if yy1 <= yy0 or xx1 <= xx0:
+            return ""
+
+        roi = img_bgr[yy0:yy1, xx0:xx1]
+        if roi.size == 0:
+            return ""
+
+        variantes = [roi]
+        up = cv2.resize(
+            roi, None, fx=2.8, fy=2.8,
+            interpolation=cv2.INTER_CUBIC
+        )
+        variantes.append(up)
+
+        gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(
+            clipLimit=2.0, tileGridSize=(4, 4)
+        ).apply(gray)
+        variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+        candidatos = []
+
+        for img in variantes:
+            rr = reader.readtext(
+                img,
+                detail=1,
+                paragraph=False,
+                decoder='beamsearch',
+                beamWidth=5,
+                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç0123456789-–—',
+                width_ths=0.05,
+                height_ths=0.75,
+                text_threshold=0.16,
+                low_text=0.08,
+                link_threshold=0.10,
+            )
+
+            rr.sort(key=lambda it: min(p[0] for p in it[0]))
+            partes = [
+                (it[1] or '').strip()
+                for it in rr
+                if (it[1] or '').strip()
+            ]
+            if not partes:
+                continue
+
+            cand = ' '.join(partes)
+            cand = re.sub(r'\s+', ' ', cand).strip()
+
+            # A cauda deve começar por separador visual ou ser um token curto
+            # isolado imediatamente à direita da caixa já reconhecida.
+            if (
+                re.match(r'^[\-–—]\s*[A-Za-zÀ-ÿ0-9]{1,12}$', cand)
+                or re.match(r'^[A-Za-zÀ-ÿ0-9]{1,3}$', cand)
+            ):
+                candidatos.append(cand)
+
+        if not candidatos:
+            return ""
+
+        candidatos = list(dict.fromkeys(candidatos))
+        candidatos.sort(
+            key=lambda s: (
+                1 if re.match(r'^[\-–—]', s) else 0,
+                len(s)
+            ),
+            reverse=True
+        )
+
+        melhor = candidatos[0]
+
+        # Evita aceitar fragmentos excessivamente longos ou ruído.
+        if len(melhor) > 16:
+            return ""
+
+        return melhor
+
+    except Exception:
+        return ""
+
+
 def _tem_reticencias_visuais_v202(img_bgr, y0, y1, x_ref):
     try:
         h_img, w_img = img_bgr.shape[:2]
@@ -1595,7 +1795,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         return ('', []) if retornar_linhas else ''
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
-        _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
+        _txt_corr_p = _reler_pontuacao_suspeita_caixa(
+            reader, recorte, _bbox_p, _txt_p
+        )
+        _txt_corr_p = _recuperar_barra_interna_v208(
+            reader, recorte, _bbox_p, _txt_corr_p
+        )
         _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
@@ -1775,6 +1980,29 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     if _palavras_linha_atual:
         _y0_l, _y1_l = linhas_y_range[_idx_linha_atual]
         _texto_linha_out = ' '.join(_palavras_linha_atual).strip()
+
+        _bbox_fim_v209 = palavras[_fim_idx_palavra_linha_atual][0]
+        _x_fim_v209 = int(max(p[0] for p in _bbox_fim_v209))
+        _cauda_v209 = _recuperar_cauda_fim_linha_v209(
+            reader,
+            img_bgr,
+            y0 + _y0_l,
+            y0 + _y1_l,
+            x0 + _x_fim_v209,
+        )
+
+        if _cauda_v209:
+            _norm_tail_v209 = re.sub(r'\s+', ' ', _cauda_v209).strip()
+            if _norm_tail_v209 and not _texto_linha_out.endswith(_norm_tail_v209):
+                _texto_linha_out = (
+                    _texto_linha_out.rstrip() + ' ' + _norm_tail_v209
+                ).strip()
+                print(
+                    f"[OCR-DEBUG] V209 cauda de linha recuperada: "
+                    f"{_norm_tail_v209!r}",
+                    flush=True,
+                )
+
         if _idx_linha_atual in _linhas_com_hifen_final_recuperado and (not _texto_linha_out.endswith('-')):
             _texto_linha_out = (_texto_linha_out + ' -').strip()
 

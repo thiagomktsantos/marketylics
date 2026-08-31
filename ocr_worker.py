@@ -1,17 +1,4 @@
-# V202 — reticências pós-OCR, sem releitura ou alteração de letras.
-# V187_MULTICARD_COMMA_SEMICOLON_FIX — corrige confusão OCR de ponto e vírgula por vírgula somente em chamadas curtas do display multicard.
-# V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
-# V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
-# V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
-# V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
-# V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
-# V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
-# V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
-# V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
-# V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
-# V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
-# V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
-# V174_PRESERVE_COMPANY_CASE — nome exibido preserva capitalização do anúncio; lower() apenas para comparação e URL.\n# V173_TRIM_TRAILING_HYPHEN — remove hífen terminal visual dos sitelinks, preservando hífens internos.\n# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
+# V203 — melhora separação título/descrição em Display vertical.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -3189,6 +3176,51 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
+    # Encerra headline quando, após 2+ linhas grandes, há queda de fonte
+    # combinada com um salto vertical claro para a próxima linha.
+    if idx_fim >= idx_ini + 2:
+        _bloco_v203 = uteis[idx_ini:idx_fim + 1]
+        _hmax_v203 = max(float(l['altura']) for l in _bloco_v203)
+
+        for _rel_v203 in range(2, len(_bloco_v203)):
+            _cur_v203 = _bloco_v203[_rel_v203]
+            _prev_v203 = _bloco_v203[_rel_v203 - 1]
+
+            _ratio_v203 = (
+                float(_cur_v203['altura']) / _hmax_v203
+                if _hmax_v203 > 0 else 1.0
+            )
+            _gap_v203 = float(_cur_v203['yc'] - _prev_v203['yc'])
+
+            _gaps_head_v203 = [
+                float(_bloco_v203[i]['yc'] - _bloco_v203[i - 1]['yc'])
+                for i in range(1, _rel_v203)
+                if float(_bloco_v203[i]['yc'] - _bloco_v203[i - 1]['yc']) > 0
+            ]
+            _gap_head_v203 = (
+                float(_np_v145.median(_gaps_head_v203))
+                if _gaps_head_v203 else 0.0
+            )
+
+            _queda_v203 = _ratio_v203 <= 0.62
+            _salto_v203 = (
+                _gap_v203 >= max(
+                    28.0,
+                    _gap_head_v203 * 1.28,
+                    (float(_prev_v203['altura']) + float(_cur_v203['altura'])) * 0.78,
+                )
+            )
+
+            if _queda_v203 and _salto_v203:
+                idx_fim = idx_ini + _rel_v203 - 1
+                print(
+                    "[OCR-DEBUG] display-vertical-v203: quebra título/descrição "
+                    f"ratio_altura={_ratio_v203:.2f} gap={_gap_v203:.1f} "
+                    f"gap_head={_gap_head_v203:.1f}",
+                    flush=True,
+                )
+                break
+
     # V186 — correção de "title/body cliff".
     #
     # Em alguns displays, a tolerância tipográfica da V182 faz a primeira
@@ -3306,10 +3338,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v186',
+        'classe':'display-vertical-v203',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V186 → Display vertical: preserva divisor mídia da V182 e adiciona quebra título/descrição por queda tipográfica + aumento de densidade textual; CTA separado',
+        'decisao':'V203 → Display vertical: separa título/corpo por queda tipográfica + salto vertical; preserva V186 como fallback; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0

@@ -1,4 +1,4 @@
-# V205 — Display vertical separa título/descrição pelas faixas de pixels da imagem.
+# V206 — headline por faixas de pixels expandida para cima e para baixo.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -3176,93 +3176,143 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
-    # Separa título/corpo pelas faixas de pixels da imagem, não pelas caixas OCR.
+    # Separa headline/corpo pelas faixas reais de pixels.
     try:
-        _gray_v205 = _cv2_v181.cvtColor(img_bgr, _cv2_v181.COLOR_BGR2GRAY)
-        _roi_v205 = _gray_v205[:, max(0, int(w * 0.03)):min(w, int(w * 0.97))]
-        _std_v205 = _roi_v205.std(axis=1)
+        _gray_v206 = _cv2_v181.cvtColor(img_bgr, _cv2_v181.COLOR_BGR2GRAY)
+        _roi_v206 = _gray_v206[:, max(0, int(w * 0.03)):min(w, int(w * 0.97))]
+        _std_v206 = _roi_v206.std(axis=1)
 
-        _thr_v205 = max(8.0, float(_np_v145.percentile(_std_v205, 55)) * 0.45)
-        _ativos_v205 = _np_v145.where(_std_v205 > _thr_v205)[0]
+        _thr_v206 = max(
+            8.0,
+            float(_np_v145.percentile(_std_v206, 55)) * 0.45
+        )
+        _ativos_v206 = _np_v145.where(_std_v206 > _thr_v206)[0]
 
-        _runs_v205 = []
-        if len(_ativos_v205):
-            _s_v205 = _p_v205 = int(_ativos_v205[0])
-            for _yy_v205 in _ativos_v205[1:]:
-                _yy_v205 = int(_yy_v205)
-                if _yy_v205 > _p_v205 + 1:
-                    if _p_v205 - _s_v205 + 1 >= 4:
-                        _runs_v205.append((_s_v205, _p_v205))
-                    _s_v205 = _yy_v205
-                _p_v205 = _yy_v205
-            if _p_v205 - _s_v205 + 1 >= 4:
-                _runs_v205.append((_s_v205, _p_v205))
+        _runs_v206 = []
+        if len(_ativos_v206):
+            _s_v206 = _p_v206 = int(_ativos_v206[0])
+            for _yy_v206 in _ativos_v206[1:]:
+                _yy_v206 = int(_yy_v206)
+                if _yy_v206 > _p_v206 + 1:
+                    if _p_v206 - _s_v206 + 1 >= 4:
+                        _runs_v206.append((_s_v206, _p_v206))
+                    _s_v206 = _yy_v206
+                _p_v206 = _yy_v206
+            if _p_v206 - _s_v206 + 1 >= 4:
+                _runs_v206.append((_s_v206, _p_v206))
 
-        _runs_texto_v205 = [
-            r for r in _runs_v205
+        _runs_texto_v206 = [
+            r for r in _runs_v206
             if r[1] < (_limite_texto_v181 - 2)
             and r[1] > h * 0.07
         ]
 
-        if len(_runs_texto_v205) >= 3:
-            _yc_anchor_v205 = float(tl['yc'])
-            _idx_run_anchor_v205 = min(
-                range(len(_runs_texto_v205)),
-                key=lambda i: min(
-                    abs(_yc_anchor_v205 - _runs_texto_v205[i][0]),
-                    abs(_yc_anchor_v205 - _runs_texto_v205[i][1]),
-                    0.0 if _runs_texto_v205[i][0] <= _yc_anchor_v205 <= _runs_texto_v205[i][1] else 9999.0,
-                ),
+        if len(_runs_texto_v206) >= 3:
+            _yc_anchor_v206 = float(tl['yc'])
+
+            def _dist_run_v206(r):
+                if r[0] <= _yc_anchor_v206 <= r[1]:
+                    return 0.0
+                return min(
+                    abs(_yc_anchor_v206 - r[0]),
+                    abs(_yc_anchor_v206 - r[1]),
+                )
+
+            _idx_anchor_v206 = min(
+                range(len(_runs_texto_v206)),
+                key=lambda i: _dist_run_v206(_runs_texto_v206[i]),
             )
 
-            _run_anchor_v205 = _runs_texto_v205[_idx_run_anchor_v205]
-            _h_anchor_v205 = float(_run_anchor_v205[1] - _run_anchor_v205[0] + 1)
+            _r_anchor_v206 = _runs_texto_v206[_idx_anchor_v206]
+            _h_anchor_v206 = float(
+                _r_anchor_v206[1] - _r_anchor_v206[0] + 1
+            )
 
-            _fim_head_v205 = _idx_run_anchor_v205
-            for _j_v205 in range(_idx_run_anchor_v205 + 1, len(_runs_texto_v205)):
-                _r_v205 = _runs_texto_v205[_j_v205]
-                _h_v205 = float(_r_v205[1] - _r_v205[0] + 1)
+            # Expande o bloco grande para CIMA e para BAIXO.
+            _ini_head_v206 = _idx_anchor_v206
+            _fim_head_v206 = _idx_anchor_v206
 
-                if _h_v205 >= _h_anchor_v205 * 0.68:
-                    _fim_head_v205 = _j_v205
-                    continue
-                break
-
-            _prox_v205 = _fim_head_v205 + 1
-            if (
-                _fim_head_v205 > _idx_run_anchor_v205
-                and _prox_v205 < len(_runs_texto_v205)
-            ):
-                _r_head_v205 = _runs_texto_v205[_fim_head_v205]
-                _r_body_v205 = _runs_texto_v205[_prox_v205]
-                _h_body_v205 = float(_r_body_v205[1] - _r_body_v205[0] + 1)
-                _gap_v205 = float(_r_body_v205[0] - _r_head_v205[1] - 1)
+            _j_v206 = _idx_anchor_v206 - 1
+            while _j_v206 >= 0:
+                _r_v206 = _runs_texto_v206[_j_v206]
+                _h_v206 = float(_r_v206[1] - _r_v206[0] + 1)
+                _prox_v206 = _runs_texto_v206[_j_v206 + 1]
+                _gap_v206 = float(_prox_v206[0] - _r_v206[1] - 1)
 
                 if (
-                    _h_body_v205 <= _h_anchor_v205 * 0.67
-                    and _gap_v205 >= max(18.0, _h_anchor_v205 * 0.35)
+                    _h_v206 >= _h_anchor_v206 * 0.68
+                    and _gap_v206 <= max(55.0, _h_anchor_v206 * 0.65)
                 ):
-                    _cut_v205 = (
-                        float(_r_head_v205[1]) + float(_r_body_v205[0])
+                    _ini_head_v206 = _j_v206
+                    _j_v206 -= 1
+                else:
+                    break
+
+            _j_v206 = _idx_anchor_v206 + 1
+            while _j_v206 < len(_runs_texto_v206):
+                _r_v206 = _runs_texto_v206[_j_v206]
+                _h_v206 = float(_r_v206[1] - _r_v206[0] + 1)
+                _prev_v206 = _runs_texto_v206[_j_v206 - 1]
+                _gap_v206 = float(_r_v206[0] - _prev_v206[1] - 1)
+
+                if (
+                    _h_v206 >= _h_anchor_v206 * 0.68
+                    and _gap_v206 <= max(55.0, _h_anchor_v206 * 0.65)
+                ):
+                    _fim_head_v206 = _j_v206
+                    _j_v206 += 1
+                else:
+                    break
+
+            _prox_body_v206 = _fim_head_v206 + 1
+
+            if (
+                _fim_head_v206 - _ini_head_v206 + 1 >= 2
+                and _prox_body_v206 < len(_runs_texto_v206)
+            ):
+                _r_head_v206 = _runs_texto_v206[_fim_head_v206]
+                _r_body_v206 = _runs_texto_v206[_prox_body_v206]
+
+                _h_body_v206 = float(
+                    _r_body_v206[1] - _r_body_v206[0] + 1
+                )
+                _gap_body_v206 = float(
+                    _r_body_v206[0] - _r_head_v206[1] - 1
+                )
+
+                if (
+                    _h_body_v206 <= _h_anchor_v206 * 0.62
+                    and _gap_body_v206 >= max(
+                        24.0,
+                        _h_anchor_v206 * 0.45
+                    )
+                ):
+                    _cut_v206 = (
+                        float(_r_head_v206[1])
+                        + float(_r_body_v206[0])
                     ) / 2.0
 
-                    _idxs_head_v205 = [
+                    _idxs_head_v206 = [
                         i for i, l in enumerate(uteis)
                         if idx_ini <= i <= idx_fim
-                        and float(l['yc']) < _cut_v205
+                        and float(l['yc']) < _cut_v206
                     ]
 
-                    if len(_idxs_head_v205) >= 2:
-                        idx_fim = max(_idxs_head_v205)
+                    if len(_idxs_head_v206) >= 1:
+                        idx_fim = max(_idxs_head_v206)
+
                         print(
-                            "[OCR-DEBUG] display-vertical-v205: "
-                            f"pixel_bands cut={_cut_v205:.1f} "
-                            f"title_run={_r_head_v205} body_run={_r_body_v205}",
+                            "[OCR-DEBUG] display-vertical-v206: "
+                            f"pixel_bands_bidirecional cut={_cut_v206:.1f} "
+                            f"headline_runs="
+                            f"{_runs_texto_v206[_ini_head_v206:_fim_head_v206+1]} "
+                            f"body_run={_r_body_v206}",
                             flush=True,
                         )
-    except Exception as _exc_v205:
+
+    except Exception as _exc_v206:
         print(
-            f"[OCR-DEBUG] display-vertical-v205 pixel bands falhou: {_exc_v205!r}",
+            f"[OCR-DEBUG] display-vertical-v206 falhou: {_exc_v206!r}",
             flush=True,
         )
 
@@ -3383,10 +3433,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     dbg=[{
         'idx':0,
-        'classe':'display-vertical-v205',
+        'classe':'display-vertical-v206',
         'sep_antes':False,
         'texto':f'{titulo} | {desc} | {cta}'.strip(' |'),
-        'decisao':'V205 → Display vertical: separa título/corpo por faixas reais de pixels; V186 permanece como fallback; CTA separado',
+        'decisao':'V206 → Display vertical: detecta headline por faixas grandes em ambas direções e separa corpo menor; V186 fallback; CTA separado',
         'y_min':0,
         'y_max':int(h),
         'x_min_favicon':0

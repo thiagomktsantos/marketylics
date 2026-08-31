@@ -1,5 +1,21 @@
-# V201 — recuperação antes de reticências usa largura total e margem vertical ampliada.
+# V202 — reticências pós-OCR, sem releitura ou alteração de letras.
+# V187_MULTICARD_COMMA_SEMICOLON_FIX — corrige confusão OCR de ponto e vírgula por vírgula somente em chamadas curtas do display multicard.
+# V186_DISPLAY_VERTICAL_TITLE_BODY_CLIFF — separa headline grande do corpo quando há queda tipográfica forte combinada com aumento de densidade textual.
+# V185_DISPLAY_MULTICARD_STRUCTURED_SEPARATOR — remove <hr> literal dos dados; mantém chamadas em array estruturado para a UI renderizar separadores reais.
+# V184_DISPLAY_MULTICARD_HR_SEPARATOR — chamadas independentes do multicard separadas por <hr>; CTA repetido permanece consolidado em um único CTA.
+# V183_DISPLAY_MULTICARD_EXTERNAL_CALLS — detecta grade de cards por CTAs repetidos; lê apenas chamadas externas e ignora integralmente texto das imagens.
+# V182_DISPLAY_VERTICAL_MEDIA_COMPLEXITY_TITLE_BLOCK — evita corte falso entre título/descrição e melhora título multilinha.
+# V181_DISPLAY_VERTICAL_DYNAMIC_MEDIA_DIVIDER — remove percentuais fixos; detecta dinamicamente a grande faixa vazia que separa copy e mídia.
+# V180_DISPLAY_VERTICAL_STRICT_TOP_ONLY — impede texto interno da mídia de virar título/descrição; recuperação OCR limitada à faixa superior.
+# V179_DISPLAY_VERTICAL_TOP_RECOVERY — recupera texto principal do topo quando OCR global lê apenas texto embutido na mídia inferior.
+# V178_DISPLAY_VERTICAL_BLOCKS — título multilinha e corte de OCR dentro da mídia em Display vertical.\n# V177_FIX_SEGURANCA_TYPO — corrige OCR 'seguraça' para 'segurança' preservando capitalização.
+# V176_NORMALIZE_OS_ARTICLE_FIX — corrige a detecção contextual de 'OS' como artigo em descrições.
+# V175_NORMALIZE_OS_ARTICLE — corrige token OCR 'OS' -> 'os' apenas em descrições/frases corridas com contexto gramatical seguro.
+# V174_PRESERVE_COMPANY_CASE — nome exibido preserva capitalização do anúncio; lower() apenas para comparação e URL.\n# V173_TRIM_TRAILING_HYPHEN — remove hífen terminal visual dos sitelinks, preservando hífens internos.\n# V172_SPLITCARD_CTA_FIELD — reconhece CTA completo e remove CTA colado ao fim da descrição no split-card.\n# V171_BUTTON_TEXT_VALIDATION — fileira de botões exige texto alfanumérico real; símbolos não alteram o estado do parser.\n# V170_NO_LITERAL_HR — nenhum caminho grava <hr> dentro do texto dos sitelinks.\n# V169_STABLE_SPLIT_BLOCKS — split-card separa título/descrição por blocos visuais sem OCR adicional.\n# V168_STABLE_SINGLE_PASS — base V161 + pós-processamento sem OCR adicional.
 # -*- coding: utf-8 -*-
+# V161 — não divide sitelinks verticais por gaps internos entre palavras.
+# V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
+# V159 — rollback controlado para o motor pré-global da V146.
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
 """
@@ -12,6 +28,7 @@ em um processo pequeno e descartável, reduzindo o pico total de RAM.
 import os
 import base64
 
+# V146 — equilíbrio de CPU do worker OCR: 2 threads internas, 1 imagem por vez.
 # IMPORTANTE: estas variáveis precisam ser definidas ANTES de numpy/cv2/torch/easyocr.
 # Usamos atribuição direta (e não setdefault) para impedir que valores herdados
 # do ambiente liberem múltiplas threads e provoquem picos de CPU no Streamlit.
@@ -956,360 +973,6 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
         return ','
     return ''
 
-
-def _detectar_reticencias_apos_bbox_v188(recorte_linha_bgr, x_inicio: int, x_fim: int) -> bool:
-    """
-    V188 — recupera reticências visíveis que o EasyOCR reduz a um único ponto.
-
-    A regra é geométrica, não textual:
-    - examina somente uma faixa curta à direita da última caixa OCR;
-    - procura pelo menos 2 microcomponentes arredondados/baixos;
-    - os componentes precisam estar alinhados na região inferior da linha;
-    - limita tamanho/área para não confundir letras, ícones ou bordas.
-
-    Retorna True quando há evidência visual forte de que existem pontos
-    adicionais após o ponto já reconhecido no texto.
-    """
-    try:
-        if recorte_linha_bgr is None or recorte_linha_bgr.size == 0:
-            return False
-
-        _h, _w = recorte_linha_bgr.shape[:2]
-        _x0 = max(0, int(x_inicio))
-        _x1 = min(_w, int(x_fim))
-        if _x1 - _x0 < 4:
-            return False
-
-        _roi = recorte_linha_bgr[:, _x0:_x1]
-        if _roi.size == 0:
-            return False
-
-        _gray = cv2.cvtColor(_roi, cv2.COLOR_BGR2GRAY)
-
-        # Fundo local estimado pelas bordas; funciona tanto em fundo branco
-        # quanto em pequenos desvios de cinza/antialiasing.
-        import numpy as _np_v188
-        _bordas = _np_v188.concatenate([
-            _gray[:, :max(1, min(3, _gray.shape[1]))].reshape(-1),
-            _gray[:, -max(1, min(3, _gray.shape[1])):].reshape(-1),
-        ])
-        _fundo = float(_np_v188.median(_bordas)) if _bordas.size else 255.0
-        _delta = _np_v188.abs(_gray.astype(_np_v188.float32) - _fundo)
-
-        # Pixels suficientemente diferentes do fundo.
-        _mask = (_delta >= 28).astype("uint8") * 255
-
-        # Remove ruído isolado sem unir pontos distintos.
-        _num, _labels, _stats, _cent = cv2.connectedComponentsWithStats(
-            _mask,
-            connectivity=8,
-        )
-
-        _micro = []
-        for _lab in range(1, _num):
-            _x, _y, _cw, _ch, _area = [int(v) for v in _stats[_lab]]
-            if _area < 2:
-                continue
-
-            # Ponto de reticências: pequeno em relação à altura da linha.
-            if _cw > max(9, int(_h * 0.28)):
-                continue
-            if _ch > max(9, int(_h * 0.34)):
-                continue
-            if _area > max(55, int(_h * _h * 0.13)):
-                continue
-
-            _cy = float(_cent[_lab][1])
-            _cx = float(_cent[_lab][0])
-
-            # Pontos ficam próximos da baseline / metade inferior.
-            if _cy < _h * 0.48:
-                continue
-
-            _micro.append((_cx, _cy, _cw, _ch, _area))
-
-        if len(_micro) < 2:
-            return False
-
-        _micro.sort(key=lambda z: z[0])
-
-        # Procura pelo menos um par de pontos quase alinhados horizontalmente.
-        for _i in range(len(_micro) - 1):
-            _a = _micro[_i]
-            _b = _micro[_i + 1]
-            _dx = _b[0] - _a[0]
-            _dy = abs(_b[1] - _a[1])
-            if 2 <= _dx <= max(18, int(_h * 0.72)) and _dy <= max(4, int(_h * 0.18)):
-                return True
-
-        return False
-    except Exception as _e_v188:
-        print(
-            f"[OCR-DEBUG] V188 falha detector reticências: {_e_v188!r}",
-            flush=True,
-        )
-        return False
-
-
-
-def _recuperar_palavra_final_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
-    base = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(texto_atual or ''))
-    if not base or len(base) > 4:
-        return ''
-
-    try:
-        x0 = max(0, int(min(p[0] for p in bbox)) - 8)
-        x1 = recorte_bgr.shape[1]
-        roi = recorte_bgr[:, x0:x1]
-        if roi.size == 0:
-            return ''
-
-        variantes = []
-        for escala in (2.0, 3.0):
-            up = cv2.resize(
-                roi, None, fx=escala, fy=escala,
-                interpolation=cv2.INTER_CUBIC
-            )
-            variantes.append(up)
-
-            gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
-            clahe = cv2.createCLAHE(
-                clipLimit=2.2, tileGridSize=(4, 4)
-            ).apply(gray)
-            variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
-
-            _, th = cv2.threshold(
-                clahe, 0, 255,
-                cv2.THRESH_BINARY + cv2.THRESH_OTSU
-            )
-            variantes.append(cv2.cvtColor(th, cv2.COLOR_GRAY2BGR))
-
-        candidatos = []
-
-        for img in variantes:
-            itens = reader.readtext(
-                img,
-                detail=1,
-                decoder='beamsearch',
-                beamWidth=5,
-                allowlist='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
-                width_ths=0.03,
-                height_ths=0.60,
-                text_threshold=0.15,
-                low_text=0.08,
-                link_threshold=0.10,
-                contrast_ths=0.03,
-                adjust_contrast=0.8,
-            )
-
-            itens.sort(key=lambda item: min(p[0] for p in item[0]))
-
-            for _, txt, conf in itens:
-                palavra = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(txt or ''))
-                if (
-                    len(palavra) > len(base)
-                    and len(palavra) <= 20
-                    and palavra.lower().startswith(base.lower())
-                ):
-                    candidatos.append((float(conf or 0), palavra))
-
-            bruto = ''.join(
-                re.sub(r'[^A-Za-zÀ-ÿ]', '', str(txt or ''))
-                for _, txt, _ in itens
-            )
-            if (
-                len(bruto) > len(base)
-                and len(bruto) <= 20
-                and bruto.lower().startswith(base.lower())
-            ):
-                candidatos.append((0.20, bruto))
-
-        if not candidatos:
-            return ''
-
-        candidatos.sort(
-            key=lambda item: (len(item[1]), item[0]),
-            reverse=True
-        )
-        melhor = candidatos[0][1]
-
-        if len(melhor) >= len(base) + 2 or len(base) <= 2:
-            return melhor
-
-    except Exception:
-        pass
-
-    return ''
-
-
-
-def _mascarar_pontos_reticencias_v199(img_bgr):
-    try:
-        img = img_bgr.copy()
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, mask = cv2.threshold(
-            gray, 0, 255,
-            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
-
-        n, _, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
-        h, w = gray.shape[:2]
-
-        pontos = []
-        for i in range(1, n):
-            x, y, cw, ch, area = [int(v) for v in stats[i]]
-            cx, cy = cents[i]
-
-            if area < 2 or area > max(90, int(h * h * 0.18)):
-                continue
-            if cw > max(10, int(h * 0.34)):
-                continue
-            if ch > max(10, int(h * 0.38)):
-                continue
-            if cy < h * 0.48:
-                continue
-            if cx < w * 0.45:
-                continue
-
-            pontos.append((x, y, cw, ch, cx, cy))
-
-        if len(pontos) < 2:
-            return img
-
-        pontos.sort(key=lambda p: p[4])
-        grupo = []
-        for p in reversed(pontos):
-            if not grupo:
-                grupo.append(p)
-                continue
-            prev = grupo[-1]
-            if abs(prev[5] - p[5]) <= max(5, int(h * 0.20)) and prev[4] - p[4] <= max(22, int(h * 0.85)):
-                grupo.append(p)
-            elif len(grupo) >= 2:
-                break
-
-        if len(grupo) < 2:
-            return img
-
-        # Apaga somente os microcomponentes dos pontos, preservando letras.
-        fundo = int(gray[0: max(1, h // 4), :].mean())
-        cor = (fundo, fundo, fundo)
-        for x, y, cw, ch, _, _ in grupo[:4]:
-            pad = 2
-            cv2.rectangle(
-                img,
-                (max(0, x - pad), max(0, y - pad)),
-                (min(w - 1, x + cw + pad), min(h - 1, y + ch + pad)),
-                cor,
-                thickness=-1,
-            )
-
-        return img
-    except Exception:
-        return img_bgr
-
-
-def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_atual: str) -> str:
-    atual = re.sub(r'\.{3}$', '', str(texto_atual or '')).strip()
-    if not atual:
-        return ''
-
-    try:
-        atual_tokens = re.findall(r'[A-Za-zÀ-ÿ]+', atual)
-        if not atual_tokens:
-            return ''
-
-        ultimo_atual = atual_tokens[-1].lower()
-        x_bbox = int(min(p[0] for p in bbox))
-        x0 = max(0, x_bbox - 220)
-        roi = recorte_bgr[:, x0:]
-        if roi.size == 0:
-            return ''
-
-        candidatos = []
-
-        # A versão mascarada remove visualmente os pontos antes da releitura.
-        bases = [roi, _mascarar_pontos_reticencias_v199(roi)]
-
-        for base_img in bases:
-            for escala in (2.0, 2.8, 3.5):
-                up = cv2.resize(
-                    base_img, None, fx=escala, fy=escala,
-                    interpolation=cv2.INTER_CUBIC
-                )
-
-                gray = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
-                clahe = cv2.createCLAHE(
-                    clipLimit=2.4, tileGridSize=(4, 4)
-                ).apply(gray)
-
-                _, binaria = cv2.threshold(
-                    clahe, 0, 255,
-                    cv2.THRESH_BINARY + cv2.THRESH_OTSU
-                )
-
-                imgs = [
-                    up,
-                    cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR),
-                    cv2.cvtColor(binaria, cv2.COLOR_GRAY2BGR),
-                ]
-
-                for img in imgs:
-                    itens = reader.readtext(
-                        img,
-                        detail=1,
-                        decoder='beamsearch',
-                        beamWidth=7,
-                        allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
-                        width_ths=0.12,
-                        height_ths=0.80,
-                        text_threshold=0.10,
-                        low_text=0.05,
-                        link_threshold=0.08,
-                        contrast_ths=0.02,
-                        adjust_contrast=0.9,
-                    )
-
-                    itens.sort(key=lambda item: min(p[0] for p in item[0]))
-                    frase = ' '.join(
-                        re.sub(r'\s+', ' ', str(txt or '')).strip()
-                        for _, txt, _ in itens
-                        if str(txt or '').strip()
-                    )
-                    frase = re.sub(r'[^A-Za-zÀ-ÿ\s]', ' ', frase)
-                    frase = re.sub(r'\s+', ' ', frase).strip()
-                    if not frase:
-                        continue
-
-                    tokens = frase.split()
-
-                    for i in range(len(tokens) - 1, -1, -1):
-                        token = tokens[i]
-                        tn = token.lower()
-
-                        if not tn.startswith(ultimo_atual):
-                            continue
-                        if len(token) <= len(ultimo_atual):
-                            continue
-                        if len(ultimo_atual) == 1 and len(token) < 3:
-                            continue
-
-                        candidatos.append(token)
-                        break
-
-        if not candidatos:
-            return ''
-
-        candidatos = list(dict.fromkeys(candidatos))
-        candidatos.sort(key=lambda s: len(s), reverse=True)
-        melhor = candidatos[0]
-
-        prefixo = atual_tokens[:-1]
-        return ' '.join(prefixo + [melhor]) if prefixo else melhor
-
-    except Exception:
-        return ''
-
 def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -> str:
     """Faz uma segunda passada de OCR, bem mais sensível, restrita a um
     vão pequeno onde `_detectar_glifo_curto_no_intervalo` já confirmou
@@ -1470,6 +1133,7 @@ def _normalizar_artigo_os_em_descricao_v175(texto):
     )
 
 
+
 def _corrigir_seguraça_v177(texto):
     """
     Corrige erro OCR recorrente:
@@ -1526,7 +1190,9 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         return _m.group(0)
     texto = re.sub('([.!?])\\s+([A-Za-zÀ-ÿ])\\s+([A-Za-zÀ-ÿ]{2,})\\b', _remover_inicial_duplicada_pos_frase, texto)
 
+    # V143 — ruído OCR observado em anúncio FunBuyNet:
     # "esportes e f festivais." quando a imagem contém "esportes e festivais."
+    # A correção é deliberadamente estreita: só remove um "f" isolado
     # imediatamente entre a conjunção "e" e "festival/festivais".
     def _remover_f_fantasma_antes_festival(_m):
         print(
@@ -1547,10 +1213,12 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         texto = re.sub('(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])', '', texto)
     texto = _corrigir_o_isolado(texto)
 
+    # V144 — hífen solto no FINAL da banda é separador visual, não texto.
     # Ex.: "Turnê Show do Cabaré 2026 -" -> "Turnê Show do Cabaré 2026".
     # Hífens internos permanecem intactos, inclusive "On-Line".
     texto = re.sub(r'\\s+-+\\s*$', '', texto)
 
+    # V145 — pontuação duplicada no FINAL do texto.
     texto = re.sub(r'\\.(?:\\s*[,;.]\\s*)+$', '.', texto)
     texto = re.sub(r'[,;](?:\\s*\\.\\s*)+$', '.', texto)
     texto = re.sub(r',(?:\\s*,\\s*)+$', ',', texto)
@@ -1756,6 +1424,79 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         saida.append(it)
     return saida
 
+
+def _tem_reticencias_visuais_v202(img_bgr, y0, y1, x_ref):
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        margem_y = max(5, int((y1 - y0) * 0.25))
+        yy0 = max(0, y0 - margem_y)
+        yy1 = min(h_img, y1 + margem_y)
+
+        xx0 = max(0, x_ref - 24)
+        xx1 = min(w_img, x_ref + 90)
+        if yy1 <= yy0 or xx1 <= xx0:
+            return False
+
+        roi = img_bgr[yy0:yy1, xx0:xx1]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        _, mask = cv2.threshold(
+            gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        n, _, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
+        h, w = gray.shape[:2]
+        pts = []
+
+        for i in range(1, n):
+            x, y, cw, ch, area = [int(v) for v in stats[i]]
+            cx, cy = cents[i]
+
+            if area < 2 or area > max(80, int(h * h * 0.10)):
+                continue
+            if cw > max(9, int(h * 0.25)):
+                continue
+            if ch > max(9, int(h * 0.30)):
+                continue
+            if cy < h * 0.50:
+                continue
+            if cx < 10:
+                continue
+
+            pts.append((float(cx), float(cy), cw, ch, area))
+
+        if len(pts) < 2:
+            return False
+
+        pts.sort(key=lambda p: p[0])
+
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            dx = b[0] - a[0]
+            dy = abs(b[1] - a[1])
+
+            if 2 <= dx <= max(18, int(h * 0.65)) and dy <= max(4, int(h * 0.15)):
+                return True
+
+        return False
+    except Exception:
+        return False
+
+
+def _aplicar_reticencias_sem_mexer_letras_v202(texto):
+    s = str(texto or '').rstrip()
+    if not s:
+        return s
+
+    # Só remove resíduos de pontuação/símbolos finais; letras permanecem intactas.
+    base = re.sub(r'[\s.,;:_\-|/~\\]+$', '', s)
+    if not base:
+        return s
+
+    return base + '...'
+
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -1904,130 +1645,17 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         partes.append(palavras[i][1])
     _idx_ultima_linha = linha_idx_por_palavra[-1]
     _recorte_ultima_linha = _recorte_da_linha(_idx_ultima_linha)
-
-    _y_linha_top, _y_linha_bottom = linhas_y_range[_idx_ultima_linha]
-    _altura_linha_v201 = max(1, _y_linha_bottom - _y_linha_top)
-
-    _margem_vertical_v201 = max(12, int(_altura_linha_v201 * 0.55))
-    _y_full0 = max(
-        0,
-        y0 + _y_linha_top - _margem_vertical_v201
-    )
-    _y_full1 = min(
-        altura_total,
-        y0 + _y_linha_bottom + _margem_vertical_v201
-    )
-
-    _recorte_ultima_linha_full = img_bgr[
-        _y_full0:_y_full1,
-        x0:largura_total
-    ]
-
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max((p[0] for p in _bbox_ultima)))
     _x_borda_direita = recorte.shape[1]
     _x_lim_busca_hifen_final = min(_recorte_ultima_linha.shape[1], _x_dir_ultima + _LARGURA_MAX_VAO_GLIFO)
     _hifen_final_recuperado = False
-
-    # microcomponentes adicionais alinhados logo à direita, reconstruímos "...".
-    # Isso preserva pontos finais normais, porque a mudança só ocorre com
-    # evidência visual dos pontos restantes.
-    _reticencias_v188 = False
-    _ultima_txt_v188 = str(palavras[-1][1] or "").strip()
-
-    _base_final_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', _ultima_txt_v188)
-    if _ultima_txt_v188.endswith("..."):
-        _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
-            reader, _recorte_ultima_linha_full, _bbox_ultima, _ultima_txt_v188
-        )
-        if _rec_final_v196:
-            partes[-1] = _rec_final_v196 + "..."
-            _ultima_txt_v188 = partes[-1]
-            print(
-                f"[OCR-DEBUG] final da linha recuperado antes de reticências: "
-                f"{palavras[-1][1]!r} -> {partes[-1]!r}",
-                flush=True,
-            )
-        elif len(_base_final_v193) <= 4:
-            _rec_v193 = _recuperar_palavra_final_antes_reticencias(
-                reader, _recorte_ultima_linha_full, _bbox_ultima, _ultima_txt_v188
-            )
-            if _rec_v193:
-                partes[-1] = _rec_v193 + "..."
-                _ultima_txt_v188 = partes[-1]
-
-    _x_lim_reticencias_v188 = min(
-        _recorte_ultima_linha_full.shape[1],
-        _x_dir_ultima + max(80, int(_recorte_ultima_linha_full.shape[0] * 4.0)),
-    )
-    # o OCR pode interpretar o primeiro ponto das reticências como ".", ","
-    # ou simplesmente não capturá-lo. A decisão continua sendo VISUAL:
-    # só corrigimos quando os microcomponentes à direita confirmam reticências.
-    # transforma os últimos pontos em pequenos resíduos gráficos como "_", "-",
-    # "|" ou combinações deles. Consideramos esse final compatível SOMENTE
-    # para a recuperação visual de reticências.
-    _ultima_sem_ruido_v190 = re.sub(
-        r'[\s._\-|/\\~]+$',
-        '',
-        _ultima_txt_v188,
-    )
-    _tem_ruido_final_v190 = (
-        bool(_ultima_txt_v188)
-        and _ultima_sem_ruido_v190 != _ultima_txt_v188
-    )
-
-    _final_compativel_reticencias_v189 = (
-        not _ultima_txt_v188.endswith("...")
-        and bool(_ultima_txt_v188)
-        and (
-            _ultima_txt_v188[-1].isalnum()
-            or _ultima_txt_v188.endswith(".")
-            or _ultima_txt_v188.endswith(",")
-            or _tem_ruido_final_v190
-        )
-    )
-
-    if (
-        _final_compativel_reticencias_v189
-        and _x_lim_reticencias_v188 > _x_dir_ultima + 3
-        and _detectar_reticencias_apos_bbox_v188(
-            _recorte_ultima_linha_full,
-            _x_dir_ultima,
-            _x_lim_reticencias_v188,
-        )
-    ):
-        _rec_final_v196 = _recuperar_final_linha_antes_reticencias(
-            reader, _recorte_ultima_linha_full, _bbox_ultima, str(partes[-1])
-        )
-        if _rec_final_v196:
-            partes[-1] = _rec_final_v196
-        else:
-            _base_pre_ret_v193 = re.sub(r'[^A-Za-zÀ-ÿ]', '', str(partes[-1]))
-            if len(_base_pre_ret_v193) <= 4:
-                _rec_v193 = _recuperar_palavra_final_antes_reticencias(
-                    reader, _recorte_ultima_linha_full, _bbox_ultima, str(partes[-1])
-                )
-                if _rec_v193:
-                    partes[-1] = _rec_v193
-
-        partes[-1] = re.sub(
-            r'[\s.,_\\-|/~]+$',
-            '',
-            str(partes[-1]),
-        ) + "..."
-        _reticencias_v188 = True
-        print(
-            f"[OCR-DEBUG] V190 reticências recuperadas visualmente: "
-            f"{_ultima_txt_v188!r} -> {partes[-1]!r}",
-            flush=True,
-        )
-
-    if (not _reticencias_v188) and _x_lim_busca_hifen_final > _x_dir_ultima + 2 and _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_lim_busca_hifen_final):
+    if _x_lim_busca_hifen_final > _x_dir_ultima + 2 and _detectar_hifen_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_lim_busca_hifen_final):
         partes.append('-')
         _linhas_com_hifen_final_recuperado.add(_idx_ultima_linha)
         _hifen_final_recuperado = True
         print(f'[OCR-DEBUG] hífen recuperado no final da linha {_idx_ultima_linha}', flush=True)
-    if (not _reticencias_v188) and (not _hifen_final_recuperado) and _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
+    if not _hifen_final_recuperado and _x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO:
         _pont = _detectar_pontuacao_curta_no_intervalo(_recorte_ultima_linha, _x_dir_ultima, _x_borda_direita)
         if _pont == ',':
             _ult_txt_pont = (palavras[-1][1] or '').strip()
@@ -2043,6 +1671,21 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
                 partes.append(_txt_recuperado)
     _texto_completo = ' '.join(partes)
     _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
+
+    _gx_ultima_v202 = x0 + _x_dir_ultima
+    _gy0_v202 = y0 + linhas_y_range[_idx_ultima_linha][0]
+    _gy1_v202 = y0 + linhas_y_range[_idx_ultima_linha][1]
+
+    if _tem_reticencias_visuais_v202(
+        img_bgr,
+        _gy0_v202,
+        _gy1_v202,
+        _gx_ultima_v202,
+    ):
+        _texto_completo = _aplicar_reticencias_sem_mexer_letras_v202(
+            _texto_completo
+        )
+
     if not retornar_linhas:
         return _texto_completo
     _linhas_out = []
@@ -2066,6 +1709,17 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         _texto_linha_out = ' '.join(_palavras_linha_atual).strip()
         if _idx_linha_atual in _linhas_com_hifen_final_recuperado and (not _texto_linha_out.endswith('-')):
             _texto_linha_out = (_texto_linha_out + ' -').strip()
+
+        if _idx_linha_atual == _idx_ultima_linha and _tem_reticencias_visuais_v202(
+            img_bgr,
+            y0 + _y0_l,
+            y0 + _y1_l,
+            x0 + _x_dir_ultima,
+        ):
+            _texto_linha_out = _aplicar_reticencias_sem_mexer_letras_v202(
+                _texto_linha_out
+            )
+
         _linhas_out.append({'texto': _texto_linha_out, 'altura': _y1_l - _y0_l})
     return (_texto_completo, _linhas_out)
 
@@ -2853,6 +2507,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         l['itens'].sort(key=lambda c:c['x0']); l['texto']=_limpar_pontuacao_ocr(' '.join(c['texto'] for c in l['itens']).strip())
     rx=_re_v145.compile(r'^(?:abrir|acessar(?: o site)?|acesse(?: o site)?|saiba mais|compre agora|comprar agora|ver mais|conferir|comprar|reservar)$',_re_v145.I)
 
+    # V183 — DISPLAY MULTICARD / GRADE DE CRIATIVOS
     #
     # Alguns anúncios do Google exibem vários cards em grade. Cada card tem:
     #   [ IMAGEM / ARTE COM TEXTO INTERNO ]
@@ -2864,6 +2519,11 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     # somente o bloco de texto imediatamente acima dele, na MESMA coluna.
     #
     # Exemplo:
+    #   Não Deixei Seu Momento Passar        [Compre Agora]
+    #   Volte Na Buy E Mude Seu Dia          [Compre Agora]
+    #   Volte Agora E Pegue Seu Lugar        [Compre Agora]
+    #   Falta Só Alguns Cliques, Volta Vai.  [Compre Agora]
+    #   Ele Tá No Site Esperando Você        [Compre Agora]
     #
     # Se todos os CTAs forem iguais, retornamos apenas UM CTA consolidado.
     def _detectar_multicard_externo_v183():
@@ -3027,6 +2687,8 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     ' '.join(_l['texto'] for _l in _bloco_v183).strip()
                 )
 
+                # V187 — EasyOCR pode confundir vírgula com ponto e vírgula
+                # em headlines curtas de cards. Limitamos a correção SOMENTE
                 # ao multicard e somente a chamadas curtas, para não alterar
                 # pontuação válida de descrições/títulos de outros layouts.
                 #
@@ -3087,6 +2749,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
             # - titulo mantém todas as chamadas visíveis para interfaces antigas;
             # - campo `chamadas` preserva a estrutura correta para evolução da UI;
             # - sitelinks NÃO é usado, porque essas chamadas não são sitelinks.
+            # V185 — não inserir HTML dentro do dado textual.
             # O renderer da aplicação escapa o conteúdo do título, portanto <hr>
             # vira texto literal. Mantemos as chamadas estruturadas no campo
             # `chamadas` e usamos quebra de linha no fallback textual.
@@ -3156,6 +2819,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         uteis.append(l)
     if not cta or not uteis: return None
 
+    # V179 — recuperação localizada do bloco textual SUPERIOR.
     #
     # Alguns Displays verticais têm texto grande sobre fundo claro no topo e
     # uma arte/imagem com texto embutido mais abaixo. Em certas leituras o OCR
@@ -3165,6 +2829,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     #
     # Nessa situação fazemos UMA releitura somente do topo (72% da altura),
     # ampliada e com contraste local. Não repetimos OCR da peça inteira.
+    # V181 — detecta dinamicamente a separação entre o bloco textual e a mídia.
     #
     # Não usamos mais 38,5%/42% fixos: peças do mesmo formato podem ter títulos
     # e descrições muito mais altos. Procuramos a maior faixa horizontal quase
@@ -3249,6 +2914,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     )
                 ) if _rs_v181 > _b0_v181 else 0.0
 
+                # V182 — um espaço entre título e descrição também pode ser
                 # grande, mas abaixo dele há TEXTO sobre fundo liso: alternam
                 # linhas muito ativas e linhas quase vazias. Uma foto/arte, ao
                 # contrário, mantém complexidade visual em praticamente toda a
@@ -3404,6 +3070,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                     cab = empresa
                     continue
 
+                # V181 — proteção dura contra OCR interno da mídia:
                 # só entra conteúdo acima do divisor detectado na própria peça.
                 if float(_l_v179['yc']) < (_limite_texto_v181 - 2.0):
                     _uteis_top_v179.append(_l_v179)
@@ -3462,6 +3129,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
                 flush=True,
             )
 
+    # V181 — trava estrutural dinâmica. Qualquer linha abaixo do divisor da
     # mídia é removida antes da classificação. Se não sobrar texto estrutural,
     # este detector abandona o caso em vez de usar texto interno da imagem.
     uteis = [
@@ -3477,9 +3145,11 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         )
         return None
 
+    # V178/V179/V180 — o título de Display vertical pode ocupar várias linhas grandes.
     # A implementação antiga pegava apenas UMA linha (a maior), fazendo:
     #   "Ingressos"                         -> título
     #   "Brasil x Marrocos ..."             -> descrição
+    # Agora usamos a linha de maior tipografia como âncora e agregamos linhas
     # vizinhas com tipografia compatível, formando um bloco visual de título.
     med=float(_np_v145.median([l['altura'] for l in uteis]))
     cand=[l for l in uteis if l['altura'] >= max(med*1.25,med+3)]
@@ -3492,8 +3162,10 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
 
     # Expande para cima/baixo enquanto a linha tiver altura de título e
     # proximidade vertical plausível. Isso é geométrico, sem depender do texto.
+    # V182 — EasyOCR pode devolver alturas bem diferentes para linhas do
     # MESMO título (principalmente palavras com ascendentes/descendentes ou
     # linhas mais curtas). O limiar antigo 1.18×mediana / 0.58×âncora era
+    # agressivo e quebrava, por exemplo, "Compre / Agora Seu / Ingresso".
     # Continuamos separando do corpo menor, mas toleramos variação tipográfica.
     lim_altura=max(med*1.00, altura_titulo_ref*0.48)
 
@@ -3517,7 +3189,9 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
         else:
             break
 
+    # V186 — correção de "title/body cliff".
     #
+    # Em alguns displays, a tolerância tipográfica da V182 faz a primeira
     # linha do corpo entrar no título. Isso acontece quando:
     #   - o título é grande e curto, ocupando várias linhas;
     #   - a descrição começa logo abaixo, com fonte claramente menor;
@@ -3597,6 +3271,7 @@ def _detectar_display_vertical_v145(img_bgr, reader, empresa: str=None):
     linhas_titulo=uteis[idx_ini:idx_fim+1]
     titulo=_limpar_pontuacao_ocr(' '.join(l['texto'] for l in linhas_titulo).strip())
 
+    # V178 — descrição termina antes da área de mídia.
     # Em Display vertical, OCR pode encontrar números/textos incidentais dentro
     # da foto (camisa "10", placas, banners etc.). Uma quebra vertical muito
     # maior que o espaçamento das linhas da descrição indica que a mídia começou.
@@ -3801,6 +3476,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
         return None
     _conteudo.sort(key=lambda l: l['yc'])
 
+    # V169 — split-card por BLOCOS VISUAIS, não por "maior altura".
     #
     # O primeiro bloco textual útil após avatar/logo é o título. Ele só recebe
     # uma linha seguinte como continuação quando essa linha está visualmente
@@ -3847,6 +3523,7 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str=None):
     _descricao = _corrigir_espacos_marca_na_descricao(_descricao, empresa)
     _descricao = _normalizar_artigo_os_em_descricao_v175(_descricao)
 
+    # V172 — se o OCR colar o texto do botão no fim da última linha da
     # descrição, separa o CTA antes de montar o resultado. Esta regra roda
     # somente no layout split-card e somente no FINAL da descrição.
     #
@@ -4100,6 +3777,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 idx += 1
                 continue
         if len(_grupos_botoes) >= 2:
+            # V171 — geometria sozinha NÃO transforma uma banda em fileira de botões.
             # Primeiro lemos os mesmos grupos que a regra antiga já lia e exigimos
             # conteúdo textual real. Bordas/divisores como "| |", "_", "~", etc.
             # não podem fechar o título/descrição nem criar CTA/sitelink.
@@ -4232,6 +3910,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
             if str(empresa or '').strip().lower().replace(' ', '') == 'ticketswap' and _partes_relacionados:
                 _partes_relacionados = [re.sub('(?i)^reg[ií]strate\\s*[,;:]\\s*entra$', 'Regístrate o entra', _p.strip()) for _p in _partes_relacionados]
             if _portao_seguranca_relacionados and (not _relacionados_split_textual_confiavel):
+                # V161 — banda com separador ANTES normalmente é um sitelink
                 # vertical individual. Sem separador textual explícito dentro
                 # da própria linha, NÃO usar gaps entre palavras para inventar
                 # dois links.
@@ -4253,6 +3932,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
 
                 if len(_candidatos_gap) >= 2 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
+            # V161 — proteção final para sitelink vertical individual.
             _sep_explicito_v161b = bool(re.search(r'[|·•]', texto or ''))
             _hifen_final_v161b = bool(re.search(r'\s+[-–—]\s*$', texto or ''))
             if (
@@ -4270,6 +3950,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                     pares.append(par_atual)
                     par_atual = None
 
+                # V170 — cada link horizontal vira um objeto próprio.
                 # Nunca grava '<hr>' dentro do campo titulo.
                 for _termo_rel in _partes_relacionados:
                     _termo_rel = str(_termo_rel or '').strip()
@@ -4605,6 +4286,7 @@ def _posprocessar_google_ads_v168(resultado):
 
         resultado['sitelinks'] = _novos_sitelinks_v170
 
+        # V173 — remove somente hífen visual no FINAL do sitelink.
         # Preserva hífens internos legítimos:
         #   "On-Line" -> "On-Line"
         #   "GP Brasil - 3 Dias" -> "GP Brasil - 3 Dias"
@@ -4667,6 +4349,7 @@ def _posprocessar_google_ads_v168(resultado):
             b_prefixo = bool(re.match(r'(?i)^(?:https?://|www\.|[vwn]{2,4}[.:])', b_compacto))
 
             if (not a_prefixo) and b_prefixo:
+                # V174 — preserve exatamente a capitalização visual do nome.
                 # A versão minúscula existe somente para comparações internas;
                 # nunca é usada como texto de exibição.
                 nome_exibicao = re.sub(r'\s+', '', a).strip()
@@ -4683,6 +4366,7 @@ def _posprocessar_google_ads_v168(resultado):
 
     resultado['_parser_v168_single_pass'] = True
     return resultado
+
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):
@@ -4791,6 +4475,7 @@ def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
 _MIN_INTERVALO_OCR_SEG = 0.0
 
 
+
 def _achatar_ocr_estruturado(d: dict) -> str:
     if not d:
         return ""
@@ -4810,6 +4495,7 @@ def _achatar_ocr_estruturado(d: dict) -> str:
         else:
             linhas.append(str(sl))
     return "\n".join(linhas)
+
 
 
 def _agora_iso_worker():
@@ -4965,6 +4651,7 @@ def _processar_atividade_worker(sb, atividade: dict):
             break
 
         try:
+            # V146: heartbeat ANTES da inferência. Uma imagem pode levar mais tempo
             # que o intervalo normal do daemon, então registramos explicitamente que
             # o worker está vivo e entrou no OCR desta mídia.
             _atividade_update_worker(

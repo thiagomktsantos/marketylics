@@ -1,4 +1,4 @@
-# V206 — headline por faixas de pixels expandida para cima e para baixo.
+# V207 — recupera travessão visual antes da regra de reticências.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -1412,6 +1412,73 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
     return saida
 
 
+
+def _tem_travessao_visual_v207(img_bgr, y0, y1, x_ref):
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        altura = max(1, int(y1 - y0))
+
+        yy0 = max(0, int(y0 - altura * 0.20))
+        yy1 = min(h_img, int(y1 + altura * 0.20))
+        xx0 = max(0, int(x_ref - 3))
+        xx1 = min(w_img, int(x_ref + max(90, altura * 3.5)))
+
+        if yy1 <= yy0 or xx1 <= xx0:
+            return False
+
+        roi = img_bgr[yy0:yy1, xx0:xx1]
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        _, mask = cv2.threshold(
+            gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        # Realça componentes horizontais longos e finos.
+        kw = max(9, int(altura * 0.35))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kw, 1))
+        horiz = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+        n, _, stats, cents = cv2.connectedComponentsWithStats(horiz, 8)
+        rh, rw = gray.shape[:2]
+
+        for i in range(1, n):
+            x, y, cw, ch, area = [int(v) for v in stats[i]]
+            cx, cy = cents[i]
+
+            if cw < max(18, int(altura * 0.70)):
+                continue
+            if cw > max(100, int(altura * 3.8)):
+                continue
+            if ch > max(8, int(altura * 0.28)):
+                continue
+            if area < max(12, int(cw * 0.55)):
+                continue
+
+            # Deve começar logo depois da última palavra.
+            if x > max(30, int(altura * 1.05)):
+                continue
+
+            # Travessão fica próximo do meio vertical das letras.
+            if cy < rh * 0.28 or cy > rh * 0.72:
+                continue
+
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
+def _aplicar_travessao_v207(texto):
+    s = str(texto or '').rstrip()
+    if not s:
+        return s
+
+    base = re.sub(r'[\s.,;:_\-|/~\\…]+$', '', s)
+    return (base + ' —') if base else s
+
+
 def _tem_reticencias_visuais_v202(img_bgr, y0, y1, x_ref):
     try:
         h_img, w_img = img_bgr.shape[:2]
@@ -1663,7 +1730,21 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _gy0_v202 = y0 + linhas_y_range[_idx_ultima_linha][0]
     _gy1_v202 = y0 + linhas_y_range[_idx_ultima_linha][1]
 
-    if _tem_reticencias_visuais_v202(
+    _travessao_v207 = _tem_travessao_visual_v207(
+        img_bgr,
+        _gy0_v202,
+        _gy1_v202,
+        _gx_ultima_v202,
+    )
+
+    if _travessao_v207:
+        _texto_completo = _aplicar_travessao_v207(_texto_completo)
+        print(
+            f"[OCR-DEBUG] V207 travessão recuperado no fim da banda: "
+            f"{_texto_completo!r}",
+            flush=True,
+        )
+    elif _tem_reticencias_visuais_v202(
         img_bgr,
         _gy0_v202,
         _gy1_v202,
@@ -1697,15 +1778,20 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         if _idx_linha_atual in _linhas_com_hifen_final_recuperado and (not _texto_linha_out.endswith('-')):
             _texto_linha_out = (_texto_linha_out + ' -').strip()
 
-        if _idx_linha_atual == _idx_ultima_linha and _tem_reticencias_visuais_v202(
-            img_bgr,
-            y0 + _y0_l,
-            y0 + _y1_l,
-            x0 + _x_dir_ultima,
-        ):
-            _texto_linha_out = _aplicar_reticencias_sem_mexer_letras_v202(
-                _texto_linha_out
-            )
+        if _idx_linha_atual == _idx_ultima_linha:
+            if _travessao_v207:
+                _texto_linha_out = _aplicar_travessao_v207(
+                    _texto_linha_out
+                )
+            elif _tem_reticencias_visuais_v202(
+                img_bgr,
+                y0 + _y0_l,
+                y0 + _y1_l,
+                x0 + _x_dir_ultima,
+            ):
+                _texto_linha_out = _aplicar_reticencias_sem_mexer_letras_v202(
+                    _texto_linha_out
+                )
 
         _linhas_out.append({'texto': _texto_linha_out, 'altura': _y1_l - _y0_l})
     return (_texto_completo, _linhas_out)

@@ -1,4 +1,4 @@
-# V200 — recuperação de reticências usa a largura real da imagem.
+# V201 — recuperação antes de reticências usa largura total e margem vertical ampliada.
 # -*- coding: utf-8 -*-
 # Mantém OCR local por banda + 2 threads + entrega incremental por item.
 # NÃO usa cache OCR global das V147+.
@@ -1262,7 +1262,7 @@ def _recuperar_final_linha_antes_reticencias(reader, recorte_bgr, bbox, texto_at
                         beamWidth=7,
                         allowlist=' ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç',
                         width_ths=0.12,
-                        height_ths=0.65,
+                        height_ths=0.80,
                         text_threshold=0.10,
                         low_text=0.05,
                         link_threshold=0.08,
@@ -1906,11 +1906,18 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _recorte_ultima_linha = _recorte_da_linha(_idx_ultima_linha)
 
     _y_linha_top, _y_linha_bottom = linhas_y_range[_idx_ultima_linha]
-    _y_full0 = max(0, y0 + _y_linha_top - 5)
-    _y_full1 = min(altura_total, y0 + _y_linha_bottom + 6)
+    _altura_linha_v201 = max(1, _y_linha_bottom - _y_linha_top)
 
-    # Para recuperar o final antes de "...", não usar o x_max da banda:
-    # ele pode ter sido calculado a partir de um OCR já truncado.
+    _margem_vertical_v201 = max(12, int(_altura_linha_v201 * 0.55))
+    _y_full0 = max(
+        0,
+        y0 + _y_linha_top - _margem_vertical_v201
+    )
+    _y_full1 = min(
+        altura_total,
+        y0 + _y_linha_bottom + _margem_vertical_v201
+    )
+
     _recorte_ultima_linha_full = img_bgr[
         _y_full0:_y_full1,
         x0:largura_total

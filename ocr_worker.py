@@ -1,4 +1,4 @@
-# V216 — recupera pixels não reconhecidos à direita da última caixa OCR azul.
+# V217 — aplica recuperação de cauda no retorno principal da banda OCR.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -2165,6 +2165,38 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
     _gx_ultima_v202 = x0 + _x_dir_ultima
     _gy0_v202 = y0 + linhas_y_range[_idx_ultima_linha][0]
     _gy1_v202 = y0 + linhas_y_range[_idx_ultima_linha][1]
+
+    # V217 — aplica a recuperação de cauda também no caminho principal
+    # da banda, antes do retorno quando retornar_linhas=False.
+    _cauda_main_v217 = _recuperar_cauda_nao_reconhecida_v216(
+        reader,
+        img_bgr,
+        _gy0_v202,
+        _gy1_v202,
+        _gx_ultima_v202,
+    )
+    if (
+        _cauda_main_v217
+        and not _texto_completo.endswith(_cauda_main_v217)
+        and not _texto_completo.endswith(('–', '—', '...'))
+    ):
+        # Evita duplicar hífen quando a banda já terminou em hífen.
+        if _texto_completo.rstrip().endswith('-'):
+            _cauda_main_v217 = re.sub(
+                r'^\s*[-–—]\s*',
+                '',
+                _cauda_main_v217,
+            ).strip()
+
+        if _cauda_main_v217:
+            _texto_completo = (
+                _texto_completo.rstrip() + ' ' + _cauda_main_v217
+            ).strip()
+            print(
+                f"[OCR-DEBUG] V217 cauda aplicada na banda principal: "
+                f"{_cauda_main_v217!r}",
+                flush=True,
+            )
 
     _travessao_v207 = _tem_travessao_visual_v207(
         img_bgr,

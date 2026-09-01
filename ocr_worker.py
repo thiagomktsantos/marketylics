@@ -1,4 +1,4 @@
-# V211 — corrige '/' em abreviação repetida no resultado estruturado.
+# V212 — corrige recursão infinita introduzida na V211.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4904,7 +4904,7 @@ def _posprocessar_google_ads_v168(resultado):
 
 def _corrigir_abreviacao_barra_repetida_v211(resultado):
     if not isinstance(resultado, dict):
-        return _corrigir_abreviacao_barra_repetida_v211(resultado)
+        return resultado
 
     campos = []
     for chave in ('titulo', 'descricao', 'cta', 'cta_subtitulo'):
@@ -4981,7 +4981,7 @@ def _corrigir_abreviacao_barra_repetida_v211(resultado):
 
         corpus = _substituir(corpus)
 
-    return _corrigir_abreviacao_barra_repetida_v211(resultado)
+    return resultado
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):

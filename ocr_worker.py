@@ -1,4 +1,4 @@
-# V210 — recupera '/' no pós-processamento da banda OCR.
+# V211 — corrige '/' em abreviação repetida no resultado estruturado.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4657,7 +4657,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         if titulo_sl:
             resultado['sitelinks'].append({'titulo': _normalizar_aspas_ocr(titulo_sl), 'descricao': descricao_sl})
     resultado = _corrigir_estrutura_ticketswap_ocr(resultado, empresa=empresa)
-    return resultado
+    return _corrigir_abreviacao_barra_repetida_v211(resultado)
 
 def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str=None) -> dict:
     """V51 — corrige artefatos estruturais recorrentes dos anúncios TicketSwap.
@@ -4672,11 +4672,11 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str=None) -> di
     padrões estruturais fortes, para não alterar anúncios de outras marcas.
     """
     if not isinstance(resultado, dict):
-        return resultado
+        return _corrigir_abreviacao_barra_repetida_v211(resultado)
     _empresa_norm = re.sub('[^a-z0-9]+', '', (empresa or '').lower())
     _url_norm = (resultado.get('url_exibida') or '').lower()
     if 'ticketswap' not in _empresa_norm and 'ticketswap' not in _url_norm:
-        return resultado
+        return _corrigir_abreviacao_barra_repetida_v211(resultado)
     titulo = re.sub('\\s+', ' ', (resultado.get('titulo') or '').strip())
     descricao = re.sub('\\s+', ' ', (resultado.get('descricao') or '').strip())
     _eh_ticketswap_de = bool(re.search('ticketswap\\.de(?:/|$)', _url_norm, re.IGNORECASE))
@@ -4727,7 +4727,7 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str=None) -> di
     descricao = re.sub('(?i)\\bcomprar\\s+r(?:e)?\\s+vender\\b', 'comprar e vender', descricao)
     resultado['titulo'] = titulo
     resultado['descricao'] = descricao
-    return resultado
+    return _corrigir_abreviacao_barra_repetida_v211(resultado)
 
 
 def _readtext_instrumentado(reader, imagem, *args, etapa="readtext", **kwargs):
@@ -4755,7 +4755,7 @@ def _posprocessar_google_ads_v168(resultado):
        preserva o primeiro como nome exibido e o segundo como URL.
     """
     if not isinstance(resultado, dict):
-        return resultado
+        return _corrigir_abreviacao_barra_repetida_v211(resultado)
 
     # -------- SITELINKS: estrutura, nunca HTML no texto; ZERO OCR --------
     sitelinks = resultado.get('sitelinks')
@@ -4897,8 +4897,91 @@ def _posprocessar_google_ads_v168(resultado):
                 break
 
     resultado['_parser_v168_single_pass'] = True
-    return resultado
+    return _corrigir_abreviacao_barra_repetida_v211(resultado)
 
+
+
+
+def _corrigir_abreviacao_barra_repetida_v211(resultado):
+    if not isinstance(resultado, dict):
+        return _corrigir_abreviacao_barra_repetida_v211(resultado)
+
+    campos = []
+    for chave in ('titulo', 'descricao', 'cta', 'cta_subtitulo'):
+        val = resultado.get(chave)
+        if isinstance(val, str) and val:
+            campos.append((chave, val))
+
+    sitelinks = resultado.get('sitelinks')
+    if isinstance(sitelinks, list):
+        for i, item in enumerate(sitelinks):
+            if not isinstance(item, dict):
+                continue
+            for chave in ('titulo', 'descricao'):
+                val = item.get(chave)
+                if isinstance(val, str) and val:
+                    campos.append((('sitelinks', i, chave), val))
+
+    chamadas = resultado.get('chamadas')
+    if isinstance(chamadas, list):
+        for i, val in enumerate(chamadas):
+            if isinstance(val, str) and val:
+                campos.append((('chamadas', i), val))
+
+    corpus = ' '.join(val for _, val in campos)
+
+    candidatos = re.findall(
+        r'\b([A-ZÀ-Ü]{2}I[A-ZÀ-Ü]{2})\b',
+        corpus,
+    )
+
+    for token in set(candidatos):
+        ocorrencias = len(
+            re.findall(rf'\b{re.escape(token)}\b', corpus)
+        )
+        com_dois_pontos = bool(
+            re.search(
+                rf'\b{re.escape(token)}\s*:',
+                corpus,
+            )
+        )
+
+        if ocorrencias < 2 or not com_dois_pontos:
+            continue
+
+        corrigido = token[:2] + '/' + token[3:]
+
+        def _substituir(s):
+            return re.sub(
+                rf'\b{re.escape(token)}\b',
+                corrigido,
+                s,
+            )
+
+        for ref, val in campos:
+            novo = _substituir(val)
+            if novo == val:
+                continue
+
+            if isinstance(ref, str):
+                resultado[ref] = novo
+            elif ref[0] == 'sitelinks':
+                _, idx, chave = ref
+                resultado['sitelinks'][idx][chave] = novo
+            elif ref[0] == 'chamadas':
+                _, idx = ref
+                resultado['chamadas'][idx] = novo
+
+        print(
+            f"[OCR-DEBUG] V211 abreviação repetida corrigida: "
+            f"{token!r} -> {corrigido!r} "
+            f"ocorrencias={ocorrencias}",
+            flush=True,
+        )
+
+        corpus = _substituir(corpus)
+
+    return _corrigir_abreviacao_barra_repetida_v211(resultado)
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):

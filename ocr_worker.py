@@ -1,4 +1,4 @@
-# V212 — corrige recursão infinita introduzida na V211.
+# V214 — recupera cauda curta perdida em linha azul antes da classificação.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4374,6 +4374,16 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         else:
             _texto_banda_bruto = _ocr_banda(reader, img_bgr, banda['y_min'], banda['y_max']).strip()
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
+
+        if banda['classe'] == 'azul':
+            texto = _recuperar_cauda_linha_azul_v214(
+                reader,
+                img_bgr,
+                banda['y_min'],
+                banda['y_max'],
+                texto,
+            )
+
         _debug_bandas[idx]['texto'] = texto
         _texto_ruido_sep = re.sub('\\s+', '', texto or '')
         _texto_ruido_restante = re.sub('[|¦│┃!Il1_\\-–—./\\\\]', '', _texto_ruido_sep)
@@ -4496,8 +4506,33 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 continue
             _cta_aberto = False
             if par_atual is not None and (not par_atual[1]) and (not banda.get('sep_antes')):
-                par_atual[0] = (par_atual[0] + ' ' + texto).strip()
-                _debug_bandas[idx]['decisao'] = 'azul → quebra de linha do título/sitelink em andamento (juntada)'
+                # V213 — evita um segundo hífen espúrio no começo de uma
+                # continuação de título quando o título já possui seu
+                # separador principal. Ex.:
+                #   "Show ... 2026 - Bad Bunny no" + "- Allianz"
+                # deve resultar em:
+                #   "Show ... 2026 - Bad Bunny no Allianz"
+                #
+                # Escopo deliberadamente estreito:
+                # - somente continuação AZUL do mesmo título;
+                # - somente hífen ASCII isolado no INÍCIO da continuação;
+                # - somente quando o trecho anterior já contém " - ".
+                # Travessões (–/—), hífens internos e títulos sem separador
+                # anterior permanecem intocados.
+                _texto_continuacao_v213 = texto
+                if (
+                    isinstance(_texto_continuacao_v213, str)
+                    and _texto_continuacao_v213.startswith('- ')
+                    and ' - ' in str(par_atual[0] or '')
+                ):
+                    _texto_continuacao_v213 = _texto_continuacao_v213[2:].lstrip()
+                    _debug_bandas[idx]['decisao'] = (
+                        'azul → quebra de linha do título/sitelink em andamento '
+                        '(V213: hífen inicial duplicado removido; juntada)'
+                    )
+                else:
+                    _debug_bandas[idx]['decisao'] = 'azul → quebra de linha do título/sitelink em andamento (juntada)'
+                par_atual[0] = (par_atual[0] + ' ' + _texto_continuacao_v213).strip()
             elif par_atual is not None:
                 pares.append(par_atual)
                 par_atual = [texto, []]
@@ -4982,6 +5017,133 @@ def _corrigir_abreviacao_barra_repetida_v211(resultado):
         corpus = _substituir(corpus)
 
     return resultado
+
+
+
+def _recuperar_cauda_linha_azul_v214(reader, img_bgr, y_min, y_max, texto_atual):
+    atual = re.sub(r'\s+', ' ', str(texto_atual or '')).strip()
+    if not atual:
+        return atual
+
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        altura = max(1, int(y_max - y_min + 1))
+        margem = max(6, int(altura * 0.28))
+
+        y0 = max(0, int(y_min - margem))
+        y1 = min(h_img, int(y_max + margem + 1))
+        roi = img_bgr[y0:y1, 0:w_img]
+        if roi.size == 0:
+            return atual
+
+        variantes = [roi]
+        up = cv2.resize(
+            roi, None, fx=2.2, fy=2.2,
+            interpolation=cv2.INTER_CUBIC
+        )
+        variantes.append(up)
+
+        candidatos = []
+        for imagem in variantes:
+            rr = reader.readtext(
+                imagem,
+                detail=1,
+                paragraph=False,
+                decoder='beamsearch',
+                beamWidth=5,
+                allowlist=(
+                    ' ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                    'abcdefghijklmnopqrstuvwxyz'
+                    'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç'
+                    '0123456789?-–—:'
+                ),
+                width_ths=0.10,
+                height_ths=0.75,
+                text_threshold=0.16,
+                low_text=0.08,
+                link_threshold=0.10,
+            )
+
+            rr.sort(key=lambda item: min(p[0] for p in item[0]))
+            cand = ' '.join(
+                re.sub(r'\s+', ' ', str(item[1] or '')).strip()
+                for item in rr
+                if str(item[1] or '').strip()
+            )
+            cand = re.sub(r'\s+', ' ', cand).strip()
+            if cand:
+                candidatos.append(cand)
+
+        if not candidatos:
+            return atual
+
+        def _tokens_base(s):
+            return [
+                re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', tok).lower()
+                for tok in re.findall(r'\S+', s)
+                if re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', tok)
+            ]
+
+        base_atual = _tokens_base(atual)
+        if not base_atual:
+            return atual
+
+        melhores = []
+        for cand in candidatos:
+            base_cand = _tokens_base(cand)
+            if len(base_cand) <= len(base_atual):
+                continue
+            if base_cand[:len(base_atual)] != base_atual:
+                continue
+
+            extras = base_cand[len(base_atual):]
+            if not (1 <= len(extras) <= 2):
+                continue
+            if sum(len(x) for x in extras) > 5:
+                continue
+
+            # Recupera somente a cauda textual após as palavras já reconhecidas.
+            toks_cand = re.findall(r'\S+', cand)
+            cont_base = 0
+            corte = 0
+            for i, tok in enumerate(toks_cand):
+                if re.sub(r'[^A-Za-zÀ-ÿ0-9]', '', tok):
+                    cont_base += 1
+                if cont_base == len(base_atual):
+                    corte = i + 1
+                    break
+
+            cauda = ' '.join(toks_cand[corte:]).strip()
+            if not cauda:
+                continue
+
+            # Inclui separador imediatamente anterior quando foi lido separado.
+            if corte > 0 and toks_cand[corte - 1] in ('-', '–', '—'):
+                cauda = toks_cand[corte - 1] + ' ' + cauda
+
+            if len(cauda) <= 10:
+                melhores.append((len(cauda), cand, cauda))
+
+        if not melhores:
+            return atual
+
+        melhores.sort(key=lambda item: item[0])
+        _, _, cauda = melhores[0]
+
+        # Se a cauda perdeu o hífen na tokenização, tenta preservá-lo pela forma candidata.
+        if cauda and not atual.endswith(cauda):
+            novo = (atual.rstrip() + ' ' + cauda).strip()
+            print(
+                f"[OCR-DEBUG] V214 cauda azul recuperada: "
+                f"{atual!r} -> {novo!r}",
+                flush=True,
+            )
+            return novo
+
+    except Exception:
+        pass
+
+    return atual
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):

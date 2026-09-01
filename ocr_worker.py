@@ -1,4 +1,4 @@
-# V215 — restringe recuperação de cauda azul e evita hífen extra.
+# V216 — recupera pixels não reconhecidos à direita da última caixa OCR azul.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -1827,6 +1827,156 @@ def _recuperar_barras_na_banda_v210(reader, recorte_bgr, texto):
     return s
 
 
+
+def _recuperar_cauda_nao_reconhecida_v216(reader, img_bgr, y0, y1, x_fim):
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        altura = max(1, int(y1 - y0))
+        margem_y = max(5, int(altura * 0.22))
+
+        yy0 = max(0, int(y0 - margem_y))
+        yy1 = min(h_img, int(y1 + margem_y))
+        xx0 = max(0, int(x_fim + 2))
+        xx1 = min(w_img, int(x_fim + max(100, altura * 4.5)))
+
+        if yy1 <= yy0 or xx1 <= xx0:
+            return ""
+
+        roi = img_bgr[yy0:yy1, xx0:xx1]
+        if roi.size == 0:
+            return ""
+
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(
+            gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        n, _, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+
+        comps = []
+        for i in range(1, n):
+            x, y, cw, ch, area = [int(v) for v in stats[i]]
+
+            if area < 3:
+                continue
+            if ch < max(2, int(altura * 0.08)):
+                continue
+            if ch > int(altura * 1.25):
+                continue
+            if x > max(75, int(altura * 3.2)):
+                continue
+
+            comps.append((x, y, cw, ch, area))
+
+        if not comps:
+            return ""
+
+        x_min_c = min(c[0] for c in comps)
+        x_max_c = max(c[0] + c[2] for c in comps)
+        y_min_c = min(c[1] for c in comps)
+        y_max_c = max(c[1] + c[3] for c in comps)
+
+        # A cauda deve começar perto da última caixa OCR, não longe na linha.
+        if x_min_c > max(28, int(altura * 1.1)):
+            return ""
+
+        pad = 5
+        crop = roi[
+            max(0, y_min_c - pad):min(roi.shape[0], y_max_c + pad),
+            max(0, x_min_c - pad):min(roi.shape[1], x_max_c + pad),
+        ]
+
+        if crop.size == 0:
+            return ""
+
+        variantes = []
+        for escala in (3.0, 4.0):
+            up = cv2.resize(
+                crop, None,
+                fx=escala, fy=escala,
+                interpolation=cv2.INTER_CUBIC
+            )
+            variantes.append(up)
+
+            g = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(
+                clipLimit=2.4,
+                tileGridSize=(4, 4)
+            ).apply(g)
+            variantes.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+        candidatos = []
+
+        for img in variantes:
+            rr = reader.readtext(
+                img,
+                detail=1,
+                paragraph=False,
+                decoder='beamsearch',
+                beamWidth=7,
+                allowlist=(
+                    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                    'abcdefghijklmnopqrstuvwxyz'
+                    'ÁÀÂÃÉÊÍÓÔÕÚÇ'
+                    'áàâãéêíóôõúç'
+                    '0123456789-–—'
+                ),
+                width_ths=0.02,
+                height_ths=0.90,
+                text_threshold=0.10,
+                low_text=0.04,
+                link_threshold=0.06,
+                contrast_ths=0.02,
+                adjust_contrast=0.9,
+            )
+
+            rr.sort(key=lambda item: min(p[0] for p in item[0]))
+            cand = ' '.join(
+                re.sub(r'\s+', ' ', str(item[1] or '')).strip()
+                for item in rr
+                if str(item[1] or '').strip()
+            )
+            cand = re.sub(r'\s+', ' ', cand).strip()
+
+            if not cand:
+                continue
+
+            if len(cand) > 12:
+                continue
+
+            if not re.search(r'[A-Za-zÀ-ÿ]', cand):
+                continue
+
+            candidatos.append(cand)
+
+        if not candidatos:
+            return ""
+
+        candidatos = list(dict.fromkeys(candidatos))
+        candidatos.sort(
+            key=lambda s: (
+                1 if re.search(r'[-–—]', s) else 0,
+                -len(s)
+            ),
+            reverse=True,
+        )
+
+        melhor = candidatos[0]
+
+        # Normaliza apenas separador inicial.
+        melhor = re.sub(r'^\s*[-–—]\s*', '- ', melhor).strip()
+
+        print(
+            f"[OCR-DEBUG] V216 cauda visual isolada recuperada: {melhor!r}",
+            flush=True,
+        )
+        return melhor
+
+    except Exception:
+        return ""
+
+
 def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: int=None, retornar_linhas: bool=False):
     """Roda o EasyOCR só na faixa horizontal (com uma margem de alguns
     pixels) em vez da imagem inteira — mais rápido e evita misturar
@@ -2057,6 +2207,26 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
                 _recorte_da_linha(_idx_linha_atual),
                 _texto_linha_out,
             )
+
+            if classe == 'azul' and _fim_idx_palavra_linha_atual >= 0:
+                _bbox_cauda_v216 = palavras[_fim_idx_palavra_linha_atual][0]
+                _x_cauda_v216 = int(max(p[0] for p in _bbox_cauda_v216))
+                _cauda_mid_v216 = _recuperar_cauda_nao_reconhecida_v216(
+                    reader,
+                    img_bgr,
+                    y0 + _y0_l,
+                    y0 + _y1_l,
+                    x0 + _x_cauda_v216,
+                )
+                if (
+                    _cauda_mid_v216
+                    and not _texto_linha_out.endswith(_cauda_mid_v216)
+                    and not _texto_linha_out.endswith(('-', '–', '—', '...'))
+                ):
+                    _texto_linha_out = (
+                        _texto_linha_out.rstrip() + ' ' + _cauda_mid_v216
+                    ).strip()
+
             if _idx_linha_atual in _linhas_com_hifen_final_recuperado and (not _texto_linha_out.endswith('-')):
                 _texto_linha_out = (_texto_linha_out + ' -').strip()
             _linhas_out.append({'texto': _texto_linha_out, 'altura': _y1_l - _y0_l})
@@ -2073,6 +2243,25 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int=None, x_max: 
         )
 
         _bbox_fim_v209 = palavras[-1][0]
+
+        # Recupera somente pixels que ficaram à direita da última caixa OCR.
+        if classe == 'azul':
+            _x_fim_cauda_v216 = int(max(p[0] for p in _bbox_fim_v209))
+            _cauda_v216 = _recuperar_cauda_nao_reconhecida_v216(
+                reader,
+                img_bgr,
+                y0 + _y0_l,
+                y0 + _y1_l,
+                x0 + _x_fim_cauda_v216,
+            )
+            if (
+                _cauda_v216
+                and not _texto_linha_out.endswith(_cauda_v216)
+                and not _texto_linha_out.endswith(('-', '–', '—', '...'))
+            ):
+                _texto_linha_out = (
+                    _texto_linha_out.rstrip() + ' ' + _cauda_v216
+                ).strip()
         _x_fim_v209 = int(max(p[0] for p in _bbox_fim_v209))
         _cauda_v209 = _recuperar_cauda_fim_linha_v209(
             reader,

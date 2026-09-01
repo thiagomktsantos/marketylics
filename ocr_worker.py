@@ -1,4 +1,4 @@
-# V214 — recupera cauda curta perdida em linha azul antes da classificação.
+# V215 — restringe recuperação de cauda azul e evita hífen extra.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4383,6 +4383,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                 banda['y_max'],
                 texto,
             )
+            texto = re.sub(r'(?:\s+-){2,}\s*$', ' -', texto).strip()
 
         _debug_bandas[idx]['texto'] = texto
         _texto_ruido_sep = re.sub('\\s+', '', texto or '')
@@ -5025,6 +5026,9 @@ def _recuperar_cauda_linha_azul_v214(reader, img_bgr, y_min, y_max, texto_atual)
     if not atual:
         return atual
 
+    if atual.endswith(('-', '–', '—', '...')):
+        return atual
+
     try:
         h_img, w_img = img_bgr.shape[:2]
         altura = max(1, int(y_max - y_min + 1))
@@ -5100,6 +5104,8 @@ def _recuperar_cauda_linha_azul_v214(reader, img_bgr, y_min, y_max, texto_atual)
             if not (1 <= len(extras) <= 2):
                 continue
             if sum(len(x) for x in extras) > 5:
+                continue
+            if not any(re.search(r'[A-Za-zÀ-ÿ]', x) for x in extras):
                 continue
 
             # Recupera somente a cauda textual após as palavras já reconhecidas.

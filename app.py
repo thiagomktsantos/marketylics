@@ -1,21 +1,6 @@
-# V166 — ícone SVG do badge CC YouTube em preto.
-# V165_GADS_MULTICARD_HR_RENDER — renderiza o campo estruturado `chamadas` como blocos separados por linha horizontal real no preview e nos cards Google Ads.
-# V164_SUPPORT_LAZY_DETAIL_LOAD — detalhamento da aba Suporte só é filtrado/renderizado após clique; remove custo dos expanders fechados.
-# V163_SUPPORT_SEPARATE_YOUTUBE_LINKS — separa links pendentes de mídia dos links permanentes do YouTube na aba Suporte.
-# V162_YOUTUBE_CC_WHITE_BADGE_BLACK_TEXT — badge CC YouTube com fundo branco e conteúdo preto.
-# V161_YOUTUBE_CC_ORPHAN_ACTIVITY_RECOVERY — recupera/encerra atividade CC órfã após restart/redeploy, preservando anti-loop V159 e badge branco V160.
-# V160_YOUTUBE_CC_WHITE_BADGE — badge CC YouTube com fundo branco.
-# V159_YOUTUBE_CC_STOP_INFINITE_LOOP — impede que vídeos já verificados com sem_cc_confirmado/erro_captura voltem para a fila automática a cada ciclo.
-# V158_YOUTUBE_CC_CARD_ATTRIBUTE_FIX — remove uso indevido de `_html.escape` nos data-* do badge CC YouTube, preservando tooltip e exibição do CC.
-# V157_YOUTUBE_CC_CARD_UNBOUND_FIX — corrige referência `a`→`ad` na segunda rota de cards Google Ads; preserva toda a lógica da V156.
-# V156_YOUTUBE_CC_CARD_FIX — corrige a segunda rota de renderização dos cards Google Ads para exibir video_cc_raw como badge CC YouTube.
-# V155_YOUTUBE_CC_YTDLP_PRIMARY — yt-dlp como rota principal; timedtext WEB apenas fallback; distingue ausência real de falha técnica.
-# V154_YOUTUBE_CC_COMPANY_BATCH_LOGS — CC por empresa, persistência por lote e logs detalhados por vídeo com status, método e motivo.
-# V153_YOUTUBE_CC_NOTIFICATIONS_SUPPORT — CC YouTube ganha atividade no sino, auto-check global e métricas de vídeos Google com/sem CC no Suporte.
-# V152_YOUTUBE_CC_RETRY_FALLBACK — não cacheia falha vazia de CC, permite retry real pós-standby e adiciona fallback YouTube timedtext.
-# V151_YOUTUBE_CC_AUTO_RECOVERY — verifica automaticamente vídeos YouTube sem CC após retomada/render, com retry pós-standby, trava concorrente e cooldown.
-# V150_YOUTUBE_CC — salva CC/legendas de vídeos YouTube no Google Ads, exibe no card, usa na busca e na análise.\n# V149_LOGIN_BUTTON_LOADING — autenticação exibe carregamento no próprio botão, sem spinner abaixo.\n# V148_SEARCH_ALL_OCR_IMAGES — busca carrega e pesquisa OCR de todas as imagens/variações responsivas do anúncio.
-# V147_SEARCH_IN_OCR — busca Google Ads inclui OCR bruto/estruturado e ignora caixa/acentos.\nfrom playwright.sync_api import sync_playwright
+# V171 — limpeza de comentários; lógica preservada.
+# V170 — badge CC com SVG + texto 'Closed Caption'.
+# V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
 import datetime
 import streamlit as st
 import multiprocessing
@@ -84,7 +69,6 @@ def _limitar_threads_cpu_ocr_apos_import():
         try:
             torch.set_num_interop_threads(1)
         except RuntimeError:
-            # Pode já ter sido fixado pela primeira operação do runtime.
             pass
     except Exception as e:
         print(f"[OCR-DEBUG] não consegui limitar threads do torch: {e!r}", flush=True)
@@ -194,7 +178,6 @@ def _http_post(*args, **kwargs):
 
 def _http_head(*args, **kwargs):
     return _http_session().head(*args, **kwargs)
-
 
 
 # ---------------------------------------------------
@@ -429,6 +412,61 @@ _SVG_ICONE_TRANSCRICAO = (
     '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>'
     '</svg>'
 )
+
+_SVG_ICONE_CC_YOUTUBE = r"""<svg width="18" height="18" xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 24 24"
+     width="24"
+     height="24">
+  <title>Closed Captioning Icon</title>
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns:dc="http://purl.org/dc/elements/1.1/"
+             xmlns:cc="http://creativecommons.org/ns#">
+      <cc:Work rdf:about="">
+        <dc:title>Closed Captioning Icon</dc:title>
+        <dc:description>A minimalistic closed captioning (CC) icon, ideal for representing subtitles, accessibility features, or media playback options in apps, websites, and video platforms.</dc:description>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Google</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <dc:source>https://github.com/google/material-design-icons</dc:source>
+        <dc:rights>
+          <cc:Agent>
+            <dc:title>Google</dc:title>
+          </cc:Agent>
+        </dc:rights>
+        <cc:license rdf:resource="https://github.com/google/material-design-icons/blob/master/LICENSE"/>
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+        <dc:subject>
+          <rdf:Bag>
+            <rdf:li>closed-captioning</rdf:li>
+            <rdf:li>CC-icon</rdf:li>
+            <rdf:li>subtitles-icon</rdf:li>
+            <rdf:li>accessibility-icon</rdf:li>
+            <rdf:li>video-playback</rdf:li>
+            <rdf:li>media-controls</rdf:li>
+            <rdf:li>subtitles-button</rdf:li>
+            <rdf:li>closed-captions</rdf:li>
+            <rdf:li>accessibility-feature</rdf:li>
+            <rdf:li>video-settings</rdf:li>
+            <rdf:li>media-accessibility</rdf:li>
+            <rdf:li>subtitle-toggle</rdf:li>
+            <rdf:li>video-player-icon</rdf:li>
+            <rdf:li>captioning-symbol</rdf:li>
+            <rdf:li>CC-button</rdf:li>
+          </rdf:Bag>
+        </dc:subject>
+      </cc:Work>
+      <cc:License rdf:about="https://github.com/google/material-design-icons/blob/master/LICENSE">
+        <dc:title>Apache 2.0 (Apache-2.0)</dc:title>
+      </cc:License>
+    </rdf:RDF>
+  </metadata>
+  <path fill="#000000" d="M5 20q-.825 0-1.412-.587T3 18V6q0-.825.588-1.412T5 4h14q.825 0 1.413.588T21 6v12q0 .825-.587 1.413T19 20zm2-5h3q.425 0 .713-.288T11 14v-1H9.5v.5h-2v-3h2v.5H11v-1q0-.425-.288-.712T10 9H7q-.425 0-.712.288T6 10v4q0 .425.288.713T7 15m7 0h3q.425 0 .713-.288T18 14v-1h-1.5v.5h-2v-3h2v.5H18v-1q0-.425-.288-.712T17 9h-3q-.425 0-.712.288T13 10v4q0 .425.288.713T14 15"/>
+</svg>"""
 
 _SVG_ICONE_TRANSCRICAO_PENDENTE = (
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fbbf24">'
@@ -776,7 +814,6 @@ PLANOS_QUOTA_MIDIAS = {
 }
 # Revisado em jul/2026, depois da virada de métrica pra "por anúncio"
 # (ver comentário acima): os números 500/50 foram mantidos de propósito,
-# não são resquício do critério antigo — mantém a mesma proporção Pro/
 # Starter (10x) e, na prática, representa um AUMENTO real de capacidade
 # em ambos os planos (antes, 500/50 "mídias" cobriam bem menos anúncios
 # de verdade do que 500/50 anúncios cobrem agora).
@@ -936,7 +973,6 @@ def _formatar_tempo_restante(quando, agora=None) -> str:
 
 def obter_plano_usuario() -> str:
     # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
-    # Padrão temporário "pro" enquanto não existe billing — evita travar
     # todo mundo na cota 0 do plano free antes do sistema de planos existir.
     # Trocar pra "free" (ou remover o default) assim que o billing entrar.
     return st.session_state.get("plano_usuario", "pro")
@@ -1028,7 +1064,6 @@ def _comprimir_imagem(conteudo: bytes, content_type: str):
             nova_altura = int(img.height * (LARGURA_MAX / img.width))
             img = img.resize((LARGURA_MAX, nova_altura), Image.LANCZOS)
         buffer = io.BytesIO()
-        # RGBA preserva transparência; RGB pra imagens sem canal alfa
         img.save(buffer, format="WEBP", quality=80, method=6)
         return buffer.getvalue(), "image/webp", ".webp"
     except Exception:
@@ -1282,7 +1317,6 @@ def _e_url_youtube(url: str) -> bool:
     return bool(url) and bool(_REGEX_YOUTUBE.search(url))
 
 
-# V150 — cache em memória das legendas/CC do YouTube. O gads_cache é a
 # persistência definitiva; este cache só evita repetir GETs do mesmo vídeo
 # durante uma mesma execução/processo.
 _YOUTUBE_CC_CACHE_V150 = {}
@@ -1332,7 +1366,6 @@ def _extrair_player_response_youtube_v150(html_text: str):
         except Exception:
             pass
 
-    # Fallback para páginas que serializam o player response dentro de uma
     # propriedade JSON. O raw_decode começa exatamente no objeto após a chave.
     for marcador in ('"playerResponse":', '"ytInitialPlayerResponse":'):
         pos = html_text.find(marcador)
@@ -1522,8 +1555,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
     else:
         cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
 
-    # V152 — resultado vazio NÃO é sucesso e não pode impedir retries.
-    # Nas versões anteriores, uma falha temporária/standby podia armazenar
     # {"text": ""} e todas as verificações automáticas seguintes retornavam
     # imediatamente esse vazio sem consultar o YouTube novamente.
     if cached is not None and str(cached.get("text") or "").strip():
@@ -1535,14 +1566,12 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
         "source": "",
         "video_id": video_id,
         "url": url_video,
-        # V154/V155 — motivo técnico/auditável do resultado de CC.
         "cc_status": "pendente",
         "cc_reason": "",
         "cc_method": "",
         "http_status": None,
     }
 
-    # V155 — rota principal via yt-dlp/InnerTube; WEB/timedtext fica fallback.
     _diag_ytdlp_v155 = _obter_cc_ytdlp_v155(url_video, video_id)
     if str(_diag_ytdlp_v155.get("text") or "").strip():
         result.update(_diag_ytdlp_v155)
@@ -1577,7 +1606,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                 source = "automatic" if str(track.get("kind") or "").lower() == "asr" else "manual"
                 texto_cc = ""
 
-                # json3 é mais simples e preserva melhor Unicode.
                 sep = "&" if "?" in base_url else "?"
                 with _recurso_api_io():
                     cap = _http_get(base_url + sep + "fmt=json3", timeout=20, headers=headers)
@@ -1587,7 +1615,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     except Exception:
                         texto_cc = ""
 
-                # Fallback: endpoint pode responder XML mesmo com fmt=json3.
                 if not texto_cc:
                     try:
                         with _recurso_api_io():
@@ -1613,7 +1640,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     "cc_method": "player_captionTracks",
                 })
 
-        # V152 — fallback para o endpoint timedtext.
         #
         # O HTML /watch nem sempre expõe captionTracks (consentimento,
         # resposta simplificada, cold start, mudanças do YouTube). Quando a
@@ -1790,8 +1816,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
             flush=True,
         )
 
-    # V152 — cache positivo apenas. Falha temporária/sem texto fica elegível
-    # para a recuperação automática da V151 em uma próxima renderização.
     if str(result.get("text") or "").strip():
         if _YOUTUBE_CC_LOCK_V150:
             with _YOUTUBE_CC_LOCK_V150:
@@ -1884,7 +1908,6 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
 
     for empresa, entry in resultado.items():
         for ad in entry.get("data", []):
-            # Se já existe CC salvo, preserva. Ainda assim garante metadados.
             cc_existente = str(ad.get("video_cc_raw") or "").strip()
             escolhido = None
             escolhido_url = ""
@@ -1923,7 +1946,6 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
     return resultado
 
 
-# V151 — recuperação automática de CC pendente.
 #
 # Diferente de uma flag de session_state "já verificado", este controle vive
 # no processo e só registra cooldown DEPOIS de uma verificação concluída.
@@ -1972,7 +1994,6 @@ def _gads_youtube_sem_cc_v151(cache: dict) -> list:
                 if _vid:
                     pendentes.setdefault(_vid, _url)
     return list(pendentes.items())
-
 
 
 def _atividade_cc_youtube_mais_recente_id_v153(user_id: str):
@@ -2139,7 +2160,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             flush=True,
         )
 
-        # V154 — processa e persiste empresa por empresa para evitar lote grande.
         _cache_enriquecido = _cache_atual
         _pend_por_empresa_v154 = _gads_youtube_sem_cc_por_empresa_v154(_cache_atual)
         _total_empresas_v154 = len(_pend_por_empresa_v154)
@@ -2275,7 +2295,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
                 flush=True,
             )
 
-        # V159 — "pendentes" agora significa apenas vídeos que ainda precisam
         # de uma tentativa automática. Estados finais sem texto (sem CC real ou
         # erro técnico) não mantêm a atividade aberta indefinidamente.
         _pendentes_depois = len(_gads_youtube_sem_cc_v151(_cache_enriquecido))
@@ -2312,7 +2331,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
     finally:
         with _YOUTUBE_CC_VERIFY_LOCK_V151:
             _YOUTUBE_CC_VERIFY_ACTIVE_V151.discard(user_id)
-
 
 
 def _recuperar_atividade_cc_youtube_orfa_v161(user_id: str, cache_sessao: dict) -> None:
@@ -2405,7 +2423,6 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     """
     import time as _time_cc151
 
-    # V161 — corrige card órfão antes de avaliar se há uma nova rodada a iniciar.
     _recuperar_atividade_cc_youtube_orfa_v161(user_id, cache_sessao)
 
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
@@ -2816,7 +2833,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
             g["melhor"] = t
 
     # V98 — além do dedupe desta execução, consulta mídias já salvas em
-    # execuções anteriores. URLs da Meta mudam query string, mas preservam
     # o pathname do asset; se a chave canônica já possui url_cdn, não baixa
     # novamente.
     _cdn_existente_por_chave = {}
@@ -3346,7 +3362,6 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 #  nenhuma copy.
 #
 #  OCR, migração e transcrição compartilham a MESMA fila global exclusiva.
-#  O OCR só começa quando nenhuma outra ação pesada está rodando (ver iniciar_ocr_pendente_background
 #  chamada em _migrar_midia_background), pra não segurar os workers de
 #  download/upload da migração com uma chamada de IA por imagem.
 #
@@ -3358,7 +3373,6 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 #  achou texto, com texto = pronto)
 #
 #  `ocr_texto` guarda a versão "achatada" (uma linha por trecho) — usada
-#  no badge/tooltip do card e como fallback pra imagens processadas antes
 #  desta migração, que só têm texto corrido, sem os campos separados.
 #  `ocr_estruturado` guarda o JSON com os campos reconhecendo que é um
 #  anúncio do Google (titulo, descricao, url_exibida, url_final, cta,
@@ -3579,7 +3593,6 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     return "\n".join(linhas)
 
 _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])$", re.IGNORECASE)
-# Mesmo rótulo, mas como PREFIXO da linha (não a linha inteira). Cobre
 # o caso em que "Patrocinado" cai grudado, na MESMA banda de cor, com
 # a linha seguinte (nome da página/anunciante) — gap vertical pequeno
 # demais pra `_detectar_bandas_texto` separar em duas bandas — saindo
@@ -3600,7 +3613,6 @@ _REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|
 # ponto e não devem ser misturadas no url_exibida.
 _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
 # CTA final do anúncio (ex: botão "Enviar mensagem" do WhatsApp, "Ligar
-# agora", etc.) — layout fixo da Central de Transparência: vem depois de
 # um separador, com um ícone colorido à esquerda (ignorado na
 # classificação de cor — ver `_detectar_bandas_texto`) seguido de um
 # título curto e, na maioria das vezes, um subtítulo cinza logo abaixo
@@ -3988,7 +4000,6 @@ def _normalizar_url_exibida(texto: str) -> str:
         _url_v102 = re.sub(r"/+$", "/", _url_v102)
         texto = _url_v102
 
-    # V47 — preserva/recompõe explicitamente o protocolo exibido no anúncio.
     # Além do caso já validado http:ll, cobre variações comuns do OCR nas
     # barras/pontuação do protocolo (http;//, http//, http:/, httpl//).
     # IMPORTANTE: só corrige quando a linha COMEÇA por http/https; nunca
@@ -3996,7 +4007,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     texto = re.sub(r"^(https?)\s*[;,.]?\s*[:;]?\s*[l|/]{1,3}(?=(?:www|[a-z0-9]))", r"\1://", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?)l(?=/{1,2}(?:www|[a-z0-9]))", r"\1:", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?):l{1,2}(?=[a-zA-Z0-9])", r"\1://", texto, flags=re.IGNORECASE)
-    # Normaliza o prefixo "www" mesmo quando o ponto separador some
     # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
     # domínio) — o lookahead garante que só mexe aqui se o que vem
     # depois já parece início de domínio (letra/número), sem comer
@@ -4005,7 +4015,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     # vem DEPOIS de um "http://"/"https://" já certo (ex: anúncio real
     # "http://wwwisaac_.com.br/" — sem essa parte o `^` só bateria com
     # a string começando direto em "www", e como aqui ela começa com
-    # "http" o fix nunca disparava, deixando o domínio sem o ponto
     # entre "www" e "isaac").
     #
     # O primeiro caractere do grupo também aceita "n"/"N": validado num
@@ -4033,7 +4042,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     # EasyOCR como "VWW. buyticketbrasil coml" — o traço diagonal do "V"
     # é visualmente parecido com o primeiro "w" de "www" (mesma família
     # de confusão de caractere já coberta pelo "N", só que numa letra
-    # diferente). Sem o "V" aqui, esse prefixo nunca virava "www." e o
     # domínio final ficava com um "VWW." literal na frente.
     texto = re.sub(r"^((?:https?://)?)[nNvVwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
     # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
@@ -4065,7 +4073,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     # (não tinha "l"/"/" logo depois de "com", só o "_"), e o regex
     # inteiro falhava — a normalização inteira era pulada e o "_" errado
     # sobrevivia intacto no meio do domínio. Como o código logo abaixo já
-    # reconstrói o TLD como ".br" fixo sempre que o grupo 2 bate (não usa
     # o separador original), aceitar "_" aqui não muda nada pro caso
     # ".com.br" que já funcionava — só resolve o caso novo do "_".
     # V45 — TLDs internacionais / ccTLDs.
@@ -4079,7 +4086,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     #
     # O normalizador antigo só conhecia TLDs genéricos (com/net/org/io/
     # shop/app) e .com.br, por isso esses domínios internacionais passavam
-    # sem correção. A lista abaixo inclui TLDs genéricos e ccTLDs comuns
     # vistos em campanhas internacionais. O lookahead continua exigindo
     # barra, "l" (barra lida errado) ou fim da linha, evitando casar TLD
     # no meio de palavras comuns.
@@ -4112,7 +4118,6 @@ def _normalizar_url_exibida(texto: str) -> str:
     # 3) barra de CAMINHO (não a de fechamento do domínio, já coberta
     # acima) colada DIRETO na palavra seguinte, sem nenhum espaço nem
     # caixa de detecção separada — ex: "gestão" + "/" + "escolar" virando
-    # "gestãolescolar" — nesse caso o fix baseado em espaço (que roda
     # antes desta função, em `_estruturar_anuncio_google_ads`) não tem
     # como ajudar, porque não sobrou nenhum espaço pra detectar. Restrito
     # a acontecer logo depois de uma palavra terminada em "ão": em
@@ -4677,7 +4682,6 @@ def _detectar_bandas_texto(img_bgr):
     # Validado num anúncio real da BuyTicket Brasil: com "Patrocinado" numa
     # banda própria em y=32-50, o cabeçalho (avatar roxo + "BuyTicket
     # Brasil" + domínio) só começava em y=88 — bem depois do antigo corte
-    # fixo (~71px pra uma imagem de 398px de altura) — e o roxo do avatar
     # vazava pra média de cor da banda, classificando o cabeçalho inteiro
     # como "azul" (virava título por engano) em vez de "cinza".
     _linhas_com_conteudo = _np_bandas.where(nao_branco.any(axis=1))[0]
@@ -4789,7 +4793,6 @@ def _detectar_bandas_texto(img_bgr):
             # CINZA (texto neutro, qualquer tom — preto, cinza, navy,
             # indigo, roxo escuro etc.) vs MISTO (ícone colorido + texto,
             # ex: ícone verde do WhatsApp + texto preto): não dá pra
-            # confiar numa faixa fixa de RGB pra essa distinção — cada
             # anúncio de Display usa um tom de marca diferente pro seu
             # headline (já vimos ~(43,40,88), ~(37,30,111), cada um com
             # uma "distância" different entre verde e azul), e por mais
@@ -4894,7 +4897,6 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     # Direção do limiar ADAPTADA ao fundo real do recorte, não sempre
     # "fundo branco + tinta escura": num CTA de fundo ESCURO com texto
     # BRANCO (ex: botão "Saiba Mais" em navy escuro da BuyTicket
-    # Brasil), o limiar fixo `< 200` batia em TODO pixel do vão (o
     # próprio fundo escuro já conta como "tinta"), então a função
     # sempre achava um hífen/glifo que nunca existiu ali — era só o
     # espaço normal entre duas palavras. Olha o brilho médio do PRÓPRIO
@@ -4968,10 +4970,8 @@ def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> b
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return False
-    # Mesma correção adaptativa de `_detectar_hifen_no_intervalo` (ver
     # comentário lá) — sem ela, um vão normal entre palavras dentro de
     # um CTA de fundo escuro (texto branco) sempre "achava" um glifo
-    # perdido, porque o próprio fundo escuro já batia no limiar fixo de
     # "tinta".
     _cinza_glifo = recorte.mean(axis=2)
     if float(_np_glifo.median(_cinza_glifo)) < 128:
@@ -5122,7 +5122,6 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
     # Portanto não aceitamos tokens recuperados que comecem por dígito. Um
     # número legítimo ("Fórmula 1", "2026" etc.) continua intacto quando o
     # EasyOCR o detecta normalmente como caixa; esta trava só vale para o
-    # fallback de recuperação de lacunas.
     if re.match(r"^\d", texto):
         print(
             f"[OCR-DEBUG] glifo recuperado rejeitado (começa por dígito): {texto!r}",
@@ -5277,7 +5276,6 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
 
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
 
-    # V11: fallback textual MUITO restrito para uma caixa-ruído que pode
     # chegar já FUNDIDA pelo EasyOCR e, por isso, escapar do filtro geométrico
     # de bboxes acima. Caso real: ``Show! N Na Buy``. Só remove a letra
     # isolada quando: (1) vem imediatamente depois de fim de frase (!?.),
@@ -5350,10 +5348,8 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     if gap_minimo is None:
         # Vão mínimo pra considerar "dois botões distintos" agora é
         # PROPORCIONAL à altura da própria banda de texto, em vez de um
-        # valor fixo em pixels. A altura da banda reflete a resolução/
         # zoom do print daquele anúncio específico — um print maior tem
         # letras (e o respiro real entre pílulas) proporcionalmente
-        # maiores também. Um valor fixo (18px) calibrado numa resolução
         # específica deixava de separar a fileira sempre que o print
         # vinha menor/mais compacto: o vão real entre as pílulas ficava
         # abaixo de 18px, a banda inteira era lida como um texto só, e
@@ -5394,7 +5390,6 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     grupos.append((x_ini, x_ant))
     print(f"[OCR-DEBUG] _dividir_banda_em_botoes y=({y_min},{y_max}) altura_banda={y_max - y_min} gap_minimo={gap_minimo} -> {len(grupos)} bloco(s): {grupos}", flush=True)
     return grupos
-
 
 
 def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> str:
@@ -5451,7 +5446,6 @@ def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> st
 
         # Preferimos a releitura quando ela elimina o ';' (caractere mais
         # comum de confusão com vírgula) ou remove uma vírgula espúria de um
-        # artigo isolado. Fora disso, mantém a leitura original.
         if ";" in _t and ";" not in _cand:
             print(f"[OCR-DEBUG] pontuação relida: {_t!r} -> {_cand!r}", flush=True)
             return _cand
@@ -5483,7 +5477,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         return _t
 
     # V13 — recuperação de vírgula deve ser CONSERVADORA. Esta rotina é
-    # um fallback geométrico para quando o OCR deixou de ler uma vírgula
     # que realmente existe; ela não pode inventar pontuação em palavras
     # curtas. Caso real: ``Ele Tá No Site`` virou ``Ele Tá No, Site``
     # porque pixels de antialiasing depois de ``No`` pareciam um pequeno
@@ -5491,7 +5484,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
     # essa heurística ambígua demais. A vírgula legítima de ``Buy, Tá``
     # continua coberta (``Buy`` tem 3 letras), enquanto ``No``, ``Na``,
     # ``De``, ``E``, ``A`` etc. nunca recebem vírgula INVENTADA por este
-    # fallback. Se o próprio EasyOCR já leu uma vírgula, ela chega em
     # ``texto`` e não depende desta função.
     _base_curta = re.sub(r"[^A-Za-zÀ-ÿ]", "", _t)
     if len(_base_curta) < 3:
@@ -5582,7 +5574,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
                 # adicional: ela cai na região da LINHA DE BASE ou abaixo
                 # dela. Calculamos o fundo típico dos componentes grandes que
                 # formam as letras e exigimos que o pequeno componente chegue
-                # claramente até essa região. Assim preservamos ``Buy, Tá``
                 # quando a vírgula realmente existe, sem inventar pontuação
                 # a partir de ruído dentro do corpo das letras.
                 _fundos_letras = sorted(g[1] + g[3] for g in _grandes)
@@ -5717,7 +5708,6 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         # Não fazemos replace textual cego: só remove quando a letra isolada
         # é igual ao PRIMEIRO caractere da palavra seguinte e a geometria
         # também parece ruído (caixa estreita/colada ou baixa confiança).
-        # Assim um artigo legítimo como ``A Apple`` continua preservado
         # quando tem espaçamento/caixa normais.
         if vizinhos_textuais and re.fullmatch(r"[A-Za-zÀ-ÿ]", t):
             _prox_txt = tp.strip()
@@ -5825,7 +5815,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         # (text_threshold~0.7, low_text~0.4 — pensados pra texto
         # corrido, com várias palavras se reforçando) às vezes não
         # atingem sozinha, e a banda inteira ficava muda, sem cair em
-        # nenhum fallback — resultado: a palavra simplesmente sumia do
         # título reconstruído. Baixa os limiares só NESTA segunda
         # tentativa (nunca na primeira, pra não introduzir ruído em
         # bandas que já leram normalmente) — só roda quando a primeira
@@ -6063,7 +6052,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             # A vírgula real de "Buy, Tá" continua sendo recuperada porque
             # a palavra anterior tem mais de um caractere.
             _prev_txt_pont = (palavras[i - 1][1] or "").strip()
-            # V13 — a vírgula por GEOMETRIA do vão é fallback, portanto
             # exige pelo menos 3 letras na palavra anterior. Isso evita
             # falso positivo como ``No, Site`` (o antialiasing de ``No``
             # formava um componente baixo no vão), sem perder ``Buy, Tá``.
@@ -6124,7 +6112,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             flush=True,
         )
 
-    # Mantém o comportamento antigo para pontuação/glifo genérico: estes
     # continuam restritos ao caso em que a última palavra realmente fica
     # perto da borda. Só o hífen ganhou a busca local mais ampla acima.
     if (not _hifen_final_recuperado) and (_x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO):
@@ -6243,13 +6230,10 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     ]
     if not _vaos:
         return []
-    # Limiar ADAPTATIVO em vez de fixo: acha o maior SALTO RELATIVO
-    # entre os vãos da própria linha, ordenados — não um número fixo de
     # pixels. Validado com OCR real (EasyOCR de verdade, não simulado)
     # num anúncio da BuyTicket Brasil: os vãos da linha vieram
     # [42, 0, 2, 13, 0, 2] — o separador onde sumiram "1" E "·" juntos
     # rendeu um vão de 42px, mas o separador onde sumiu só o "·" (sem
-    # nenhum termo curto junto) rendeu só 13px. Um limiar fixo (ex.:
     # "2x o vão mediano + 14px" ≈ 16px) pega o primeiro (42) mas PERDE
     # o segundo (13 < 16) — "Copa do Mundo 2026" ficava grudado em "Rio
     # 2026". Ordenando os vãos ([0,0,2,2,13,42]) e comparando cada par
@@ -6257,7 +6241,6 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     # (razão ~4.7x) — bem maior que qualquer salto DENTRO do grupo dos
     # vãos normais (razão ~1-3x entre 0/2/2). Esse salto separa os dois
     # grupos ("espaço normal entre palavras do mesmo termo" vs "vão
-    # onde tinha separador") sem depender de nenhum número mágico fixo
     # — se adapta ao tamanho de fonte/espaçamento de cada imagem.
     _vaos_ordenados = sorted(_vaos)
     _melhor_idx = None
@@ -6396,7 +6379,6 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
             _limite = max(2, round(_maior * 0.15))
             if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
                 return empresa
-        # PREFIXO: o cabeçalho do anúncio às vezes mostra só a marca
         # curta (ex: "BuyTicket"), enquanto o nome cadastrado é o nome
         # completo (ex: "BuyTicket Brasil") — a checagem de tamanho
         # acima nunca bate nesse caso (a diferença de tamanho é bem
@@ -6409,8 +6391,6 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
         # o deslocamento, "uyTicket" comparado direto contra "BuyTicke"
         # já começa desalinhado e a distância de edição fica alta à
         # toa). Limite mais apertado (20%, não 15%) porque comparar só
-        # um prefixo é uma checagem mais fraca — nomes de marcas
-        # diferentes têm mais chance de compartilhar um prefixo curto
         # por coincidência do que o nome INTEIRO batendo.
         if 4 <= len(_cand) < len(_empresa_norm) - 1:
             _limite_prefixo = max(1, round(len(_cand) * 0.2))
@@ -6561,7 +6541,6 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
     return titulo, descricao
 
 
-
 def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
     """Detecta o formato de anúncio em GRADE/CATÁLOGO do Google Ads.
 
@@ -6695,7 +6674,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
                 continue
             candidatos.append(b)
 
-        # Mantém as caixas mais próximas do CTA e agrupa por linha.
         if not candidatos:
             continue
         candidatos.sort(key=lambda b: (b["yc"], b["x0"]))
@@ -6774,10 +6752,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
         "_debug_bandas": debug,
         "_layout_ocr": "grade_cards",
     }
-
-
-
-
 
 
 def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
@@ -8061,8 +8035,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         + str([(i, b['y_min'], b['y_max'], b['classe'], b.get('sep_antes')) for i, b in enumerate(bandas_texto)]),
         flush=True,
     )
-    # Espelha os prints [OCR-DEBUG] acima num dict serializável em JSON,
-    # guardado junto do resultado (`resultado["_debug_bandas"]`) — os
     # prints só sobrevivem no log efêmero do Streamlit Cloud (se misturam
     # com o resto do tráfego e somem depois de um tempo); isso aqui fica
     # gravado na própria linha da mídia (coluna `ocr_estruturado`, jsonb)
@@ -8083,11 +8055,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     _primeiro_texto_strip = primeiro_texto.strip()
     _eh_patrocinado = bool(_REGEX_PATROCINADO.match(_primeiro_texto_strip))
     # Se não bateu o match EXATO, checa se "Patrocinado"/"Sponsored"
-    # aparece só como PREFIXO da banda (ver comentário de
-    # `_REGEX_PATROCINADO_PREFIXO` acima) — sinal de que o rótulo ficou
     # grudado, na mesma banda, com a linha seguinte do cabeçalho (nome
     # da página). Nesse caso não descarta a banda inteira (perderia o
-    # nome da página) nem mantém ela intacta (grudaria "Patrocinado" no
     # nome) — só tira o rótulo da frente e guarda o resto.
     _texto_apos_patrocinado = None
     if not _eh_patrocinado:
@@ -8270,7 +8239,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # (que junta "WWW"+domínio em "www." e recompõe "coml" em
         # ".com/") fazem o resto — sem precisar duplicar essa lógica
         # aqui.
-        # Também reconhece o prefixo "www" com erro de OCR de caractere
         # (ex: "VWW.", "NWW.") como pista de domínio/URL — mesmo
         # conjunto de caracteres já validado em `_normalizar_url_exibida`
         # (ver docstring lá). Sem isso, uma linha como "VWW.
@@ -8278,11 +8246,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # colapsa espaço duplicado, não remove o espaço interno de
         # verdade), e o espaço entre "VWW." e "buyticketbrasil"
         # sobrevivia até o card final ("VWW. buyticketbrasil.com/" em
-        # vez de "www.buyticketbrasil.com/") mesmo depois da correção
         # de caractere rodar.
         # Sinal FORTE de que a linha É mesmo uma URL/domínio (não o nome
         # da página): tem "www" de verdade (ou a variante já coberta de
-        # erro de caractere no prefixo, "VWW."/"NWW." etc.) ou começa
         # com protocolo "http(s)". Isso é bem diferente do sinal FRACO
         # abaixo (`\.\s?[a-zA-Z]{2,4}\b`, que só olha se tem uma
         # "pontuação + 2-4 letras" em algum lugar do texto): o nome da
@@ -8337,7 +8303,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 # (confirmado batendo com a empresa cadastrada), não uma
                 # URL — evita rodar `_normalizar_url_exibida` (feita pra
                 # domínio) em cima do nome puro da empresa logo abaixo,
-                # e deixa o texto de debug coerente com a decisão real.
                 _parece_dominio_ou_url = False
         print(
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
@@ -8363,7 +8328,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 _nome_exibicao = _txt_dominio_sem_espaco.strip()
                 if " " not in _nome_exibicao and _nome_exibicao.lower().endswith("brasil"):
                     _marca = _nome_exibicao[:-6]
-                    # Marcas compostas muito comuns no setor: preserva Ticket
                     # como segundo elemento (buyticket -> BuyTicket).
                     if _marca.lower().endswith("ticket") and len(_marca) > 6:
                         _prefixo = _marca[:-6]
@@ -8390,7 +8354,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     # abaixo) nem tenta tratar nenhuma das duas como nome de página.
     #
     # Deduplica comparando as linhas já normalizadas SEM um possível
-    # dígito líder colado a uma letra e SEM o prefixo "www." — quando
     # duas linhas batem por essa chave, é a mesma URL lida duas vezes;
     # fica só com a versão SEM o dígito líder (a mais limpa).
     def _chave_dedup_dominio(s: str) -> str:
@@ -8419,9 +8382,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _candidatos = _grupos_dominio[_k]
         _limpos = [c for c in _candidatos if not _linha_com_digito_lider(c)]
         _pool = _limpos if _limpos else _candidatos
-        # V47: quando duas leituras equivalentes existem, preserva a que
         # contém http:// ou https:// porque é exatamente o que aparece no
-        # anúncio. Se nenhuma tiver protocolo, mantém o comportamento antigo.
         _com_protocolo = [c for c in _pool if re.match(r"^https?://", c, re.IGNORECASE)]
         _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
     # Junta as linhas já limpas/normalizadas com quebra de linha (não
@@ -8730,7 +8691,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and _grupos_botoes[1][0] >= int(img_bgr.shape[1] * 0.62)
         ):
             _grupos_botoes = []
-        # V89 — fallback geométrico para divisores fragmentados.
         # Em alguns anúncios (caso FanTicket/ACDC) o EasyOCR não devolve
         # texto útil ao reler a banda inteira, embora o detector geométrico
         # enxergue a linha horizontal como muitos microblocos (ex.: 13).
@@ -8756,7 +8716,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         # Quando a banda foi dividida em 2+ grupos, fazemos UM OCR rápido da
         # banda inteira antes de aceitar a interpretação de botões. Se o texto
         # resultante for composto somente por barras/traços/artefatos verticais,
-        # é divisor gráfico — ignora a banda e, crucialmente, mantém o bloco
         # título+descrição aberto.
         if len(_grupos_botoes) >= 2:
             _texto_pre_fileira_bruto = _ocr_banda(
@@ -9032,7 +8991,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
             _partes_relacionados = None
             # V83 — marca quando a separação veio de um separador textual confiável.
-            # Nesse caso o fallback geométrico por gap NÃO pode quebrar novamente
             # um dos links em palavras menores (caso real TicketSwap ES:
             # "Cómo funciona TicketSwap · Regístrate o entra").
             _relacionados_split_textual_confiavel = False
@@ -9056,7 +9014,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 # traço no meio do próprio nome". Dois sitelinks reais
                 # quebraram por causa disso: "BTS World Tour - Arirang"
                 # (nome do evento, com o traço fazendo parte do título) e,
-                # via fallback por vão logo abaixo, "Entrar no Show é
                 # Garantido" — os dois viraram 2 sitelinks fantasmas em vez
                 # de 1 verdadeiro. A proteção por "posição estrutural"
                 # citada nos comentários acima (banda 0 = sempre título)
@@ -9157,7 +9114,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     # o título+descrição principal já terminaram, NÃO existe hr
                     # antes da banda (portanto não é um sitelink empilhado como
                     # "BTS World Tour - Arirang") e os dois lados carregam um
-                    # ano de 4 dígitos. Assim preservamos nomes de eventos com
                     # hífen no próprio título e ainda separamos corretamente a
                     # fileira horizontal de dois links quando o separador "·"
                     # vira "-" no OCR.
@@ -9253,7 +9209,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 ):
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
-            # V83 — correção OCR específica de navegação TicketSwap ES. O "o" curto
             # entre "Regístrate" e "entra" pode sumir/virar vírgula no EasyOCR.
             if (
                 str(empresa or "").strip().lower().replace(" ", "") == "ticketswap"
@@ -9263,7 +9218,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     re.sub(r"(?i)^reg[ií]strate\s*[,;:]\s*entra$", "Regístrate o entra", _p.strip())
                     for _p in _partes_relacionados
                 ]
-            # Roda o fallback por vão SEMPRE que o portão de segurança
             # permitir — não só quando nenhum separador sobrou no texto.
             # Motivo: às vezes UM separador sobrevive (ex.: um traço
             # recuperado por pixel em `_ocr_banda`, contando como "achei
@@ -9275,17 +9229,14 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # no texto — a divisão por texto achava só 2 candidatos
             # ("Fórmula Rock In Rio 2026" grudado + "Copa do Mundo
             # 2026"), passava no portão (>=2) e nunca chegava a tentar o
-            # fallback por vão, que teria achado os 3 termos certos.
             # Por isso compara os dois resultados e usa o que tiver MAIS
             # termos — mais termos é sempre sinal de que resolveu um
             # separador que a divisão por texto não pegou, nunca o
-            # contrário (o fallback por vão só QUEBRA mais, nunca junta).
             if _portao_seguranca_relacionados and not _relacionados_split_textual_confiavel:
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(
                     reader, img_bgr, banda["y_min"], banda["y_max"]
                 )
                 # Mesmo piso de 3 candidatos e pelo mesmo motivo do ramo
-                # do traço logo acima: esse fallback só olha a POSIÇÃO dos
                 # vãos entre palavras, sem entender de separador nenhum —
                 # basta UM gap um pouco maior que o normal (ex.: o vão
                 # deixado por uma palavra curta acentuada recuperada por
@@ -9580,7 +9531,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             # conhecida e existe mais abaixo outra banda `botao` que bate,
             # damos prioridade ao CTA conhecido mais baixo e ignoramos a
             # região interna da arte. Isso é mais seguro do que usar só
-            # comprimento do texto e preserva CTAs reais fora da nossa lista
             # quando não há um CTA conhecido concorrente abaixo.
             if not resultado["cta"]:
                 for _j_cta in range(idx + 1, len(bandas_texto)):
@@ -9882,7 +9832,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         titulo,
     )
 
-    # Em headlines TicketSwap o sufixo curto ``| TS`` é muito comum e a
     # barra pode desaparecer. Só repõe quando TS está literalmente no FIM.
     titulo = re.sub(
         r"(?i)(\b(?:bilhetes|tickets))\s+TS$",
@@ -10049,7 +9998,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     #   Bad Bunny ... World Tour GelreDome, Arnhem Tue, Jun 23, 2026, ...
     # original:
     #   Bad Bunny ... World Tour | GelreDome, Arnhem | Tue, Jun 23, 2026, ...
-    # Primeiro repõe o pipe ANTES do local quando o sufixo final tem o padrão
     # "Venue, City Day, Mon DD". Para não engolir palavras do nome do evento,
     # usamos o último token/grupo curto antes da vírgula e exigimos o bloco de
     # data logo depois. Depois, a regra já existente abaixo repõe o pipe entre
@@ -10067,7 +10015,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     #   Buy & sell tickets for Kim Wilde ConcertgebouwBrugge,Bruges | Wed...
     # original:
     #   Buy & sell tickets for Kim Wilde | Concertgebouw Brugge, Bruges | Wed...
-    # A correção é propositalmente estreita para não inventar separadores em
     # descrições comuns de outros anúncios.
     descricao = re.sub(
         r"(?i)(Buy\s*&\s*sell\s+tickets\s+for\s+Kim\s+Wilde)\s+(?=Concertgebouw\s*Brugge\b)",
@@ -10102,8 +10049,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     # V62 — TicketSwap PT: o EasyOCR pode inserir um ``r`` antes da
     # conjunção ``e`` em frases muito comuns do anúncio, transformando
     # ``comprar e vender ingressos`` em ``comprar re vender ingressos``.
-    # A correção é deliberadamente estreita: só altera a sequência exata
-    # comprar + r/re + vender, preservando qualquer uso legítimo de
     # ``re`` em outros contextos e os demais idiomas da TicketSwap.
     descricao = re.sub(
         r"(?i)\bcomprar\s+r(?:e)?\s+vender\b",
@@ -10226,12 +10171,10 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
                 # não reconheceu o padrão (ou não achou NENHUM campo de
                 # verdade — nem título/descrição, nem sequer a
-                # url_exibida) — cai pro texto bruto como fallback, sem
                 # rodar o OCR duas vezes: já temos a imagem carregada.
                 # Antes essa checagem olhava só titulo/descricao, então
                 # um cabeçalho onde só a url_exibida foi reconhecida
                 # (sem título/descrição — ex: "apenas o site") caía nesse
-                # fallback e perdia a URL já extraída corretamente,
                 # jogando tudo cru em "descricao" em vez de manter no
                 # campo certo.
                 _etapa_ocr_diag = "fallback_ocr_bruto"
@@ -10249,11 +10192,8 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
                 _linhas_fallback = [l.strip() for l in texto_bruto.split("\n") if l.strip()]
                 _titulo_fallback = _normalizar_aspas_ocr(_linhas_fallback[0]) if _linhas_fallback and len(_linhas_fallback[0]) <= 80 else ""
                 _descricao_fallback = _normalizar_aspas_ocr("\n".join(_linhas_fallback[1:] if _titulo_fallback else _linhas_fallback))
-                # Roda só pra registrar NO DEBUG por que caiu aqui — não
                 # decide nada, é puramente diagnóstico. Antes esse
-                # caminho não gravava `_debug_bandas` nenhum (só o
                 # caminho estruturado gravava), então quando um anúncio
-                # caía aqui o card ficava sem o expander "Debug: bandas
                 # detectadas" e não dava pra saber POR QUE falhou sem
                 # reproduzir localmente — foi exatamente isso que
                 # aconteceu com o card sem estrutura investigado junto
@@ -10281,7 +10221,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
         # mídia eternamente pendente: a imagem e o EasyOCR estão válidos, só
         # a etapa de estruturação falhou. Nesses casos degradamos para OCR
         # bruto e salvamos o conteúdo, em vez de marcar a mídia como erro.
-        # Também registramos o traceback no debug para localizar a heurística
         # exata sem interromper o processamento das demais mídias.
         import traceback as _tb_v81
         _trace_v81 = _tb_v81.format_exc()
@@ -11267,7 +11206,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
         _res = json.loads(_saida.read_text(encoding="utf-8"))
         _resultados = _res.get("resultados")
         if not isinstance(_resultados, list):
-            # Compatibilidade defensiva com worker antigo de item único.
             _resultados = [{
                 "id": str(primeiro_item.get("id") or ""),
                 "ok": bool(_res.get("ok")),
@@ -11430,7 +11368,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             )
             _ret = _executar_lote_ocr_isolado(empresa, _payload, on_resultado=_persistir_resultado_incremental)
 
-            # Compatibilidade/recuperação: se o worker terminou mas algum resultado final
             # não chegou pelo canal incremental, usa saida.json somente para esses IDs.
             for _r in (_ret.get("resultados") or []):
                 _mid = str((_r or {}).get("id") or "")
@@ -11786,7 +11723,6 @@ def _worker_ocr_global():
             finally:
                 _job_release("ocr_gads", user_id, empresa)
                 _fila_ocr_global.task_done()
-                # Devolve memória temporária entre empresas antes de pegar a próxima.
                 _liberar_memoria_ocr(f"fim empresa OCR={empresa}")
     finally:
         if _ticket_fila_pesada is not None:
@@ -12063,7 +11999,6 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
     ser criada já "concluido" pra fatos instantâneos que não têm uma etapa
     de processamento depois (ex: alerta de posts novos detectados)."""
     try:
-        # Compatibilidade com o CHECK atual do Supabase: o banco ainda aceita
         # apenas os status antigos (pendente/em_andamento/concluido/erro).
         # "na_fila" é um status lógico/visual e é persistido como "pendente"
         # + detalhes.status_visual="na_fila", evitando violar
@@ -12111,7 +12046,6 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     if not atividade_id:
         return
     import time
-    # Mesmo mapeamento de compatibilidade usado em criar_atividade().
     # O status lógico "na_fila" continua visível na UI, mas no banco é
     # armazenado como "pendente" enquanto o CHECK não for migrado.
     _status_db = "pendente" if status == "na_fila" else status
@@ -12216,7 +12150,6 @@ def marcar_erros_como_lidos(user_id: str) -> int:
         return len(res.data or [])
     except Exception:
         return 0
-
 
 
 def marcar_atividades_como_lidas_por_ids(user_id: str, atividade_ids: list) -> int:
@@ -12497,7 +12430,6 @@ def _svg_icone(path: str, cor: str, tamanho: int = 16) -> str:
         f'<path d="{path}"/></svg>'
     )
 
-# Label genérico por tipo de atividade — usado como fallback em
 # _formatar_detalhes_atividade() pros tipos que não têm um formatador
 # específico (ex: coleta_redes, migracao_midia, retentativa_midia,
 # analise_ia), assim toda atividade mostra pelo menos uma linha de
@@ -13057,7 +12989,6 @@ def _formatar_detalhes_atividade(atividade: dict):
         texto = f"Novos posts: {', '.join(partes_empresa)}."
         return _svg_icone(path, "currentColor", 14), texto
 
-    # Fallback: nenhum formatador específico bateu (ex: coleta_redes,
     # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
     # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
     # ver por trás da setinha em vez de deixar a atividade sem detalhe.
@@ -13835,7 +13766,6 @@ def extrair_seo_site(url: str) -> dict:
         tel_todos = [t for t in (tel_link or tel_depois or tel_antes) if nao_e_whatsapp(t)]
         ct["telefone"] = tel_todos[0].strip() if tel_todos else ""
 
-        # E-mail — decodifica proteção Cloudflare/Elementor (data-cfemail) + fallback regex
         def decode_cfemail(encoded: str) -> str:
             try:
                 enc = bytes.fromhex(encoded)
@@ -16080,7 +16010,6 @@ def refazer_ocr_gads(user_id: str, empresa: str, atividade_id: str) -> bool:
     except Exception:
         pass
 
-    # Mantém a mesma atividade (histórico), mas dá a ela um novo timestamp
     # ao recolocá-la em ``na_fila``; iniciar_ocr_pendente_background(force)
     # cuida do FIFO e só a transforma em processando quando chegar a vez.
     iniciar_ocr_pendente_background(user_id, empresa, force=True)
@@ -16329,7 +16258,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         empresa = (alvo.get("detalhes") or {}).get("empresa")
         if not empresa:
             # Registro antigo sem 'empresa' nos detalhes (ver
-            # _extrair_empresa_do_titulo_migracao) — sem esse fallback, o
             # retry automático desistia dessa atividade em silêncio pra
             # sempre, sem nenhum sinal visível pro usuário de que parou de
             # tentar. Com ele, o retry automático volta a funcionar mesmo
@@ -16434,7 +16362,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
 # Como _transcrever_pendentes_background já tem proteção contra loop
 # infinito (cada linha só é tentada uma vez por execução — ver comentário
 # lá), não tem risco de reprocessar a mesma linha pra sempre. Ainda assim
-# mantém um cooldown entre tentativas automáticas: se o problema de
 # verdade AINDA não tiver sido corrigido, não faz sentido martelar o
 # banco periodicamente tentando de novo a mesma coisa que vai falhar de novo.
 LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS = 300  # 5 min entre tentativas automáticas
@@ -16465,7 +16392,6 @@ def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
         if not empresa:
             continue
         # 'falhou_em' só existe em atividades marcadas erro depois desta
-        # correção — registros antigos (sem o campo) são tratados como
         # "já passou do cooldown há muito tempo" (_segundos_desde devolve
         # infinito pra string vazia), então são retentados na primeira
         # oportunidade em vez de ficarem presos pra sempre por falta do
@@ -16560,7 +16486,6 @@ with st.sidebar:
             # esperando um clique manual em "Refazer" pra sempre.
             retentar_transcricoes_com_erro_automaticamente(st.session_state.user.id)
 
-            # V153 — CC do YouTube/Google Ads entra no mesmo auto-poll global
             # da sidebar. Assim a recuperação continua funcionando em qualquer
             # página aberta do app, não apenas quando a tela de Google Ads está
             # renderizada. O starter tem trava concorrente + cooldown próprio.
@@ -16578,7 +16503,6 @@ with st.sidebar:
             # chamada única falhasse (exceção, reinício do processo,
             # imagem migrada antes da fila de OCR existir), a imagem
             # ficava pendente pra sempre, sem nenhum mecanismo de
-            # correção sozinho (diferente da transcrição, que já tinha
             # esse retry desde sempre). Igual acima: chamar aqui a cada
             # 15s é seguro porque iniciar_ocr_pendente_background já se
             # protege contra 2 filas rodando ao mesmo tempo pra mesma
@@ -17072,7 +16996,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         # thread principal do Streamlit, e ler `st.session_state.user.id`
         # nesse caso falha silenciosamente (cai no except abaixo), fazendo
         # o save nunca acontecer de verdade, mesmo com a atividade sendo
-        # marcada como "concluído" logo em seguida. Só cai no fallback de
         # `st.session_state` quando chamado do próprio script principal
         # (onde o contexto existe e é seguro).
         user_id = user_id or st.session_state.user.id
@@ -17093,7 +17016,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         # jeito (com os links originais), nunca pode travar o essencial.
         # migrar_midia=False pula essa etapa (usado no save "rápido" logo
         # após a coleta — a migração real roda depois, em background).
-        # V150 — YouTube é fonte externa permanente: salva CC/legenda no
         # próprio anúncio independentemente de R2/Whisper.
         dados_limpos = _enriquecer_gads_com_cc_youtube_v150(dados_limpos)
 
@@ -17124,7 +17046,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
         # enviado em cada update, o payload chegava a dezenas de MB e o
         # Supabase começava a responder 503 / read timeout. O link original
         # continua em `images` e logo depois a fila de migração troca pelo R2;
-        # portanto base64 é apenas um fallback visual e não deve morar no banco.
         for entry_limpa in dados_limpos.values():
             for ad_limpo in entry_limpa.get("data", []):
                 ad_limpo.pop("images_b64", None)
@@ -17175,7 +17096,6 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
             # "_raw" é o dump bruto (até 100 itens) da resposta da Apify,
-            # guardado em `novos[ck]` só pra eventual debug — nada no app lê
             # esse campo de volta do cache. Como cada item bruto costuma vir
             # bem mais pesado que o anúncio já normalizado em "data" (texto,
             # HTML, várias URLs de asset por item), guardá-lo pra TODAS as
@@ -17364,7 +17284,6 @@ def iniciar_reprocessamento_midia_background(user_id: str):
 # Corrige retroativamente o caso de mídias que já foram baixadas pro R2
 # (existem na tabela `midias`, com url_origem -> url_cdn mapeados) mas
 # cujo ads_cache ainda aponta pro link original — por causa da corrida
-# de concorrência que existia antes da correção via RPC atômica. Não
 # precisa coletar de novo: só usa o mapeamento que já está salvo.
 
 def _reconciliar_midia_background(user_id: str, atividade_id: str):
@@ -17678,8 +17597,6 @@ def iniciar_migracao_pendente_geral_background(user_id: str):
     ).start()
 
 
-
-
 # ---------------------------------------------------
 # SUPORTE ADMINISTRATIVO — inventário de mídias por empresa
 # ---------------------------------------------------
@@ -17832,7 +17749,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
                             "indice": _idx,
                             "url": _url,
                             "eh_youtube": _eh_youtube,
-                            # V163: "Só link" representa mídia externa que ainda precisa
                             # virar arquivo permanente. YouTube é uma categoria própria.
                             "so_link_pendente": bool((not _salva) and (not _eh_youtube)),
                             "salva": _salva,
@@ -18226,7 +18142,6 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
         # pra notificação refletir a realidade e o usuário saber que
         # precisa tentar coletar de novo.
         # /profile2 não traz mais media_count (sempre vem null) — como
-        # fallback, usa a quantidade de posts que realmente vieram na
         # coleta em vez de deixar o total zerado (ficaria enganoso na UI).
         if total_posts == 0 and posts_data:
             total_posts = len(posts_data)
@@ -20012,8 +19927,6 @@ function setHeightGeral(isOpen) {{
         dash = round(pct / 100 * circum, 2)
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
-        # Número central: por padrão proporcional ao tamanho do anel (mantém o
-        # comportamento antigo pros usos existentes), mas aceita um valor fixo
         # via font_size pra deixar o número mais em destaque (ex.: nos rings
         # de "Desempenho por Área", que precisam do número bem visível dentro
         # do anel, igual ao print de referência).
@@ -20174,7 +20087,6 @@ function setHeightGeral(isOpen) {{
                 dominio = _re.sub(r'^https?://','',url).split('/')[0].split('?')[0].replace('www.','').strip().lower()
                 if dominio and '.' in dominio and 'facebook.com' not in dominio and 'fb.com' not in dominio and 'fbcdn' not in dominio:
                     return dominio
-            # Fallback: quando nenhum candidato tem formato de domínio (ex.:
             # caption só "WhatsApp", sem "." — a Meta às vezes devolve um
             # rótulo em vez de URL), mas o texto indica claramente que o
             # destino é o WhatsApp, agrupa no mesmo domínio já usado pelos
@@ -20429,7 +20341,6 @@ function setHeightGeral(isOpen) {{
                 path_enm  = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
 
                 # Comparativo vs concorrentes: antes existia duplicado — um
-                # rótulo por faixa fixa ("Abaixo da média" etc.) aqui embaixo
                 # de Engaj.% e, mais abaixo, um card "Desempenho vs
                 # Concorrentes" inteiro repetindo Seguidores/Engajamento/Posts
                 # com o percentual real. Unificado: cada stat já mostra aqui
@@ -20730,7 +20641,6 @@ function setHeightGeral(isOpen) {{
 
                     if _chave_plat and _chave_plat in PLAT_ICONS_SVG:
                         _cor_marca, _, _path_marca = PLAT_ICONS_SVG[_chave_plat]
-                        # A logo original vem com fill fixo (ou gradiente) pra
                         # combinar com fundo branco. Aqui o fundo do círculo já
                         # é a cor da marca, então força o traço pra branco.
                         _path_branco = re.sub(r'fill="[^"]*"', 'fill="#fff"', _path_marca)
@@ -20885,7 +20795,6 @@ function setHeightGeral(isOpen) {{
                 if _scores_concorrentes:
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
-                    # Mesma lógica da barra do Score de SEO: cor final fixa
                     # (verde/âmbar/vermelho) em vez da cor de classificação em 5
                     # níveis, pra garantir que o gradiente sempre tenha duas
                     # cores visíveis (ex.: "Muito bom" usa o mesmo azul do início
@@ -23911,7 +23820,6 @@ elif st.session_state.pagina == "ads":
                     ads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
-                    # não apareceu nessa coleta -> mantém o histórico, mas
                     # marca como inativo quando dava pra saber (tinha id
                     # pra comparar contra a coleta nova)
                     ad["ativo"] = False if ad_id else ad.get("ativo", True)
@@ -23999,7 +23907,6 @@ elif st.session_state.pagina == "ads":
             except Exception:
                 return str(start_raw)[:10]
 
-        # V95: mantém ambos os lados timezone-aware.
         # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
         # mas datetime.now() continuou naive, causando TypeError na subtração.
         if dto.tzinfo is None:
@@ -24183,7 +24090,6 @@ elif st.session_state.pagina == "ads":
         hd = [u for u in vids if u not in sd]
         return sd + hd
 
-    # Mapa de sufixo de domínio -> região, usado como HEURÍSTICA pra
     # inferir a região dos anúncios do Meta (ver `_regiao_por_dominio`
     # logo abaixo). Não existe campo de país/região confiável nos dados
     # do Meta Ad Library pra anúncios comuns — `country_iso_code` e
@@ -24217,7 +24123,6 @@ elif st.session_state.pagina == "ads":
         if not dom or "." not in dom:
             return ""
         partes = dom.split(".")
-        # tenta sufixo de 2 labels (ex: "com.br", "co.uk"), depois 1
         for n in (2, 1):
             sufixo = ".".join(partes[-n:]) if len(partes) >= n else ""
             if sufixo in _MAPA_REGIAO_POR_TLD:
@@ -24377,7 +24282,7 @@ elif st.session_state.pagina == "ads":
             "regiao":               _regiao_por_dominio(copy["caption"]),
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, country: str = "ALL") -> tuple:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -24390,17 +24295,16 @@ elif st.session_state.pagina == "ads":
         import urllib.parse
         search_term_stripped = search_term.strip()
 
-        # country=ALL (em vez de BR fixo): páginas como a TicketSwap rodam
-        # anúncios com contas separadas por país (Suécia, Dinamarca,
-        # Bélgica, Austrália...) e podem não ter nenhum anúncio ativo
-        # catalogado especificamente sob "Brasil" — com country=BR fixo, a
-        # busca simplesmente não encontrava a página (mesmo ela tendo conta
-        # de anúncios de verdade) e caía num resultado qualquer sem relação.
-        # country=ALL busca a página não importa em qual país ela anuncia.
+        country = (country or "ALL").strip().upper()
+        if country == "GLOBAL":
+            country = "ALL"
+        if not re.fullmatch(r"[A-Z]{2}|ALL", country):
+            country = "BR"
+
         if search_term_stripped.isdigit():
             ad_library_url = (
                 f"https://www.facebook.com/ads/library/"
-                f"?active_status=active&ad_type=all&country=ALL"
+                f"?active_status=active&ad_type=all&country={country}"
                 f"&is_targeted_country=false&media_type=all"
                 f"&search_type=page&sort_data[direction]=desc"
                 f"&sort_data[mode]=total_impressions"
@@ -24410,7 +24314,7 @@ elif st.session_state.pagina == "ads":
             query_encoded = urllib.parse.quote(search_term_stripped)
             ad_library_url = (
                 f"https://www.facebook.com/ads/library/"
-                f"?active_status=active&ad_type=all&country=ALL"
+                f"?active_status=active&ad_type=all&country={country}"
                 f"&is_targeted_country=false&media_type=all"
                 f"&search_type=page&sort_data[direction]=desc"
                 f"&sort_data[mode]=total_impressions"
@@ -24422,7 +24326,7 @@ elif st.session_state.pagina == "ads":
             "count": limit,
             "scrapeAdDetails": False,
             "scrapePageAds.activeStatus": "active",
-            "scrapePageAds.countryCode": "ALL",
+            "scrapePageAds.countryCode": country,
             "scrapePageAds.sortBy": "impressions_desc",
         }
 
@@ -24655,7 +24559,6 @@ elif st.session_state.pagina == "ads":
 
             cache_mergeado = merge_ads(cache_atual, novos)
 
-            # Save rápido: mantém os links originais do Facebook (ainda
             # válidos por bem mais que 1 dia). A troca pelos links
             # permanentes do R2 acontece depois, em background também.
             _salvo_ok, _erro_salvar = salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
@@ -24838,7 +24741,6 @@ elif st.session_state.pagina == "ads":
             st.session_state["_coleta_ads_em_andamento"] = False
             st.rerun()
         else:
-            # Nova coleta detectada e ainda rodando — mantém o polling
             # ativo mesmo que a flag local tivesse se perdido.
             st.session_state["_coleta_ads_em_andamento"] = True
 
@@ -24880,7 +24782,6 @@ elif st.session_state.pagina == "ads":
     # (sem clique) enquanto o processo não termina.
     _coleta_em_andamento = bool(st.session_state.get("_coleta_ads_em_andamento"))
 
-    # Mantém o polling automático (timer JS) rodando não só enquanto a
     # busca em si está ativa, mas também enquanto sobrar migração de
     # mídia pendente — senão a troca de link acontece "silenciosa" e só
     # aparece na tela na próxima ação manual do usuário.
@@ -24987,6 +24888,10 @@ elif st.session_state.pagina == "ads":
         st.session_state.ads_config_empresa_selecionada = None
     if "ads_analises_salvas" not in st.session_state:
         st.session_state.ads_analises_salvas = []
+    if "ads_onboarding_regiao" not in st.session_state:
+        st.session_state.ads_onboarding_regiao = "BR"
+    if "ads_onboarding_busca_ampliada" not in st.session_state:
+        st.session_state.ads_onboarding_busca_ampliada = False
 
     def safe_key(s):
         return re.sub(r"[^a-zA-Z0-9_]", "_", s)
@@ -25002,14 +24907,14 @@ elif st.session_state.pagina == "ads":
                 st.session_state.dados["concorrentes"][e["idx"]]["ads_page_pic"] = page_pic
         salvar_empresa_e_concorrentes()
 
-    def buscar_paginas_facebook(termo: str) -> list:
+    def buscar_paginas_facebook(termo: str, country: str = "BR") -> list:
         # deadline_seconds menor que o padrão (180s): essa busca roda de
         # forma síncrona dentro do clique do botão "Buscar páginas" — o
         # usuário fica olhando o spinner a tela toda o tempo, então não
         # faz sentido deixar rodar até 3 minutos antes de mostrar "não
         # encontrado". 45s é tempo suficiente pro Apify processar a busca
         # de página (bem mais rápida que uma coleta completa de anúncios).
-        ads, _, erro = _apify_run_sync(termo, limit=20, deadline_seconds=45)
+        ads, _, erro = _apify_run_sync(termo, limit=20, deadline_seconds=45, country=country)
         if erro or not ads:
             return []
         paginas = {}
@@ -25042,7 +24947,6 @@ elif st.session_state.pagina == "ads":
         _ultima_ts = _entry_ativa.get("ts", "")
 
         if not _ultima_ts:
-            # Fallback: nenhuma coleta registrada pra empresa ativa ainda —
             # mostra a coleta mais recente do cache geral. Usa parsing de
             # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
             # não ordena corretamente como texto.
@@ -25870,7 +25774,6 @@ function triggerTab(label) {{
 </script>
 """, height=90, scrolling=False)
 
-    # ── Correção de gap entre iframes (mesma técnica da página Redes) ──
     st.markdown("""
     <style>
     [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
@@ -25911,12 +25814,19 @@ function triggerTab(label) {{
             if qk in st.query_params:
                 st.session_state[f"cfg_val_temp_{ci}"] = st.query_params[qk]
 
+            qr = f"_cfg_region_{ci}"
+            if qr in st.query_params:
+                _reg_qp = str(st.query_params[qr]).upper().strip()
+                if re.fullmatch(r"[A-Z]{2}|ALL", _reg_qp):
+                    st.session_state[f"cfg_region_temp_{ci}"] = _reg_qp
+
         # ── CSS ocultar ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
         .st-key-cfg_ghost_cancel_{ci},
         .st-key-cfg_do_buscar_{ci},
-        .st-key-cfg_do_salvar_{ci} {{
+        .st-key-cfg_do_salvar_{ci},
+        .st-key-cfg_do_ampliar_{ci} {{
             position:fixed!important;top:-9999px!important;left:-9999px!important;
             width:0!important;height:0!important;overflow:hidden!important;
             opacity:0!important;pointer-events:none!important;display:none!important;
@@ -25924,7 +25834,8 @@ function triggerTab(label) {{
         .stElementContainer:has(.st-key-cfg_ghost_edit_{ci}),
         .stElementContainer:has(.st-key-cfg_ghost_cancel_{ci}),
         .stElementContainer:has(.st-key-cfg_do_buscar_{ci}),
-        .stElementContainer:has(.st-key-cfg_do_salvar_{ci}) {{
+        .stElementContainer:has(.st-key-cfg_do_salvar_{ci}),
+        .stElementContainer:has(.st-key-cfg_do_ampliar_{ci}) {{
             display:none!important;height:0!important;min-height:0!important;
             max-height:0!important;padding:0!important;margin:0!important;overflow:hidden!important;
         }}
@@ -25951,16 +25862,18 @@ function triggerTab(label) {{
         st.markdown(f"<style>{all_ghost_css}{''.join(usar_ghost_css_parts)}</style>", unsafe_allow_html=True)
 
         # ── Ghost triggers principais
-        ghost_edit      = {}
-        ghost_cancel    = {}
-        ghost_do_buscar = {}
-        ghost_do_salvar = {}
+        ghost_edit       = {}
+        ghost_cancel     = {}
+        ghost_do_buscar  = {}
+        ghost_do_salvar  = {}
+        ghost_do_ampliar = {}
 
         for ci, e in enumerate(todas_empresas):
-            ghost_edit[ci]      = st.button(f"edit_{ci}",      key=f"cfg_ghost_edit_{ci}")
-            ghost_cancel[ci]    = st.button(f"cancel_{ci}",    key=f"cfg_ghost_cancel_{ci}")
-            ghost_do_buscar[ci] = st.button(f"do_buscar_{ci}", key=f"cfg_do_buscar_{ci}")
-            ghost_do_salvar[ci] = st.button(f"do_salvar_{ci}", key=f"cfg_do_salvar_{ci}")
+            ghost_edit[ci]       = st.button(f"edit_{ci}",       key=f"cfg_ghost_edit_{ci}")
+            ghost_cancel[ci]     = st.button(f"cancel_{ci}",     key=f"cfg_ghost_cancel_{ci}")
+            ghost_do_buscar[ci]  = st.button(f"do_buscar_{ci}",  key=f"cfg_do_buscar_{ci}")
+            ghost_do_salvar[ci]  = st.button(f"do_salvar_{ci}",  key=f"cfg_do_salvar_{ci}")
+            ghost_do_ampliar[ci] = st.button(f"do_ampliar_{ci}", key=f"cfg_do_ampliar_{ci}")
 
         # ── Ghost triggers "Usar página"
         ghost_usar_pg = {}
@@ -25977,27 +25890,71 @@ function triggerTab(label) {{
                 st.session_state.ads_editando_empresa   = e["nome"]
                 st.session_state.ads_onboarding_empresa = None
                 st.session_state.ads_onboarding_paginas = []
+                st.session_state.ads_onboarding_regiao = st.session_state.get(f"cfg_region_temp_{ci}", "BR")
+                st.session_state.ads_onboarding_busca_ampliada = False
                 st.rerun()
 
             if ghost_cancel[ci]:
                 st.session_state.ads_editando_empresa   = None
                 st.session_state.ads_onboarding_empresa = None
                 st.session_state.ads_onboarding_paginas = []
+                st.session_state.ads_onboarding_busca_ampliada = False
                 for k in list(st.query_params.keys()):
-                    if k.startswith("_cfg_val_"):
+                    if k.startswith("_cfg_val_") or k.startswith("_cfg_region_"):
                         del st.query_params[k]
                 st.rerun()
 
             if ghost_do_buscar[ci]:
                 val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
                 if val:
+                    regiao = st.session_state.get(f"cfg_region_temp_{ci}", "BR").upper().strip()
+                    if not re.fullmatch(r"[A-Z]{2}|ALL", regiao):
+                        regiao = "BR"
+
                     st.session_state.ads_onboarding_empresa = e["nome"]
                     st.session_state.ads_editando_empresa   = e["nome"]
-                    paginas = buscar_paginas_facebook(val)
+                    st.session_state.ads_onboarding_regiao  = regiao
+                    st.session_state.ads_onboarding_busca_ampliada = (regiao == "ALL")
+
+                    paginas = buscar_paginas_facebook(val, country=regiao)
                     st.session_state.ads_onboarding_paginas = paginas
-                    qk = f"_cfg_val_{ci}"
-                    if qk in st.query_params:
-                        del st.query_params[qk]
+
+                    for qk in (f"_cfg_val_{ci}", f"_cfg_region_{ci}"):
+                        if qk in st.query_params:
+                            del st.query_params[qk]
+                    st.rerun()
+
+            if ghost_do_ampliar[ci]:
+                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                if val:
+                    paginas_all = buscar_paginas_facebook(val, country="ALL")
+                    paginas_atuais = list(st.session_state.get("ads_onboarding_paginas", []) or [])
+
+                    _map_pg = {}
+                    for pg in paginas_atuais + paginas_all:
+                        _key_pg = str(pg.get("page_id") or "").strip() or (
+                            str(pg.get("nome") or "").strip().lower()
+                        )
+                        if not _key_pg:
+                            continue
+                        if _key_pg not in _map_pg:
+                            _map_pg[_key_pg] = dict(pg)
+                        else:
+                            _old_pg = _map_pg[_key_pg]
+                            _old_pg["total_ads"] = max(
+                                int(_old_pg.get("total_ads", 0) or 0),
+                                int(pg.get("total_ads", 0) or 0),
+                            )
+                            if not _old_pg.get("profile_picture") and pg.get("profile_picture"):
+                                _old_pg["profile_picture"] = pg.get("profile_picture")
+
+                    st.session_state.ads_onboarding_paginas = sorted(
+                        _map_pg.values(),
+                        key=lambda x: x.get("total_ads", 0),
+                        reverse=True,
+                    )
+                    st.session_state.ads_onboarding_regiao = "ALL"
+                    st.session_state.ads_onboarding_busca_ampliada = True
                     st.rerun()
 
             if ghost_do_salvar[ci]:
@@ -26007,6 +25964,7 @@ function triggerTab(label) {{
                     st.session_state.ads_editando_empresa   = None
                     st.session_state.ads_onboarding_empresa = None
                     st.session_state.ads_onboarding_paginas = []
+                    st.session_state.ads_onboarding_busca_ampliada = False
                     qk = f"_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
@@ -26026,6 +25984,7 @@ function triggerTab(label) {{
                         st.session_state.ads_editando_empresa   = None
                         st.session_state.ads_onboarding_empresa = None
                         st.session_state.ads_onboarding_paginas = []
+                        st.session_state.ads_onboarding_busca_ampliada = False
                         st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 
@@ -26071,6 +26030,39 @@ function triggerTab(label) {{
             id_color   = "#15803d" if has_id else "#9ca3af"
             id_ff      = "monospace" if has_id else "inherit"
             id_text    = ads_id if has_id else "Não configurado"
+
+            _region_code = st.session_state.get(f"cfg_region_temp_{ci}", "BR").upper().strip()
+            if not re.fullmatch(r"[A-Z]{2}|ALL", _region_code):
+                _region_code = "BR"
+
+            _region_options = [
+                ("BR", "Brasil"),
+                ("US", "Estados Unidos"),
+                ("PT", "Portugal"),
+                ("AR", "Argentina"),
+                ("MX", "México"),
+                ("ES", "Espanha"),
+                ("GB", "Reino Unido"),
+                ("FR", "França"),
+                ("DE", "Alemanha"),
+                ("IT", "Itália"),
+                ("CA", "Canadá"),
+                ("AU", "Austrália"),
+                ("CL", "Chile"),
+                ("CO", "Colômbia"),
+                ("PE", "Peru"),
+                ("UY", "Uruguai"),
+                ("PY", "Paraguai"),
+                ("ALL", "Todos os países"),
+            ]
+            _region_select_options = "".join(
+                f'<option value="{code}"{" selected" if code == _region_code else ""}>{label}</option>'
+                for code, label in _region_options
+            )
+            _region_label = dict(_region_options).get(
+                st.session_state.get("ads_onboarding_regiao", _region_code),
+                "Brasil",
+            )
 
             if page_pic and page_pic.startswith("http"):
                 av_html = (
@@ -26140,9 +26132,17 @@ function triggerTab(label) {{
                         </button>
                     </div>"""
 
+                _expandir_html = ""
+                if not st.session_state.get("ads_onboarding_busca_ampliada", False):
+                    _expandir_html = f'''
+                    <button class="btn-ampliar" id="btn_ampliar_{ci}" onclick="handleAmpliar({ci})">
+                        🌎 Ampliar busca
+                    </button>'''
+
                 resultados_block = f"""
                 <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+                        <div style="display:flex;align-items:center;gap:8px;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                              stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -26151,8 +26151,14 @@ function triggerTab(label) {{
                                      text-transform:uppercase;letter-spacing:0.5px;">
                             {len(onboarding_paginas[:8])} página(s) encontrada(s)
                         </span>
+                        </div>
+                        <span style="font-size:10px;font-weight:700;color:#64748b;background:#f8fafc;
+                                     border:1px solid #e2e8f0;border-radius:999px;padding:3px 8px;">
+                            {_region_label}
+                        </span>
                     </div>
                     {pgs_html}
+                    {_expandir_html}
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
                 # Busca já rodou pra essa empresa mas não achou nenhuma página —
@@ -26163,6 +26169,13 @@ function triggerTab(label) {{
                 # não bate com o nome exato cadastrado no Facebook) e deixa
                 # claro que dá pra salvar o texto digitado direto, sem
                 # precisar de um resultado de busca pra confirmar.
+                _expandir_vazio_html = ""
+                if not st.session_state.get("ads_onboarding_busca_ampliada", False):
+                    _expandir_vazio_html = f'''
+                    <button class="btn-ampliar" id="btn_ampliar_{ci}" onclick="handleAmpliar({ci})">
+                        🌎 Ampliar busca para todos os países
+                    </button>'''
+
                 resultados_block = f"""
                 <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
                     <div style="display:flex;align-items:flex-start;gap:10px;
@@ -26170,7 +26183,7 @@ function triggerTab(label) {{
                                 padding:11px 14px;">
                         <span style="font-size:15px;flex-shrink:0;line-height:1.3">⚠️</span>
                         <div style="font-size:13px;color:#92400e;line-height:1.55">
-                            <strong>Nenhuma página encontrada</strong> pra esse nome na Biblioteca de Anúncios do Meta.
+                            <strong>Nenhuma página encontrada</strong> nessa região para esse nome na Biblioteca de Anúncios do Meta.
                             Isso pode acontecer se o nome estiver diferente do cadastrado no Facebook,
                             ou se a página não tiver anúncios catalogados nesse momento.
                             <br/><br/>
@@ -26179,6 +26192,7 @@ function triggerTab(label) {{
                             direto em <strong>Salvar ID</strong>, sem precisar de um resultado de busca.
                         </div>
                     </div>
+                    {_expandir_vazio_html}
                 </div>"""
 
 
@@ -26217,9 +26231,27 @@ function triggerTab(label) {{
                             </div>
                         </div>
                         <div class="edit-section">
-                            <div style="font-size:11px;font-weight:700;color:#9ca3af;
-                                        text-transform:uppercase;letter-spacing:0.8px;
-                                        margin-bottom:8px">ID ou nome da página do Facebook</div>
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;
+                                        gap:10px;margin-bottom:8px;">
+                                <div style="font-size:11px;font-weight:700;color:#9ca3af;
+                                            text-transform:uppercase;letter-spacing:0.8px;">
+                                    ID ou nome da página do Facebook
+                                </div>
+                                <div style="min-width:132px;">
+                                    <label for="cfg_region_{ci}"
+                                           style="display:block;font-size:9px;font-weight:700;color:#94a3b8;
+                                                  text-transform:uppercase;letter-spacing:0.55px;margin-bottom:3px;">
+                                        Região da busca
+                                    </label>
+                                    <select id="cfg_region_{ci}"
+                                            onchange="saveRegionToURL({ci}, this.value)"
+                                            style="width:100%;height:32px;border:1px solid #d1d5db;border-radius:8px;
+                                                   padding:0 8px;background:#fff;color:#374151;font-size:11px;
+                                                   font-family:'DM Sans',sans-serif;outline:none;">
+                                        {_region_select_options}
+                                    </select>
+                                </div>
+                            </div>
                             <input
                                 id="cfg_input_{ci}"
                                 type="text"
@@ -26344,6 +26376,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; font-family:'DM Sans',sans-serif; transition:background 0.15s; }}
 .btn-salvar:hover:not(:disabled) {{ background:#1a3a5c; }}
 .btn-salvar:disabled {{ opacity:0.65; cursor:not-allowed; }}
+.btn-ampliar {{
+    width:100%; margin-top:10px; padding:9px 12px;
+    border:1px solid #cbd5e1; border-radius:8px;
+    background:#fff; color:#334155; font-size:12px; font-weight:700;
+    cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s;
+}}
+.btn-ampliar:hover:not(:disabled) {{ background:#f8fafc; border-color:#94a3b8; }}
+.btn-ampliar:disabled {{ opacity:0.65; cursor:not-allowed; }}
 </style>
 <div class="outer">
     <div class="cards-grid">{cards_html}</div>
@@ -26365,6 +26405,12 @@ function saveValToURL(ci, val) {{
     window.parent.history.replaceState({{}}, '', url);
 }}
 
+function saveRegionToURL(ci, region) {{
+    var url = new URL(window.parent.location.href);
+    url.searchParams.set('_cfg_region_' + ci, region || 'BR');
+    window.parent.history.replaceState({{}}, '', url);
+}}
+
 function handleBuscar(ci) {{
     var inp = document.getElementById('cfg_input_' + ci);
     var val = (inp || {{}}).value || '';
@@ -26381,8 +26427,26 @@ function handleBuscar(ci) {{
     }}
     if (btnS) {{ btnS.disabled = true; }}
 
+    var reg = document.getElementById('cfg_region_' + ci);
     saveValToURL(ci, val);
+    saveRegionToURL(ci, (reg || {{}}).value || 'BR');
     setTimeout(function() {{ triggerGhost('do_buscar_' + ci); }}, 300);
+}}
+
+function handleAmpliar(ci) {{
+    var inp = document.getElementById('cfg_input_' + ci);
+    var val = (inp || {{}}).value || '';
+    if (!val.trim()) {{ alert('Digite um nome ou ID antes de buscar.'); return; }}
+
+    var btn = document.getElementById('btn_ampliar_' + ci);
+    if (btn) {{
+        btn.disabled = true;
+        btn.innerHTML = SPINNER + ' &nbsp;Buscando em todos os países...';
+    }}
+
+    saveValToURL(ci, val);
+    saveRegionToURL(ci, 'ALL');
+    setTimeout(function() {{ triggerGhost('do_ampliar_' + ci); }}, 300);
 }}
 
 function handleSalvar(ci) {{
@@ -26396,7 +26460,9 @@ function handleSalvar(ci) {{
         btn.innerHTML = SPINNER + ' &nbsp;Salvando...';
     }}
 
+    var reg = document.getElementById('cfg_region_' + ci);
     saveValToURL(ci, val);
+    saveRegionToURL(ci, (reg || {{}}).value || 'BR');
     setTimeout(function() {{ triggerGhost('do_salvar_' + ci); }}, 300);
 }}
 
@@ -26659,7 +26725,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                         # imagens (que custam tokens multimodais e por isso têm teto
                         # baixo), transcrição é só texto — então cobre todos os vídeos
                         # dentro dos mesmos 15 anúncios já usados no resumo, e não um
-                        # número fixo pequeno (senão empresas só-de-vídeo, como uma que
                         # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
                         vids_transcritos = 0
                         _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
@@ -26667,8 +26732,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            # V150 — para YouTube, prioriza o CC salvo no
-                            # gads_cache; Whisper continua como fallback para
                             # vídeos baixáveis normais.
                             transcricao_vid = (a.get("video_cc_raw") or "").strip()
                             if not transcricao_vid:
@@ -26793,7 +26856,6 @@ Amostra dos anúncios:
                         st.session_state[chave_ia_geral] = f"Erro: {ex}"
                         st.rerun()
 
-            # DEBUG TEMPORÁRIO — abra o console do navegador (F12) e veja os logs
             import streamlit.components.v1 as _comp_debug
             _comp_debug.html(f"""
 <script>
@@ -27328,7 +27390,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                # Foto de perfil de fallback: nem todo anúncio antigo tem
                 # "page_profile_picture" salva (o campo só passou a ser
                 # capturado depois, ou a captura falhou naquela época).
                 # Como a foto de perfil da página é a MESMA pra todos os
@@ -27336,7 +27397,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # a inicial só porque aquele anúncio específico não tem o
                 # campo, usamos a primeira foto válida encontrada entre
                 # TODOS os anúncios da empresa (ads_list, não só ads_f, pra
-                # não perder o fallback quando o filtro atual esconde o
                 # único anúncio que tinha a foto).
                 _page_pic_fallback = next(
                     (
@@ -27379,7 +27439,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # query só) pra alimentar o badge "💬 Transcrição" do card.
                 # Só lê o que já está pronto na tabela `midias` — NÃO chama
                 # obter_transcricao_video aqui, porque essa função roda o
-                # Whisper na hora como fallback quando não acha nada salvo,
                 # o que travaria a tela inteira esperando transcrever um por
                 # um. Um vídeo recém-migrado, então, fica sem o badge até a
                 # fila separada (_transcrever_pendentes_background) terminar
@@ -27451,7 +27510,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
                     # Antes usava o link salvo em CADA anúncio individualmente,
-                    # e só caía pro fallback quando o campo vinha vazio. Só que
                     # anúncios antigos costumam ter esse campo preenchido com um
                     # link do Meta que já expirou (não vazio, só quebrado) — daí
                     # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
@@ -27540,7 +27598,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # (onclick="...") faz o navegador fechar o atributo na
                         # primeira aspa que aparecer no meio do array — o
                         # onclick ficava truncado/quebrado e o clique não fazia
-                        # nada. A correção segue o mesmo padrão já usado pro
                         # resto do card (ver wrapEl.addEventListener acima):
                         # o array vai numa variável JS separada, dentro de um
                         # <script>, e o clique é ligado via addEventListener.
@@ -27601,7 +27658,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # simplesmente esconder tudo (o que antes deixava
                         # "sem transcrição ainda" indistinguível de "nunca vai
                         # ter transcrição").
-                        # V150 — vídeo YouTube usa primeiro o CC persistido
                         # no próprio anúncio. Para vídeo comum continua usando
                         # a transcrição Whisper da tabela `midias`.
                         _transcricao_txt = (
@@ -27627,7 +27683,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_TRANSCRICAO} {'CC YouTube' if (a.get("video_cc_raw") or "").strip() else 'Transcrição'}
+        {_SVG_ICONE_CC_YOUTUBE if (a.get("video_cc_raw") or "").strip() else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if (a.get("video_cc_raw") or "").strip() else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = f"""
@@ -27733,7 +27789,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             _metodo_carrossel = "carousel_images (por card, correto)"
                         elif _e_carrossel and len(images) > 1:
                             # Anúncio Carrossel salvo em cache ANTES dessa
-                            # correção (ou cujos cards não trouxeram os campos
                             # esperados) ainda não tem "carousel_images". Nesse
                             # caso, usa a lista genérica "images" — só que ela
                             # traz, pra CADA card, tanto a "original_image_url"
@@ -27759,7 +27814,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
                                 # O filtro "stp=" não removeu nada — sinal de
                                 # que essas imagens já foram migradas pro R2
-                                # antes dessa correção existir (nomes de
                                 # arquivo viram hash aleatório, perdem o "stp=").
                                 # Nesses casos, como a extração sempre insere
                                 # original_image_url ANTES de resized_image_url
@@ -28706,7 +28760,6 @@ setTimeout(syncHeightTabs, 800);
             close_all()
             html = '\n'.join(output)
  
-            # ── FIX 1: regex de emoji ampliado ───────────────────────
             # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
             # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
             # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
@@ -28733,7 +28786,6 @@ setTimeout(syncHeightTabs, 800);
                 limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
-            # ── FIX 2: matching por palavra inteira (\b...\b) ────────
             # Antes, o teste era `any(w in t for w in [...])`, ou seja,
             # substring simples. Isso é arriscado: se uma keyword curta
             # como "cta" for adicionada a uma lista, ela "casaria" com
@@ -28759,12 +28811,10 @@ setTimeout(syncHeightTabs, 800);
                     return ICON_SVG_ADS['lightbulb'], '#fef3c7'
                 if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return ICON_SVG_ADS['rocket'], '#e0f2fe'
-                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return ICON_SVG_ADS['chart'], '#e2e8f0'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return ICON_SVG_ADS['megaphone'], '#fce7f3'
-                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return ICON_SVG_ADS['target'], '#fee2e2'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -28785,12 +28835,10 @@ setTimeout(syncHeightTabs, 800);
                     return '#b45309'
                 if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return '#0369a1'
-                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return '#334155'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return '#be185d'
-                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return '#b91c1c'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -29514,7 +29562,6 @@ elif st.session_state.pagina == "google_ads":
                     gads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
-                    # não apareceu nessa coleta -> mantém o histórico, mas
                     # marca como inativo quando dava pra saber (tinha id
                     # pra comparar contra a coleta nova)
                     ad["ativo"] = False if ad_id else ad.get("ativo", True)
@@ -29631,7 +29678,6 @@ elif st.session_state.pagina == "google_ads":
         print(f"[GADS-IMG] abrindo página humana: {pagina_url}", flush=True)
         achado = [""]
         try:
-            # V31 — só instala/abre Chromium se este fallback raro for realmente usado.
             if not _garantir_chromium_playwright():
                 print("[GADS-IMG] fallback Playwright indisponível; seguindo sem browser", flush=True)
                 return ""
@@ -29657,7 +29703,6 @@ elif st.session_state.pagina == "google_ads":
 
                     try:
                         # V87: `networkidle` é ruim para a Transparency Center
-                        # (SPA mantém conexões abertas) e fazia cada fallback
                         # esperar 20s mesmo quando a imagem já tinha aparecido.
                         # `domcontentloaded` + pequena janela para os listeners
                         # de rede reduz muito o tempo sem perder o asset.
@@ -29671,7 +29716,6 @@ elif st.session_state.pagina == "google_ads":
                                 break
                             page.wait_for_timeout(250)
 
-                    # fallback final: procura o link direto no HTML já
                     # renderizado, caso ele apareça só como atributo (src/
                     # background-image) sem gerar uma requisição nova
                     # capturada pelos listeners acima
@@ -29721,7 +29765,6 @@ elif st.session_state.pagina == "google_ads":
                 return resultado
             texto = r.text
 
-            # previewservice.insertPreviewImageContent('containerId', 'imgId', 'https://...', largura, altura)
             m_img = re.search(
                 r"previewservice\.insertPreviewImageContent\([^,]+,\s*'[^']*',\s*'(https?://[^']+)'",
                 texto,
@@ -29742,7 +29785,6 @@ elif st.session_state.pagina == "google_ads":
                 # jeito ligeiramente diferente), mas já temos o ID do
                 # vídeo — dá pra montar a URL da thumbnail na mão, sem
                 # depender do regex anterior. Isso importa: sem isso,
-                # `image_url` ficava vazio e o código caía no fallback
                 # via Playwright (página humana), que aí pegava a
                 # PRIMEIRA imagem `tpc.googlesyndication.com/archive/
                 # simgad/...` da página — que costuma ser o LOGO do
@@ -29787,7 +29829,6 @@ elif st.session_state.pagina == "google_ads":
             except Exception:
                 return str(start_raw)[:10]
 
-        # V95: mantém ambos os lados timezone-aware.
         # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
         # mas datetime.now() continuou naive, causando TypeError na subtração.
         if dto.tzinfo is None:
@@ -30042,7 +30083,6 @@ elif st.session_state.pagina == "google_ads":
         # vários anúncios diferentes mostrarem a MESMA imagem errada
         # (o logo, não o criativo). Anúncio de vídeo já tem a thumbnail
         # do YouTube (via _extrair_preview_google) — não precisa e não
-        # deve cair nesse fallback.
         if not image_url and not _preview_info.get("youtube_url") and _human_page_url:
             print(f"[GADS] ad_id={ad_id} caindo pro fallback via página humana: {_human_page_url}", flush=True)
             image_url = _extrair_imagem_pagina_google(_human_page_url)
@@ -30127,7 +30167,6 @@ elif st.session_state.pagina == "google_ads":
         # já normalizados (ver loop no fim da função). Existe pra quem chama
         # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
         # de normalizar centenas de anúncios de uma empresa inteiros (cada um
-        # podendo custar ~20-25s se cair no fallback de navegador headless
         # pra achar a imagem) pra só então salvar tudo de uma vez no final.
         # Empresa com muitos anúncios "difíceis" (sem imagem pronta da
         # Apify) podia passar 15-30+ minutos "rodando" sem nada persistido
@@ -30152,7 +30191,6 @@ elif st.session_state.pagina == "google_ads":
         #  - tem ponto e não tem espaço -> domínio (ex. "nike.com")
         #  - qualquer outra coisa -> nome do anunciante
         #
-        # `region` agora é parâmetro (era fixo em "BR"). Motivo: o filtro
         # de região do actor é sobre onde o ANÚNCIO foi exibido, não sobre
         # o país do anunciante — um domínio pode aparecer normalmente na
         # Central de Transparência (sem filtro nenhum) mas ter 0 anúncios
@@ -30163,7 +30201,6 @@ elif st.session_state.pagina == "google_ads":
         # voltar vazia mesmo com o anunciante existindo de verdade —
         # validado com o domínio real "buyticketbrasil.com", que tem
         # anúncios confirmados na Transparency Center mas não retornava
-        # nada com region="BR" fixo. `buscar_anunciantes_google` (abaixo)
         # agora tenta de novo com region="" (todas as regiões) como
         # última etapa da cascata, quando as tentativas com BR falham.
         # V87: removido o teto artificial de 100 do nosso app. O Actor
@@ -30434,7 +30471,6 @@ elif st.session_state.pagina == "google_ads":
                 else:
                     # Processa e salva em LOTES DENTRO da própria empresa
                     # (não só empresa a empresa) — cada anúncio pode custar
-                    # até ~20-25s quando precisa do fallback de navegador
                     # headless pra achar a imagem (ver _extrair_imagem_
                     # pagina_google), e uma empresa com muitos anúncios
                     # "difíceis" podia passar dezenas de minutos "rodando"
@@ -30646,7 +30682,6 @@ elif st.session_state.pagina == "google_ads":
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
 
-    # V151 — recuperação automática de CC do YouTube.
     #
     # A cada render da área Google Ads fazemos apenas a checagem local e
     # barata: "existe vídeo YouTube sem CC?". Havendo pendência, uma thread
@@ -30682,7 +30717,6 @@ elif st.session_state.pagina == "google_ads":
         iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
         # V105: a thread pode criar atividade OCR alguns instantes depois
-        # deste render. Mantém uma pequena janela de polling para não perder
         # essa transição.
         st.session_state["_gads_armar_poll_ocr"] = True
 
@@ -30728,7 +30762,6 @@ elif st.session_state.pagina == "google_ads":
             st.session_state["_coleta_gads_em_andamento"] = False
             st.rerun()
         else:
-            # Nova coleta detectada e ainda rodando — mantém o polling
             # ativo mesmo que a flag local tivesse se perdido.
             st.session_state["_coleta_gads_em_andamento"] = True
 
@@ -30833,7 +30866,6 @@ elif st.session_state.pagina == "google_ads":
         }
         </style>
         """, unsafe_allow_html=True)
-        # OCR mantém PyTorch/EasyOCR em RAM; evita rerender completo a cada
         # 8 segundos durante essa etapa pesada. A atualização continua
         # automática, só fica menos agressiva enquanto OCR está ativo.
         _poll_ms_gads = 60000 if _ocr_em_andamento else UI_POLL_INTERVAL_MS
@@ -30973,7 +31005,6 @@ elif st.session_state.pagina == "google_ads":
         # anúncios de verdade na Central de Transparência (sem filtro
         # nenhum) mas nenhum marcado como exibido na região BR nos dados
         # do actor (ex. validado com "buyticketbrasil.com": aparece na
-        # Transparency Center, mas region="BR" fixo sempre voltava vazio).
         #
         # As combinações candidato×região eram testadas uma de cada vez,
         # em sequência — cada tentativa vazia consome o deadline_seconds
@@ -30997,7 +31028,6 @@ elif st.session_state.pagina == "google_ads":
         # de verdade na Central de Transparência (sem filtro nenhum) mas
         # nenhum marcado como exibido na região BR nos dados do actor
         # (ex. validado com "buyticketbrasil.com": aparece na Transparency
-        # Center, mas region="BR" fixo sozinho às vezes voltava vazio).
         #
         # deadline_seconds subiu de 45 pra 90: o actor "google-ads-scraper"
         # pode ter cold start lento, e com múltiplos runs concorrentes na
@@ -31131,7 +31161,6 @@ elif st.session_state.pagina == "google_ads":
         _ultima_ts = _entry_ativa.get("ts", "")
 
         if not _ultima_ts:
-            # Fallback: nenhuma coleta registrada pra empresa ativa ainda —
             # mostra a coleta mais recente do cache geral. Usa parsing de
             # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
             # não ordena corretamente como texto.
@@ -31290,7 +31319,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         # tem cache fresco pra empresa, ele só reaproveita o que já está
         # salvo (não rechama a Apify, não reprocessa imagem nenhuma). Esse
         # aqui existe pra quando o usuário precisa mesmo de um dado novo
-        # (ex.: depois de um fix na extração de imagem) sem precisar
         # limpar o cache inteiro primeiro.
         gerar_btn_gads_forcar = st.button("gads_forcar_header_trigger", key="gads_forcar_header_btn")
  
@@ -32014,7 +32042,6 @@ function triggerTab(label) {{
 </script>
 """, height=90, scrolling=False)
 
-    # ── Correção de gap entre iframes (mesma técnica da página Redes) ──
     st.markdown("""
     <style>
     [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"]:has(iframe) {
@@ -32209,7 +32236,6 @@ function triggerTab(label) {{
                     # hora — não bloqueia mais o script run pelos até
                     # ~90-180s que o Apify pode levar (ver
                     # _gads_onboarding_iniciar/_gads_onboarding_worker
-                    # acima). `buscando_inicio` fica só como fallback pro
                     # caso raro do job sumir do registry em memória (ex.
                     # reinício do processo) antes da thread terminar.
                     st.session_state.gads_onboarding_buscando = True
@@ -33008,7 +33034,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                         # imagens (que custam tokens multimodais e por isso têm teto
                         # baixo), transcrição é só texto — então cobre todos os vídeos
                         # dentro dos mesmos 15 anúncios já usados no resumo, e não um
-                        # número fixo pequeno (senão empresas só-de-vídeo, como uma que
                         # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
                         vids_transcritos = 0
                         _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
@@ -33016,8 +33041,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            # V150 — para YouTube, prioriza o CC salvo no
-                            # gads_cache; Whisper continua como fallback para
                             # vídeos baixáveis normais.
                             transcricao_vid = (a.get("video_cc_raw") or "").strip()
                             if not transcricao_vid:
@@ -33142,7 +33165,6 @@ Amostra dos anúncios:
                         st.session_state[chave_ia_geral] = f"Erro: {ex}"
                         st.rerun()
 
-            # DEBUG TEMPORÁRIO — abra o console do navegador (F12) e veja os logs
             import streamlit.components.v1 as _comp_debug
             _comp_debug.html(f"""
 <script>
@@ -33893,7 +33915,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                # Foto de perfil de fallback: nem todo anúncio antigo tem
                 # "page_profile_picture" salva (o campo só passou a ser
                 # capturado depois, ou a captura falhou naquela época).
                 # Como a foto de perfil da página é a MESMA pra todos os
@@ -33901,7 +33922,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # a inicial só porque aquele anúncio específico não tem o
                 # campo, usamos a primeira foto válida encontrada entre
                 # TODOS os anúncios da empresa (gads_list, não só gads_f, pra
-                # não perder o fallback quando o filtro atual esconde o
                 # único anúncio que tinha a foto).
                 _page_pic_fallback = next(
                     (
@@ -33941,7 +33961,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # query só) pra alimentar o badge "💬 Transcrição" do card.
                 # Só lê o que já está pronto na tabela `midias` — NÃO chama
                 # obter_transcricao_video aqui, porque essa função roda o
-                # Whisper na hora como fallback quando não acha nada salvo,
                 # o que travaria a tela inteira esperando transcrever um por
                 # um. Um vídeo recém-migrado, então, fica sem o badge até a
                 # fila separada (_transcrever_pendentes_background) terminar
@@ -33991,7 +34010,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # na hora (isso travaria a tela renderizando os cards).
                 # Mesmos 3 estados: NULL = ainda não processado (mostra
                 # "Extraindo texto…"), "" = processado sem achar texto
-                # (mantém a mensagem antiga de "não disponibilizado"),
                 # com texto = pronto (mostra no lugar da copy).
                 _urls_img_cards = list({
                     (ad.get("images") or [""])[0] for ad in gads_f if (ad.get("images") or [""])[0]
@@ -34005,7 +34023,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # ainda nem foi migrada/inserida, quanto mais ter OCR
                 # rodado) não caía nem aqui nem em `_mapa_ocr` — ficava
                 # de fora dos dois mapas e o card renderizava direto o
-                # fallback definitivo "Texto não disponibilizado pelo
                 # Google Ads Transparency Center", como se o OCR já
                 # tivesse rodado e não achado nada, mesmo ele nunca
                 # tendo tido chance de rodar. Com o set pré-populado,
@@ -34058,7 +34075,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                                 elif not isinstance(_v_render, str):
                                                     _estr_render[_campo_txt_render] = str(_v_render)
 
-                                            # V165 — preserva/sanitiza chamadas de anúncios multicard.
                                             _ch_render_raw = _estr_render.get("chamadas") or []
                                             if isinstance(_ch_render_raw, str):
                                                 _ch_render_raw = [
@@ -34107,7 +34123,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                             f"{_exc_json_ocr_card!r}",
                                             flush=True,
                                         )
-                                        # cai pro fallback de texto corrido sem
                                         # impedir o restante da página de abrir
                     except Exception:
                         pass
@@ -34119,7 +34134,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     # na fonte do card fica idêntico a um "O" na tela —
                     # quando fica isolado entre espaços. Corrige antes de
                     # escapar/exibir (ver `_corrigir_o_isolado`), mas
-                    # preserva um "O" real que comece frase nova logo
                     # depois de ". "/"! "/"? ".
                     s = _corrigir_o_isolado(s)
                     return (
@@ -34162,7 +34176,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
                     # Antes usava o link salvo em CADA anúncio individualmente,
-                    # e só caía pro fallback quando o campo vinha vazio. Só que
                     # anúncios antigos costumam ter esse campo preenchido com um
                     # link do Meta que já expirou (não vazio, só quebrado) — daí
                     # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
@@ -34272,7 +34285,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # (onclick="...") faz o navegador fechar o atributo na
                         # primeira aspa que aparecer no meio do array — o
                         # onclick ficava truncado/quebrado e o clique não fazia
-                        # nada. A correção segue o mesmo padrão já usado pro
                         # resto do card (ver wrapEl.addEventListener acima):
                         # o array vai numa variável JS separada, dentro de um
                         # <script>, e o clique é ligado via addEventListener.
@@ -34333,7 +34345,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # simplesmente esconder tudo (o que antes deixava
                         # "sem transcrição ainda" indistinguível de "nunca vai
                         # ter transcrição").
-                        # V156 — esta segunda rota de renderização dos cards
                         # também precisa priorizar o CC persistido no próprio
                         # anúncio. Antes ela consultava apenas `_mapa_transcricoes`
                         # da tabela `midias`, por isso o backend capturava o CC
@@ -34362,7 +34373,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_TRANSCRICAO} {'CC YouTube' if _cc_youtube_txt_v156 else 'Transcrição'}
+        {_SVG_ICONE_CC_YOUTUBE if _cc_youtube_txt_v156 else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if _cc_youtube_txt_v156 else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = f"""
@@ -34516,7 +34527,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             _metodo_carrossel = "carousel_images (por card, correto)"
                         elif _e_carrossel and len(images) > 1:
                             # Anúncio Carrossel salvo em cache ANTES dessa
-                            # correção (ou cujos cards não trouxeram os campos
                             # esperados) ainda não tem "carousel_images". Nesse
                             # caso, usa a lista genérica "images" — só que ela
                             # traz, pra CADA card, tanto a "original_image_url"
@@ -34542,7 +34552,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
                                 # O filtro "stp=" não removeu nada — sinal de
                                 # que essas imagens já foram migradas pro R2
-                                # antes dessa correção existir (nomes de
                                 # arquivo viram hash aleatório, perdem o "stp=").
                                 # Nesses casos, como a extração sempre insere
                                 # original_image_url ANTES de resized_image_url
@@ -34808,7 +34817,6 @@ function imgFallback_{uid}(img){{
                                     elif isinstance(_sl, str) and " — " in _sl:
                                         # formato antigo, string única
                                         # salva antes da migração pra
-                                        # dict — mantido só de fallback.
                                         _sl_titulo, _sl_desc = _sl.split(" — ", 1)
                                     else:
                                         _sl_titulo, _sl_desc = str(_sl or ""), ""
@@ -35790,7 +35798,6 @@ setTimeout(syncHeightTabs, 800);
             close_all()
             html = '\n'.join(output)
  
-            # ── FIX 1: regex de emoji ampliado ───────────────────────
             # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
             # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
             # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
@@ -35817,7 +35824,6 @@ setTimeout(syncHeightTabs, 800);
                 limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
-            # ── FIX 2: matching por palavra inteira (\b...\b) ────────
             # Antes, o teste era `any(w in t for w in [...])`, ou seja,
             # substring simples. Isso é arriscado: se uma keyword curta
             # como "cta" for adicionada a uma lista, ela "casaria" com
@@ -35843,12 +35849,10 @@ setTimeout(syncHeightTabs, 800);
                     return ICON_SVG_ADS['lightbulb'], '#fef3c7'
                 if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return ICON_SVG_ADS['rocket'], '#e0f2fe'
-                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return ICON_SVG_ADS['chart'], '#e2e8f0'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return ICON_SVG_ADS['megaphone'], '#fce7f3'
-                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return ICON_SVG_ADS['target'], '#fee2e2'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -35869,12 +35873,10 @@ setTimeout(syncHeightTabs, 800);
                     return '#b45309'
                 if _match_palavra_ads(t, ['oportunidade', 'oportunidades', 'estratégia', 'estrategia', 'crescimento', 'potencial']):
                     return '#0369a1'
-                # FIX 3a: adicionado "tempo", "veiculação" e "impressões"
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return '#334155'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
                     return '#be185d'
-                # FIX 3b: nova categoria dedicada a CTA (antes caía no fallback)
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return '#b91c1c'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -38264,7 +38266,6 @@ function setHeight(isOpen) {{
         st.session_state.redes_confirmar_limpar = True
         st.rerun()
 
-# ── HR separador — fora das colunas, com correção de espaço ────
     st.markdown("""
         <div style="margin-top: 5px;">
             <hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 40px 0'/>
@@ -40403,7 +40404,6 @@ Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando d
                     # transcrição do áudio (via Whisper). Prioriza a transcrição
                     # que o checkin da página de Redes Sociais já deixou salva
                     # no próprio post (ver _transcrever_reels_pendentes_background)
-                    # — só cai no fallback de obter_transcricao_video (baixar e
                     # transcrever na hora) se esse checkin ainda não rodou pra
                     # esse Reel específico.
                     vids_transcritos = 0
@@ -41874,7 +41874,6 @@ html, body { background: transparent; overflow: hidden; }
                 # Duas badges separadas, porque são situações diferentes:
                 # "já expirado" (vermelho mais escuro, problema acontecendo
                 # agora) e "expira em Xh Ymin" (vermelho normal, com o tempo
-                # real restante calculado na hora — não mais um texto fixo
                 # "até 48h" igual pra tudo que caísse na janela). Cada uma
                 # tem um title= (tooltip nativo do navegador, aparece ao
                 # passar o mouse) listando os ids dos anúncios por trás do
@@ -42481,7 +42480,6 @@ html, body { background: transparent; overflow: hidden; }
                     return "Com OCR" if _item.get("tem_ocr") else "Sem OCR"
                 return _item.get("motivo_ocr") or "Processamento não aplicável"
 
-            # V164 — lazy load real do detalhamento.
             #
             # st.expander NÃO é lazy no Streamlit: mesmo fechado, todo o corpo
             # é executado em cada rerun. Antes desta versão, as oito listas de
@@ -42925,7 +42923,6 @@ html, body { background: transparent; overflow: hidden; }
         # estruturado (texto corrido, sem título/descrição/CTA separados)
         # e (2) OCR gravado como "vazio" por causa de uma falha de rede/
         # Gemini/parsing (bug já corrigido na extração, mas que já tinha
-        # gravado linhas erradas antes da correção — imagem com texto
         # visível, mas marcada como "sem texto" pra sempre). Botão
         # separado do de cima porque a ação é diferente: não é "processar
         # o que nunca foi processado", é "jogar fora o que já foi
@@ -42963,7 +42960,6 @@ html, body { background: transparent; overflow: hidden; }
         # `ocr_estruturado IS NULL`, e aqui o campo tem conteúdo (só que
         # errado). Como não dá pra distinguir programaticamente um
         # `ocr_estruturado` certo de um errado (mesmas chaves, ambos
-        # "preenchidos"), a correção é manual: o usuário escolhe a
         # empresa e reprocessa tudo do zero, mesmo o que já estava certo.
         _empresas_gads_perfil = []
         try:
@@ -43549,7 +43545,6 @@ html, body { background: transparent; overflow: hidden; }
         # clicava, o checkbox chegava como True no session_state, mas era
         # imediatamente devolvido para False e visualmente "não ficava".
         #
-        # A correção usa callback nativo do Streamlit. O callback roda antes do
         # corpo do script no rerun e atualiza a lista de IDs selecionados com o
         # valor que o usuário acabou de marcar/desmarcar. Depois disso a
         # sincronização visual pode continuar sendo derivada da lista real sem
@@ -43733,7 +43728,6 @@ html, body { background: transparent; overflow: hidden; }
 
     # V31 — 2s reconstruía a lista inteira até 30x/min. Com muitos cards, isso
     # gerava CPU contínua mesmo sem o usuário interagir. 10s reduz ~80% desses
-    # reruns e ainda mantém o progresso visual suficientemente responsivo.
     @st.fragment(run_every="20s")
     def _renderizar_atividades_ao_vivo():
         """Desenha a lista de atividades (cards, texto e barra de progresso)
@@ -43886,7 +43880,6 @@ html, body { background: transparent; overflow: hidden; }
             _excluir_ids = []
             _cards_notif_html = ""
             # Acumulador de altura real, card a card (em vez de "n * 92px
-            # fixo"): cada card fechado (o normal) ocupa só a linha do
             # cabeçalho (~68px); só os que abrem sozinhos por padrão
             # (migração/transcrição rodando AGORA, ver _rodando_agora_ativ)
             # somam a altura extra do corpo (texto + barra de progresso).
@@ -43959,7 +43952,6 @@ html, body { background: transparent; overflow: hidden; }
                 # "Reparar e refazer" — diferente de "Refazer" (só aparece em
                 # status "erro"), esse botão existe pra migrações que
                 # CONCLUÍRAM (status "concluido") mas cujo resultado pode
-                # estar corrompido — ex.: o bug do fallback sem validação de
                 # content-type em baixar_e_persistir_midia, que salvava uma
                 # página de erro/bloqueio do CDN disfarçada de mídia e
                 # fechava em "100%". É manual porque não dá pra saber, só
@@ -44220,14 +44212,12 @@ html, body { background: transparent; overflow: hidden; }
     </div>"""
 
             # Altura calculada card a card (ver _altura_total_estim acumulada
-            # no loop acima) em vez de um valor fixo — um valor fixo com
             # scroll interno criava DUAS barras de rolagem na tela (a da
             # página toda + a de dentro da caixa de notificações), o que é
             # pior UX do que uma altura calculada com folga pequena. Como a
             # estimativa por card agora é precisa (cabeçalho ~68px, e só os
             # cards abertos por padrão somam a altura real do corpo), o erro
             # acumulado fica pequeno mesmo com muitas atividades — o JS
-            # (syncH) só faz o ajuste fino final.
             _altura_estim_cards = _altura_total_estim
 
             NOTIF_CSS = """

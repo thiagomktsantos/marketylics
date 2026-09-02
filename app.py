@@ -1,4 +1,4 @@
-# V179 — busca Meta estrita por nome do anunciante; resultados irrelevantes do fallback são descartados.
+# V180 — Meta finder aguarda conclusão real e loga candidatos brutos antes do filtro.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -24917,11 +24917,11 @@ elif st.session_state.pagina == "ads":
                 st.session_state.dados["concorrentes"][e["idx"]]["ads_page_pic"] = page_pic
         salvar_empresa_e_concorrentes()
 
-    def _buscar_anunciantes_meta_por_nome_v178(
+    def _buscar_anunciantes_meta_por_nome_v180(
         termo: str,
         country: str = "BR",
-        limit: int = 40,
-        deadline_seconds: int = 70,
+        limit: int = 60,
+        deadline_seconds: int = 90,
     ) -> list:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
@@ -24954,69 +24954,111 @@ elif st.session_state.pagina == "ads":
             "maxConcurrency": 2,
         }
 
+        print(
+            f"[META-FINDER-V180] start termo={termo!r} "
+            f"country={country} advertiserName={payload['advertiserName']!r}",
+            flush=True,
+        )
+
         try:
             r_start = _http_post(run_url, json=payload, timeout=30)
             r_start.raise_for_status()
             run_data = r_start.json()
         except Exception as exc:
-            print(
-                f"[META-PAGE-SEARCH][V178] falha ao iniciar finder: {exc!r}",
-                flush=True,
-            )
+            print(f"[META-FINDER-V180] erro_start={exc!r}", flush=True)
             return []
 
         data = run_data.get("data", {}) if isinstance(run_data, dict) else {}
         run_id = data.get("id") or run_data.get("id")
-        dataset_id = (
-            data.get("defaultDatasetId")
-            or run_data.get("defaultDatasetId")
-        )
+        dataset_id = data.get("defaultDatasetId") or run_data.get("defaultDatasetId")
 
         if not run_id:
+            print("[META-FINDER-V180] run_id ausente", flush=True)
             return []
 
         status_url = (
             f"https://api.apify.com/v2/actor-runs/{run_id}"
             f"?token={api_token}"
         )
-        deadline = _time.time() + deadline_seconds
+
+        deadline = _time.time() + max(20, int(deadline_seconds))
+        terminal = {"SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"}
         status = "RUNNING"
+        last_logged = None
 
         while _time.time() < deadline:
             try:
                 r_st = _http_get(status_url, timeout=15)
+                r_st.raise_for_status()
                 jdata = r_st.json().get("data", {})
-                status = jdata.get("status", "RUNNING")
-                if not dataset_id:
-                    dataset_id = (
-                        jdata.get("defaultDatasetId")
-                        or dataset_id
-                    )
-            except Exception:
-                pass
 
-            if status in (
-                "SUCCEEDED",
-                "FAILED",
-                "ABORTED",
-                "TIMED-OUT",
-            ):
+                status = str(jdata.get("status") or "RUNNING").upper()
+                dataset_id = jdata.get("defaultDatasetId") or dataset_id
+
+                if status != last_logged:
+                    print(
+                        f"[META-FINDER-V180] run={run_id} "
+                        f"status={status} dataset={dataset_id or '-'}",
+                        flush=True,
+                    )
+                    last_logged = status
+
+            except Exception as exc:
+                print(
+                    f"[META-FINDER-V180] erro_status={exc!r}",
+                    flush=True,
+                )
+
+            if status in terminal:
                 break
 
-            _time.sleep(4)
+            _time.sleep(3)
 
-        if status != "SUCCEEDED" or not dataset_id:
+        if status not in terminal:
             print(
-                f"[META-PAGE-SEARCH][V178] finder status={status}",
+                f"[META-FINDER-V180] timeout run={run_id} "
+                f"ultimo_status={status}",
+                flush=True,
+            )
+            try:
+                abort_url = (
+                    f"https://api.apify.com/v2/actor-runs/{run_id}/abort"
+                    f"?token={api_token}"
+                )
+                _http_post(abort_url, timeout=15)
+            except Exception:
+                pass
+            return []
+
+        if status != "SUCCEEDED":
+            print(
+                f"[META-FINDER-V180] terminou sem sucesso "
+                f"run={run_id} status={status}",
+                flush=True,
+            )
+            return []
+
+        try:
+            r_final = _http_get(status_url, timeout=15)
+            r_final.raise_for_status()
+            final_data = r_final.json().get("data", {})
+            dataset_id = final_data.get("defaultDatasetId") or dataset_id
+        except Exception as exc:
+            print(
+                f"[META-FINDER-V180] aviso_refresh_final={exc!r}",
+                flush=True,
+            )
+
+        if not dataset_id:
+            print(
+                f"[META-FINDER-V180] SUCCEEDED sem dataset_id run={run_id}",
                 flush=True,
             )
             return []
 
         items_url = (
             f"https://api.apify.com/v2/datasets/{dataset_id}/items"
-            f"?token={api_token}"
-            f"&limit={max(20, int(limit))}"
-            f"&clean=true"
+            f"?token={api_token}&limit={max(20, int(limit))}&clean=true"
         )
 
         try:
@@ -25025,43 +25067,60 @@ elif st.session_state.pagina == "ads":
             items = r_items.json()
         except Exception as exc:
             print(
-                f"[META-PAGE-SEARCH][V178] falha ao ler finder: {exc!r}",
+                f"[META-FINDER-V180] erro_dataset={exc!r}",
                 flush=True,
             )
             return []
 
         if isinstance(items, dict):
             items = items.get("items", [])
+
         if not isinstance(items, list):
+            print(
+                f"[META-FINDER-V180] dataset tipo={type(items).__name__}",
+                flush=True,
+            )
             return []
 
+        print(
+            f"[META-FINDER-V180] dataset_items={len(items)}",
+            flush=True,
+        )
+
+        def _pick_v180(item, *keys):
+            for key in keys:
+                val = item.get(key)
+                if val not in (None, "", [], {}):
+                    return val
+            return ""
+
         paginas = {}
+        nomes_brutos = []
 
         for item in items:
             if not isinstance(item, dict):
                 continue
 
-            pid = str(
-                item.get("pageId")
-                or item.get("page_id")
-                or ""
-            ).strip()
+            pid = str(_pick_v180(
+                item, "pageId", "page_id", "advertiserId", "advertiser_id"
+            ) or "").strip()
 
-            nome = str(
-                item.get("pageName")
-                or item.get("page_name")
-                or item.get("advertiserName")
-                or item.get("advertiser_name")
-                or ""
-            ).strip()
+            nome = str(_pick_v180(
+                item,
+                "pageName", "page_name",
+                "advertiserName", "advertiser_name",
+                "name",
+            ) or "").strip()
 
-            pic = str(
-                item.get("pageProfilePictureUrl")
-                or item.get("page_profile_picture_url")
-                or item.get("pageProfilePicture")
-                or item.get("page_profile_picture")
-                or ""
-            ).strip()
+            pic = str(_pick_v180(
+                item,
+                "pageProfilePictureUrl", "page_profile_picture_url",
+                "pageProfilePicture", "page_profile_picture",
+                "advertiserProfilePicture", "advertiser_profile_picture",
+            ) or "").strip()
+
+            if nome:
+                nomes_brutos.append(nome)
 
             if not nome:
                 continue
@@ -25081,19 +25140,25 @@ elif st.session_state.pagina == "ads":
 
             paginas[chave]["total_ads"] += 1
 
-            if (
-                not paginas[chave].get("profile_picture")
-                and pic
-            ):
+            if not paginas[chave].get("profile_picture") and pic:
                 paginas[chave]["profile_picture"] = pic
 
+        nomes_unicos = []
+        seen_nomes = set()
+        for nome in nomes_brutos:
+            nk = _normalizar_texto_busca(nome)
+            if nk and nk not in seen_nomes:
+                seen_nomes.add(nk)
+                nomes_unicos.append(nome)
+
         print(
-            f"[META-PAGE-SEARCH][V178] advertiserName={termo!r} "
-            f"country={country} paginas={len(paginas)}",
+            f"[META-FINDER-V180] termo={termo!r} country={country} "
+            f"paginas={len(paginas)} nomes_brutos={nomes_unicos[:20]!r}",
             flush=True,
         )
 
         return list(paginas.values())
+
 
 
     def buscar_paginas_facebook(termo: str, country: str = "BR") -> list:
@@ -25200,11 +25265,18 @@ elif st.session_state.pagina == "ads":
             )
 
         # 1) Busca nativa pelo nome exatamente como digitado.
-        encontrados = _buscar_anunciantes_meta_por_nome_v178(
+        encontrados = _buscar_anunciantes_meta_por_nome_v180(
             termo,
             country=country,
             limit=80,
-            deadline_seconds=80,
+            deadline_seconds=90,
+        )
+
+        print(
+            f"[META-PAGE-SEARCH][V180] antes_filtro termo={termo!r} "
+            f"country={country} candidatos="
+            f"{[p.get('nome') for p in encontrados[:20]]!r}",
+            flush=True,
         )
 
         relevantes = _filtrar_e_ordenar_v179(
@@ -25233,11 +25305,11 @@ elif st.session_state.pagina == "ads":
             and termo_sem_acentos.lower() != termo.lower()
         ):
             encontrados_alt = (
-                _buscar_anunciantes_meta_por_nome_v178(
+                _buscar_anunciantes_meta_por_nome_v180(
                     termo_sem_acentos,
                     country=country,
                     limit=80,
-                    deadline_seconds=80,
+                    deadline_seconds=90,
                 )
             )
 
@@ -25318,7 +25390,7 @@ elif st.session_state.pagina == "ads":
             saida.append(item)
 
         print(
-            f"[META-PAGE-SEARCH][V179] termo={termo!r} "
+            f"[META-PAGE-SEARCH][V180] termo={termo!r} "
             f"country={country} resultados={len(saida)} "
             f"nomes={[p.get('nome') for p in saida[:5]]}",
             flush=True,

@@ -1,3 +1,4 @@
+# V174 — Meta Ads não consulta Closed Caption; CC permanece no Google/YouTube.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -413,7 +414,7 @@ _SVG_ICONE_TRANSCRICAO = (
     '</svg>'
 )
 
-_SVG_ICONE_CC_YOUTUBE = r"""<svg width="18" height="18" xmlns="http://www.w3.org/2000/svg"
+_SVG_ICONE_CC_YOUTUBE = r"""<svg width="12" height="12" xmlns="http://www.w3.org/2000/svg"
      xmlns:xlink="http://www.w3.org/1999/xlink"
      viewBox="0 0 24 24"
      width="24"
@@ -26733,7 +26734,7 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             if not vids:
                                 continue
                             # vídeos baixáveis normais.
-                            transcricao_vid = (a.get("video_cc_raw") or "").strip()
+                            transcricao_vid = ""
                             if not transcricao_vid:
                                 transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
                             if transcricao_vid:
@@ -27661,7 +27662,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # no próprio anúncio. Para vídeo comum continua usando
                         # a transcrição Whisper da tabela `midias`.
                         _transcricao_txt = (
-                            (a.get("video_cc_raw") or "").strip()
+                            ""
                             or _mapa_transcricoes.get(vid_thumb)
                             or _mapa_transcricoes.get(vid_modal)
                             or ""
@@ -27679,11 +27680,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:white;color:#000;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
-                overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        {_SVG_ICONE_CC_YOUTUBE if (a.get("video_cc_raw") or "").strip() else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if (a.get("video_cc_raw") or "").strip() else 'Transcrição'}
+         style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
+                font-size:10px;font-weight:700;line-height:1;padding:4px 8px;
+                border:1px solid #d1d5db;border-radius:8px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px;
+                white-space:nowrap;box-shadow:none">
+        {_SVG_ICONE_CC_YOUTUBE if "" else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if "" else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:
                             transcricao_badge_html = f"""
@@ -33042,7 +33044,7 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             if not vids:
                                 continue
                             # vídeos baixáveis normais.
-                            transcricao_vid = (a.get("video_cc_raw") or "").strip()
+                            transcricao_vid = ""
                             if not transcricao_vid:
                                 transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
                             if transcricao_vid:
@@ -33831,7 +33833,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         ad.get("body") or "",
                         ad.get("title") or "",
                         ad.get("body_raw") or "",
-                        ad.get("video_cc_raw") or "",
+                        "" or "",
                         ad.get("video_cc_language") or "",
                         ad.get("video_cc_source") or "",
                     ]
@@ -34349,7 +34351,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # anúncio. Antes ela consultava apenas `_mapa_transcricoes`
                         # da tabela `midias`, por isso o backend capturava o CC
                         # corretamente mas o card não mostrava nada.
-                        _cc_youtube_txt_v156 = (ad.get("video_cc_raw") or "").strip()
+                        _cc_youtube_txt_v156 = ""
                         _transcricao_txt = (
                             _cc_youtube_txt_v156
                             or _mapa_transcricoes.get(vid_thumb)
@@ -34369,10 +34371,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseenter="mostrarTranscricaoTip(event)"
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
-         style="position:absolute;top:7px;right:7px;background:white;color:#000;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
-                cursor:help;display:flex;align-items:center;gap:4px;max-width:130px;
-                overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+         style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
+                font-size:10px;font-weight:700;line-height:1;padding:4px 8px;
+                border:1px solid #d1d5db;border-radius:8px;z-index:3;
+                cursor:help;display:flex;align-items:center;gap:4px;
+                white-space:nowrap;box-shadow:none">
         {_SVG_ICONE_CC_YOUTUBE if _cc_youtube_txt_v156 else _SVG_ICONE_TRANSCRICAO} {'Closed Caption' if _cc_youtube_txt_v156 else 'Transcrição'}
     </div>"""
                         elif _transcricao_esta_pendente:

@@ -1,4 +1,4 @@
-# V219 — fallback geométrico para cauda azul quando EasyOCR não relê os grupos extras.
+# V220 — preserva maiúscula do 'O' recuperado após hífen no título.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4754,7 +4754,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
                     )
                 else:
                     _debug_bandas[idx]['decisao'] = 'azul → quebra de linha do título/sitelink em andamento (juntada)'
-                par_atual[0] = (par_atual[0] + ' ' + _texto_continuacao_v213).strip()
+                _titulo_juntado_v220 = (
+                    par_atual[0] + ' ' + _texto_continuacao_v213
+                ).strip()
+
+                if str(par_atual[0] or '').rstrip().endswith(' - O'):
+                    _titulo_juntado_v220 = re.sub(
+                        r' - o(?=\s|$)',
+                        ' - O',
+                        _titulo_juntado_v220,
+                        count=1,
+                    )
+
+                par_atual[0] = _titulo_juntado_v220
             elif par_atual is not None:
                 pares.append(par_atual)
                 par_atual = [texto, []]

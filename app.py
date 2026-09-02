@@ -1,4 +1,4 @@
-# V178 — Meta page search usa advertiserName nativo e mantém scraper atual como fallback.
+# V179 — busca Meta estrita por nome do anunciante; resultados irrelevantes do fallback são descartados.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -25101,7 +25101,7 @@ elif st.session_state.pagina == "ads":
         if not termo:
             return []
 
-        def _norm_nome_busca_v178(valor):
+        def _norm_v179(valor):
             valor = unicodedata.normalize(
                 "NFKD",
                 str(valor or ""),
@@ -25114,197 +25114,217 @@ elif st.session_state.pagina == "ads":
             valor = re.sub(r"[^a-z0-9]+", " ", valor)
             return re.sub(r"\s+", " ", valor).strip()
 
-        alvo = _norm_nome_busca_v178(termo)
+        alvo = _norm_v179(termo)
         alvo_tokens = set(alvo.split())
 
-        def _score_pagina_v178(pg):
-            nome_norm = _norm_nome_busca_v178(
-                pg.get("nome")
-            )
+        def _similaridade_v179(nome):
+            nome_norm = _norm_v179(nome)
             nome_tokens = set(nome_norm.split())
 
+            if not nome_norm:
+                return 0, 0.0
+
             if nome_norm == alvo:
-                classe = 6
-            elif (
+                return 6, 1.0
+
+            if (
                 nome_norm.startswith(alvo + " ")
                 or alvo.startswith(nome_norm + " ")
             ):
-                classe = 5
-            elif alvo and alvo in nome_norm:
-                classe = 4
-            elif nome_norm and nome_norm in alvo:
-                classe = 3
-            else:
-                inter = len(
-                    alvo_tokens & nome_tokens
-                )
-                uniao = max(
-                    1,
-                    len(alvo_tokens | nome_tokens),
-                )
-                similaridade = inter / uniao
-                classe = (
-                    2
-                    if similaridade >= 0.67
-                    else 1
-                    if similaridade >= 0.50
-                    else 0
-                )
+                return 5, 0.95
 
-            inter = len(
-                alvo_tokens & nome_tokens
-            )
+            if alvo and alvo in nome_norm:
+                return 4, 0.90
+
+            if nome_norm and nome_norm in alvo:
+                return 3, 0.85
+
+            inter = len(alvo_tokens & nome_tokens)
             uniao = max(
                 1,
                 len(alvo_tokens | nome_tokens),
             )
+            sim = inter / uniao
 
-            similaridade = inter / uniao
+            if sim >= 0.67:
+                return 2, sim
 
-            fonte_bonus = (
-                1
-                if pg.get("_fonte_busca")
-                == "advertiserName"
-                else 0
-            )
+            return 0, sim
 
-            return (
-                classe,
-                fonte_bonus,
-                similaridade,
-                min(
-                    int(
-                        pg.get(
-                            "total_ads",
-                            0,
-                        )
-                        or 0
-                    ),
-                    9999,
+        def _filtrar_e_ordenar_v179(paginas):
+            unicas = {}
+
+            for pg in paginas or []:
+                nome = str(pg.get("nome") or "").strip()
+                pid = str(pg.get("page_id") or "").strip()
+
+                classe, sim = _similaridade_v179(nome)
+
+                # Pesquisa de página deve retornar páginas relacionadas
+                # ao nome pesquisado, nunca anunciantes aleatórios.
+                if classe == 0:
+                    continue
+
+                chave = pid or _norm_v179(nome)
+                if not chave:
+                    continue
+
+                item = dict(pg)
+                item["_classe_busca"] = classe
+                item["_similaridade_busca"] = sim
+
+                if chave not in unicas:
+                    unicas[chave] = item
+                else:
+                    atual = unicas[chave]
+                    atual["total_ads"] = max(
+                        int(atual.get("total_ads", 0) or 0),
+                        int(item.get("total_ads", 0) or 0),
+                    )
+                    if (
+                        not atual.get("profile_picture")
+                        and item.get("profile_picture")
+                    ):
+                        atual["profile_picture"] = item[
+                            "profile_picture"
+                        ]
+
+            return sorted(
+                unicas.values(),
+                key=lambda pg: (
+                    int(pg.get("_classe_busca", 0)),
+                    float(pg.get("_similaridade_busca", 0.0)),
+                    int(pg.get("total_ads", 0) or 0),
                 ),
+                reverse=True,
             )
 
-        paginas = {}
-
-        # 1. Busca nativa por nome do anunciante.
-        encontrados_nome = (
-            _buscar_anunciantes_meta_por_nome_v178(
-                termo,
-                country=country,
-                limit=50,
-                deadline_seconds=70,
-            )
+        # 1) Busca nativa pelo nome exatamente como digitado.
+        encontrados = _buscar_anunciantes_meta_por_nome_v178(
+            termo,
+            country=country,
+            limit=80,
+            deadline_seconds=80,
         )
 
-        for pg in encontrados_nome:
-            chave = (
-                str(
-                    pg.get("page_id")
-                    or ""
-                ).strip()
-                or _norm_nome_busca_v178(
-                    pg.get("nome")
-                )
-            )
-            if chave:
-                paginas[chave] = pg
+        relevantes = _filtrar_e_ordenar_v179(
+            encontrados
+        )
 
         tem_exata = any(
-            _norm_nome_busca_v178(
-                pg.get("nome")
-            )
-            == alvo
-            for pg in paginas.values()
+            _norm_v179(pg.get("nome")) == alvo
+            for pg in relevantes
         )
 
-        # 2. Fallback para o scraper já usado no projeto.
-        # Só roda quando o finder não devolveu a página exata.
-        if not tem_exata:
-            ads_fallback, _, erro_fallback = (
-                _apify_run_sync(
-                    termo,
-                    limit=100,
-                    deadline_seconds=60,
+        # 2) Se não encontrou correspondência exata, tenta a versão
+        # sem acentos. Alguns endpoints da Biblioteca indexam os nomes
+        # dessa maneira.
+        termo_sem_acentos = unicodedata.normalize(
+            "NFKD",
+            termo,
+        ).encode(
+            "ascii",
+            "ignore",
+        ).decode("ascii")
+
+        if (
+            not tem_exata
+            and termo_sem_acentos
+            and termo_sem_acentos.lower() != termo.lower()
+        ):
+            encontrados_alt = (
+                _buscar_anunciantes_meta_por_nome_v178(
+                    termo_sem_acentos,
                     country=country,
-                    exact_phrase=False,
+                    limit=80,
+                    deadline_seconds=80,
                 )
             )
+
+            relevantes = _filtrar_e_ordenar_v179(
+                relevantes + encontrados_alt
+            )
+
+            tem_exata = any(
+                _norm_v179(pg.get("nome")) == alvo
+                for pg in relevantes
+            )
+
+        # 3) Último fallback: scraper antigo, mas SOMENTE para recuperar
+        # páginas cujo page_name realmente corresponde ao nome pesquisado.
+        if not tem_exata:
+            ads_fallback, _, erro_fallback = _apify_run_sync(
+                termo,
+                limit=120,
+                deadline_seconds=70,
+                country=country,
+                exact_phrase=True,
+            )
+
+            paginas_fallback = {}
 
             if not erro_fallback:
                 for ad in ads_fallback or []:
-                    pid = str(
-                        ad.get("page_id", "")
-                        or ""
-                    ).strip()
-
                     nome = str(
-                        ad.get("page_name", "")
-                        or ""
+                        ad.get("page_name") or ""
                     ).strip()
-
+                    pid = str(
+                        ad.get("page_id") or ""
+                    ).strip()
                     pic = str(
                         ad.get(
-                            "page_profile_picture",
-                            "",
+                            "page_profile_picture"
                         )
                         or ""
                     ).strip()
 
-                    if not nome:
+                    classe, sim = _similaridade_v179(nome)
+
+                    # Essencial: não aceita resultado irrelevante do q=.
+                    if classe == 0:
                         continue
 
-                    chave = (
-                        pid
-                        or _norm_nome_busca_v178(
-                            nome
-                        )
-                    )
-
+                    chave = pid or _norm_v179(nome)
                     if not chave:
                         continue
 
-                    if chave not in paginas:
-                        paginas[chave] = {
+                    if chave not in paginas_fallback:
+                        paginas_fallback[chave] = {
                             "nome": nome,
                             "page_id": pid,
                             "total_ads": 0,
                             "profile_picture": pic,
-                            "_fonte_busca": "fallback",
+                            "_fonte_busca": "fallback_exato",
+                            "_classe_busca": classe,
+                            "_similaridade_busca": sim,
                         }
 
-                    paginas[chave][
+                    paginas_fallback[chave][
                         "total_ads"
                     ] += 1
 
-                    if (
-                        not paginas[chave].get(
-                            "profile_picture"
-                        )
-                        and pic
-                    ):
-                        paginas[chave][
-                            "profile_picture"
-                        ] = pic
+            relevantes = _filtrar_e_ordenar_v179(
+                relevantes
+                + list(paginas_fallback.values())
+            )
 
-        if not paginas:
-            return []
+        # Remove metadados internos antes de exibir.
+        saida = []
+        for pg in relevantes[:12]:
+            item = dict(pg)
+            item.pop("_classe_busca", None)
+            item.pop("_similaridade_busca", None)
+            item.pop("_fonte_busca", None)
+            saida.append(item)
 
-        ordenadas = sorted(
-            paginas.values(),
-            key=_score_pagina_v178,
-            reverse=True,
+        print(
+            f"[META-PAGE-SEARCH][V179] termo={termo!r} "
+            f"country={country} resultados={len(saida)} "
+            f"nomes={[p.get('nome') for p in saida[:5]]}",
+            flush=True,
         )
 
-        relevantes = [
-            pg
-            for pg in ordenadas
-            if _score_pagina_v178(pg)[0] >= 1
-        ]
-
-        if relevantes:
-            return relevantes[:12]
-
-        return ordenadas[:12]
+        return saida
 
     # ══════════════════════════════════════════════════════════════════
     # CABEÇALHO DA PÁGINA
@@ -26559,7 +26579,7 @@ function triggerTab(label) {{
                                 padding:11px 14px;">
                         <span style="font-size:15px;flex-shrink:0;line-height:1.3">⚠️</span>
                         <div style="font-size:13px;color:#92400e;line-height:1.55">
-                            <strong>Nenhuma página encontrada</strong> nessa região para esse nome na Biblioteca de Anúncios do Meta.
+                            <strong>Nenhuma página com nome correspondente encontrada</strong> nessa região na Biblioteca de Anúncios do Meta.
                             Isso pode acontecer se o nome estiver diferente do cadastrado no Facebook,
                             ou se a página não tiver anúncios catalogados nesse momento.
                             <br/><br/>

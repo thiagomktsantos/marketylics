@@ -1,4 +1,4 @@
-# V183 — restaura a tela Meta correta e usa URL direta da Meta Ad Library somente na busca de páginas.
+# V185 — Meta aceita busca por nome OU ID numérico; Salvar ID continua como ação direta separada.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -25228,18 +25228,29 @@ elif st.session_state.pagina == "ads":
 
         import urllib.parse
 
-        query_encoded = urllib.parse.quote(termo, safe="")
         meta_country = "ALL" if country == "ALL" else country
-        library_url = (
-            "https://www.facebook.com/ads/library/"
-            f"?active_status=all&ad_type=all&country={meta_country}"
-            f"&is_targeted_country=false&media_type=all"
-            f"&q={query_encoded}&search_type=keyword_unordered"
-        )
+        busca_por_id = bool(re.fullmatch(r"\d{5,}", termo))
+
+        if busca_por_id:
+            library_url = (
+                "https://www.facebook.com/ads/library/"
+                f"?active_status=all&ad_type=all&country={meta_country}"
+                f"&is_targeted_country=false&media_type=all"
+                f"&search_type=page&view_all_page_id={termo}"
+            )
+        else:
+            query_encoded = urllib.parse.quote(termo, safe="")
+            library_url = (
+                "https://www.facebook.com/ads/library/"
+                f"?active_status=all&ad_type=all&country={meta_country}"
+                f"&is_targeted_country=false&media_type=all"
+                f"&q={query_encoded}&search_type=keyword_unordered"
+            )
 
         print(
-            f"[META-LIBRARY-V183] termo={termo!r} "
-            f"country={country} url={library_url!r}",
+            f"[META-LIBRARY-V185] termo={termo!r} "
+            f"country={country} modo={'page_id' if busca_por_id else 'nome'} "
+            f"url={library_url!r}",
             flush=True,
         )
 
@@ -25253,7 +25264,7 @@ elif st.session_state.pagina == "ads":
 
         if erro:
             print(
-                f"[META-LIBRARY-V183] erro={erro!r}",
+                f"[META-LIBRARY-V185] erro={erro!r}",
                 flush=True,
             )
             return []
@@ -25286,9 +25297,16 @@ elif st.session_state.pagina == "ads":
             if not nome:
                 continue
 
-            classe, sim = _score_v183(nome)
-            if classe == 0:
-                continue
+            if busca_por_id:
+                # O ID é o critério de correspondência.
+                # Se o scraper devolveu um page_id, ele precisa ser exatamente o pesquisado.
+                if pid and pid != termo:
+                    continue
+                classe, sim = 10, 1.0
+            else:
+                classe, sim = _score_v183(nome)
+                if classe == 0:
+                    continue
 
             chave = pid or _norm_v183(nome)
             if not chave:
@@ -25337,7 +25355,7 @@ elif st.session_state.pagina == "ads":
             saida.append(item)
 
         print(
-            f"[META-LIBRARY-V183] raw_items={len(raw_items or [])} "
+            f"[META-LIBRARY-V185] raw_items={len(raw_items or [])} "
             f"ads={len(ads or [])} resultados={len(saida)} "
             f"nomes={[p.get('nome') for p in saida[:12]]!r}",
             flush=True,
@@ -26418,9 +26436,10 @@ function triggerTab(label) {{
             </svg>
             <div>
                 Clique em <strong>✏️ Editar</strong> em cada empresa para configurar.
-                Cole o <strong>nome exato da página</strong> ou o <strong>ID numérico</strong>
-                do Facebook, depois clique em <strong>Buscar páginas</strong> para encontrar
-                ou <strong>Salvar ID</strong> para salvar diretamente.
+                Cole o <strong>nome da página</strong> ou o <strong>ID numérico</strong>
+                do Facebook e clique em <strong>Buscar páginas</strong>.
+                Se você já souber o ID e não quiser pesquisar, também pode usar
+                <strong>Salvar ID</strong> diretamente.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -26602,9 +26621,9 @@ function triggerTab(label) {{
                             Isso pode acontecer se o nome estiver diferente do cadastrado no Facebook,
                             ou se a página não tiver anúncios catalogados nesse momento.
                             <br/><br/>
-                            Tente buscar pelo <strong>ID numérico</strong> da página (em vez do nome) —
-                            costuma resolver. Se você já sabe o ID ou o nome exato, também pode clicar
-                            direto em <strong>Salvar ID</strong>, sem precisar de um resultado de busca.
+                            Você pode pesquisar pelo <strong>nome</strong> ou pelo
+                            <strong>ID numérico</strong> da página. Se já tiver certeza do ID,
+                            também pode clicar diretamente em <strong>Salvar ID</strong>.
                         </div>
                     </div>
                     {_expandir_vazio_html}

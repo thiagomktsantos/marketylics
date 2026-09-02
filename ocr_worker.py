@@ -1,4 +1,4 @@
-# V218 — recupera cauda azul comparando grupos visuais com tokens OCR.
+# V219 — fallback geométrico para cauda azul quando EasyOCR não relê os grupos extras.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -5504,6 +5504,71 @@ def _recuperar_cauda_por_grupos_visuais_v218(reader, img_bgr, y_min, y_max, text
                     candidatos.append(cand)
 
         if not candidatos:
+            # Fallback geométrico: quando os grupos extras existem claramente
+            # na imagem mas o EasyOCR não consegue relê-los.
+            if len(grupos_tail) == 2:
+                g1, g2 = grupos_tail
+
+                sub1 = mask[:, g1[0]:g1[1] + 1]
+                ys1, xs1 = __import__('numpy').where(sub1 > 0)
+
+                sub2 = mask[:, g2[0]:g2[1] + 1]
+                ys2, xs2 = __import__('numpy').where(sub2 > 0)
+
+                primeiro_hifen_geo = False
+                segundo_o_geo = False
+
+                if len(xs1):
+                    largura1 = int(xs1.max() - xs1.min() + 1)
+                    altura1 = int(ys1.max() - ys1.min() + 1)
+                    primeiro_hifen_geo = (
+                        largura1 >= max(7, int(altura * 0.25))
+                        and altura1 <= max(6, int(altura * 0.18))
+                        and largura1 >= altura1 * 2.2
+                    )
+
+                if len(xs2):
+                    largura2 = int(xs2.max() - xs2.min() + 1)
+                    altura2 = int(ys2.max() - ys2.min() + 1)
+
+                    crop2 = sub2[
+                        max(0, int(ys2.min()) - 2):min(sub2.shape[0], int(ys2.max()) + 3),
+                        max(0, int(xs2.min()) - 2):min(sub2.shape[1], int(xs2.max()) + 3),
+                    ]
+
+                    contours, hier = cv2.findContours(
+                        crop2.astype('uint8'),
+                        cv2.RETR_CCOMP,
+                        cv2.CHAIN_APPROX_SIMPLE,
+                    )
+
+                    tem_buraco = False
+                    if hier is not None and len(contours):
+                        hier0 = hier[0]
+                        tem_buraco = any(int(h[3]) >= 0 for h in hier0)
+
+                    razao2 = (
+                        largura2 / float(altura2)
+                        if altura2 > 0 else 0.0
+                    )
+
+                    # Glifo aproximadamente circular/oval, com um único
+                    # contra-forma interno: padrão visual de O/0.
+                    segundo_o_geo = (
+                        tem_buraco
+                        and 0.65 <= razao2 <= 1.35
+                        and altura2 >= max(10, int(altura * 0.45))
+                    )
+
+                if primeiro_hifen_geo and segundo_o_geo:
+                    novo = (atual.rstrip() + ' - O').strip()
+                    print(
+                        "[OCR-DEBUG] V219 cauda geométrica recuperada: "
+                        f"{atual!r} -> {novo!r}",
+                        flush=True,
+                    )
+                    return novo
+
             return atual
 
         candidatos = list(dict.fromkeys(candidatos))

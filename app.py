@@ -1,4 +1,4 @@
-# V180 — Meta finder aguarda conclusão real e loga candidatos brutos antes do filtro.
+# V181 — corrige NameError do normalizador dentro do Meta finder V180.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -24935,6 +24935,18 @@ elif st.session_state.pagina == "ads":
         if not re.fullmatch(r"[A-Z]{2}|ALL", country):
             country = "BR"
 
+        def _norm_meta_finder_v181(valor):
+            valor = unicodedata.normalize(
+                "NFKD",
+                str(valor or ""),
+            ).encode(
+                "ascii",
+                "ignore",
+            ).decode("ascii")
+            valor = valor.lower()
+            valor = re.sub(r"[^a-z0-9]+", " ", valor)
+            return re.sub(r"\s+", " ", valor).strip()
+
         run_url = (
             f"https://api.apify.com/v2/acts/"
             f"{APIFY_PAGE_FINDER_ACTOR_ID}/runs"
@@ -25125,7 +25137,7 @@ elif st.session_state.pagina == "ads":
             if not nome:
                 continue
 
-            chave = pid or _normalizar_texto_busca(nome)
+            chave = pid or _norm_meta_finder_v181(nome)
             if not chave:
                 continue
 
@@ -25146,7 +25158,7 @@ elif st.session_state.pagina == "ads":
         nomes_unicos = []
         seen_nomes = set()
         for nome in nomes_brutos:
-            nk = _normalizar_texto_busca(nome)
+            nk = _norm_meta_finder_v181(nome)
             if nk and nk not in seen_nomes:
                 seen_nomes.add(nk)
                 nomes_unicos.append(nome)

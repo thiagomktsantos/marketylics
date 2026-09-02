@@ -1,4 +1,4 @@
-# V217 — aplica recuperação de cauda no retorno principal da banda OCR.
+# V218 — recupera cauda azul comparando grupos visuais com tokens OCR.
 # -*- coding: utf-8 -*-
 # V161 — não divide sitelinks verticais por gaps internos entre palavras.
 # V160 — preserva hífen interno de sitelinks como 'GP Brasil - 3 Dias'.
@@ -4597,7 +4597,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str=None):
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
 
         if banda['classe'] == 'azul':
-            texto = _recuperar_cauda_linha_azul_v214(
+            texto = _recuperar_cauda_por_grupos_visuais_v218(
                 reader,
                 img_bgr,
                 banda['y_min'],
@@ -5371,6 +5371,188 @@ def _recuperar_cauda_linha_azul_v214(reader, img_bgr, y_min, y_max, texto_atual)
         pass
 
     return atual
+
+
+
+def _recuperar_cauda_por_grupos_visuais_v218(reader, img_bgr, y_min, y_max, texto):
+    atual = re.sub(r'\s+', ' ', str(texto or '')).strip()
+    if not atual or atual.endswith(('–', '—', '...')):
+        return atual
+
+    try:
+        h_img, w_img = img_bgr.shape[:2]
+        altura = max(1, int(y_max - y_min + 1))
+        margem_y = max(3, int(altura * 0.10))
+
+        y0 = max(0, int(y_min - margem_y))
+        y1 = min(h_img, int(y_max + margem_y + 1))
+        roi = img_bgr[y0:y1, :]
+        if roi.size == 0:
+            return atual
+
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(
+            gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        )
+
+        col = (mask > 0).sum(axis=0)
+        xs = [int(x) for x in __import__('numpy').where(col > 0)[0]]
+        if not xs:
+            return atual
+
+        runs = []
+        s = p = xs[0]
+        for x in xs[1:]:
+            if x > p + 1:
+                runs.append([s, p])
+                s = x
+            p = x
+        runs.append([s, p])
+
+        # Junta letras do mesmo token; preserva separações equivalentes
+        # aos espaços reais entre palavras.
+        gap_palavra = max(7, int(altura * 0.34))
+        grupos = []
+        for r in runs:
+            if not grupos:
+                grupos.append(r[:])
+                continue
+            gap = r[0] - grupos[-1][1] - 1
+            if gap < gap_palavra:
+                grupos[-1][1] = r[1]
+            else:
+                grupos.append(r[:])
+
+        # Ignora pequenos elementos muito à esquerda/direita que não tenham
+        # altura/área compatível com texto.
+        grupos_validos = []
+        for gx0, gx1 in grupos:
+            sub = mask[:, gx0:gx1 + 1]
+            area = int((sub > 0).sum())
+            if area < max(8, int(altura * 0.18)):
+                continue
+            grupos_validos.append([gx0, gx1])
+
+        tokens_ocr = re.findall(r'\S+', atual)
+        n_tokens = len(tokens_ocr)
+
+        if len(grupos_validos) <= n_tokens:
+            return atual
+
+        extras = len(grupos_validos) - n_tokens
+        if extras < 1 or extras > 3:
+            return atual
+
+        grupos_tail = grupos_validos[-extras:]
+        tx0 = max(0, grupos_tail[0][0] - 6)
+        tx1 = min(w_img, grupos_tail[-1][1] + 7)
+
+        crop = roi[:, tx0:tx1]
+        if crop.size == 0:
+            return atual
+
+        candidatos = []
+        for escala in (3.0, 4.0):
+            up = cv2.resize(
+                crop, None,
+                fx=escala, fy=escala,
+                interpolation=cv2.INTER_CUBIC
+            )
+            imgs = [up]
+
+            g = cv2.cvtColor(up, cv2.COLOR_BGR2GRAY)
+            clahe = cv2.createCLAHE(
+                clipLimit=2.2,
+                tileGridSize=(4, 4)
+            ).apply(g)
+            imgs.append(cv2.cvtColor(clahe, cv2.COLOR_GRAY2BGR))
+
+            for im in imgs:
+                rr = reader.readtext(
+                    im,
+                    detail=1,
+                    paragraph=False,
+                    decoder='beamsearch',
+                    beamWidth=7,
+                    allowlist=(
+                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                        'abcdefghijklmnopqrstuvwxyz'
+                        'ÁÀÂÃÉÊÍÓÔÕÚÇ'
+                        'áàâãéêíóôõúç'
+                        '0123456789?-–—'
+                    ),
+                    width_ths=0.05,
+                    height_ths=0.85,
+                    text_threshold=0.10,
+                    low_text=0.05,
+                    link_threshold=0.08,
+                )
+                rr.sort(key=lambda it: min(p[0] for p in it[0]))
+                cand = ' '.join(
+                    re.sub(r'\s+', ' ', str(it[1] or '')).strip()
+                    for it in rr
+                    if str(it[1] or '').strip()
+                )
+                cand = re.sub(r'\s+', ' ', cand).strip()
+
+                if (
+                    cand
+                    and len(cand) <= 12
+                    and re.search(r'[A-Za-zÀ-ÿ]', cand)
+                ):
+                    candidatos.append(cand)
+
+        if not candidatos:
+            return atual
+
+        candidatos = list(dict.fromkeys(candidatos))
+        candidatos.sort(
+            key=lambda s: (
+                1 if re.search(r'[-–—]', s) else 0,
+                -abs(len(re.findall(r'\S+', s)) - extras),
+                -len(s),
+            ),
+            reverse=True,
+        )
+        cauda = candidatos[0]
+
+        # Quando um grupo visual isolado é claramente horizontal, preserva
+        # o hífen mesmo que a releitura textual o omita.
+        primeiro = grupos_tail[0]
+        sub0 = mask[:, primeiro[0]:primeiro[1] + 1]
+        ys0, xs0 = __import__('numpy').where(sub0 > 0)
+        primeiro_hifen = False
+        if len(xs0):
+            largura0 = int(xs0.max() - xs0.min() + 1)
+            altura0 = int(ys0.max() - ys0.min() + 1)
+            primeiro_hifen = (
+                largura0 >= max(7, int(altura * 0.28))
+                and altura0 <= max(6, int(altura * 0.20))
+            )
+
+        if primeiro_hifen and not re.match(r'^\s*[-–—]', cauda):
+            cauda = '- ' + cauda
+
+        cauda = re.sub(r'^\s*[-–—]\s*', '- ', cauda).strip()
+
+        if atual.endswith('-') and cauda.startswith('- '):
+            cauda = cauda[2:].lstrip()
+
+        if not cauda:
+            return atual
+
+        novo = (atual.rstrip() + ' ' + cauda).strip()
+        print(
+            f"[OCR-DEBUG] V218 cauda por grupos visuais: "
+            f"grupos={len(grupos_validos)} tokens={n_tokens} "
+            f"extras={extras} cauda={cauda!r}",
+            flush=True,
+        )
+        return novo
+
+    except Exception:
+        return atual
 
 
 def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str=None, retornar_diagnostico: bool=False):

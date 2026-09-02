@@ -1,4 +1,4 @@
-# V174 — Meta Ads não consulta Closed Caption; CC permanece no Google/YouTube.
+# V177 — remove título visual Região da busca; seletor de região preservado.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -24283,7 +24283,7 @@ elif st.session_state.pagina == "ads":
             "regiao":               _regiao_por_dominio(copy["caption"]),
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, country: str = "ALL") -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 100, deadline_seconds: int = 180, country: str = "ALL", exact_phrase: bool = False) -> tuple:
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -24312,7 +24312,15 @@ elif st.session_state.pagina == "ads":
                 f"&view_all_page_id={search_term_stripped}"
             )
         else:
-            query_encoded = urllib.parse.quote(search_term_stripped)
+            _query_meta = (
+                f'"{search_term_stripped}"'
+                if exact_phrase and not (
+                    search_term_stripped.startswith('"')
+                    and search_term_stripped.endswith('"')
+                )
+                else search_term_stripped
+            )
+            query_encoded = urllib.parse.quote(_query_meta)
             ad_library_url = (
                 f"https://www.facebook.com/ads/library/"
                 f"?active_status=active&ad_type=all&country={country}"
@@ -24909,27 +24917,145 @@ elif st.session_state.pagina == "ads":
         salvar_empresa_e_concorrentes()
 
     def buscar_paginas_facebook(termo: str, country: str = "BR") -> list:
-        # deadline_seconds menor que o padrão (180s): essa busca roda de
-        # forma síncrona dentro do clique do botão "Buscar páginas" — o
-        # usuário fica olhando o spinner a tela toda o tempo, então não
-        # faz sentido deixar rodar até 3 minutos antes de mostrar "não
-        # encontrado". 45s é tempo suficiente pro Apify processar a busca
-        # de página (bem mais rápida que uma coleta completa de anúncios).
-        ads, _, erro = _apify_run_sync(termo, limit=20, deadline_seconds=45, country=country)
-        if erro or not ads:
+        termo = re.sub(r"\s+", " ", str(termo or "")).strip()
+        if not termo:
             return []
-        paginas = {}
-        for ad in ads:
-            pid  = ad.get("page_id", "") or ""
-            nome = ad.get("page_name", "") or ""
-            pic  = ad.get("page_profile_picture", "") or ""
-            if nome and nome not in paginas:
-                paginas[nome] = {"nome": nome, "page_id": pid, "total_ads": 0, "profile_picture": pic}
-            if nome in paginas:
-                paginas[nome]["total_ads"] += 1
-                if not paginas[nome]["profile_picture"] and pic:
-                    paginas[nome]["profile_picture"] = pic
-        return sorted(paginas.values(), key=lambda x: x["total_ads"], reverse=True)
+
+        def _norm_nome_busca_v176(valor):
+            valor = unicodedata.normalize(
+                "NFKD", str(valor or "")
+            ).encode("ascii", "ignore").decode("ascii")
+            valor = valor.lower()
+            valor = re.sub(r"[^a-z0-9]+", " ", valor)
+            return re.sub(r"\s+", " ", valor).strip()
+
+        alvo = _norm_nome_busca_v176(termo)
+        alvo_tokens = set(alvo.split())
+
+        def _agrupar_paginas_v176(ads):
+            paginas = {}
+            for ad in ads or []:
+                pid = str(ad.get("page_id", "") or "").strip()
+                nome = str(ad.get("page_name", "") or "").strip()
+                pic = str(ad.get("page_profile_picture", "") or "").strip()
+
+                if not nome:
+                    continue
+
+                chave = pid or _norm_nome_busca_v176(nome)
+                if not chave:
+                    continue
+
+                if chave not in paginas:
+                    paginas[chave] = {
+                        "nome": nome,
+                        "page_id": pid,
+                        "total_ads": 0,
+                        "profile_picture": pic,
+                    }
+
+                paginas[chave]["total_ads"] += 1
+
+                if not paginas[chave].get("profile_picture") and pic:
+                    paginas[chave]["profile_picture"] = pic
+
+            return paginas
+
+        def _score_pagina_v176(pg):
+            nome_norm = _norm_nome_busca_v176(pg.get("nome"))
+            nome_tokens = set(nome_norm.split())
+
+            if nome_norm == alvo:
+                classe = 5
+            elif nome_norm.startswith(alvo + " ") or alvo.startswith(nome_norm + " "):
+                classe = 4
+            elif alvo and alvo in nome_norm:
+                classe = 3
+            elif nome_norm and nome_norm in alvo:
+                classe = 2
+            else:
+                inter = len(alvo_tokens & nome_tokens)
+                uniao = max(1, len(alvo_tokens | nome_tokens))
+                similaridade = inter / uniao
+                classe = 1 if similaridade >= 0.5 else 0
+
+            inter = len(alvo_tokens & nome_tokens)
+            uniao = max(1, len(alvo_tokens | nome_tokens))
+            similaridade = inter / uniao
+
+            return (
+                classe,
+                similaridade,
+                min(int(pg.get("total_ads", 0) or 0), 9999),
+            )
+
+        # A Biblioteca da Meta oferece a opção de pesquisar a frase exata.
+        # Primeiro reproduzimos esse comportamento para localizar o anunciante.
+        ads_exatos, _, erro_exato = _apify_run_sync(
+            termo,
+            limit=80,
+            deadline_seconds=55,
+            country=country,
+            exact_phrase=True,
+        )
+
+        paginas = _agrupar_paginas_v176(ads_exatos)
+
+        # Se a frase exata já localizou a página com o mesmo nome, não é
+        # necessário pagar/esperar uma segunda busca ampla.
+        tem_exata = any(
+            _norm_nome_busca_v176(pg.get("nome")) == alvo
+            for pg in paginas.values()
+        )
+
+        if not tem_exata:
+            ads_amplos, _, erro_amplo = _apify_run_sync(
+                termo,
+                limit=100,
+                deadline_seconds=55,
+                country=country,
+                exact_phrase=False,
+            )
+
+            for chave, pg in _agrupar_paginas_v176(ads_amplos).items():
+                if chave not in paginas:
+                    paginas[chave] = pg
+                else:
+                    paginas[chave]["total_ads"] += int(
+                        pg.get("total_ads", 0) or 0
+                    )
+                    if (
+                        not paginas[chave].get("profile_picture")
+                        and pg.get("profile_picture")
+                    ):
+                        paginas[chave]["profile_picture"] = pg[
+                            "profile_picture"
+                        ]
+
+        if not paginas:
+            return []
+
+        ordenadas = sorted(
+            paginas.values(),
+            key=_score_pagina_v176,
+            reverse=True,
+        )
+
+        # Não deixa páginas completamente irrelevantes ocuparem o topo
+        # quando existem correspondências reais pelo nome.
+        relevantes = [
+            pg for pg in ordenadas
+            if _score_pagina_v176(pg)[0] >= 1
+        ]
+
+        if relevantes:
+            resto = [
+                pg for pg in ordenadas
+                if _score_pagina_v176(pg)[0] == 0
+            ]
+            return relevantes[:8] + resto[:4]
+
+        return ordenadas[:12]
 
     # ══════════════════════════════════════════════════════════════════
     # CABEÇALHO DA PÁGINA
@@ -25975,7 +26101,7 @@ function triggerTab(label) {{
             # Processar "Usar página" da lista de resultados
             if onboarding_empresa == e["nome"] and onboarding_paginas:
                 e_ob = e
-                for pi, pg in enumerate(onboarding_paginas[:8]):
+                for pi, pg in enumerate(onboarding_paginas[:12]):
                     if ghost_usar_pg[ci].get(pi):
                         salvar_ads_id(
                             e_ob,
@@ -26091,7 +26217,7 @@ function triggerTab(label) {{
             resultados_block = ""
             if is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
                 pgs_html = ""
-                for pi, pg in enumerate(onboarding_paginas[:8]):
+                for pi, pg in enumerate(onboarding_paginas[:12]):
                     initial = (pg.get("nome","P") or "P")[0].upper()
                     pic_pg  = pg.get("profile_picture","")
                     thumb_html = (
@@ -26150,7 +26276,7 @@ function triggerTab(label) {{
                         </svg>
                         <span style="font-size:11px;font-weight:700;color:#0369a1;
                                      text-transform:uppercase;letter-spacing:0.5px;">
-                            {len(onboarding_paginas[:8])} página(s) encontrada(s)
+                            {len(onboarding_paginas[:12])} página(s) encontrada(s)
                         </span>
                         </div>
                         <span style="font-size:10px;font-weight:700;color:#64748b;background:#f8fafc;
@@ -26239,11 +26365,7 @@ function triggerTab(label) {{
                                     ID ou nome da página do Facebook
                                 </div>
                                 <div style="min-width:132px;">
-                                    <label for="cfg_region_{ci}"
-                                           style="display:block;font-size:9px;font-weight:700;color:#94a3b8;
-                                                  text-transform:uppercase;letter-spacing:0.55px;margin-bottom:3px;">
-                                        Região da busca
-                                    </label>
+                                    
                                     <select id="cfg_region_{ci}"
                                             onchange="saveRegionToURL({ci}, this.value)"
                                             style="width:100%;height:32px;border:1px solid #d1d5db;border-radius:8px;
@@ -32266,7 +32388,7 @@ function triggerTab(label) {{
             # Processar "Usar página" da lista de resultados
             if onboarding_empresa == e["nome"] and onboarding_paginas:
                 e_ob = e
-                for pi, pg in enumerate(onboarding_paginas[:8]):
+                for pi, pg in enumerate(onboarding_paginas[:12]):
                     if ghost_usar_pg[ci].get(pi):
                         salvar_gads_id(
                             e_ob,
@@ -32391,7 +32513,7 @@ function triggerTab(label) {{
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
                 pgs_html = ""
-                for pi, pg in enumerate(onboarding_paginas[:8]):
+                for pi, pg in enumerate(onboarding_paginas[:12]):
                     initial = (pg.get("nome","P") or "P")[0].upper()
                     pic_pg  = pg.get("profile_picture","")
                     thumb_html = (
@@ -32442,7 +32564,7 @@ function triggerTab(label) {{
                         </svg>
                         <span style="font-size:11px;font-weight:700;color:#0369a1;
                                      text-transform:uppercase;letter-spacing:0.5px;">
-                            {len(onboarding_paginas[:8])} página(s) encontrada(s)
+                            {len(onboarding_paginas[:12])} página(s) encontrada(s)
                         </span>
                     </div>
                     {pgs_html}
@@ -34351,7 +34473,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # anúncio. Antes ela consultava apenas `_mapa_transcricoes`
                         # da tabela `midias`, por isso o backend capturava o CC
                         # corretamente mas o card não mostrava nada.
-                        _cc_youtube_txt_v156 = ""
+                        _cc_youtube_txt_v156 = (ad.get("video_cc_raw") or "").strip()
                         _transcricao_txt = (
                             _cc_youtube_txt_v156
                             or _mapa_transcricoes.get(vid_thumb)

@@ -1,4 +1,4 @@
-# V177 — remove título visual Região da busca; seletor de região preservado.
+# V178 — Meta page search usa advertiserName nativo e mantém scraper atual como fallback.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -23775,6 +23775,7 @@ elif st.session_state.pagina == "ads":
 
     CACHE_TTL_HORAS = 24
     APIFY_ACTOR_ID  = "curious_coder~facebook-ads-library-scraper"
+    APIFY_PAGE_FINDER_ACTOR_ID = "constructive_calm~facebook-ad-library-pro"
 
     def carregar_cache_ads(forcar: bool = False) -> dict:
         if not forcar and st.session_state.get("ads_cache"):
@@ -24916,144 +24917,392 @@ elif st.session_state.pagina == "ads":
                 st.session_state.dados["concorrentes"][e["idx"]]["ads_page_pic"] = page_pic
         salvar_empresa_e_concorrentes()
 
+    def _buscar_anunciantes_meta_por_nome_v178(
+        termo: str,
+        country: str = "BR",
+        limit: int = 40,
+        deadline_seconds: int = 70,
+    ) -> list:
+        api_token = st.secrets.get("APIFY_TOKEN", "")
+        if not api_token:
+            return []
+
+        termo = re.sub(r"\s+", " ", str(termo or "")).strip()
+        if not termo:
+            return []
+
+        country = str(country or "BR").strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}|ALL", country):
+            country = "BR"
+
+        run_url = (
+            f"https://api.apify.com/v2/acts/"
+            f"{APIFY_PAGE_FINDER_ACTOR_ID}/runs"
+            f"?token={api_token}"
+        )
+
+        payload = {
+            "advertiserName": termo,
+            "country": country,
+            "activeStatus": "all",
+            "mediaType": "all",
+            "count": max(10, int(limit)),
+            "limitPerSource": max(10, int(limit)),
+            "resolveAdvertiser": True,
+            "scrapeAdDetails": False,
+            "enableCheckpoint": False,
+            "maxConcurrency": 2,
+        }
+
+        try:
+            r_start = _http_post(run_url, json=payload, timeout=30)
+            r_start.raise_for_status()
+            run_data = r_start.json()
+        except Exception as exc:
+            print(
+                f"[META-PAGE-SEARCH][V178] falha ao iniciar finder: {exc!r}",
+                flush=True,
+            )
+            return []
+
+        data = run_data.get("data", {}) if isinstance(run_data, dict) else {}
+        run_id = data.get("id") or run_data.get("id")
+        dataset_id = (
+            data.get("defaultDatasetId")
+            or run_data.get("defaultDatasetId")
+        )
+
+        if not run_id:
+            return []
+
+        status_url = (
+            f"https://api.apify.com/v2/actor-runs/{run_id}"
+            f"?token={api_token}"
+        )
+        deadline = _time.time() + deadline_seconds
+        status = "RUNNING"
+
+        while _time.time() < deadline:
+            try:
+                r_st = _http_get(status_url, timeout=15)
+                jdata = r_st.json().get("data", {})
+                status = jdata.get("status", "RUNNING")
+                if not dataset_id:
+                    dataset_id = (
+                        jdata.get("defaultDatasetId")
+                        or dataset_id
+                    )
+            except Exception:
+                pass
+
+            if status in (
+                "SUCCEEDED",
+                "FAILED",
+                "ABORTED",
+                "TIMED-OUT",
+            ):
+                break
+
+            _time.sleep(4)
+
+        if status != "SUCCEEDED" or not dataset_id:
+            print(
+                f"[META-PAGE-SEARCH][V178] finder status={status}",
+                flush=True,
+            )
+            return []
+
+        items_url = (
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+            f"?token={api_token}"
+            f"&limit={max(20, int(limit))}"
+            f"&clean=true"
+        )
+
+        try:
+            r_items = _http_get(items_url, timeout=30)
+            r_items.raise_for_status()
+            items = r_items.json()
+        except Exception as exc:
+            print(
+                f"[META-PAGE-SEARCH][V178] falha ao ler finder: {exc!r}",
+                flush=True,
+            )
+            return []
+
+        if isinstance(items, dict):
+            items = items.get("items", [])
+        if not isinstance(items, list):
+            return []
+
+        paginas = {}
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            pid = str(
+                item.get("pageId")
+                or item.get("page_id")
+                or ""
+            ).strip()
+
+            nome = str(
+                item.get("pageName")
+                or item.get("page_name")
+                or item.get("advertiserName")
+                or item.get("advertiser_name")
+                or ""
+            ).strip()
+
+            pic = str(
+                item.get("pageProfilePictureUrl")
+                or item.get("page_profile_picture_url")
+                or item.get("pageProfilePicture")
+                or item.get("page_profile_picture")
+                or ""
+            ).strip()
+
+            if not nome:
+                continue
+
+            chave = pid or _normalizar_texto_busca(nome)
+            if not chave:
+                continue
+
+            if chave not in paginas:
+                paginas[chave] = {
+                    "nome": nome,
+                    "page_id": pid,
+                    "total_ads": 0,
+                    "profile_picture": pic,
+                    "_fonte_busca": "advertiserName",
+                }
+
+            paginas[chave]["total_ads"] += 1
+
+            if (
+                not paginas[chave].get("profile_picture")
+                and pic
+            ):
+                paginas[chave]["profile_picture"] = pic
+
+        print(
+            f"[META-PAGE-SEARCH][V178] advertiserName={termo!r} "
+            f"country={country} paginas={len(paginas)}",
+            flush=True,
+        )
+
+        return list(paginas.values())
+
+
     def buscar_paginas_facebook(termo: str, country: str = "BR") -> list:
         termo = re.sub(r"\s+", " ", str(termo or "")).strip()
         if not termo:
             return []
 
-        def _norm_nome_busca_v176(valor):
+        def _norm_nome_busca_v178(valor):
             valor = unicodedata.normalize(
-                "NFKD", str(valor or "")
-            ).encode("ascii", "ignore").decode("ascii")
+                "NFKD",
+                str(valor or ""),
+            ).encode(
+                "ascii",
+                "ignore",
+            ).decode("ascii")
+
             valor = valor.lower()
             valor = re.sub(r"[^a-z0-9]+", " ", valor)
             return re.sub(r"\s+", " ", valor).strip()
 
-        alvo = _norm_nome_busca_v176(termo)
+        alvo = _norm_nome_busca_v178(termo)
         alvo_tokens = set(alvo.split())
 
-        def _agrupar_paginas_v176(ads):
-            paginas = {}
-            for ad in ads or []:
-                pid = str(ad.get("page_id", "") or "").strip()
-                nome = str(ad.get("page_name", "") or "").strip()
-                pic = str(ad.get("page_profile_picture", "") or "").strip()
-
-                if not nome:
-                    continue
-
-                chave = pid or _norm_nome_busca_v176(nome)
-                if not chave:
-                    continue
-
-                if chave not in paginas:
-                    paginas[chave] = {
-                        "nome": nome,
-                        "page_id": pid,
-                        "total_ads": 0,
-                        "profile_picture": pic,
-                    }
-
-                paginas[chave]["total_ads"] += 1
-
-                if not paginas[chave].get("profile_picture") and pic:
-                    paginas[chave]["profile_picture"] = pic
-
-            return paginas
-
-        def _score_pagina_v176(pg):
-            nome_norm = _norm_nome_busca_v176(pg.get("nome"))
+        def _score_pagina_v178(pg):
+            nome_norm = _norm_nome_busca_v178(
+                pg.get("nome")
+            )
             nome_tokens = set(nome_norm.split())
 
             if nome_norm == alvo:
+                classe = 6
+            elif (
+                nome_norm.startswith(alvo + " ")
+                or alvo.startswith(nome_norm + " ")
+            ):
                 classe = 5
-            elif nome_norm.startswith(alvo + " ") or alvo.startswith(nome_norm + " "):
-                classe = 4
             elif alvo and alvo in nome_norm:
-                classe = 3
+                classe = 4
             elif nome_norm and nome_norm in alvo:
-                classe = 2
+                classe = 3
             else:
-                inter = len(alvo_tokens & nome_tokens)
-                uniao = max(1, len(alvo_tokens | nome_tokens))
+                inter = len(
+                    alvo_tokens & nome_tokens
+                )
+                uniao = max(
+                    1,
+                    len(alvo_tokens | nome_tokens),
+                )
                 similaridade = inter / uniao
-                classe = 1 if similaridade >= 0.5 else 0
+                classe = (
+                    2
+                    if similaridade >= 0.67
+                    else 1
+                    if similaridade >= 0.50
+                    else 0
+                )
 
-            inter = len(alvo_tokens & nome_tokens)
-            uniao = max(1, len(alvo_tokens | nome_tokens))
+            inter = len(
+                alvo_tokens & nome_tokens
+            )
+            uniao = max(
+                1,
+                len(alvo_tokens | nome_tokens),
+            )
+
             similaridade = inter / uniao
+
+            fonte_bonus = (
+                1
+                if pg.get("_fonte_busca")
+                == "advertiserName"
+                else 0
+            )
 
             return (
                 classe,
+                fonte_bonus,
                 similaridade,
-                min(int(pg.get("total_ads", 0) or 0), 9999),
+                min(
+                    int(
+                        pg.get(
+                            "total_ads",
+                            0,
+                        )
+                        or 0
+                    ),
+                    9999,
+                ),
             )
 
-        # A Biblioteca da Meta oferece a opção de pesquisar a frase exata.
-        # Primeiro reproduzimos esse comportamento para localizar o anunciante.
-        ads_exatos, _, erro_exato = _apify_run_sync(
-            termo,
-            limit=80,
-            deadline_seconds=55,
-            country=country,
-            exact_phrase=True,
+        paginas = {}
+
+        # 1. Busca nativa por nome do anunciante.
+        encontrados_nome = (
+            _buscar_anunciantes_meta_por_nome_v178(
+                termo,
+                country=country,
+                limit=50,
+                deadline_seconds=70,
+            )
         )
 
-        paginas = _agrupar_paginas_v176(ads_exatos)
+        for pg in encontrados_nome:
+            chave = (
+                str(
+                    pg.get("page_id")
+                    or ""
+                ).strip()
+                or _norm_nome_busca_v178(
+                    pg.get("nome")
+                )
+            )
+            if chave:
+                paginas[chave] = pg
 
-        # Se a frase exata já localizou a página com o mesmo nome, não é
-        # necessário pagar/esperar uma segunda busca ampla.
         tem_exata = any(
-            _norm_nome_busca_v176(pg.get("nome")) == alvo
+            _norm_nome_busca_v178(
+                pg.get("nome")
+            )
+            == alvo
             for pg in paginas.values()
         )
 
+        # 2. Fallback para o scraper já usado no projeto.
+        # Só roda quando o finder não devolveu a página exata.
         if not tem_exata:
-            ads_amplos, _, erro_amplo = _apify_run_sync(
-                termo,
-                limit=100,
-                deadline_seconds=55,
-                country=country,
-                exact_phrase=False,
+            ads_fallback, _, erro_fallback = (
+                _apify_run_sync(
+                    termo,
+                    limit=100,
+                    deadline_seconds=60,
+                    country=country,
+                    exact_phrase=False,
+                )
             )
 
-            for chave, pg in _agrupar_paginas_v176(ads_amplos).items():
-                if chave not in paginas:
-                    paginas[chave] = pg
-                else:
-                    paginas[chave]["total_ads"] += int(
-                        pg.get("total_ads", 0) or 0
+            if not erro_fallback:
+                for ad in ads_fallback or []:
+                    pid = str(
+                        ad.get("page_id", "")
+                        or ""
+                    ).strip()
+
+                    nome = str(
+                        ad.get("page_name", "")
+                        or ""
+                    ).strip()
+
+                    pic = str(
+                        ad.get(
+                            "page_profile_picture",
+                            "",
+                        )
+                        or ""
+                    ).strip()
+
+                    if not nome:
+                        continue
+
+                    chave = (
+                        pid
+                        or _norm_nome_busca_v178(
+                            nome
+                        )
                     )
+
+                    if not chave:
+                        continue
+
+                    if chave not in paginas:
+                        paginas[chave] = {
+                            "nome": nome,
+                            "page_id": pid,
+                            "total_ads": 0,
+                            "profile_picture": pic,
+                            "_fonte_busca": "fallback",
+                        }
+
+                    paginas[chave][
+                        "total_ads"
+                    ] += 1
+
                     if (
-                        not paginas[chave].get("profile_picture")
-                        and pg.get("profile_picture")
-                    ):
-                        paginas[chave]["profile_picture"] = pg[
+                        not paginas[chave].get(
                             "profile_picture"
-                        ]
+                        )
+                        and pic
+                    ):
+                        paginas[chave][
+                            "profile_picture"
+                        ] = pic
 
         if not paginas:
             return []
 
         ordenadas = sorted(
             paginas.values(),
-            key=_score_pagina_v176,
+            key=_score_pagina_v178,
             reverse=True,
         )
 
-        # Não deixa páginas completamente irrelevantes ocuparem o topo
-        # quando existem correspondências reais pelo nome.
         relevantes = [
-            pg for pg in ordenadas
-            if _score_pagina_v176(pg)[0] >= 1
+            pg
+            for pg in ordenadas
+            if _score_pagina_v178(pg)[0] >= 1
         ]
 
         if relevantes:
-            resto = [
-                pg for pg in ordenadas
-                if _score_pagina_v176(pg)[0] == 0
-            ]
-            return relevantes[:8] + resto[:4]
+            return relevantes[:12]
 
         return ordenadas[:12]
 

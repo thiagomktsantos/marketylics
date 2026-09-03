@@ -1,4 +1,4 @@
-# V185 — Meta aceita busca por nome OU ID numérico; Salvar ID continua como ação direta separada.
+# V186 — separa completamente o input temporário do Google Ads do Meta; Google sugere domínio/site cadastrado quando não configurado.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -32571,9 +32571,9 @@ function triggerTab(label) {{
 
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
-            qk = f"_cfg_val_{ci}"
+            qk = f"_gads_cfg_val_{ci}"
             if qk in st.query_params:
-                st.session_state[f"cfg_val_temp_{ci}"] = st.query_params[qk]
+                st.session_state[f"gads_gads_cfg_val_temp_{ci}"] = st.query_params[qk]
 
         # ── CSS ocultar ghost buttons
         all_ghost_css = "".join([f"""
@@ -32638,6 +32638,7 @@ function triggerTab(label) {{
         # ── Processar ações
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
+                st.session_state.pop(f"gads_cfg_val_temp_{ci}", None)
                 st.session_state.gads_editando_empresa    = e["nome"]
                 st.session_state.gads_onboarding_empresa  = None
                 st.session_state.gads_onboarding_paginas  = []
@@ -32652,12 +32653,12 @@ function triggerTab(label) {{
                 st.session_state.gads_onboarding_buscando = False
                 st.session_state.gads_onboarding_buscando_inicio = None
                 for k in list(st.query_params.keys()):
-                    if k.startswith("_cfg_val_"):
+                    if k.startswith("_gads_cfg_val_"):
                         del st.query_params[k]
                 st.rerun()
 
             if ghost_do_buscar[ci]:
-                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                val = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
                 if val:
                     st.session_state.gads_onboarding_empresa  = e["nome"]
                     st.session_state.gads_editando_empresa    = e["nome"]
@@ -32672,13 +32673,13 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_buscando = True
                     st.session_state.gads_onboarding_buscando_inicio = _time.time()
                     st.session_state.gads_onboarding_job_id = _gads_onboarding_iniciar(val)
-                    qk = f"_cfg_val_{ci}"
+                    qk = f"_gads_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
                     st.rerun()
 
             if ghost_do_salvar[ci]:
-                val = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+                val = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
                 if val:
                     salvar_gads_id(e, val)
                     st.session_state.gads_editando_empresa    = None
@@ -32686,7 +32687,7 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_paginas  = []
                     st.session_state.gads_onboarding_buscando = False
                     st.session_state.gads_onboarding_buscando_inicio = None
-                    qk = f"_cfg_val_{ci}"
+                    qk = f"_gads_cfg_val_{ci}"
                     if qk in st.query_params:
                         del st.query_params[qk]
                     st.toast(f"{e['nome']} salvo!", icon="✅")
@@ -32746,7 +32747,7 @@ function triggerTab(label) {{
             # deixar em branco, pra economizar um passo de quem for buscar.
             #
             # IMPORTANTE: se o usuário já digitou algo nesse campo (valor
-            # persistido em cfg_val_temp_{ci} via query param — ver oninput
+            # persistido em gads_gads_cfg_val_temp_{ci} via query param — ver oninput
             # do input abaixo), esse valor tem prioridade sobre a sugestão.
             # Sem isso, qualquer rerun do app enquanto a pessoa está editando
             # (ex.: o polling global de 12s que atualiza o sininho de
@@ -32757,7 +32758,7 @@ function triggerTab(label) {{
             # o valor digitado só era salvo no clique do botão, então um
             # rerun de fundo no meio da digitação sempre revertia o campo).
             _dominio_conhecido = emp.get("site","") if is_minha else concs[e["idx"]].get("url","")
-            _valor_em_edicao   = st.session_state.get(f"cfg_val_temp_{ci}", "").strip()
+            _valor_em_edicao   = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
             gads_id_sugestao   = _valor_em_edicao or gads_id or _dominio_conhecido or e["nome"]
             is_editing = (editando_empresa == e["nome"])
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
@@ -33023,7 +33024,7 @@ function triggerTab(label) {{
                                        margin-bottom:12px;display:block;box-sizing:border-box;"
                                 onfocus="this.style.borderColor='#3a9fd6';this.style.background='#fff'"
                                 onblur="this.style.borderColor='#e5e7eb';this.style.background='#fafafa'"
-                                oninput="handleCfgInput({ci}, this.value)"
+                                oninput="handleGadsCfgInput({ci}, this.value)"
                             />
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                                 {_btn_buscar_html}
@@ -33145,23 +33146,23 @@ function triggerGhost(label) {{
     }}
 }}
 
-function saveValToURL(ci, val) {{
+function saveGadsValToURL(ci, val) {{
     var url = new URL(window.parent.location.href);
-    url.searchParams.set('_cfg_val_' + ci, val);
+    url.searchParams.set('_gads_cfg_val_' + ci, val);
     window.parent.history.replaceState({{}}, '', url);
 }}
 
 // Persiste o valor digitado (debounced, 400ms sem digitar) na URL via
-// saveValToURL — sem isso, um rerun de fundo do Streamlit (ex.: o
+// saveGadsValToURL — sem isso, um rerun de fundo do Streamlit (ex.: o
 // polling de 12s do sininho de notificações enquanto há atividade em
 // andamento) recria este card do zero com o valor padrão/sugestão,
 // apagando o que a pessoa estava digitando antes mesmo de clicar em
 // "Buscar anunciantes". Só salvar no clique (como era antes) não é
 // suficiente porque o rerun de fundo pode acontecer no meio da digitação.
-var _cfgInputTimers = {{}};
-function handleCfgInput(ci, val) {{
-    clearTimeout(_cfgInputTimers[ci]);
-    _cfgInputTimers[ci] = setTimeout(function() {{ saveValToURL(ci, val); }}, 400);
+var _gadsCfgInputTimers = {{}};
+function handleGadsCfgInput(ci, val) {{
+    clearTimeout(_gadsCfgInputTimers[ci]);
+    _gadsCfgInputTimers[ci] = setTimeout(function() {{ saveGadsValToURL(ci, val); }}, 400);
 }}
 
 function handleBuscar(ci) {{
@@ -33180,7 +33181,7 @@ function handleBuscar(ci) {{
     }}
     if (btnS) {{ btnS.disabled = true; }}
 
-    saveValToURL(ci, val);
+    saveGadsValToURL(ci, val);
     setTimeout(function() {{ triggerGhost('do_buscar_' + ci); }}, 300);
 }}
 
@@ -33195,7 +33196,7 @@ function handleSalvar(ci) {{
         btn.innerHTML = SPINNER + ' &nbsp;Salvando...';
     }}
 
-    saveValToURL(ci, val);
+    saveGadsValToURL(ci, val);
     setTimeout(function() {{ triggerGhost('do_salvar_' + ci); }}, 300);
 }}
 

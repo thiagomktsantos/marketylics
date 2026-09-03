@@ -1,4 +1,4 @@
-# V186 — separa completamente o input temporário do Google Ads do Meta; Google sugere domínio/site cadastrado quando não configurado.
+# V187 — Google Ads onboarding faz auto-poll do job em background e exibe resultados assim que a busca conclui.
 # V171 — limpeza de comentários; lógica preservada.
 # V170 — badge CC com SVG + texto 'Closed Caption'.
 # V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
@@ -26241,6 +26241,14 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
+        # V187: a busca de anunciantes roda em thread de fundo. Enquanto
+        # o job ainda estiver ativo, esta própria tela agenda um rerun curto.
+        # Assim a UI não depende do polling global de notificações para
+        # perceber que o job terminou.
+        if onboarding_buscando and st.session_state.gads_onboarding_job_id:
+            _time.sleep(2.5)
+            st.rerun()
+
         # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
@@ -32554,6 +32562,12 @@ function triggerTab(label) {{
                 st.session_state.gads_onboarding_buscando = False
                 st.session_state.gads_onboarding_buscando_inicio = None
                 st.session_state.gads_onboarding_job_id = None
+                print(
+                    f"[GADS-UI-V187] job={job_id} status={job_status} "
+                    f"paginas={len(onboarding_paginas)} "
+                    f"nomes={[p.get('nome') for p in onboarding_paginas[:12]]!r}",
+                    flush=True,
+                )
                 with _lock_gads_onboarding_jobs:
                     _gads_onboarding_jobs.pop(job_id, None)
             else:
@@ -32573,7 +32587,7 @@ function triggerTab(label) {{
         for ci in range(len(todas_empresas)):
             qk = f"_gads_cfg_val_{ci}"
             if qk in st.query_params:
-                st.session_state[f"gads_gads_cfg_val_temp_{ci}"] = st.query_params[qk]
+                st.session_state[f"gads_cfg_val_temp_{ci}"] = st.query_params[qk]
 
         # ── CSS ocultar ghost buttons
         all_ghost_css = "".join([f"""
@@ -32658,7 +32672,7 @@ function triggerTab(label) {{
                 st.rerun()
 
             if ghost_do_buscar[ci]:
-                val = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
+                val = st.session_state.get(f"gads_cfg_val_temp_{ci}", "").strip()
                 if val:
                     st.session_state.gads_onboarding_empresa  = e["nome"]
                     st.session_state.gads_editando_empresa    = e["nome"]
@@ -32679,7 +32693,7 @@ function triggerTab(label) {{
                     st.rerun()
 
             if ghost_do_salvar[ci]:
-                val = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
+                val = st.session_state.get(f"gads_cfg_val_temp_{ci}", "").strip()
                 if val:
                     salvar_gads_id(e, val)
                     st.session_state.gads_editando_empresa    = None
@@ -32747,7 +32761,7 @@ function triggerTab(label) {{
             # deixar em branco, pra economizar um passo de quem for buscar.
             #
             # IMPORTANTE: se o usuário já digitou algo nesse campo (valor
-            # persistido em gads_gads_cfg_val_temp_{ci} via query param — ver oninput
+            # persistido em gads_cfg_val_temp_{ci} via query param — ver oninput
             # do input abaixo), esse valor tem prioridade sobre a sugestão.
             # Sem isso, qualquer rerun do app enquanto a pessoa está editando
             # (ex.: o polling global de 12s que atualiza o sininho de
@@ -32758,7 +32772,7 @@ function triggerTab(label) {{
             # o valor digitado só era salvo no clique do botão, então um
             # rerun de fundo no meio da digitação sempre revertia o campo).
             _dominio_conhecido = emp.get("site","") if is_minha else concs[e["idx"]].get("url","")
-            _valor_em_edicao   = st.session_state.get(f"gads_gads_cfg_val_temp_{ci}", "").strip()
+            _valor_em_edicao   = st.session_state.get(f"gads_cfg_val_temp_{ci}", "").strip()
             gads_id_sugestao   = _valor_em_edicao or gads_id or _dominio_conhecido or e["nome"]
             is_editing = (editando_empresa == e["nome"])
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
@@ -32815,7 +32829,7 @@ function triggerTab(label) {{
                         <span style="font-size:15px;flex-shrink:0;line-height:1.3">⏳</span>
                         <div style="font-size:13px;color:#0369a1;line-height:1.55">
                             <strong>Buscando na Central de Transparência do Google Ads...</strong>
-                            Isso pode levar até alguns minutos.
+                            O resultado aparecerá automaticamente quando a busca terminar.
                         </div>
                     </div>
                 </div>"""

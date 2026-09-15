@@ -1950,12 +1950,26 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
 #
 # Diferente de uma flag de session_state "já verificado", este controle vive
 # no processo e só registra cooldown DEPOIS de uma verificação concluída.
-# Se o Streamlit entrar em standby e a execução morrer no meio, o vídeo
-# continua sem `video_cc_raw`; no próximo render da página ele será elegível
-# novamente para nova tentativa.
-_YOUTUBE_CC_VERIFY_ACTIVE_V151 = set()
-_YOUTUBE_CC_VERIFY_LAST_OK_V151 = {}
-_YOUTUBE_CC_VERIFY_LOCK_V151 = threading.Lock()
+#
+# IMPORTANTE: o Streamlit reexecuta o arquivo inteiro a cada rerun. Portanto,
+# set/dict/Lock soltos no módulo eram recriados enquanto a thread anterior
+# continuava viva. Na prática, cada rerun perdia a trava e iniciava outra
+# varredura dos mesmos vídeos (o log mostra duas sequências simultâneas para
+# `tg57XiRcLBM`), elevando rapidamente RAM/CPU até o healthcheck cair.
+# `st.cache_resource` mantém um único registry por processo entre reruns.
+@st.cache_resource(show_spinner=False)
+def _get_youtube_cc_verify_registry_v188() -> dict:
+    return {
+        "active": set(),
+        "last_ok": {},
+        "lock": threading.Lock(),
+    }
+
+
+_YOUTUBE_CC_VERIFY_REGISTRY_V188 = _get_youtube_cc_verify_registry_v188()
+_YOUTUBE_CC_VERIFY_ACTIVE_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["active"]
+_YOUTUBE_CC_VERIFY_LAST_OK_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["last_ok"]
+_YOUTUBE_CC_VERIFY_LOCK_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["lock"]
 
 
 _YOUTUBE_CC_STATUS_FINAL_V159 = {

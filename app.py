@@ -634,8 +634,22 @@ def _persistir_cache_ads_db(user_id: str, coluna: str, payload: dict,
 # OCR e migração já tinham travas próprias; agora compartilham também uma
 # visão única de "job lógico ativo" para impedir workers duplicados entre
 # subsistemas diferentes.
-_jobs_lock = threading.RLock()
-_jobs_ativos = set()
+#
+# O registry precisa sobreviver aos reruns do Streamlit. Variáveis comuns de
+# módulo eram recriadas em cada execução do script, fazendo o processo perder
+# a referência dos workers que continuavam vivos e tornando impossível
+# distinguir uma coleta real de uma atividade órfã após crash/redeploy.
+@st.cache_resource(show_spinner=False)
+def _get_jobs_registry_v189() -> dict:
+    return {
+        "lock": threading.RLock(),
+        "ativos": set(),
+    }
+
+
+_jobs_registry_v189 = _get_jobs_registry_v189()
+_jobs_lock = _jobs_registry_v189["lock"]
+_jobs_ativos = _jobs_registry_v189["ativos"]
 
 def _job_key(tipo: str, user_id: str, escopo: str = ""):
     return (str(tipo), str(user_id), str(escopo or ""))
@@ -31075,7 +31089,7 @@ elif st.session_state.pagina == "google_ads":
         try:
             res = (
                 supabase.table("atividades")
-                .select("id, status, criado_em")
+                .select("id, status, criado_em, detalhes")
                 .eq("user_id", user_id)
                 .eq("tipo", "coleta_ads_google")
                 .order("criado_em", desc=True)
@@ -31192,6 +31206,39 @@ elif st.session_state.pagina == "google_ads":
     _ultima_atividade_ads = None
     if st.session_state.get("user"):
         _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
+
+    # V189 — recuperação de coleta órfã após crash/redeploy. O status visual
+    # fica no banco, mas o worker é uma thread local. Se o processo morreu e
+    # não existe mais worker registrado, encerra a atividade antiga e libera
+    # o botão para uma nova tentativa.
+    if (
+        _ultima_atividade_ads
+        and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento")
+        and not _job_is_active(
+            "coleta_ads_google",
+            st.session_state.user.id,
+            "google_ads",
+        )
+    ):
+        _atividade_orfa_id = _ultima_atividade_ads.get("id")
+        _detalhes_orfa = _ultima_atividade_ads.get("detalhes") or {}
+        if not isinstance(_detalhes_orfa, dict):
+            _detalhes_orfa = {}
+        atualizar_atividade(_atividade_orfa_id, "erro", {
+            **_detalhes_orfa,
+            "motivo": (
+                "A coleta foi interrompida porque o servidor reiniciou ou "
+                "o processo foi encerrado. Inicie uma nova busca."
+            ),
+            "interrompida_automaticamente": True,
+        })
+        _ultima_atividade_ads["status"] = "erro"
+        st.session_state["_coleta_gads_em_andamento"] = False
+        print(
+            f"[GADS-RECOVERY-V189] atividade={_atividade_orfa_id} "
+            "órfã encerrada -> erro; botão liberado",
+            flush=True,
+        )
 
     if "_gads_ultima_atividade_id_vista" not in st.session_state:
         # Primeira renderização dessa sessão: `gads_cache` acabou de ser

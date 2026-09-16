@@ -12404,11 +12404,14 @@ def _refazer_gads_incompletos_background_v199(user_id: str, atividade_id: str, e
 def refazer_gads_incompletos_v199(user_id: str, atividade_id: str, empresa: str, ids: list) -> bool:
     if not user_id or not atividade_id or not empresa or not ids:
         return False
+    # Não depende de safe_key(), que é declarado apenas mais adiante em
+    # alguns fluxos/páginas do Streamlit. O nome da thread é só diagnóstico.
+    _empresa_thread = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(empresa)).strip("-") or "empresa"
     return _job_start_thread(
         "gads_retry_seletivo", user_id, empresa,
         _refazer_gads_incompletos_background_v199,
         args=(user_id, atividade_id, empresa, ids), daemon=True,
-        name=f"gads-retry-seletivo-{safe_key(empresa)}",
+        name=f"gads-retry-seletivo-{_empresa_thread}",
     )
 
 def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:

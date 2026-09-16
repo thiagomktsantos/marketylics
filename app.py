@@ -30341,6 +30341,11 @@ elif st.session_state.pagina == "google_ads":
             if not _garantir_chromium_playwright():
                 print("[GADS-IMG] fallback Playwright indisponível; seguindo sem browser", flush=True)
                 return ""
+            # Importação lazy: o Playwright só é carregado nos raros
+            # criativos em que Apify/preview.js não entregam uma imagem.
+            # Antes, sync_playwright era usado sem existir neste escopo e o
+            # fallback sempre terminava em NameError.
+            from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(
                     headless=True,

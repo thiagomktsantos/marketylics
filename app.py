@@ -2068,6 +2068,7 @@ def _get_youtube_cc_verify_registry_v188() -> dict:
     return {
         "active": set(),
         "last_ok": {},
+        "last_attempt": {},
         "lock": threading.Lock(),
     }
 
@@ -2075,6 +2076,7 @@ def _get_youtube_cc_verify_registry_v188() -> dict:
 _YOUTUBE_CC_VERIFY_REGISTRY_V188 = _get_youtube_cc_verify_registry_v188()
 _YOUTUBE_CC_VERIFY_ACTIVE_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["active"]
 _YOUTUBE_CC_VERIFY_LAST_OK_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["last_ok"]
+_YOUTUBE_CC_VERIFY_LAST_ATTEMPT_V195 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["last_attempt"]
 _YOUTUBE_CC_VERIFY_LOCK_V151 = _YOUTUBE_CC_VERIFY_REGISTRY_V188["lock"]
 
 
@@ -2234,7 +2236,19 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
     """
     import time as _time_cc151
 
+    _ticket_cc_v195 = None
     try:
+        # V195 — CC também participa da mesma faixa exclusiva usada por
+        # migração/OCR. Antes o yt-dlp rodava por fora e elevava o RSS do
+        # processo justamente quando a migração ou o EasyOCR estavam ativos.
+        _esperar_coleta_prioritaria_v195(user_id, "CC YOUTUBE")
+        _esperar_outra_acao_pesada_persistente(
+            user_id,
+            excluir_tipos=("cc_youtube",),
+            atividade_ids_espera=([atividade_id] if atividade_id else []),
+            descricao="CC YOUTUBE",
+        )
+        _ticket_cc_v195 = _entrar_fila_acao_pesada("CC YOUTUBE", "Google Ads")
         _res = _supabase_resiliente(
             lambda: (
                 supabase.table("ci_dados")
@@ -2311,6 +2325,15 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
 
             _resultados_emp_v154 = {}
             for _vid_v154, _url_v154 in _videos_v154:
+                # Se uma coleta começar enquanto o pós-processamento está
+                # ativo, ela tem prioridade máxima. CC pausa entre vídeos e
+                # não abre novos downloads até a coleta terminar.
+                while any(
+                    _job_any_active(_tipo_coleta, user_id)
+                    for _tipo_coleta in ("coleta_ads_google", "coleta_ads", "coleta_redes")
+                ):
+                    print("[YOUTUBE-CC-AUTO] pausado: coleta prioritária ativa", flush=True)
+                    _time_cc151.sleep(3.0)
                 print(
                     f"[YOUTUBE-CC][VIDEO] empresa={_empresa_v154!r} "
                     f"video_id={_vid_v154} inicio",
@@ -2450,6 +2473,13 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             flush=True,
         )
     finally:
+        if _ticket_cc_v195 is not None:
+            _sair_fila_acao_pesada(_ticket_cc_v195)
+        try:
+            import gc as _gc_cc_v195
+            _gc_cc_v195.collect()
+        except Exception:
+            pass
         with _YOUTUBE_CC_VERIFY_LOCK_V151:
             _YOUTUBE_CC_VERIFY_ACTIVE_V151.discard(user_id)
 
@@ -2549,6 +2579,19 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
         return False
 
+    # Nunca inicia CC junto com coleta, migração ou OCR. A página fará nova
+    # tentativa em render posterior, depois que a faixa pesada estiver livre.
+    if (
+        _job_any_active("coleta_ads_google", user_id)
+        or _job_any_active("coleta_ads", user_id)
+        or _job_any_active("coleta_redes", user_id)
+        or _job_any_active("migracao_midia", user_id)
+        or _job_any_active("ocr_gads", user_id)
+        or _fila_pesada_esta_ocupada()
+    ):
+        print("[YOUTUBE-CC-AUTO] adiado: coleta/migração/OCR em andamento", flush=True)
+        return False
+
     _agora = _time_cc151.monotonic()
     with _YOUTUBE_CC_VERIFY_LOCK_V151:
         if user_id in _YOUTUBE_CC_VERIFY_ACTIVE_V151:
@@ -2558,7 +2601,15 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
         if _ultimo_ok and (_agora - _ultimo_ok) < float(intervalo_segundos):
             return False
 
+        # Falha do Supabase não pode causar reinício em todo rerun. Um
+        # intervalo mínimo de 60s evita várias threads sucessivas baixando os
+        # mesmos 22 vídeos enquanto o banco continua indisponível.
+        _ultima_tentativa = float(_YOUTUBE_CC_VERIFY_LAST_ATTEMPT_V195.get(user_id) or 0)
+        if _ultima_tentativa and (_agora - _ultima_tentativa) < 60.0:
+            return False
+
         _YOUTUBE_CC_VERIFY_ACTIVE_V151.add(user_id)
+        _YOUTUBE_CC_VERIFY_LAST_ATTEMPT_V195[user_id] = _agora
 
     _total_pendente_v153 = len(_gads_youtube_sem_cc_v151(cache_sessao))
     _atividade_cc_v153 = _obter_ou_criar_atividade_cc_youtube_v153(
@@ -11571,6 +11622,19 @@ def _fila_pesada_esta_ocupada():
         return _acao_pesada_atual[0] is not None
 
 
+def _esperar_coleta_prioritaria_v195(user_id: str, descricao: str = "pós-processamento"):
+    """Nenhuma nova etapa pesada começa enquanto houver coleta ativa."""
+    while any(
+        _job_any_active(_tipo_coleta, user_id)
+        for _tipo_coleta in ("coleta_ads_google", "coleta_ads", "coleta_redes")
+    ):
+        print(
+            f"[PRIORIDADE-COLETA-V195] {descricao} aguardando coleta Google Ads",
+            flush=True,
+        )
+        time.sleep(3.0)
+
+
 def _entrar_fila_acao_pesada(tipo: str, detalhe: str = ""):
     """Entra na fila FIFO global e só retorna quando tiver exclusividade."""
     _descricao = f"{tipo}{' · ' + detalhe if detalhe else ''}"
@@ -11667,6 +11731,7 @@ def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
     Tipos observados:
       - ocr_gads
       - migracao_midia
+      - cc_youtube
 
     `excluir_tipos` permite ao próprio OCR ignorar sua atividade e à própria
     migração ignorar suas atividades enquanto verificam concorrentes.
@@ -11678,7 +11743,7 @@ def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
             supabase.table("atividades")
             .select("id,tipo,titulo,status,detalhes")
             .eq("user_id", user_id)
-            .in_("tipo", ["ocr_gads", "migracao_midia", "transcricao_video"])
+            .in_("tipo", ["ocr_gads", "migracao_midia", "cc_youtube", "transcricao_video"])
             .in_("status", ["pendente", "em_andamento"])
             .execute()
         )
@@ -11778,6 +11843,7 @@ def _worker_ocr_global():
         _uid_fila = None
 
     if _uid_fila:
+        _esperar_coleta_prioritaria_v195(_uid_fila, "OCR")
         _esperar_outra_acao_pesada_persistente(
             _uid_fila,
             excluir_tipos=("ocr_gads",),
@@ -15451,6 +15517,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
 
     _ticket_fila_pesada = None
     try:
+        _esperar_coleta_prioritaria_v195(user_id, "MIGRAÇÃO")
         # Segunda camada: mesmo que o processo tenha reiniciado e perdido o
         # threading.Lock anterior, uma atividade OCR com heartbeat recente
         # impede que a migração comece imediatamente.
@@ -39332,11 +39399,13 @@ function setHeight(isOpen) {{
             }).execute()
         except Exception:
             pass
-        threading.Thread(
-            target=_coletar_redes_background,
+        _job_start_thread(
+            "coleta_redes", st.session_state.user.id, "redes_sociais",
+            _coletar_redes_background,
             args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),
             daemon=True,
-        ).start()
+            name="coleta-redes-sociais",
+        )
 
         st.session_state["_coleta_redes_em_andamento"] = True
         st.rerun()

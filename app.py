@@ -31094,6 +31094,11 @@ elif st.session_state.pagina == "google_ads":
 
             erros = {}
             novos = {}
+            # Resultados já coletados e preservados no outbox/R2 quando o
+            # Supabase estiver temporariamente indisponível. Esta coleção
+            # precisa existir mesmo quando nenhum checkpoint for necessário,
+            # pois também participa do cálculo e do payload do status final.
+            protegidos = {}
             _nomes_empresas = [x["nome"] for x in empresas]
             _total_empresas = len(_nomes_empresas)
             _processadas = 0
@@ -31243,7 +31248,7 @@ elif st.session_state.pagina == "google_ads":
                 _grava_progresso()
 
             if novos:
-                iniciar_migracao_midia_background(user_id, novos)
+                iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
             iniciar_retentativa_midias_background(user_id)
 
             # Resultado protegido no R2 conta como coleta concluída. A falha

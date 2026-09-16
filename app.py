@@ -30941,7 +30941,18 @@ elif st.session_state.pagina == "google_ads":
         "erro_ao_salvar" em `por_empresa`) e refazer só ela, sem rodar a
         Apify de novo pras que já deram certo (ver refazer_coleta_gads)."""
         try:
-            res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+            print(
+                f"[GADS-COLETA-V193] INICIO user={user_id} "
+                f"empresas={[e.get('nome') for e in empresas]!r} "
+                f"forcar={forcar} resumes={list((resume_por_empresa or {}).keys())!r}",
+                flush=True,
+            )
+            res = _supabase_resiliente(
+                lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
+                operacao="gads_coleta_carregar_cache_inicial",
+                tentativas=5,
+                backoff=(1, 2, 4, 8, 12),
+            )
             cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
 
             erros = {}
@@ -31107,6 +31118,7 @@ elif st.session_state.pagina == "google_ads":
             # fragment global somente depois que o usuário sair desta página.
             gc.collect()
         except Exception as e:
+            print(f"[GADS-COLETA-V193][ERRO] atividade={atividade_id} erro={e!r}", flush=True)
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
     def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
@@ -32544,7 +32556,14 @@ setHeight(false);
                 gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
                 query_values_header[ck] = gads_id_salvo
         if query_values_header:
-            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=False)
+            # V193: o botão principal agora executa atualização real. Antes,
+            # o cache de 24h fazia a atividade nascer e terminar sem nenhuma
+            # chamada à Apify, deixando a impressão de busca travada/falsa.
+            executar_busca(
+                [e for e in todas_empresas if empresa_tem_gads_id(e)],
+                query_values_header,
+                forcar=True,
+            )
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
 

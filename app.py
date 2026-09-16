@@ -657,6 +657,18 @@ def _job_key(tipo: str, user_id: str, escopo: str = ""):
 def _job_try_acquire(tipo: str, user_id: str, escopo: str = "") -> bool:
     chave = _job_key(tipo, user_id, escopo)
     with _jobs_lock:
+        # Coletas disputam um único slot prioritário por usuário. Assim uma
+        # busca de Redes, Meta ou Google nunca roda ao mesmo tempo que outra
+        # coleta e o limite de memória fica previsível.
+        if (
+            str(tipo) in globals().get("_TIPOS_COLETA_PRIORITARIA", ())
+            and any(
+                k[1] == str(user_id)
+                and k[0] in globals().get("_TIPOS_COLETA_PRIORITARIA", ())
+                for k in _jobs_ativos
+            )
+        ):
+            return False
         if chave in _jobs_ativos:
             return False
         _jobs_ativos.add(chave)
@@ -675,6 +687,23 @@ def _job_any_active(tipo: str, user_id: str) -> bool:
     _uid = str(user_id)
     with _jobs_lock:
         return any(k[0] == _tipo and k[1] == _uid for k in _jobs_ativos)
+
+
+# V192 — prioridade global das coletas. Qualquer coleta de dados bloqueia
+# todos os pós-processamentos pesados, independentemente da página que a
+# iniciou. Redes, Meta e Google têm a mesma prioridade máxima.
+_TIPOS_COLETA_PRIORITARIA = (
+    "coleta_redes",
+    "coleta_ads",
+    "coleta_ads_google",
+)
+
+
+def _coleta_dados_prioritaria_ativa(user_id: str) -> bool:
+    return any(
+        _job_any_active(_tipo, user_id)
+        for _tipo in _TIPOS_COLETA_PRIORITARIA
+    )
 
 def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
     """Executa um job e sempre libera sua chave lógica ao terminar."""
@@ -2452,6 +2481,10 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     """
     import time as _time_cc151
 
+    if _coleta_dados_prioritaria_ativa(user_id):
+        print("[PRIORIDADE-COLETA] CC adiado: há coleta de dados ativa.", flush=True)
+        return False
+
     _recuperar_atividade_cc_youtube_orfa_v161(user_id, cache_sessao)
 
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
@@ -3335,6 +3368,9 @@ def _transcrever_pendentes_na_fila_global(user_id: str, empresa: str, atividade_
 
 
 def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
+    if _coleta_dados_prioritaria_ativa(user_id):
+        print(f"[PRIORIDADE-COLETA] transcrição adiada empresa={empresa!r}", flush=True)
+        return False
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o
     processamento, em segundo plano, dos vídeos dessa empresa que já
     foram migrados pro R2 mas ainda não têm transcrição salva. Cria/
@@ -11773,6 +11809,9 @@ def _garantir_worker_ocr_global():
         threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
 def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = False):
+    if _coleta_dados_prioritaria_ativa(user_id):
+        print(f"[PRIORIDADE-COLETA] OCR adiado empresa={empresa!r}", flush=True)
+        return False
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
     das imagens do Google Ads dessa empresa que já foram migradas pro R2
     mas ainda não têm texto extraído. Mesmo padrão de
@@ -11986,6 +12025,9 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
             _reels_transcricao_ativa_agora.discard(user_id)
 
 def iniciar_transcricao_reels_pendente_background(user_id: str):
+    if _coleta_dados_prioritaria_ativa(user_id):
+        print("[PRIORIDADE-COLETA] transcrição de Reels adiada.", flush=True)
+        return False
     """Checkin da página de Redes Sociais: verifica se há posts coletados
     e, entre eles, Reels ainda sem transcrição — se houver, cria (ou
     reaproveita) a atividade `transcricao_reel` e dispara o processamento
@@ -15445,6 +15487,10 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
     varredura achando itens antigos), o sino ganhava um card duplicado
     pra sempre 'em andamento' em vez de continuar atualizando o
     mesmo."""
+    if _coleta_dados_prioritaria_ativa(user_id):
+        print(f"[PRIORIDADE-COLETA] migração adiada plataforma={plataforma!r}", flush=True)
+        return False
+
     tarefas = []
     for empresa, entry in novos.items():
         _escopo_job_migr = f"{plataforma}:{empresa}"
@@ -16496,10 +16542,7 @@ with st.sidebar:
             # levou o conjunto pai+OCR a ~3 GB e derrubou o container.
             if (
                 st.session_state.get("pagina") == "google_ads"
-                or _job_any_active(
-                    "coleta_ads_google",
-                    st.session_state.user.id,
-                )
+                or _coleta_dados_prioritaria_ativa(st.session_state.user.id)
             ):
                 return
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
@@ -39228,11 +39271,21 @@ function setHeight(isOpen) {{
             }).execute()
         except Exception:
             pass
-        threading.Thread(
-            target=_coletar_redes_background,
+        _iniciou_redes = _job_start_thread(
+            "coleta_redes",
+            st.session_state.user.id,
+            "redes_sociais",
+            _coletar_redes_background,
             args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),
             daemon=True,
-        ).start()
+            name="coleta-redes-sociais",
+        )
+        if not _iniciou_redes:
+            atualizar_atividade(_id_ativ_coleta_redes, "concluido", {
+                "aviso": "Já existe uma coleta de redes sociais em andamento."
+            })
+            st.info("Já existe uma coleta de redes sociais em andamento.")
+            st.rerun()
 
         st.session_state["_coleta_redes_em_andamento"] = True
         st.rerun()

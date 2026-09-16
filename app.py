@@ -591,6 +591,11 @@ _SUPABASE_ERROS_TRANSITORIOS = (
     "57p03", "database system is not accepting connections", "upstream",
 )
 
+def _erro_supabase_jwt_expirado(exc) -> bool:
+    """Identifica a sessão expirada que o PostgREST devolve como PGRST303."""
+    s = str(exc).lower()
+    return "pgrst303" in s or "jwt expired" in s
+
 def _erro_supabase_transitorio(exc) -> bool:
     s = str(exc).lower()
     return any(tok in s for tok in _SUPABASE_ERROS_TRANSITORIOS)
@@ -601,12 +606,27 @@ def _supabase_resiliente(fn, *, operacao: str = "supabase", tentativas: int = 4,
     Erros de regra/dado não ficam sendo repetidos à toa; instabilidade de
     rede/gateway recebe novas tentativas automáticas."""
     ultimo = None
+    _refresh_tentado = False
     for i in range(max(1, tentativas)):
         try:
             with _recurso_api_io():
                 return fn()
         except Exception as exc:
             ultimo = exc
+            # Coletas podem durar mais que o JWT. O client continua vivo na
+            # thread, mas o PostgREST passa a devolver PGRST303. Renova uma
+            # vez e repete a mesma operação, sem refazer a coleta da Apify.
+            if _erro_supabase_jwt_expirado(exc) and not _refresh_tentado:
+                _refresh_tentado = True
+                try:
+                    supabase.auth.refresh_session()
+                    print(f"[SUPABASE-AUTH] sessão renovada em {operacao!r}", flush=True)
+                    with _recurso_api_io():
+                        return fn()
+                except Exception as refresh_exc:
+                    print(f"[SUPABASE-AUTH] falha ao renovar sessão: {refresh_exc!r}", flush=True)
+                    exc = refresh_exc
+                    ultimo = refresh_exc
             if somente_transitorios and not _erro_supabase_transitorio(exc):
                 raise
             if i >= tentativas - 1:
@@ -657,18 +677,6 @@ def _job_key(tipo: str, user_id: str, escopo: str = ""):
 def _job_try_acquire(tipo: str, user_id: str, escopo: str = "") -> bool:
     chave = _job_key(tipo, user_id, escopo)
     with _jobs_lock:
-        # Coletas disputam um único slot prioritário por usuário. Assim uma
-        # busca de Redes, Meta ou Google nunca roda ao mesmo tempo que outra
-        # coleta e o limite de memória fica previsível.
-        if (
-            str(tipo) in globals().get("_TIPOS_COLETA_PRIORITARIA", ())
-            and any(
-                k[1] == str(user_id)
-                and k[0] in globals().get("_TIPOS_COLETA_PRIORITARIA", ())
-                for k in _jobs_ativos
-            )
-        ):
-            return False
         if chave in _jobs_ativos:
             return False
         _jobs_ativos.add(chave)
@@ -687,23 +695,6 @@ def _job_any_active(tipo: str, user_id: str) -> bool:
     _uid = str(user_id)
     with _jobs_lock:
         return any(k[0] == _tipo and k[1] == _uid for k in _jobs_ativos)
-
-
-# V192 — prioridade global das coletas. Qualquer coleta de dados bloqueia
-# todos os pós-processamentos pesados, independentemente da página que a
-# iniciou. Redes, Meta e Google têm a mesma prioridade máxima.
-_TIPOS_COLETA_PRIORITARIA = (
-    "coleta_redes",
-    "coleta_ads",
-    "coleta_ads_google",
-)
-
-
-def _coleta_dados_prioritaria_ativa(user_id: str) -> bool:
-    return any(
-        _job_any_active(_tipo, user_id)
-        for _tipo in _TIPOS_COLETA_PRIORITARIA
-    )
 
 def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
     """Executa um job e sempre libera sua chave lógica ao terminar."""
@@ -767,6 +758,78 @@ def get_r2_client():
     )
 
 r2_client = get_r2_client()
+
+# ---------------------------------------------------
+# V194 — CHECKPOINT DURÁVEL DA COLETA GOOGLE ADS
+# ---------------------------------------------------
+# O Supabase pode ficar indisponível durante uma coleta longa. O R2 é usado
+# como outbox independente: cada lote normalizado é gravado aqui ANTES da
+# tentativa no banco. Assim, restart do Streamlit, 5xx ou JWT expirado não
+# obrigam a chamar a Apify novamente nem perdem anúncios já processados.
+def _gads_checkpoint_prefix(user_id: str) -> str:
+    return f"checkpoints/google-ads/{user_id}/"
+
+def _gads_checkpoint_key(user_id: str, empresa: str) -> str:
+    _id = hashlib.sha256(str(empresa).encode("utf-8")).hexdigest()[:24]
+    return f"{_gads_checkpoint_prefix(user_id)}{_id}.json"
+
+def _salvar_checkpoint_gads_r2(user_id: str, empresa: str, entry: dict) -> tuple[bool, str | None]:
+    if not r2_client or not R2_BUCKET:
+        return False, "R2 não configurado"
+    try:
+        corpo = json.dumps(
+            {"version": 1, "user_id": user_id, "empresa": empresa, "entry": entry,
+             "salvo_em": _agora_iso()},
+            ensure_ascii=False, default=str, separators=(",", ":"),
+        ).encode("utf-8")
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=_gads_checkpoint_key(user_id, empresa),
+            Body=corpo,
+            ContentType="application/json",
+        )
+        print(f"[GADS-OUTBOX-V194] salvo empresa={empresa!r} bytes={len(corpo)}", flush=True)
+        return True, None
+    except Exception as exc:
+        print(f"[GADS-OUTBOX-V194] falha ao salvar empresa={empresa!r}: {exc!r}", flush=True)
+        return False, str(exc)
+
+def _excluir_checkpoint_gads_r2(user_id: str, empresa: str) -> None:
+    if not r2_client or not R2_BUCKET:
+        return
+    try:
+        r2_client.delete_object(Bucket=R2_BUCKET, Key=_gads_checkpoint_key(user_id, empresa))
+        print(f"[GADS-OUTBOX-V194] sincronizado/removido empresa={empresa!r}", flush=True)
+    except Exception as exc:
+        print(f"[GADS-OUTBOX-V194] falha ao remover empresa={empresa!r}: {exc!r}", flush=True)
+
+def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
+    """Retorna {empresa: entry} dos resultados ainda não sincronizados."""
+    pendentes = {}
+    if not r2_client or not R2_BUCKET:
+        return pendentes
+    try:
+        token = None
+        while True:
+            kwargs = {"Bucket": R2_BUCKET, "Prefix": _gads_checkpoint_prefix(user_id), "MaxKeys": 1000}
+            if token:
+                kwargs["ContinuationToken"] = token
+            pagina = r2_client.list_objects_v2(**kwargs)
+            for obj in pagina.get("Contents", []):
+                try:
+                    bruto = r2_client.get_object(Bucket=R2_BUCKET, Key=obj["Key"])["Body"].read()
+                    doc = json.loads(bruto.decode("utf-8"))
+                    if doc.get("empresa") and isinstance(doc.get("entry"), dict):
+                        pendentes[doc["empresa"]] = doc["entry"]
+                except Exception as exc_item:
+                    print(f"[GADS-OUTBOX-V194] checkpoint inválido key={obj.get('Key')!r}: {exc_item!r}", flush=True)
+            if not pagina.get("IsTruncated"):
+                break
+            token = pagina.get("NextContinuationToken")
+        return pendentes
+    except Exception as exc:
+        print(f"[GADS-OUTBOX-V194] falha ao listar: {exc!r}", flush=True)
+        return pendentes
 
 # ---------------------------------------------------
 #  WHISPER LOCAL (transcrição de áudio dos vídeos, sem custo de API)
@@ -2481,10 +2544,6 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     """
     import time as _time_cc151
 
-    if _coleta_dados_prioritaria_ativa(user_id):
-        print("[PRIORIDADE-COLETA] CC adiado: há coleta de dados ativa.", flush=True)
-        return False
-
     _recuperar_atividade_cc_youtube_orfa_v161(user_id, cache_sessao)
 
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
@@ -3368,9 +3427,6 @@ def _transcrever_pendentes_na_fila_global(user_id: str, empresa: str, atividade_
 
 
 def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
-    if _coleta_dados_prioritaria_ativa(user_id):
-        print(f"[PRIORIDADE-COLETA] transcrição adiada empresa={empresa!r}", flush=True)
-        return False
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o
     processamento, em segundo plano, dos vídeos dessa empresa que já
     foram migrados pro R2 mas ainda não têm transcrição salva. Cria/
@@ -11809,9 +11865,6 @@ def _garantir_worker_ocr_global():
         threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
 
 def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = False):
-    if _coleta_dados_prioritaria_ativa(user_id):
-        print(f"[PRIORIDADE-COLETA] OCR adiado empresa={empresa!r}", flush=True)
-        return False
     """Dispara (se ainda não tiver uma rodando pra essa empresa) o OCR
     das imagens do Google Ads dessa empresa que já foram migradas pro R2
     mas ainda não têm texto extraído. Mesmo padrão de
@@ -12025,9 +12078,6 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
             _reels_transcricao_ativa_agora.discard(user_id)
 
 def iniciar_transcricao_reels_pendente_background(user_id: str):
-    if _coleta_dados_prioritaria_ativa(user_id):
-        print("[PRIORIDADE-COLETA] transcrição de Reels adiada.", flush=True)
-        return False
     """Checkin da página de Redes Sociais: verifica se há posts coletados
     e, entre eles, Reels ainda sem transcrição — se houver, cria (ou
     reaproveita) a atividade `transcricao_reel` e dispara o processamento
@@ -15487,10 +15537,6 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
     varredura achando itens antigos), o sino ganhava um card duplicado
     pra sempre 'em andamento' em vez de continuar atualizando o
     mesmo."""
-    if _coleta_dados_prioritaria_ativa(user_id):
-        print(f"[PRIORIDADE-COLETA] migração adiada plataforma={plataforma!r}", flush=True)
-        return False
-
     tarefas = []
     for empresa, entry in novos.items():
         _escopo_job_migr = f"{plataforma}:{empresa}"
@@ -16536,15 +16582,6 @@ with st.sidebar:
     @st.fragment(run_every="120s")
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
-            # V191: a página Google Ads tem prioridade total de memória.
-            # Não religa OCR, transcrição, CC ou migração enquanto o usuário
-            # está preparando/rodando uma coleta. No log real, esse religamento
-            # levou o conjunto pai+OCR a ~3 GB e derrubou o container.
-            if (
-                st.session_state.get("pagina") == "google_ads"
-                or _coleta_dados_prioritaria_ativa(st.session_state.user.id)
-            ):
-                return
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
             # Mesmo ciclo cuida de pegar vídeos que já foram migrados (têm
             # url_cdn no R2) mas ainda não têm transcrição — seja de uma
@@ -17152,7 +17189,8 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             pass
         return False, str(e)
 
-def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None) -> tuple[bool, str | None]:
+def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None,
+                      tentativas: int = 7) -> tuple[bool, str | None]:
     """Equivalente a `salvar_cache_ads`, mas pro Google Ads — grava na
     coluna `gads_cache`, não `ads_cache`. Antes, a coleta de Google Ads
     chamava por engano a função de Meta Ads, o que fazia os anúncios do
@@ -17231,7 +17269,10 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         # insistir um pouco mais antes de marcar a atividade como erro.
         ultimo_erro = None
         try:
-            _persistir_cache_ads_db(user_id, "gads_cache", dados_limpos, tentativas=7)
+            _persistir_cache_ads_db(
+                user_id, "gads_cache", dados_limpos,
+                tentativas=max(1, int(tentativas or 1)),
+            )
             return True, None
         except Exception as e:
             ultimo_erro = str(e)
@@ -17246,6 +17287,35 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         except Exception:
             pass
         return False, str(e)
+
+def _sincronizar_outbox_gads_background(user_id: str):
+    """Reenvia ao Supabase coletas protegidas no R2, sem usar a Apify."""
+    pendentes = _carregar_checkpoints_gads_r2(user_id)
+    if not pendentes:
+        return
+    try:
+        res = _supabase_resiliente(
+            lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
+            operacao="ler_gads_para_sincronizar_outbox",
+            tentativas=3,
+            backoff=(2, 4, 8),
+        )
+        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+    except Exception as exc:
+        print(f"[GADS-OUTBOX-V194] banco ainda indisponível: {exc!r}", flush=True)
+        return
+
+    # A entrada mais recente da outbox substitui somente a mesma empresa;
+    # dados das demais empresas já existentes no banco são preservados.
+    cache_mesclado = dict(cache)
+    cache_mesclado.update(pendentes)
+    ok, erro = salvar_cache_gads(cache_mesclado, migrar_midia=False, user_id=user_id)
+    if not ok:
+        print(f"[GADS-OUTBOX-V194] sincronização adiada: {erro}", flush=True)
+        return
+    for empresa in pendentes:
+        _excluir_checkpoint_gads_r2(user_id, empresa)
+    print(f"[GADS-OUTBOX-V194] sincronizadas empresas={list(pendentes)}", flush=True)
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
@@ -24583,6 +24653,7 @@ elif st.session_state.pagina == "ads":
 
             erros = {}
             novos = {}
+            protegidos = {}
             _nomes_empresas = [x["nome"] for x in empresas]
             _total_empresas = len(_nomes_empresas)
             _processadas = 0
@@ -30615,13 +30686,19 @@ elif st.session_state.pagina == "google_ads":
 
         images = [image_url] if image_url.startswith("http") else []
 
-        # V191: nunca acumula imagens Google em base64 durante a coleta.
-        # O log real mostrou o processo pai acima de 2 GB porque cada imagem
-        # era mantida simultaneamente como bytes/base64, no cache acumulado e
-        # nas cópias JSON enviadas ao Supabase. A URL original é suficiente
-        # para o checkpoint; a migração posterior troca por R2. Até lá, algum
-        # card pode ficar momentaneamente sem miniatura, mas a coleta não cai.
         images_b64 = []
+        if images:
+            b64 = _url_para_base64(images[0], referer_especifico=_human_page_url, tag=f"GADS-B64:{ad_id}")
+            if not b64:
+                # Sem base64 (CDN bloqueou todas as tentativas), o card
+                # cai pro <img src> direto na URL crua do Google — que
+                # tem boa chance de falhar no navegador do usuário por
+                # hotlink/referrer (o <img> do card usa
+                # referrerpolicy="no-referrer", que tende a ser bloqueado
+                # por esse CDN), resultando no card "sem imagem" mesmo o
+                # backend tendo achado a URL certa.
+                print(f"[GADS] ad_id={ad_id} ATENÇÃO: base64 falhou, card vai depender do <img src> direto (pode quebrar por hotlink)", flush=True)
+            images_b64.append(b64 if b64 else images[0])
 
         # Se o previewUrl revelou um ID do YouTube, isso é bem mais valioso
         # que o thumbnail estático: vira o vídeo do anúncio de verdade
@@ -30678,9 +30755,7 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600,
-                        region: str = "BR", on_chunk=None, chunk_size: int = 10,
-                        resume_state: dict = None, on_checkpoint=None) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50) -> tuple:
         # `on_chunk` (opcional): callback chamado a cada `chunk_size` anúncios
         # já normalizados (ver loop no fim da função). Existe pra quem chama
         # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
@@ -30694,7 +30769,6 @@ elif st.session_state.pagina == "google_ads":
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
 
-        resume_state = dict(resume_state or {})
         run_url = (
             f"https://api.apify.com/v2/acts/{APIFY_ACTOR_ID}/runs"
             f"?token={api_token}"
@@ -30738,41 +30812,36 @@ elif st.session_state.pagina == "google_ads":
             payload["searchTerms"] = [termo]
         print(f"[APIFY-DEBUG] termo={termo!r} -> payload={payload}", flush=True)
 
-        run_id = str(resume_state.get("run_id") or "")
-        dataset_id = str(resume_state.get("dataset_id") or "")
-        _offset = max(0, int(resume_state.get("offset") or 0))
-        status = "SUCCEEDED" if dataset_id else "RUNNING"
+        try:
+            r_start = _http_post(run_url, json=payload, timeout=30)
+            r_start.raise_for_status()
+            run_data = r_start.json()
+        except Exception as e:
+            print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao iniciar run: {e!r}", flush=True)
+            return [], [], f"Erro ao iniciar run Apify: {e}"
 
-        if not dataset_id:
+        run_id     = run_data.get("data", {}).get("id") or run_data.get("id")
+        dataset_id = run_data.get("data", {}).get("defaultDatasetId") or run_data.get("defaultDatasetId")
+
+        if not run_id:
+            print(f"[APIFY-DEBUG] termo={termo!r} sem run_id na resposta: {run_data}", flush=True)
+            return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
+
+        status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
+        deadline   = _time.time() + deadline_seconds
+        status     = "RUNNING"
+        while _time.time() < deadline:
             try:
-                r_start = _http_post(run_url, json=payload, timeout=30)
-                r_start.raise_for_status()
-                run_data = r_start.json()
-            except Exception as e:
-                print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao iniciar run: {e!r}", flush=True)
-                return [], [], f"Erro ao iniciar run Apify: {e}"
-            run_id = run_data.get("data", {}).get("id") or run_data.get("id")
-            dataset_id = run_data.get("data", {}).get("defaultDatasetId") or run_data.get("defaultDatasetId")
-            if not run_id:
-                return [], [], f"Apify não retornou run ID. Resposta: {run_data}"
-            if on_checkpoint:
-                on_checkpoint({"run_id": run_id, "dataset_id": dataset_id or "", "offset": 0, "status": "aguardando_apify"})
-            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_token}"
-            deadline = _time.time() + deadline_seconds
-            while _time.time() < deadline:
-                try:
-                    r_st = _http_get(status_url, timeout=15)
-                    jdata = r_st.json().get("data", {})
-                    status = jdata.get("status", "RUNNING")
-                    if not dataset_id:
-                        dataset_id = jdata.get("defaultDatasetId") or dataset_id
-                except Exception:
-                    pass
-                if on_checkpoint and dataset_id:
-                    on_checkpoint({"run_id": run_id, "dataset_id": dataset_id, "offset": 0, "status": status.lower()})
-                if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
-                    break
-                _time.sleep(5)
+                r_st   = _http_get(status_url, timeout=15)
+                jdata  = r_st.json().get("data", {})
+                status = jdata.get("status", "RUNNING")
+                if not dataset_id:
+                    dataset_id = jdata.get("defaultDatasetId") or dataset_id
+            except Exception:
+                pass
+            if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+                break
+            _time.sleep(5)
 
         print(f"[APIFY-DEBUG] termo={termo!r} run_id={run_id} status_final={status} dataset_id={dataset_id}", flush=True)
 
@@ -30790,8 +30859,8 @@ elif st.session_state.pagina == "google_ads":
         # dependemos de uma única resposta HTTP grande (menos chance de timeout
         # e pronto para mudanças de paginação do endpoint).
         raw_items = []
-        gads_normalizados = []
-        _page_size = 25
+        _offset = 0
+        _page_size = 250
         try:
             while _offset < _max_ads_actor:
                 _limite_pagina = min(_page_size, _max_ads_actor - _offset)
@@ -30806,32 +30875,32 @@ elif st.session_state.pagina == "google_ads":
                     _pagina = _pagina.get("items", []) if isinstance(_pagina, dict) else []
                 if not _pagina:
                     break
-                for _i in range(0, len(_pagina), max(1, chunk_size)):
-                    _chunk_raw = _pagina[_i:_i + chunk_size]
-                    _chunk_normalizado = [_normalizar_item_apify(item) for item in _chunk_raw]
-                    gads_normalizados.extend(_chunk_normalizado)
-                    if on_chunk:
-                        on_chunk(_chunk_normalizado)
-                    _offset += len(_chunk_raw)
-                    if on_checkpoint:
-                        on_checkpoint({"run_id": run_id, "dataset_id": dataset_id, "offset": _offset, "status": "baixando"})
+                raw_items.extend(_pagina)
+                _offset += len(_pagina)
                 if len(_pagina) < _limite_pagina:
                     break
         except Exception as e:
             print(f"[APIFY-DEBUG] termo={termo!r} ERRO ao ler dataset offset={_offset}: {e!r}", flush=True)
             return [], [], f"Erro ao ler dataset Apify: {e}"
 
-        print(f"[APIFY-DEBUG] termo={termo!r} normalizados={len(gads_normalizados)} offset={_offset}", flush=True)
-        if not gads_normalizados and _offset == 0:
+        print(f"[APIFY-DEBUG] termo={termo!r} raw_items retornados={len(raw_items)}", flush=True)
+        if not raw_items:
             return [], [], None
-        if on_checkpoint:
-            on_checkpoint({"run_id": run_id, "dataset_id": dataset_id, "offset": _offset, "status": "dataset_concluido"})
+
+        gads_normalizados = []
+        for _i in range(0, len(raw_items), max(1, chunk_size)):
+            _chunk_raw = raw_items[_i:_i + chunk_size]
+            _chunk_normalizado = [_normalizar_item_apify(item) for item in _chunk_raw]
+            gads_normalizados.extend(_chunk_normalizado)
+            if on_chunk:
+                try:
+                    on_chunk(_chunk_normalizado)
+                except Exception as e_chunk:
+                    print(f"[APIFY-DEBUG] termo={termo!r} on_chunk falhou: {e_chunk!r}", flush=True)
         return gads_normalizados, raw_items, None
 
-    def buscar_gads_apify(query: str, limit: int = 1000, on_chunk=None,
-                          resume_state: dict = None, on_checkpoint=None) -> tuple:
-        return _apify_run_sync(query.strip(), limit=limit, on_chunk=on_chunk,
-                               resume_state=resume_state, on_checkpoint=on_checkpoint)
+    def buscar_gads_apify(query: str, limit: int = 1000, on_chunk=None) -> tuple:
+        return _apify_run_sync(query.strip(), limit=limit, on_chunk=on_chunk)
 
     def _render_loader(placeholder, progresso: list, total: int, atual: int, finalizado: bool = False):
         progresso_pct = int((atual / total) * 100) if total else 100
@@ -30920,9 +30989,7 @@ elif st.session_state.pagina == "google_ads":
             return "Falha temporária de comunicação com o banco. O sistema tentou novamente."
         return (txt[:220] + "…") if len(txt) > 220 else txt
 
-    def _executar_busca_background(user_id: str, empresas: list, query_values: dict,
-                                   forcar: bool, atividade_id: str,
-                                   resume_por_empresa: dict = None):
+    def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
         """Roda a coleta de verdade (chamadas à Apify) numa thread — não
         pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
         thread principal do Streamlit. Por isso não usa `_render_loader`
@@ -30941,26 +31008,28 @@ elif st.session_state.pagina == "google_ads":
         "erro_ao_salvar" em `por_empresa`) e refazer só ela, sem rodar a
         Apify de novo pras que já deram certo (ver refazer_coleta_gads)."""
         try:
-            print(
-                f"[GADS-COLETA-V193] INICIO user={user_id} "
-                f"empresas={[e.get('nome') for e in empresas]!r} "
-                f"forcar={forcar} resumes={list((resume_por_empresa or {}).keys())!r}",
-                flush=True,
-            )
-            res = _supabase_resiliente(
-                lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
-                operacao="gads_coleta_carregar_cache_inicial",
-                tentativas=5,
-                backoff=(1, 2, 4, 8, 12),
-            )
-            cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
+            # Recupera primeiro qualquer coleta anterior protegida no R2.
+            # Mesmo com o Supabase fora do ar a Apify pode continuar, pois o
+            # outbox passa a ser a garantia de durabilidade do resultado.
+            _outbox_anterior = _carregar_checkpoints_gads_r2(user_id)
+            try:
+                res = _supabase_resiliente(
+                    lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
+                    operacao="ler_gads_inicio_coleta",
+                    tentativas=3,
+                    backoff=(2, 4, 8),
+                )
+                cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
+            except Exception as exc_inicio:
+                cache_atual = {}
+                print(f"[GADS-OUTBOX-V194] coleta seguirá sem leitura do Supabase: {exc_inicio!r}", flush=True)
+            cache_atual.update(_outbox_anterior)
 
             erros = {}
             novos = {}
             _nomes_empresas = [x["nome"] for x in empresas]
             _total_empresas = len(_nomes_empresas)
             _processadas = 0
-            _resume_por_empresa = {str(k): dict(v or {}) for k, v in (resume_por_empresa or {}).items()}
             # Status por empresa pra desenhar uma barra individual por
             # empresa no card (em vez de só um "X de Y" agregado pro lote
             # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
@@ -30979,15 +31048,13 @@ elif st.session_state.pagina == "google_ads":
                     "coletadas": list(novos.keys()),
                     "com_erro": dict(erros),
                     "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
-                    "resume_por_empresa": {k: dict(v) for k, v in _resume_por_empresa.items()},
                 })
 
             for e in empresas:
                 ck = e["nome"]
                 entrada_cache = cache_atual.get(ck, {})
-                _resume_ck = dict(_resume_por_empresa.get(ck) or {})
                 _pula = False
-                if not _resume_ck and not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
+                if not forcar and entrada_cache and cache_esta_fresco(entrada_cache.get("ts", "")):
                     _pula = True
 
                 if not _pula:
@@ -31019,28 +31086,26 @@ elif st.session_state.pagina == "google_ads":
                     # anúncios já normalizados: salva o que já foi
                     # processado até ali e atualiza o card com a contagem
                     # parcial, em vez de um único "lotão" silencioso.
-                    _ads_ck_acumulados = ([dict(a) for a in (entrada_cache.get("data") or [])] if _resume_ck else [])
+                    _ads_ck_acumulados = []
 
                     def _on_chunk_ck(chunk_normalizado, _ck=ck, _query=query):
                         nonlocal cache_atual
-                        _por_id = {str(a.get("id")): a for a in _ads_ck_acumulados if str(a.get("id") or "")}
-                        _sem_id = [a for a in _ads_ck_acumulados if not a.get("id")]
-                        for _ad_novo in chunk_normalizado:
-                            _ad_id = str(_ad_novo.get("id") or "")
-                            if _ad_id:
-                                _por_id[_ad_id] = _ad_novo
-                            else:
-                                _sem_id.append(_ad_novo)
-                        _ads_ck_acumulados[:] = list(_por_id.values()) + _sem_id
+                        _ads_ck_acumulados.extend(chunk_normalizado)
                         _entry_parcial = {
                             "data":  list(_ads_ck_acumulados),
                             "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "nome":  _ck,
                             "query": _query,
-                            "coleta_status": "parcial",
                         }
                         _cache_parcial = merge_ads(cache_atual, {_ck: _entry_parcial})
-                        _salvo_parcial_ok, _erro_parcial = salvar_cache_gads(_cache_parcial, migrar_midia=False, user_id=user_id)
+                        # O checkpoint durável vem antes do Supabase. Se o
+                        # banco cair, este lote continua disponível após um
+                        # restart e será sincronizado sem nova chamada Apify.
+                        _salvar_checkpoint_gads_r2(user_id, _ck, _entry_parcial)
+                        _salvo_parcial_ok, _erro_parcial = salvar_cache_gads(
+                            _cache_parcial, migrar_midia=False, user_id=user_id,
+                            tentativas=1,
+                        )
                         if _salvo_parcial_ok:
                             cache_atual = _cache_parcial
                         else:
@@ -31053,24 +31118,16 @@ elif st.session_state.pagina == "google_ads":
                         }
                         _grava_progresso()
 
-                    def _on_checkpoint_ck(estado, _ck=ck):
-                        _resume_por_empresa[_ck] = dict(estado or {})
-                        _grava_progresso()
-
-                    ads, raw, erro = buscar_gads_apify(
-                        query, on_chunk=_on_chunk_ck,
-                        resume_state=_resume_ck, on_checkpoint=_on_checkpoint_ck,
-                    )
+                    ads, raw, erro = buscar_gads_apify(query, on_chunk=_on_chunk_ck)
                     if erro:
                         erros[ck] = erro
                         _status_por_empresa[ck] = {"status": "erro", "msg": erro}
                     else:
                         entry_nova = {
-                            "data":  list(_ads_ck_acumulados),
+                            "data":  ads,
                             "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "nome":  ck,
                             "query": query,
-                            "coleta_status": "concluida",
                         }
                         # Salva JÁ essa empresa, sozinha — usa o `cache_atual`
                         # que já vai sendo atualizado em memória a cada
@@ -31080,16 +31137,31 @@ elif st.session_state.pagina == "google_ads":
                         # empresa só significava mais uma ida ao Supabase
                         # sem ganho real).
                         _cache_com_uma = merge_ads(cache_atual, {ck: entry_nova})
-                        _salvo_ok_ck, _erro_salvar_ck = salvar_cache_gads(_cache_com_uma, migrar_midia=False, user_id=user_id)
+                        _checkpoint_ok, _checkpoint_erro = _salvar_checkpoint_gads_r2(user_id, ck, entry_nova)
+                        _salvo_ok_ck, _erro_salvar_ck = salvar_cache_gads(
+                            _cache_com_uma, migrar_midia=False, user_id=user_id,
+                            tentativas=2,
+                        )
                         if _salvo_ok_ck:
                             novos[ck] = entry_nova
                             cache_atual = _cache_com_uma
                             _status_por_empresa[ck] = {"status": "ok"}
-                            _resume_por_empresa.pop(ck, None)
+                            _excluir_checkpoint_gads_r2(user_id, ck)
                         else:
                             _erro_curto_ck = _resumir_erro_coleta_salvar_gads(_erro_salvar_ck)
-                            erros[ck] = f"Coletado, mas não salvou: {_erro_curto_ck}"
-                            _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_curto_ck}
+                            if _checkpoint_ok:
+                                protegidos[ck] = entry_nova
+                                erros[ck] = f"Coletado e protegido; aguardando sincronização: {_erro_curto_ck}"
+                                _status_por_empresa[ck] = {
+                                    "status": "aguardando_sincronizacao",
+                                    "msg": "Coleta protegida; aguardando o banco voltar.",
+                                }
+                            else:
+                                erros[ck] = (
+                                    f"Coletado, mas não foi possível proteger/salvar: "
+                                    f"{_erro_curto_ck}; checkpoint: {_checkpoint_erro}"
+                                )
+                                _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_curto_ck}
 
                 # Progresso incremental — sem isso, o card ficava mostrando só
                 # o rótulo genérico "Coleta de anúncios" do início ao fim,
@@ -31103,22 +31175,23 @@ elif st.session_state.pagina == "google_ads":
                 _processadas += 1
                 _grava_progresso()
 
-            _status_final = "erro" if (erros and not novos) else "concluido"
+            if novos:
+                iniciar_migracao_midia_background(user_id, novos)
+            iniciar_retentativa_midias_background(user_id)
+
+            # Resultado protegido no R2 conta como coleta concluída. A falha
+            # é somente de sincronização, resolvida pelo outbox depois.
+            _status_final = "erro" if (erros and not novos and not protegidos) else "concluido"
             atualizar_atividade(atividade_id, _status_final, {
                 "empresas": _nomes_empresas,
                 "total": _total_empresas,
                 "concluidas": _processadas,
                 "coletadas": list(novos.keys()),
+                "aguardando_sincronizacao": list(protegidos.keys()),
                 "com_erro": erros,
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
-                "resume_por_empresa": {k: dict(v) for k, v in _resume_por_empresa.items()},
             })
-            # V191: URLs e checkpoints já estão persistidos. Migração,
-            # OCR e CC não começam no mesmo ciclo; serão retomados pelo
-            # fragment global somente depois que o usuário sair desta página.
-            gc.collect()
         except Exception as e:
-            print(f"[GADS-COLETA-V193][ERRO] atividade={atividade_id} erro={e!r}", flush=True)
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
     def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
@@ -31126,45 +31199,6 @@ elif st.session_state.pagina == "google_ads":
         if not _permitido:
             st.warning(f"🚫 {_motivo_bloqueio}")
             return
-
-        # Não inicia uma coleta enquanto algum processo pesado herdado de
-        # uma execução anterior ainda está vivo. Após redeploy o registry
-        # nasce limpo; em navegação normal, a mensagem evita repetir o pico
-        # de ~3 GB observado no log.
-        _uid_coleta_v191 = st.session_state.user.id
-        with _YOUTUBE_CC_VERIFY_LOCK_V151:
-            _cc_ativo_v191 = _uid_coleta_v191 in _YOUTUBE_CC_VERIFY_ACTIVE_V151
-        _pesado_ativo_v191 = any(
-            _job_any_active(_tipo, _uid_coleta_v191)
-            for _tipo in ("ocr_gads", "migracao_midia", "transcricao_video")
-        ) or _cc_ativo_v191
-        if _pesado_ativo_v191:
-            st.warning(
-                "Há um pós-processamento antigo finalizando. Aguarde ele "
-                "encerrar ou faça o redeploy antes de iniciar a coleta do Google Ads."
-            )
-            return
-
-        _resume_por_empresa = {}
-        try:
-            _r_resume = (
-                supabase.table("atividades")
-                .select("detalhes,status")
-                .eq("user_id", st.session_state.user.id)
-                .eq("tipo", "coleta_ads_google")
-                .order("criado_em", desc=True)
-                .limit(1)
-                .execute()
-            )
-            _det_resume = (((_r_resume.data or [{}])[0]).get("detalhes") or {})
-            _nomes_solicitados = {e["nome"] for e in empresas}
-            _resume_por_empresa = {
-                str(k): dict(v or {})
-                for k, v in (_det_resume.get("resume_por_empresa") or {}).items()
-                if str(k) in _nomes_solicitados and (v or {}).get("dataset_id")
-            }
-        except Exception as _e_resume:
-            print(f"[GADS-RESUME-V190] carregar checkpoint falhou: {_e_resume!r}", flush=True)
 
         _nomes_empresas = ", ".join(e["nome"] for e in empresas)
         _atividade_id = criar_atividade(
@@ -31185,8 +31219,7 @@ elif st.session_state.pagina == "google_ads":
         _iniciou_coleta = _job_start_thread(
             "coleta_ads_google", st.session_state.user.id, "google_ads",
             _executar_busca_background,
-            args=(st.session_state.user.id, empresas, query_values, forcar,
-                  _atividade_id, _resume_por_empresa),
+            args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
             daemon=True,
             name="coleta-google-ads",
         )
@@ -31277,15 +31310,30 @@ elif st.session_state.pagina == "google_ads":
         except Exception:
             return []
 
+    # Tenta descarregar resultados protegidos no R2 em toda nova visita à
+    # área, mas com trava global para nunca abrir workers duplicados. Esta
+    # sincronização só grava o que já foi coletado; não chama a Apify.
+    _agora_outbox = time.monotonic()
+    _ultimo_outbox = float(st.session_state.get("_gads_outbox_ultima_tentativa", 0.0) or 0.0)
+    if (
+        st.session_state.get("user")
+        and (_agora_outbox - _ultimo_outbox) >= 60.0
+        and not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads")
+        and not _job_is_active("sincronizar_gads_outbox", st.session_state.user.id, "google_ads")
+    ):
+        st.session_state["_gads_outbox_ultima_tentativa"] = _agora_outbox
+        _job_start_thread(
+            "sincronizar_gads_outbox", st.session_state.user.id, "google_ads",
+            _sincronizar_outbox_gads_background,
+            args=(st.session_state.user.id,),
+            daemon=True,
+            name="sincronizar-google-ads-outbox",
+        )
+
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
         st.session_state.gads_cache = carregar_cache_ads()
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
-
-    # V191: enquanto esta página estiver aberta, a prioridade é coletar e
-    # persistir. Varreduras automáticas de CC/migração/OCR voltam a ser
-    # elegíveis quando o usuário sai da página, pelo fragment global.
-    _gads_modo_coleta_seguro_v191 = True
 
     #
     # A cada render da área Google Ads fazemos apenas a checagem local e
@@ -31294,9 +31342,7 @@ elif st.session_state.pagina == "google_ads":
     # global impede duplicidade entre reruns; o cooldown só é registrado
     # quando a tentativa TERMINA. Portanto, standby/falha no meio não deixa
     # uma flag permanente dizendo que o vídeo já foi verificado.
-    if (not _gads_modo_coleta_seguro_v191
-            and st.session_state.get("user")
-            and st.session_state.get("gads_cache")):
+    if st.session_state.get("user") and st.session_state.get("gads_cache"):
         iniciar_verificacao_cc_youtube_automatica_v151(
             st.session_state.user.id,
             st.session_state.gads_cache,
@@ -31309,9 +31355,7 @@ elif st.session_state.pagina == "google_ads":
     # do R2. Cobre casos que a migração pontual de uma coleta específica
     # não pega (falha silenciosa antiga, mídia coletada antes desse
     # pipeline existir, etc.).
-    if (not _gads_modo_coleta_seguro_v191
-            and not st.session_state.get("_verificacao_pendentes_feita_google")
-            and st.session_state.get("user")):
+    if not st.session_state.get("_verificacao_pendentes_feita_google") and st.session_state.get("user"):
         iniciar_verificacao_pendentes_google_background(st.session_state.user.id)
         st.session_state["_verificacao_pendentes_feita_google"] = True
 
@@ -31322,9 +31366,7 @@ elif st.session_state.pagina == "google_ads":
     # tipo de caso que a verificação de links acima: fila de OCR que
     # nunca rodou (falha silenciosa, migração anterior a essa
     # funcionalidade existir, etc.).
-    if (not _gads_modo_coleta_seguro_v191
-            and not st.session_state.get("_verificacao_ocr_pendente_feita_google")
-            and st.session_state.get("user")):
+    if not st.session_state.get("_verificacao_ocr_pendente_feita_google") and st.session_state.get("user"):
         iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
         # V105: a thread pode criar atividade OCR alguns instantes depois
@@ -31445,7 +31487,14 @@ elif st.session_state.pagina == "google_ads":
     # Guarda se há uma coleta rodando em background pra essa sessão — usado
     # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
     # (sem clique) enquanto o processo não termina.
-    _coleta_em_andamento = bool(st.session_state.get("_coleta_gads_em_andamento"))
+    # V194 — o botão segue o worker REAL desta instância. O status no
+    # Supabase é somente informativo e pode ficar antigo se o banco cair ou
+    # o JWT expirar. Quando a thread termina, o botão é liberado pelo
+    # `finally` de `_job_run_guarded`, mesmo que o update terminal falhe.
+    _coleta_em_andamento = _job_is_active(
+        "coleta_ads_google", st.session_state.user.id, "google_ads"
+    ) if st.session_state.get("user") else False
+    st.session_state["_coleta_gads_em_andamento"] = _coleta_em_andamento
 
     # V105 — faltava acompanhar a TERCEIRA etapa assíncrona: OCR.
     # Antes a página fazia polling durante coleta e migração, mas parava
@@ -32556,14 +32605,7 @@ setHeight(false);
                 gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
                 query_values_header[ck] = gads_id_salvo
         if query_values_header:
-            # V193: o botão principal agora executa atualização real. Antes,
-            # o cache de 24h fazia a atividade nascer e terminar sem nenhuma
-            # chamada à Apify, deixando a impressão de busca travada/falsa.
-            executar_busca(
-                [e for e in todas_empresas if empresa_tem_gads_id(e)],
-                query_values_header,
-                forcar=True,
-            )
+            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=False)
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
 
@@ -39290,21 +39332,11 @@ function setHeight(isOpen) {{
             }).execute()
         except Exception:
             pass
-        _iniciou_redes = _job_start_thread(
-            "coleta_redes",
-            st.session_state.user.id,
-            "redes_sociais",
-            _coletar_redes_background,
+        threading.Thread(
+            target=_coletar_redes_background,
             args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),
             daemon=True,
-            name="coleta-redes-sociais",
-        )
-        if not _iniciou_redes:
-            atualizar_atividade(_id_ativ_coleta_redes, "concluido", {
-                "aviso": "Já existe uma coleta de redes sociais em andamento."
-            })
-            st.info("Já existe uma coleta de redes sociais em andamento.")
-            st.rerun()
+        ).start()
 
         st.session_state["_coleta_redes_em_andamento"] = True
         st.rerun()

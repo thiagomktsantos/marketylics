@@ -12266,6 +12266,151 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     # thread pra sempre. O card fica em_andamento até o usuário clicar
     # "Refazer" ou até uma nova coleta reiniciar essa mesma atividade.
 
+
+def _criar_ou_atualizar_pendencia_gads_v199(user_id: str, empresa: str, anuncios: list) -> str:
+    """Mantém uma única atividade de recuperação seletiva por empresa."""
+    itens = [
+        {
+            "id": str(a.get("id") or "sem ID"),
+            "titulo": str(a.get("title") or "Anúncio sem título"),
+            "snapshot_url": str(a.get("snapshot_url") or ""),
+        }
+        for a in (anuncios or []) if isinstance(a, dict)
+    ]
+    if not itens:
+        return ""
+    detalhes = {
+        "empresa": empresa,
+        "plataforma": "Google Ads",
+        "ids_pendentes": [x["id"] for x in itens],
+        "anuncios_com_erro": itens,
+        "total_anuncios_com_erro": len(itens),
+        "motivo": "Anúncios sem mídia e sem texto. Use Refazer para recuperar somente estes IDs.",
+    }
+    try:
+        res = (supabase.table("atividades").select("id")
+               .eq("user_id", user_id).eq("tipo", "gads_anuncios_incompletos")
+               .eq("status", "erro").order("criado_em", desc=True).limit(20).execute())
+        for row in (res.data or []):
+            aid = row.get("id")
+            if not aid:
+                continue
+            det = (supabase.table("atividades").select("detalhes").eq("id", aid).limit(1).execute().data or [{}])[0].get("detalhes") or {}
+            if det.get("empresa") == empresa:
+                atualizar_atividade(aid, "erro", detalhes)
+                return aid
+    except Exception as exc:
+        print(f"[GADS-SELETIVO-V199] falha no dedup da atividade: {exc!r}", flush=True)
+    return criar_atividade(
+        user_id, "gads_anuncios_incompletos",
+        f"{empresa} · anúncios não coletados corretamente",
+        detalhes, status="erro",
+    ) or ""
+
+
+def _extrair_imagem_snapshot_gads_v199(snapshot_url: str) -> str:
+    """Abre somente o criativo pendente e captura seu asset do Google."""
+    if not snapshot_url or not snapshot_url.startswith("http"):
+        return ""
+    if not _garantir_chromium_playwright():
+        return ""
+    from playwright.sync_api import sync_playwright
+    achado = [""]
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+        try:
+            page = browser.new_page()
+            def capturar(url):
+                if "tpc.googlesyndication.com/archive/simgad/" in str(url or ""):
+                    achado[0] = str(url)
+            page.on("request", lambda req: capturar(req.url))
+            page.on("response", lambda resp: capturar(resp.url))
+            try:
+                page.goto(snapshot_url, wait_until="domcontentloaded", timeout=12000)
+            except Exception:
+                pass
+            for _ in range(16):
+                if achado[0]:
+                    break
+                page.wait_for_timeout(250)
+            if not achado[0]:
+                html = page.content()
+                m = re.search(r"https://tpc\.googlesyndication\.com/archive/simgad/\d+", html)
+                if m:
+                    achado[0] = m.group(0)
+        finally:
+            browser.close()
+    return achado[0]
+
+
+def _refazer_gads_incompletos_background_v199(user_id: str, atividade_id: str, empresa: str, ids: list):
+    ids_alvo = {str(x) for x in (ids or []) if x}
+    atualizar_atividade(atividade_id, "em_andamento", {
+        "empresa": empresa, "plataforma": "Google Ads", "ids_pendentes": list(ids_alvo),
+        "processadas": 0, "total": len(ids_alvo),
+    })
+    try:
+        res = _supabase_resiliente(
+            lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
+            operacao="gads_retry_seletivo_ler", tentativas=3,
+        )
+        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        entry = cache.get(empresa) or {}
+        dados = entry.get("data") or []
+        recuperados, falhas = [], []
+        processadas = 0
+        for ad in dados:
+            if str(ad.get("id") or "") not in ids_alvo:
+                continue
+            processadas += 1
+            url = _extrair_imagem_snapshot_gads_v199(str(ad.get("snapshot_url") or ""))
+            if url:
+                ad["images"] = [url]
+                ad["images_b64"] = [url]
+                recuperados.append(str(ad.get("id")))
+            else:
+                falhas.append({"id": str(ad.get("id") or "sem ID"), "titulo": ad.get("title") or "Anúncio sem título", "snapshot_url": ad.get("snapshot_url") or ""})
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "empresa": empresa, "plataforma": "Google Ads", "ids_pendentes": list(ids_alvo),
+                "processadas": processadas, "total": len(ids_alvo), "recuperados": recuperados,
+            })
+        cache[empresa] = entry
+        _supabase_resiliente(
+            lambda: supabase.table("ci_dados").update({"gads_cache": cache}).eq("user_id", user_id).execute(),
+            operacao="gads_retry_seletivo_salvar", tentativas=4,
+        )
+        if recuperados:
+            iniciar_migracao_midia_background(user_id, {empresa: entry}, plataforma="Google Ads")
+        if falhas:
+            atualizar_atividade(atividade_id, "erro", {
+                "empresa": empresa, "plataforma": "Google Ads",
+                "ids_pendentes": [x["id"] for x in falhas],
+                "anuncios_com_erro": falhas, "total_anuncios_com_erro": len(falhas),
+                "recuperados": recuperados,
+                "motivo": "Alguns criativos continuam indisponíveis. O botão Refazer tentará somente estes IDs novamente.",
+            })
+        else:
+            atualizar_atividade(atividade_id, "concluido", {
+                "empresa": empresa, "plataforma": "Google Ads",
+                "processadas": processadas, "total": len(ids_alvo), "recuperados": recuperados,
+            })
+    except Exception as exc:
+        atualizar_atividade(atividade_id, "erro", {
+            "empresa": empresa, "plataforma": "Google Ads", "ids_pendentes": list(ids_alvo),
+            "motivo": str(exc),
+        })
+
+
+def refazer_gads_incompletos_v199(user_id: str, atividade_id: str, empresa: str, ids: list) -> bool:
+    if not user_id or not atividade_id or not empresa or not ids:
+        return False
+    return _job_start_thread(
+        "gads_retry_seletivo", user_id, empresa,
+        _refazer_gads_incompletos_background_v199,
+        args=(user_id, atividade_id, empresa, ids), daemon=True,
+        name=f"gads-retry-seletivo-{safe_key(empresa)}",
+    )
+
 def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
     """Remove uma atividade do sino de notificações. Usado pelo botão de
     excluir na página de notificações — principalmente pra limpar
@@ -12637,6 +12782,10 @@ _TIPO_ATIVIDADE_LABELS = {
     "coleta_ads_google": (
         "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
         "#f5a623", "Coleta de anúncios (Google Ads)",
+    ),
+    "gads_anuncios_incompletos": (
+        "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
+        "#ef4444", "Anúncios do Google Ads incompletos",
     ),
     "coleta_redes": (
         "M17,19H7V5H17M17,1H7C5.89,1 5,1.89 5,3V21A2,2 0 0,0 7,23H17A2,2 0 0,0 19,21V3C19,1.89 18.1,1 17,1Z",
@@ -13029,6 +13178,15 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "ocr_gads" and "processadas" in d:
         path, _cor, _ = _TIPO_ATIVIDADE_LABELS["ocr_gads"]
         texto = f"{d.get('processadas', 0)} de {d.get('total', 0)} imagens processadas."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "gads_anuncios_incompletos":
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["gads_anuncios_incompletos"]
+        total = d.get("total_anuncios_com_erro", len(d.get("ids_pendentes") or []))
+        empresa = d.get("empresa") or "Empresa"
+        texto = f"{empresa}: {total} anúncio(s) não foram coletados corretamente. Refazer tentará somente os IDs pendentes."
+        if atividade.get("status") == "em_andamento":
+            texto = f"{empresa}: recuperando somente os anúncios pendentes agora."
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo in ("coleta_ads", "coleta_ads_google") and ("coletadas" in d or "com_erro" in d):
@@ -28585,7 +28743,17 @@ function imgFallback_{uid}(img){{
                     is_ativo    = ad.get("ativo", True)
                     card_opacity = "1" if is_ativo else "0.72"
 
-                    status_dot_html = '<div class="status-dot">Ativo</div>' if is_ativo else '<div class="status-dot-inactive">Inativo</div>'
+                    _ad_incompleto_card = not bool(
+                        images or images_b64 or videos
+                        or body_clean or title_clean or desc_clean
+                    )
+                    if _ad_incompleto_card:
+                        status_dot_html = (
+                            '<div class="status-dot-inactive" '
+                            'style="color:#dc2626;font-weight:800">Erro na coleta</div>'
+                        )
+                    else:
+                        status_dot_html = '<div class="status-dot">Ativo</div>' if is_ativo else '<div class="status-dot-inactive">Inativo</div>'
                     baixo_vol_badge = '<span class="badge-small">Baixo volume</span>' if baixo_vol else ""
 
                     page_avatar_html = (
@@ -31099,6 +31267,7 @@ elif st.session_state.pagina == "google_ads":
 
             erros = {}
             novos = {}
+            incompletos = {}
             # Resultados já coletados e preservados no outbox/R2 quando o
             # Supabase estiver temporariamente indisponível. Esta coleção
             # precisa existir mesmo quando nenhum checkpoint for necessário,
@@ -31124,8 +31293,29 @@ elif st.session_state.pagina == "google_ads":
                     "concluidas": _processadas,
                     "coletadas": list(novos.keys()),
                     "com_erro": dict(erros),
+                    "incompletos": dict(incompletos),
                     "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
                 })
+
+            def _ids_gads_incompletos(entry):
+                """Criativo sem mídia E sem copy precisa de nova coleta."""
+                pendentes = []
+                for ad in ((entry or {}).get("data") or []):
+                    if not isinstance(ad, dict):
+                        continue
+                    tem_midia = bool(
+                        (ad.get("images") or [])
+                        or (ad.get("images_b64") or [])
+                        or (ad.get("videos") or [])
+                    )
+                    tem_texto = bool(
+                        str(ad.get("body") or "").strip()
+                        or str(ad.get("title") or "").strip()
+                        or str(ad.get("description") or "").strip()
+                    )
+                    if not tem_midia and not tem_texto:
+                        pendentes.append(str(ad.get("id") or "sem ID"))
+                return pendentes
 
             for e in empresas:
                 ck = e["nome"]
@@ -31222,7 +31412,27 @@ elif st.session_state.pagina == "google_ads":
                         if _salvo_ok_ck:
                             novos[ck] = entry_nova
                             cache_atual = _cache_com_uma
-                            _status_por_empresa[ck] = {"status": "ok"}
+                            _ids_incompletos = _ids_gads_incompletos(entry_nova)
+                            if _ids_incompletos:
+                                _msg_incompleto = (
+                                    f"{len(_ids_incompletos)} anúncio(s) sem mídia e sem texto; "
+                                    "é necessário coletar novamente. IDs: "
+                                    + ", ".join(_ids_incompletos[:8])
+                                )
+                                incompletos[ck] = _msg_incompleto
+                                _ads_incompletos = [
+                                    a for a in (entry_nova.get("data") or [])
+                                    if str(a.get("id") or "sem ID") in set(_ids_incompletos)
+                                ]
+                                _criar_ou_atualizar_pendencia_gads_v199(
+                                    user_id, ck, _ads_incompletos,
+                                )
+                                _status_por_empresa[ck] = {
+                                    "status": "ok",
+                                    "msg": "Coleta salva; anúncios incompletos foram enviados para uma atividade separada.",
+                                }
+                            else:
+                                _status_por_empresa[ck] = {"status": "ok"}
                             _excluir_checkpoint_gads_r2(user_id, ck)
                         else:
                             _erro_curto_ck = _resumir_erro_coleta_salvar_gads(_erro_salvar_ck)
@@ -31266,6 +31476,7 @@ elif st.session_state.pagina == "google_ads":
                 "coletadas": list(novos.keys()),
                 "aguardando_sincronizacao": list(protegidos.keys()),
                 "com_erro": erros,
+                "incompletos": incompletos,
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
         except Exception as e:
@@ -31411,6 +31622,36 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_cache = carregar_cache_ads()
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
+
+    # V199 — varredura leve ao abrir a área: cria a atividade seletiva até
+    # para anúncios incompletos que já estavam salvos por uma versão antiga.
+    # Assim o usuário não precisa disparar outra coleta completa só para o
+    # novo fluxo reconhecer a pendência existente.
+    _agora_scan_inc_v199 = time.monotonic()
+    _ultimo_scan_inc_v199 = float(st.session_state.get("_gads_scan_incompletos_v199", 0.0) or 0.0)
+    if _agora_scan_inc_v199 - _ultimo_scan_inc_v199 >= 120.0:
+        st.session_state["_gads_scan_incompletos_v199"] = _agora_scan_inc_v199
+        for _empresa_inc_v199, _entry_inc_v199 in (st.session_state.gads_cache or {}).items():
+            _ads_inc_v199 = []
+            for _ad_inc_v199 in ((_entry_inc_v199 or {}).get("data") or []):
+                if not isinstance(_ad_inc_v199, dict):
+                    continue
+                _tem_midia_inc_v199 = bool(
+                    (_ad_inc_v199.get("images") or [])
+                    or (_ad_inc_v199.get("images_b64") or [])
+                    or (_ad_inc_v199.get("videos") or [])
+                )
+                _tem_texto_inc_v199 = bool(
+                    str(_ad_inc_v199.get("body") or "").strip()
+                    or str(_ad_inc_v199.get("title") or "").strip()
+                    or str(_ad_inc_v199.get("description") or "").strip()
+                )
+                if not _tem_midia_inc_v199 and not _tem_texto_inc_v199:
+                    _ads_inc_v199.append(_ad_inc_v199)
+            if _ads_inc_v199:
+                _criar_ou_atualizar_pendencia_gads_v199(
+                    st.session_state.user.id, _empresa_inc_v199, _ads_inc_v199,
+                )
 
     #
     # A cada render da área Google Ads fazemos apenas a checagem local e
@@ -44724,11 +44965,16 @@ html, body { background: transparent; overflow: hidden; }
                     and _a.get("status") in ("erro", "concluido")
                 )
                 _pode_refazer_retentativa = _a.get("tipo") == "retentativa_midia"
+                _pode_refazer_gads_incompleto = (
+                    _a.get("tipo") == "gads_anuncios_incompletos"
+                    and bool((_a.get("detalhes") or {}).get("ids_pendentes"))
+                    and _a.get("status") == "erro"
+                )
                 _pode_refazer = (
                     _a.get("tipo") in ("migracao_midia", "transcricao_video", "ocr_gads")
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
-                ) or _pode_refazer_redes or _pode_refazer_retentativa
+                ) or _pode_refazer_redes or _pode_refazer_retentativa or _pode_refazer_gads_incompleto
                 # "Reparar e refazer" — diferente de "Refazer" (só aparece em
                 # status "erro"), esse botão existe pra migrações que
                 # CONCLUÍRAM (status "concluido") mas cujo resultado pode
@@ -45367,6 +45613,18 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast("Tentando de novo — mídias que já tinham esgotado o limite de tentativas voltaram a ser tentadas...", icon="🔄")
                         else:
                             st.toast("Não consegui reiniciar a retentativa — tenta de novo.", icon="⚠️")
+                    elif _tipo_ref == "gads_anuncios_incompletos":
+                        _det_ref = (_atividade_ref.get("detalhes") or {}) if _atividade_ref else {}
+                        _ids_ref = _det_ref.get("ids_pendentes") or []
+                        if _empresa_ref and refazer_gads_incompletos_v199(
+                            st.session_state.user.id, _rid, _empresa_ref, _ids_ref
+                        ):
+                            st.toast(
+                                f"Refazendo somente {len(_ids_ref)} anúncio(s) pendente(s) de {_empresa_ref}...",
+                                icon="🔄",
+                            )
+                        else:
+                            st.toast("Não consegui iniciar a recuperação seletiva.", icon="⚠️")
                     else:
                         _plataforma_ref = (_atividade_ref.get("detalhes") or {}).get("plataforma") if _atividade_ref else None
                         _plataforma_ref = _plataforma_ref or "Meta Ads"

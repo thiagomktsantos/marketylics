@@ -13082,6 +13082,7 @@ def _formatar_detalhes_atividade(atividade: dict):
 
     if tipo in ("coleta_ads", "coleta_ads_google") and ("coletadas" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
+        incompletos_d = d.get("incompletos") or {}
         coletadas_d = d.get("coletadas", [])
         # Enquanto está "em_andamento", mostra progresso de verdade (quantas
         # empresas já foram processadas de quantas no total) em vez de só
@@ -13098,12 +13099,17 @@ def _formatar_detalhes_atividade(atividade: dict):
                 texto += f" — coletadas: {', '.join(coletadas_d)}"
             if erros_d:
                 texto += f" — com erro: {', '.join(erros_d.keys())}"
+            if incompletos_d:
+                texto += f" — anúncios incompletos: {', '.join(incompletos_d.keys())}"
             texto += ". · Rodando agora."
             path, _cor = _ICONE_INFO
             return _svg_icone(path, "currentColor", 14), texto
         texto = f"Coletadas: {', '.join(coletadas_d) or '—'}."
         if erros_d:
             texto += f" Com erro: {', '.join(erros_d.keys())}."
+            path, _cor = _ICONE_AVISO
+        elif incompletos_d:
+            texto += f" Precisam ser refeitos: {'; '.join(incompletos_d.values())}."
             path, _cor = _ICONE_AVISO
         else:
             path, _cor = _ICONE_OK
@@ -16161,26 +16167,33 @@ def desfazer_reprocessamento_anuncios(user_id: str, atividade: dict) -> tuple:
     detalhes = dict(atividade.get("detalhes") or {})
     backup = dict(detalhes.get("backup_desfazer") or {})
     anuncios = backup.get("anuncios") or []
-    if not atividade_id or not anuncios or backup.get("desfeito"):
+    por_empresa_backup = backup.get("por_empresa") or {}
+    if not atividade_id or (not anuncios and not por_empresa_backup) or backup.get("desfeito"):
         return False, "Não existe backup disponível para esta atividade."
 
     plataforma = backup.get("plataforma") or detalhes.get("plataforma") or "Meta Ads"
     empresa = backup.get("empresa") or detalhes.get("empresa")
-    atualizacoes = {str(_ad.get("id")): _ad for _ad in anuncios if _ad.get("id")}
-    if not empresa or not atualizacoes:
-        return False, "O backup não contém empresa e IDs válidos."
+    lotes_restaurar = por_empresa_backup or ({empresa: anuncios} if empresa else {})
+    total_restaurado = 0
     try:
-        supabase.rpc(_rpc_atualizar_cache(plataforma), {
-            "p_user_id": user_id,
-            "p_empresa": empresa,
-            "p_atualizacoes": atualizacoes,
-        }).execute()
+        for _empresa_undo, _ads_undo in lotes_restaurar.items():
+            atualizacoes = {str(_ad.get("id")): _ad for _ad in (_ads_undo or []) if _ad.get("id")}
+            if not atualizacoes:
+                continue
+            supabase.rpc(_rpc_atualizar_cache(plataforma), {
+                "p_user_id": user_id,
+                "p_empresa": _empresa_undo,
+                "p_atualizacoes": atualizacoes,
+            }).execute()
+            total_restaurado += len(atualizacoes)
+        if not total_restaurado:
+            return False, "O backup não contém empresa e IDs válidos."
         backup["desfeito"] = True
         backup["desfeito_em"] = _agora_iso()
         detalhes["backup_desfazer"] = backup
         detalhes["alteracoes_desfeitas"] = True
         detalhes["aviso"] = (
-            f"Alterações desfeitas: {len(atualizacoes)} anúncio(s) restaurado(s) "
+            f"Alterações desfeitas: {total_restaurado} anúncio(s) restaurado(s) "
             f"para o estado anterior ao reprocessamento."
         )
         _backups_desfazer_atividade[str(atividade_id)] = backup
@@ -16188,6 +16201,57 @@ def desfazer_reprocessamento_anuncios(user_id: str, atividade: dict) -> tuple:
         return True, detalhes["aviso"]
     except Exception as exc:
         return False, f"Não foi possível restaurar o backup: {exc}"
+
+def _ids_gads_incompletos_dos_detalhes(detalhes: dict) -> dict:
+    """Aceita o formato V211 e também notificações antigas (texto com IDs)."""
+    estruturado = detalhes.get("incompletos_ids_por_empresa") or {}
+    if estruturado:
+        return {str(k): [str(x) for x in (v or [])] for k, v in estruturado.items() if v}
+    import re as _re_ids_gads
+    convertido = {}
+    for empresa, mensagem in (detalhes.get("incompletos") or {}).items():
+        ids = _re_ids_gads.findall(r"\bCR\d+\b", str(mensagem or ""), flags=_re_ids_gads.I)
+        if ids:
+            convertido[str(empresa)] = ids
+    return convertido
+
+def preparar_refazer_gads_incompletos(user_id: str, atividade: dict) -> tuple:
+    """Cria backup persistente e devolve as empresas da fila de incompletos."""
+    atividade_id = atividade.get("id")
+    detalhes = dict(atividade.get("detalhes") or {})
+    ids_por_empresa = _ids_gads_incompletos_dos_detalhes(detalhes)
+    if not atividade_id or not ids_por_empresa:
+        return False, [], "A notificação não contém IDs pendentes."
+    try:
+        _r = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).limit(1).execute()
+        cache = ((_r.data or [{}])[0].get("gads_cache") or {})
+        backup_por_empresa = {}
+        for _empresa, _ids in ids_por_empresa.items():
+            _ids_set = {str(x) for x in (_ids or [])}
+            _ads = [dict(a) for a in ((cache.get(_empresa) or {}).get("data") or []) if str(a.get("id") or "") in _ids_set]
+            if _ads:
+                backup_por_empresa[_empresa] = _ads
+        if not backup_por_empresa:
+            return False, [], "Não encontrei os anúncios pendentes no cache atual."
+        backup = {
+            "plataforma": "Google Ads",
+            "criado_em": _agora_iso(),
+            "desfeito": False,
+            "por_empresa": backup_por_empresa,
+            "total": sum(len(v) for v in backup_por_empresa.values()),
+        }
+        detalhes["backup_desfazer"] = backup
+        detalhes["aviso_backup"] = f"Backup de {backup['total']} anúncio(s) criado antes do reprocessamento."
+        _supabase_resiliente(
+            lambda: supabase.table("atividades").update({"detalhes": detalhes})
+                    .eq("id", atividade_id).eq("user_id", user_id).execute(),
+            operacao="backup_refazer_gads_incompletos", tentativas=5,
+            backoff=(1, 2, 4, 8, 15),
+        )
+        _backups_desfazer_atividade[str(atividade_id)] = backup
+        return True, list(backup_por_empresa.keys()), "Backup criado."
+    except Exception as exc:
+        return False, [], f"Não foi possível criar o backup: {exc}"
 
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataforma: str = "Meta Ads") -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
@@ -30401,8 +30465,14 @@ elif st.session_state.pagina == "google_ads":
             for ad in gads_anteriores:
                 ad_id = str(ad.get("id", ""))
                 if ad_id and ad_id in novos_por_id:
-                    # Já existia e voltou: mantém a versão armazenada.
-                    ad_atualizado = dict(ad)
+                    # V211: preserva anúncios já válidos. A única exceção é
+                    # um registro antigo sem mídia quando o MESMO ID volta
+                    # agora com mídia validada. Isso corrige somente o item
+                    # incompleto e nunca troca um anúncio válido já salvo.
+                    _novo_mesmo_id = novos_por_id[ad_id]
+                    _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []))
+                    _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []))
+                    ad_atualizado = dict(_novo_mesmo_id) if (not _antigo_tem_midia and _novo_tem_midia) else dict(ad)
                     ad_atualizado["ativo"] = True
                     gads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
@@ -31286,6 +31356,7 @@ elif st.session_state.pagina == "google_ads":
             erros = {}
             novos = {}
             incompletos = {}
+            incompletos_ids = {}
             # Resultados já coletados e preservados no outbox/R2 quando o
             # Supabase estiver temporariamente indisponível. Esta coleção
             # precisa existir mesmo quando nenhum checkpoint for necessário,
@@ -31312,6 +31383,7 @@ elif st.session_state.pagina == "google_ads":
                     "coletadas": list(novos.keys()),
                     "com_erro": dict(erros),
                     "incompletos": dict(incompletos),
+                    "incompletos_ids_por_empresa": {k: list(v) for k, v in incompletos_ids.items()},
                     "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
                 })
 
@@ -31445,6 +31517,7 @@ elif st.session_state.pagina == "google_ads":
                                     + ", ".join(_ids_incompletos[:8])
                                 )
                                 incompletos[ck] = _msg_incompleto
+                                incompletos_ids[ck] = list(_ids_incompletos)
                                 _status_por_empresa[ck] = {
                                     "status": "erro",
                                     "msg": _msg_incompleto,
@@ -31495,6 +31568,13 @@ elif st.session_state.pagina == "google_ads":
                 "aguardando_sincronizacao": list(protegidos.keys()),
                 "com_erro": erros,
                 "incompletos": incompletos,
+                "incompletos_ids_por_empresa": {k: list(v) for k, v in incompletos_ids.items()},
+                "anuncios_com_erro": [
+                    {"id": _ad_id, "titulo": f"{_empresa_id} · anúncio sem mídia validada"}
+                    for _empresa_id, _ids_empresa in incompletos_ids.items()
+                    for _ad_id in _ids_empresa
+                ],
+                "total_anuncios_com_erro": sum(len(v) for v in incompletos_ids.values()),
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
         except Exception as e:
@@ -31506,19 +31586,25 @@ elif st.session_state.pagina == "google_ads":
             )
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
-    def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
+    def executar_busca(empresas: list, query_values: dict, forcar: bool = False, atividade_id_existente: str = None):
         _permitido, _motivo_bloqueio = verificar_pode_executar_acao(st.session_state.user.id, "coleta_ads")
         if not _permitido:
             st.warning(f"🚫 {_motivo_bloqueio}")
             return
 
         _nomes_empresas = ", ".join(e["nome"] for e in empresas)
-        _atividade_id = criar_atividade(
+        _atividade_id = atividade_id_existente or criar_atividade(
             st.session_state.user.id,
             "coleta_ads_google",
             f"{_nomes_empresas} · Coleta de anúncios (Google Ads)",
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
+        if atividade_id_existente:
+            atualizar_atividade(_atividade_id, "em_andamento", {
+                "empresas": [e["nome"] for e in empresas],
+                "plataforma": "Google Ads",
+                "motivo": "Refazendo somente os anúncios incompletos com backup de segurança.",
+            })
         try:
             supabase.rpc("incrementar_uso_organizacao", {
                 "p_user_id": st.session_state.user.id,
@@ -32904,6 +32990,27 @@ setHeight(false);
     empresas_sem_config   = [e for e in todas_empresas if not empresa_tem_gads_id(e)]
     n_configuradas        = len(empresas_configuradas)
     n_sem_config          = len(empresas_sem_config)
+
+    # V211 — a notificação cria o backup e entrega somente as empresas com
+    # criativos incompletos para esta página iniciar a coleta real.
+    _refazer_incompletos_nomes = st.session_state.pop("_gads_refazer_incompletos_empresas", [])
+    _refazer_incompletos_atividade = st.session_state.pop("_gads_refazer_incompletos_atividade", None)
+    if _refazer_incompletos_nomes:
+        _nomes_refazer_set = {str(x) for x in _refazer_incompletos_nomes}
+        _empresas_refazer = [e for e in todas_empresas if e.get("nome") in _nomes_refazer_set and empresa_tem_gads_id(e)]
+        _queries_refazer = {}
+        for _e_ref in _empresas_refazer:
+            _queries_refazer[_e_ref["nome"]] = (
+                emp.get("gads_id", "") if _e_ref["tipo"] == "minha"
+                else concs[_e_ref["idx"]].get("gads_id", "")
+            )
+        if _queries_refazer:
+            executar_busca(
+                _empresas_refazer, _queries_refazer, forcar=True,
+                atividade_id_existente=_refazer_incompletos_atividade,
+            )
+        else:
+            st.error("Não foi possível refazer: as empresas pendentes não possuem mais um ID do Google Ads configurado.")
 
     # ── Processar busca do cabeçalho
     if gerar_btn_gads_header:
@@ -44968,12 +45075,17 @@ html, body { background: transparent; overflow: hidden; }
                     and bool((_a.get("detalhes") or {}).get("com_erro"))
                     and _a.get("status") in ("erro", "concluido")
                 )
+                _pode_refazer_gads_incompletos = (
+                    _a.get("tipo") == "coleta_ads_google"
+                    and bool(_ids_gads_incompletos_dos_detalhes(_a.get("detalhes") or {}))
+                    and _a.get("status") in ("erro", "concluido", "concluido_com_erro")
+                )
                 _pode_refazer_retentativa = _a.get("tipo") == "retentativa_midia"
                 _pode_refazer = (
                     _a.get("tipo") in ("migracao_midia", "transcricao_video", "ocr_gads")
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
-                ) or _pode_refazer_redes or _pode_refazer_retentativa
+                ) or _pode_refazer_redes or _pode_refazer_gads_incompletos or _pode_refazer_retentativa
                 # "Reparar e refazer" — diferente de "Refazer" (só aparece em
                 # status "erro"), esse botão existe pra migrações que
                 # CONCLUÍRAM (status "concluido") mas cujo resultado pode
@@ -44990,7 +45102,7 @@ html, body { background: transparent; overflow: hidden; }
                 )
                 _backup_desfazer_ativ = (_a.get("detalhes") or {}).get("backup_desfazer") or {}
                 _pode_desfazer = (
-                    bool(_backup_desfazer_ativ.get("anuncios"))
+                    bool(_backup_desfazer_ativ.get("anuncios") or _backup_desfazer_ativ.get("por_empresa"))
                     and not bool(_backup_desfazer_ativ.get("desfeito"))
                     and _a.get("status") in ("concluido", "concluido_com_erro", "erro")
                 )
@@ -45031,6 +45143,12 @@ html, body { background: transparent; overflow: hidden; }
                 # corrigido quanto quem continuou pendente.
                 _detalhes_dict_ativ = _a.get("detalhes") or {}
                 _anuncios_erro_ativ = _detalhes_dict_ativ.get("anuncios_com_erro") or []
+                if not _anuncios_erro_ativ and _a.get("tipo") == "coleta_ads_google":
+                    _anuncios_erro_ativ = [
+                        {"id": _id_inc, "titulo": f"{_emp_inc} · anúncio sem mídia validada"}
+                        for _emp_inc, _ids_inc in _ids_gads_incompletos_dos_detalhes(_detalhes_dict_ativ).items()
+                        for _id_inc in _ids_inc
+                    ]
                 _total_anuncios_erro_ativ = _detalhes_dict_ativ.get("total_anuncios_com_erro", len(_anuncios_erro_ativ))
                 _anuncios_ok_ativ = _detalhes_dict_ativ.get("anuncios_migrados") or []
                 _total_anuncios_ok_ativ = _detalhes_dict_ativ.get("total_anuncios_migrados", len(_anuncios_ok_ativ))
@@ -45732,6 +45850,17 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast("Tentando de novo — mídias que já tinham esgotado o limite de tentativas voltaram a ser tentadas...", icon="🔄")
                         else:
                             st.toast("Não consegui reiniciar a retentativa — tenta de novo.", icon="⚠️")
+                    elif _tipo_ref == "coleta_ads_google":
+                        _ok_backup, _empresas_pend, _msg_backup = preparar_refazer_gads_incompletos(
+                            st.session_state.user.id, _atividade_ref or {}
+                        )
+                        if _ok_backup:
+                            st.session_state["_gads_refazer_incompletos_empresas"] = _empresas_pend
+                            st.session_state["_gads_refazer_incompletos_atividade"] = _rid
+                            st.session_state.pagina = "google_ads"
+                            st.toast(f"Backup criado. Refazendo somente: {', '.join(_empresas_pend)}.", icon="🔄")
+                        else:
+                            st.toast(f"O reprocessamento não começou. {_msg_backup}", icon="⚠️")
                     else:
                         _plataforma_ref = (_atividade_ref.get("detalhes") or {}).get("plataforma") if _atividade_ref else None
                         _plataforma_ref = _plataforma_ref or "Meta Ads"

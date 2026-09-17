@@ -12215,6 +12215,13 @@ def iniciar_transcricao_reels_pendente_background(user_id: str):
 # na_fila → em_andamento → concluido/erro, pra exibir no sino da
 # sidebar e, mais pra frente, servir de base pro item 3 (jobs).
 
+@st.cache_resource
+def _get_backups_desfazer_atividade() -> dict:
+    """Backups em uso pelos workers; sobrevive aos reruns do Streamlit."""
+    return {}
+
+_backups_desfazer_atividade = _get_backups_desfazer_atividade()
+
 def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None, status: str = "na_fila") -> str:
     """Cria um registro de atividade e devolve o id (pra depois atualizar).
     `status` default é "na_fila": o registro nasce aguardando sua vez e muda
@@ -12281,6 +12288,12 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
         payload["criado_em"] = _agora_iso()
     if detalhes is not None:
         _detalhes_db = dict(detalhes or {})
+        # V210 — um worker costuma substituir `detalhes` inteiro a cada
+        # progresso/conclusão. Reanexa o snapshot criado antes de "Refazer"
+        # para o botão Desfazer continuar disponível depois que o job fechar.
+        _backup_undo = _backups_desfazer_atividade.get(str(atividade_id))
+        if _backup_undo and "backup_desfazer" not in _detalhes_db:
+            _detalhes_db["backup_desfazer"] = _backup_undo
         if status == "na_fila":
             _detalhes_db["status_visual"] = "na_fila"
         payload["detalhes"] = _detalhes_db
@@ -16080,6 +16093,102 @@ def refazer_retentativa_midia(user_id: str, atividade_id: str) -> bool:
     except Exception:
         return False
 
+def _criar_backup_antes_de_refazer_migracao(
+    user_id: str, atividade_id: str, empresa: str, plataforma: str,
+    entry: dict,
+) -> dict:
+    """Persiste um snapshot dos anúncios que a migração pode alterar.
+
+    O snapshot é gravado na própria atividade ANTES de iniciar o worker. Se
+    essa gravação falhar, o reprocessamento é bloqueado: nunca alteramos dados
+    sem antes garantir um caminho de volta.
+    """
+    detalhes_atividade = {}
+    try:
+        _r = (
+            supabase.table("atividades").select("detalhes")
+            .eq("id", atividade_id).eq("user_id", user_id).limit(1).execute()
+        )
+        detalhes_atividade = ((_r.data or [{}])[0].get("detalhes") or {})
+    except Exception:
+        detalhes_atividade = {}
+
+    ids_com_erro = {
+        str(_x.get("id")) for _x in (detalhes_atividade.get("anuncios_com_erro") or [])
+        if isinstance(_x, dict) and _x.get("id")
+    }
+
+    def _pode_ser_alterado(ad: dict) -> bool:
+        ad_id = str(ad.get("id") or "")
+        if ad_id and ad_id in ids_com_erro:
+            return True
+        urls = list(ad.get("images") or []) + list(ad.get("videos") or [])
+        return any(_u and (not R2_PUBLIC_BASE or not str(_u).startswith(R2_PUBLIC_BASE)) for _u in urls)
+
+    anuncios_backup = [dict(_ad) for _ad in (entry.get("data") or []) if _pode_ser_alterado(_ad)]
+    if not anuncios_backup:
+        return {}
+
+    backup = {
+        "empresa": empresa,
+        "plataforma": plataforma,
+        "criado_em": _agora_iso(),
+        "desfeito": False,
+        "anuncios": anuncios_backup,
+        "total": len(anuncios_backup),
+    }
+    novos_detalhes = dict(detalhes_atividade)
+    novos_detalhes["backup_desfazer"] = backup
+    novos_detalhes["aviso_backup"] = (
+        f"Backup de {len(anuncios_backup)} anúncio(s) criado antes do reprocessamento."
+    )
+    try:
+        _supabase_resiliente(
+            lambda: supabase.table("atividades").update({"detalhes": novos_detalhes})
+                    .eq("id", atividade_id).eq("user_id", user_id).execute(),
+            operacao="salvar_backup_antes_refazer",
+            tentativas=5,
+            backoff=(1, 2, 4, 8, 15),
+        )
+    except Exception:
+        return {}
+    _backups_desfazer_atividade[str(atividade_id)] = backup
+    return backup
+
+def desfazer_reprocessamento_anuncios(user_id: str, atividade: dict) -> tuple:
+    """Restaura, por ID, somente os anúncios salvos antes desta tentativa."""
+    atividade_id = atividade.get("id")
+    detalhes = dict(atividade.get("detalhes") or {})
+    backup = dict(detalhes.get("backup_desfazer") or {})
+    anuncios = backup.get("anuncios") or []
+    if not atividade_id or not anuncios or backup.get("desfeito"):
+        return False, "Não existe backup disponível para esta atividade."
+
+    plataforma = backup.get("plataforma") or detalhes.get("plataforma") or "Meta Ads"
+    empresa = backup.get("empresa") or detalhes.get("empresa")
+    atualizacoes = {str(_ad.get("id")): _ad for _ad in anuncios if _ad.get("id")}
+    if not empresa or not atualizacoes:
+        return False, "O backup não contém empresa e IDs válidos."
+    try:
+        supabase.rpc(_rpc_atualizar_cache(plataforma), {
+            "p_user_id": user_id,
+            "p_empresa": empresa,
+            "p_atualizacoes": atualizacoes,
+        }).execute()
+        backup["desfeito"] = True
+        backup["desfeito_em"] = _agora_iso()
+        detalhes["backup_desfazer"] = backup
+        detalhes["alteracoes_desfeitas"] = True
+        detalhes["aviso"] = (
+            f"Alterações desfeitas: {len(atualizacoes)} anúncio(s) restaurado(s) "
+            f"para o estado anterior ao reprocessamento."
+        )
+        _backups_desfazer_atividade[str(atividade_id)] = backup
+        atualizar_atividade(atividade_id, "concluido", detalhes)
+        return True, detalhes["aviso"]
+    except Exception as exc:
+        return False, f"Não foi possível restaurar o backup: {exc}"
+
 def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataforma: str = "Meta Ads") -> bool:
     """Tenta a migração de novo pra uma empresa específica, usando os
     anúncios que já estão salvos no cache (não precisa recoletar).
@@ -16099,6 +16208,12 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataf
         cache_atual = (res.data[0].get(coluna) or {}) if res.data else {}
         entry = cache_atual.get(empresa)
         if not entry:
+            return False
+
+        # Segurança V210: não inicia nenhuma alteração sem snapshot válido.
+        if not _criar_backup_antes_de_refazer_migracao(
+            user_id, atividade_id, empresa, plataforma, entry
+        ):
             return False
 
         # Reseta o teto de tentativas antes de tentar de novo — sem isso,
@@ -44786,6 +44901,7 @@ html, body { background: transparent; overflow: hidden; }
             _n_ativ = len(_todas_atividades)
             _refazer_ids = []
             _reparar_ids = []
+            _desfazer_ids = []
             _excluir_ids = []
             _cards_notif_html = ""
             # Acumulador de altura real, card a card (em vez de "n * 92px
@@ -44872,13 +44988,21 @@ html, body { background: transparent; overflow: hidden; }
                     and bool(_empresa_ativ)
                     and _a.get("status") == "concluido"
                 )
+                _backup_desfazer_ativ = (_a.get("detalhes") or {}).get("backup_desfazer") or {}
+                _pode_desfazer = (
+                    bool(_backup_desfazer_ativ.get("anuncios"))
+                    and not bool(_backup_desfazer_ativ.get("desfeito"))
+                    and _a.get("status") in ("concluido", "concluido_com_erro", "erro")
+                )
                 _detalhe_icone_ativ, _detalhe_texto_ativ = _formatar_detalhes_atividade(_a)
                 _progresso_ativ = _progresso_atividade(_a)
-                _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or _pode_reparar or bool(_progresso_ativ)
+                _tem_detalhe = bool(_detalhe_texto_ativ) or _pode_refazer or _pode_reparar or _pode_desfazer or bool(_progresso_ativ)
                 if _pode_refazer:
                     _refazer_ids.append(_id_ativ)
                 if _pode_reparar:
                     _reparar_ids.append(_id_ativ)
+                if _pode_desfazer:
+                    _desfazer_ids.append(_id_ativ)
                 _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
                 # Cards com uma migração ou transcrição realmente rodando
@@ -44987,11 +45111,15 @@ html, body { background: transparent; overflow: hidden; }
                         + '</div>'
                     )
 
-                # Resultado de atividade concluída fica aberto e legível no
-                # próprio card. O clique continua servindo para recolher, mas
-                # não é mais necessário para descobrir o que aconteceu.
+                # V209 — evita abrir todo o histórico de uma vez. Mantém
+                # abertos automaticamente o card mais recente e todas
+                # as atividades que ainda estão na fila/em andamento. Os
+                # demais resultados continuam completos, mas recolhidos.
+                _status_ativ_atual = _a.get("status") or "pendente"
+                _atividade_ativa_ativ = _status_ativ_atual in ("pendente", "na_fila", "em_andamento")
                 _resultado_visivel_ativ = (
-                    _a.get("status") in ("concluido", "concluido_com_erro")
+                    (_atividade_ativa_ativ or _pos == 0)
+                    and _tem_detalhe
                     and (
                         bool(_detalhe_texto_ativ)
                         or _tem_mais_info_ativ
@@ -45128,6 +45256,15 @@ html, body { background: transparent; overflow: hidden; }
                         _corpo_html += (
                             f'<button class="btn-reparar" data-idx="{_id_ativ}">'
                             f'<span class="btn-reparar-icon">{_reparar_svg}</span>Reparar e refazer</button>'
+                        )
+                    if _pode_desfazer:
+                        _desfazer_svg = _svg_icone(
+                            "M12,5V2L7,7L12,12V9C15.31,9 18,11.69 18,15C18,18.31 15.31,21 12,21C8.69,21 6,18.31 6,15H4C4,19.42 7.58,23 12,23C16.42,23 20,19.42 20,15C20,10.58 16.42,7 12,7V5Z",
+                            "#b45309", 14,
+                        )
+                        _corpo_html += (
+                            f'<button class="btn-desfazer" data-idx="{_id_ativ}">'
+                            f'<span class="btn-desfazer-icon">{_desfazer_svg}</span>Desfazer alterações</button>'
                         )
                     _corpo_html += "</div>"
 
@@ -45274,6 +45411,14 @@ html, body { background: transparent; overflow: hidden; }
     .btn-reparar-icon { display:flex; align-items:center; }
     .btn-reparar-icon svg { display:block; }
     .btn-reparar:hover .btn-reparar-icon svg { fill:#92400e; }
+    .btn-desfazer {
+        margin:10px 0 0 8px; padding:8px 16px; border-radius:8px;
+        border:1.5px solid #f59e0b; background:#fff7ed; font-size:13px;
+        font-weight:700; color:#92400e; cursor:pointer; font-family:'DM Sans',sans-serif;
+        display:inline-flex; align-items:center; gap:6px;
+    }
+    .btn-desfazer:hover { background:#ffedd5; border-color:#d97706; }
+    .btn-desfazer-icon { display:flex; align-items:center; }
     .notif-progress-wrap { margin-top:10px; }
     .notif-progress-track {
         width:100%; height:7px; border-radius:5px; background:#eef1f5; overflow:hidden;
@@ -45467,6 +45612,28 @@ html, body { background: transparent; overflow: hidden; }
         );
     }}
 
+    function clicarBotaoDesfazer(idx) {{
+        var doc = window.parent.document;
+        var chave = 'btn_desfazer_ativ_' + idx;
+        var porClasse = doc.querySelector('.st-key-' + chave + ' button');
+        if (porClasse) {{ porClasse.click(); return; }}
+        var btns = doc.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').replace(/\s+/g, ' ').trim();
+            if (txt === '_desfazer_ativ_' + idx + '_') {{ b.click(); return; }}
+        }}
+    }}
+
+    function desfazerNotif(idx) {{
+        abrirConfirmacao(
+            'Desfazer alterações',
+            'Isso restaura somente os anúncios desta tentativa para o estado exato anterior ao reprocessamento. Outros anúncios não serão alterados.',
+            '#d97706',
+            'Sim, desfazer',
+            function() {{ clicarBotaoDesfazer(idx); }}
+        );
+    }}
+
     function excluirNotif(idx) {{
         abrirConfirmacao(
             'Excluir notificação',
@@ -45497,6 +45664,9 @@ html, body { background: transparent; overflow: hidden; }
 
         var rp = e.target.closest('.btn-reparar');
         if (rp) {{ e.stopPropagation(); repararNotif(rp.dataset.idx); return; }}
+
+        var du = e.target.closest('.btn-desfazer');
+        if (du) {{ e.stopPropagation(); desfazerNotif(du.dataset.idx); return; }}
 
         var hdr = e.target.closest('.notif-hdr.has-detail');
         if (hdr) {{ toggleNotif(hdr.dataset.idx); return; }}
@@ -45568,7 +45738,10 @@ html, body { background: transparent; overflow: hidden; }
                         if _empresa_ref and refazer_migracao_midia(st.session_state.user.id, _empresa_ref, _rid, _plataforma_ref):
                             st.toast(f"Refazendo a migração de {_empresa_ref}...", icon="🔄")
                         else:
-                            st.toast(f"Não achei {_empresa_ref} no cache pra refazer.", icon="⚠️")
+                            st.toast(
+                                f"O reprocessamento de {_empresa_ref} não começou: não foi possível "
+                                f"confirmar o cache ou salvar o backup de segurança.", icon="⚠️"
+                            )
                     st.rerun()
 
             _acoes_reparar = {}
@@ -45610,6 +45783,21 @@ html, body { background: transparent; overflow: hidden; }
                             st.toast(f"Reparei {_resultado_reparo.get('reparados', 0)} itens de {_empresa_rep}, mas não consegui disparar a migração de novo.", icon="⚠️")
                     else:
                         st.toast("Não consegui identificar a empresa dessa atividade.", icon="⚠️")
+
+            _acoes_desfazer = {}
+            with _wrap_ghost_cards_notif:
+                for _did in _desfazer_ids:
+                    _acoes_desfazer[_did] = st.button(
+                        f"_desfazer_ativ_{_did}_", key=f"btn_desfazer_ativ_{_did}"
+                    )
+
+            for _did in _desfazer_ids:
+                if _acoes_desfazer.get(_did):
+                    _atividade_undo = next((x for x in _todas_atividades if x["id"] == _did), None)
+                    _ok_undo, _msg_undo = desfazer_reprocessamento_anuncios(
+                        st.session_state.user.id, _atividade_undo or {}
+                    )
+                    st.toast(_msg_undo, icon="↩️" if _ok_undo else "⚠️")
                     st.rerun()
 
             # Exclusão de notificações — agora feita direto pelo ícone de lixeira

@@ -31513,6 +31513,11 @@ elif st.session_state.pagina == "google_ads":
         Apify de novo pras que já deram certo (ver refazer_coleta_gads)."""
         try:
             print(
+                f"[GADS-COLETA-V215] INICIO atividade={atividade_id} "
+                f"empresas={[e.get('nome') for e in empresas]} forcar={forcar}",
+                flush=True,
+            )
+            print(
                 f"[GADS-COLETA-V205] INICIO atividade={atividade_id} "
                 f"empresas={[e.get('nome') for e in empresas]} forcar={forcar}",
                 flush=True,
@@ -31609,6 +31614,10 @@ elif st.session_state.pagina == "google_ads":
                     # agora enquanto a chamada não termina.
                     _status_por_empresa[ck] = {"status": "rodando"}
                     _grava_progresso()
+                    print(
+                        f"[GADS-COLETA-V215] PROCESSANDO atividade={atividade_id} empresa={ck!r}",
+                        flush=True,
+                    )
 
                 # O gads_id (quando a empresa já tem um configurado) vem pronto
                 # dentro de query_values, montado na thread principal antes de
@@ -31662,6 +31671,11 @@ elif st.session_state.pagina == "google_ads":
                             "msg": f"{len(_ads_ck_acumulados)} anúncios coletados até agora…",
                         }
                         _grava_progresso()
+                        print(
+                            f"[GADS-COLETA-V215] PROGRESSO atividade={atividade_id} "
+                            f"empresa={_ck!r} coletados={len(_ads_ck_acumulados)}",
+                            flush=True,
+                        )
 
                     ads, raw, erro = buscar_gads_apify(query, on_chunk=_on_chunk_ck)
                     if erro:
@@ -31733,6 +31747,12 @@ elif st.session_state.pagina == "google_ads":
                 # ter cache fresco.
                 _processadas += 1
                 _grava_progresso()
+                print(
+                    f"[GADS-COLETA-V215] EMPRESA_FINALIZADA atividade={atividade_id} "
+                    f"empresa={ck!r} status={_status_por_empresa.get(ck, {}).get('status')} "
+                    f"processadas={_processadas}/{_total_empresas}",
+                    flush=True,
+                )
 
             if novos:
                 iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
@@ -31758,6 +31778,12 @@ elif st.session_state.pagina == "google_ads":
                 "total_anuncios_com_erro": sum(len(v) for v in incompletos_ids.values()),
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
+            print(
+                f"[GADS-COLETA-V215] FIM atividade={atividade_id} status={_status_final} "
+                f"coletadas={list(novos.keys())} incompletas={list(incompletos.keys())} "
+                f"erros={list(erros.keys())}",
+                flush=True,
+            )
         except Exception as e:
             import traceback as _traceback_gads_v205
             print(
@@ -31907,6 +31933,11 @@ elif st.session_state.pagina == "google_ads":
             args=(st.session_state.user.id,),
             daemon=True,
             name="sincronizar-google-ads-outbox",
+        )
+        print(
+            f"[GADS-COLETA-V215] WORKER atividade={_atividade_id} "
+            f"iniciado={_iniciou_coleta} empresas={[e.get('nome') for e in empresas]}",
+            flush=True,
         )
 
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
@@ -45416,14 +45447,14 @@ html, body { background: transparent; overflow: hidden; }
                         + '</div>'
                     )
 
-                # V209 — evita abrir todo o histórico de uma vez. Mantém
-                # abertos automaticamente o card mais recente e todas
-                # as atividades que ainda estão na fila/em andamento. Os
-                # demais resultados continuam completos, mas recolhidos.
+                # V216 — abre automaticamente SOMENTE atividades realmente
+                # ativas. A atividade mais recente deixa de ser uma exceção:
+                # se estiver concluída ou com erro, começa recolhida como todo
+                # o restante do histórico e pode ser aberta manualmente.
                 _status_ativ_atual = _a.get("status") or "pendente"
                 _atividade_ativa_ativ = _status_ativ_atual in ("pendente", "na_fila", "em_andamento")
                 _resultado_visivel_ativ = (
-                    (_atividade_ativa_ativ or _pos == 0)
+                    _atividade_ativa_ativ
                     and _tem_detalhe
                     and (
                         bool(_detalhe_texto_ativ)
@@ -45484,7 +45515,14 @@ html, body { background: transparent; overflow: hidden; }
                 # _executar_busca_background / _coletar_redes_background a
                 # cada empresa processada.
                 _empresa_rows_html = ""
-                if _a.get("tipo") in ("coleta_ads", "coleta_ads_google", "coleta_redes"):
+                # Em um card já marcado como Erro, a caixa "Ainda com erro"
+                # acima contém empresa, motivo e IDs. Repetir a mesma mensagem
+                # numa barra vermelha logo abaixo polui a leitura. As barras por
+                # empresa ficam restritas às atividades em curso ou concluídas.
+                if (
+                    _a.get("tipo") in ("coleta_ads", "coleta_ads_google", "coleta_redes")
+                    and _a.get("status") != "erro"
+                ):
                     _por_empresa_ativ = _detalhes_dict_ativ.get("por_empresa") or {}
                     if _por_empresa_ativ:
                         _linhas_empresa_html = []

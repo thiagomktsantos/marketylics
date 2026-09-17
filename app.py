@@ -670,6 +670,11 @@ def _get_jobs_registry_v189() -> dict:
 _jobs_registry_v189 = _get_jobs_registry_v189()
 _jobs_lock = _jobs_registry_v189["lock"]
 _jobs_ativos = _jobs_registry_v189["ativos"]
+# V205: versões antigas guardavam apenas a chave lógica. Se uma thread
+# morresse/reiniciasse sem executar o finally, a chave podia permanecer para
+# sempre e todo clique seguinte era recusado silenciosamente. Mantemos também
+# a thread real para distinguir job vivo de trava órfã.
+_jobs_threads = _jobs_registry_v189.setdefault("threads", {})
 
 def _job_key(tipo: str, user_id: str, escopo: str = ""):
     return (str(tipo), str(user_id), str(escopo or ""))
@@ -678,23 +683,46 @@ def _job_try_acquire(tipo: str, user_id: str, escopo: str = "") -> bool:
     chave = _job_key(tipo, user_id, escopo)
     with _jobs_lock:
         if chave in _jobs_ativos:
-            return False
+            _thread_anterior = _jobs_threads.get(chave)
+            if _thread_anterior is not None and _thread_anterior.is_alive():
+                return False
+            print(f"[JOB-V205] removendo trava órfã: {chave}", flush=True)
+            _jobs_ativos.discard(chave)
+            _jobs_threads.pop(chave, None)
         _jobs_ativos.add(chave)
         return True
 
 def _job_release(tipo: str, user_id: str, escopo: str = ""):
     with _jobs_lock:
-        _jobs_ativos.discard(_job_key(tipo, user_id, escopo))
+        _chave = _job_key(tipo, user_id, escopo)
+        _jobs_ativos.discard(_chave)
+        _jobs_threads.pop(_chave, None)
 
 def _job_is_active(tipo: str, user_id: str, escopo: str = "") -> bool:
+    chave = _job_key(tipo, user_id, escopo)
     with _jobs_lock:
-        return _job_key(tipo, user_id, escopo) in _jobs_ativos
+        if chave not in _jobs_ativos:
+            return False
+        _thread_job = _jobs_threads.get(chave)
+        if _thread_job is not None and not _thread_job.is_alive():
+            _jobs_ativos.discard(chave)
+            _jobs_threads.pop(chave, None)
+            return False
+        return True
 
 def _job_any_active(tipo: str, user_id: str) -> bool:
     _tipo = str(tipo)
     _uid = str(user_id)
     with _jobs_lock:
-        return any(k[0] == _tipo and k[1] == _uid for k in _jobs_ativos)
+        _candidatas = [k for k in _jobs_ativos if k[0] == _tipo and k[1] == _uid]
+        for _chave in _candidatas:
+            _thread_job = _jobs_threads.get(_chave)
+            if _thread_job is not None and not _thread_job.is_alive():
+                _jobs_ativos.discard(_chave)
+                _jobs_threads.pop(_chave, None)
+                continue
+            return True
+        return False
 
 def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
     """Executa um job e sempre libera sua chave lógica ao terminar."""
@@ -709,12 +737,20 @@ def _job_start_thread(tipo: str, user_id: str, escopo: str, target, *,
     if not _job_try_acquire(tipo, user_id, escopo):
         return False
     try:
-        threading.Thread(
+        _thread_job = threading.Thread(
             target=_job_run_guarded,
             args=(tipo, user_id, escopo, target, args, kwargs),
             daemon=daemon,
             name=name,
-        ).start()
+        )
+        with _jobs_lock:
+            _jobs_threads[_job_key(tipo, user_id, escopo)] = _thread_job
+        _thread_job.start()
+        print(
+            f"[JOB-V205] worker iniciado tipo={tipo!r} escopo={escopo!r} "
+            f"thread={_thread_job.name!r}",
+            flush=True,
+        )
         return True
     except Exception:
         _job_release(tipo, user_id, escopo)
@@ -15749,6 +15785,29 @@ def verificar_e_migrar_pendentes_google(user_id: str) -> int:
 
 _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS = 15
 
+def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_id: str):
+    """Adia a manutenção automática para dar prioridade real à coleta.
+
+    Ao abrir a página, o usuário normalmente clica em Buscar/Atualizar nos
+    primeiros instantes. Antes, a migração antiga começava imediatamente e
+    ocupava CPU/rede antes desse clique. Agora ela aguarda uma janela curta;
+    se uma coleta começar, espera a coleta terminar e só então faz a varredura.
+    """
+    atualizar_atividade(atividade_id, "em_andamento", {
+        "aguardando_coleta_prioritaria": True,
+        "aviso": "Manutenção automática aguardando; coletas têm prioridade máxima.",
+    })
+    for _ in range(24):  # 120 segundos, em passos curtos
+        if _job_any_active("coleta_ads_google", user_id):
+            break
+        time.sleep(5)
+    _esperar_coleta_prioritaria_v195(user_id, "VERIFICAÇÃO/MIGRAÇÃO GOOGLE ADS")
+    atualizar_atividade(atividade_id, "em_andamento", {
+        "aguardando_coleta_prioritaria": False,
+        "aviso": "Verificando mídias pendentes após a coleta prioritária.",
+    })
+    return _verificar_e_migrar_pendentes_google_bg(user_id, atividade_id)
+
 def iniciar_verificacao_pendentes_google_background(user_id: str):
     """Cria a atividade no sino ANTES de disparar a thread — o card
     aparece imediatamente como "em andamento" (mesmo padrão de
@@ -15788,9 +15847,10 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
         "Verificando anúncios do Google Ads pendentes de migração", {}
     )
     threading.Thread(
-        target=_verificar_e_migrar_pendentes_google_bg,
+        target=_verificar_pendentes_google_apos_janela_coleta_v205,
         args=(user_id, atividade_id),
         daemon=True,
+        name="verificacao-gads-adiada-v205",
     ).start()
 
 def _verificar_e_gerar_ocr_pendentes_google_bg(user_id: str, atividade_id: str = None) -> int:
@@ -31094,6 +31154,11 @@ elif st.session_state.pagina == "google_ads":
         "erro_ao_salvar" em `por_empresa`) e refazer só ela, sem rodar a
         Apify de novo pras que já deram certo (ver refazer_coleta_gads)."""
         try:
+            print(
+                f"[GADS-COLETA-V205] INICIO atividade={atividade_id} "
+                f"empresas={[e.get('nome') for e in empresas]} forcar={forcar}",
+                flush=True,
+            )
             # Recupera primeiro qualquer coleta anterior protegida no R2.
             # Mesmo com o Supabase fora do ar a Apify pode continuar, pois o
             # outbox passa a ser a garantia de durabilidade do resultado.
@@ -31326,6 +31391,12 @@ elif st.session_state.pagina == "google_ads":
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
         except Exception as e:
+            import traceback as _traceback_gads_v205
+            print(
+                f"[GADS-COLETA-V205] ERRO atividade={atividade_id}: {e!r}\n"
+                f"{_traceback_gads_v205.format_exc()}",
+                flush=True,
+            )
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
     def executar_busca(empresas: list, query_values: dict, forcar: bool = False):
@@ -31358,10 +31429,10 @@ elif st.session_state.pagina == "google_ads":
             name="coleta-google-ads",
         )
         if not _iniciou_coleta:
-            atualizar_atividade(_atividade_id, "concluido", {
+            atualizar_atividade(_atividade_id, "erro", {
                 "empresas": [e["nome"] for e in empresas],
                 "plataforma": "Google Ads",
-                "aviso": "Já existe uma coleta de Google Ads em processamento; não foi aberto outro worker.",
+                "motivo": "O worker da coleta não iniciou porque já existe uma coleta realmente ativa.",
             })
             st.info("Já existe uma coleta de Google Ads em processamento.")
             return

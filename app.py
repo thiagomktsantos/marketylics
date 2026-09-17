@@ -32211,13 +32211,10 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
         gerar_btn_gads_header = st.button("gads_buscar_header_trigger", key="gads_buscar_header_btn")
 
-        # Ghost: força uma atualização de verdade, ignorando o cache de 24h
-        # (carregar_cache_ads/cache_esta_fresco). O botão normal "Buscar /
-        # Atualizar Anúncios" chama executar_busca(forcar=False) — se já
-        # tem cache fresco pra empresa, ele só reaproveita o que já está
-        # salvo (não rechama a Apify, não reprocessa imagem nenhuma). Esse
-        # aqui existe pra quando o usuário precisa mesmo de um dado novo
-        # limpar o cache inteiro primeiro.
+        # Ghost legado do ícone de atualização. Desde a V206, o botão
+        # principal "Buscar / Atualizar Anúncios" também força uma coleta
+        # real; nenhum clique manual pode ser convertido silenciosamente em
+        # simples leitura do cache.
         gerar_btn_gads_forcar = st.button("gads_forcar_header_trigger", key="gads_forcar_header_btn")
  
         # Ghost: limpar cache
@@ -32810,7 +32807,15 @@ setHeight(false);
                 gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
                 query_values_header[ck] = gads_id_salvo
         if query_values_header:
-            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=False)
+            # V206 — ação manual significa coleta real. O cache/histórico
+            # continua sendo usado no merge por ID, mas nunca para pular a
+            # chamada à Apify. IDs que voltarem substituem integralmente os
+            # antigos; os que vierem sem mídia validada ficam incompletos.
+            executar_busca(
+                [e for e in todas_empresas if empresa_tem_gads_id(e)],
+                query_values_header,
+                forcar=True,
+            )
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
 

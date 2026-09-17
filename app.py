@@ -16250,11 +16250,6 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
         if not _ids_por_empresa:
             return ""
 
-        _assinatura = {
-            (empresa, ad_id)
-            for empresa, ids in _ids_por_empresa.items()
-            for ad_id in ids
-        }
         _r_ativ = (
             supabase.table("atividades")
             .select("id,status,detalhes")
@@ -16264,55 +16259,84 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
             .limit(100)
             .execute()
         )
-        for _ativ in (_r_ativ.data or []):
-            if _ativ.get("status") not in ("pendente", "em_andamento", "erro"):
-                continue
-            _existentes = _ids_gads_incompletos_dos_detalhes(_ativ.get("detalhes") or {})
-            _assinatura_existente = {
-                (empresa, ad_id)
-                for empresa, ids in _existentes.items()
-                for ad_id in ids
-            }
-            if _assinatura_existente == _assinatura:
-                return str(_ativ.get("id") or "")
+        _atividades = _r_ativ.data or []
+        _usadas_na_conversao = set()
+        _ids_resultado = []
 
-        _total = sum(len(v) for v in _ids_por_empresa.values())
-        _incompletos_texto = {
-            empresa: (
-                f"{len(ids)} anúncio(s) sem mídia validada; é necessário coletar novamente. "
+        def _payload_empresa(empresa: str, ids: list) -> tuple:
+            total = len(ids)
+            msg = (
+                f"{total} anúncio(s) sem mídia validada; é necessário coletar novamente. "
                 f"IDs: {', '.join(ids)}"
             )
-            for empresa, ids in _ids_por_empresa.items()
-        }
-        _detalhes = {
-            "empresas": list(_ids_por_empresa.keys()),
-            "plataforma": "Google Ads",
-            "coletadas": [],
-            "com_erro": dict(_incompletos_texto),
-            "incompletos": dict(_incompletos_texto),
-            "incompletos_ids_por_empresa": _ids_por_empresa,
-            "anuncios_com_erro": [
-                {"id": ad_id, "titulo": f"{empresa} · anúncio sem mídia validada"}
-                for empresa, ids in _ids_por_empresa.items()
-                for ad_id in ids
-            ],
-            "total_anuncios_com_erro": _total,
-            "por_empresa": {
-                empresa: {"status": "erro", "msg": _incompletos_texto[empresa]}
-                for empresa in _ids_por_empresa
-            },
-            "motivo": (
-                f"{_total} anúncio(s) do Google Ads estão sem mídia validada e precisam ser refeitos."
-            ),
-            "gerada_por_varredura": True,
-        }
-        _titulo = (
-            f"{', '.join(_ids_por_empresa.keys())} · "
-            f"{_total} anúncio(s) do Google Ads para refazer"
-        )
-        return criar_atividade(
-            user_id, "coleta_ads_google", _titulo, _detalhes, status="erro"
-        ) or ""
+            detalhes = {
+                "empresa": empresa,
+                "empresas": [empresa],
+                "plataforma": "Google Ads",
+                "coletadas": [],
+                "com_erro": {empresa: msg},
+                "incompletos": {empresa: msg},
+                "incompletos_ids_por_empresa": {empresa: ids},
+                "anuncios_com_erro": [
+                    {"id": ad_id, "titulo": f"{empresa} · anúncio sem mídia validada"}
+                    for ad_id in ids
+                ],
+                "total_anuncios_com_erro": total,
+                "por_empresa": {empresa: {"status": "erro", "msg": msg}},
+                "motivo": f"{total} anúncio(s) do Google Ads de {empresa} precisam ser refeitos.",
+                "gerada_por_varredura": True,
+                "separada_por_empresa": True,
+            }
+            titulo = f"{empresa} · {total} anúncio(s) do Google Ads para refazer"
+            return titulo, detalhes
+
+        for empresa, ids in _ids_por_empresa.items():
+            assinatura_empresa = {(empresa, ad_id) for ad_id in ids}
+            atividade_existente = None
+            atividade_agrupada = None
+            for ativ in _atividades:
+                if ativ.get("status") not in ("pendente", "em_andamento", "erro"):
+                    continue
+                existentes = _ids_gads_incompletos_dos_detalhes(ativ.get("detalhes") or {})
+                assinatura_existente = {
+                    (emp_exist, ad_id)
+                    for emp_exist, ids_exist in existentes.items()
+                    for ad_id in ids_exist
+                }
+                if assinatura_existente == assinatura_empresa:
+                    atividade_existente = ativ
+                    break
+                if (
+                    assinatura_empresa.issubset(assinatura_existente)
+                    and len(existentes) > 1
+                    and (ativ.get("detalhes") or {}).get("gerada_por_varredura")
+                    and str(ativ.get("id")) not in _usadas_na_conversao
+                ):
+                    atividade_agrupada = ativ
+
+            if atividade_existente:
+                _ids_resultado.append(str(atividade_existente.get("id") or ""))
+                continue
+
+            titulo, detalhes = _payload_empresa(empresa, ids)
+            if atividade_agrupada:
+                ativ_id = atividade_agrupada.get("id")
+                _supabase_resiliente(
+                    lambda: supabase.table("atividades").update({
+                        "titulo": titulo, "detalhes": detalhes, "status": "erro"
+                    }).eq("id", ativ_id).eq("user_id", user_id).execute(),
+                    operacao="separar_atividade_gads_por_empresa", tentativas=4,
+                )
+                _usadas_na_conversao.add(str(ativ_id))
+                _ids_resultado.append(str(ativ_id or ""))
+            else:
+                novo_id = criar_atividade(
+                    user_id, "coleta_ads_google", titulo, detalhes, status="erro"
+                )
+                if novo_id:
+                    _ids_resultado.append(str(novo_id))
+
+        return _ids_resultado[0] if _ids_resultado else ""
     except Exception as exc:
         print(f"[GADS-V212] falha ao garantir atividade de incompletos: {exc!r}", flush=True)
         return ""

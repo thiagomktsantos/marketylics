@@ -24077,13 +24077,9 @@ elif st.session_state.pagina == "ads":
         resultado = dict(cache_existente)
         for nome_empresa, novo_entry in novos.items():
             novos_ads = novo_entry.get("data", [])
-            # Mapa id -> anúncio novo. Cada coleta nova é tratada como a
-            # fonte da verdade pra qualquer anúncio que já existia: o
-            # anunciante pode ter editado o texto, trocado a mídia (imagem
-            # ou vídeo) ou mudado o status sem trocar o código do anúncio,
-            # e a coleta antiga não pode "vencer" a coleta atual. Por isso
-            # o anúncio é substituído por completo — não só o campo
-            # "ativo" — sempre que o mesmo id volta a aparecer.
+            # V207: anúncios conhecidos preservam integralmente os dados já
+            # salvos (texto, mídia, OCR, datas e demais campos). A coleta nova
+            # serve para descobrir IDs novos e atualizar apenas ativo/inativo.
             novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
             novos_sem_id = [a for a in novos_ads if not a.get("id")]
 
@@ -24095,17 +24091,17 @@ elif st.session_state.pagina == "ads":
             for ad in ads_anteriores:
                 ad_id = str(ad.get("id", ""))
                 if ad_id and ad_id in novos_por_id:
-                    # já existia e voltou nessa coleta -> substitui pelos
-                    # dados frescos (texto, mídia, status etc.)
-                    ad_atualizado = dict(novos_por_id[ad_id])
+                    # Já existia e voltou: mantém a versão armazenada.
+                    ad_atualizado = dict(ad)
                     ad_atualizado["ativo"] = True
                     ads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
                     # marca como inativo quando dava pra saber (tinha id
                     # pra comparar contra a coleta nova)
-                    ad["ativo"] = False if ad_id else ad.get("ativo", True)
-                    ads_atualizados.append(ad)
+                    ad_preservado = dict(ad)
+                    ad_preservado["ativo"] = False if ad_id else ad.get("ativo", True)
+                    ads_atualizados.append(ad_preservado)
 
             # anúncios com id que não existiam antes -> entram como novos
             for ad_id, ad in novos_por_id.items():
@@ -30276,13 +30272,9 @@ elif st.session_state.pagina == "google_ads":
         resultado = dict(cache_existente)
         for nome_empresa, novo_entry in novos.items():
             novos_ads = novo_entry.get("data", [])
-            # Mapa id -> anúncio novo. Cada coleta nova é tratada como a
-            # fonte da verdade pra qualquer anúncio que já existia: o
-            # anunciante pode ter editado o texto, trocado a mídia (imagem
-            # ou vídeo) ou mudado o status sem trocar o código do anúncio,
-            # e a coleta antiga não pode "vencer" a coleta atual. Por isso
-            # o anúncio é substituído por completo — não só o campo
-            # "ativo" — sempre que o mesmo id volta a aparecer.
+            # V207: anúncios conhecidos preservam integralmente os dados já
+            # salvos (texto, mídia, OCR, datas e demais campos). A coleta nova
+            # serve para descobrir IDs novos e atualizar apenas ativo/inativo.
             novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
             novos_sem_id = [a for a in novos_ads if not a.get("id")]
 
@@ -30294,17 +30286,17 @@ elif st.session_state.pagina == "google_ads":
             for ad in gads_anteriores:
                 ad_id = str(ad.get("id", ""))
                 if ad_id and ad_id in novos_por_id:
-                    # já existia e voltou nessa coleta -> substitui pelos
-                    # dados frescos (texto, mídia, status etc.)
-                    ad_atualizado = dict(novos_por_id[ad_id])
+                    # Já existia e voltou: mantém a versão armazenada.
+                    ad_atualizado = dict(ad)
                     ad_atualizado["ativo"] = True
                     gads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
                     # marca como inativo quando dava pra saber (tinha id
                     # pra comparar contra a coleta nova)
-                    ad["ativo"] = False if ad_id else ad.get("ativo", True)
-                    gads_atualizados.append(ad)
+                    ad_preservado = dict(ad)
+                    ad_preservado["ativo"] = False if ad_id else ad.get("ativo", True)
+                    gads_atualizados.append(ad_preservado)
 
             # anúncios com id que não existiam antes -> entram como novos
             for ad_id, ad in novos_por_id.items():
@@ -44908,27 +44900,49 @@ html, body { background: transparent; overflow: hidden; }
                 _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
 
-                # Log de quais anúncios especificamente deram erro nesta
-                # atividade — só faz sentido mostrar quando o status é "erro"
-                # de verdade (link expirado ou cota esgotada), não durante um
-                # "em_andamento" comum. A mensagem principal (_detalhe_safe)
-                # já diz QUANTOS deram erro; "mais informações" existe pra
-                # dizer QUAIS, sem precisar abrir o banco pra descobrir.
+                # V208 — o resultado pertence à notificação, não só ao log.
+                # Antes, as listas abaixo só apareciam em status="erro" e
+                # sumiam visualmente quando uma retentativa era concluída.
+                # Agora a notificação terminal conserva e exibe tanto quem foi
+                # corrigido quanto quem continuou pendente.
                 _detalhes_dict_ativ = _a.get("detalhes") or {}
                 _anuncios_erro_ativ = _detalhes_dict_ativ.get("anuncios_com_erro") or []
                 _total_anuncios_erro_ativ = _detalhes_dict_ativ.get("total_anuncios_com_erro", len(_anuncios_erro_ativ))
+                _anuncios_ok_ativ = _detalhes_dict_ativ.get("anuncios_migrados") or []
+                _total_anuncios_ok_ativ = _detalhes_dict_ativ.get("total_anuncios_migrados", len(_anuncios_ok_ativ))
                 _erros_ocr_ativ = _detalhes_dict_ativ.get("erros_detalhados") or []
                 _total_erros_ocr_ativ = _detalhes_dict_ativ.get("total_erros_detalhados", len(_erros_ocr_ativ))
                 _tem_mais_info_ativ = (
-                    _a.get("status") == "erro"
-                    and (bool(_anuncios_erro_ativ) or bool(_erros_ocr_ativ))
+                    bool(_anuncios_erro_ativ)
+                    or bool(_anuncios_ok_ativ)
+                    or bool(_erros_ocr_ativ)
                 )
 
                 _mais_info_html = ""
                 if _tem_mais_info_ativ:
+                    def _esc_notif(v):
+                        return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+                    _secoes_resultado_html = []
+                    if _anuncios_ok_ativ:
+                        _itens_ok_html = "".join(
+                            '<li class="notif-resultado-ok-item">'
+                            f'<span class="notif-mais-info-id">ID: {_esc_notif(_it.get("id") or "—")}</span> · '
+                            f'{_esc_notif(_it.get("titulo") or "Anúncio corrigido")}'
+                            '</li>'
+                            for _it in _anuncios_ok_ativ
+                        )
+                        _nota_ok_html = (
+                            f'<div class="notif-mais-info-nota">mostrando {len(_anuncios_ok_ativ)} de {_total_anuncios_ok_ativ} corrigidos</div>'
+                            if _total_anuncios_ok_ativ > len(_anuncios_ok_ativ) else ""
+                        )
+                        _secoes_resultado_html.append(
+                            '<div class="notif-resultado-titulo notif-resultado-ok">'
+                            f'Corrigidos ({_total_anuncios_ok_ativ})</div>'
+                            f'<ul class="notif-mais-info-list">{_itens_ok_html}</ul>{_nota_ok_html}'
+                        )
+
                     if _erros_ocr_ativ:
-                        def _esc_notif(v):
-                            return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                         _itens_erro_html = "".join(
                             '<li class="notif-erro-ocr-item">'
                             f'<div><span class="notif-mais-info-id">Mídia: {_esc_notif(_it.get("id") or "—")}</span></div>'
@@ -44943,11 +44957,16 @@ html, body { background: transparent; overflow: hidden; }
                             f'<div class="notif-mais-info-nota">mostrando {len(_erros_ocr_ativ)} de {_total_erros_ocr_ativ} falhas</div>'
                             if _total_erros_ocr_ativ > len(_erros_ocr_ativ) else ""
                         )
-                    else:
+                        _secoes_resultado_html.append(
+                            '<div class="notif-resultado-titulo notif-resultado-erro">'
+                            f'Ainda com erro ({_total_erros_ocr_ativ})</div>'
+                            f'<ul class="notif-mais-info-list">{_itens_erro_html}</ul>{_nota_truncado_html}'
+                        )
+                    elif _anuncios_erro_ativ:
                         _itens_erro_html = "".join(
                             '<li>'
-                            f'<span class="notif-mais-info-id">ID: {(_it.get("id") or "—")}</span> · '
-                            f'{(_it.get("titulo") or "Anúncio sem título").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")}'
+                            f'<span class="notif-mais-info-id">ID: {_esc_notif(_it.get("id") or "—")}</span> · '
+                            f'{_esc_notif(_it.get("titulo") or "Anúncio sem título")}'
                             '</li>'
                             for _it in _anuncios_erro_ativ
                         )
@@ -44955,15 +44974,33 @@ html, body { background: transparent; overflow: hidden; }
                             f'<div class="notif-mais-info-nota">mostrando {len(_anuncios_erro_ativ)} de {_total_anuncios_erro_ativ}</div>'
                             if _total_anuncios_erro_ativ > len(_anuncios_erro_ativ) else ""
                         )
-                    _mais_info_html = f"""
-                        <span class="notif-mais-info" data-idx="{_id_ativ}">mais informações</span>
-                        <div class="notif-mais-info-body" id="mi_{_id_ativ}" style="display:none">
-                            <ul class="notif-mais-info-list">{_itens_erro_html}</ul>
-                            {_nota_truncado_html}
-                        </div>
-                    """
+                        _secoes_resultado_html.append(
+                            '<div class="notif-resultado-titulo notif-resultado-erro">'
+                            f'Ainda com erro ({_total_anuncios_erro_ativ})</div>'
+                            f'<ul class="notif-mais-info-list">{_itens_erro_html}</ul>{_nota_truncado_html}'
+                        )
 
-                _chevron_rot = ' style="transform:rotate(180deg)"' if _rodando_agora_ativ else ""
+                    _mais_info_html = (
+                        '<div class="notif-mais-info-body is-visible" '
+                        f'id="mi_{_id_ativ}" style="display:block">'
+                        + "".join(_secoes_resultado_html)
+                        + '</div>'
+                    )
+
+                # Resultado de atividade concluída fica aberto e legível no
+                # próprio card. O clique continua servindo para recolher, mas
+                # não é mais necessário para descobrir o que aconteceu.
+                _resultado_visivel_ativ = (
+                    _a.get("status") in ("concluido", "concluido_com_erro")
+                    and (
+                        bool(_detalhe_texto_ativ)
+                        or _tem_mais_info_ativ
+                        or bool(_progresso_ativ)
+                        or bool(_detalhes_dict_ativ.get("por_empresa"))
+                    )
+                )
+
+                _chevron_rot = ' style="transform:rotate(180deg)"' if (_rodando_agora_ativ or _resultado_visivel_ativ) else ""
                 _chevron_svg = f"""
                     <span class="notif-chevron" data-idx="{_id_ativ}"{_chevron_rot}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -45094,7 +45131,7 @@ html, body { background: transparent; overflow: hidden; }
                         )
                     _corpo_html += "</div>"
 
-                _estilo_body_aberto = ' style="display:block"' if _rodando_agora_ativ else ""
+                _estilo_body_aberto = ' style="display:block"' if (_rodando_agora_ativ or _resultado_visivel_ativ) else ""
 
                 _body_bloco = (
                     f'<div class="notif-body" id="nb_{_id_ativ}"{_estilo_body_aberto}>{_corpo_html}</div>'
@@ -45102,7 +45139,7 @@ html, body { background: transparent; overflow: hidden; }
                 )
 
                 _altura_total_estim += 68  # cabeçalho do card (fechado) + margem
-                if _rodando_agora_ativ:
+                if _rodando_agora_ativ or _resultado_visivel_ativ:
                     # corpo forçado aberto: soma texto de detalhe + barra de
                     # progresso (os únicos elementos possíveis nesse estado —
                     # "rodando agora" nunca tem botão "Refazer")
@@ -45111,6 +45148,20 @@ html, body { background: transparent; overflow: hidden; }
                         _altura_total_estim += 40
                     if _progresso_ativ:
                         _altura_total_estim += 38
+                    if _empresa_rows_html:
+                        _altura_total_estim += 52 * len(_detalhes_dict_ativ.get("por_empresa") or {})
+                    if _tem_mais_info_ativ:
+                        # A caixa possui rolagem própria e altura máxima de
+                        # 180px; reserva espaço suficiente para ela não ser
+                        # cortada pelo iframe quando o resultado nasce aberto.
+                        _altura_total_estim += min(
+                            200,
+                            42 + 26 * (
+                                len(_anuncios_ok_ativ)
+                                + len(_anuncios_erro_ativ)
+                                + len(_erros_ocr_ativ)
+                            ),
+                        )
 
                 _cards_notif_html += f"""
     <div class="notif-card">
@@ -45191,6 +45242,13 @@ html, body { background: transparent; overflow: hidden; }
         font-size:12.5px; color:#4b5563; line-height:1.6; word-break:break-word;
     }
     .notif-mais-info-id { color:#9ca3af; font-size:11.5px; }
+    .notif-resultado-titulo {
+        font-size:12px; font-weight:800; margin:2px 0 5px; letter-spacing:.01em;
+    }
+    .notif-resultado-titulo:not(:first-child) { margin-top:12px; }
+    .notif-resultado-ok { color:#15803d; }
+    .notif-resultado-erro { color:#dc2626; }
+    .notif-resultado-ok-item::marker { color:#22c55e; }
         .notif-erro-ocr-item { margin-bottom:10px !important; padding-bottom:10px; border-bottom:1px solid #eef2f7; }
     .notif-erro-ocr-item:last-child { border-bottom:0; margin-bottom:0 !important; padding-bottom:0; }
     .notif-erro-ocr-item > div { margin-top:2px; }

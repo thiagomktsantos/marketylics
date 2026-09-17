@@ -28115,8 +28115,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         fcol7 = None
                     with fcol1:
                         busca_texto = st.text_input(
-                            "Pesquisar no copy",
-                            placeholder="Pesquisar no copy…",
+                            "Pesquisar no copy ou ID",
+                            placeholder="Pesquisar no copy ou ID…",
                             key=f"ads_busca_{sk}",
                             label_visibility="collapsed",
                         )
@@ -28177,8 +28177,17 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 ads_f = ads_list
                 if busca_texto:
-                    q = busca_texto.lower()
-                    ads_f = [a for a in ads_f if q in (a.get("body") or "").lower() or q in (a.get("title") or "").lower() or q in (a.get("body_raw") or "").lower()]
+                    q = busca_texto.casefold().strip()
+                    ads_f = [
+                        a for a in ads_f
+                        if q and q in " ".join([
+                            str(a.get("id") or ""),
+                            str(a.get("page_id") or ""),
+                            str(a.get("body") or ""),
+                            str(a.get("title") or ""),
+                            str(a.get("body_raw") or ""),
+                        ]).casefold()
+                    ]
                 if filtro_fmt != "Tipo (todos)":
                     ads_f = [a for a in ads_f if a["formato"] == filtro_fmt]
                 if filtro_plat != "Plataforma (todas)":
@@ -34781,8 +34790,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     )
                     with fcol1:
                         busca_texto = st.text_input(
-                            "Pesquisar no copy",
-                            placeholder="Pesquisar no copy…",
+                            "Pesquisar no copy ou ID",
+                            placeholder="Pesquisar no copy ou ID…",
                             key=f"gads_busca_{sk}",
                             label_visibility="collapsed",
                         )
@@ -34849,6 +34858,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 def _texto_ocr_busca_gads_v148(ad):
                     _partes = [
+                        # V201 — permite localizar o anúncio pelo ID completo
+                        # ou por qualquer trecho dele (ex.: CR0657109).
+                        ad.get("id") or "",
+                        ad.get("page_id") or "",
                         ad.get("body") or "",
                         ad.get("title") or "",
                         ad.get("body_raw") or "",

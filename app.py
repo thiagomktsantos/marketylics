@@ -31828,6 +31828,11 @@ elif st.session_state.pagina == "google_ads":
             daemon=True,
             name="coleta-google-ads",
         )
+        print(
+            f"[GADS-COLETA-V217] WORKER atividade={_atividade_id} "
+            f"iniciado={_iniciou_coleta} empresas={[e.get('nome') for e in empresas]}",
+            flush=True,
+        )
         if not _iniciou_coleta:
             atualizar_atividade(_atividade_id, "erro", {
                 "empresas": [e["nome"] for e in empresas],
@@ -31934,12 +31939,6 @@ elif st.session_state.pagina == "google_ads":
             daemon=True,
             name="sincronizar-google-ads-outbox",
         )
-        print(
-            f"[GADS-COLETA-V215] WORKER atividade={_atividade_id} "
-            f"iniciado={_iniciou_coleta} empresas={[e.get('nome') for e in empresas]}",
-            flush=True,
-        )
-
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
         st.session_state.gads_cache = carregar_cache_ads()
     if "gads_erro" not in st.session_state:

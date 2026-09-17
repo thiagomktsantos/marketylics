@@ -16207,6 +16207,18 @@ def _ids_gads_incompletos_dos_detalhes(detalhes: dict) -> dict:
     estruturado = detalhes.get("incompletos_ids_por_empresa") or {}
     if estruturado:
         return {str(k): [str(x) for x in (v or [])] for k, v in estruturado.items() if v}
+    # Durante o "Refazer", os campos de erro podem ser substituídos pelos
+    # dados de progresso. O backup persistente continua identificando os IDs
+    # e deve participar da deduplicação da fila.
+    por_empresa_backup = ((detalhes.get("backup_desfazer") or {}).get("por_empresa") or {})
+    if por_empresa_backup:
+        convertido_backup = {}
+        for empresa, anuncios in por_empresa_backup.items():
+            ids = [str(ad.get("id")) for ad in (anuncios or []) if isinstance(ad, dict) and ad.get("id")]
+            if ids:
+                convertido_backup[str(empresa)] = ids
+        if convertido_backup:
+            return convertido_backup
     import re as _re_ids_gads
     convertido = {}
     for empresa, mensagem in (detalhes.get("incompletos") or {}).items():
@@ -16294,6 +16306,49 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
             assinatura_empresa = {(empresa, ad_id) for ad_id in ids}
             atividade_existente = None
             atividade_agrupada = None
+
+            # Uma coleta já em andamento para a empresa tem prioridade. Não
+            # exige que o anúncio já tenha sido corrigido no cache: justamente
+            # enquanto ele ainda está sendo coletado a varredura voltará a vê-lo
+            # como incompleto. Remove somente duplicatas sintéticas criadas pela
+            # varredura, preservando a atividade original e todo o histórico.
+            atividade_ativa_empresa = None
+            for ativ in _atividades:
+                if ativ.get("status") not in ("pendente", "em_andamento"):
+                    continue
+                det_ativa = ativ.get("detalhes") or {}
+                empresas_ativas = {str(x) for x in (det_ativa.get("empresas") or []) if x}
+                if det_ativa.get("empresa"):
+                    empresas_ativas.add(str(det_ativa.get("empresa")))
+                backup_ativa = det_ativa.get("backup_desfazer") or {}
+                empresas_ativas.update(str(x) for x in (backup_ativa.get("por_empresa") or {}).keys())
+                if backup_ativa.get("empresa"):
+                    empresas_ativas.add(str(backup_ativa.get("empresa")))
+                ids_ativos = _ids_gads_incompletos_dos_detalhes(det_ativa)
+                empresas_ativas.update(ids_ativos.keys())
+                if empresa in empresas_ativas:
+                    atividade_ativa_empresa = ativ
+                    break
+
+            if atividade_ativa_empresa:
+                for duplicada in _atividades:
+                    if str(duplicada.get("id")) == str(atividade_ativa_empresa.get("id")):
+                        continue
+                    det_duplicada = duplicada.get("detalhes") or {}
+                    if duplicada.get("status") != "erro" or not det_duplicada.get("gerada_por_varredura"):
+                        continue
+                    empresas_duplicada = set(_ids_gads_incompletos_dos_detalhes(det_duplicada).keys())
+                    if empresa not in empresas_duplicada:
+                        continue
+                    id_duplicada = duplicada.get("id")
+                    _supabase_resiliente(
+                        lambda id_excluir=id_duplicada: supabase.table("atividades").delete()
+                            .eq("id", id_excluir).eq("user_id", user_id).execute(),
+                        operacao="remover_atividade_gads_duplicada", tentativas=4,
+                    )
+                _ids_resultado.append(str(atividade_ativa_empresa.get("id") or ""))
+                continue
+
             for ativ in _atividades:
                 if ativ.get("status") not in ("pendente", "em_andamento", "erro"):
                     continue

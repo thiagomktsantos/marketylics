@@ -16215,6 +16215,108 @@ def _ids_gads_incompletos_dos_detalhes(detalhes: dict) -> dict:
             convertido[str(empresa)] = ids
     return convertido
 
+def garantir_atividade_gads_incompletos(user_id: str) -> str:
+    """Cria a fila de recuperação quando o cache tem erro sem notificação.
+
+    É idempotente: se já existir uma atividade aberta/erro com o mesmo
+    conjunto empresa+ID, não cria outra. Isso também recupera anúncios
+    incompletos de coletas feitas antes da V211.
+    """
+    if not user_id:
+        return ""
+    try:
+        _r_cache = _supabase_resiliente(
+            lambda: supabase.table("ci_dados").select("gads_cache")
+                    .eq("user_id", user_id).limit(1).execute(),
+            operacao="detectar_gads_incompletos_sem_atividade",
+            tentativas=3,
+        )
+        _cache = ((_r_cache.data or [{}])[0].get("gads_cache") or {})
+        _ids_por_empresa = {}
+        for _empresa, _entry in _cache.items():
+            _ids = []
+            for _ad in ((_entry or {}).get("data") or []):
+                if not isinstance(_ad, dict) or not _ad.get("id"):
+                    continue
+                _tem_midia = bool(
+                    (_ad.get("images") or [])
+                    or (_ad.get("images_b64") or [])
+                    or (_ad.get("videos") or [])
+                )
+                if not _tem_midia:
+                    _ids.append(str(_ad.get("id")))
+            if _ids:
+                _ids_por_empresa[str(_empresa)] = sorted(set(_ids))
+        if not _ids_por_empresa:
+            return ""
+
+        _assinatura = {
+            (empresa, ad_id)
+            for empresa, ids in _ids_por_empresa.items()
+            for ad_id in ids
+        }
+        _r_ativ = (
+            supabase.table("atividades")
+            .select("id,status,detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "coleta_ads_google")
+            .order("criado_em", desc=True)
+            .limit(100)
+            .execute()
+        )
+        for _ativ in (_r_ativ.data or []):
+            if _ativ.get("status") not in ("pendente", "em_andamento", "erro"):
+                continue
+            _existentes = _ids_gads_incompletos_dos_detalhes(_ativ.get("detalhes") or {})
+            _assinatura_existente = {
+                (empresa, ad_id)
+                for empresa, ids in _existentes.items()
+                for ad_id in ids
+            }
+            if _assinatura_existente == _assinatura:
+                return str(_ativ.get("id") or "")
+
+        _total = sum(len(v) for v in _ids_por_empresa.values())
+        _incompletos_texto = {
+            empresa: (
+                f"{len(ids)} anúncio(s) sem mídia validada; é necessário coletar novamente. "
+                f"IDs: {', '.join(ids)}"
+            )
+            for empresa, ids in _ids_por_empresa.items()
+        }
+        _detalhes = {
+            "empresas": list(_ids_por_empresa.keys()),
+            "plataforma": "Google Ads",
+            "coletadas": [],
+            "com_erro": dict(_incompletos_texto),
+            "incompletos": dict(_incompletos_texto),
+            "incompletos_ids_por_empresa": _ids_por_empresa,
+            "anuncios_com_erro": [
+                {"id": ad_id, "titulo": f"{empresa} · anúncio sem mídia validada"}
+                for empresa, ids in _ids_por_empresa.items()
+                for ad_id in ids
+            ],
+            "total_anuncios_com_erro": _total,
+            "por_empresa": {
+                empresa: {"status": "erro", "msg": _incompletos_texto[empresa]}
+                for empresa in _ids_por_empresa
+            },
+            "motivo": (
+                f"{_total} anúncio(s) do Google Ads estão sem mídia validada e precisam ser refeitos."
+            ),
+            "gerada_por_varredura": True,
+        }
+        _titulo = (
+            f"{', '.join(_ids_por_empresa.keys())} · "
+            f"{_total} anúncio(s) do Google Ads para refazer"
+        )
+        return criar_atividade(
+            user_id, "coleta_ads_google", _titulo, _detalhes, status="erro"
+        ) or ""
+    except Exception as exc:
+        print(f"[GADS-V212] falha ao garantir atividade de incompletos: {exc!r}", flush=True)
+        return ""
+
 def preparar_refazer_gads_incompletos(user_id: str, atividade: dict) -> tuple:
     """Cria backup persistente e devolve as empresas da fila de incompletos."""
     atividade_id = atividade.get("id")
@@ -44168,6 +44270,12 @@ html, body { background: transparent; overflow: hidden; }
 # NOTIFICAÇÕES — histórico de atividades
 # ---------------------------------------------------
 elif st.session_state.pagina == "notificacoes":
+
+    # V212 — reconcilia o cache antes de montar a lista. Assim, um anúncio
+    # antigo sem mídia gera sua atividade mesmo quando a coleta original não
+    # chegou a registrar a falha. A função é idempotente e não duplica cards.
+    if st.session_state.get("user"):
+        garantir_atividade_gads_incompletos(st.session_state.user.id)
 
     st.markdown(
         '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">',

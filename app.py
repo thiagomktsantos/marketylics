@@ -31396,20 +31396,32 @@ elif st.session_state.pagina == "google_ads":
         # da normalização e do download das mídias para que somente os anúncios
         # pendentes sejam efetivamente processados. A coleta normal continua
         # sem filtro quando ids_alvo não é informado.
-        _ids_alvo = {str(x) for x in (ids_alvo or []) if x}
+        def _id_cr_canonico(valor):
+            texto = str(valor or "").strip().upper()
+            if not texto:
+                return ""
+            # Algumas versões do ator entregam creativeId apenas numérico;
+            # outras já incluem o prefixo CR usado pela Central.
+            if texto.isdigit():
+                return f"CR{texto}"
+            return texto
+
+        _ids_alvo = {_id_cr_canonico(x) for x in (ids_alvo or []) if x}
         if _ids_alvo:
             _total_recebido = len(raw_items)
             raw_items = [
                 item for item in raw_items
-                if str(
-                    item.get("adArchiveID")
+                if _id_cr_canonico(
+                    item.get("creativeId")
+                    or item.get("creative_id")
+                    or item.get("adArchiveID")
                     or item.get("ad_archive_id")
                     or item.get("id")
                     or ""
                 ) in _ids_alvo
             ]
             print(
-                f"[GADS-REFAZER-V218] FILTRO ids_alvo={sorted(_ids_alvo)} "
+                f"[GADS-REFAZER-V219] FILTRO ids_alvo={sorted(_ids_alvo)} "
                 f"recebidos={_total_recebido} selecionados={len(raw_items)}",
                 flush=True,
             )

@@ -31259,7 +31259,7 @@ elif st.session_state.pagina == "google_ads":
             "regiao":               regiao,
         }
 
-    def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50) -> tuple:
+    def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50, ids_alvo=None) -> tuple:
         # `on_chunk` (opcional): callback chamado a cada `chunk_size` anúncios
         # já normalizados (ver loop no fim da função). Existe pra quem chama
         # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
@@ -31391,6 +31391,34 @@ elif st.session_state.pagina == "google_ads":
         if not raw_items:
             return [], [], None
 
+        # V218 — o ator consulta por anunciante (AR...), mas um reprocessamento
+        # nasce de IDs criativos específicos (CR...). Filtra o dataset ANTES
+        # da normalização e do download das mídias para que somente os anúncios
+        # pendentes sejam efetivamente processados. A coleta normal continua
+        # sem filtro quando ids_alvo não é informado.
+        _ids_alvo = {str(x) for x in (ids_alvo or []) if x}
+        if _ids_alvo:
+            _total_recebido = len(raw_items)
+            raw_items = [
+                item for item in raw_items
+                if str(
+                    item.get("adArchiveID")
+                    or item.get("ad_archive_id")
+                    or item.get("id")
+                    or ""
+                ) in _ids_alvo
+            ]
+            print(
+                f"[GADS-REFAZER-V218] FILTRO ids_alvo={sorted(_ids_alvo)} "
+                f"recebidos={_total_recebido} selecionados={len(raw_items)}",
+                flush=True,
+            )
+            if not raw_items:
+                return [], [], (
+                    "O anúncio pendente não foi encontrado na resposta atual do Google Ads. "
+                    "Nenhum anúncio já salvo foi alterado."
+                )
+
         gads_normalizados = []
         for _i in range(0, len(raw_items), max(1, chunk_size)):
             _chunk_raw = raw_items[_i:_i + chunk_size]
@@ -31403,8 +31431,10 @@ elif st.session_state.pagina == "google_ads":
                     print(f"[APIFY-DEBUG] termo={termo!r} on_chunk falhou: {e_chunk!r}", flush=True)
         return gads_normalizados, raw_items, None
 
-    def buscar_gads_apify(query: str, limit: int = 1000, on_chunk=None) -> tuple:
-        return _apify_run_sync(query.strip(), limit=limit, on_chunk=on_chunk)
+    def buscar_gads_apify(query: str, limit: int = 1000, on_chunk=None, ids_alvo=None) -> tuple:
+        return _apify_run_sync(
+            query.strip(), limit=limit, on_chunk=on_chunk, ids_alvo=ids_alvo
+        )
 
     def _render_loader(placeholder, progresso: list, total: int, atual: int, finalizado: bool = False):
         progresso_pct = int((atual / total) * 100) if total else 100
@@ -31493,7 +31523,7 @@ elif st.session_state.pagina == "google_ads":
             return "Falha temporária de comunicação com o banco. O sistema tentou novamente."
         return (txt[:220] + "…") if len(txt) > 220 else txt
 
-    def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str):
+    def _executar_busca_background(user_id: str, empresas: list, query_values: dict, forcar: bool, atividade_id: str, ids_alvo_por_empresa=None):
         """Roda a coleta de verdade (chamadas à Apify) numa thread — não
         pode chamar nada de UI (`st.*`) aqui, já que isso quebra fora da
         thread principal do Streamlit. Por isso não usa `_render_loader`
@@ -31677,7 +31707,10 @@ elif st.session_state.pagina == "google_ads":
                             flush=True,
                         )
 
-                    ads, raw, erro = buscar_gads_apify(query, on_chunk=_on_chunk_ck)
+                    _ids_alvo_ck = list((ids_alvo_por_empresa or {}).get(ck) or [])
+                    ads, raw, erro = buscar_gads_apify(
+                        query, on_chunk=_on_chunk_ck, ids_alvo=_ids_alvo_ck
+                    )
                     if erro:
                         erros[ck] = erro
                         _status_por_empresa[ck] = {"status": "erro", "msg": erro}
@@ -31793,7 +31826,7 @@ elif st.session_state.pagina == "google_ads":
             )
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
 
-    def executar_busca(empresas: list, query_values: dict, forcar: bool = False, atividade_id_existente: str = None):
+    def executar_busca(empresas: list, query_values: dict, forcar: bool = False, atividade_id_existente: str = None, ids_alvo_por_empresa=None):
         _permitido, _motivo_bloqueio = verificar_pode_executar_acao(st.session_state.user.id, "coleta_ads")
         if not _permitido:
             st.warning(f"🚫 {_motivo_bloqueio}")
@@ -31824,7 +31857,10 @@ elif st.session_state.pagina == "google_ads":
         _iniciou_coleta = _job_start_thread(
             "coleta_ads_google", st.session_state.user.id, "google_ads",
             _executar_busca_background,
-            args=(st.session_state.user.id, empresas, query_values, forcar, _atividade_id),
+            args=(
+                st.session_state.user.id, empresas, query_values, forcar,
+                _atividade_id, ids_alvo_por_empresa,
+            ),
             daemon=True,
             name="coleta-google-ads",
         )
@@ -33206,6 +33242,7 @@ setHeight(false);
     # criativos incompletos para esta página iniciar a coleta real.
     _refazer_incompletos_nomes = st.session_state.pop("_gads_refazer_incompletos_empresas", [])
     _refazer_incompletos_atividade = st.session_state.pop("_gads_refazer_incompletos_atividade", None)
+    _refazer_incompletos_ids = st.session_state.pop("_gads_refazer_incompletos_ids", {})
     if _refazer_incompletos_nomes:
         _nomes_refazer_set = {str(x) for x in _refazer_incompletos_nomes}
         _empresas_refazer = [e for e in todas_empresas if e.get("nome") in _nomes_refazer_set and empresa_tem_gads_id(e)]
@@ -33219,6 +33256,7 @@ setHeight(false);
             executar_busca(
                 _empresas_refazer, _queries_refazer, forcar=True,
                 atividade_id_existente=_refazer_incompletos_atividade,
+                ids_alvo_por_empresa=_refazer_incompletos_ids,
             )
         else:
             st.error("Não foi possível refazer: as empresas pendentes não possuem mais um ID do Google Ads configurado.")
@@ -46081,6 +46119,11 @@ html, body { background: transparent; overflow: hidden; }
                         if _ok_backup:
                             st.session_state["_gads_refazer_incompletos_empresas"] = _empresas_pend
                             st.session_state["_gads_refazer_incompletos_atividade"] = _rid
+                            st.session_state["_gads_refazer_incompletos_ids"] = (
+                                _ids_gads_incompletos_dos_detalhes(
+                                    (_atividade_ref or {}).get("detalhes") or {}
+                                )
+                            )
                             st.session_state.pagina = "google_ads"
                             st.toast(f"Backup criado. Refazendo somente: {', '.join(_empresas_pend)}.", icon="🔄")
                         else:

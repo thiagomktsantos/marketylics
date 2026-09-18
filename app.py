@@ -587,7 +587,7 @@ supabase = get_supabase()
 # sua própria sequência de tentativas, com tempos e critérios diferentes.
 _SUPABASE_ERROS_TRANSITORIOS = (
     "timeout", "timed out", "read operation", "connection reset",
-    "connection lost", "server disconnected", "521", "502", "503", "504",
+    "connection lost", "server disconnected", "521", "522", "502", "503", "504",
     "57p03", "database system is not accepting connections", "upstream",
 )
 
@@ -13540,8 +13540,24 @@ def login_supabase(email: str, senha: str):
     # credencial (senha errada, usuário não existe etc.) vêm da API do
     # GoTrue como resposta HTTP normal, não como exceção de timeout —
     # esses NUNCA entram nesse retry, só falham direto na primeira vez.
+    def _mensagem_login(exc) -> str:
+        texto = str(exc or "")
+        baixo = texto.lower()
+        if _erro_supabase_transitorio(exc):
+            return (
+                "O serviço de acesso está temporariamente indisponível. "
+                "Aguarde alguns instantes e tente novamente."
+            )
+        if "invalid login credentials" in baixo or "invalid credentials" in baixo:
+            return "E-mail ou senha incorretos."
+        if "email not confirmed" in baixo:
+            return "Confirme seu e-mail antes de entrar na plataforma."
+        if "user not found" in baixo:
+            return "E-mail ou senha incorretos."
+        return "Não foi possível entrar agora. Tente novamente em instantes."
+
     _ultimo_erro = None
-    for _tentativa in range(2):
+    for _tentativa in range(3):
         try:
             res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
             if res.user:
@@ -13554,11 +13570,26 @@ def login_supabase(email: str, senha: str):
                 garantir_linha_usuario(res.user.id)
             return res.user, None
         except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout) as e:
-            _ultimo_erro = str(e)
-            continue  # tenta mais uma vez antes de desistir
+            _ultimo_erro = e
+            print(
+                f"[AUTH-V220] falha transitória tentativa={_tentativa + 1}/3: {e!r}",
+                flush=True,
+            )
+            if _tentativa < 2:
+                time.sleep(1 + _tentativa)
+                continue
         except Exception as e:
-            return None, str(e)
-    return None, _ultimo_erro
+            if _erro_supabase_transitorio(e):
+                _ultimo_erro = e
+                print(
+                    f"[AUTH-V220] gateway indisponível tentativa={_tentativa + 1}/3: {e!r}",
+                    flush=True,
+                )
+                if _tentativa < 2:
+                    time.sleep(1 + _tentativa)
+                    continue
+            return None, _mensagem_login(e)
+    return None, _mensagem_login(_ultimo_erro)
 
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:
@@ -15158,7 +15189,7 @@ if not st.session_state.logado:
                 else:
                     st.session_state["_login_autenticando"] = False
                     st.session_state.pop("_login_email_pendente", None)
-                    st.session_state["_login_erro"] = f"Erro ao entrar: {err}"
+                    st.session_state["_login_erro"] = err or "Não foi possível entrar agora. Tente novamente."
                     st.rerun()
 
         with aba[1]:

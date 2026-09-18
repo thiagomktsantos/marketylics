@@ -31092,6 +31092,23 @@ elif st.session_state.pagina == "google_ads":
                 chamadas.append(txt)
             if len(chamadas) >= 3:
                 break
+        # Alguns previews usam componentes semânticos próprios: o texto está
+        # visível, mas não dentro de <a>/<h1>. Se os estilos não bastarem,
+        # usa a ordem visual após o domínio (cabeçalho -> chamadas -> copy).
+        if not chamadas and url_exibida:
+            _idx_url = next((i for i, x in enumerate(limpos) if x["text"] == url_exibida), -1)
+            if _idx_url >= 0:
+                for el in limpos[_idx_url + 1:_idx_url + 9]:
+                    txt = el["text"]
+                    if (
+                        5 <= len(txt) <= 180
+                        and not _parece_dominio(txt)
+                        and txt.lower() not in _cta_google
+                        and len(txt.split()) <= 18
+                    ):
+                        chamadas.append(txt)
+                        if len(chamadas) >= 3:
+                            break
         titulo = chamadas[0] if chamadas else ""
 
         cta = ""
@@ -31165,31 +31182,46 @@ elif st.session_state.pagina == "google_ads":
                         page.goto(alvo, wait_until="domcontentloaded", timeout=20000)
                     except Exception as exc:
                         print(f"[GADS-HTML-V223] goto parcial id={creative_id}: {exc!r}", flush=True)
-                    for _ in range(16):
-                        page.wait_for_timeout(500)
-                        if creative_id in page.url or creative_id in page.content():
-                            break
+                    # O ID já está na URL desde o primeiro instante, mas o
+                    # criativo Angular/iframe demora alguns segundos para
+                    # aparecer. V224 saía do loop após 0,5 s e lia só o shell.
+                    page.wait_for_timeout(8000)
                     if creative_id not in page.url and creative_id not in page.content():
                         print(f"[GADS-HTML-V223] ID não validado na página: {creative_id}", flush=True)
                         return {}
                     elementos = []
-                    _js = """els => els.map(e => { const s=getComputedStyle(e), r=e.getBoundingClientRect(); return {
-                        text:(e.innerText||e.textContent||'').trim(), tag:e.tagName.toLowerCase(),
-                        role:e.getAttribute('role')||'', href:e.href||'', fontSize:parseFloat(s.fontSize)||0,
-                        fontWeight:s.fontWeight||'', color:s.color||'', x:r.x, y:r.y, w:r.width, h:r.height,
-                        visible:s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0
-                    }}).filter(x=>x.visible&&x.text)"""
+                    _js_deep = """() => {
+                        const out=[];
+                        const visit=(root) => {
+                            for (const e of (root.querySelectorAll ? root.querySelectorAll('*') : [])) {
+                                const s=getComputedStyle(e), r=e.getBoundingClientRect();
+                                if(s.display==='none'||s.visibility==='hidden'||r.width<=0||r.height<=0) continue;
+                                const proprio=Array.from(e.childNodes||[])
+                                  .filter(n=>n.nodeType===Node.TEXT_NODE).map(n=>n.textContent.trim())
+                                  .filter(Boolean).join(' ').trim();
+                                if(proprio) out.push({text:proprio,tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',href:e.href||'',fontSize:parseFloat(s.fontSize)||0,fontWeight:s.fontWeight||'',color:s.color||'',x:r.x,y:r.y,w:r.width,h:r.height,visible:true});
+                                if(e.shadowRoot) visit(e.shadowRoot);
+                            }
+                        };
+                        visit(document);
+                        return out;
+                    }"""
                     for frame in page.frames:
                         try:
-                            elementos.extend(frame.locator("a,button,[role=button],h1,h2,h3,p").evaluate_all(_js))
-                            # Folhas de texto cobrem previews sem tags semânticas.
-                            elementos.extend(frame.locator("span,div").evaluate_all(
-                                "els => els.filter(e=>e.children.length===0).map(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {text:(e.innerText||e.textContent||'').trim(),tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',href:'',fontSize:parseFloat(s.fontSize)||0,fontWeight:s.fontWeight||'',color:s.color||'',x:r.x,y:r.y,w:r.width,h:r.height,visible:s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}}).filter(x=>x.visible&&x.text)"
-                            ))
+                            elementos.extend(frame.evaluate(_js_deep))
+                            # Fallback por linhas do innerText: cobre web
+                            # components fechados que ainda expõem texto ao
+                            # mecanismo de acessibilidade do navegador.
+                            _texto_frame = frame.locator("body").inner_text(timeout=3000)
+                            for _linha in str(_texto_frame or "").splitlines():
+                                _linha = _linha.strip()
+                                if _linha:
+                                    elementos.append({"text": _linha, "tag": "raw", "role": "", "href": "", "fontSize": 0, "color": ""})
                         except Exception:
                             continue
                     resultado = _estruturar_texto_google_elementos(elementos, pagina_url, creative_id)
-                    print(f"[GADS-HTML-V223] id={creative_id} elementos={len(elementos)} extraido={bool(resultado)}", flush=True)
+                    _amostra = [str(x.get("text") or "")[:140] for x in elementos if x.get("text")][:40]
+                    print(f"[GADS-HTML-V225] id={creative_id} frames={len(page.frames)} elementos={len(elementos)} extraido={bool(resultado)} amostra={_amostra!r}", flush=True)
                     return resultado
                 finally:
                     browser.close()

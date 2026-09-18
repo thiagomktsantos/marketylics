@@ -16363,7 +16363,7 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
                     (_ad.get("images") or [])
                     or (_ad.get("images_b64") or [])
                     or (_ad.get("videos") or [])
-                    or (_ad.get("origem_texto") == "html_google" and (_ad.get("ocr_estruturado") or {}))
+                    or (_ad.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(_ad.get("ocr_estruturado")))
                 )
                 if not _tem_midia:
                     _ids.append(str(_ad.get("id")))
@@ -17786,6 +17786,48 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             pass
         return False, str(e)
 
+def _gads_html_estruturado_valido(valor) -> bool:
+    """Aceita HTML somente quando parece um anúncio, nunca CSS/JavaScript.
+
+    V223 aceitava qualquer texto longo do content.js. Isso fez regras CSS e
+    window.getElementById passarem por descrição/URL. A V224 exige um domínio
+    real e pelo menos uma peça de copy legível.
+    """
+    if not valor:
+        return False
+    if isinstance(valor, str):
+        try:
+            import json as _json_gads_html
+            valor = _json_gads_html.loads(valor)
+        except Exception:
+            return False
+    if not isinstance(valor, dict):
+        return False
+    url = str(valor.get("url_exibida") or "").strip()
+    # URL exibida pode conter nome da empresa na primeira linha; procura uma
+    # linha que seja realmente domínio/caminho, sem espaços ou sintaxe JS.
+    tem_dominio = any(
+        re.fullmatch(r"(?:https?://)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/[^\s{};]*)?/?", linha.strip(), re.I)
+        for linha in url.splitlines()
+        if linha.strip()
+    )
+    chamadas = valor.get("chamadas") or []
+    if isinstance(chamadas, str):
+        chamadas = [chamadas]
+    partes = [
+        str(valor.get("titulo") or ""),
+        str(valor.get("descricao") or ""),
+        *(str(x or "") for x in chamadas if x),
+    ]
+    copy = " ".join(x.strip() for x in partes if x and x.strip()).strip()
+    suspeito = bool(re.search(
+        r"(?:getElementById|addEventListener|window\.|document\.|display\s*:|overflow\s*:|"
+        r"font-[a-z-]+\s*:|\{[^}]*:[^}]*\}|function\s*\(|=>)",
+        f"{url} {copy}", re.I,
+    ))
+    return bool(tem_dominio and len(copy) >= 5 and not suspeito)
+
+
 def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = None,
                       tentativas: int = 7) -> tuple[bool, str | None]:
     """Equivalente a `salvar_cache_ads`, mas pro Google Ads — grava na
@@ -17827,6 +17869,14 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
             ads_limpos = [dict(ad) for ad in entry.get("data", [])]
             for ad_limpo in ads_limpos:
                 ad_limpo.pop("video_thumb", None)
+                if ad_limpo.get("origem_texto") == "html_google" and not _gads_html_estruturado_valido(ad_limpo.get("ocr_estruturado")):
+                    print(
+                        f"[GADS-HTML-V224] descartando falso positivo antes de salvar id={ad_limpo.get('id')}",
+                        flush=True,
+                    )
+                    ad_limpo["ocr_texto"] = ""
+                    ad_limpo["ocr_estruturado"] = None
+                    ad_limpo["origem_texto"] = ""
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
 
@@ -30761,8 +30811,8 @@ elif st.session_state.pagina == "google_ads":
                     # agora com mídia validada. Isso corrige somente o item
                     # incompleto e nunca troca um anúncio válido já salvo.
                     _novo_mesmo_id = novos_por_id[ad_id]
-                    _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []) or (ad.get("origem_texto") == "html_google" and (ad.get("ocr_estruturado") or {})))
-                    _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []) or (_novo_mesmo_id.get("origem_texto") == "html_google" and (_novo_mesmo_id.get("ocr_estruturado") or {})))
+                    _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []) or (ad.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(ad.get("ocr_estruturado"))))
+                    _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []) or (_novo_mesmo_id.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(_novo_mesmo_id.get("ocr_estruturado"))))
                     ad_atualizado = dict(_novo_mesmo_id) if (not _antigo_tem_midia and _novo_tem_midia) else dict(ad)
                     ad_atualizado["ativo"] = True
                     gads_atualizados.append(ad_atualizado)
@@ -30984,6 +31034,12 @@ elif st.session_state.pagina == "google_ads":
             baixo = texto.lower()
             if any(x in baixo for x in _ui_google) or re.fullmatch(r"\d+ de \d+ varia[cç][õo]es?", baixo):
                 continue
+            if re.search(
+                r"(?:getElementById|addEventListener|window\.|document\.|display\s*:|"
+                r"overflow\s*:|white-space\s*:|font-[a-z-]+\s*:|\{[^}]*:[^}]*\}|function\s*\(|=>)",
+                texto, re.I,
+            ):
+                continue
             chave = (baixo, str(el.get("href") or ""))
             if chave in vistos:
                 continue
@@ -30993,7 +31049,10 @@ elif st.session_state.pagina == "google_ads":
             limpos.append(novo)
 
         def _parece_dominio(txt):
-            return bool(re.search(r"(?:https?://|www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?", txt, re.I))
+            return bool(re.fullmatch(
+                r"(?:https?://)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/[^\s{};]*)?/?",
+                str(txt or "").strip(), re.I,
+            ))
 
         def _href_destino(el):
             href = str(el.get("href") or "").strip()
@@ -31077,7 +31136,7 @@ elif st.session_state.pagina == "google_ads":
             "_creative_id_validado": creative_id,
             "_pagina_origem": pagina_url,
         }
-        if not any(estruturado.get(k) for k in ("titulo", "descricao", "url_exibida", "cta", "sitelinks")):
+        if not _gads_html_estruturado_valido(estruturado):
             return {}
         return estruturado
 
@@ -31510,6 +31569,9 @@ elif st.session_state.pagina == "google_ads":
         # usamos somente o preview.js (barato). No fluxo Refazer, que já chega
         # filtrado por CR..., permitimos abrir a página humana do MESMO ID.
         _texto_estruturado = _preview_info.get("texto_estruturado") or {}
+        if _texto_estruturado and not _gads_html_estruturado_valido(_texto_estruturado):
+            print(f"[GADS-HTML-V224] preview rejeitado id={ad_id}; abrindo página exata", flush=True)
+            _texto_estruturado = {}
         if raw_format == "text" and not _texto_estruturado and permitir_browser_texto:
             _texto_estruturado = _extrair_texto_pagina_google(_human_page_url, ad_id)
         if _texto_estruturado:
@@ -31990,7 +32052,7 @@ elif st.session_state.pagina == "google_ads":
                         (ad.get("images") or [])
                         or (ad.get("images_b64") or [])
                         or (ad.get("videos") or [])
-                        or (ad.get("origem_texto") == "html_google" and (ad.get("ocr_estruturado") or {}))
+                        or (ad.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(ad.get("ocr_estruturado")))
                     )
                     if not tem_midia:
                         pendentes.append(str(ad.get("id") or "sem ID"))

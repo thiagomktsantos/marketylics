@@ -571,7 +571,10 @@ def get_supabase() -> Client:
                 # V87: coletas grandes de Google Ads podem atualizar um JSONB
                 # considerável. 30s ainda gerava "The read operation timed out"
                 # em instabilidades passageiras do gateway do Supabase.
-                timeout=httpx.Timeout(90.0, connect=15.0)
+                # V222: AUTH pode atravessar picos longos do gateway. O retry
+                # agora tambem recria o client; cada conexao limpa recebe ate
+                # 120s de leitura e 20s para conectar.
+                timeout=httpx.Timeout(120.0, connect=20.0)
             ),
         )
         st.session_state["_supabase_client"] = create_client(url, key, options=_opcoes_supabase)
@@ -13556,8 +13559,24 @@ def login_supabase(email: str, senha: str):
             return "E-mail ou senha incorretos."
         return "Não foi possível entrar agora. Tente novamente em instantes."
 
+    def _recriar_cliente_auth():
+        """Descarta somente a conexao HTTP que falhou e cria outra limpa."""
+        global supabase
+        st.session_state.pop("_supabase_client", None)
+        supabase = get_supabase()
+
+    def _descricao_segura(exc) -> str:
+        """Detalha o erro no log sem registrar e-mail, senha ou URL do projeto."""
+        mensagem = str(exc or "").strip().replace("\n", " ")
+        mensagem = re.sub(r"https?://\\S+", "[URL ocultada]", mensagem)
+        return f"{type(exc).__name__}: {mensagem[:500]}"
+
     _ultimo_erro = None
     for _tentativa in range(3):
+        print(
+            f"[AUTH-V222] iniciando tentativa={_tentativa + 1}/3",
+            flush=True,
+        )
         try:
             res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
             if res.user:
@@ -13568,27 +13587,57 @@ def login_supabase(email: str, senha: str):
                 # e "autocura" contas que ficaram sem a linha porque o cadastro
                 # rodou sem sessão (confirmação de e-mail pendente na hora).
                 garantir_linha_usuario(res.user.id)
+                print(
+                    f"[AUTH-V222] login concluido tentativa={_tentativa + 1}/3",
+                    flush=True,
+                )
             return res.user, None
         except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout) as e:
             _ultimo_erro = e
             print(
-                f"[AUTH-V220] falha transitória tentativa={_tentativa + 1}/3: {e!r}",
+                f"[AUTH-V222] falha de rede tentativa={_tentativa + 1}/3: {_descricao_segura(e)}",
                 flush=True,
             )
             if _tentativa < 2:
+                try:
+                    _recriar_cliente_auth()
+                    print("[AUTH-V222] conexao de autenticacao recriada", flush=True)
+                except Exception as erro_reconexao:
+                    _ultimo_erro = erro_reconexao
+                    print(
+                        f"[AUTH-V222] erro ao recriar conexao: {_descricao_segura(erro_reconexao)}",
+                        flush=True,
+                    )
                 time.sleep(1 + _tentativa)
                 continue
         except Exception as e:
             if _erro_supabase_transitorio(e):
                 _ultimo_erro = e
                 print(
-                    f"[AUTH-V220] gateway indisponível tentativa={_tentativa + 1}/3: {e!r}",
+                    f"[AUTH-V222] gateway indisponivel tentativa={_tentativa + 1}/3: {_descricao_segura(e)}",
                     flush=True,
                 )
                 if _tentativa < 2:
+                    try:
+                        _recriar_cliente_auth()
+                        print("[AUTH-V222] conexao de autenticacao recriada", flush=True)
+                    except Exception as erro_reconexao:
+                        _ultimo_erro = erro_reconexao
+                        print(
+                            f"[AUTH-V222] erro ao recriar conexao: {_descricao_segura(erro_reconexao)}",
+                            flush=True,
+                        )
                     time.sleep(1 + _tentativa)
                     continue
+            print(
+                f"[AUTH-V222] falha definitiva tentativa={_tentativa + 1}/3: {_descricao_segura(e)}",
+                flush=True,
+            )
             return None, _mensagem_login(e)
+    print(
+        f"[AUTH-V222] tentativas esgotadas: {_descricao_segura(_ultimo_erro)}",
+        flush=True,
+    )
     return None, _mensagem_login(_ultimo_erro)
 
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
@@ -15113,6 +15162,34 @@ if not st.session_state.logado:
             if "_login_autenticando" not in st.session_state:
                 st.session_state["_login_autenticando"] = False
 
+            # V221 — spinner animado dentro do botão. O botão permanece
+            # desabilitado para impedir cliques duplicados, mas a animação
+            # continua durante todas as retentativas automáticas do Supabase.
+            st.markdown("""
+            <style>
+            @keyframes login-spinner-v221 {
+                to { transform: rotate(360deg); }
+            }
+            .st-key-login_submit_button button:disabled p {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 9px !important;
+            }
+            .st-key-login_submit_button button:disabled p::before {
+                content: "";
+                width: 14px;
+                height: 14px;
+                flex: 0 0 14px;
+                border: 2px solid rgba(255,255,255,.42);
+                border-top-color: #ffffff;
+                border-radius: 50%;
+                animation: login-spinner-v221 .72s linear infinite;
+                box-sizing: border-box;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
             with st.form("form_login"):
                 email_login = st.text_input(
                     "E-mail",
@@ -15131,6 +15208,7 @@ if not st.session_state.logado:
                     "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar na plataforma →",
                     width="stretch",
                     disabled=st.session_state["_login_autenticando"],
+                    key="_login_submit_button_",
                 )
 
             # Exibe eventual erro após o estado do botão voltar ao normal.

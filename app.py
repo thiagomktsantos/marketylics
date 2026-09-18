@@ -16363,6 +16363,7 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
                     (_ad.get("images") or [])
                     or (_ad.get("images_b64") or [])
                     or (_ad.get("videos") or [])
+                    or (_ad.get("origem_texto") == "html_google" and (_ad.get("ocr_estruturado") or {}))
                 )
                 if not _tem_midia:
                     _ids.append(str(_ad.get("id")))
@@ -30760,8 +30761,8 @@ elif st.session_state.pagina == "google_ads":
                     # agora com mídia validada. Isso corrige somente o item
                     # incompleto e nunca troca um anúncio válido já salvo.
                     _novo_mesmo_id = novos_por_id[ad_id]
-                    _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []))
-                    _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []))
+                    _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []) or (ad.get("origem_texto") == "html_google" and (ad.get("ocr_estruturado") or {})))
+                    _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []) or (_novo_mesmo_id.get("origem_texto") == "html_google" and (_novo_mesmo_id.get("ocr_estruturado") or {})))
                     ad_atualizado = dict(_novo_mesmo_id) if (not _antigo_tem_midia and _novo_tem_midia) else dict(ad)
                     ad_atualizado["ativo"] = True
                     gads_atualizados.append(ad_atualizado)
@@ -30950,6 +30951,193 @@ elif st.session_state.pagina == "google_ads":
         print(f"[GADS-IMG] resultado final pra {pagina_url}: {achado[0] or '(vazio)'}", flush=True)
         return achado[0]
 
+    def _estruturar_texto_google_elementos(elementos: list, pagina_url: str = "", creative_id: str = "") -> dict:
+        """Converte elementos visíveis do criativo de texto no mesmo esquema do OCR.
+
+        A origem muda (HTML em vez de pixels), mas o contrato permanece:
+        titulo/descricao/url_exibida/url_final/cta/sitelinks.  Isso permite
+        reutilizar busca, filtros e renderização que já existem para OCR.
+        """
+        import html as _html_google
+        from urllib.parse import urlparse as _urlparse_google
+
+        _ui_google = (
+            "detalhes do anúncio", "denunciar este anúncio", "ver mais anúncios desse anunciante",
+            "última exibição", "primeira exibição", "formato:", "onde aparecem:",
+            "central de transparência", "política de privacidade", "termos de serviço",
+            "próxima variação", "variação anterior",
+        )
+        _cta_google = {
+            "comprar", "compre agora", "saiba mais", "inscreva-se", "assinar", "reservar",
+            "solicitar orçamento", "fale conosco", "ligar", "enviar mensagem", "ver oferta",
+            "baixar", "instalar", "começar", "cadastre-se", "ver mais",
+        }
+
+        limpos, vistos = [], set()
+        for el in elementos or []:
+            if isinstance(el, str):
+                el = {"text": el, "tag": "", "href": "", "fontSize": 0, "color": ""}
+            texto = _html_google.unescape(str(el.get("text") or ""))
+            texto = re.sub(r"\s+", " ", texto).strip(" \t\r\n|·")
+            if not texto or len(texto) > 500:
+                continue
+            baixo = texto.lower()
+            if any(x in baixo for x in _ui_google) or re.fullmatch(r"\d+ de \d+ varia[cç][õo]es?", baixo):
+                continue
+            chave = (baixo, str(el.get("href") or ""))
+            if chave in vistos:
+                continue
+            vistos.add(chave)
+            novo = dict(el)
+            novo["text"] = texto
+            limpos.append(novo)
+
+        def _parece_dominio(txt):
+            return bool(re.search(r"(?:https?://|www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/\S*)?", txt, re.I))
+
+        def _href_destino(el):
+            href = str(el.get("href") or "").strip()
+            if href.startswith("http") and "adstransparency.google.com" not in href:
+                return href
+            return ""
+
+        url_exibida = ""
+        for el in limpos:
+            if _parece_dominio(el["text"]) and len(el["text"]) <= 160:
+                url_exibida = el["text"]
+                break
+
+        links = [el for el in limpos if _href_destino(el)]
+        url_final = next((_href_destino(el) for el in links), "")
+        candidatos_titulo = []
+        for el in limpos:
+            txt = el["text"]
+            baixo = txt.lower()
+            if txt == url_exibida or _parece_dominio(txt) or baixo in _cta_google:
+                continue
+            try:
+                tamanho = float(el.get("fontSize") or 0)
+            except Exception:
+                tamanho = 0
+            cor = str(el.get("color") or "").lower()
+            tag = str(el.get("tag") or "").lower()
+            href = _href_destino(el)
+            azul = "0, 0, 238" in cor or "26, 115, 232" in cor or "rgb(0, 102" in cor
+            score = (4 if href else 0) + (3 if tag in ("h1", "h2", "h3") else 0) + (2 if tamanho >= 16 else 0) + (2 if azul else 0)
+            if 5 <= len(txt) <= 180 and score >= 2:
+                candidatos_titulo.append((score, limpos.index(el), txt, el))
+        candidatos_titulo.sort(key=lambda x: (-x[0], x[1]))
+        chamadas = []
+        for _, _, txt, _ in candidatos_titulo:
+            if txt not in chamadas:
+                chamadas.append(txt)
+            if len(chamadas) >= 3:
+                break
+        titulo = chamadas[0] if chamadas else ""
+
+        cta = ""
+        for el in limpos:
+            baixo = el["text"].lower().strip()
+            tag = str(el.get("tag") or "").lower()
+            role = str(el.get("role") or "").lower()
+            if baixo in _cta_google and (tag == "button" or role == "button" or len(baixo) <= 30):
+                cta = el["text"]
+                break
+
+        usados = {url_exibida, titulo, cta, *chamadas}
+        descricoes = []
+        for el in limpos:
+            txt = el["text"]
+            if txt in usados or _parece_dominio(txt) or _href_destino(el):
+                continue
+            if 18 <= len(txt) <= 420 and len(txt.split()) >= 4:
+                descricoes.append(txt)
+        descricao = max(descricoes, key=len, default="")
+
+        sitelinks = []
+        for el in links:
+            txt = el["text"]
+            if not txt or txt in chamadas or txt == url_exibida or txt.lower() in _cta_google:
+                continue
+            if 3 <= len(txt) <= 100 and not _parece_dominio(txt):
+                sitelinks.append({"titulo": txt, "descricao": ""})
+        # Dedupe preservando ordem.
+        sitelinks = list({x["titulo"]: x for x in sitelinks}.values())[:6]
+
+        estruturado = {
+            "titulo": titulo,
+            "chamadas": chamadas,
+            "descricao": descricao,
+            "url_exibida": url_exibida,
+            "url_final": url_final,
+            "cta": cta,
+            "cta_subtitulo": "",
+            "sitelinks": sitelinks,
+            "_origem_texto": "html_google",
+            "_creative_id_validado": creative_id,
+            "_pagina_origem": pagina_url,
+        }
+        if not any(estruturado.get(k) for k in ("titulo", "descricao", "url_exibida", "cta", "sitelinks")):
+            return {}
+        return estruturado
+
+    def _extrair_texto_pagina_google(pagina_url: str, creative_id: str) -> dict:
+        """Abre somente a URL do ID solicitado e lê texto/links do anúncio.
+
+        Esta função é reservada ao fluxo Refazer (IDs alvo), evitando abrir
+        dezenas de Chromiums numa coleta normal. Não captura imagens nem aceita
+        conteúdo de outra URL: o creative_id precisa permanecer comprovado.
+        """
+        if not pagina_url or not creative_id or f"/creative/{creative_id}" not in pagina_url:
+            return {}
+        try:
+            if not _garantir_chromium_playwright():
+                return {}
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
+                try:
+                    page = browser.new_page(user_agent=(
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    ))
+                    alvo = pagina_url + ("&" if "?" in pagina_url else "?") + "region=BR"
+                    try:
+                        page.goto(alvo, wait_until="domcontentloaded", timeout=20000)
+                    except Exception as exc:
+                        print(f"[GADS-HTML-V223] goto parcial id={creative_id}: {exc!r}", flush=True)
+                    for _ in range(16):
+                        page.wait_for_timeout(500)
+                        if creative_id in page.url or creative_id in page.content():
+                            break
+                    if creative_id not in page.url and creative_id not in page.content():
+                        print(f"[GADS-HTML-V223] ID não validado na página: {creative_id}", flush=True)
+                        return {}
+                    elementos = []
+                    _js = """els => els.map(e => { const s=getComputedStyle(e), r=e.getBoundingClientRect(); return {
+                        text:(e.innerText||e.textContent||'').trim(), tag:e.tagName.toLowerCase(),
+                        role:e.getAttribute('role')||'', href:e.href||'', fontSize:parseFloat(s.fontSize)||0,
+                        fontWeight:s.fontWeight||'', color:s.color||'', x:r.x, y:r.y, w:r.width, h:r.height,
+                        visible:s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0
+                    }}).filter(x=>x.visible&&x.text)"""
+                    for frame in page.frames:
+                        try:
+                            elementos.extend(frame.locator("a,button,[role=button],h1,h2,h3,p").evaluate_all(_js))
+                            # Folhas de texto cobrem previews sem tags semânticas.
+                            elementos.extend(frame.locator("span,div").evaluate_all(
+                                "els => els.filter(e=>e.children.length===0).map(e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {text:(e.innerText||e.textContent||'').trim(),tag:e.tagName.toLowerCase(),role:e.getAttribute('role')||'',href:'',fontSize:parseFloat(s.fontSize)||0,fontWeight:s.fontWeight||'',color:s.color||'',x:r.x,y:r.y,w:r.width,h:r.height,visible:s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}}).filter(x=>x.visible&&x.text)"
+                            ))
+                        except Exception:
+                            continue
+                    resultado = _estruturar_texto_google_elementos(elementos, pagina_url, creative_id)
+                    print(f"[GADS-HTML-V223] id={creative_id} elementos={len(elementos)} extraido={bool(resultado)}", flush=True)
+                    return resultado
+                finally:
+                    browser.close()
+        except Exception as exc:
+            print(f"[GADS-HTML-V223] falha id={creative_id}: {exc!r}", flush=True)
+            return {}
+
     def _extrair_preview_google(preview_url: str) -> dict:
         """O `previewUrl` do Google Ads Transparency Center não é uma
         página — é um endpoint .js (content.js?...&responseCallback=...)
@@ -30963,7 +31151,7 @@ elif st.session_state.pagina == "google_ads":
         E o vídeo do YouTube sem precisar de headless browser: só baixar
         o .js (é texto puro, não precisa executar) e aplicar regex.
         """
-        resultado = {"image_url": "", "youtube_id": "", "youtube_url": ""}
+        resultado = {"image_url": "", "youtube_id": "", "youtube_url": "", "texto_estruturado": {}}
         if not preview_url or not preview_url.startswith("http"):
             return resultado
         try:
@@ -30975,6 +31163,44 @@ elif st.session_state.pagina == "google_ads":
             if r.status_code != 200 or not r.text:
                 return resultado
             texto = r.text
+
+            # Criativos de Texto costumam vir como HTML serializado dentro
+            # do próprio content.js. Antes de recorrer ao navegador, tenta
+            # aproveitar essa fonte barata. O parser coleta apenas texto e
+            # links; não executa o JavaScript recebido.
+            try:
+                import html as _html_preview
+                from html.parser import HTMLParser as _HTMLParserPreview
+                _dec = _html_preview.unescape(texto)
+                # Escapes comuns do literal JS/JSON.
+                _dec = _dec.replace(r"\u003c", "<").replace(r"\u003e", ">")
+                _dec = _dec.replace(r"\x3c", "<").replace(r"\x3e", ">")
+                _dec = _dec.replace(r"\n", " ").replace(r"\'", "'").replace(r'\"', '"')
+                if re.search(r"<(?:a|div|span|h[1-3]|p|button)\b", _dec, re.I):
+                    class _ColetorPreview(_HTMLParserPreview):
+                        def __init__(self):
+                            super().__init__()
+                            self.pilha, self.itens = [], []
+                        def handle_starttag(self, tag, attrs):
+                            at = dict(attrs)
+                            self.pilha.append({"tag": tag, "href": at.get("href", ""), "role": at.get("role", ""), "txt": []})
+                        def handle_data(self, data):
+                            if self.pilha and data.strip():
+                                self.pilha[-1]["txt"].append(data.strip())
+                        def handle_endtag(self, tag):
+                            if not self.pilha:
+                                return
+                            no = self.pilha.pop()
+                            txt = " ".join(no["txt"]).strip()
+                            if txt:
+                                self.itens.append({"text": txt, "tag": no["tag"], "href": no["href"], "role": no["role"], "fontSize": 0, "color": ""})
+                                if self.pilha:
+                                    self.pilha[-1]["txt"].append(txt)
+                    _coletor = _ColetorPreview()
+                    _coletor.feed(_dec)
+                    resultado["texto_estruturado"] = _estruturar_texto_google_elementos(_coletor.itens)
+            except Exception as _exc_html_preview:
+                print(f"[GADS-HTML-V223] preview HTML não interpretado: {_exc_html_preview!r}", flush=True)
 
             m_img = re.search(
                 r"previewservice\.insertPreviewImageContent\([^,]+,\s*'[^']*',\s*'(https?://[^']+)'",
@@ -31223,7 +31449,7 @@ elif st.session_state.pagina == "google_ads":
         hd = [u for u in vids if u not in sd]
         return sd + hd
 
-    def _normalizar_item_apify(item: dict) -> dict:
+    def _normalizar_item_apify(item: dict, permitir_browser_texto: bool = False) -> dict:
         # Formato do actor "automation-lab/google-ads-scraper" (Google Ads
         # Transparency Center): cada item já vem achatado (sem "snapshot"
         # aninhado como no Meta). Campos documentados: advertiserId,
@@ -31279,6 +31505,19 @@ elif st.session_state.pagina == "google_ads":
             if not image_url and _preview_info.get("image_url"):
                 image_url = _preview_info["image_url"]
 
+        # V223 — anúncio de texto: reaproveita exatamente o esquema do OCR,
+        # mas preenche-o com o HTML oficial do Google. Em uma coleta normal
+        # usamos somente o preview.js (barato). No fluxo Refazer, que já chega
+        # filtrado por CR..., permitimos abrir a página humana do MESMO ID.
+        _texto_estruturado = _preview_info.get("texto_estruturado") or {}
+        if raw_format == "text" and not _texto_estruturado and permitir_browser_texto:
+            _texto_estruturado = _extrair_texto_pagina_google(_human_page_url, ad_id)
+        if _texto_estruturado:
+            _texto_estruturado["_origem_texto"] = "html_google"
+            _texto_estruturado["_creative_id_validado"] = ad_id
+            _texto_estruturado["_pagina_origem"] = _human_page_url
+        _texto_achatado = _achatar_ocr_estruturado(_texto_estruturado) if _texto_estruturado else ""
+
         # V204 — recoleta limpa por ID. Não tenta mais adivinhar a mídia
         # abrindo a página humana e pegando a primeira requisição `simgad`.
         # Essa página pode carregar logo, variação ou mídia de outro card e
@@ -31288,10 +31527,16 @@ elif st.session_state.pagina == "google_ads":
         # item. Se nenhuma das duas fontes entregar mídia, o anúncio novo é
         # salvo sem mídia e será marcado como incompleto — nunca preenchido
         # com o arquivo antigo nem com uma captura não validada.
-        if not image_url:
+        if not image_url and not _texto_estruturado:
             print(
                 f"[GADS-V204] ad_id={ad_id} sem mídia validada; "
                 "fallback da página humana DESATIVADO e registro ficará incompleto",
+                flush=True,
+            )
+        elif not image_url and _texto_estruturado:
+            print(
+                f"[GADS-HTML-V223] ad_id={ad_id} criativo de texto validado pelo HTML; "
+                "imagem não é necessária",
                 flush=True,
             )
 
@@ -31366,6 +31611,9 @@ elif st.session_state.pagina == "google_ads":
             "is_dynamic":           False,
             "verificado":           verificado,
             "regiao":               regiao,
+            "ocr_texto":            _texto_achatado,
+            "ocr_estruturado":      _texto_estruturado or None,
+            "origem_texto":         "html_google" if _texto_estruturado else "",
         }
 
     def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50, ids_alvo=None) -> tuple:
@@ -31543,7 +31791,10 @@ elif st.session_state.pagina == "google_ads":
         gads_normalizados = []
         for _i in range(0, len(raw_items), max(1, chunk_size)):
             _chunk_raw = raw_items[_i:_i + chunk_size]
-            _chunk_normalizado = [_normalizar_item_apify(item) for item in _chunk_raw]
+            _chunk_normalizado = [
+                _normalizar_item_apify(item, permitir_browser_texto=bool(_ids_alvo))
+                for item in _chunk_raw
+            ]
             gads_normalizados.extend(_chunk_normalizado)
             if on_chunk:
                 try:
@@ -31739,6 +31990,7 @@ elif st.session_state.pagina == "google_ads":
                         (ad.get("images") or [])
                         or (ad.get("images_b64") or [])
                         or (ad.get("videos") or [])
+                        or (ad.get("origem_texto") == "html_google" and (ad.get("ocr_estruturado") or {}))
                     )
                     if not tem_midia:
                         pendentes.append(str(ad.get("id") or "sem ID"))
@@ -35187,7 +35439,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     _doms_ad_v148 = set()
                     for _img_dom in (_ad_filtro_dom.get("images") or []):
                         _doms_ad_v148.update(_dominios_por_url_img.get(_img_dom, set()))
+                    _estr_html_dom = _ad_filtro_dom.get("ocr_estruturado") or {}
+                    if isinstance(_estr_html_dom, str):
+                        try:
+                            _estr_html_dom = _json_dominios_filtro.loads(_estr_html_dom)
+                        except Exception:
+                            _estr_html_dom = {}
+                    if isinstance(_estr_html_dom, dict):
+                        for _linha_url in str(_estr_html_dom.get("url_exibida") or "").splitlines():
+                            _d = _dominio_canonico_filtro(_linha_url)
+                            if _d:
+                                _doms_ad_v148.add(_d)
+                                _dominios_disponiveis_set.add(_d)
                     _ad_filtro_dom["_dominios_filtro"] = _doms_ad_v148
+                dominios_disponiveis = sorted(_dominios_disponiveis_set)
 
                 chave_criativo_ads = f"ia_gads_criativos_{sk}"
                 chave_copy_ads     = f"ia_gads_copys_{sk}"
@@ -35332,7 +35597,23 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         "" or "",
                         ad.get("video_cc_language") or "",
                         ad.get("video_cc_source") or "",
+                        ad.get("ocr_texto") or "",
                     ]
+
+                    _estr_html_busca = ad.get("ocr_estruturado") or {}
+                    if isinstance(_estr_html_busca, str):
+                        try:
+                            _estr_html_busca = _json_dominios_filtro.loads(_estr_html_busca)
+                        except Exception:
+                            _estr_html_busca = {}
+                    if isinstance(_estr_html_busca, dict):
+                        for _campo_html in ("titulo", "descricao", "url_exibida", "url_final", "cta", "cta_subtitulo"):
+                            _partes.append(_estr_html_busca.get(_campo_html) or "")
+                        for _sl_html in (_estr_html_busca.get("sitelinks") or []):
+                            if isinstance(_sl_html, dict):
+                                _partes.extend([_sl_html.get("titulo") or "", _sl_html.get("descricao") or ""])
+                            else:
+                                _partes.append(str(_sl_html or ""))
 
                     # V148 — agrega OCR de TODAS as imagens do anúncio.
                     for _img_busca in (ad.get("images") or []):
@@ -36200,6 +36481,18 @@ function imgFallback_{uid}(img){{
                     _img_principal_ad = images[0] if images else ""
                     _ocr_estr_ad = _mapa_ocr_estruturado.get(_img_principal_ad) if _img_principal_ad else None
                     _ocr_txt_ad = _mapa_ocr.get(_img_principal_ad, "") if _img_principal_ad else ""
+                    # V223: anúncio de Texto pode não ter imagem por definição.
+                    # Nesse caso o HTML estruturado fica no próprio registro do
+                    # anúncio e entra como fallback do mesmo renderer do OCR.
+                    if not _ocr_estr_ad and ad.get("ocr_estruturado"):
+                        _ocr_estr_ad = ad.get("ocr_estruturado")
+                        if isinstance(_ocr_estr_ad, str):
+                            try:
+                                _ocr_estr_ad = json.loads(_ocr_estr_ad)
+                            except Exception:
+                                _ocr_estr_ad = None
+                    if not _ocr_txt_ad:
+                        _ocr_txt_ad = ad.get("ocr_texto") or ""
                     _ocr_pendente_ad = bool(_img_principal_ad) and _img_principal_ad in _urls_ocr_pendente
                     if not body_safe and not title_safe:
                         if _ocr_estr_ad:
@@ -36355,11 +36648,16 @@ function imgFallback_{uid}(img){{
                                     )
                                     + '</div></div>'
                                 )
+                            _rotulo_origem_texto = (
+                                "Texto extraído diretamente do anúncio"
+                                if _ocr_estr_ad.get("_origem_texto") == "html_google"
+                                else "Texto extraído da imagem (OCR)"
+                            )
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
-                                'Texto extraído da imagem (OCR)</div>'
+                                f'{_rotulo_origem_texto}</div>'
                                 + "".join(_campos_ocr_html)
                                 + _montar_html_debug_bandas_ocr(_ocr_estr_ad.get("_debug_bandas")) +
                                 '</div>'

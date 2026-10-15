@@ -17962,6 +17962,55 @@ def _sincronizar_outbox_gads_background(user_id: str):
         return
     for empresa in pendentes:
         _excluir_checkpoint_gads_r2(user_id, empresa)
+    # V226 — a coleta pode ter terminado enquanto o Supabase estava fora.
+    # Depois que a outbox entra no banco, atualiza também a notificação que
+    # estava visualmente aguardando sincronização.
+    try:
+        _res_ativ = (
+            supabase.table("atividades")
+            .select("id,status,detalhes")
+            .eq("user_id", user_id)
+            .eq("tipo", "coleta_ads_google")
+            .order("criado_em", desc=True)
+            .limit(30)
+            .execute()
+        )
+        _empresas_sincronizadas = set(str(x) for x in pendentes)
+        for _ativ in (_res_ativ.data or []):
+            _det = _ativ.get("detalhes") or {}
+            if not isinstance(_det, dict):
+                continue
+            _aguardando = [str(x) for x in (_det.get("aguardando_sincronizacao") or [])]
+            # Corrige também a notificação que a V189 já tenha marcado
+            # indevidamente como interrompida antes deste deploy.
+            if not _aguardando and _det.get("interrompida_automaticamente"):
+                _empresas_atividade = [str(x) for x in (_det.get("empresas") or []) if x]
+                if _empresas_atividade and all(x in _empresas_sincronizadas for x in _empresas_atividade):
+                    _aguardando = list(_empresas_atividade)
+            _atingidas = [x for x in _aguardando if x in _empresas_sincronizadas]
+            if not _atingidas:
+                continue
+            _det_novo = dict(_det)
+            _det_novo["aguardando_sincronizacao"] = [x for x in _aguardando if x not in _empresas_sincronizadas]
+            _coletadas = list(_det_novo.get("coletadas") or [])
+            for _nome in _atingidas:
+                if _nome not in _coletadas:
+                    _coletadas.append(_nome)
+            _det_novo["coletadas"] = _coletadas
+            _por_empresa = dict(_det_novo.get("por_empresa") or {})
+            for _nome in _atingidas:
+                _por_empresa[_nome] = {"status": "ok", "msg": "Sincronizado com o banco."}
+            _det_novo["por_empresa"] = _por_empresa
+            _erros_sync = dict(_det_novo.get("com_erro") or {})
+            for _nome in _atingidas:
+                if "aguardando sincroniza" in str(_erros_sync.get(_nome, "")).lower():
+                    _erros_sync.pop(_nome, None)
+            _det_novo["com_erro"] = _erros_sync
+            if not _det_novo["aguardando_sincronizacao"]:
+                _det_novo["motivo"] = "Coleta concluída e sincronizada com o banco."
+            atualizar_atividade(_ativ.get("id"), "concluido", _det_novo)
+    except Exception as _exc_notif_outbox:
+        print(f"[GADS-RECOVERY-V226] falha ao finalizar notificação da outbox: {_exc_notif_outbox!r}", flush=True)
     print(f"[GADS-OUTBOX-V194] sincronizadas empresas={list(pendentes)}", flush=True)
 
 # ---------------------------------------------------
@@ -32147,6 +32196,8 @@ elif st.session_state.pagina == "google_ads":
                             "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "nome":  _ck,
                             "query": _query,
+                            "_checkpoint_finalizado": False,
+                            "_atividade_id": atividade_id,
                         }
                         _cache_parcial = merge_ads(cache_atual, {_ck: _entry_parcial})
                         # O checkpoint durável vem antes do Supabase. Se o
@@ -32187,6 +32238,8 @@ elif st.session_state.pagina == "google_ads":
                             "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "nome":  ck,
                             "query": query,
+                            "_checkpoint_finalizado": True,
+                            "_atividade_id": atividade_id,
                         }
                         # Salva JÁ essa empresa, sozinha — usa o `cache_atual`
                         # que já vai sendo atualizado em memória a cada
@@ -32505,13 +32558,19 @@ elif st.session_state.pagina == "google_ads":
     if st.session_state.get("user"):
         _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
 
-    # V189 — recuperação de coleta órfã após crash/redeploy. O status visual
-    # fica no banco, mas o worker é uma thread local. Se o processo morreu e
-    # não existe mais worker registrado, encerra a atividade antiga e libera
-    # o botão para uma nova tentativa.
+    # V226 — recuperação de coleta órfã após crash/redeploy. Antes este bloco
+    # marcava erro imediatamente, mesmo quando todas as empresas já tinham
+    # sido coletadas e estavam protegidas na outbox aguardando apenas o
+    # Supabase voltar. Agora a outbox é consultada antes de decidir.
     if (
         _ultima_atividade_ads
-        and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento")
+        and (
+            _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento")
+            or (
+                _ultima_atividade_ads.get("status") == "erro"
+                and bool((_ultima_atividade_ads.get("detalhes") or {}).get("interrompida_automaticamente"))
+            )
+        )
         and not _job_is_active(
             "coleta_ads_google",
             st.session_state.user.id,
@@ -32522,21 +32581,71 @@ elif st.session_state.pagina == "google_ads":
         _detalhes_orfa = _ultima_atividade_ads.get("detalhes") or {}
         if not isinstance(_detalhes_orfa, dict):
             _detalhes_orfa = {}
-        atualizar_atividade(_atividade_orfa_id, "erro", {
-            **_detalhes_orfa,
-            "motivo": (
-                "A coleta foi interrompida porque o servidor reiniciou ou "
-                "o processo foi encerrado. Inicie uma nova busca."
-            ),
-            "interrompida_automaticamente": True,
-        })
-        _ultima_atividade_ads["status"] = "erro"
-        st.session_state["_coleta_gads_em_andamento"] = False
-        print(
-            f"[GADS-RECOVERY-V189] atividade={_atividade_orfa_id} "
-            "órfã encerrada -> erro; botão liberado",
-            flush=True,
+        _empresas_orfas = [str(x) for x in (_detalhes_orfa.get("empresas") or []) if x]
+        _outbox_orfa = _carregar_checkpoints_gads_r2(st.session_state.user.id)
+        _protegidas_orfa = [x for x in _empresas_orfas if x in _outbox_orfa]
+        _faltantes_orfa = [x for x in _empresas_orfas if x not in _outbox_orfa]
+        # Checkpoints antigos (anteriores à V226) não tinham a marca abaixo.
+        # Eles são aceitos como finais somente quando TODAS as empresas da
+        # atividade estão presentes, que é o cenário da coleta já concluída.
+        _todos_checkpoints_finais = all(
+            (_outbox_orfa.get(x) or {}).get("_checkpoint_finalizado", True) is not False
+            for x in _protegidas_orfa
         )
+        _coleta_protegida_completa = bool(
+            _empresas_orfas
+            and not _faltantes_orfa
+            and len(_protegidas_orfa) == len(_empresas_orfas)
+            and _todos_checkpoints_finais
+        )
+
+        if _coleta_protegida_completa:
+            _det_recuperado = dict(_detalhes_orfa)
+            _det_recuperado["aguardando_sincronizacao"] = list(_protegidas_orfa)
+            _det_recuperado["concluidas"] = len(_empresas_orfas)
+            _det_recuperado["total"] = len(_empresas_orfas)
+            _det_recuperado["motivo"] = (
+                "Coleta concluída e protegida. Aguardando o banco voltar para sincronizar os dados."
+            )
+            _det_recuperado["recuperada_da_outbox"] = True
+            _por_empresa_orfa = dict(_det_recuperado.get("por_empresa") or {})
+            for _nome_orfa in _protegidas_orfa:
+                _por_empresa_orfa[_nome_orfa] = {
+                    "status": "aguardando_sincronizacao",
+                    "msg": "Coleta protegida; aguardando o banco voltar.",
+                }
+            _det_recuperado["por_empresa"] = _por_empresa_orfa
+            atualizar_atividade(_atividade_orfa_id, "concluido", _det_recuperado)
+            _ultima_atividade_ads["status"] = "concluido"
+            _ultima_atividade_ads["detalhes"] = _det_recuperado
+            print(
+                f"[GADS-RECOVERY-V226] atividade={_atividade_orfa_id} "
+                f"coleta protegida completa; aguardando sincronização={_protegidas_orfa}",
+                flush=True,
+            )
+        else:
+            atualizar_atividade(_atividade_orfa_id, "erro", {
+                **_detalhes_orfa,
+                "aguardando_sincronizacao": list(_protegidas_orfa),
+                "empresas_interrompidas": list(_faltantes_orfa),
+                "motivo": (
+                    "A coleta foi interrompida antes de concluir todas as empresas. "
+                    + (f"Dados protegidos: {', '.join(_protegidas_orfa)}. " if _protegidas_orfa else "")
+                    + (
+                        f"Precisam de nova coleta: {', '.join(_faltantes_orfa)}."
+                        if _faltantes_orfa else
+                        "O último checkpoint era parcial e precisa ser retomado."
+                    )
+                ),
+                "interrompida_automaticamente": True,
+            })
+            _ultima_atividade_ads["status"] = "erro"
+            print(
+                f"[GADS-RECOVERY-V226] atividade={_atividade_orfa_id} "
+                f"interrompida; protegidas={_protegidas_orfa} faltantes={_faltantes_orfa}",
+                flush=True,
+            )
+        st.session_state["_coleta_gads_em_andamento"] = False
 
     if "_gads_ultima_atividade_id_vista" not in st.session_state:
         # Primeira renderização dessa sessão: `gads_cache` acabou de ser

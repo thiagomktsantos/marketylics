@@ -17936,10 +17936,110 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         return False, str(e)
 
 def _sincronizar_outbox_gads_background(user_id: str):
-    """Reenvia ao Supabase coletas protegidas no R2, sem usar a Apify."""
-    pendentes = _carregar_checkpoints_gads_r2(user_id)
+    """Verifica e sincroniza coletas protegidas, sem chamar a Apify.
+
+    V227: cada empresa e gravada e confirmada separadamente. O checkpoint
+    so e removido depois que uma nova leitura do banco confirma a empresa.
+    Enquanto existir checkpoint final aguardando, a atividade original fica
+    ``em_andamento`` (laranja), nunca concluida/com erro.
+    """
+    _todos_checkpoints = _carregar_checkpoints_gads_r2(user_id)
+    pendentes = {
+        nome: entry for nome, entry in (_todos_checkpoints or {}).items()
+        if isinstance(entry, dict)
+        and entry.get("_checkpoint_finalizado", True) is not False
+    }
     if not pendentes:
         return
+
+    _ids_atividades = {
+        str(entry.get("_atividade_id"))
+        for entry in pendentes.values()
+        if entry.get("_atividade_id")
+    }
+
+    def _atualizar_notificacoes_sync(sincronizadas=None, pendentes_agora=None, motivo=None):
+        """Mantem a atividade laranja ate a confirmacao de todas as empresas."""
+        sincronizadas = set(str(x) for x in (sincronizadas or []))
+        pendentes_agora = set(str(x) for x in (pendentes_agora or []))
+        try:
+            _res = (
+                supabase.table("atividades")
+                .select("id,status,detalhes")
+                .eq("user_id", user_id)
+                .eq("tipo", "coleta_ads_google")
+                .order("criado_em", desc=True)
+                .limit(50)
+                .execute()
+            )
+            for _ativ in (_res.data or []):
+                _aid = str(_ativ.get("id") or "")
+                _det = _ativ.get("detalhes") or {}
+                if not isinstance(_det, dict):
+                    continue
+                _empresas_ativ = [str(x) for x in (_det.get("empresas") or []) if x]
+                _aguardando_ant = [str(x) for x in (_det.get("aguardando_sincronizacao") or []) if x]
+                # Checkpoints novos carregam o id exato da atividade. Nesse
+                # caso nao se deve alterar coletas antigas das mesmas empresas.
+                # O cruzamento por nome fica apenas como compatibilidade com
+                # checkpoints legados, anteriores ao campo `_atividade_id`.
+                if _ids_atividades:
+                    _relacionada = _aid in _ids_atividades
+                else:
+                    _relacionada = (
+                        bool(set(_empresas_ativ) & (sincronizadas | pendentes_agora))
+                        or bool(set(_aguardando_ant) & (sincronizadas | pendentes_agora))
+                    )
+                if not _relacionada:
+                    continue
+
+                _det_novo = dict(_det)
+                _aguardando_novo = [x for x in _empresas_ativ if x in pendentes_agora]
+                if not _aguardando_novo:
+                    _aguardando_novo = sorted(pendentes_agora & set(_aguardando_ant))
+                _det_novo["aguardando_sincronizacao"] = _aguardando_novo
+                _det_novo["verificacao_sincronizacao_automatica"] = True
+                _por_empresa = dict(_det_novo.get("por_empresa") or {})
+                _coletadas = list(_det_novo.get("coletadas") or [])
+
+                for _nome in sincronizadas:
+                    if _nome in _empresas_ativ or _nome in _aguardando_ant:
+                        _por_empresa[_nome] = {
+                            "status": "ok",
+                            "msg": "Sincronizacao confirmada no banco.",
+                        }
+                        if _nome not in _coletadas:
+                            _coletadas.append(_nome)
+                for _nome in _aguardando_novo:
+                    _por_empresa[_nome] = {
+                        "status": "aguardando_sincronizacao",
+                        "msg": "Dados protegidos; verificacao automatica em andamento.",
+                    }
+
+                _det_novo["por_empresa"] = _por_empresa
+                _det_novo["coletadas"] = _coletadas
+                _erros = dict(_det_novo.get("com_erro") or {})
+                for _nome in set(_aguardando_ant) | sincronizadas | pendentes_agora:
+                    if "aguardando sincroniza" in str(_erros.get(_nome, "")).lower():
+                        _erros.pop(_nome, None)
+                _det_novo["com_erro"] = _erros
+
+                if _aguardando_novo:
+                    _det_novo["motivo"] = motivo or (
+                        "Coleta protegida. Verificando e sincronizando automaticamente com o banco."
+                    )
+                    atualizar_atividade(_ativ.get("id"), "em_andamento", _det_novo)
+                else:
+                    _det_novo["motivo"] = "Coleta sincronizada e confirmada no banco."
+                    atualizar_atividade(_ativ.get("id"), "concluido", _det_novo)
+        except Exception as _exc:
+            print(f"[GADS-SYNC-V227] falha ao atualizar notificacao: {_exc!r}", flush=True)
+
+    _atualizar_notificacoes_sync(
+        pendentes_agora=set(pendentes),
+        motivo="Coleta protegida. Aguardando verificacao automatica da sincronizacao.",
+    )
+
     try:
         res = _supabase_resiliente(
             lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
@@ -17949,69 +18049,81 @@ def _sincronizar_outbox_gads_background(user_id: str):
         )
         cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
     except Exception as exc:
-        print(f"[GADS-OUTBOX-V194] banco ainda indisponível: {exc!r}", flush=True)
+        print(f"[GADS-SYNC-V227] banco ainda indisponivel: {exc!r}", flush=True)
         return
 
-    # A entrada mais recente da outbox substitui somente a mesma empresa;
-    # dados das demais empresas já existentes no banco são preservados.
-    cache_mesclado = dict(cache)
-    cache_mesclado.update(pendentes)
-    ok, erro = salvar_cache_gads(cache_mesclado, migrar_midia=False, user_id=user_id)
-    if not ok:
-        print(f"[GADS-OUTBOX-V194] sincronização adiada: {erro}", flush=True)
-        return
-    for empresa in pendentes:
-        _excluir_checkpoint_gads_r2(user_id, empresa)
-    # V226 — a coleta pode ter terminado enquanto o Supabase estava fora.
-    # Depois que a outbox entra no banco, atualiza também a notificação que
-    # estava visualmente aguardando sincronização.
-    try:
-        _res_ativ = (
-            supabase.table("atividades")
-            .select("id,status,detalhes")
-            .eq("user_id", user_id)
-            .eq("tipo", "coleta_ads_google")
-            .order("criado_em", desc=True)
-            .limit(30)
-            .execute()
+    cache_atual = dict(cache)
+    sincronizadas = set()
+    ainda_pendentes = set(pendentes)
+
+    for empresa, entry in pendentes.items():
+        _cache_com_empresa = dict(cache_atual)
+        _cache_com_empresa[empresa] = entry
+        ok, erro = salvar_cache_gads(
+            _cache_com_empresa, migrar_midia=False, user_id=user_id, tentativas=2,
         )
-        _empresas_sincronizadas = set(str(x) for x in pendentes)
-        for _ativ in (_res_ativ.data or []):
-            _det = _ativ.get("detalhes") or {}
-            if not isinstance(_det, dict):
-                continue
-            _aguardando = [str(x) for x in (_det.get("aguardando_sincronizacao") or [])]
-            # Corrige também a notificação que a V189 já tenha marcado
-            # indevidamente como interrompida antes deste deploy.
-            if not _aguardando and _det.get("interrompida_automaticamente"):
-                _empresas_atividade = [str(x) for x in (_det.get("empresas") or []) if x]
-                if _empresas_atividade and all(x in _empresas_sincronizadas for x in _empresas_atividade):
-                    _aguardando = list(_empresas_atividade)
-            _atingidas = [x for x in _aguardando if x in _empresas_sincronizadas]
-            if not _atingidas:
-                continue
-            _det_novo = dict(_det)
-            _det_novo["aguardando_sincronizacao"] = [x for x in _aguardando if x not in _empresas_sincronizadas]
-            _coletadas = list(_det_novo.get("coletadas") or [])
-            for _nome in _atingidas:
-                if _nome not in _coletadas:
-                    _coletadas.append(_nome)
-            _det_novo["coletadas"] = _coletadas
-            _por_empresa = dict(_det_novo.get("por_empresa") or {})
-            for _nome in _atingidas:
-                _por_empresa[_nome] = {"status": "ok", "msg": "Sincronizado com o banco."}
-            _det_novo["por_empresa"] = _por_empresa
-            _erros_sync = dict(_det_novo.get("com_erro") or {})
-            for _nome in _atingidas:
-                if "aguardando sincroniza" in str(_erros_sync.get(_nome, "")).lower():
-                    _erros_sync.pop(_nome, None)
-            _det_novo["com_erro"] = _erros_sync
-            if not _det_novo["aguardando_sincronizacao"]:
-                _det_novo["motivo"] = "Coleta concluída e sincronizada com o banco."
-            atualizar_atividade(_ativ.get("id"), "concluido", _det_novo)
-    except Exception as _exc_notif_outbox:
-        print(f"[GADS-RECOVERY-V226] falha ao finalizar notificação da outbox: {_exc_notif_outbox!r}", flush=True)
-    print(f"[GADS-OUTBOX-V194] sincronizadas empresas={list(pendentes)}", flush=True)
+        if not ok:
+            print(f"[GADS-SYNC-V227] empresa={empresa!r} adiada: {erro}", flush=True)
+            _atualizar_notificacoes_sync(
+                sincronizadas=sincronizadas,
+                pendentes_agora=ainda_pendentes,
+                motivo="Dados protegidos. O banco ainda nao confirmou toda a sincronizacao; nova verificacao sera automatica.",
+            )
+            continue
+
+        try:
+            _res_conf = _supabase_resiliente(
+                lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
+                operacao=f"confirmar_gads_outbox_{empresa}",
+                tentativas=3,
+                backoff=(2, 4, 8),
+            )
+            _cache_confirmado = ((_res_conf.data[0].get("gads_cache") or {}) if _res_conf.data else {})
+            _entry_confirmada = _cache_confirmado.get(empresa) or {}
+            _ids_esperados = {
+                str(ad.get("id") or "") for ad in (entry.get("data") or []) if isinstance(ad, dict)
+            }
+            _ids_confirmados = {
+                str(ad.get("id") or "") for ad in (_entry_confirmada.get("data") or []) if isinstance(ad, dict)
+            }
+            _confirmou = bool(_entry_confirmada) and (
+                _entry_confirmada.get("_atividade_id") == entry.get("_atividade_id")
+                or (
+                    _entry_confirmada.get("ts") == entry.get("ts")
+                    and len(_entry_confirmada.get("data") or []) == len(entry.get("data") or [])
+                    and _ids_confirmados == _ids_esperados
+                )
+            )
+        except Exception as _exc_conf:
+            _confirmou = False
+            print(f"[GADS-SYNC-V227] confirmacao falhou empresa={empresa!r}: {_exc_conf!r}", flush=True)
+
+        if not _confirmou:
+            print(f"[GADS-SYNC-V227] empresa={empresa!r} gravou sem confirmacao; checkpoint mantido", flush=True)
+            continue
+
+        cache_atual = dict(_cache_confirmado)
+        _excluir_checkpoint_gads_r2(user_id, empresa)
+        sincronizadas.add(empresa)
+        ainda_pendentes.discard(empresa)
+        _atualizar_notificacoes_sync(
+            sincronizadas=sincronizadas,
+            pendentes_agora=ainda_pendentes,
+        )
+        print(f"[GADS-SYNC-V227] empresa={empresa!r} sincronizada e confirmada", flush=True)
+
+    _atualizar_notificacoes_sync(
+        sincronizadas=sincronizadas,
+        pendentes_agora=ainda_pendentes,
+        motivo=(
+            "Dados protegidos. Aguardando a proxima verificacao automatica de sincronizacao."
+            if ainda_pendentes else None
+        ),
+    )
+    print(
+        f"[GADS-SYNC-V227] fim sincronizadas={sorted(sincronizadas)} pendentes={sorted(ainda_pendentes)}",
+        flush=True,
+    )
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
@@ -32311,16 +32423,27 @@ elif st.session_state.pagina == "google_ads":
                 iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
             iniciar_retentativa_midias_background(user_id)
 
-            # Resultado protegido no R2 conta como coleta concluída. A falha
-            # é somente de sincronização, resolvida pelo outbox depois.
-            _status_final = "erro" if incompletos or (erros and not novos and not protegidos) else "concluido"
+            # V227 — resultado protegido ainda NAO esta concluido: enquanto
+            # houver empresa aguardando confirmacao no banco, a atividade fica
+            # em andamento (laranja) e o verificador automatico cuida dela.
+            _erros_reais = {k: v for k, v in erros.items() if k not in protegidos}
+            if incompletos or (_erros_reais and not novos and not protegidos):
+                _status_final = "erro"
+            elif protegidos:
+                _status_final = "em_andamento"
+            else:
+                _status_final = "concluido"
             atualizar_atividade(atividade_id, _status_final, {
                 "empresas": _nomes_empresas,
                 "total": _total_empresas,
                 "concluidas": _processadas,
                 "coletadas": list(novos.keys()),
                 "aguardando_sincronizacao": list(protegidos.keys()),
-                "com_erro": erros,
+                "com_erro": _erros_reais,
+                "motivo": (
+                    "Coleta protegida. Verificando e sincronizando automaticamente com o banco."
+                    if protegidos else "Coleta concluida e confirmada no banco."
+                ),
                 "incompletos": incompletos,
                 "incompletos_ids_por_empresa": {k: list(v) for k, v in incompletos_ids.items()},
                 "anuncios_com_erro": [
@@ -32615,8 +32738,10 @@ elif st.session_state.pagina == "google_ads":
                     "msg": "Coleta protegida; aguardando o banco voltar.",
                 }
             _det_recuperado["por_empresa"] = _por_empresa_orfa
-            atualizar_atividade(_atividade_orfa_id, "concluido", _det_recuperado)
-            _ultima_atividade_ads["status"] = "concluido"
+            # V227 — protegida nao significa concluida. Permanece laranja
+            # ate o verificador ler de volta e confirmar tudo no banco.
+            atualizar_atividade(_atividade_orfa_id, "em_andamento", _det_recuperado)
+            _ultima_atividade_ads["status"] = "em_andamento"
             _ultima_atividade_ads["detalhes"] = _det_recuperado
             print(
                 f"[GADS-RECOVERY-V226] atividade={_atividade_orfa_id} "
@@ -32729,6 +32854,22 @@ elif st.session_state.pagina == "google_ads":
     if st.session_state.get("user"):
         _ocr_em_andamento = _job_any_active("ocr_gads", st.session_state.user.id)
 
+    # V227 — a sincronizacao protegida e uma etapa ativa da coleta, como o
+    # OCR. Mesmo depois que o worker termina uma tentativa, o card continua
+    # em polling enquanto ainda houver empresa aguardando confirmacao. Isso
+    # permite nova tentativa automatica sem clique e sem nova coleta.
+    _sync_outbox_em_andamento = False
+    _sync_outbox_aguardando = False
+    if st.session_state.get("user"):
+        _sync_outbox_em_andamento = _job_is_active(
+            "sincronizar_gads_outbox", st.session_state.user.id, "google_ads"
+        )
+        _sync_outbox_aguardando = bool(
+            _ultima_atividade_ads
+            and _ultima_atividade_ads.get("status") == "em_andamento"
+            and ((_ultima_atividade_ads.get("detalhes") or {}).get("aguardando_sincronizacao") or [])
+        )
+
     _agora_poll_ocr = time.monotonic()
     if st.session_state.pop("_gads_armar_poll_ocr", False):
         st.session_state["_gads_poll_ocr_ate"] = _agora_poll_ocr + 30.0
@@ -32745,6 +32886,8 @@ elif st.session_state.pagina == "google_ads":
         _coleta_em_andamento
         or _migracao_em_andamento
         or _ocr_em_andamento
+        or _sync_outbox_em_andamento
+        or _sync_outbox_aguardando
         or _janela_poll_ocr
     )
 
@@ -32782,7 +32925,7 @@ elif st.session_state.pagina == "google_ads":
         """, unsafe_allow_html=True)
         # 8 segundos durante essa etapa pesada. A atualização continua
         # automática, só fica menos agressiva enquanto OCR está ativo.
-        _poll_ms_gads = 60000 if _ocr_em_andamento else UI_POLL_INTERVAL_MS
+        _poll_ms_gads = 60000 if (_ocr_em_andamento or _sync_outbox_aguardando) else UI_POLL_INTERVAL_MS
         components.html(f"""
         <script>
         setTimeout(function() {{
@@ -46205,6 +46348,9 @@ html, body { background: transparent; overflow: hidden; }
                             elif _status_emp == "rodando":
                                 _pct_emp, _cor_emp, _classe_emp = 100, "#3a9fd6", "is-rodando"
                                 _label_emp = _msg_emp if _msg_emp else "Coletando agora…"
+                            elif _status_emp == "aguardando_sincronizacao":
+                                _pct_emp, _cor_emp, _classe_emp = 100, "#f59e0b", "is-rodando"
+                                _label_emp = _msg_emp if _msg_emp else "Aguardando sincronizacao…"
                             else:
                                 _pct_emp, _cor_emp, _label_emp, _classe_emp = 0, "#d1d5db", "Aguardando", ""
                             _linhas_empresa_html.append(f"""

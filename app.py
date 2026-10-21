@@ -32699,6 +32699,14 @@ elif st.session_state.pagina == "google_ads":
             st.session_state.user.id,
             "google_ads",
         )
+        # V228 — nunca diagnostica a atividade enquanto o sincronizador esta
+        # entre "confirmou no banco" e "atualizou a notificacao". Esse era o
+        # intervalo que gerava o falso "interrompida" visto no log.
+        and not _job_is_active(
+            "sincronizar_gads_outbox",
+            st.session_state.user.id,
+            "google_ads",
+        )
     ):
         _atividade_orfa_id = _ultima_atividade_ads.get("id")
         _detalhes_orfa = _ultima_atividade_ads.get("detalhes") or {}
@@ -32707,7 +32715,47 @@ elif st.session_state.pagina == "google_ads":
         _empresas_orfas = [str(x) for x in (_detalhes_orfa.get("empresas") or []) if x]
         _outbox_orfa = _carregar_checkpoints_gads_r2(st.session_state.user.id)
         _protegidas_orfa = [x for x in _empresas_orfas if x in _outbox_orfa]
-        _faltantes_orfa = [x for x in _empresas_orfas if x not in _outbox_orfa]
+        _nao_estao_outbox_orfa = [x for x in _empresas_orfas if x not in _outbox_orfa]
+
+        # V228 — checkpoint ausente nao significa automaticamente coleta
+        # interrompida: ele pode ter acabado de ser removido porque a empresa
+        # ja foi sincronizada. Confirma no banco usando o id da atividade.
+        _confirmadas_db_orfa = []
+        _verificacao_db_orfa_ok = not bool(_nao_estao_outbox_orfa)
+        if _nao_estao_outbox_orfa:
+            try:
+                _res_db_orfa = _supabase_resiliente(
+                    lambda: (
+                        supabase.table("ci_dados")
+                        .select("gads_cache")
+                        .eq("user_id", st.session_state.user.id)
+                        .execute()
+                    ),
+                    operacao="confirmar_recuperacao_gads_v228",
+                    tentativas=2,
+                    backoff=(2, 4),
+                )
+                _cache_db_orfa = (
+                    (_res_db_orfa.data[0].get("gads_cache") or {})
+                    if _res_db_orfa.data else {}
+                )
+                for _nome_orfa in _nao_estao_outbox_orfa:
+                    _entry_db_orfa = _cache_db_orfa.get(_nome_orfa) or {}
+                    if str(_entry_db_orfa.get("_atividade_id") or "") == str(_atividade_orfa_id or ""):
+                        _confirmadas_db_orfa.append(_nome_orfa)
+                _verificacao_db_orfa_ok = True
+            except Exception as _exc_db_orfa:
+                _verificacao_db_orfa_ok = False
+                print(
+                    f"[GADS-RECOVERY-V228] atividade={_atividade_orfa_id} "
+                    f"banco indisponivel; diagnostico adiado: {_exc_db_orfa!r}",
+                    flush=True,
+                )
+
+        _faltantes_orfa = [
+            x for x in _empresas_orfas
+            if x not in _protegidas_orfa and x not in _confirmadas_db_orfa
+        ]
         # Checkpoints antigos (anteriores à V226) não tinham a marca abaixo.
         # Eles são aceitos como finais somente quando TODAS as empresas da
         # atividade estão presentes, que é o cenário da coleta já concluída.
@@ -32715,14 +32763,14 @@ elif st.session_state.pagina == "google_ads":
             (_outbox_orfa.get(x) or {}).get("_checkpoint_finalizado", True) is not False
             for x in _protegidas_orfa
         )
-        _coleta_protegida_completa = bool(
+        _cobertura_completa_orfa = bool(
             _empresas_orfas
             and not _faltantes_orfa
-            and len(_protegidas_orfa) == len(_empresas_orfas)
+            and len(set(_protegidas_orfa) | set(_confirmadas_db_orfa)) == len(_empresas_orfas)
             and _todos_checkpoints_finais
         )
 
-        if _coleta_protegida_completa:
+        if _cobertura_completa_orfa:
             _det_recuperado = dict(_detalhes_orfa)
             _det_recuperado["aguardando_sincronizacao"] = list(_protegidas_orfa)
             _det_recuperado["concluidas"] = len(_empresas_orfas)
@@ -32737,17 +32785,36 @@ elif st.session_state.pagina == "google_ads":
                     "status": "aguardando_sincronizacao",
                     "msg": "Coleta protegida; aguardando o banco voltar.",
                 }
+            for _nome_orfa in _confirmadas_db_orfa:
+                _por_empresa_orfa[_nome_orfa] = {
+                    "status": "ok",
+                    "msg": "Sincronizacao confirmada no banco.",
+                }
             _det_recuperado["por_empresa"] = _por_empresa_orfa
-            # V227 — protegida nao significa concluida. Permanece laranja
-            # ate o verificador ler de volta e confirmar tudo no banco.
-            atualizar_atividade(_atividade_orfa_id, "em_andamento", _det_recuperado)
-            _ultima_atividade_ads["status"] = "em_andamento"
+            if _protegidas_orfa:
+                atualizar_atividade(_atividade_orfa_id, "em_andamento", _det_recuperado)
+                _ultima_atividade_ads["status"] = "em_andamento"
+            else:
+                _det_recuperado["motivo"] = "Coleta sincronizada e confirmada no banco."
+                atualizar_atividade(_atividade_orfa_id, "concluido", _det_recuperado)
+                _ultima_atividade_ads["status"] = "concluido"
             _ultima_atividade_ads["detalhes"] = _det_recuperado
             print(
-                f"[GADS-RECOVERY-V226] atividade={_atividade_orfa_id} "
-                f"coleta protegida completa; aguardando sincronização={_protegidas_orfa}",
+                f"[GADS-RECOVERY-V228] atividade={_atividade_orfa_id} "
+                f"protegidas={_protegidas_orfa} confirmadas_db={_confirmadas_db_orfa}",
                 flush=True,
             )
+        elif not _verificacao_db_orfa_ok:
+            # Sem resposta do banco nao ha evidencia suficiente para declarar
+            # erro. Mantem laranja e tenta de novo no proximo ciclo.
+            _det_adiado = dict(_detalhes_orfa)
+            _det_adiado["aguardando_sincronizacao"] = list(_protegidas_orfa)
+            _det_adiado["motivo"] = (
+                "Verificando os dados protegidos. O banco esta temporariamente indisponivel."
+            )
+            atualizar_atividade(_atividade_orfa_id, "em_andamento", _det_adiado)
+            _ultima_atividade_ads["status"] = "em_andamento"
+            _ultima_atividade_ads["detalhes"] = _det_adiado
         else:
             atualizar_atividade(_atividade_orfa_id, "erro", {
                 **_detalhes_orfa,
@@ -32766,7 +32833,7 @@ elif st.session_state.pagina == "google_ads":
             })
             _ultima_atividade_ads["status"] = "erro"
             print(
-                f"[GADS-RECOVERY-V226] atividade={_atividade_orfa_id} "
+                f"[GADS-RECOVERY-V228] atividade={_atividade_orfa_id} "
                 f"interrompida; protegidas={_protegidas_orfa} faltantes={_faltantes_orfa}",
                 flush=True,
             )

@@ -3589,7 +3589,28 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
 #  anúncio do Google (titulo, descricao, url_exibida, url_final, cta,
 #  sitelinks) — usado pra exibir o texto formatado no card.
 
-_lock_ocr_pendente = threading.Lock()
+# V229 — estado de coordenação fora do namespace que o Streamlit reexecuta.
+#
+# Um rerun executa novamente este arquivo e, portanto, recriava Lock, Queue e
+# flags comuns. O worker antigo continuava vivo usando os objetos antigos,
+# enquanto o novo rerun enxergava uma fila "vazia" e abria outro EasyOCR.
+# Guardar o coordenador em sys.modules mantém UMA identidade por processo,
+# inclusive durante reruns, sem persistir dados entre deploys/restarts.
+import sys as _sys_runtime_ocr_v229
+import types as _types_runtime_ocr_v229
+
+_RUNTIME_OCR_KEY_V229 = "_marketylcs_runtime_ocr_v229"
+_runtime_ocr_v229 = _sys_runtime_ocr_v229.modules.get(_RUNTIME_OCR_KEY_V229)
+if _runtime_ocr_v229 is None:
+    _runtime_ocr_v229 = _types_runtime_ocr_v229.ModuleType(_RUNTIME_OCR_KEY_V229)
+    _runtime_ocr_v229.lock_ocr_pendente = threading.RLock()
+    _runtime_ocr_v229.empresas_ativas = set()
+    _sys_runtime_ocr_v229.modules[_RUNTIME_OCR_KEY_V229] = _runtime_ocr_v229
+    print("[OCR-FILA-V229] coordenador persistente criado", flush=True)
+else:
+    print("[OCR-FILA-V229] coordenador persistente reutilizado após rerun", flush=True)
+
+_lock_ocr_pendente = _runtime_ocr_v229.lock_ocr_pendente
 
 # ---------------------------------------------------
 # EASYOCR — leitor local, sem chamada de API/cota
@@ -10313,11 +10334,7 @@ def _extrair_texto_paddleocr(url_imagem: str):
         print(f"[OCR-DEBUG] _extrair_texto_paddleocr FALHA (exceção): {e!r}", flush=True)
         return None
 
-@st.cache_resource
-def _get_ocr_empresas_ativas_agora() -> set:
-    return set()
-
-_ocr_empresas_ativas_agora = _get_ocr_empresas_ativas_agora()  # (user_id, empresa) — evita 2 filas de OCR rodando pra mesma empresa ao mesmo tempo
+_ocr_empresas_ativas_agora = _runtime_ocr_v229.empresas_ativas  # (user_id, empresa) — evita duplicação mesmo após rerun
 
 _FILTRO_OCR_URL_GOOGLE = "url_origem.ilike.%googlesyndication.com%,url_origem.ilike.%googleusercontent.com%"
 
@@ -11632,9 +11649,19 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
 # a mesma trava. Em pouca RAM isso é desperdício. Agora existe UM worker de
 # OCR para o processo inteiro; empresas entram em FIFO e são processadas uma
 # depois da outra.
-_fila_ocr_global = queue.Queue()
-_lock_worker_ocr_global = threading.Lock()
-_worker_ocr_global_ativo = [False]
+if not hasattr(_runtime_ocr_v229, "fila_ocr_global"):
+    _runtime_ocr_v229.fila_ocr_global = queue.Queue()
+    _runtime_ocr_v229.lock_worker_ocr_global = threading.RLock()
+    _runtime_ocr_v229.worker_ocr_global_ativo = [False]
+    _runtime_ocr_v229.fila_pesada_cond = threading.Condition(threading.RLock())
+    _runtime_ocr_v229.fila_pesada_proximo_ticket = [0]
+    _runtime_ocr_v229.fila_pesada_ticket_atual = [0]
+    _runtime_ocr_v229.acao_pesada_atual = [None]
+    _runtime_ocr_v229.acao_pesada_owner_thread = [None]
+
+_fila_ocr_global = _runtime_ocr_v229.fila_ocr_global
+_lock_worker_ocr_global = _runtime_ocr_v229.lock_worker_ocr_global
+_worker_ocr_global_ativo = _runtime_ocr_v229.worker_ocr_global_ativo
 _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
 # Faixa exclusiva para tarefas pesadas do processo principal.
@@ -11649,11 +11676,11 @@ _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 # Diferente do Lock simples anterior, esta implementação usa tickets FIFO.
 # Quem chega primeiro entra primeiro, e nenhuma ação pesada consegue
 # ultrapassar outra que já esteja aguardando.
-_fila_pesada_cond = threading.Condition(threading.RLock())
-_fila_pesada_proximo_ticket = [0]
-_fila_pesada_ticket_atual = [0]
-_acao_pesada_atual = [None]
-_acao_pesada_owner_thread = [None]
+_fila_pesada_cond = _runtime_ocr_v229.fila_pesada_cond
+_fila_pesada_proximo_ticket = _runtime_ocr_v229.fila_pesada_proximo_ticket
+_fila_pesada_ticket_atual = _runtime_ocr_v229.fila_pesada_ticket_atual
+_acao_pesada_atual = _runtime_ocr_v229.acao_pesada_atual
+_acao_pesada_owner_thread = _runtime_ocr_v229.acao_pesada_owner_thread
 
 
 def _fila_pesada_esta_ocupada():

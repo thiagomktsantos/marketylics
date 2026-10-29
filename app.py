@@ -13763,7 +13763,24 @@ def logout_supabase():
 
 def carregar_dados_usuario(user_id: str) -> dict:
     try:
-        res = supabase.table("ci_dados").select("*").eq("user_id", user_id).execute()
+        # V230 — não carregar gads_cache no login.
+        #
+        # gads_cache pode ter dezenas de MB (todos os anúncios, textos e URLs
+        # do Google Ads). O código abaixo nunca usa essa coluna no login; ela é
+        # carregada sob demanda somente ao abrir a área Google Ads. O select(*)
+        # baixava esse JSON enorme para descartá-lo logo depois, consumindo
+        # egress do Supabase a cada nova sessão/reconexão.
+        _colunas_login = (
+            "minha_empresa,concorrentes,metricas_redes,ads_cache,"
+            "analises_salvas,redes_analises_salvas,ads_analises_salvas,seo_cache"
+        )
+        res = (
+            supabase.table("ci_dados")
+            .select(_colunas_login)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
         if res.data:
             row = res.data[0]
             return {
@@ -17231,16 +17248,16 @@ with st.sidebar:
             # esperando um clique manual em "Refazer" pra sempre.
             retentar_transcricoes_com_erro_automaticamente(st.session_state.user.id)
 
-            # da sidebar. Assim a recuperação continua funcionando em qualquer
-            # página aberta do app, não apenas quando a tela de Google Ads está
-            # renderizada. O starter tem trava concorrente + cooldown próprio.
-            _gads_cache_cc_auto = _carregar_gads_cache_cc_v153(st.session_state.user.id)
-            if _gads_cache_cc_auto:
-                iniciar_verificacao_cc_youtube_automatica_v151(
-                    st.session_state.user.id,
-                    _gads_cache_cc_auto,
-                    intervalo_segundos=300,
-                )
+            # V230 — NÃO baixar gads_cache neste fragment global.
+            #
+            # Este fragment roda em qualquer página enquanto a aba está aberta.
+            # Antes ele buscava o JSON completo de Google Ads a cada 120s para
+            # procurar CC do YouTube. Com um cache de ~28 MB isso podia gerar
+            # ~20 GB/dia em uma única sessão (720 leituras/dia), exatamente o
+            # pico observado no painel do Supabase. A verificação de CC continua
+            # existindo na própria página Google Ads, usando o cache já presente
+            # na sessão, e também é disparada no fluxo de coleta. Portanto, não
+            # perdemos a recuperação; apenas eliminamos o download global.
 
             # Mesmo religamento automático acima, mas pra fila de OCR
             # (ver bloco "OCR DE IMAGENS DO GOOGLE ADS"). Antes, o OCR só

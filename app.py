@@ -32834,8 +32834,17 @@ elif st.session_state.pagina == "google_ads":
     # Tenta descarregar resultados protegidos no R2 em toda nova visita à
     # área, mas com trava global para nunca abrir workers duplicados. Esta
     # sincronização só grava o que já foi coletado; não chama a Apify.
-    _agora_outbox = time.monotonic()
-    _ultimo_outbox = float(st.session_state.get("_gads_outbox_ultima_tentativa", 0.0) or 0.0)
+    # V232 — este valor fica em session_state e pode sobreviver a uma
+    # reconexão enquanto o processo/container do Streamlit é reiniciado.
+    # time.monotonic() não é uma referência persistente entre processos e,
+    # nesse cenário, o delta podia ficar negativo e impedir novas tentativas
+    # para sempre. Epoch real é estável entre reinícios.
+    _agora_outbox = time.time()
+    _ultimo_outbox = float(st.session_state.get("_gads_outbox_ultima_tentativa_epoch", 0.0) or 0.0)
+    # Compatibilidade defensiva: relógio futuro/corrompido nunca bloqueia a
+    # retomada. O valor antigo monotônico é deliberadamente ignorado.
+    if _ultimo_outbox > (_agora_outbox + 60.0) or _ultimo_outbox < 0:
+        _ultimo_outbox = 0.0
     if (
         st.session_state.get("user")
         # Cinco minutos entre tentativas. Quando o PostgREST está em 5xx,
@@ -32844,17 +32853,30 @@ elif st.session_state.pagina == "google_ads":
         and not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads")
         and not _job_is_active("sincronizar_gads_outbox", st.session_state.user.id, "google_ads")
     ):
-        st.session_state["_gads_outbox_ultima_tentativa"] = _agora_outbox
         # Marca antes de abrir a thread para eliminar a janela de corrida em
         # que OCR/migração poderiam iniciar no mesmo rerun.
         _marcar_coleta_prioritaria(st.session_state.user.id, True)
-        _job_start_thread(
+        _iniciou_sync_outbox = _job_start_thread(
             "sincronizar_gads_outbox", st.session_state.user.id, "google_ads",
             _sincronizar_outbox_gads_background,
             args=(st.session_state.user.id,),
             daemon=True,
             name="sincronizar-google-ads-outbox",
         )
+        if _iniciou_sync_outbox:
+            # Só inicia o cooldown quando a thread realmente nasceu. Antes, uma
+            # falha de abertura silenciava o retry por mais cinco minutos.
+            st.session_state["_gads_outbox_ultima_tentativa_epoch"] = _agora_outbox
+            print(
+                f"[GADS-OUTBOX-V232] tentativa iniciada epoch={_agora_outbox:.0f}",
+                flush=True,
+            )
+        else:
+            if not _job_is_active(
+                "sincronizar_gads_outbox", st.session_state.user.id, "google_ads"
+            ):
+                _marcar_coleta_prioritaria(st.session_state.user.id, False)
+            print("[GADS-OUTBOX-V232] worker nao iniciou; retry liberado", flush=True)
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
         st.session_state.gads_cache = carregar_cache_ads()
     if "gads_erro" not in st.session_state:

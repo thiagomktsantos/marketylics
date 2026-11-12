@@ -38534,13 +38534,16 @@ document.addEventListener('DOMContentLoaded', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight, 1500);
 
-// V239: paginação invisível. Observa a posição do fim do iframe na janela
-// principal e aciona exatamente uma carga adicional por renderização.
+// V240: paginação invisível estável. Só verifica o próximo lote depois de
+// uma rolagem REAL do usuário e quando o iframe já calculou sua altura.
+// Isso impede o rerun prematuro que deixava a tela branca no carregamento.
 (function() {{
     var hasMore = {str(_tem_mais_v239).lower()};
     if (!hasMore) return;
     var fired = false;
     var parentWin = window.parent;
+    var initialScrollY = parentWin.scrollY || parentWin.pageYOffset || 0;
+    var maxScrollY = initialScrollY;
     function findOwnFrame() {{
         var frames = parentWin.document.querySelectorAll('iframe');
         for (var i = 0; i < frames.length; i++) {{
@@ -38550,9 +38553,15 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
     }}
     function checkBottom() {{
         if (fired) return;
+        var currentY = parentWin.scrollY || parentWin.pageYOffset || 0;
+        maxScrollY = Math.max(maxScrollY, currentY);
+        // Não dispara durante a montagem inicial nem por pequenos ajustes
+        // automáticos de posição realizados pelo próprio Streamlit.
+        if (maxScrollY < initialScrollY + 180) return;
         var frame = findOwnFrame();
         if (!frame) return;
         var rect = frame.getBoundingClientRect();
+        if (rect.height < 300) return;
         if (rect.bottom <= parentWin.innerHeight + 500) {{
             var btn = parentWin.document.querySelector('.st-key-{_auto_key_v239} button');
             if (btn && !btn.disabled) {{ fired = true; btn.click(); }}
@@ -38560,8 +38569,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
     }}
     parentWin.addEventListener('scroll', checkBottom, {{passive:true}});
     parentWin.addEventListener('resize', checkBottom, {{passive:true}});
-    setTimeout(checkBottom, 500);
-    setTimeout(checkBottom, 1500);
 }})();
 </script>
 </body></html>

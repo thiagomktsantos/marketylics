@@ -7,6 +7,7 @@ import streamlit as st
 import multiprocessing
 import tempfile
 import json
+import copy
 
 # V94 — Meta Ads: seletor de empresas mostra somente empresas com anúncios já baixados.
 import streamlit.components.v1 as components
@@ -841,6 +842,28 @@ def get_r2_client():
 
 r2_client = get_r2_client()
 
+
+@st.cache_resource(show_spinner=False)
+def _get_gads_r2_memoria_v250() -> dict:
+    return {"lock": threading.RLock(), "usuarios": {}}
+
+
+_gads_r2_memoria_v250 = _get_gads_r2_memoria_v250()
+_GADS_R2_TTL_V250 = 180.0
+
+
+def _atualizar_gads_r2_memoria_v250(user_id: str, empresa: str, entry: dict) -> None:
+    """Mantém o snapshot em memória coerente depois de cada escrita no R2."""
+    _uid = str(user_id or "")
+    with _gads_r2_memoria_v250["lock"]:
+        # Não cria um snapshot parcial a partir de uma única empresa. O
+        # primeiro carregamento completo precisa vir da listagem do R2.
+        _item = _gads_r2_memoria_v250["usuarios"].get(_uid)
+        if not _item or not isinstance(_item.get("cache"), dict):
+            return
+        _item["cache"][str(empresa)] = copy.deepcopy(entry or {})
+        _item["quando"] = time.monotonic()
+
 # ---------------------------------------------------
 # V194 — CHECKPOINT DURÁVEL DA COLETA GOOGLE ADS
 # ---------------------------------------------------
@@ -870,6 +893,7 @@ def _salvar_checkpoint_gads_r2(user_id: str, empresa: str, entry: dict) -> tuple
             Body=corpo,
             ContentType="application/json",
         )
+        _atualizar_gads_r2_memoria_v250(user_id, empresa, entry)
         print(f"[GADS-OUTBOX-V194] salvo empresa={empresa!r} bytes={len(corpo)}", flush=True)
         return True, None
     except Exception as exc:
@@ -881,6 +905,9 @@ def _excluir_checkpoint_gads_r2(user_id: str, empresa: str) -> None:
         return
     try:
         r2_client.delete_object(Bucket=R2_BUCKET, Key=_gads_checkpoint_key(user_id, empresa))
+        with _gads_r2_memoria_v250["lock"]:
+            _item = _gads_r2_memoria_v250["usuarios"].get(str(user_id or "")) or {}
+            (_item.get("cache") or {}).pop(str(empresa), None)
         print(f"[GADS-OUTBOX-V194] sincronizado/removido empresa={empresa!r}", flush=True)
     except Exception as exc:
         print(f"[GADS-OUTBOX-V194] falha ao remover empresa={empresa!r}: {exc!r}", flush=True)
@@ -895,6 +922,21 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
     pendentes = {}
     if not r2_client or not R2_BUCKET:
         return pendentes
+    _uid = str(user_id or "")
+    with _gads_r2_memoria_v250["lock"]:
+        _mem = _gads_r2_memoria_v250["usuarios"].get(_uid)
+        if (
+            _mem
+            and (time.monotonic() - float(_mem.get("quando") or 0)) < _GADS_R2_TTL_V250
+            and isinstance(_mem.get("cache"), dict)
+        ):
+            _cache_mem = copy.deepcopy(_mem["cache"])
+            print(
+                f"[EGRESS-MONITOR-V250] fonte=MEMORIA operacao=carregar_gads "
+                f"empresas={len(_cache_mem)} r2_download_evitado=1",
+                flush=True,
+            )
+            return _cache_mem
     try:
         _bytes_lidos = 0
         token = None
@@ -921,7 +963,12 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
             f"mb={_bytes_lidos / 1048576:.2f}",
             flush=True,
         )
-        return pendentes
+        with _gads_r2_memoria_v250["lock"]:
+            _gads_r2_memoria_v250["usuarios"][_uid] = {
+                "quando": time.monotonic(),
+                "cache": copy.deepcopy(pendentes),
+            }
+        return copy.deepcopy(pendentes)
     except Exception as exc:
         print(f"[GADS-OUTBOX-V194] falha ao listar: {exc!r}", flush=True)
         return pendentes
@@ -16319,10 +16366,36 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
             _ativos.append("finalização protegida de uma coleta")
         return _ativos
 
+    # V250: quando o cache já comprova que existem imagens com relógio,
+    # inicia a correção imediatamente. A coleta continua tendo prioridade.
+    _bloqueios_iniciais_v250 = _bloqueios_coleta_atuais()
+    _pendencias_confirmadas_v250 = False
+    if not _bloqueios_iniciais_v250:
+        try:
+            _cache_inicio_v250 = _carregar_checkpoints_gads_r2(user_id) or {}
+            _pendencias_confirmadas_v250 = bool(
+                encontrar_ads_com_link_original(_cache_inicio_v250)
+            )
+        except Exception as _exc_v250:
+            print(f"[MIGR-DEBUG] V250 pré-checagem falhou: {_exc_v250!r}", flush=True)
+    if _pendencias_confirmadas_v250:
+        atualizar_atividade(atividade_id, "em_andamento", {
+            "aguardando_coleta_prioritaria": False,
+            "etapa": "pendencias_confirmadas",
+            "etapa_atual": 2,
+            "total_etapas": 3,
+            "aviso": (
+                "Imagens com relógio já confirmadas no cache. "
+                "A verificação começou imediatamente, sem a espera de 120 segundos."
+            ),
+            "ultimo_heartbeat_em": _agora_iso(),
+        })
+        print("[MIGR-DEBUG] V250 pula janela: imagens com relógio confirmadas", flush=True)
+
     # Etapa 1: reserva uma janela real para o usuário iniciar uma coleta.
     # A notificação agora mostra a contagem regressiva em vez da mensagem
     # vaga "aguardando" que parecia um travamento.
-    for _passo in range(24):  # 120 segundos, em passos de 5s
+    for _passo in range(0 if _pendencias_confirmadas_v250 else 24):  # 120 segundos, em passos de 5s
         _bloqueios = _bloqueios_coleta_atuais()
         _restantes = max(0, 120 - (_passo * 5))
         if _bloqueios:

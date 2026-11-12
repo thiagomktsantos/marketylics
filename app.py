@@ -10998,6 +10998,29 @@ def _achatar_ocr_estruturado(d: dict) -> str:
             linhas.append(sl)
     return "\n".join(linhas)
 
+def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 5000) -> list:
+    """Busca imagens sem OCR sem usar ``ocr_texto.eq.`` no PostgREST.
+
+    O filtro vazio usado até a V247 podia devolver zero mesmo após a mídia
+    ser salva. A origem Google continua filtrada no banco; NULL/string vazia
+    são avaliados em Python para não depender da sintaxe do gateway.
+    """
+    query = (
+        supabase.table("midias")
+        .select("id, empresa, url_cdn, url_origem, ocr_texto")
+        .eq("user_id", user_id)
+        .eq("tipo", "imagem")
+        .or_(_FILTRO_OCR_URL_GOOGLE)
+    )
+    if empresa:
+        query = query.eq("empresa", empresa)
+    res = query.limit(max(1, int(limite or 5000))).execute()
+    return [
+        r for r in (res.data or [])
+        if r.get("ocr_texto") is None or not str(r.get("ocr_texto") or "").strip()
+    ]
+
+
 def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
     """Quantas imagens do Google Ads dessa empresa já foram migradas
     (estão em `midias`) mas ainda não têm OCR útil. V244 considera tanto
@@ -11005,17 +11028,7 @@ def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
     worker terminava sem reconhecer nenhum campo e depois contavam isso
     incorretamente como concluído."""
     try:
-        res = (
-            supabase.table("midias")
-            .select("id", count="exact")
-            .eq("user_id", user_id)
-            .eq("empresa", empresa)
-            .eq("tipo", "imagem")
-            .or_("ocr_texto.is.null,ocr_texto.eq.")
-            .or_(_FILTRO_OCR_URL_GOOGLE)
-            .execute()
-        )
-        _total_debug = res.count or 0
+        _total_debug = len(_buscar_midias_ocr_pendentes(user_id, empresa))
         print(f"[OCR-DEBUG] _contar_ocr_pendentes user={user_id} empresa={empresa!r} -> {_total_debug}", flush=True)
         return _total_debug
     except Exception as e:
@@ -11026,18 +11039,10 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
     """Equivalente a _empresas_com_transcricao_pendente, mas pra fila de
     OCR — usada pelo auto-retry da sidebar (periodicamente)."""
     try:
-        res = (
-            supabase.table("midias")
-            .select("empresa")
-            .eq("user_id", user_id)
-            .eq("tipo", "imagem")
-            .or_("ocr_texto.is.null,ocr_texto.eq.")
-            .or_(_FILTRO_OCR_URL_GOOGLE)
-            .limit(2000)
-            .execute()
-        )
-        return sorted({r["empresa"] for r in (res.data or []) if r.get("empresa")})
-    except Exception:
+        linhas = _buscar_midias_ocr_pendentes(user_id, limite=5000)
+        return sorted({r["empresa"] for r in linhas if r.get("empresa")})
+    except Exception as e:
+        print(f"[OCR-DEBUG] _empresas_com_ocr_pendente EXCEÇÃO user={user_id}: {e!r}", flush=True)
         return []
 
 def _contar_ocr_formato_antigo(user_id: str) -> int:
@@ -11689,20 +11694,15 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
     try:
         while True:
             try:
-                _query = (
-                    supabase.table("midias")
-                    .select("id, url_cdn, url_origem")
-                    .eq("user_id", user_id).eq("empresa", empresa).eq("tipo", "imagem")
-                    .or_("ocr_texto.is.null,ocr_texto.eq.").or_(_FILTRO_OCR_URL_GOOGLE)
-                )
-                if _ids_tentados_neste_run:
-                    _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
-                res = _query.limit(_OCR_ISOLADO_TAMANHO_LOTE).execute()
+                _candidatas = _buscar_midias_ocr_pendentes(user_id, empresa)
+                pendentes = [
+                    r for r in _candidatas
+                    if r.get("id") not in _ids_tentados_neste_run
+                ][:_OCR_ISOLADO_TAMANHO_LOTE]
             except Exception as _exc_query:
                 print(f"[OCR] falha consultando imagem empresa={empresa!r}: {_exc_query!r}", flush=True)
                 break
 
-            pendentes = res.data or []
             if not pendentes:
                 break
 
@@ -13488,7 +13488,7 @@ def _ultima_execucao_acao(user_id: str, tipo_acao: str):
     try:
         res = (
             supabase.table("atividades")
-            .select("criado_em")
+            .select("criado_em,status")
             .eq("user_id", user_id)
             .eq("tipo", tipo_acao)
             .order("criado_em", desc=True)
@@ -16210,8 +16210,20 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                 ),
                 "ultimo_heartbeat_em": _agora_iso(),
             })
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        # V248 — a interface usa os checkpoints por empresa no R2 como fonte
+        # canônica (V233). A verificação antiga ainda lia `ci_dados.gads_cache`,
+        # que pode estar desatualizado; ela anunciava sucesso sobre um recorte
+        # antigo enquanto os cards atuais continuavam com relógio. Varremos a
+        # mesma fonte que a tela renderiza e só usamos o banco legado como
+        # fallback de disponibilidade.
+        try:
+            gads_cache = _carregar_checkpoints_gads_r2(user_id) or {}
+            _fonte_verificacao = "r2_por_empresa"
+        except Exception as _exc_cache_r2:
+            print(f"[MIGR-DEBUG] V248 fallback gads_cache: {_exc_cache_r2!r}", flush=True)
+            res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
+            gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+            _fonte_verificacao = "gads_cache_legado"
         pendentes = encontrar_ads_com_link_original(gads_cache)
         total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
@@ -16225,6 +16237,7 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                     "empresas": _nomes_pendentes,
                     "total_empresas": len(_nomes_pendentes),
                     "total_anuncios": total_ads_pendentes,
+                    "fonte_verificacao": _fonte_verificacao,
                     "aviso": (
                         f"Etapa 3 de 3: encontrados {total_ads_pendentes} anúncio(s) "
                         f"com imagens ainda não salvas em {len(_nomes_pendentes)} empresa(s): "
@@ -16237,6 +16250,7 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresas": list(pendentes.keys()),
                     "total_anuncios": total_ads_pendentes,
+                    "fonte_verificacao": _fonte_verificacao,
                     "aviso": (
                         f"{total_ads_pendentes} anúncio(s) em {len(pendentes)} empresa(s) "
                         f"ainda com link original — enviados pra migração agora "
@@ -16245,6 +16259,7 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                 })
         elif atividade_id:
             atualizar_atividade(atividade_id, "concluido", {
+                "fonte_verificacao": _fonte_verificacao,
                 "aviso": "Nenhum anúncio do Google Ads pendente de migração — tudo já está com link permanente.",
             })
         return total_ads_pendentes
@@ -16390,7 +16405,7 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
     try:
         _res_ultima = (
             supabase.table("atividades")
-            .select("criado_em")
+            .select("criado_em,status")
             .eq("user_id", user_id)
             .eq("tipo", "verificacao_pendentes_gads")
             .order("criado_em", desc=True)
@@ -16400,7 +16415,32 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
         if _res_ultima.data:
             _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
             if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS:
-                return
+                _status_ultima = str(_res_ultima.data[0].get("status") or "")
+                # Uma verificação realmente ativa continua protegida contra
+                # duplicação. Uma verificação CONCLUÍDA, porém, não pode
+                # bloquear por 15 minutos se o cache canônico ainda contém
+                # imagens com relógio — foi exatamente o que ocorreu após a
+                # primeira migração da V246/V247.
+                if _status_ultima in ("pendente", "em_andamento") and _minutos_desde < 5:
+                    return
+                try:
+                    _cache_canonico_agora = _carregar_checkpoints_gads_r2(user_id) or {}
+                    _ainda_tem_relogios = bool(
+                        encontrar_ads_com_link_original(_cache_canonico_agora)
+                    )
+                except Exception as _exc_recheck:
+                    print(
+                        f"[MIGR-DEBUG] V248 não confirmou relógios no throttle: {_exc_recheck!r}",
+                        flush=True,
+                    )
+                    _ainda_tem_relogios = False
+                if not _ainda_tem_relogios:
+                    return
+                print(
+                    "[MIGR-DEBUG] V248 ignora throttle: verificação recente terminou, "
+                    "mas ainda há imagens com relógio no cache canônico",
+                    flush=True,
+                )
     except Exception:
         pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
     atividade_id = criar_atividade(
@@ -16433,6 +16473,11 @@ def _verificar_e_gerar_ocr_pendentes_google_bg(user_id: str, atividade_id: str =
     e no botão manual da aba de configurações) — nunca por uma checagem
     de segurança geral, como já existia pros links permanentes."""
     try:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "aviso": "Verificando no banco quais imagens já foram salvas e ainda estão sem OCR.",
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
         empresas_pendentes = _empresas_com_ocr_pendente(user_id)
         print(f"[OCR-DEBUG] verificar_e_gerar_ocr_pendentes_google: {len(empresas_pendentes)} empresa(s) com OCR pendente -> {empresas_pendentes}", flush=True)
         for empresa in empresas_pendentes:
@@ -16479,7 +16524,19 @@ def iniciar_verificacao_ocr_pendente_google_background(user_id: str):
         if _res_ultima.data:
             _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
             if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_OCR_PENDENTE_GADS:
-                return
+                _status_ultima = str(_res_ultima.data[0].get("status") or "")
+                if _status_ultima in ("pendente", "em_andamento") and _minutos_desde < 5:
+                    return
+                # A verificação anterior pode ter rodado ANTES da migração e
+                # concluído "zero". Se agora já existem imagens salvas sem
+                # OCR, ela precisa rodar novamente imediatamente.
+                if not _empresas_com_ocr_pendente(user_id):
+                    return
+                print(
+                    "[OCR-DEBUG] V248 ignora throttle: surgiram imagens sem OCR "
+                    "depois da verificação anterior",
+                    flush=True,
+                )
     except Exception:
         pass  # sem confirmar a última verificação, segue e cria mesmo assim — não trava a funcionalidade por causa do throttle
     atividade_id = criar_atividade(

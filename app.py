@@ -16634,13 +16634,10 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
     if not user_id:
         return ""
     try:
-        _r_cache = _supabase_resiliente(
-            lambda: supabase.table("ci_dados").select("gads_cache")
-                    .eq("user_id", user_id).limit(1).execute(),
-            operacao="detectar_gads_incompletos_sem_atividade",
-            tentativas=3,
-        )
-        _cache = ((_r_cache.data or [{}])[0].get("gads_cache") or {})
+        # V235: o cache canônico do Google Ads está no R2 por empresa.
+        # Consultar o JSON legado do Supabase recriava notificações antigas
+        # e podia deixar de enxergar anúncios da coleta mais recente.
+        _cache = _carregar_checkpoints_gads_r2(user_id)
         _ids_por_empresa = {}
         for _empresa, _entry in _cache.items():
             _ids = []
@@ -16802,8 +16799,10 @@ def preparar_refazer_gads_incompletos(user_id: str, atividade: dict) -> tuple:
     if not atividade_id or not ids_por_empresa:
         return False, [], "A notificação não contém IDs pendentes."
     try:
-        _r = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).limit(1).execute()
-        cache = ((_r.data or [{}])[0].get("gads_cache") or {})
+        # V235: backup sempre nasce da fonte canônica atual. O Supabase
+        # conserva somente o legado/índice e não contém necessariamente os
+        # 299 anúncios recém-coletados.
+        cache = _carregar_checkpoints_gads_r2(user_id)
         backup_por_empresa = {}
         for _empresa, _ids in ids_por_empresa.items():
             _ids_set = {str(x) for x in (_ids or [])}
@@ -32706,10 +32705,15 @@ elif st.session_state.pagina == "google_ads":
                 # para o sincronizador. Uma coleta manual realmente nova tem
                 # outro activity_id e, portanto, continua funcionando.
                 _checkpoint_existente = _outbox_anterior.get(ck) or {}
+                _ids_alvo_da_empresa = list((ids_alvo_por_empresa or {}).get(ck) or [])
                 _checkpoint_mesma_atividade = bool(
                     isinstance(_checkpoint_existente, dict)
                     and _checkpoint_existente.get("_checkpoint_finalizado", True) is not False
                     and str(_checkpoint_existente.get("_atividade_id") or "") == str(atividade_id or "")
+                    # Refazer por ID reutiliza a notificação original de
+                    # propósito. Nesse caso o checkpoint final não significa
+                    # que os criativos incompletos já foram reprocessados.
+                    and not _ids_alvo_da_empresa
                 )
                 if _checkpoint_mesma_atividade:
                     novos[ck] = _checkpoint_existente
@@ -32984,7 +32988,18 @@ elif st.session_state.pagina == "google_ads":
                 and (_outbox_existente[_nome].get("_checkpoint_finalizado", True) is not False)
                 and str(_outbox_existente[_nome].get("_atividade_id") or "") == str(_atividade_id)
             ]
-            if _ja_coletadas and len(_ja_coletadas) == len(_nomes_requisitados):
+            # Uma fila com IDs alvo é um reprocessamento real e deliberado.
+            # Não pode cair na retomada de sincronização só porque reutiliza
+            # a atividade original que gerou o checkpoint.
+            _tem_ids_alvo = any(
+                (ids_alvo_por_empresa or {}).get(_nome)
+                for _nome in _nomes_requisitados
+            )
+            if (
+                not _tem_ids_alvo
+                and _ja_coletadas
+                and len(_ja_coletadas) == len(_nomes_requisitados)
+            ):
                 _marcar_coleta_prioritaria(st.session_state.user.id, True)
                 atualizar_atividade(_atividade_id, "em_andamento", {
                     "empresas": _nomes_requisitados,
@@ -34639,36 +34654,46 @@ setHeight(false);
     # ── Processar busca do cabeçalho
     if gerar_btn_gads_header:
         query_values_header = {}
-        for e in todas_empresas:
-            if empresa_tem_gads_id(e):
-                ck = e["nome"]
-                gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
-                query_values_header[ck] = gads_id_salvo
+        # V235: o seletor do cabeçalho define o alvo da coleta. Antes o
+        # botão ignorava a seleção visível e percorria todas as empresas.
+        _empresas_header = (
+            [_emp_ativa_obj]
+            if _emp_ativa_obj and empresa_tem_gads_id(_emp_ativa_obj)
+            else []
+        )
+        for e in _empresas_header:
+            ck = e["nome"]
+            gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
+            query_values_header[ck] = gads_id_salvo
         if query_values_header:
             # V206 — ação manual significa coleta real. O cache/histórico
             # continua sendo usado no merge por ID, mas nunca para pular a
             # chamada à Apify. IDs que voltarem substituem integralmente os
             # antigos; os que vierem sem mídia validada ficam incompletos.
             executar_busca(
-                [e for e in todas_empresas if empresa_tem_gads_id(e)],
+                _empresas_header,
                 query_values_header,
                 forcar=True,
             )
         else:
-            st.warning("Configure pelo menos uma empresa antes de buscar.")
+            st.warning("Selecione uma empresa configurada antes de buscar.")
 
     # ── Processar FORÇAR atualização do cabeçalho (ignora cache de 24h)
     if gerar_btn_gads_forcar:
         query_values_header = {}
-        for e in todas_empresas:
-            if empresa_tem_gads_id(e):
-                ck = e["nome"]
-                gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
-                query_values_header[ck] = gads_id_salvo
+        _empresas_header = (
+            [_emp_ativa_obj]
+            if _emp_ativa_obj and empresa_tem_gads_id(_emp_ativa_obj)
+            else []
+        )
+        for e in _empresas_header:
+            ck = e["nome"]
+            gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
+            query_values_header[ck] = gads_id_salvo
         if query_values_header:
-            executar_busca([e for e in todas_empresas if empresa_tem_gads_id(e)], query_values_header, forcar=True)
+            executar_busca(_empresas_header, query_values_header, forcar=True)
         else:
-            st.warning("Configure pelo menos uma empresa antes de buscar.")
+            st.warning("Selecione uma empresa configurada antes de buscar.")
 
     # ══════════════════════════════════════════════════════════════════
     # BARRA DE NAVEGAÇÃO PRINCIPAL — 3 abas

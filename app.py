@@ -36885,39 +36885,33 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                # V238 — renderização paginada. O cache da empresa pode ter
+                # V239 — carregamento progressivo (paginação invisível). O cache da empresa pode ter
                 # centenas de anúncios e dezenas de MB em imagens base64.
                 # Montar todos os cards no mesmo rerun duplica esse conteúdo
                 # no HTML e bloqueia a tela por vários minutos. Os filtros e
                 # contadores continuam usando a lista completa; somente os
                 # cards e consultas auxiliares são limitados à página atual.
-                _GADS_POR_PAGINA_V238 = 20
-                _total_filtrado_v238 = len(gads_f)
-                _total_paginas_v238 = max(
-                    1,
-                    (_total_filtrado_v238 + _GADS_POR_PAGINA_V238 - 1)
-                    // _GADS_POR_PAGINA_V238,
-                )
-                _pagina_key_v238 = f"gads_pagina_v238_{sk}"
-                _seletor_pagina_key_v238 = f"gads_seletor_pagina_v238_{sk}"
-                _filtro_sig_key_v238 = f"gads_filtro_sig_v238_{sk}"
-                _filtro_sig_v238 = (
+                _GADS_LOTE_V239 = 20
+                _total_filtrado_v239 = len(gads_f)
+                _limite_key_v239 = f"gads_limite_v239_{sk}"
+                _filtro_sig_key_v239 = f"gads_filtro_sig_v239_{sk}"
+                _filtro_sig_v239 = (
                     str(busca_texto or ""),
                     str(filtro_fmt or ""),
                     str(filtro_dominio or ""),
                     str(filtro_status or ""),
                     str(filtro_ordem or ""),
                 )
-                if st.session_state.get(_filtro_sig_key_v238) != _filtro_sig_v238:
-                    st.session_state[_filtro_sig_key_v238] = _filtro_sig_v238
-                    st.session_state[_pagina_key_v238] = 1
-                    st.session_state[_seletor_pagina_key_v238] = 1
-                _pagina_atual_v238 = int(st.session_state.get(_pagina_key_v238, 1) or 1)
-                _pagina_atual_v238 = max(1, min(_pagina_atual_v238, _total_paginas_v238))
-                st.session_state[_pagina_key_v238] = _pagina_atual_v238
-                _inicio_v238 = (_pagina_atual_v238 - 1) * _GADS_POR_PAGINA_V238
-                _fim_v238 = min(_inicio_v238 + _GADS_POR_PAGINA_V238, _total_filtrado_v238)
-                gads_pagina_v238 = gads_f[_inicio_v238:_fim_v238]
+                if st.session_state.get(_filtro_sig_key_v239) != _filtro_sig_v239:
+                    st.session_state[_filtro_sig_key_v239] = _filtro_sig_v239
+                    st.session_state[_limite_key_v239] = _GADS_LOTE_V239
+                _limite_v239 = int(st.session_state.get(_limite_key_v239, _GADS_LOTE_V239) or _GADS_LOTE_V239)
+                _limite_v239 = max(_GADS_LOTE_V239, min(_limite_v239, _total_filtrado_v239))
+                st.session_state[_limite_key_v239] = _limite_v239
+                _inicio_v239 = 0
+                _fim_v239 = min(_limite_v239, _total_filtrado_v239)
+                _tem_mais_v239 = _fim_v239 < _total_filtrado_v239
+                gads_visiveis_v239 = gads_f[:_fim_v239]
 
                 # "page_profile_picture" salva (o campo só passou a ser
                 # capturado depois, ou a captura falhou naquela época).
@@ -36981,7 +36975,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
                 # migrou pro R2 — também sem badge nenhum.
                 _urls_video_cards = list({
-                    u for ad in gads_pagina_v238 for u in (ad.get("videos") or [])[:1] if u
+                    u for ad in gads_visiveis_v239 for u in (ad.get("videos") or [])[:1] if u
                 })
                 _mapa_transcricoes = {}          # url -> texto pronto (não vazio)
                 _urls_transcricao_pendente = set()  # url -> já migrado, transcrição ainda NULL
@@ -37016,7 +37010,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # "Extraindo texto…"), "" = processado sem achar texto
                 # com texto = pronto (mostra no lugar da copy).
                 _urls_img_cards = list({
-                    (ad.get("images") or [""])[0] for ad in gads_pagina_v238 if (ad.get("images") or [""])[0]
+                    (ad.get("images") or [""])[0] for ad in gads_visiveis_v239 if (ad.get("images") or [""])[0]
                 })
                 _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
                 _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
@@ -37152,30 +37146,33 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                          .replace("\n", " ")
                     )
 
-                # Navegação aparece antes dos cards para o usuário saber que a
-                # lista está paginada e quantos itens serão renderizados.
-                _pg_info_col_v238, _pg_select_col_v238 = st.columns([5, 1])
-                with _pg_info_col_v238:
-                    st.caption(
-                        f"Exibindo {_inicio_v238 + 1}–{_fim_v238} de "
-                        f"{_total_filtrado_v238} anúncios"
+                # O botão é acionado pelo rodapé da grade quando ele se aproxima
+                # da área visível. Ele fica oculto e funciona como ponte segura
+                # entre o JavaScript do componente e o estado do Streamlit.
+                def _carregar_mais_gads_v239():
+                    _atual = int(st.session_state.get(_limite_key_v239, _GADS_LOTE_V239) or _GADS_LOTE_V239)
+                    st.session_state[_limite_key_v239] = min(
+                        _atual + _GADS_LOTE_V239,
+                        _total_filtrado_v239,
                     )
-                with _pg_select_col_v238:
-                    _pagina_escolhida_v238 = st.selectbox(
-                        "Página",
-                        options=list(range(1, _total_paginas_v238 + 1)),
-                        index=_pagina_atual_v238 - 1,
-                        key=_seletor_pagina_key_v238,
-                        label_visibility="collapsed",
-                        format_func=lambda _p: f"Página {_p}/{_total_paginas_v238}",
+
+                _auto_key_v239 = f"gads_auto_mais_v239_{sk}"
+                if _tem_mais_v239:
+                    st.button(
+                        "Carregar mais anúncios",
+                        key=_auto_key_v239,
+                        on_click=_carregar_mais_gads_v239,
                     )
-                    if int(_pagina_escolhida_v238) != _pagina_atual_v238:
-                        st.session_state[_pagina_key_v238] = int(_pagina_escolhida_v238)
-                        st.rerun()
+                    st.markdown(
+                        f"<style>.st-key-{_auto_key_v239}{{display:none!important}}</style>",
+                        unsafe_allow_html=True,
+                    )
+
+                st.caption(f"Exibindo {_fim_v239} de {_total_filtrado_v239} anúncios")
 
                 all_cards_html = []
 
-                for j, ad in enumerate(gads_pagina_v238, start=_inicio_v238):
+                for j, ad in enumerate(gads_visiveis_v239, start=_inicio_v239):
                     snap_url    = ad.get("snapshot_url") or ""
                     images      = ad.get("images") or []
                     images_b64  = ad.get("images_b64") or []
@@ -38274,6 +38271,8 @@ body{{padding-bottom:4px;min-height:0;}}
 
 <div class="ads-grid">{cards_joined}</div>
 
+<div id="gads_scroll_sentinel_v239" style="height:2px;width:100%;"></div>
+
 <script>
 function openModalEmbedGads(snapUrl) {{
     var doc = window.parent.document;
@@ -38534,6 +38533,36 @@ if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body)
 document.addEventListener('DOMContentLoaded', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight, 1500);
+
+// V239: paginação invisível. Observa a posição do fim do iframe na janela
+// principal e aciona exatamente uma carga adicional por renderização.
+(function() {{
+    var hasMore = {str(_tem_mais_v239).lower()};
+    if (!hasMore) return;
+    var fired = false;
+    var parentWin = window.parent;
+    function findOwnFrame() {{
+        var frames = parentWin.document.querySelectorAll('iframe');
+        for (var i = 0; i < frames.length; i++) {{
+            try {{ if (frames[i].contentWindow === window) return frames[i]; }} catch(e) {{}}
+        }}
+        return null;
+    }}
+    function checkBottom() {{
+        if (fired) return;
+        var frame = findOwnFrame();
+        if (!frame) return;
+        var rect = frame.getBoundingClientRect();
+        if (rect.bottom <= parentWin.innerHeight + 500) {{
+            var btn = parentWin.document.querySelector('.st-key-{_auto_key_v239} button');
+            if (btn && !btn.disabled) {{ fired = true; btn.click(); }}
+        }}
+    }}
+    parentWin.addEventListener('scroll', checkBottom, {{passive:true}});
+    parentWin.addEventListener('resize', checkBottom, {{passive:true}});
+    setTimeout(checkBottom, 500);
+    setTimeout(checkBottom, 1500);
+}})();
 </script>
 </body></html>
 """, height=100, scrolling=False)

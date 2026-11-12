@@ -31833,6 +31833,142 @@ elif st.session_state.pagina == "google_ads":
             print(f"[GADS-HTML-V223] falha id={creative_id}: {exc!r}", flush=True)
             return {}
 
+    def _capturar_frame_criativo_google(pagina_url: str, creative_id: str) -> str:
+        """V236: captura somente um frame confiável do criativo exato.
+
+        Não fotografa a página inteira e não procura a primeira imagem da
+        rede. O candidato precisa ser um ``iframe`` renderizado cujo src/URL
+        pertença aos hosts de preview do Google. O ID também é validado antes
+        e depois da captura. Retorna PNG em data URI para entrar diretamente
+        em ``images_b64``; em qualquer dúvida retorna vazio e mantém o erro.
+        """
+        if not pagina_url or not creative_id or f"/creative/{creative_id}" not in pagina_url:
+            return ""
+        try:
+            if not _garantir_chromium_playwright():
+                return ""
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                )
+                try:
+                    page = browser.new_page(
+                        viewport={"width": 1440, "height": 1100},
+                        user_agent=(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/124.0.0.0 Safari/537.36"
+                        ),
+                    )
+                    alvo = pagina_url + ("&" if "?" in pagina_url else "?") + "region=BR"
+                    try:
+                        page.goto(alvo, wait_until="domcontentloaded", timeout=20000)
+                    except Exception as exc_goto:
+                        print(f"[GADS-FRAME-V236] goto parcial id={creative_id}: {exc_goto!r}", flush=True)
+                    page.wait_for_timeout(9000)
+
+                    _conteudo_antes = page.content()
+                    if creative_id not in page.url and creative_id not in _conteudo_antes:
+                        print(f"[GADS-FRAME-V236] ID não validado antes da captura: {creative_id}", flush=True)
+                        return ""
+
+                    confiaveis = (
+                        "displayads-formats.googleusercontent.com",
+                        "googlesyndication.com",
+                        "googleadservices.com",
+                    )
+                    candidatos = []
+                    iframes = page.locator("iframe")
+                    for indice in range(iframes.count()):
+                        loc = iframes.nth(indice)
+                        try:
+                            caixa = loc.bounding_box()
+                            if not caixa or caixa.get("width", 0) < 180 or caixa.get("height", 0) < 90:
+                                continue
+                            src = str(loc.get_attribute("src") or "")
+                            url_frame = ""
+                            try:
+                                handle = loc.element_handle()
+                                frame = handle.content_frame() if handle else None
+                                url_frame = str(frame.url or "") if frame else ""
+                            except Exception:
+                                pass
+                            identidade = f"{src} {url_frame}".lower()
+                            if not any(host in identidade for host in confiaveis):
+                                continue
+                            area = float(caixa.get("width", 0)) * float(caixa.get("height", 0))
+                            # O host de formatos é o candidato mais forte;
+                            # tamanho desempata entre variações internas.
+                            bonus = 10**9 if "displayads-formats.googleusercontent.com" in identidade else 0
+                            candidatos.append((bonus + area, indice, loc, src, url_frame, caixa))
+                        except Exception:
+                            continue
+
+                    candidatos.sort(key=lambda x: x[0], reverse=True)
+                    print(
+                        f"[GADS-FRAME-V236] id={creative_id} iframes={iframes.count()} "
+                        f"candidatos_confiaveis={len(candidatos)}",
+                        flush=True,
+                    )
+                    for _, indice, loc, src, url_frame, caixa in candidatos:
+                        try:
+                            png = loc.screenshot(type="png", timeout=15000)
+                            _conteudo_depois = page.content()
+                            if creative_id not in page.url and creative_id not in _conteudo_depois:
+                                print(f"[GADS-FRAME-V236] ID mudou durante captura: {creative_id}", flush=True)
+                                return ""
+                            if not png or len(png) < 2000 or not png.startswith(b"\x89PNG"):
+                                continue
+                            # Rejeita frame vazio/branco. Alguns iframes de
+                            # medição têm dimensões grandes, mas nenhum
+                            # criativo visível.
+                            try:
+                                import io as _io_frame_v236
+                                from PIL import Image as _ImageFrameV236
+                                from PIL import ImageStat as _ImageStatFrameV236
+                                _img_teste = _ImageFrameV236.open(
+                                    _io_frame_v236.BytesIO(png)
+                                ).convert("L")
+                                _desvio = float(
+                                    _ImageStatFrameV236.Stat(_img_teste).stddev[0]
+                                )
+                                if _desvio < 2.0:
+                                    print(
+                                        f"[GADS-FRAME-V236] frame visualmente vazio "
+                                        f"id={creative_id} iframe={indice} desvio={_desvio:.2f}",
+                                        flush=True,
+                                    )
+                                    continue
+                            except Exception as exc_visual:
+                                print(
+                                    f"[GADS-FRAME-V236] não validou pixels id={creative_id}: "
+                                    f"{exc_visual!r}",
+                                    flush=True,
+                                )
+                                continue
+                            print(
+                                f"[GADS-FRAME-V236] SUCESSO id={creative_id} iframe={indice} "
+                                f"dim={caixa.get('width', 0):.0f}x{caixa.get('height', 0):.0f} "
+                                f"bytes={len(png)} src={src[:120]!r} frame={url_frame[:120]!r}",
+                                flush=True,
+                            )
+                            return "data:image/png;base64," + _b64.b64encode(png).decode("ascii")
+                        except Exception as exc_cap:
+                            print(
+                                f"[GADS-FRAME-V236] captura rejeitada id={creative_id} "
+                                f"iframe={indice}: {exc_cap!r}",
+                                flush=True,
+                            )
+                    print(f"[GADS-FRAME-V236] nenhum frame validado id={creative_id}", flush=True)
+                    return ""
+                finally:
+                    browser.close()
+        except Exception as exc:
+            print(f"[GADS-FRAME-V236] falha id={creative_id}: {exc!r}", flush=True)
+            return ""
+
     def _extrair_preview_google(preview_url: str) -> dict:
         """O `previewUrl` do Google Ads Transparency Center não é uma
         página — é um endpoint .js (content.js?...&responseCallback=...)
@@ -32216,6 +32352,15 @@ elif st.session_state.pagina == "google_ads":
             _texto_estruturado["_pagina_origem"] = _human_page_url
         _texto_achatado = _achatar_ocr_estruturado(_texto_estruturado) if _texto_estruturado else ""
 
+        # V236: no Refazer por ID, quando o Google protege o conteúdo do
+        # frame e o HTML não pode ser lido, captura somente o iframe oficial
+        # do preview. A função valida o mesmo creative ID antes e depois.
+        _frame_validado_b64 = ""
+        if not image_url and not _texto_estruturado and permitir_browser_texto:
+            _frame_validado_b64 = _capturar_frame_criativo_google(
+                _human_page_url, ad_id
+            )
+
         # V204 — recoleta limpa por ID. Não tenta mais adivinhar a mídia
         # abrindo a página humana e pegando a primeira requisição `simgad`.
         # Essa página pode carregar logo, variação ou mídia de outro card e
@@ -32225,10 +32370,15 @@ elif st.session_state.pagina == "google_ads":
         # item. Se nenhuma das duas fontes entregar mídia, o anúncio novo é
         # salvo sem mídia e será marcado como incompleto — nunca preenchido
         # com o arquivo antigo nem com uma captura não validada.
-        if not image_url and not _texto_estruturado:
+        if not image_url and not _texto_estruturado and not _frame_validado_b64:
             print(
                 f"[GADS-V204] ad_id={ad_id} sem mídia validada; "
                 "fallback da página humana DESATIVADO e registro ficará incompleto",
+                flush=True,
+            )
+        elif _frame_validado_b64:
+            print(
+                f"[GADS-FRAME-V236] ad_id={ad_id} resolvido por captura validada do frame",
                 flush=True,
             )
         elif not image_url and _texto_estruturado:
@@ -32242,7 +32392,7 @@ elif st.session_state.pagina == "google_ads":
 
         images = [image_url] if image_url.startswith("http") else []
 
-        images_b64 = []
+        images_b64 = [_frame_validado_b64] if _frame_validado_b64 else []
         if images:
             b64 = _url_para_base64(images[0], referer_especifico=_human_page_url, tag=f"GADS-B64:{ad_id}")
             if not b64:

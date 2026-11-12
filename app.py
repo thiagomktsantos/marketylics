@@ -896,6 +896,7 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
     if not r2_client or not R2_BUCKET:
         return pendentes
     try:
+        _bytes_lidos = 0
         token = None
         while True:
             kwargs = {"Bucket": R2_BUCKET, "Prefix": _gads_checkpoint_prefix(user_id), "MaxKeys": 1000}
@@ -905,6 +906,7 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
             for obj in pagina.get("Contents", []):
                 try:
                     bruto = r2_client.get_object(Bucket=R2_BUCKET, Key=obj["Key"])["Body"].read()
+                    _bytes_lidos += len(bruto)
                     doc = json.loads(bruto.decode("utf-8"))
                     if doc.get("empresa") and isinstance(doc.get("entry"), dict):
                         pendentes[doc["empresa"]] = doc["entry"]
@@ -913,10 +915,49 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
             if not pagina.get("IsTruncated"):
                 break
             token = pagina.get("NextContinuationToken")
+        print(
+            f"[EGRESS-MONITOR-V249] fonte=R2 operacao=carregar_gads "
+            f"empresas={len(pendentes)} bytes={_bytes_lidos} "
+            f"mb={_bytes_lidos / 1048576:.2f}",
+            flush=True,
+        )
         return pendentes
     except Exception as exc:
         print(f"[GADS-OUTBOX-V194] falha ao listar: {exc!r}", flush=True)
         return pendentes
+
+
+def _carregar_gads_cache_preferindo_r2_v249(user_id: str, operacao: str = "gads") -> dict:
+    """Usa o R2 canônico e consulta o JSON legado só como contingência."""
+    _uid = str(user_id or "").strip()
+    if not _uid:
+        return {}
+    _r2 = _carregar_checkpoints_gads_r2(_uid)
+    if _r2:
+        print(
+            f"[EGRESS-MONITOR-V249] operacao={operacao} fonte=R2 "
+            f"postgrest_gads_cache_evitado=1 empresas={len(_r2)}",
+            flush=True,
+        )
+        return _r2
+    try:
+        _res = _supabase_resiliente(
+            lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", _uid).execute(),
+            operacao=f"{operacao}_fallback_legado",
+            tentativas=2,
+            backoff=(1, 2),
+        )
+        _cache = ((_res.data[0].get("gads_cache") or {}) if _res.data else {})
+        _bytes = len(json.dumps(_cache, ensure_ascii=False, default=str).encode("utf-8"))
+        print(
+            f"[EGRESS-MONITOR-V249] operacao={operacao} fonte=POSTGREST_FALLBACK "
+            f"empresas={len(_cache)} bytes_estimados={_bytes} mb_estimados={_bytes / 1048576:.2f}",
+            flush=True,
+        )
+        return _cache
+    except Exception as _exc:
+        print(f"[EGRESS-MONITOR-V249] operacao={operacao} falha={_exc!r}", flush=True)
+        return {}
 
 def _excluir_cache_gads_r2_usuario(user_id: str) -> None:
     """Remove o cache canônico somente após a ação explícita Limpar cache."""
@@ -2368,24 +2409,10 @@ def _obter_ou_criar_atividade_cc_youtube_v153(user_id: str, total: int):
 
 
 def _carregar_gads_cache_cc_v153(user_id: str) -> dict:
-    """Leitura barata do gads_cache para o check global da sidebar."""
+    """Leitura do cache canônico sem baixar o JSON gigante do PostgREST."""
     if not user_id:
         return {}
-    try:
-        _res = _supabase_resiliente(
-            lambda: (
-                supabase.table("ci_dados")
-                .select("gads_cache")
-                .eq("user_id", user_id)
-                .execute()
-            ),
-            operacao="carregar_gads_cache_cc",
-            tentativas=2,
-            backoff=(1, 2),
-        )
-        return ((_res.data[0].get("gads_cache") or {}) if _res.data else {})
-    except Exception:
-        return {}
+    return _carregar_gads_cache_preferindo_r2_v249(user_id, "carregar_gads_cache_cc")
 
 
 def _gads_youtube_sem_cc_por_empresa_v154(cache: dict) -> dict:
@@ -2455,20 +2482,8 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             descricao="CC YOUTUBE",
         )
         _ticket_cc_v195 = _entrar_fila_acao_pesada("CC YOUTUBE", "Google Ads")
-        _res = _supabase_resiliente(
-            lambda: (
-                supabase.table("ci_dados")
-                .select("gads_cache")
-                .eq("user_id", user_id)
-                .execute()
-            ),
-            operacao="verificar_cc_youtube_automatico",
-            tentativas=3,
-            backoff=(1, 2, 4),
-        )
-        _cache_atual = (
-            (_res.data[0].get("gads_cache") or {})
-            if _res.data else {}
+        _cache_atual = _carregar_gads_cache_preferindo_r2_v249(
+            user_id, "verificar_cc_youtube_automatico"
         )
 
         _pendentes_antes = _gads_youtube_sem_cc_v151(_cache_atual)
@@ -2566,11 +2581,10 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
 
             # Persiste ao terminar CADA empresa. Se houver standby depois,
             # as empresas já concluídas não entram de novo no lote.
-            _persistir_cache_ads_db(
+            _salvar_checkpoint_gads_r2(
                 user_id,
-                "gads_cache",
-                _cache_enriquecido,
-                tentativas=5,
+                _empresa_v154,
+                _cache_enriquecido.get(_empresa_v154) or {},
             )
 
             _sem_cc_emp_v154 = sum(
@@ -2626,12 +2640,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
         ]
 
         if _novos:
-            _persistir_cache_ads_db(
-                user_id,
-                "gads_cache",
-                _cache_enriquecido,
-                tentativas=5,
-            )
             print(
                 f"[YOUTUBE-CC-AUTO] {len(_novos)} CC(s) novo(s) salvo(s) "
                 f"automaticamente.",
@@ -11155,8 +11163,7 @@ def _formatos_gads_disponiveis(user_id: str, empresa: str) -> list:
     guarda só a imagem em si, sem saber a qual anúncio/formato ela
     pertence."""
     try:
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        cache = _carregar_gads_cache_preferindo_r2_v249(user_id, "formatos_gads")
         entry = cache.get(empresa) or {}
         ads = entry.get("data") or []
         formatos = set()
@@ -11177,8 +11184,7 @@ def _urls_imagens_gads_por_formato(user_id: str, empresa: str, formato: str) -> 
     Usado pra restringir `resetar_ocr_gads_forcado` a um tipo específico
     de anúncio, já que a tabela `midias` não guarda esse tipo por linha."""
     try:
-        res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
-        cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
+        cache = _carregar_gads_cache_preferindo_r2_v249(user_id, "urls_imagens_gads")
         entry = cache.get(empresa) or {}
         ads = entry.get("data") or []
         urls = set()
@@ -17447,9 +17453,9 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         return False
 
     try:
-        res_cache = supabase.table("ci_dados").select("ads_cache, gads_cache").eq("user_id", user_id).execute()
+        res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
         cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
-        gcache_atual = (res_cache.data[0].get("gads_cache") or {}) if res_cache.data else {}
+        gcache_atual = _carregar_gads_cache_preferindo_r2_v249(user_id, "retry_migracao")
     except Exception:
         return False
 
@@ -31585,21 +31591,9 @@ elif st.session_state.pagina == "google_ads":
             return st.session_state.gads_cache
         _cache_hibrido = {}
         try:
-            res = (
-                supabase.table("ci_dados")
-                .select("gads_cache")
-                .eq("user_id", st.session_state.user.id)
-                .execute()
+            _cache_r2 = _carregar_gads_cache_preferindo_r2_v249(
+                st.session_state.user.id, "interface_google_ads"
             )
-            if res.data and res.data[0].get("gads_cache"):
-                # Histórico legado permanece disponível. A versão por empresa
-                # do R2, quando existir, substitui somente a empresa
-                # correspondente e nunca apaga as demais.
-                _cache_hibrido = dict(res.data[0]["gads_cache"])
-        except Exception:
-            pass
-        try:
-            _cache_r2 = _carregar_checkpoints_gads_r2(st.session_state.user.id)
             for _nome_r2, _entry_r2 in (_cache_r2 or {}).items():
                 if (
                     isinstance(_entry_r2, dict)
@@ -33015,18 +33009,17 @@ elif st.session_state.pagina == "google_ads":
             _outbox_anterior = _carregar_checkpoints_gads_r2(user_id)
             if _outbox_anterior:
                 _marcar_coleta_prioritaria(user_id, True)
-            try:
-                res = _supabase_resiliente(
-                    lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
-                    operacao="ler_gads_inicio_coleta",
-                    tentativas=3,
-                    backoff=(2, 4, 8),
+            cache_atual = dict(_outbox_anterior or {})
+            if cache_atual:
+                print(
+                    f"[EGRESS-MONITOR-V249] operacao=inicio_coleta fonte=R2 "
+                    f"postgrest_gads_cache_evitado=1 empresas={len(cache_atual)}",
+                    flush=True,
                 )
-                cache_atual = (res.data[0].get("gads_cache") or {}) if res.data else {}
-            except Exception as exc_inicio:
-                cache_atual = {}
-                print(f"[GADS-OUTBOX-V194] coleta seguirá sem leitura do Supabase: {exc_inicio!r}", flush=True)
-            cache_atual.update(_outbox_anterior)
+            else:
+                cache_atual = _carregar_gads_cache_preferindo_r2_v249(
+                    user_id, "ler_gads_inicio_coleta"
+                )
 
             erros = {}
             novos = {}

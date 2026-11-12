@@ -33730,6 +33730,21 @@ elif st.session_state.pagina == "google_ads":
     if st.session_state.get("user"):
         _ocr_em_andamento = _job_any_active("ocr_gads", st.session_state.user.id)
 
+    # V243 — o worker grava o OCR diretamente na tabela ``midias``, mas o
+    # card é montado a partir de ``gads_cache``. Antes, ao terminar o worker,
+    # o polling apenas parava e a tela continuava com o snapshot anterior,
+    # exibindo "Texto não disponibilizado" apesar do OCR já concluído.
+    # Detecta a transição ativo -> finalizado, força a releitura e só então
+    # encerra o polling.
+    _ocr_estava_ativo_v243 = bool(
+        st.session_state.get("_gads_ocr_estava_ativo_v243", False)
+    )
+    if _ocr_estava_ativo_v243 and not _ocr_em_andamento:
+        st.session_state["_gads_ocr_estava_ativo_v243"] = False
+        st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+        st.rerun()
+    st.session_state["_gads_ocr_estava_ativo_v243"] = bool(_ocr_em_andamento)
+
     # V227 — a sincronizacao protegida e uma etapa ativa da coleta, como o
     # OCR. Mesmo depois que o worker termina uma tentativa, o card continua
     # em polling enquanto ainda houver empresa aguardando confirmacao. Isso

@@ -667,6 +667,11 @@ def _get_jobs_registry_v189() -> dict:
     return {
         "lock": threading.RLock(),
         "ativos": set(),
+        # Usuários com coleta ou sincronização protegida em curso. Esta
+        # marca sobrevive aos reruns do Streamlit e impede OCR, migração,
+        # transcrição e outras tarefas pesadas de iniciarem no intervalo
+        # entre uma tentativa de sincronização e a seguinte.
+        "coleta_prioritaria_usuarios": set(),
     }
 
 
@@ -678,6 +683,23 @@ _jobs_ativos = _jobs_registry_v189["ativos"]
 # sempre e todo clique seguinte era recusado silenciosamente. Mantemos também
 # a thread real para distinguir job vivo de trava órfã.
 _jobs_threads = _jobs_registry_v189.setdefault("threads", {})
+_coleta_prioritaria_usuarios = _jobs_registry_v189.setdefault(
+    "coleta_prioritaria_usuarios", set()
+)
+
+def _marcar_coleta_prioritaria(user_id: str, ativa: bool = True):
+    _uid = str(user_id or "")
+    if not _uid:
+        return
+    with _jobs_lock:
+        if ativa:
+            _coleta_prioritaria_usuarios.add(_uid)
+        else:
+            _coleta_prioritaria_usuarios.discard(_uid)
+
+def _coleta_prioritaria_local_ativa(user_id: str) -> bool:
+    with _jobs_lock:
+        return str(user_id or "") in _coleta_prioritaria_usuarios
 
 def _job_key(tipo: str, user_id: str, escopo: str = ""):
     return (str(tipo), str(user_id), str(escopo or ""))
@@ -11135,13 +11157,15 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
     total_itens = len(itens)
 
     _base_dir = Path(__file__).resolve().parent
-    _worker = (_base_dir / "ocr_worker.py").resolve()
+    # Nome versionado para impedir que o deploy reutilize o worker antigo em
+    # cache. Este app V231 deve ser publicado junto com o arquivo abaixo.
+    _worker = (_base_dir / "ocr_worker_v231.py").resolve()
 
     if not _worker.exists():
         return {
             "ok": False,
             "erro": (
-                f"Arquivo ocr_worker.py não encontrado em {_worker}. "
+                f"Arquivo ocr_worker_v231.py não encontrado em {_worker}. "
                 "O OCR externo precisa do worker na raiz do projeto."
             ),
             "resultados": [],
@@ -11690,9 +11714,15 @@ def _fila_pesada_esta_ocupada():
 
 def _esperar_coleta_prioritaria_v195(user_id: str, descricao: str = "pós-processamento"):
     """Nenhuma nova etapa pesada começa enquanto houver coleta ativa."""
-    while any(
-        _job_any_active(_tipo_coleta, user_id)
-        for _tipo_coleta in ("coleta_ads_google", "coleta_ads", "coleta_redes")
+    while (
+        _coleta_prioritaria_local_ativa(user_id)
+        or any(
+            _job_any_active(_tipo_coleta, user_id)
+            for _tipo_coleta in (
+                "coleta_ads_google", "coleta_ads", "coleta_redes",
+                "sincronizar_gads_outbox",
+            )
+        )
     ):
         print(
             f"[PRIORIDADE-COLETA-V195] {descricao} aguardando coleta Google Ads",
@@ -17994,7 +18024,13 @@ def _sincronizar_outbox_gads_background(user_id: str):
         and entry.get("_checkpoint_finalizado", True) is not False
     }
     if not pendentes:
+        _marcar_coleta_prioritaria(user_id, False)
         return
+
+    # Sincronizar dados já coletados continua sendo parte da coleta e tem
+    # prioridade máxima. A marca só é retirada depois que não restar nenhum
+    # checkpoint final no R2.
+    _marcar_coleta_prioritaria(user_id, True)
 
     _ids_atividades = {
         str(entry.get("_atividade_id"))
@@ -18100,9 +18136,60 @@ def _sincronizar_outbox_gads_background(user_id: str):
     sincronizadas = set()
     ainda_pendentes = set(pendentes)
 
+    def _mesclar_checkpoint_com_historico(_anterior, _checkpoint):
+        """Compatibilidade com checkpoints antigos que guardavam só a coleta nova.
+
+        Preserva anúncios anteriores por ID e acrescenta os IDs novos. Assim,
+        uma retomada de sincronização nunca apaga o histórico já salvo.
+        """
+        _anterior = _anterior if isinstance(_anterior, dict) else {}
+        _checkpoint = _checkpoint if isinstance(_checkpoint, dict) else {}
+        _ads_antigos = [dict(x) for x in (_anterior.get("data") or []) if isinstance(x, dict)]
+        _ads_novos = [dict(x) for x in (_checkpoint.get("data") or []) if isinstance(x, dict)]
+        _novos_por_id = {str(x.get("id")): x for x in _ads_novos if x.get("id")}
+        _resultado = []
+        _vistos = set()
+        for _ad_antigo in _ads_antigos:
+            _id = str(_ad_antigo.get("id") or "")
+            if _id and _id in _novos_por_id:
+                _novo = _novos_por_id[_id]
+                _antigo_tem_midia = bool(
+                    (_ad_antigo.get("images") or []) or (_ad_antigo.get("videos") or [])
+                    or (_ad_antigo.get("images_b64") or [])
+                )
+                _novo_tem_midia = bool(
+                    (_novo.get("images") or []) or (_novo.get("videos") or [])
+                    or (_novo.get("images_b64") or [])
+                )
+                _escolhido = dict(_novo) if (not _antigo_tem_midia and _novo_tem_midia) else dict(_ad_antigo)
+                _escolhido["ativo"] = True
+                _resultado.append(_escolhido)
+                _vistos.add(_id)
+            else:
+                _preservado = dict(_ad_antigo)
+                if _id:
+                    _preservado["ativo"] = False
+                _resultado.append(_preservado)
+        for _ad_novo in _ads_novos:
+            _id = str(_ad_novo.get("id") or "")
+            if not _id or _id not in _vistos:
+                _novo = dict(_ad_novo)
+                _novo["ativo"] = True
+                _resultado.append(_novo)
+                if _id:
+                    _vistos.add(_id)
+        return {
+            **_anterior,
+            **_checkpoint,
+            "data": _resultado,
+            "ts_historico": _anterior.get("ts", ""),
+        }
+
     for empresa, entry in pendentes.items():
         _cache_com_empresa = dict(cache_atual)
-        _cache_com_empresa[empresa] = entry
+        _cache_com_empresa[empresa] = _mesclar_checkpoint_com_historico(
+            cache_atual.get(empresa), entry
+        )
         ok, erro = salvar_cache_gads(
             _cache_com_empresa, migrar_midia=False, user_id=user_id, tentativas=2,
         )
@@ -18113,7 +18200,9 @@ def _sincronizar_outbox_gads_background(user_id: str):
                 pendentes_agora=ainda_pendentes,
                 motivo="Dados protegidos. O banco ainda nao confirmou toda a sincronizacao; nova verificacao sera automatica.",
             )
-            continue
+            # Banco instável: não martela as demais empresas no mesmo ciclo.
+            # O próximo ciclo retoma exatamente daqui, sem nova coleta.
+            break
 
         try:
             _res_conf = _supabase_resiliente(
@@ -18168,6 +18257,8 @@ def _sincronizar_outbox_gads_background(user_id: str):
         f"[GADS-SYNC-V227] fim sincronizadas={sorted(sincronizadas)} pendentes={sorted(ainda_pendentes)}",
         flush=True,
     )
+    if not ainda_pendentes:
+        _marcar_coleta_prioritaria(user_id, False)
 
 # ---------------------------------------------------
 #  REPROCESSAMENTO — comprimir mídias já salvas no R2
@@ -32227,6 +32318,8 @@ elif st.session_state.pagina == "google_ads":
             # Mesmo com o Supabase fora do ar a Apify pode continuar, pois o
             # outbox passa a ser a garantia de durabilidade do resultado.
             _outbox_anterior = _carregar_checkpoints_gads_r2(user_id)
+            if _outbox_anterior:
+                _marcar_coleta_prioritaria(user_id, True)
             try:
                 res = _supabase_resiliente(
                     lambda: supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute(),
@@ -32297,6 +32390,33 @@ elif st.session_state.pagina == "google_ads":
 
             for e in empresas:
                 ck = e["nome"]
+                # V231 — idempotência por atividade + empresa. Se esta mesma
+                # atividade já concluiu a coleta da empresa e o resultado
+                # final está protegido no R2, NUNCA chama a Apify novamente,
+                # mesmo quando `forcar=True`. Apenas conserva o checkpoint
+                # para o sincronizador. Uma coleta manual realmente nova tem
+                # outro activity_id e, portanto, continua funcionando.
+                _checkpoint_existente = _outbox_anterior.get(ck) or {}
+                _checkpoint_mesma_atividade = bool(
+                    isinstance(_checkpoint_existente, dict)
+                    and _checkpoint_existente.get("_checkpoint_finalizado", True) is not False
+                    and str(_checkpoint_existente.get("_atividade_id") or "") == str(atividade_id or "")
+                )
+                if _checkpoint_mesma_atividade:
+                    protegidos[ck] = _checkpoint_existente
+                    cache_atual[ck] = _checkpoint_existente
+                    _status_por_empresa[ck] = {
+                        "status": "aguardando_sincronizacao",
+                        "msg": "Coleta já concluída e protegida; aguardando somente a sincronização.",
+                    }
+                    _processadas += 1
+                    _grava_progresso()
+                    print(
+                        f"[GADS-IDEMPOTENCIA-V231] atividade={atividade_id} "
+                        f"empresa={ck!r} checkpoint final reutilizado; Apify NÃO chamada",
+                        flush=True,
+                    )
+                    continue
                 entrada_cache = cache_atual.get(ck, {})
                 _pula = False
                 _incompletos_cache = _ids_gads_incompletos(entrada_cache)
@@ -32405,7 +32525,18 @@ elif st.session_state.pagina == "google_ads":
                         # empresa só significava mais uma ida ao Supabase
                         # sem ganho real).
                         _cache_com_uma = merge_ads(cache_atual, {ck: entry_nova})
-                        _checkpoint_ok, _checkpoint_erro = _salvar_checkpoint_gads_r2(user_id, ck, entry_nova)
+                        # O checkpoint FINAL precisa guardar a entrada já
+                        # mesclada com o histórico. Guardar apenas a resposta
+                        # nova faria a sincronização posterior substituir e
+                        # apagar anúncios antigos da empresa.
+                        _entry_protegida_final = dict(
+                            _cache_com_uma.get(ck) or entry_nova
+                        )
+                        _entry_protegida_final["_checkpoint_finalizado"] = True
+                        _entry_protegida_final["_atividade_id"] = atividade_id
+                        _checkpoint_ok, _checkpoint_erro = _salvar_checkpoint_gads_r2(
+                            user_id, ck, _entry_protegida_final
+                        )
                         _salvo_ok_ck, _erro_salvar_ck = salvar_cache_gads(
                             _cache_com_uma, migrar_midia=False, user_id=user_id,
                             tentativas=2,
@@ -32432,7 +32563,7 @@ elif st.session_state.pagina == "google_ads":
                         else:
                             _erro_curto_ck = _resumir_erro_coleta_salvar_gads(_erro_salvar_ck)
                             if _checkpoint_ok:
-                                protegidos[ck] = entry_nova
+                                protegidos[ck] = _entry_protegida_final
                                 erros[ck] = f"Coletado e protegido; aguardando sincronização: {_erro_curto_ck}"
                                 _status_por_empresa[ck] = {
                                     "status": "aguardando_sincronizacao",
@@ -32512,6 +32643,21 @@ elif st.session_state.pagina == "google_ads":
                 flush=True,
             )
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
+        finally:
+            # Coleta sem checkpoint pendente encerrou de verdade. Quando há
+            # checkpoint, a prioridade permanece com o sincronizador até o
+            # banco confirmar e o R2 ser limpo.
+            try:
+                _pendencias_finais = {
+                    _nome: _entry
+                    for _nome, _entry in _carregar_checkpoints_gads_r2(user_id).items()
+                    if isinstance(_entry, dict)
+                    and _entry.get("_checkpoint_finalizado", True) is not False
+                }
+            except Exception:
+                _pendencias_finais = {"indisponivel": {}}
+            if not _pendencias_finais:
+                _marcar_coleta_prioritaria(user_id, False)
 
     def executar_busca(empresas: list, query_values: dict, forcar: bool = False, atividade_id_existente: str = None, ids_alvo_por_empresa=None):
         _permitido, _motivo_bloqueio = verificar_pode_executar_acao(st.session_state.user.id, "coleta_ads")
@@ -32527,6 +32673,44 @@ elif st.session_state.pagina == "google_ads":
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
         if atividade_id_existente:
+            # Se o clique/retomada aponta para uma atividade cujas empresas
+            # já possuem checkpoint final, a única ação válida é sincronizar.
+            # Isso fecha a brecha que repetiu a coleta completa várias vezes
+            # quando o Supabase ficou indisponível.
+            _outbox_existente = _carregar_checkpoints_gads_r2(st.session_state.user.id)
+            _nomes_requisitados = [str(e.get("nome") or "") for e in empresas]
+            _ja_coletadas = [
+                _nome for _nome in _nomes_requisitados
+                if isinstance(_outbox_existente.get(_nome), dict)
+                and (_outbox_existente[_nome].get("_checkpoint_finalizado", True) is not False)
+                and str(_outbox_existente[_nome].get("_atividade_id") or "") == str(_atividade_id)
+            ]
+            if _ja_coletadas and len(_ja_coletadas) == len(_nomes_requisitados):
+                _marcar_coleta_prioritaria(st.session_state.user.id, True)
+                atualizar_atividade(_atividade_id, "em_andamento", {
+                    "empresas": _nomes_requisitados,
+                    "plataforma": "Google Ads",
+                    "concluidas": len(_nomes_requisitados),
+                    "total": len(_nomes_requisitados),
+                    "aguardando_sincronizacao": _ja_coletadas,
+                    "motivo": "Coleta já concluída e protegida. Sincronizando sem consultar novamente o Google.",
+                    "por_empresa": {
+                        _nome: {
+                            "status": "aguardando_sincronizacao",
+                            "msg": "Aguardando somente a sincronização dos dados protegidos.",
+                        }
+                        for _nome in _ja_coletadas
+                    },
+                })
+                _job_start_thread(
+                    "sincronizar_gads_outbox", st.session_state.user.id, "google_ads",
+                    _sincronizar_outbox_gads_background,
+                    args=(st.session_state.user.id,), daemon=True,
+                    name="sincronizar-google-ads-outbox",
+                )
+                st.session_state["_coleta_gads_em_andamento"] = False
+                st.info("Os anúncios já foram coletados. O sistema retomou apenas a sincronização.")
+                st.rerun()
             atualizar_atividade(_atividade_id, "em_andamento", {
                 "empresas": [e["nome"] for e in empresas],
                 "plataforma": "Google Ads",
@@ -32541,6 +32725,7 @@ elif st.session_state.pagina == "google_ads":
         except Exception:
             pass
 
+        _marcar_coleta_prioritaria(st.session_state.user.id, True)
         _iniciou_coleta = _job_start_thread(
             "coleta_ads_google", st.session_state.user.id, "google_ads",
             _executar_busca_background,
@@ -32557,6 +32742,9 @@ elif st.session_state.pagina == "google_ads":
             flush=True,
         )
         if not _iniciou_coleta:
+            # Não remove a prioridade se outra coleta real continua viva.
+            if not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads"):
+                _marcar_coleta_prioritaria(st.session_state.user.id, False)
             atualizar_atividade(_atividade_id, "erro", {
                 "empresas": [e["nome"] for e in empresas],
                 "plataforma": "Google Ads",
@@ -32650,11 +32838,16 @@ elif st.session_state.pagina == "google_ads":
     _ultimo_outbox = float(st.session_state.get("_gads_outbox_ultima_tentativa", 0.0) or 0.0)
     if (
         st.session_state.get("user")
-        and (_agora_outbox - _ultimo_outbox) >= 60.0
+        # Cinco minutos entre tentativas. Quando o PostgREST está em 5xx,
+        # repetir payloads grandes a cada minuto prolonga a indisponibilidade.
+        and (_agora_outbox - _ultimo_outbox) >= 300.0
         and not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads")
         and not _job_is_active("sincronizar_gads_outbox", st.session_state.user.id, "google_ads")
     ):
         st.session_state["_gads_outbox_ultima_tentativa"] = _agora_outbox
+        # Marca antes de abrir a thread para eliminar a janela de corrida em
+        # que OCR/migração poderiam iniciar no mesmo rerun.
+        _marcar_coleta_prioritaria(st.session_state.user.id, True)
         _job_start_thread(
             "sincronizar_gads_outbox", st.session_state.user.id, "google_ads",
             _sincronizar_outbox_gads_background,
@@ -32674,7 +32867,11 @@ elif st.session_state.pagina == "google_ads":
     # global impede duplicidade entre reruns; o cooldown só é registrado
     # quando a tentativa TERMINA. Portanto, standby/falha no meio não deixa
     # uma flag permanente dizendo que o vídeo já foi verificado.
-    if st.session_state.get("user") and st.session_state.get("gads_cache"):
+    if (
+        st.session_state.get("user")
+        and st.session_state.get("gads_cache")
+        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
+    ):
         iniciar_verificacao_cc_youtube_automatica_v151(
             st.session_state.user.id,
             st.session_state.gads_cache,
@@ -32687,7 +32884,11 @@ elif st.session_state.pagina == "google_ads":
     # do R2. Cobre casos que a migração pontual de uma coleta específica
     # não pega (falha silenciosa antiga, mídia coletada antes desse
     # pipeline existir, etc.).
-    if not st.session_state.get("_verificacao_pendentes_feita_google") and st.session_state.get("user"):
+    if (
+        not st.session_state.get("_verificacao_pendentes_feita_google")
+        and st.session_state.get("user")
+        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
+    ):
         iniciar_verificacao_pendentes_google_background(st.session_state.user.id)
         st.session_state["_verificacao_pendentes_feita_google"] = True
 
@@ -32698,7 +32899,11 @@ elif st.session_state.pagina == "google_ads":
     # tipo de caso que a verificação de links acima: fila de OCR que
     # nunca rodou (falha silenciosa, migração anterior a essa
     # funcionalidade existir, etc.).
-    if not st.session_state.get("_verificacao_ocr_pendente_feita_google") and st.session_state.get("user"):
+    if (
+        not st.session_state.get("_verificacao_ocr_pendente_feita_google")
+        and st.session_state.get("user")
+        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
+    ):
         iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
         # V105: a thread pode criar atividade OCR alguns instantes depois

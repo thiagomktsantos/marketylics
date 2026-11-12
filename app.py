@@ -36885,6 +36885,40 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
+                # V238 — renderização paginada. O cache da empresa pode ter
+                # centenas de anúncios e dezenas de MB em imagens base64.
+                # Montar todos os cards no mesmo rerun duplica esse conteúdo
+                # no HTML e bloqueia a tela por vários minutos. Os filtros e
+                # contadores continuam usando a lista completa; somente os
+                # cards e consultas auxiliares são limitados à página atual.
+                _GADS_POR_PAGINA_V238 = 20
+                _total_filtrado_v238 = len(gads_f)
+                _total_paginas_v238 = max(
+                    1,
+                    (_total_filtrado_v238 + _GADS_POR_PAGINA_V238 - 1)
+                    // _GADS_POR_PAGINA_V238,
+                )
+                _pagina_key_v238 = f"gads_pagina_v238_{sk}"
+                _seletor_pagina_key_v238 = f"gads_seletor_pagina_v238_{sk}"
+                _filtro_sig_key_v238 = f"gads_filtro_sig_v238_{sk}"
+                _filtro_sig_v238 = (
+                    str(busca_texto or ""),
+                    str(filtro_fmt or ""),
+                    str(filtro_dominio or ""),
+                    str(filtro_status or ""),
+                    str(filtro_ordem or ""),
+                )
+                if st.session_state.get(_filtro_sig_key_v238) != _filtro_sig_v238:
+                    st.session_state[_filtro_sig_key_v238] = _filtro_sig_v238
+                    st.session_state[_pagina_key_v238] = 1
+                    st.session_state[_seletor_pagina_key_v238] = 1
+                _pagina_atual_v238 = int(st.session_state.get(_pagina_key_v238, 1) or 1)
+                _pagina_atual_v238 = max(1, min(_pagina_atual_v238, _total_paginas_v238))
+                st.session_state[_pagina_key_v238] = _pagina_atual_v238
+                _inicio_v238 = (_pagina_atual_v238 - 1) * _GADS_POR_PAGINA_V238
+                _fim_v238 = min(_inicio_v238 + _GADS_POR_PAGINA_V238, _total_filtrado_v238)
+                gads_pagina_v238 = gads_f[_inicio_v238:_fim_v238]
+
                 # "page_profile_picture" salva (o campo só passou a ser
                 # capturado depois, ou a captura falhou naquela época).
                 # Como a foto de perfil da página é a MESMA pra todos os
@@ -36947,7 +36981,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
                 # migrou pro R2 — também sem badge nenhum.
                 _urls_video_cards = list({
-                    u for ad in gads_f for u in (ad.get("videos") or [])[:1] if u
+                    u for ad in gads_pagina_v238 for u in (ad.get("videos") or [])[:1] if u
                 })
                 _mapa_transcricoes = {}          # url -> texto pronto (não vazio)
                 _urls_transcricao_pendente = set()  # url -> já migrado, transcrição ainda NULL
@@ -36982,7 +37016,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # "Extraindo texto…"), "" = processado sem achar texto
                 # com texto = pronto (mostra no lugar da copy).
                 _urls_img_cards = list({
-                    (ad.get("images") or [""])[0] for ad in gads_f if (ad.get("images") or [""])[0]
+                    (ad.get("images") or [""])[0] for ad in gads_pagina_v238 if (ad.get("images") or [""])[0]
                 })
                 _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
                 _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
@@ -37118,9 +37152,30 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                          .replace("\n", " ")
                     )
 
+                # Navegação aparece antes dos cards para o usuário saber que a
+                # lista está paginada e quantos itens serão renderizados.
+                _pg_info_col_v238, _pg_select_col_v238 = st.columns([5, 1])
+                with _pg_info_col_v238:
+                    st.caption(
+                        f"Exibindo {_inicio_v238 + 1}–{_fim_v238} de "
+                        f"{_total_filtrado_v238} anúncios"
+                    )
+                with _pg_select_col_v238:
+                    _pagina_escolhida_v238 = st.selectbox(
+                        "Página",
+                        options=list(range(1, _total_paginas_v238 + 1)),
+                        index=_pagina_atual_v238 - 1,
+                        key=_seletor_pagina_key_v238,
+                        label_visibility="collapsed",
+                        format_func=lambda _p: f"Página {_p}/{_total_paginas_v238}",
+                    )
+                    if int(_pagina_escolhida_v238) != _pagina_atual_v238:
+                        st.session_state[_pagina_key_v238] = int(_pagina_escolhida_v238)
+                        st.rerun()
+
                 all_cards_html = []
 
-                for j, ad in enumerate(gads_f):
+                for j, ad in enumerate(gads_pagina_v238, start=_inicio_v238):
                     snap_url    = ad.get("snapshot_url") or ""
                     images      = ad.get("images") or []
                     images_b64  = ad.get("images_b64") or []

@@ -865,7 +865,12 @@ def _excluir_checkpoint_gads_r2(user_id: str, empresa: str) -> None:
         print(f"[GADS-OUTBOX-V194] falha ao remover empresa={empresa!r}: {exc!r}", flush=True)
 
 def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
-    """Retorna {empresa: entry} dos resultados ainda não sincronizados."""
+    """V233: retorna o cache canônico por empresa mantido no R2.
+
+    O nome histórico ``checkpoint`` é preservado para não mover nem perder os
+    objetos existentes. A partir da V233 esses arquivos deixam de ser uma
+    outbox temporária e passam a ser a fonte principal do Google Ads.
+    """
     pendentes = {}
     if not r2_client or not R2_BUCKET:
         return pendentes
@@ -891,6 +896,28 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
     except Exception as exc:
         print(f"[GADS-OUTBOX-V194] falha ao listar: {exc!r}", flush=True)
         return pendentes
+
+def _excluir_cache_gads_r2_usuario(user_id: str) -> None:
+    """Remove o cache canônico somente após a ação explícita Limpar cache."""
+    if not r2_client or not R2_BUCKET:
+        return
+    token = None
+    while True:
+        kwargs = {
+            "Bucket": R2_BUCKET,
+            "Prefix": _gads_checkpoint_prefix(user_id),
+            "MaxKeys": 1000,
+        }
+        if token:
+            kwargs["ContinuationToken"] = token
+        pagina = r2_client.list_objects_v2(**kwargs)
+        objetos = [{"Key": x["Key"]} for x in pagina.get("Contents", []) if x.get("Key")]
+        if objetos:
+            r2_client.delete_objects(Bucket=R2_BUCKET, Delete={"Objects": objetos, "Quiet": True})
+        if not pagina.get("IsTruncated"):
+            break
+        token = pagina.get("NextContinuationToken")
+    print(f"[GADS-R2-V233] cache canônico removido por ação explícita user={user_id}", flush=True)
 
 # ---------------------------------------------------
 #  WHISPER LOCAL (transcrição de áudio dos vídeos, sem custo de API)
@@ -15557,6 +15584,47 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "plataforma": plataforma, "motivo": "nenhum anúncio com id pra atualizar"})
             return
 
+        if plataforma == "Google Ads":
+            # V233: a mídia migrada também precisa atualizar a fonte canônica
+            # por empresa. Não chama a RPC de gads_cache, pois o Google Ads
+            # deixou de depender desse JSON gigante no Supabase.
+            _entry_r2_migrada = dict(migrado.get(empresa) or entry or {})
+            _entry_r2_migrada["_checkpoint_finalizado"] = True
+            _entry_r2_migrada["_atividade_id"] = (
+                (entry or {}).get("_atividade_id")
+                or _entry_r2_migrada.get("_atividade_id")
+            )
+            _ok_r2_migracao, _erro_r2_migracao = _salvar_checkpoint_gads_r2(
+                user_id, empresa, _entry_r2_migrada
+            )
+            if not _ok_r2_migracao:
+                atualizar_atividade(atividade_id, "erro", {
+                    "empresa": empresa,
+                    "plataforma": plataforma,
+                    "motivo": f"Mídias processadas, mas o cache por empresa não foi atualizado: {_erro_r2_migracao}",
+                })
+                return
+            _total_r2 = int(stats_midia.get("total", 0) or 0)
+            _falhas_r2 = int(stats_midia.get("nao_migrados", 0) or 0)
+            atualizar_atividade(
+                atividade_id,
+                "em_andamento" if _falhas_r2 else "concluido",
+                {
+                    "empresa": empresa,
+                    "plataforma": plataforma,
+                    "total": _total_r2,
+                    "migradas": max(0, _total_r2 - _falhas_r2),
+                    "nao_migradas": _falhas_r2,
+                    "armazenamento_principal": "r2_por_empresa",
+                    "motivo": (
+                        f"{_falhas_r2} mídia(s) ainda aguardam nova tentativa."
+                        if _falhas_r2 else "Mídias confirmadas no cache por empresa."
+                    ),
+                },
+            )
+            print(f"[GADS-R2-V233] mídia atualizada no cache canônico empresa={empresa!r}", flush=True)
+            return
+
         res = supabase.rpc(_rpc_atualizar_cache(plataforma), {
             "p_user_id": user_id,
             "p_empresa": empresa,
@@ -18026,6 +18094,82 @@ def _sincronizar_outbox_gads_background(user_id: str):
     if not pendentes:
         _marcar_coleta_prioritaria(user_id, False)
         return
+
+    # V233 — os objetos por empresa no R2 são agora a fonte canônica. Não
+    # reenviamos mais o JSON completo para a coluna gads_cache: esse payload
+    # grande era o responsável pelos 520/521 e pelo consumo de CPU/memória.
+    # Esta etapa apenas confirma que o R2 contém os resultados finais e fecha
+    # as atividades relacionadas. O bloco legado abaixo permanece inacessível
+    # por compatibilidade de código, sem executar qualquer gravação pesada.
+    _marcar_coleta_prioritaria(user_id, True)
+    _finais_por_atividade = {}
+    for _nome_r2, _entry_r2 in pendentes.items():
+        _aid_r2 = str((_entry_r2 or {}).get("_atividade_id") or "")
+        if _aid_r2:
+            _finais_por_atividade.setdefault(_aid_r2, []).append(str(_nome_r2))
+    try:
+        if _finais_por_atividade:
+            _res_ativ_r2 = (
+                supabase.table("atividades")
+                .select("id,status,detalhes")
+                .eq("user_id", user_id)
+                .eq("tipo", "coleta_ads_google")
+                .order("criado_em", desc=True)
+                .limit(100)
+                .execute()
+            )
+            for _ativ_r2 in (_res_ativ_r2.data or []):
+                _aid_r2 = str(_ativ_r2.get("id") or "")
+                _empresas_r2 = _finais_por_atividade.get(_aid_r2)
+                if not _empresas_r2:
+                    continue
+                _det_r2 = _ativ_r2.get("detalhes") or {}
+                if not isinstance(_det_r2, dict):
+                    _det_r2 = {}
+                _det_r2 = dict(_det_r2)
+                _det_r2["aguardando_sincronizacao"] = []
+                _det_r2["armazenamento_principal"] = "r2_por_empresa"
+                _det_r2["coleta_protegida_r2"] = True
+                _det_r2["motivo"] = "Coleta concluída e confirmada no armazenamento por empresa."
+                _coletadas_r2 = list(_det_r2.get("coletadas") or [])
+                _por_empresa_r2 = dict(_det_r2.get("por_empresa") or {})
+                _erros_r2 = dict(_det_r2.get("com_erro") or {})
+                _incompletos_r2 = dict(_det_r2.get("incompletos") or {})
+                for _nome_r2 in _empresas_r2:
+                    if _nome_r2 not in _coletadas_r2:
+                        _coletadas_r2.append(_nome_r2)
+                    if _nome_r2 in _incompletos_r2:
+                        _por_empresa_r2[_nome_r2] = {
+                            "status": "erro",
+                            "msg": str(_incompletos_r2.get(_nome_r2) or "Anúncios incompletos precisam ser refeitos."),
+                        }
+                    else:
+                        _por_empresa_r2[_nome_r2] = {
+                            "status": "ok",
+                            "msg": "Coleta confirmada e preservada no R2.",
+                        }
+                        # Remove somente o erro transitório de sincronização.
+                        if "sincroniza" in str(_erros_r2.get(_nome_r2, "")).lower() or "proteg" in str(_erros_r2.get(_nome_r2, "")).lower():
+                            _erros_r2.pop(_nome_r2, None)
+                _det_r2["coletadas"] = _coletadas_r2
+                _det_r2["por_empresa"] = _por_empresa_r2
+                _det_r2["com_erro"] = _erros_r2
+                atualizar_atividade(
+                    _ativ_r2.get("id"),
+                    "erro" if _incompletos_r2 or _erros_r2 else "concluido",
+                    _det_r2,
+                )
+        print(
+            f"[GADS-R2-V233] cache canônico confirmado empresas={sorted(pendentes)}",
+            flush=True,
+        )
+    except Exception as _exc_r2:
+        # Os anúncios continuam seguros e disponíveis no R2 mesmo se somente
+        # a atualização visual da notificação falhar temporariamente.
+        print(f"[GADS-R2-V233] falha ao concluir notificações: {_exc_r2!r}", flush=True)
+    finally:
+        _marcar_coleta_prioritaria(user_id, False)
+    return
 
     # Sincronizar dados já coletados continua sendo parte da coleta e tem
     # prioridade máxima. A marca só é retirada depois que não restar nenhum
@@ -31071,6 +31215,7 @@ elif st.session_state.pagina == "google_ads":
     def carregar_cache_ads(forcar: bool = False) -> dict:
         if not forcar and st.session_state.get("gads_cache"):
             return st.session_state.gads_cache
+        _cache_hibrido = {}
         try:
             res = (
                 supabase.table("ci_dados")
@@ -31079,10 +31224,28 @@ elif st.session_state.pagina == "google_ads":
                 .execute()
             )
             if res.data and res.data[0].get("gads_cache"):
-                return res.data[0]["gads_cache"]
+                # Histórico legado permanece disponível. A versão por empresa
+                # do R2, quando existir, substitui somente a empresa
+                # correspondente e nunca apaga as demais.
+                _cache_hibrido = dict(res.data[0]["gads_cache"])
         except Exception:
             pass
-        return {}
+        try:
+            _cache_r2 = _carregar_checkpoints_gads_r2(st.session_state.user.id)
+            for _nome_r2, _entry_r2 in (_cache_r2 or {}).items():
+                if (
+                    isinstance(_entry_r2, dict)
+                    and _entry_r2.get("_checkpoint_finalizado", True) is not False
+                ):
+                    _cache_hibrido[str(_nome_r2)] = _entry_r2
+            if _cache_r2:
+                print(
+                    f"[GADS-R2-V233] cache carregado na interface empresas={sorted(_cache_r2)}",
+                    flush=True,
+                )
+        except Exception as _exc_cache_r2:
+            print(f"[GADS-R2-V233] leitura do cache canônico falhou: {_exc_cache_r2!r}", flush=True)
+        return _cache_hibrido
 
     def merge_ads(cache_existente: dict, novos: dict) -> dict:
         resultado = dict(cache_existente)
@@ -32403,11 +32566,11 @@ elif st.session_state.pagina == "google_ads":
                     and str(_checkpoint_existente.get("_atividade_id") or "") == str(atividade_id or "")
                 )
                 if _checkpoint_mesma_atividade:
-                    protegidos[ck] = _checkpoint_existente
+                    novos[ck] = _checkpoint_existente
                     cache_atual[ck] = _checkpoint_existente
                     _status_por_empresa[ck] = {
-                        "status": "aguardando_sincronizacao",
-                        "msg": "Coleta já concluída e protegida; aguardando somente a sincronização.",
+                        "status": "ok",
+                        "msg": "Coleta já concluída e confirmada no R2; nenhuma nova busca necessária.",
                     }
                     _processadas += 1
                     _grava_progresso()
@@ -32479,17 +32642,18 @@ elif st.session_state.pagina == "google_ads":
                         # O checkpoint durável vem antes do Supabase. Se o
                         # banco cair, este lote continua disponível após um
                         # restart e será sincronizado sem nova chamada Apify.
-                        _salvar_checkpoint_gads_r2(user_id, _ck, _entry_parcial)
-                        _salvo_parcial_ok, _erro_parcial = salvar_cache_gads(
-                            _cache_parcial, migrar_midia=False, user_id=user_id,
-                            tentativas=1,
+                        _salvo_parcial_ok, _erro_parcial = _salvar_checkpoint_gads_r2(
+                            user_id, _ck, _entry_parcial
                         )
                         if _salvo_parcial_ok:
                             cache_atual = _cache_parcial
+                            print(
+                                f"[GADS-R2-V233] parcial preservado empresa={_ck!r}; "
+                                "Supabase não recebeu o cache completo",
+                                flush=True,
+                            )
                         else:
-                            # Não aborta a coleta por uma falha transitória de
-                            # checkpoint. O save final da empresa tenta de novo.
-                            print(f"[GADS-SAVE] checkpoint parcial falhou empresa={_ck!r}: {_erro_parcial}", flush=True)
+                            print(f"[GADS-R2-V233] checkpoint parcial falhou empresa={_ck!r}: {_erro_parcial}", flush=True)
                         _status_por_empresa[_ck] = {
                             "status": "rodando",
                             "msg": f"{len(_ads_ck_acumulados)} anúncios coletados até agora…",
@@ -32537,11 +32701,7 @@ elif st.session_state.pagina == "google_ads":
                         _checkpoint_ok, _checkpoint_erro = _salvar_checkpoint_gads_r2(
                             user_id, ck, _entry_protegida_final
                         )
-                        _salvo_ok_ck, _erro_salvar_ck = salvar_cache_gads(
-                            _cache_com_uma, migrar_midia=False, user_id=user_id,
-                            tentativas=2,
-                        )
-                        if _salvo_ok_ck:
+                        if _checkpoint_ok:
                             novos[ck] = entry_nova
                             cache_atual = _cache_com_uma
                             _ids_incompletos = _ids_gads_incompletos(entry_nova)
@@ -32559,22 +32719,15 @@ elif st.session_state.pagina == "google_ads":
                                 }
                             else:
                                 _status_por_empresa[ck] = {"status": "ok"}
-                            _excluir_checkpoint_gads_r2(user_id, ck)
                         else:
-                            _erro_curto_ck = _resumir_erro_coleta_salvar_gads(_erro_salvar_ck)
-                            if _checkpoint_ok:
-                                protegidos[ck] = _entry_protegida_final
-                                erros[ck] = f"Coletado e protegido; aguardando sincronização: {_erro_curto_ck}"
-                                _status_por_empresa[ck] = {
-                                    "status": "aguardando_sincronizacao",
-                                    "msg": "Coleta protegida; aguardando o banco voltar.",
-                                }
-                            else:
-                                erros[ck] = (
-                                    f"Coletado, mas não foi possível proteger/salvar: "
-                                    f"{_erro_curto_ck}; checkpoint: {_checkpoint_erro}"
-                                )
-                                _status_por_empresa[ck] = {"status": "erro_ao_salvar", "msg": _erro_curto_ck}
+                            erros[ck] = (
+                                "Coletado, mas não foi possível preservar no R2: "
+                                f"{_checkpoint_erro or 'erro desconhecido'}"
+                            )
+                            _status_por_empresa[ck] = {
+                                "status": "erro_ao_salvar",
+                                "msg": erros[ck],
+                            }
 
                 # Progresso incremental — sem isso, o card ficava mostrando só
                 # o rótulo genérico "Coleta de anúncios" do início ao fim,
@@ -32598,9 +32751,9 @@ elif st.session_state.pagina == "google_ads":
                 iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
             iniciar_retentativa_midias_background(user_id)
 
-            # V227 — resultado protegido ainda NAO esta concluido: enquanto
-            # houver empresa aguardando confirmacao no banco, a atividade fica
-            # em andamento (laranja) e o verificador automatico cuida dela.
+            # V233 — confirmação final é a gravação por empresa no R2. O
+            # Supabase recebe somente atividade/índice pequeno e nunca mais o
+            # cache completo de anúncios.
             _erros_reais = {k: v for k, v in erros.items() if k not in protegidos}
             if incompletos or (_erros_reais and not novos and not protegidos):
                 _status_final = "erro"
@@ -32616,8 +32769,8 @@ elif st.session_state.pagina == "google_ads":
                 "aguardando_sincronizacao": list(protegidos.keys()),
                 "com_erro": _erros_reais,
                 "motivo": (
-                    "Coleta protegida. Verificando e sincronizando automaticamente com o banco."
-                    if protegidos else "Coleta concluida e confirmada no banco."
+                    "Coleta protegida no R2; aguardando apenas confirmação da atividade."
+                    if protegidos else "Coleta concluída e confirmada no R2."
                 ),
                 "incompletos": incompletos,
                 "incompletos_ids_por_empresa": {k: list(v) for k, v in incompletos_ids.items()},
@@ -33723,6 +33876,10 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     supabase.table("ci_dados").update({"gads_cache": {}}).eq("user_id", st.session_state.user.id).execute()
                 except Exception:
                     pass
+                try:
+                    _excluir_cache_gads_r2_usuario(st.session_state.user.id)
+                except Exception as _exc_limpar_r2:
+                    print(f"[GADS-R2-V233] falha ao limpar cache canônico: {_exc_limpar_r2!r}", flush=True)
                 st.toast("Cache limpo!", icon="🗑️")
                 st.rerun()
 

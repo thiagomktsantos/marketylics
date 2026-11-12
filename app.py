@@ -749,6 +749,27 @@ def _job_any_active(tipo: str, user_id: str) -> bool:
             return True
         return False
 
+def _job_user_any_active(user_id: str) -> bool:
+    """V241: informa se existe worker REAL vivo para o usuário.
+
+    Não usa os status persistidos em ``atividades`` porque uma atividade
+    órfã/aguardando ação pode continuar como pendente no banco sem que exista
+    qualquer thread trabalhando. Usar esse registro como gatilho de polling
+    criava reruns completos a cada 30 segundos para sempre.
+    """
+    _uid = str(user_id)
+    with _jobs_lock:
+        _candidatas = [k for k in list(_jobs_ativos) if k[1] == _uid]
+        encontrou = False
+        for _chave in _candidatas:
+            _thread_job = _jobs_threads.get(_chave)
+            if _thread_job is not None and not _thread_job.is_alive():
+                _jobs_ativos.discard(_chave)
+                _jobs_threads.pop(_chave, None)
+                continue
+            encontrou = True
+        return encontrou
+
 def _job_run_guarded(tipo: str, user_id: str, escopo: str, target, args=(), kwargs=None):
     """Executa um job e sempre libera sua chave lógica ao terminar."""
     try:
@@ -17466,6 +17487,22 @@ with st.sidebar:
     @st.fragment(run_every="120s")
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
+            # V241 — um fragmento também é executado durante todo rerun da
+            # aplicação. Sem esta trava, abrir qualquer página fazia quatro
+            # varreduras pesadas de OCR no banco antes mesmo dos 120s. Na
+            # primeira renderização apenas armamos o relógio; a manutenção
+            # ocorre depois, no rerun isolado do próprio fragmento.
+            _agora_retry_v241 = time.monotonic()
+            _ultimo_retry_v241 = float(
+                st.session_state.get("_ultimo_retry_sidebar_v241") or 0.0
+            )
+            if _ultimo_retry_v241 <= 0.0:
+                st.session_state["_ultimo_retry_sidebar_v241"] = _agora_retry_v241
+                return
+            if (_agora_retry_v241 - _ultimo_retry_v241) < 115.0:
+                return
+            st.session_state["_ultimo_retry_sidebar_v241"] = _agora_retry_v241
+
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
             # Mesmo ciclo cuida de pegar vídeos que já foram migrados (têm
             # url_cdn no R2) mas ainda não têm transcrição — seja de uma
@@ -17797,7 +17834,7 @@ setInterval(function() {{
     var el = doc.querySelector('.st-key-_hidden_sino_refresh button');
     if (el) el.click();
 }}, 30000);
-''' if _resumo_sino['andamento'] > 0 else ''}
+''' if (st.session_state.user and _job_user_any_active(st.session_state.user.id)) else ''}
 </script>
 """
 

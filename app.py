@@ -919,6 +919,103 @@ def _excluir_cache_gads_r2_usuario(user_id: str) -> None:
         token = pagina.get("NextContinuationToken")
     print(f"[GADS-R2-V233] cache canônico removido por ação explícita user={user_id}", flush=True)
 
+def _restaurar_cache_gads_r2_mais_completo(user_id: str) -> dict:
+    """V234: restaura versões sobrescritas somente quando têm mais anúncios.
+
+    A decisão não usa apenas tamanho: uma versão com base64 pode ser enorme.
+    O candidato precisa conter uma lista ``data`` válida e ter mais IDs/itens
+    que a versão atual. Se o bucket não tiver versionamento, apenas registra o
+    fato e não altera nada.
+    """
+    resultado = {"restauradas": [], "sem_versionamento": False, "erros": []}
+    if not r2_client or not R2_BUCKET:
+        resultado["erros"].append("R2 não configurado")
+        return resultado
+    prefixo = _gads_checkpoint_prefix(user_id)
+    try:
+        pagina = r2_client.list_object_versions(
+            Bucket=R2_BUCKET, Prefix=prefixo, MaxKeys=1000
+        )
+        versoes = pagina.get("Versions") or []
+        if not versoes:
+            resultado["sem_versionamento"] = True
+            print("[GADS-RECOVERY-V234] bucket sem versões disponíveis", flush=True)
+            return resultado
+        por_chave = {}
+        for versao in versoes:
+            chave = versao.get("Key")
+            if chave:
+                por_chave.setdefault(chave, []).append(versao)
+
+        for chave, itens in por_chave.items():
+            atual_meta = next((x for x in itens if x.get("IsLatest")), None)
+            anteriores = [x for x in itens if not x.get("IsLatest")]
+            if not atual_meta or not anteriores:
+                continue
+            try:
+                atual_bruto = r2_client.get_object(
+                    Bucket=R2_BUCKET, Key=chave,
+                    VersionId=atual_meta.get("VersionId"),
+                )["Body"].read()
+                atual_doc = json.loads(atual_bruto.decode("utf-8"))
+                atual_entry = atual_doc.get("entry") or {}
+                atual_qtd = len(atual_entry.get("data") or [])
+
+                # O maior arquivo nem sempre é o mais completo (base64 pode
+                # inflar uma versão com poucos anúncios). Examina as versões
+                # anteriores e escolhe a que realmente possui mais itens.
+                anterior_bruto = None
+                anterior_doc = None
+                anterior_qtd = -1
+                for candidato in sorted(
+                    anteriores,
+                    key=lambda x: int(x.get("Size") or 0),
+                    reverse=True,
+                ):
+                    bruto_candidato = r2_client.get_object(
+                        Bucket=R2_BUCKET, Key=chave,
+                        VersionId=candidato.get("VersionId"),
+                    )["Body"].read()
+                    doc_candidato = json.loads(bruto_candidato.decode("utf-8"))
+                    qtd_candidato = len((doc_candidato.get("entry") or {}).get("data") or [])
+                    if qtd_candidato > anterior_qtd:
+                        anterior_bruto = bruto_candidato
+                        anterior_doc = doc_candidato
+                        anterior_qtd = qtd_candidato
+                if anterior_qtd <= atual_qtd:
+                    print(
+                        f"[GADS-RECOVERY-V234] mantida versão atual key={chave!r} "
+                        f"atual={atual_qtd} anterior={anterior_qtd}",
+                        flush=True,
+                    )
+                    continue
+                r2_client.put_object(
+                    Bucket=R2_BUCKET,
+                    Key=chave,
+                    Body=anterior_bruto,
+                    ContentType="application/json",
+                )
+                empresa = str(anterior_doc.get("empresa") or chave)
+                resultado["restauradas"].append({
+                    "empresa": empresa,
+                    "antes": atual_qtd,
+                    "depois": anterior_qtd,
+                })
+                print(
+                    f"[GADS-RECOVERY-V234] RESTAURADA empresa={empresa!r} "
+                    f"anuncios={atual_qtd}->{anterior_qtd}",
+                    flush=True,
+                )
+            except Exception as exc_item:
+                resultado["erros"].append(f"{chave}: {exc_item}")
+                print(f"[GADS-RECOVERY-V234] falha key={chave!r}: {exc_item!r}", flush=True)
+        return resultado
+    except Exception as exc:
+        resultado["sem_versionamento"] = True
+        resultado["erros"].append(str(exc))
+        print(f"[GADS-RECOVERY-V234] versionamento indisponível: {exc!r}", flush=True)
+        return resultado
+
 # ---------------------------------------------------
 #  WHISPER LOCAL (transcrição de áudio dos vídeos, sem custo de API)
 # ---------------------------------------------------
@@ -15585,14 +15682,63 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             return
 
         if plataforma == "Google Ads":
-            # V233: a mídia migrada também precisa atualizar a fonte canônica
-            # por empresa. Não chama a RPC de gads_cache, pois o Google Ads
-            # deixou de depender desse JSON gigante no Supabase.
-            _entry_r2_migrada = dict(migrado.get(empresa) or entry or {})
-            _entry_r2_migrada["_checkpoint_finalizado"] = True
+            # V234: nunca substitui a empresa canônica por um recorte antigo
+            # vindo do Supabase. Parte do R2 atual e aplica somente os campos
+            # de mídia/OCR dos IDs processados. Assim anúncios novos, datas e
+            # metadados da coleta corrente permanecem intactos.
+            _canonico_atual = dict(
+                (_carregar_checkpoints_gads_r2(user_id).get(empresa) or {})
+            )
+            _entry_r2_migrada = dict(_canonico_atual or entry or {})
+            _dados_atuais = [
+                dict(_ad) for _ad in (_entry_r2_migrada.get("data") or [])
+                if isinstance(_ad, dict)
+            ]
+            _migrados_por_id = {
+                str(_ad.get("id")): _ad
+                for _ad in _ads_migrado_empresa
+                if isinstance(_ad, dict) and _ad.get("id")
+            }
+            _campos_midia = {
+                "images", "images_b64", "videos", "video_thumb", "video_url",
+                "ocr_texto", "ocr_estruturado", "origem_texto", "transcricao",
+                "video_cc_raw", "video_cc_status", "video_cc_texto",
+                "video_cc_idioma", "video_cc_origem", "video_cc_metodo",
+                "video_cc_motivo",
+            }
+            _ids_atuais = set()
+            _atualizados = 0
+            for _ad_atual in _dados_atuais:
+                _ad_id = str(_ad_atual.get("id") or "")
+                if not _ad_id:
+                    continue
+                _ids_atuais.add(_ad_id)
+                _ad_processado = _migrados_por_id.get(_ad_id)
+                if not _ad_processado:
+                    continue
+                for _campo, _valor in _ad_processado.items():
+                    if _campo in _campos_midia or _campo.startswith("video_cc"):
+                        _ad_atual[_campo] = _valor
+                _atualizados += 1
+            # Se ainda não havia canônico para a empresa, ou se o legado tem
+            # um ID ausente, acrescenta sem remover nada do conjunto atual.
+            for _ad_id, _ad_processado in _migrados_por_id.items():
+                if _ad_id not in _ids_atuais:
+                    _dados_atuais.append(dict(_ad_processado))
+                    _ids_atuais.add(_ad_id)
+            _entry_r2_migrada["data"] = _dados_atuais
+            _entry_r2_migrada["_checkpoint_finalizado"] = bool(
+                _canonico_atual.get("_checkpoint_finalizado", True)
+            )
             _entry_r2_migrada["_atividade_id"] = (
-                (entry or {}).get("_atividade_id")
+                _canonico_atual.get("_atividade_id")
+                or (entry or {}).get("_atividade_id")
                 or _entry_r2_migrada.get("_atividade_id")
+            )
+            print(
+                f"[GADS-R2-V234] merge seguro empresa={empresa!r} "
+                f"preservados={len(_dados_atuais)} atualizados={_atualizados}",
+                flush=True,
             )
             _ok_r2_migracao, _erro_r2_migracao = _salvar_checkpoint_gads_r2(
                 user_id, empresa, _entry_r2_migrada
@@ -32983,6 +33129,21 @@ elif st.session_state.pagina == "google_ads":
             return res.data or []
         except Exception:
             return []
+
+    # V234: uma migração antiga da V233 podia sobrescrever o objeto canônico
+    # de uma empresa. Faz a verificação uma única vez por sessão, antes de
+    # carregar o cache ou iniciar qualquer sincronização. A restauração só
+    # ocorre quando uma versão anterior contém mais anúncios que a atual.
+    if (
+        st.session_state.get("user")
+        and not st.session_state.get("_gads_recovery_v234_verificada", False)
+    ):
+        _resultado_recovery_v234 = _restaurar_cache_gads_r2_mais_completo(
+            st.session_state.user.id
+        )
+        st.session_state["_gads_recovery_v234_verificada"] = True
+        if _resultado_recovery_v234.get("restauradas"):
+            st.session_state.pop("gads_cache", None)
 
     # Tenta descarregar resultados protegidos no R2 em toda nova visita à
     # área, mas com trava global para nunca abrir workers duplicados. Esta

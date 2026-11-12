@@ -11302,16 +11302,24 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
     total_itens = len(itens)
 
     _base_dir = Path(__file__).resolve().parent
-    # Nome versionado para impedir que o deploy reutilize o worker antigo em
-    # cache. Este app V231 deve ser publicado junto com o arquivo abaixo.
-    _worker = (_base_dir / "ocr_worker_v231.py").resolve()
+    # V242 — compatibilidade com o nome já usado no repositório. Versões
+    # anteriores exigiam exclusivamente ``ocr_worker_v231.py`` e marcavam
+    # todos os anúncios como erro mesmo quando o worker válido já existia
+    # como ``ocr_worker.py``. Mantém preferência pelo nome versionado, mas
+    # usa automaticamente o nome original quando ele for o disponível.
+    _worker_candidatos = [
+        (_base_dir / "ocr_worker_v231.py").resolve(),
+        (_base_dir / "ocr_worker.py").resolve(),
+    ]
+    _worker = next((_p for _p in _worker_candidatos if _p.exists()), _worker_candidatos[0])
 
     if not _worker.exists():
         return {
             "ok": False,
             "erro": (
-                f"Arquivo ocr_worker_v231.py não encontrado em {_worker}. "
-                "O OCR externo precisa do worker na raiz do projeto."
+                "Worker OCR não encontrado. Nomes aceitos: "
+                f"{_worker_candidatos[0].name} ou {_worker_candidatos[1].name}. "
+                "O arquivo precisa ficar na mesma pasta do app.py."
             ),
             "resultados": [],
         }

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-OCR worker — processo independente do Streamlit.
+OCR worker V242 — processo independente do Streamlit.
 
 Worker isolado do núcleo OCR. Não importa Streamlit, Supabase,
 Playwright nem a interface do app. O objetivo é carregar EasyOCR/PyTorch
@@ -14,6 +14,7 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 import sys
 import json
+import base64
 import re
 import time
 import threading
@@ -3304,26 +3305,63 @@ def _cli_single_image():
             payload = json.load(f)
 
         empresa = payload.get("empresa")
-        item = payload.get("item") or {}
-        midia_id = str(item.get("id") or "")
-        url_cdn = str(item.get("url_cdn") or "")
-        if not url_cdn:
-            raise RuntimeError("url_cdn ausente")
+        # V242 — o app envia ``itens`` para manter um único Reader vivo
+        # durante todo o lote. Continua aceitando o formato antigo ``item``
+        # para compatibilidade com chamadas unitárias.
+        itens = payload.get("itens")
+        if not isinstance(itens, list):
+            itens = [payload.get("item") or {}]
+        if not itens:
+            raise RuntimeError("lote OCR vazio")
 
-        estruturado, diag = _extrair_ocr_estruturado_imagem(
-            url_cdn,
-            empresa=empresa,
-            retornar_diagnostico=True,
-        )
+        resultados = []
+        for item in itens:
+            midia_id = str((item or {}).get("id") or "")
+            url_cdn = str((item or {}).get("url_cdn") or "")
+            try:
+                if not url_cdn:
+                    raise RuntimeError("url_cdn ausente")
+                estruturado, diag = _extrair_ocr_estruturado_imagem(
+                    url_cdn,
+                    empresa=empresa,
+                    retornar_diagnostico=True,
+                )
+                resultado_item = {
+                    "ok": estruturado is not None,
+                    "id": midia_id,
+                    "estruturado": estruturado,
+                    "diag": diag,
+                }
+            except BaseException as exc_item:
+                resultado_item = {
+                    "ok": False,
+                    "id": midia_id,
+                    "estruturado": None,
+                    "erro": f"{type(exc_item).__name__}: {exc_item}",
+                    "diag": {
+                        "etapa": "worker_externo_item",
+                        "erro": f"{type(exc_item).__name__}: {exc_item}",
+                    },
+                }
+
+            resultados.append(resultado_item)
+            # O app lê esta linha enquanto o processo ainda está vivo e
+            # persiste cada resultado imediatamente. Se houver reinício no
+            # meio do lote, os itens concluídos não são perdidos.
+            _raw_inc = json.dumps(resultado_item, ensure_ascii=False).encode("utf-8")
+            _b64_inc = base64.b64encode(_raw_inc).decode("ascii")
+            print(f"[OCR-RESULT-V148] {_b64_inc}", flush=True)
+
         resultado = {
-            "ok": estruturado is not None,
-            "id": midia_id,
-            "estruturado": estruturado,
-            "diag": diag,
+            "ok": all(bool(r.get("ok")) for r in resultados),
+            "resultados": resultados,
         }
         with open(saida, "w", encoding="utf-8") as f:
             json.dump(resultado, f, ensure_ascii=False)
-        return 0 if resultado["ok"] else 3
+        # O arquivo foi produzido corretamente mesmo quando um item específico
+        # falhou. O estado individual segue em ``resultados``; código diferente
+        # de zero fica reservado para falha estrutural do worker.
+        return 0
     except BaseException as exc:
         try:
             with open(saida, "w", encoding="utf-8") as f:

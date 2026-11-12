@@ -11000,7 +11000,10 @@ def _achatar_ocr_estruturado(d: dict) -> str:
 
 def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
     """Quantas imagens do Google Ads dessa empresa já foram migradas
-    (estão em `midias`) mas ainda não têm ocr_texto salvo (NULL)."""
+    (estão em `midias`) mas ainda não têm OCR útil. V244 considera tanto
+    NULL quanto string vazia: versões anteriores gravavam ``""`` quando o
+    worker terminava sem reconhecer nenhum campo e depois contavam isso
+    incorretamente como concluído."""
     try:
         res = (
             supabase.table("midias")
@@ -11008,7 +11011,7 @@ def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
             .eq("user_id", user_id)
             .eq("empresa", empresa)
             .eq("tipo", "imagem")
-            .is_("ocr_texto", "null")
+            .or_("ocr_texto.is.null,ocr_texto.eq.")
             .or_(_FILTRO_OCR_URL_GOOGLE)
             .execute()
         )
@@ -11028,7 +11031,7 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
             .select("empresa")
             .eq("user_id", user_id)
             .eq("tipo", "imagem")
-            .is_("ocr_texto", "null")
+            .or_("ocr_texto.is.null,ocr_texto.eq.")
             .or_(_FILTRO_OCR_URL_GOOGLE)
             .limit(2000)
             .execute()
@@ -11690,7 +11693,7 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     supabase.table("midias")
                     .select("id, url_cdn, url_origem")
                     .eq("user_id", user_id).eq("empresa", empresa).eq("tipo", "imagem")
-                    .is_("ocr_texto", "null").or_(_FILTRO_OCR_URL_GOOGLE)
+                    .or_("ocr_texto.is.null,ocr_texto.eq.").or_(_FILTRO_OCR_URL_GOOGLE)
                 )
                 if _ids_tentados_neste_run:
                     _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
@@ -11723,6 +11726,11 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 _ids_entregues.add(_mid)
                 midia = _midias_por_id.get(_mid) or {"id": _mid, "url_cdn": "", "url_origem": ""}
                 _estruturado = _r.get("estruturado") if _r.get("ok") else None
+                # V244 — dict vazio ou sem nenhum campo reconhecido não é
+                # sucesso. Mantém o registro pendente em vez de salvar
+                # ocr_texto="" e fazê-lo desaparecer para sempre da fila.
+                if not _ocr_estruturado_tem_conteudo(_estruturado):
+                    _estruturado = None
 
                 if _estruturado is None:
                     _ids_falharam.append(_mid)

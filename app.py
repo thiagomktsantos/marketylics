@@ -845,7 +845,7 @@ r2_client = get_r2_client()
 
 @st.cache_resource(show_spinner=False)
 def _get_gads_r2_memoria_v250() -> dict:
-    return {"lock": threading.RLock(), "usuarios": {}}
+    return {"lock": threading.RLock(), "usuarios": {}, "revisoes": {}}
 
 
 _gads_r2_memoria_v250 = _get_gads_r2_memoria_v250()
@@ -856,6 +856,8 @@ def _atualizar_gads_r2_memoria_v250(user_id: str, empresa: str, entry: dict) -> 
     """Mantém o snapshot em memória coerente depois de cada escrita no R2."""
     _uid = str(user_id or "")
     with _gads_r2_memoria_v250["lock"]:
+        _revisoes = _gads_r2_memoria_v250.setdefault("revisoes", {})
+        _revisoes[_uid] = int(_revisoes.get(_uid, 0) or 0) + 1
         # Não cria um snapshot parcial a partir de uma única empresa. O
         # primeiro carregamento completo precisa vir da listagem do R2.
         _item = _gads_r2_memoria_v250["usuarios"].get(_uid)
@@ -863,6 +865,15 @@ def _atualizar_gads_r2_memoria_v250(user_id: str, empresa: str, entry: dict) -> 
             return
         _item["cache"][str(empresa)] = copy.deepcopy(entry or {})
         _item["quando"] = time.monotonic()
+
+
+def _revisao_gads_r2_v251(user_id: str) -> int:
+    """Número local incrementado sempre que um worker altera o cache R2."""
+    _uid = str(user_id or "")
+    with _gads_r2_memoria_v250["lock"]:
+        return int(
+            _gads_r2_memoria_v250.setdefault("revisoes", {}).get(_uid, 0) or 0
+        )
 
 # ---------------------------------------------------
 # V194 — CHECKPOINT DURÁVEL DA COLETA GOOGLE ADS
@@ -33661,6 +33672,28 @@ elif st.session_state.pagina == "google_ads":
             print("[GADS-OUTBOX-V232] worker nao iniciou; retry liberado", flush=True)
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
         st.session_state.gads_cache = carregar_cache_ads()
+    # V251: workers de migração atualizam o R2 fora do contexto da sessão.
+    # O acompanhamento por IDs de atividade não recarregava a tela quando a
+    # atividade já estava na baseline da sessão. A revisão local é alterada
+    # no instante de cada escrita e torna a invalidação determinística.
+    _rev_r2_agora_v251 = _revisao_gads_r2_v251(st.session_state.user.id)
+    if "_gads_revisao_r2_v251" not in st.session_state:
+        st.session_state["_gads_revisao_r2_v251"] = _rev_r2_agora_v251
+        # Primeira execução desta versão: a sessão pode ter sobrevivido ao
+        # deploy carregando os links antigos. Força uma única sincronização.
+        st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+        print("[GADS-R2-V251] primeira sincronização visual forçada", flush=True)
+        st.rerun()
+    elif int(st.session_state.get("_gads_revisao_r2_v251", 0) or 0) != _rev_r2_agora_v251:
+        print(
+            f"[GADS-R2-V251] revisão mudou "
+            f"{st.session_state.get('_gads_revisao_r2_v251')}->{_rev_r2_agora_v251}; "
+            "recarregando cards",
+            flush=True,
+        )
+        st.session_state["_gads_revisao_r2_v251"] = _rev_r2_agora_v251
+        st.session_state.gads_cache = carregar_cache_ads(forcar=True)
+        st.rerun()
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
 
@@ -37915,7 +37948,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # antes só existia lá, então cards de imagem (como os
                         # de anúncio "Dinâmico") ficavam sem indicar se o link
                         # é permanente (R2) ou o original da Meta.
-                        _img_e_do_r2 = bool(R2_PUBLIC_BASE) and img_thumb_url.startswith(R2_PUBLIC_BASE)
+                        # Um anúncio pode carregar variantes da mesma arte.
+                        # Considera salvo quando ao menos a variante exibível
+                        # já aponta para o R2; usar apenas o índice 1 mantinha
+                        # o relógio amarelo mesmo após a migração ter sido
+                        # confirmada para o anúncio.
+                        _img_e_do_r2 = bool(R2_PUBLIC_BASE) and any(
+                            str(_u_img_r2 or "").startswith(R2_PUBLIC_BASE)
+                            for _u_img_r2 in images
+                        )
                         if _img_e_do_r2:
                             origem_badge_img_html = """
     <div title="Imagem armazenada permanentemente — não expira"

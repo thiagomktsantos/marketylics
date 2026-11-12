@@ -15799,6 +15799,16 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "migradas": max(0, _total_r2 - _falhas_r2),
                     "nao_migradas": _falhas_r2,
                     "armazenamento_principal": "r2_por_empresa",
+                    # V246 — uma passada que terminou com imagens faltando
+                    # precisa deixar um checkpoint que o verificador consiga
+                    # reconhecer e retomar. Sem estes campos, a atividade
+                    # ficava laranja para sempre, sem nova tentativa.
+                    "ultima_tentativa_em": _agora_iso(),
+                    "aviso": (
+                        f"{max(0, _total_r2 - _falhas_r2)} de {_total_r2} mídia(s) "
+                        f"salvas; {_falhas_r2} ainda aguardam nova tentativa."
+                        if _falhas_r2 else ""
+                    ),
                     "motivo": (
                         f"{_falhas_r2} mídia(s) ainda aguardam nova tentativa."
                         if _falhas_r2 else "Mídias confirmadas no cache por empresa."
@@ -17257,7 +17267,12 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     try:
         res = (
             supabase.table("atividades")
-            .select("id, titulo, detalhes, criado_em")
+            # V246 — `_migracao_travada` exige status="em_andamento".
+            # A consulta antiga não trazia a coluna status; por isso TODAS
+            # as atividades viravam status=None durante a verificação e
+            # nenhuma migração parada era retomada automaticamente. Era o
+            # caso do card preso por horas em "Salvando anúncios...".
+            .select("id, titulo, detalhes, status, criado_em")
             .eq("user_id", user_id)
             .eq("tipo", "migracao_midia")
             .eq("status", "em_andamento")

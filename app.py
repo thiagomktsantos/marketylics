@@ -16199,12 +16199,39 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
     sinal no sino explicando o porquê — parecia que nada estava
     acontecendo."""
     try:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "etapa": "lendo_cache_google",
+                "etapa_atual": 2,
+                "total_etapas": 3,
+                "aviso": (
+                    "Etapa 2 de 3: lendo os anúncios salvos e procurando "
+                    "imagens que ainda exibem o relógio."
+                ),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
         res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
         gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
         pendentes = encontrar_ads_com_link_original(gads_cache)
         total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
         if pendentes:
+            _nomes_pendentes = list(pendentes.keys())
+            if atividade_id:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "etapa": "enfileirando_salvamento",
+                    "etapa_atual": 3,
+                    "total_etapas": 3,
+                    "empresas": _nomes_pendentes,
+                    "total_empresas": len(_nomes_pendentes),
+                    "total_anuncios": total_ads_pendentes,
+                    "aviso": (
+                        f"Etapa 3 de 3: encontrados {total_ads_pendentes} anúncio(s) "
+                        f"com imagens ainda não salvas em {len(_nomes_pendentes)} empresa(s): "
+                        f"{', '.join(_nomes_pendentes)}. Preparando o salvamento permanente."
+                    ),
+                    "ultimo_heartbeat_em": _agora_iso(),
+                })
             iniciar_migracao_midia_background(user_id, pendentes, plataforma="Google Ads")
             if atividade_id:
                 atualizar_atividade(atividade_id, "concluido", {
@@ -16256,18 +16283,89 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
     ocupava CPU/rede antes desse clique. Agora ela aguarda uma janela curta;
     se uma coleta começar, espera a coleta terminar e só então faz a varredura.
     """
-    atualizar_atividade(atividade_id, "em_andamento", {
-        "aguardando_coleta_prioritaria": True,
-        "aviso": "Manutenção automática aguardando; coletas têm prioridade máxima.",
-    })
-    for _ in range(24):  # 120 segundos, em passos curtos
-        if _job_any_active("coleta_ads_google", user_id):
+    def _bloqueios_coleta_atuais():
+        _rotulos = {
+            "coleta_ads_google": "coleta do Google Ads",
+            "coleta_ads": "coleta do Meta Ads",
+            "coleta_redes": "coleta de redes sociais",
+            "sincronizar_gads_outbox": "confirmação dos dados coletados",
+        }
+        _ativos = [
+            _rotulos[_tipo] for _tipo in _rotulos
+            if _job_any_active(_tipo, user_id)
+        ]
+        if _coleta_prioritaria_local_ativa(user_id) and not _ativos:
+            _ativos.append("finalização protegida de uma coleta")
+        return _ativos
+
+    # Etapa 1: reserva uma janela real para o usuário iniciar uma coleta.
+    # A notificação agora mostra a contagem regressiva em vez da mensagem
+    # vaga "aguardando" que parecia um travamento.
+    for _passo in range(24):  # 120 segundos, em passos de 5s
+        _bloqueios = _bloqueios_coleta_atuais()
+        _restantes = max(0, 120 - (_passo * 5))
+        if _bloqueios:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "aguardando_coleta_prioritaria": True,
+                "etapa": "aguardando_coleta",
+                "etapa_atual": 1,
+                "total_etapas": 3,
+                "bloqueios": _bloqueios,
+                "aviso": (
+                    "Etapa 1 de 3: aguardando terminar "
+                    f"{', '.join(_bloqueios)}. Depois serão verificadas as imagens "
+                    "com relógio e iniciado o salvamento permanente."
+                ),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
             break
+        if _passo == 0 or _passo % 2 == 0:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "aguardando_coleta_prioritaria": True,
+                "etapa": "janela_antes_da_manutencao",
+                "etapa_atual": 1,
+                "total_etapas": 3,
+                "segundos_restantes": _restantes,
+                "aviso": (
+                    f"Etapa 1 de 3: nenhuma coleta ativa. A verificação das imagens "
+                    f"com relógio começará em até {_restantes} segundos; essa janela "
+                    "evita que a manutenção atrapalhe uma nova coleta."
+                ),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
         time.sleep(5)
-    _esperar_coleta_prioritaria_v195(user_id, "VERIFICAÇÃO/MIGRAÇÃO GOOGLE ADS")
+
+    # Se uma coleta realmente começou, mantém o card vivo e informa
+    # exatamente qual ação está bloqueando a manutenção.
+    _ultimo_texto_bloqueio = None
+    while True:
+        _bloqueios = _bloqueios_coleta_atuais()
+        if not _bloqueios:
+            break
+        _texto_bloqueio = ", ".join(_bloqueios)
+        if _texto_bloqueio != _ultimo_texto_bloqueio:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "aguardando_coleta_prioritaria": True,
+                "etapa": "aguardando_coleta",
+                "etapa_atual": 1,
+                "total_etapas": 3,
+                "bloqueios": _bloqueios,
+                "aviso": (
+                    f"Etapa 1 de 3: aguardando terminar {_texto_bloqueio}. "
+                    "A verificação continuará automaticamente logo depois."
+                ),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+            _ultimo_texto_bloqueio = _texto_bloqueio
+        time.sleep(5)
+
     atualizar_atividade(atividade_id, "em_andamento", {
         "aguardando_coleta_prioritaria": False,
-        "aviso": "Verificando mídias pendentes após a coleta prioritária.",
+        "etapa": "iniciando_varredura",
+        "etapa_atual": 2,
+        "total_etapas": 3,
+        "aviso": "Etapa 2 de 3: iniciando a verificação das imagens que ainda exibem o relógio.",
+        "ultimo_heartbeat_em": _agora_iso(),
     })
     return _verificar_e_migrar_pendentes_google_bg(user_id, atividade_id)
 

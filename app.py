@@ -1186,6 +1186,184 @@ def _salvar_inventario_geral_gads_xml_v259(
         print(f"[GADS-XML-V259] falha ao salvar inventário: {_exc!r}", flush=True)
         return False, _stats
 
+
+def _gads_manifest_key_v261(user_id: str) -> str:
+    return f"manifests/google-ads/{user_id}/manifest.json"
+
+
+def _ler_manifesto_gads_json_v261(user_id: str) -> tuple[dict | None, str]:
+    """Lê o controle operacional. Ausência é um estado normal no 1º login."""
+    if not user_id or not r2_client or not R2_BUCKET:
+        return None, "R2 não configurado"
+    try:
+        _obj = r2_client.get_object(
+            Bucket=R2_BUCKET, Key=_gads_manifest_key_v261(user_id)
+        )
+        _doc = json.loads(_obj["Body"].read().decode("utf-8"))
+        if not isinstance(_doc, dict):
+            return None, "manifesto inválido"
+        print(
+            f"[GADS-MANIFEST-V261] relido anuncios={(_doc.get('resumo') or {}).get('anuncios', 0)}",
+            flush=True,
+        )
+        return _doc, ""
+    except Exception as _exc:
+        _codigo = ""
+        try:
+            _codigo = str(_exc.response.get("Error", {}).get("Code") or "")
+        except Exception:
+            pass
+        if _codigo in ("NoSuchKey", "404", "NotFound"):
+            return None, "não existe"
+        return None, str(_exc)
+
+
+def _salvar_manifesto_gads_json_v261(
+    user_id: str, gads_cache: dict = None, motivo: str = "reconciliacao"
+) -> tuple[bool, dict]:
+    """Gera o índice operacional a partir das fontes reais.
+
+    O manifesto não substitui checkpoints nem a tabela ``midias``. Ele reúne
+    o estado de todos os anúncios para decidir e auditar as próximas ações.
+    """
+    _cache = gads_cache
+    if _cache is None:
+        _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+
+    _urls_r2 = set()
+    for _entry in (_cache or {}).values():
+        for _ad in ((_entry or {}).get("data") or []):
+            for _campo in ("images", "carousel_images"):
+                for _url in ((_ad or {}).get(_campo) or []):
+                    _url = str(_url or "").strip()
+                    if R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE):
+                        _urls_r2.add(_url)
+
+    _midias_por_url = {}
+    _lista_urls = sorted(_urls_r2)
+    for _i in range(0, len(_lista_urls), 150):
+        try:
+            _res = (
+                supabase.table("midias")
+                .select("id,url_cdn,ocr_texto,ocr_estruturado")
+                .eq("user_id", user_id)
+                .eq("tipo", "imagem")
+                .in_("url_cdn", _lista_urls[_i:_i + 150])
+                .execute()
+            )
+            for _row in (_res.data or []):
+                if _row.get("url_cdn"):
+                    _midias_por_url[str(_row["url_cdn"])] = _row
+        except Exception as _exc_midias:
+            print(f"[GADS-MANIFEST-V261] falha lendo OCR: {_exc_midias!r}", flush=True)
+
+    _resumo = {
+        "empresas": 0, "anuncios": 0, "midia_salva": 0,
+        "midia_pendente": 0, "sem_imagem": 0,
+        "ocr_concluido": 0, "ocr_pendente": 0, "ocr_nao_aplicavel": 0,
+    }
+    _empresas_doc = []
+    for _empresa in sorted((_cache or {}).keys(), key=lambda x: str(x).lower()):
+        _entry = (_cache or {}).get(_empresa) or {}
+        _empresa_doc = {
+            "nome": str(_empresa),
+            "pagina": str(_entry.get("query") or ""),
+            "coletado_em": str(_entry.get("ts") or ""),
+            "checkpoint_finalizado": bool(_entry.get("_checkpoint_finalizado", True)),
+            "anuncios": [],
+        }
+        _resumo["empresas"] += 1
+        for _ad in ((_entry or {}).get("data") or []):
+            if not isinstance(_ad, dict):
+                continue
+            _imgs = []
+            for _campo in ("images", "carousel_images"):
+                for _url in (_ad.get(_campo) or []):
+                    _url = str(_url or "").strip()
+                    if _url and _url not in _imgs:
+                        _imgs.append(_url)
+            _imgs_r2 = [
+                _u for _u in _imgs
+                if R2_PUBLIC_BASE and _u.startswith(R2_PUBLIC_BASE)
+            ]
+            if not _imgs:
+                _status_midia = "sem_imagem"
+                _status_ocr = "nao_aplicavel"
+                _resumo["sem_imagem"] += 1
+                _resumo["ocr_nao_aplicavel"] += 1
+            elif not _imgs_r2:
+                _status_midia = "pendente"
+                _status_ocr = "aguardando_midia"
+                _resumo["midia_pendente"] += 1
+                _resumo["ocr_pendente"] += 1
+            else:
+                _status_midia = "salva_r2"
+                _resumo["midia_salva"] += 1
+                _ocr_ok = False
+                for _url_r2 in _imgs_r2:
+                    _row = _midias_por_url.get(_url_r2) or {}
+                    _txt_ok = bool(str(_row.get("ocr_texto") or "").strip())
+                    _estr_ok = _ocr_estruturado_tem_conteudo(
+                        _ocr_regression_parse_dict(_row.get("ocr_estruturado"))
+                    )
+                    if _txt_ok and _estr_ok:
+                        _ocr_ok = True
+                        break
+                _status_ocr = "concluido" if _ocr_ok else "pendente"
+                _resumo["ocr_concluido" if _ocr_ok else "ocr_pendente"] += 1
+
+            _empresa_doc["anuncios"].append({
+                "id": str(_ad.get("id") or ""),
+                "ativo": bool(_ad.get("ativo", True)),
+                "formato": str(_ad.get("formato") or _ad.get("tipo") or ""),
+                "url_criativo": str(_ad.get("snapshot_url") or _ad.get("creative_url") or ""),
+                "status_midia": _status_midia,
+                "status_ocr": _status_ocr,
+                "imagens": [
+                    {
+                        "url": _u,
+                        "armazenada_r2": bool(
+                            R2_PUBLIC_BASE and _u.startswith(R2_PUBLIC_BASE)
+                        ),
+                    }
+                    for _u in _imgs
+                ],
+                "videos": [
+                    {"url": str(_u or ""), "tipo": "link"}
+                    for _u in (_ad.get("videos") or [])
+                ],
+            })
+            _resumo["anuncios"] += 1
+        _empresas_doc.append(_empresa_doc)
+
+    _doc = {
+        "versao": 261,
+        "user_id": str(user_id),
+        "gerado_em": _agora_iso(),
+        "motivo": str(motivo or "reconciliacao"),
+        "resumo": _resumo,
+        "empresas": _empresas_doc,
+    }
+    try:
+        _body = json.dumps(
+            _doc, ensure_ascii=False, default=str, separators=(",", ":")
+        ).encode("utf-8")
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=_gads_manifest_key_v261(user_id),
+            Body=_body,
+            ContentType="application/json; charset=utf-8",
+            CacheControl="no-cache",
+        )
+        print(
+            f"[GADS-MANIFEST-V261] salvo bytes={len(_body)} resumo={_resumo}",
+            flush=True,
+        )
+        return True, _doc
+    except Exception as _exc:
+        print(f"[GADS-MANIFEST-V261] falha ao salvar: {_exc!r}", flush=True)
+        return False, {**_doc, "erro": str(_exc)}
+
 def _excluir_cache_gads_r2_usuario(user_id: str) -> None:
     """Remove o cache canônico somente após a ação explícita Limpar cache."""
     if not r2_client or not R2_BUCKET:
@@ -11240,12 +11418,38 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
     hash pode ter sido registrada primeiro por outro anúncio. O card e o OCR
     devem se encontrar pela URL permanente efetivamente gravada em ``images``.
     """
+    _out = {}
+    # V261: prefere o manifesto pequeno no login/retry global. Isso evita
+    # baixar dezenas de MB de checkpoints apenas para descobrir URLs de OCR.
+    try:
+        _manifesto, _ = _ler_manifesto_gads_json_v261(user_id)
+    except Exception:
+        _manifesto = None
+    if isinstance(_manifesto, dict):
+        for _empresa_doc in (_manifesto.get("empresas") or []):
+            _nome = str((_empresa_doc or {}).get("nome") or "")
+            if empresa and _nome != str(empresa):
+                continue
+            _urls = set()
+            for _ad_doc in ((_empresa_doc or {}).get("anuncios") or []):
+                for _img in ((_ad_doc or {}).get("imagens") or []):
+                    _url = str((_img or {}).get("url") or "").strip()
+                    if (
+                        (_img or {}).get("armazenada_r2")
+                        and R2_PUBLIC_BASE
+                        and _url.startswith(R2_PUBLIC_BASE)
+                    ):
+                        _urls.add(_url)
+            if _urls:
+                _out[_nome] = sorted(_urls)
+        if _out or empresa:
+            return _out
+
     try:
         _cache = _carregar_checkpoints_gads_r2(user_id) or {}
     except Exception as _exc:
         print(f"[OCR-R2-V260] falha carregando cache canônico: {_exc!r}", flush=True)
         return {}
-    _out = {}
     for _empresa, _entry in _cache.items():
         if empresa and str(_empresa) != str(empresa):
             continue
@@ -12115,6 +12319,18 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
     finally:
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard(_chave_ativa)
+        # Mantém o controle geral coerente com cada término de OCR, inclusive
+        # quando parte do lote falha e continua pendente.
+        try:
+            _salvar_manifesto_gads_json_v261(
+                user_id, motivo=f"ocr_finalizado:{empresa}"
+            )
+        except Exception as _exc_manifest_ocr:
+            print(
+                f"[GADS-MANIFEST-V261] atualização pós-OCR falhou: "
+                f"{_exc_manifest_ocr!r}",
+                flush=True,
+            )
 
 # ---------------------------------------------------
 # FILA GLOBAL DE OCR
@@ -16080,7 +16296,7 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 return
             # V259: o inventário geral acompanha o resultado do
             # armazenamento, sem depender de alguém abrir a página.
-            _salvar_inventario_geral_gads_xml_v259(
+            _salvar_manifesto_gads_json_v261(
                 user_id, motivo=f"armazenamento_concluido:{empresa}"
             )
             # Agora que o checkpoint canônico já aponta para as URLs R2,
@@ -16411,7 +16627,7 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                         _atividade_pos_coleta_v259,
                     )
                 else:
-                    _salvar_inventario_geral_gads_xml_v259(
+                    _salvar_manifesto_gads_json_v261(
                         user_id,
                         _cache_pos_coleta_v259,
                         motivo="conferencia_geral_pos_coleta",
@@ -17035,7 +17251,7 @@ def _reparar_imagens_visiveis_com_relogio_v258(
             )
 
         _depois = _carregar_checkpoints_gads_r2(user_id) or {}
-        _salvar_inventario_geral_gads_xml_v259(
+        _salvar_manifesto_gads_json_v261(
             user_id, _depois, motivo="reparo_imagens_com_relogio"
         )
         # Mesmo quando a imagem já estava no R2 e só faltava atualizar o
@@ -17080,6 +17296,144 @@ def _reparar_imagens_visiveis_com_relogio_v258(
                 "motivo": str(_exc),
                 "ultimo_heartbeat_em": _agora_iso(),
             })
+
+
+def _reconciliar_manifesto_gads_pos_login_v261(
+    user_id: str, atividade_id: str = None
+) -> None:
+    """Cria/relê o manifesto e transforma diferenças em ações reais."""
+    _acoes = []
+    try:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "etapa": "lendo_manifesto",
+                "aviso": "Verificando o controle geral dos anúncios após o login.",
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+
+        _manifesto_antigo, _motivo_leitura = _ler_manifesto_gads_json_v261(user_id)
+        _cache = None
+        if _manifesto_antigo is None:
+            _acoes.append("manifesto_criado")
+            print(
+                f"[GADS-MANIFEST-V261] inexistente; criando motivo={_motivo_leitura!r}",
+                flush=True,
+            )
+        else:
+            _acoes.append("manifesto_relido")
+
+        # Se o manifesto existe, ele decide se é necessário pagar o custo de
+        # carregar os checkpoints completos. Sem manifesto, o cache é lido
+        # uma única vez para criar o controle inicial.
+        _resumo_antigo = ((_manifesto_antigo or {}).get("resumo") or {})
+        _qtd_pendentes_midia = int(_resumo_antigo.get("midia_pendente", 0) or 0)
+        if _manifesto_antigo is None or _qtd_pendentes_midia:
+            _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+        _pendentes_midia = (
+            _encontrar_imagens_gads_pendentes_v257(_cache)
+            if _cache is not None else {}
+        )
+        _qtd_pendentes_midia = sum(
+            len((_entry or {}).get("data") or [])
+            for _entry in _pendentes_midia.values()
+        ) if _cache is not None else _qtd_pendentes_midia
+        if _pendentes_midia:
+            _acoes.append(f"migracao_iniciada:{_qtd_pendentes_midia}")
+            if atividade_id:
+                atualizar_atividade(atividade_id, "em_andamento", {
+                    "etapa": "migrando_midias_pendentes",
+                    "midias_pendentes": _qtd_pendentes_midia,
+                    "aviso": (
+                        f"{_qtd_pendentes_midia} anúncio(s) com imagem não migrada. "
+                        "Armazenamento iniciado automaticamente."
+                    ),
+                    "ultimo_heartbeat_em": _agora_iso(),
+                })
+            _reparar_imagens_visiveis_com_relogio_v258(
+                user_id, _cache, atividade_id=None
+            )
+            _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+
+        # Só depois da mídia reconciliada procura OCR ausente pelas URLs R2.
+        _empresas_ocr = _empresas_com_ocr_pendente(user_id)
+        for _empresa in _empresas_ocr:
+            iniciar_ocr_pendente_background(user_id, _empresa)
+        if _empresas_ocr:
+            _acoes.append(f"ocr_enfileirado:{len(_empresas_ocr)}")
+
+        if _cache is not None or _manifesto_antigo is None:
+            _ok_manifesto, _manifesto_novo = _salvar_manifesto_gads_json_v261(
+                user_id, _cache or {}, motivo="reconciliacao_pos_login"
+            )
+        else:
+            # Manifesto existente e sem mídia pendente: a releitura já foi
+            # suficiente. O término do OCR atualizará o arquivo, se houver.
+            _ok_manifesto, _manifesto_novo = True, _manifesto_antigo
+        _resumo = (_manifesto_novo.get("resumo") or {})
+        _detalhes = {
+            "etapa": "manifesto_reconciliado",
+            "manifesto_existia": _manifesto_antigo is not None,
+            "manifesto_salvo": bool(_ok_manifesto),
+            "acoes": _acoes,
+            "total_anuncios": int(_resumo.get("anuncios", 0) or 0),
+            "midias_salvas": int(_resumo.get("midia_salva", 0) or 0),
+            "midias_pendentes": int(_resumo.get("midia_pendente", 0) or 0),
+            "ocr_concluidos": int(_resumo.get("ocr_concluido", 0) or 0),
+            "ocr_pendentes": int(_resumo.get("ocr_pendente", 0) or 0),
+            "empresas_ocr_enfileiradas": _empresas_ocr,
+            "ultimo_heartbeat_em": _agora_iso(),
+        }
+        if _ok_manifesto:
+            _detalhes["aviso"] = (
+                f"Controle geral atualizado: {_detalhes['total_anuncios']} anúncio(s), "
+                f"{_detalhes['midias_pendentes']} mídia(s) pendente(s) e "
+                f"{_detalhes['ocr_pendentes']} OCR(s) pendente(s)."
+            )
+            if atividade_id:
+                atualizar_atividade(atividade_id, "concluido", _detalhes)
+        else:
+            _detalhes["motivo"] = str(_manifesto_novo.get("erro") or "Falha ao salvar o manifesto.")
+            if atividade_id:
+                atualizar_atividade(atividade_id, "erro", _detalhes)
+    except Exception as _exc:
+        print(f"[GADS-MANIFEST-V261] reconciliação pós-login falhou: {_exc!r}", flush=True)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {
+                "etapa": "reconciliacao_pos_login",
+                "motivo": str(_exc),
+                "acoes": _acoes,
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+
+
+def iniciar_reconciliacao_manifesto_gads_pos_login_v261(user_id: str) -> bool:
+    """Abre uma única reconciliação por usuário/processo após autenticar."""
+    if not user_id:
+        return False
+    _atividade_id = criar_atividade(
+        user_id,
+        "verificacao_pendentes_gads",
+        "Verificando controle geral dos anúncios do Google Ads",
+        {
+            "versao_manifesto": "V261",
+            "aviso": "Lendo ou criando o manifesto geral após o login.",
+        },
+    )
+    _iniciou = _job_start_thread(
+        "manifesto_gads_v261",
+        user_id,
+        "pos_login",
+        _reconciliar_manifesto_gads_pos_login_v261,
+        args=(user_id, _atividade_id),
+        daemon=True,
+        name="manifesto-google-ads-pos-login-v261",
+    )
+    if not _iniciou and _atividade_id:
+        atualizar_atividade(_atividade_id, "concluido", {
+            "versao_manifesto": "V261",
+            "aviso": "A verificação do controle geral já está em execução.",
+        })
+    return _iniciou
 
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
@@ -18593,6 +18947,18 @@ def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
 # SIDEBAR (apenas quando logado)
 # ---------------------------------------------------
 
+# V261: primeira ação operacional após autenticar. Não depende da página
+# selecionada. A flag é marcada antes de abrir a thread para que reruns do
+# Streamlit não criem verificações duplicadas durante o próprio login.
+if (
+    st.session_state.get("user")
+    and not st.session_state.get("_manifesto_gads_pos_login_v261_iniciado")
+):
+    st.session_state["_manifesto_gads_pos_login_v261_iniciado"] = True
+    iniciar_reconciliacao_manifesto_gads_pos_login_v261(
+        st.session_state.user.id
+    )
+
 with st.sidebar:
 
     logo_white_b64 = get_logo_white_base64()
@@ -18606,7 +18972,8 @@ with st.sidebar:
                 for k in ["logado", "user", "dados", "metricas_redes", "pagina",
                           "mostrar_form_concorrente", "editando_concorrente",
                           "editar_empresa", "relatorio_sites", "relatorio_gemini",
-                          "_home_acesso_manual"]:
+                          "_home_acesso_manual",
+                          "_manifesto_gads_pos_login_v261_iniciado"]:
                     if k in st.session_state:
                         del st.session_state[k]
             elif p == "perfil_menu":
@@ -34250,7 +34617,7 @@ elif st.session_state.pagina == "google_ads":
             # anúncios e o estado atual de cada imagem. Neste primeiro XML,
             # links recém-coletados podem aparecer como `pendente_r2`; cada
             # migração atualiza o mesmo arquivo quando termina.
-            _xml_ok_v259, _xml_stats_v259 = _salvar_inventario_geral_gads_xml_v259(
+            _manifest_ok_v261, _manifest_doc_v261 = _salvar_manifesto_gads_json_v261(
                 user_id, cache_atual, motivo="coleta_finalizada"
             )
 
@@ -34287,14 +34654,11 @@ elif st.session_state.pagina == "google_ads":
                     for _ad_id in _ids_empresa
                 ],
                 "total_anuncios_com_erro": sum(len(v) for v in incompletos_ids.values()),
-                "inventario_xml": {
-                    "salvo": bool(_xml_ok_v259),
-                    "total_anuncios": int(_xml_stats_v259.get("anuncios", 0) or 0),
-                    "salvos_r2": int(_xml_stats_v259.get("salvos", 0) or 0),
-                    "pendentes_r2": int(_xml_stats_v259.get("pendentes", 0) or 0),
-                    "sem_imagem": int(_xml_stats_v259.get("sem_imagem", 0) or 0),
-                    "arquivo": str(_xml_stats_v259.get("storage_key") or ""),
-                    "erro": str(_xml_stats_v259.get("erro") or ""),
+                "manifesto_json": {
+                    "salvo": bool(_manifest_ok_v261),
+                    "arquivo": _gads_manifest_key_v261(user_id),
+                    "resumo": (_manifest_doc_v261.get("resumo") or {}),
+                    "erro": str(_manifest_doc_v261.get("erro") or ""),
                 },
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })

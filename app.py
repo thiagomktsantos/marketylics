@@ -15801,7 +15801,8 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 if isinstance(_ad, dict) and _ad.get("id")
             }
             _campos_midia = {
-                "images", "images_b64", "videos", "video_thumb", "video_url",
+                "images", "carousel_images", "images_b64",
+                "page_profile_picture", "videos", "video_thumb", "video_url",
                 "ocr_texto", "ocr_estruturado", "origem_texto", "transcricao",
                 "video_cc_raw", "video_cc_status", "video_cc_texto",
                 "video_cc_idioma", "video_cc_origem", "video_cc_metodo",
@@ -16192,7 +16193,9 @@ def iniciar_migracao_midia_background(user_id: str, novos: dict, plataforma: str
             daemon=True,
         ).start()
 
-def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
+def encontrar_ads_com_link_original(
+    ads_cache: dict, *, incluir_foto_perfil: bool = True
+) -> dict:
     """Varre o ads_cache inteiro (todas as empresas, todos os anúncios)
     procurando qualquer mídia que ainda aponte pro link original da Meta
     (não migrado pro R2) — não importa se é recente, antigo, se a
@@ -16222,8 +16225,14 @@ def encontrar_ads_com_link_original(ads_cache: dict) -> dict:
             imagens = ad.get("images") or []
             videos = ad.get("videos") or []
             midias_relevantes = videos if videos else imagens
+            # No Google Ads, a foto de perfil não é a mídia do criativo e
+            # não controla o relógio exibido no card. Tratá-la como pendência
+            # fazia a manutenção concluir, salvar as imagens e, na próxima
+            # verificação, encontrar os mesmos anúncios novamente. O chamador
+            # do Google desativa este campo; a Meta mantém o comportamento
+            # anterior porque ali a foto da página faz parte da biblioteca.
             foto_perfil = ad.get("page_profile_picture")
-            if foto_perfil:
+            if incluir_foto_perfil and foto_perfil:
                 midias_relevantes = list(midias_relevantes) + [foto_perfil]
             tem_link_original = any(
                 u and not (R2_PUBLIC_BASE and u.startswith(R2_PUBLIC_BASE))
@@ -16288,7 +16297,9 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
             _fonte_verificacao = "gads_cache_legado"
-        pendentes = encontrar_ads_com_link_original(gads_cache)
+        pendentes = encontrar_ads_com_link_original(
+            gads_cache, incluir_foto_perfil=False
+        )
         total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
         if pendentes:
@@ -16385,7 +16396,9 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
         try:
             _cache_inicio_v250 = _carregar_checkpoints_gads_r2(user_id) or {}
             _pendencias_confirmadas_v250 = bool(
-                encontrar_ads_com_link_original(_cache_inicio_v250)
+                encontrar_ads_com_link_original(
+                    _cache_inicio_v250, incluir_foto_perfil=False
+                )
             )
         except Exception as _exc_v250:
             print(f"[MIGR-DEBUG] V250 pré-checagem falhou: {_exc_v250!r}", flush=True)
@@ -16516,7 +16529,9 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
                 try:
                     _cache_canonico_agora = _carregar_checkpoints_gads_r2(user_id) or {}
                     _ainda_tem_relogios = bool(
-                        encontrar_ads_com_link_original(_cache_canonico_agora)
+                        encontrar_ads_com_link_original(
+                            _cache_canonico_agora, incluir_foto_perfil=False
+                        )
                     )
                 except Exception as _exc_recheck:
                     print(

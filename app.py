@@ -38728,6 +38728,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 lambda _urls=_lote_urls_render: (
                                     supabase.table("midias")
                                     .select("url_cdn, ocr_texto, ocr_estruturado")
+                                    .eq("user_id", st.session_state.user.id)
+                                    .eq("tipo", "imagem")
                                     .in_("url_cdn", _urls)
                                     .execute()
                                 ),
@@ -38737,7 +38739,30 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             for _row_ocr_filtro in (_res_ocr_filtros.data or []):
                                 _u = _row_ocr_filtro.get("url_cdn")
                                 if _u:
-                                    _ocr_lote_todos[_u] = _row_ocr_filtro
+                                    # V270: a mesma URL pode ter linhas antigas
+                                    # duplicadas. Preserva a linha com OCR útil,
+                                    # em vez de deixar a última linha vazia da
+                                    # resposta esconder um OCR concluído.
+                                    def _pontuar_ocr_render_v270(_row):
+                                        try:
+                                            _estr_v270 = _ocr_regression_parse_dict(
+                                                (_row or {}).get("ocr_estruturado")
+                                            )
+                                            if _ocr_estruturado_tem_conteudo(_estr_v270):
+                                                return 2
+                                        except Exception:
+                                            pass
+                                        if str((_row or {}).get("ocr_texto") or "").strip():
+                                            return 1
+                                        return 0
+
+                                    _anterior_v270 = _ocr_lote_todos.get(_u)
+                                    if (
+                                        _anterior_v270 is None
+                                        or _pontuar_ocr_render_v270(_row_ocr_filtro)
+                                        > _pontuar_ocr_render_v270(_anterior_v270)
+                                    ):
+                                        _ocr_lote_todos[_u] = _row_ocr_filtro
                         except Exception as _exc_ocr_render:
                             print(
                                 f"[GADS-V104] lote OCR render falhou "
@@ -39167,9 +39192,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # essa URL simplesmente permanece "pendente" até a
                 # linha aparecer com `ocr_texto` preenchido (mostrando
                 # "Extraindo texto da imagem via OCR…" nesse meio
-                # tempo) — só sai do set quando a query abaixo devolver
-                # uma linha com `ocr_texto` não-nulo (seja "" de "OCR
-                # rodou e não achou nada", seja com texto de verdade).
+                # tempo). V270: só sai do set quando existir OCR estruturado
+                # útil ou `ocr_texto` realmente preenchido. NULL e string
+                # vazia continuam corretamente marcados como pendentes.
                 _urls_ocr_pendente = set(_urls_img_cards)
                 if _urls_img_cards:
                     try:
@@ -39183,21 +39208,24 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 continue
                             _url_row = _row.get("url_cdn")
                             _val_ocr = _row.get("ocr_texto")
-                            if _val_ocr is None:
-                                pass  # continua em _urls_ocr_pendente (já está lá por padrão)
-                            else:
+                            _val_estr = _row.get("ocr_estruturado")
+                            try:
+                                _estr_render = _ocr_regression_parse_dict(_val_estr)
+                            except Exception:
+                                _estr_render = {}
+                            _estr_util_v270 = _ocr_estruturado_tem_conteudo(
+                                _estr_render
+                            )
+                            _txt_ocr = str(_val_ocr or "").strip()
+                            # V270: NULL e string vazia continuam pendentes
+                            # quando não existe OCR estruturado útil. Essa é a
+                            # mesma regra usada pelo manifesto e pelo worker.
+                            if _estr_util_v270 or _txt_ocr:
                                 _urls_ocr_pendente.discard(_url_row)
-                                _txt_ocr = _val_ocr.strip()
                                 if _txt_ocr:
                                     _mapa_ocr[_url_row] = _txt_ocr
-                                _val_estr = _row.get("ocr_estruturado")
-                                if _val_estr:
+                                if _estr_util_v270 and isinstance(_estr_render, dict):
                                     try:
-                                        _estr_render = (
-                                            _val_estr if isinstance(_val_estr, dict)
-                                            else _json_ocr_cards.loads(_val_estr)
-                                        )
-                                        if isinstance(_estr_render, dict):
                                             # V104 — OCR pronto não pode derrubar
                                             # a página por um campo legado/anômalo.
                                             # Coage campos textuais para string e
@@ -40099,7 +40127,7 @@ function imgFallback_{uid}(img){{
                             # relevante do anúncio. `videos` é a mesma lista
                             # já usada mais acima nesta iteração pra decidir
                             # entre video-thumb-block e img-block.
-                            no_copy_html = "" if videos else '<div class="no-copy">Extraindo texto da imagem via OCR…</div>'
+                            no_copy_html = "" if videos else '<div class="no-copy">OCR pendente — aguardando processamento.</div>'
                         else:
                             no_copy_html = '<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>'
                     else:

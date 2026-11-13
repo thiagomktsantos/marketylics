@@ -16244,6 +16244,132 @@ def encontrar_ads_com_link_original(
             pendentes[empresa] = {**entry, "data": ads_pendentes}
     return pendentes
 
+
+def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -> tuple[dict, int]:
+    """Troca referências originais do cache canônico pelas URLs já salvas.
+
+    Algumas execuções antigas concluíram o upload e criaram corretamente a
+    linha em ``midias``, mas o checkpoint por empresa continuou apontando para
+    a URL do Google. O card então usava o base64 como fallback, mostrava o
+    relógio e não encontrava o OCR, que é indexado por ``url_cdn``.
+
+    Esta reconciliação é leve: não baixa criativo, não executa OCR e não envia
+    arquivo novamente. Apenas usa ``url_origem -> url_cdn`` já registrado e
+    salva de volta somente as empresas que realmente mudaram.
+    """
+    if not gads_cache:
+        return gads_cache or {}, 0
+
+    try:
+        _res_midias = _supabase_resiliente(
+            lambda: (
+                supabase.table("midias")
+                .select("empresa,ad_id,tipo,url_origem,url_cdn")
+                .eq("user_id", user_id)
+                .execute()
+            ),
+            operacao="reconectar_gads_r2_v253",
+            tentativas=3,
+        )
+        _linhas = _res_midias.data or []
+    except Exception as _exc:
+        print(f"[GADS-R2-V253] índice de mídias indisponível: {_exc!r}", flush=True)
+        return gads_cache, 0
+
+    def _chave_url(_url: str) -> str:
+        _u = str(_url or "").strip()
+        if not _u:
+            return ""
+        try:
+            from urllib.parse import urlsplit
+            _p = urlsplit(_u)
+            _host = (_p.hostname or "").lower()
+            # URLs de criativo do Google podem trocar apenas query params;
+            # host + path continuam identificando o mesmo arquivo.
+            if "google" in _host or "doubleclick" in _host:
+                return f"{_host}{_p.path}"
+        except Exception:
+            pass
+        return _u
+
+    _por_origem = {}
+    _por_ad_tipo = {}
+    for _m in _linhas:
+        _origem = str(_m.get("url_origem") or "").strip()
+        _cdn = str(_m.get("url_cdn") or "").strip()
+        if not _origem or not _cdn or _origem == _cdn:
+            continue
+        _empresa = str(_m.get("empresa") or "")
+        _ad_id = str(_m.get("ad_id") or "")
+        _tipo = str(_m.get("tipo") or "imagem")
+        _por_origem[(_empresa, _ad_id, _tipo, _chave_url(_origem))] = _cdn
+        _por_origem.setdefault(("", "", _tipo, _chave_url(_origem)), _cdn)
+        if _empresa and _ad_id:
+            _por_ad_tipo.setdefault((_empresa, _ad_id, _tipo), set()).add(_cdn)
+
+    _cache_novo = copy.deepcopy(gads_cache)
+    _total_trocas = 0
+    _empresas_alteradas = []
+    for _empresa, _entry in _cache_novo.items():
+        _mudou_empresa = False
+        _trocas_empresa = 0
+        for _ad in (_entry.get("data") or []):
+            if not isinstance(_ad, dict):
+                continue
+            _ad_id = str(_ad.get("id") or "")
+            for _campo, _tipo in (
+                ("images", "imagem"),
+                ("carousel_images", "imagem"),
+                ("videos", "video"),
+            ):
+                _urls = list(_ad.get(_campo) or [])
+                if not _urls:
+                    continue
+                _cdns_ad = _por_ad_tipo.get((str(_empresa), _ad_id, _tipo), set())
+                for _idx, _url in enumerate(_urls):
+                    if not _url or (R2_PUBLIC_BASE and str(_url).startswith(R2_PUBLIC_BASE)):
+                        continue
+                    _cdn = (
+                        _por_origem.get((str(_empresa), _ad_id, _tipo, _chave_url(_url)))
+                        or _por_origem.get(("", "", _tipo, _chave_url(_url)))
+                    )
+                    # Fallback seguro: só usa o vínculo por anúncio quando
+                    # existe exatamente uma mídia permanente daquele tipo.
+                    if not _cdn and len(_cdns_ad) == 1:
+                        _cdn = next(iter(_cdns_ad))
+                    if _cdn:
+                        _urls[_idx] = _cdn
+                        _trocas_empresa += 1
+                        _mudou_empresa = True
+                _ad[_campo] = _urls
+
+            _imgs = [str(_u or "") for _u in (_ad.get("images") or []) if _u]
+            if _imgs and R2_PUBLIC_BASE and all(_u.startswith(R2_PUBLIC_BASE) for _u in _imgs):
+                _ad.pop("images_b64", None)
+
+        if _mudou_empresa:
+            _ok, _erro = _salvar_checkpoint_gads_r2(user_id, _empresa, _entry)
+            if _ok:
+                _total_trocas += _trocas_empresa
+                _empresas_alteradas.append(str(_empresa))
+            else:
+                # A varredura precisa continuar enxergando as URLs originais
+                # quando o checkpoint não pôde ser gravado; assim não declara
+                # sucesso apenas na cópia temporária em memória.
+                _cache_novo[_empresa] = copy.deepcopy(gads_cache.get(_empresa) or {})
+                print(
+                    f"[GADS-R2-V253] falha ao salvar reconciliação "
+                    f"empresa={_empresa!r}: {_erro}",
+                    flush=True,
+                )
+
+    print(
+        f"[GADS-R2-V253] reconciliação concluída trocas={_total_trocas} "
+        f"empresas={_empresas_alteradas}",
+        flush=True,
+    )
+    return _cache_novo, _total_trocas
+
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
     estiver com link original. Devolve quantos anúncios foram
@@ -16297,6 +16423,16 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
             _fonte_verificacao = "gads_cache_legado"
+        # V253: antes de declarar a imagem pendente e baixá-la outra vez,
+        # reconecta o cache às mídias que já existem na biblioteca. Isso
+        # corrige o relógio e permite que o renderer encontre o OCR pela
+        # url_cdn sem repetir download, compressão ou processamento.
+        if _fonte_verificacao == "r2_por_empresa":
+            gads_cache, _reconectadas_v253 = _reconectar_gads_r2_com_midias_salvas_v253(
+                user_id, gads_cache
+            )
+            if _reconectadas_v253:
+                _fonte_verificacao = "r2_por_empresa_reconciliado"
         pendentes = encontrar_ads_com_link_original(
             gads_cache, incluir_foto_perfil=False
         )

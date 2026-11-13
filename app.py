@@ -17362,8 +17362,15 @@ def _imagem_gads_exibe_relogio_v258(ad: dict) -> bool:
     quando o anúncio tem ao menos uma imagem, mas nenhuma URL de ``images``
     aponta para o R2. Vídeos são links e não participam desta decisão.
     """
-    _images = [str(_u or "").strip() for _u in ((ad or {}).get("images") or []) if _u]
+    _images = []
+    for _campo_v273 in ("images_b64", "images", "carousel_images"):
+        for _u_v273 in ((ad or {}).get(_campo_v273) or []):
+            _u_v273 = str(_u_v273 or "").strip()
+            if _u_v273 and _u_v273 not in _images:
+                _images.append(_u_v273)
     if not _images:
+        return False
+    if _gads_ad_eh_video_v267(ad):
         return False
     return not (
         R2_PUBLIC_BASE
@@ -17382,6 +17389,85 @@ def _encontrar_imagens_gads_pendentes_v257(gads_cache: dict) -> dict:
         if _ads:
             _out[_empresa] = {**(_entry or {}), "data": _ads}
     return _out
+
+
+def _persistir_data_uri_imagem_gads_v273(
+    data_uri: str, user_id: str, empresa: str, ad_id: str = ""
+) -> str:
+    """Salva no R2 uma captura visual `data:image/...;base64,...`."""
+    if not str(data_uri or "").startswith("data:image/"):
+        return data_uri
+    if r2_client is None or not pode_baixar_midia(user_id):
+        return data_uri
+    try:
+        _cabecalho_v273, _payload_v273 = str(data_uri).split(",", 1)
+        if ";base64" not in _cabecalho_v273.lower():
+            return data_uri
+        _mime_v273 = _cabecalho_v273[5:].split(";", 1)[0].strip().lower()
+        if not _mime_v273.startswith("image/"):
+            return data_uri
+        _conteudo_v273 = base64.b64decode(_payload_v273, validate=False)
+        if not _conteudo_v273:
+            return data_uri
+        _hash_v273 = hashlib.sha256(_conteudo_v273).hexdigest()
+
+        _existente_v273 = (
+            supabase.table("midias")
+            .select("url_cdn")
+            .eq("user_id", user_id)
+            .eq("hash_conteudo", _hash_v273)
+            .limit(1)
+            .execute()
+        )
+        if _existente_v273.data:
+            _url_existente_v273 = str(
+                _existente_v273.data[0].get("url_cdn") or ""
+            )
+            if _url_existente_v273:
+                return _url_existente_v273
+
+        _upload_v273, _mime_upload_v273, _ext_v273 = _comprimir_imagem(
+            _conteudo_v273, _mime_v273
+        )
+        if not _ext_v273:
+            _ext_v273 = mimetypes.guess_extension(_mime_upload_v273) or ".webp"
+        _storage_v273 = (
+            f"{user_id}/{_slug_empresa(empresa)}/{_hash_v273}{_ext_v273}"
+        )
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=_storage_v273,
+            Body=_upload_v273,
+            ContentType=_mime_upload_v273,
+        )
+        _url_cdn_v273 = f"{R2_PUBLIC_BASE}/{_storage_v273}"
+        supabase.table("midias").insert({
+            "user_id": user_id,
+            "empresa": empresa,
+            "ad_id": ad_id or None,
+            "tipo": "imagem",
+            "url_origem": f"captura_visual:{ad_id}:{_hash_v273}",
+            "storage_key": _storage_v273,
+            "url_cdn": _url_cdn_v273,
+            "mime_type": _mime_upload_v273,
+            "tamanho_bytes": len(_upload_v273),
+            "hash_conteudo": _hash_v273,
+            "ocr_texto": None,
+            "ocr_estruturado": None,
+        }).execute()
+        print(
+            f"[GADS-R2-V273] captura salva empresa={empresa!r} "
+            f"ad_id={ad_id!r} url={_url_cdn_v273!r}",
+            flush=True,
+        )
+        return _url_cdn_v273
+    except Exception as _exc_v273:
+        print(
+            f"[GADS-R2-V273] falha ao salvar captura empresa={empresa!r} "
+            f"ad_id={ad_id!r}: {_exc_v273!r}",
+            flush=True,
+        )
+        return data_uri
 
 
 def _forcar_armazenamento_imagens_gads_v257(
@@ -17427,10 +17513,11 @@ def _forcar_armazenamento_imagens_gads_v257(
                     _nova = _memo_url.get(_url)
                     if _nova is None:
                         if _url.startswith("data:"):
-                            # A reconciliação V256 já tentou ligar data URI a
-                            # uma mídia existente. O pipeline normal aceita URL
-                            # HTTP; não envia base64 cru por acidente.
-                            _nova = _url
+                            # V273: a captura visual é uma mídia temporária e
+                            # precisa ser persistida como qualquer outra imagem.
+                            _nova = _persistir_data_uri_imagem_gads_v273(
+                                _url, user_id, str(_empresa), _ad_id
+                            )
                         else:
                             _nova = baixar_e_persistir_midia(
                                 _url, user_id, str(_empresa), "imagem",
@@ -17699,27 +17786,25 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                 _em_verificacao=True,
             )
 
-        # Se o manifesto existe, ele decide se é necessário pagar o custo de
-        # carregar os checkpoints completos. Sem manifesto, o cache é lido
-        # uma única vez para criar o controle inicial.
+        # V273: o manifesto é um índice, não pode decidir sozinho se precisa
+        # consultar a fonte real. Versões anteriores confiavam em um resumo
+        # antigo com zero pendências e nunca enxergavam novas capturas em
+        # `images_b64`. Toda reconciliação relê os checkpoints e regrava o
+        # manifesto antes de decidir migração, OCR ou CC.
+        _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+        _ok_inicial, _manifesto_inicial = _salvar_manifesto_gads_json_v261(
+            user_id, _cache, motivo="reconstrucao_fonte_real_v273"
+        )
+        if _ok_inicial:
+            _manifesto_antigo = _manifesto_inicial
+            _publicar_empresas(
+                _manifesto_inicial,
+                "analisando_empresas",
+                "Controle reconstruído. Conferindo mídia e OCR de cada empresa.",
+                _em_verificacao=True,
+            )
         _resumo_antigo = ((_manifesto_antigo or {}).get("resumo") or {})
         _qtd_pendentes_midia = int(_resumo_antigo.get("midia_pendente", 0) or 0)
-        if _manifesto_antigo is None or _qtd_pendentes_midia:
-            _cache = _carregar_checkpoints_gads_r2(user_id) or {}
-        if _manifesto_antigo is None:
-            # Cria o controle imediatamente para o card já mostrar as
-            # empresas antes das ações de migração e OCR terminarem.
-            _ok_inicial, _manifesto_inicial = _salvar_manifesto_gads_json_v261(
-                user_id, _cache or {}, motivo="criacao_pos_login"
-            )
-            if _ok_inicial:
-                _manifesto_antigo = _manifesto_inicial
-                _publicar_empresas(
-                    _manifesto_inicial,
-                    "analisando_empresas",
-                    "Controle criado. Conferindo mídia e OCR de cada empresa.",
-                    _em_verificacao=True,
-                )
         _pendentes_midia = (
             _encontrar_imagens_gads_pendentes_v257(_cache)
             if _cache is not None else {}

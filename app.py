@@ -38716,11 +38716,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # V148 — carregar OCR de TODAS as imagens/variações do anúncio.
                 # Antes só a primeira URL de `images` entrava no lote. Em anúncios
                 # responsivos, o texto pesquisado pode estar em outra peça/variante.
+                # V272: a consulta que efetivamente carrega o OCR precisa usar
+                # todas as fontes de imagem aceitas pelo card e pelo manifesto.
+                # V271 corrigiu a identidade visual, mas este lote ainda lia
+                # somente `images`; capturas guardadas em `images_b64` nunca
+                # entravam em `_ocr_lote_todos`, embora o OCR existisse no banco.
                 _urls_img_todos_filtro = list({
-                    _u_img_gads
+                    str(_u_img_gads or "").strip()
                     for ad in gads_list
-                    for _u_img_gads in (ad.get("images") or [])
-                    if _u_img_gads
+                    for _campo_img_v272 in (
+                        "images_b64", "images", "carousel_images"
+                    )
+                    for _u_img_gads in (ad.get(_campo_img_v272) or [])
+                    if str(_u_img_gads or "").strip().startswith(
+                        ("http://", "https://")
+                    )
                 })
                 _ocr_lote_todos = {}
                 if _urls_img_todos_filtro:
@@ -39958,6 +39968,13 @@ function imgFallback_{uid}(img){{
                         _ocr_estr_ad = None
                         _ocr_txt_ad = ""
                         _ocr_pendente_ad = False
+                    elif img_primary and not _ocr_estr_ad and not str(_ocr_txt_ad or "").strip():
+                        # V272: uma imagem não-vídeo efetivamente exibida nunca
+                        # pode cair no fallback "texto não disponibilizado" se
+                        # não há OCR carregado. Mesmo se uma URL legada divergir
+                        # do índice, o estado correto é pendente até que algum
+                        # conteúdo OCR válido seja encontrado.
+                        _ocr_pendente_ad = True
                     if not body_safe and not title_safe:
                         if _ocr_estr_ad:
                             # OCR estruturado (sabendo que é um anúncio do

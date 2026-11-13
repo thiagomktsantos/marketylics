@@ -11233,27 +11233,80 @@ def _achatar_ocr_estruturado(d: dict) -> str:
             linhas.append(sl)
     return "\n".join(linhas)
 
-def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 5000) -> list:
-    """Busca imagens sem OCR sem usar ``ocr_texto.eq.`` no PostgREST.
+def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
+    """URLs R2 realmente usadas pelos cards, agrupadas pela empresa.
 
-    O filtro vazio usado até a V247 podia devolver zero mesmo após a mídia
-    ser salva. A origem Google continua filtrada no banco; NULL/string vazia
-    são avaliados em Python para não depender da sintaxe do gateway.
+    A URL de origem não é identidade confiável: uma imagem deduplicada por
+    hash pode ter sido registrada primeiro por outro anúncio. O card e o OCR
+    devem se encontrar pela URL permanente efetivamente gravada em ``images``.
     """
-    query = (
-        supabase.table("midias")
-        .select("id, empresa, url_cdn, url_origem, ocr_texto")
-        .eq("user_id", user_id)
-        .eq("tipo", "imagem")
-        .or_(_FILTRO_OCR_URL_GOOGLE)
+    try:
+        _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+    except Exception as _exc:
+        print(f"[OCR-R2-V260] falha carregando cache canônico: {_exc!r}", flush=True)
+        return {}
+    _out = {}
+    for _empresa, _entry in _cache.items():
+        if empresa and str(_empresa) != str(empresa):
+            continue
+        _urls = set()
+        for _ad in ((_entry or {}).get("data") or []):
+            for _campo in ("images", "carousel_images"):
+                for _url in ((_ad or {}).get(_campo) or []):
+                    _url = str(_url or "").strip()
+                    if R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE):
+                        _urls.add(_url)
+        if _urls:
+            _out[str(_empresa)] = sorted(_urls)
+    return _out
+
+
+def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 5000) -> list:
+    """Busca OCR pendente pelas URLs R2 usadas no Google Ads.
+
+    V260 remove a dependência de ``url_origem`` e da empresa gravada na linha
+    deduplicada. Isso cobre exatamente o caso em que o card mostra check, mas
+    o OCR antigo não encontra a mídia e informa zero pendentes.
+    """
+    _por_empresa = _urls_r2_imagens_gads_v260(user_id, empresa)
+    _urls = sorted({u for _lista in _por_empresa.values() for u in _lista})
+    if not _urls:
+        return []
+
+    _linhas = []
+    _limite = max(1, int(limite or 5000))
+    # Blocos curtos evitam URL de consulta grande no PostgREST.
+    for _i in range(0, min(len(_urls), _limite), 150):
+        _bloco = _urls[_i:_i + 150]
+        _res = (
+            supabase.table("midias")
+            .select("id, empresa, url_cdn, url_origem, ocr_texto, ocr_estruturado")
+            .eq("user_id", user_id)
+            .eq("tipo", "imagem")
+            .in_("url_cdn", _bloco)
+            .execute()
+        )
+        _linhas.extend(_res.data or [])
+
+    _pendentes = []
+    _vistos = set()
+    for _r in _linhas:
+        _id = str(_r.get("id") or "")
+        if not _id or _id in _vistos:
+            continue
+        _tem_texto = bool(str(_r.get("ocr_texto") or "").strip())
+        _tem_estruturado = _ocr_estruturado_tem_conteudo(
+            _ocr_regression_parse_dict(_r.get("ocr_estruturado"))
+        )
+        if not (_tem_texto and _tem_estruturado):
+            _vistos.add(_id)
+            _pendentes.append(_r)
+    print(
+        f"[OCR-R2-V260] empresa={empresa!r} urls_cards={len(_urls)} "
+        f"linhas={len(_linhas)} pendentes={len(_pendentes)}",
+        flush=True,
     )
-    if empresa:
-        query = query.eq("empresa", empresa)
-    res = query.limit(max(1, int(limite or 5000))).execute()
-    return [
-        r for r in (res.data or [])
-        if r.get("ocr_texto") is None or not str(r.get("ocr_texto") or "").strip()
-    ]
+    return _pendentes
 
 
 def _contar_ocr_pendentes(user_id: str, empresa: str) -> int:
@@ -11274,8 +11327,12 @@ def _empresas_com_ocr_pendente(user_id: str) -> list:
     """Equivalente a _empresas_com_transcricao_pendente, mas pra fila de
     OCR — usada pelo auto-retry da sidebar (periodicamente)."""
     try:
-        linhas = _buscar_midias_ocr_pendentes(user_id, limite=5000)
-        return sorted({r["empresa"] for r in linhas if r.get("empresa")})
+        _por_empresa = _urls_r2_imagens_gads_v260(user_id)
+        _pendentes = []
+        for _empresa in sorted(_por_empresa):
+            if _buscar_midias_ocr_pendentes(user_id, _empresa, limite=5000):
+                _pendentes.append(_empresa)
+        return _pendentes
     except Exception as e:
         print(f"[OCR-DEBUG] _empresas_com_ocr_pendente EXCEÇÃO user={user_id}: {e!r}", flush=True)
         return []
@@ -16026,6 +16083,11 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             _salvar_inventario_geral_gads_xml_v259(
                 user_id, motivo=f"armazenamento_concluido:{empresa}"
             )
+            # Agora que o checkpoint canônico já aponta para as URLs R2,
+            # a busca V260 encontra exatamente as imagens exibidas no card.
+            # A chamada anterior à gravação é mantida por compatibilidade;
+            # esta é a confirmação determinística do encadeamento.
+            iniciar_ocr_pendente_background(user_id, empresa)
             _total_r2 = int(stats_midia.get("total", 0) or 0)
             _falhas_r2 = int(stats_midia.get("nao_migrados", 0) or 0)
             atualizar_atividade(
@@ -16976,6 +17038,10 @@ def _reparar_imagens_visiveis_com_relogio_v258(
         _salvar_inventario_geral_gads_xml_v259(
             user_id, _depois, motivo="reparo_imagens_com_relogio"
         )
+        # Mesmo quando a imagem já estava no R2 e só faltava atualizar o
+        # card, o OCR precisa ser conferido e enfileirado.
+        for _empresa_ocr_v260 in sorted(_visiveis.keys()):
+            iniciar_ocr_pendente_background(user_id, str(_empresa_ocr_v260))
         _pendentes_depois = _encontrar_imagens_gads_pendentes_v257(_depois)
         _ids_pendentes_depois = {
             (str(_empresa), str((_ad or {}).get("id") or ""))
@@ -34681,6 +34747,18 @@ elif st.session_state.pagina == "google_ads":
         st.session_state["_verificacao_ocr_pendente_feita_google"] = True
         # V105: a thread pode criar atividade OCR alguns instantes depois
         # essa transição.
+        st.session_state["_gads_armar_poll_ocr"] = True
+
+    # V260: executa novamente uma única vez após o deploy, mesmo que a
+    # sessão antiga já tenha marcado a verificação anterior como feita.
+    # O critério mudou de URL de origem para URL R2 usada pelos cards.
+    if (
+        not st.session_state.get("_verificacao_ocr_r2_v260_feita")
+        and st.session_state.get("user")
+        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
+    ):
+        iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
+        st.session_state["_verificacao_ocr_r2_v260_feita"] = True
         st.session_state["_gads_armar_poll_ocr"] = True
 
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──

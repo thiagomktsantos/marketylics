@@ -1228,7 +1228,8 @@ def _cache_minimo_do_manifesto_v265(_manifesto: dict) -> dict:
             continue
         _ads = []
         for _ad in ((_empresa_doc or {}).get("anuncios") or []):
-            _ads.append({
+            _status_cc = str((_ad or {}).get("status_cc") or "")
+            _ad_min = {
                 "id": str((_ad or {}).get("id") or ""),
                 "ativo": bool((_ad or {}).get("ativo", True)),
                 "formato": str((_ad or {}).get("formato") or ""),
@@ -1243,7 +1244,14 @@ def _cache_minimo_do_manifesto_v265(_manifesto: dict) -> dict:
                     for _video in ((_ad or {}).get("videos") or [])
                     if (_video or {}).get("url")
                 ],
-            })
+            }
+            if _status_cc == "concluido":
+                # Marcador apenas para a pré-checagem leve. O worker de CC
+                # sempre relê o checkpoint completo antes de persistir.
+                _ad_min["video_cc_raw"] = "__cc_ja_salvo__"
+            elif _status_cc in _YOUTUBE_CC_STATUS_FINAL_V159:
+                _ad_min["video_cc_status"] = _status_cc
+            _ads.append(_ad_min)
         _cache[_nome] = {
             "query": str((_empresa_doc or {}).get("pagina") or ""),
             "ts": str((_empresa_doc or {}).get("coletado_em") or ""),
@@ -1253,6 +1261,11 @@ def _cache_minimo_do_manifesto_v265(_manifesto: dict) -> dict:
             "data": _ads,
         }
     return _cache
+
+
+def _gads_ad_eh_video_v267(_ad: dict) -> bool:
+    _formato = str((_ad or {}).get("formato") or (_ad or {}).get("tipo") or "").strip().lower()
+    return _formato in ("vídeo", "video") or bool((_ad or {}).get("videos"))
 
 
 def _salvar_manifesto_gads_json_v261(
@@ -1287,7 +1300,7 @@ def _salvar_manifesto_gads_json_v261(
         try:
             _res = (
                 supabase.table("midias")
-                .select("id,url_cdn,ocr_texto,ocr_estruturado")
+                .select("id,ad_id,url_cdn,ocr_texto,ocr_estruturado")
                 .eq("user_id", user_id)
                 .eq("tipo", "imagem")
                 .range(
@@ -1312,6 +1325,7 @@ def _salvar_manifesto_gads_json_v261(
         "empresas": 0, "anuncios": 0, "midia_salva": 0,
         "midia_pendente": 0, "sem_imagem": 0,
         "ocr_concluido": 0, "ocr_pendente": 0, "ocr_nao_aplicavel": 0,
+        "cc_concluido": 0, "cc_pendente": 0, "cc_nao_aplicavel": 0,
     }
     _empresas_doc = []
     for _empresa in sorted((_cache or {}).keys(), key=lambda x: str(x).lower()):
@@ -1337,7 +1351,40 @@ def _salvar_manifesto_gads_json_v261(
                 _u for _u in _imgs
                 if R2_PUBLIC_BASE and _u.startswith(R2_PUBLIC_BASE)
             ]
-            if not _imgs:
+            _eh_video = _gads_ad_eh_video_v267(_ad)
+            _videos_youtube = [
+                str(_u or "") for _u in ((_ad or {}).get("videos") or [])
+                if _youtube_video_id_v150(str(_u or ""))
+            ]
+            if _videos_youtube:
+                if str((_ad or {}).get("video_cc_raw") or "").strip():
+                    _status_cc = "concluido"
+                    _resumo["cc_concluido"] += 1
+                else:
+                    _cc_final = str((_ad or {}).get("video_cc_status") or "").strip().lower()
+                    if _cc_final in _YOUTUBE_CC_STATUS_FINAL_V159:
+                        _status_cc = _cc_final
+                        _resumo["cc_concluido"] += 1
+                    else:
+                        _status_cc = "pendente"
+                        _resumo["cc_pendente"] += 1
+            else:
+                _status_cc = "nao_aplicavel"
+                _resumo["cc_nao_aplicavel"] += 1
+
+            if _eh_video:
+                # A imagem de um anúncio em vídeo é capa/thumbnail. Não passa
+                # por OCR; o conteúdo textual correto vem da legenda/CC.
+                _status_midia = "salva_r2" if _imgs_r2 else ("pendente" if _imgs else "sem_imagem")
+                _status_ocr = "nao_aplicavel_video"
+                if _status_midia == "salva_r2":
+                    _resumo["midia_salva"] += 1
+                elif _status_midia == "pendente":
+                    _resumo["midia_pendente"] += 1
+                else:
+                    _resumo["sem_imagem"] += 1
+                _resumo["ocr_nao_aplicavel"] += 1
+            elif not _imgs:
                 _status_midia = "sem_imagem"
                 _status_ocr = "nao_aplicavel"
                 _resumo["sem_imagem"] += 1
@@ -1374,6 +1421,7 @@ def _salvar_manifesto_gads_json_v261(
                 "url_criativo": str(_ad.get("snapshot_url") or _ad.get("creative_url") or ""),
                 "status_midia": _status_midia,
                 "status_ocr": _status_ocr,
+                "status_cc": _status_cc,
                 "imagens": [
                     {
                         "url": _u,
@@ -1384,7 +1432,11 @@ def _salvar_manifesto_gads_json_v261(
                     for _u in _imgs
                 ],
                 "videos": [
-                    {"url": str(_u or ""), "tipo": "link"}
+                    {
+                        "url": str(_u or ""),
+                        "tipo": "youtube" if _youtube_video_id_v150(str(_u or "")) else "link",
+                        "cc_status": _status_cc,
+                    }
                     for _u in (_ad.get("videos") or [])
                 ],
             })
@@ -2948,6 +3000,9 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
 
         _pendentes_antes = _gads_youtube_sem_cc_v151(_cache_atual)
         if not _pendentes_antes:
+            _salvar_manifesto_gads_json_v261(
+                user_id, _cache_atual, motivo="cc_youtube_sem_pendencias"
+            )
             if atividade_id:
                 atualizar_atividade(atividade_id, "concluido", {
                     "verificados": 0,
@@ -3124,6 +3179,9 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
                 "pendentes": _pendentes_depois,
                 "plataforma": "Google Ads",
             })
+        _salvar_manifesto_gads_json_v261(
+            user_id, _cache_enriquecido, motivo="cc_youtube_finalizado"
+        )
 
         # O cooldown começa somente depois que a verificação chegou ao fim.
         # Falha/standby antes daqui não bloqueia a próxima tentativa.
@@ -3237,6 +3295,7 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     user_id: str,
     cache_sessao: dict,
     intervalo_segundos: int = 300,
+    permitir_enfileirar: bool = False,
 ) -> bool:
     """
     Dispara a recuperação automática se:
@@ -3255,7 +3314,7 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
 
     # Nunca inicia CC junto com coleta, migração ou OCR. A página fará nova
     # tentativa em render posterior, depois que a faixa pesada estiver livre.
-    if (
+    if (not permitir_enfileirar) and (
         _job_any_active("coleta_ads_google", user_id)
         or _job_any_active("coleta_ads", user_id)
         or _job_any_active("coleta_redes", user_id)
@@ -11487,6 +11546,8 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
                 continue
             _urls = set()
             for _ad_doc in ((_empresa_doc or {}).get("anuncios") or []):
+                if _gads_ad_eh_video_v267(_ad_doc):
+                    continue
                 for _img in ((_ad_doc or {}).get("imagens") or []):
                     _url = str((_img or {}).get("url") or "").strip()
                     if (
@@ -11510,6 +11571,8 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
             continue
         _urls = set()
         for _ad in ((_entry or {}).get("data") or []):
+            if _gads_ad_eh_video_v267(_ad):
+                continue
             for _campo in ("images", "carousel_images"):
                 for _url in ((_ad or {}).get(_campo) or []):
                     _url = str(_url or "").strip()
@@ -11539,7 +11602,7 @@ def _garantir_registros_midias_para_imagens_r2_v263(
     for _i in range(0, len(_urls), 25):
         _res = (
             supabase.table("midias")
-            .select("id,empresa,url_cdn,url_origem,ocr_texto,ocr_estruturado")
+            .select("id,empresa,ad_id,url_cdn,url_origem,ocr_texto,ocr_estruturado")
             .eq("user_id", user_id)
             .eq("tipo", "imagem")
             .in_("url_cdn", _urls[_i:_i + 25])
@@ -11613,7 +11676,7 @@ def _garantir_registros_midias_para_imagens_r2_v263(
             try:
                 _re = (
                     supabase.table("midias")
-                    .select("id,empresa,url_cdn,url_origem,ocr_texto,ocr_estruturado")
+                    .select("id,empresa,ad_id,url_cdn,url_origem,ocr_texto,ocr_estruturado")
                     .eq("user_id", user_id).eq("tipo", "imagem")
                     .eq("url_cdn", _url).limit(1).execute()
                 )
@@ -11652,7 +11715,7 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
         _bloco = _urls[_i:_i + 25]
         _res = (
             supabase.table("midias")
-            .select("id, empresa, url_cdn, url_origem, ocr_texto, ocr_estruturado")
+            .select("id, empresa, ad_id, url_cdn, url_origem, ocr_texto, ocr_estruturado")
             .eq("user_id", user_id)
             .eq("tipo", "imagem")
             .in_("url_cdn", _bloco)
@@ -12351,11 +12414,27 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             "empresa": empresa, "processadas": processadas, "total": total,
             "ultimo_heartbeat_em": _agora_iso(), "modo_execucao": "ocr_externo_incremental_v142",
             "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
+            "ocr_concluidos_detalhados": list(
+                _checkpoint_ocr.get("ocr_concluidos_detalhados") or []
+            ),
+            "total_ocr_concluidos_detalhados": len(
+                _checkpoint_ocr.get("ocr_concluidos_detalhados") or []
+            ),
         })
 
     _ids_tentados_neste_run = set()
     _ids_falharam = []
     _erros_detalhados = []
+    # Histórico auditável do que esta atividade realmente concluiu. Reaproveita
+    # o checkpoint se a execução foi retomada e evita duplicar a mesma mídia.
+    _ocr_concluidos_detalhados = list(
+        _checkpoint_ocr.get("ocr_concluidos_detalhados") or []
+    )
+    _ids_ocr_concluidos = {
+        str((_item or {}).get("id") or "")
+        for _item in _ocr_concluidos_detalhados
+        if (_item or {}).get("id")
+    }
 
     try:
         while True:
@@ -12418,6 +12497,20 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                             if _ocr_estruturado_tem_conteudo(_estruturado) else None),
                     }).eq("id", _mid).execute()
                     processadas += 1
+                    if _mid not in _ids_ocr_concluidos:
+                        _titulo_extraido = str(
+                            (_estruturado or {}).get("titulo")
+                            or (_estruturado or {}).get("descricao")
+                            or "OCR estruturado salvo"
+                        ).strip()
+                        _ocr_concluidos_detalhados.append({
+                            "id": _mid,
+                            "ad_id": str(midia.get("ad_id") or ""),
+                            "titulo": _titulo_extraido[:240],
+                            "url_cdn": str(midia.get("url_cdn") or ""),
+                            "concluido_em": _agora_iso(),
+                        })
+                        _ids_ocr_concluidos.add(_mid)
                     pendentes_agora = _contar_ocr_pendentes(user_id, empresa)
                     print(
                         f"[OCR] V142 SALVO IMEDIATAMENTE id={_mid} processadas={processadas}/{max(total, processadas)} pendentes_agora={pendentes_agora}",
@@ -12429,6 +12522,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                             "pendentes": pendentes_agora, "ultimo_heartbeat_em": _agora_iso(),
                             "modo_execucao": "ocr_externo_incremental_v142", "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
                             "ultimo_id_salvo": _mid,
+                            "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
+                            "ultimo_ocr_concluido": _ocr_concluidos_detalhados[-1],
                         })
                 except Exception as _e_gravar:
                     _ids_falharam.append(_mid)
@@ -12472,12 +12567,16 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "empresa": empresa, "processadas": processadas, "total": max(total, processadas),
                     "aviso": f"{len(_ids_falharam)} imagem(ns) falharam nesta tentativa. {processadas} de {max(total, processadas)} foram concluídas.",
                     "erros_detalhados": _erros_detalhados[:20], "total_erros_detalhados": len(_erros_detalhados),
+                    "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
+                    "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
                     "modo_execucao": "ocr_externo_incremental_v142",
                 })
             else:
                 atualizar_atividade(atividade_id, "concluido", {
                     "empresa": empresa, "processadas": processadas, "total": max(total, processadas),
                     "pendentes": _contar_ocr_pendentes(user_id, empresa),
+                    "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
+                    "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
                     "modo_execucao": "ocr_externo_incremental_v142",
                 })
     except BaseException as e:
@@ -12486,6 +12585,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             atualizar_atividade(atividade_id, "erro", {
                 "empresa": empresa, "motivo": f"{type(e).__name__}: {e}",
                 "processadas": processadas, "total": max(total, processadas),
+                "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
+                "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
                 "modo_execucao": "ocr_externo_incremental_v142",
             })
     finally:
@@ -14795,6 +14896,12 @@ def trocar_pagina(destino):
     # Limpa o flag de acesso manual ao home quando navega para outra página
     if destino != "home":
         st.session_state.pop("_home_acesso_manual", None)
+    # V269: ao sair da seção, libera uma nova reconciliação do manifesto na
+    # próxima entrada. Reruns enquanto a página permanece aberta não repetem.
+    if destino != "google_ads":
+        st.session_state.pop(
+            "_manifesto_gads_abertura_pagina_v269_iniciado", None
+        )
     st.session_state.pagina = destino
     st.session_state.mostrar_form_concorrente = False
     st.session_state.editando_concorrente = None
@@ -17508,19 +17615,33 @@ def _reconciliar_manifesto_gads_pos_login_v261(
             _ocr_ok = sum(
                 1 for _ad in _ads if (_ad or {}).get("status_ocr") == "concluido"
             )
+            _cc_pendente = sum(
+                1 for _ad in _ads if (_ad or {}).get("status_cc") == "pendente"
+            )
+            _cc_ok = sum(
+                1 for _ad in _ads
+                if (_ad or {}).get("status_cc") in (
+                    "concluido", "sem_cc_confirmado", "erro_captura"
+                )
+            )
             _msg = (
                 f"{_total} anúncio(s) · mídia: {_midia_salva} salva(s), "
                 f"{_midia_pendente} pendente(s) · OCR: {_ocr_ok} concluído(s), "
-                f"{_ocr_pendente} pendente(s)"
+                f"{_ocr_pendente} pendente(s) · CC: {_cc_ok} verificado(s), "
+                f"{_cc_pendente} pendente(s)"
             )
             _resultado[_nome] = {
-                "status": "rodando" if (_em_verificacao or _midia_pendente or _ocr_pendente) else "ok",
+                "status": "rodando" if (
+                    _em_verificacao or _midia_pendente or _ocr_pendente or _cc_pendente
+                ) else "ok",
                 "msg": _msg,
                 "anuncios": _total,
                 "midias_salvas": _midia_salva,
                 "midias_pendentes": _midia_pendente,
                 "ocr_concluidos": _ocr_ok,
                 "ocr_pendentes": _ocr_pendente,
+                "cc_verificados": _cc_ok,
+                "cc_pendentes": _cc_pendente,
             }
         return _resultado
 
@@ -17621,7 +17742,23 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                     "Mídias conferidas. Verificando OCR pendente por empresa.",
                 )
 
-        # Só depois da mídia reconciliada procura OCR ausente pelas URLs R2.
+        # Vídeo segue para CC, nunca para OCR. O cache leve do manifesto é
+        # suficiente para decidir se existe trabalho; o worker relê o
+        # checkpoint completo antes de salvar qualquer resultado.
+        _cache_cc = _cache or _cache_minimo_do_manifesto_v265(
+            _manifesto_antigo or {}
+        )
+        _cc_iniciado = iniciar_verificacao_cc_youtube_automatica_v151(
+            user_id,
+            _cache_cc,
+            intervalo_segundos=300,
+            permitir_enfileirar=True,
+        )
+        if _cc_iniciado:
+            _acoes.append("cc_youtube_enfileirado")
+
+        # Só depois da mídia reconciliada procura OCR ausente nas imagens de
+        # anúncios gráficos. Capas de anúncios em vídeo já foram excluídas.
         _empresas_ocr = _empresas_com_ocr_pendente(user_id)
         _ocr_iniciados = []
         _ocr_nao_iniciados = []
@@ -17673,6 +17810,9 @@ def _reconciliar_manifesto_gads_pos_login_v261(
             "midias_pendentes": int(_resumo.get("midia_pendente", 0) or 0),
             "ocr_concluidos": int(_resumo.get("ocr_concluido", 0) or 0),
             "ocr_pendentes": int(_resumo.get("ocr_pendente", 0) or 0),
+            "cc_concluidos": int(_resumo.get("cc_concluido", 0) or 0),
+            "cc_pendentes": int(_resumo.get("cc_pendente", 0) or 0),
+            "atividade_cc_iniciada": bool(_cc_iniciado),
             "empresas_ocr_enfileiradas": _empresas_ocr,
             "atividades_ocr_iniciadas": _ocr_iniciados,
             "ocr_nao_iniciados": _ocr_nao_iniciados,
@@ -17690,7 +17830,9 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                 f"Controle geral atualizado: {_detalhes['total_anuncios']} anúncio(s), "
                 f"{_detalhes['midias_pendentes']} mídia(s) pendente(s) e "
                 f"{_detalhes['ocr_pendentes']} OCR(s) pendente(s). "
-                f"{len(_ocr_iniciados)} atividade(s) de OCR iniciada(s)."
+                f"{_detalhes['cc_pendentes']} CC(s) pendente(s). "
+                f"{len(_ocr_iniciados)} atividade(s) de OCR e "
+                f"{1 if _cc_iniciado else 0} atividade de CC iniciada(s)."
             )
             if atividade_id:
                 atualizar_atividade(atividade_id, "concluido", _detalhes)
@@ -17717,17 +17859,36 @@ def _reconciliar_manifesto_gads_pos_login_v261(
             })
 
 
-def iniciar_reconciliacao_manifesto_gads_pos_login_v261(user_id: str) -> bool:
-    """Abre uma única reconciliação por usuário/processo após autenticar."""
+def iniciar_reconciliacao_manifesto_gads_pos_login_v261(
+    user_id: str, origem: str = "pos_login"
+) -> bool:
+    """Abre a reconciliação do manifesto sem duplicar um processo ativo."""
     if not user_id:
         return False
+    # V269: login e abertura da página usam o mesmo controlador. A checagem
+    # vem antes de criar a atividade para não deixar um card duplicado dizendo
+    # apenas que outra verificação já estava em execução.
+    if _job_is_active("manifesto_gads_v261", user_id, "pos_login"):
+        st.session_state["_manifesto_gads_ultima_solicitacao_epoch_v269"] = time.time()
+        print(
+            f"[GADS-MANIFEST-V269] manifesto já ativo; origem={origem}",
+            flush=True,
+        )
+        return True
+    st.session_state["_manifesto_gads_ultima_solicitacao_epoch_v269"] = time.time()
+    _aviso_origem = (
+        "Lendo ou criando o manifesto geral ao abrir a página do Google Ads."
+        if origem == "abertura_pagina_google_ads"
+        else "Lendo ou criando o manifesto geral após o login."
+    )
     _atividade_id = criar_atividade(
         user_id,
         "verificacao_pendentes_gads",
         "Verificando controle geral dos anúncios do Google Ads",
         {
-            "versao_manifesto": "V261",
-            "aviso": "Lendo ou criando o manifesto geral após o login.",
+            "versao_manifesto": "V269",
+            "origem_acionamento": origem,
+            "aviso": _aviso_origem,
         },
     )
     _iniciou = _job_start_thread(
@@ -17741,7 +17902,8 @@ def iniciar_reconciliacao_manifesto_gads_pos_login_v261(user_id: str) -> bool:
     )
     if not _iniciou and _atividade_id:
         atualizar_atividade(_atividade_id, "concluido", {
-            "versao_manifesto": "V261",
+            "versao_manifesto": "V269",
+            "origem_acionamento": origem,
             "aviso": "A verificação do controle geral já está em execução.",
         })
     return _iniciou
@@ -19284,7 +19446,9 @@ with st.sidebar:
                           "mostrar_form_concorrente", "editando_concorrente",
                           "editar_empresa", "relatorio_sites", "relatorio_gemini",
                           "_home_acesso_manual",
-                          "_manifesto_gads_pos_login_v261_iniciado"]:
+                          "_manifesto_gads_pos_login_v261_iniciado",
+                          "_manifesto_gads_abertura_pagina_v269_iniciado",
+                          "_manifesto_gads_ultima_solicitacao_epoch_v269"]:
                     if k in st.session_state:
                         del st.session_state[k]
             elif p == "perfil_menu":
@@ -35272,7 +35436,7 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_cache = carregar_cache_ads(forcar=True)
         st.rerun()
 
-    # V258: a fonte da reparação é o próprio critério visual do relógio.
+    # V268: a fonte da reparação é o próprio critério visual do relógio.
     # Assim, a manutenção não pode concluir "zero pendentes" olhando outro
     # snapshot enquanto a tela ainda mostra cards amarelos. Primeiro força
     # uma releitura barata do cache canônico; persistindo o mesmo relógio,
@@ -35336,105 +35500,47 @@ elif st.session_state.pagina == "google_ads":
                 or (_agora_relogio_v258 - _ultima_tentativa_v258) >= 900.0
             )
         ):
-            _atividade_reparo_v258 = criar_atividade(
-                st.session_state.user.id,
-                "verificacao_pendentes_gads",
-                "Verificando imagens com relógio no Google Ads",
-                {
-                    "versao_forcamento": "V258",
-                    "anuncios_visiveis_com_relogio": len(_itens_relogio_v258),
-                    "aviso": "Conferindo no R2 e refazendo somente o armazenamento das imagens ausentes.",
-                },
+            # Não abre uma segunda atividade de verificação. O manifesto pós-login
+            # é o controlador único e já transforma relógios, OCRs e CCs pendentes
+            # nas respectivas atividades de execução. A página apenas invalida o
+            # cache visual; na próxima autenticação/reconciliação o manifesto
+            # decide e registra a ação necessária.
+            st.session_state["_gads_relogio_tentativa_epoch_v258"] = _agora_relogio_v258
+            st.session_state["_gads_relogio_assinatura_v258"] = _assinatura_relogio_v258
+            print(
+                f"[GADS-MANIFEST-V268] relógios visíveis={len(_itens_relogio_v258)}; "
+                "verificação delegada ao manifesto",
+                flush=True,
             )
-            _iniciou_reparo_v258 = _job_start_thread(
-                "reparo_imagens_gads_v258",
-                st.session_state.user.id,
-                "google_ads",
-                _reparar_imagens_visiveis_com_relogio_v258,
-                args=(
-                    st.session_state.user.id,
-                    copy.deepcopy(st.session_state.gads_cache),
-                    _atividade_reparo_v258,
-                ),
-                daemon=True,
-                name="reparo-imagens-google-com-relogio-v258",
-            )
-            if _iniciou_reparo_v258:
-                st.session_state["_gads_relogio_tentativa_epoch_v258"] = _agora_relogio_v258
-                st.session_state["_gads_relogio_assinatura_v258"] = _assinatura_relogio_v258
-                print(
-                    f"[GADS-R2-V258] reparo iniciado anúncios={len(_itens_relogio_v258)}",
-                    flush=True,
-                )
-            elif _atividade_reparo_v258:
-                atualizar_atividade(_atividade_reparo_v258, "erro", {
-                    "versao_forcamento": "V258",
-                    "motivo": "Já existe uma verificação das imagens em execução.",
-                })
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
 
-    #
-    # A cada render da área Google Ads fazemos apenas a checagem local e
-    # barata: "existe vídeo YouTube sem CC?". Havendo pendência, uma thread
-    # consulta o cache fresco no Supabase e tenta o CC novamente. A trava
-    # global impede duplicidade entre reruns; o cooldown só é registrado
-    # quando a tentativa TERMINA. Portanto, standby/falha no meio não deixa
-    # uma flag permanente dizendo que o vídeo já foi verificado.
+    # V269: a primeira abertura da página Google Ads em cada sessão aciona o
+    # manifesto, mesmo que a reconciliação pós-login já tenha terminado. Se a
+    # reconciliação do login ainda estiver ativa, o mesmo processo é reutilizado
+    # e nenhum card duplicado é criado. Reruns do Streamlit não repetem a ação.
     if (
         st.session_state.get("user")
-        and st.session_state.get("gads_cache")
+        and not st.session_state.get("_manifesto_gads_abertura_pagina_v269_iniciado")
         and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
     ):
-        iniciar_verificacao_cc_youtube_automatica_v151(
-            st.session_state.user.id,
-            st.session_state.gads_cache,
-            intervalo_segundos=300,
+        st.session_state["_manifesto_gads_abertura_pagina_v269_iniciado"] = True
+        _ultima_manifesto_v269 = float(
+            st.session_state.get(
+                "_manifesto_gads_ultima_solicitacao_epoch_v269", 0.0
+            ) or 0.0
         )
-
-    # Verificação de segurança: roda uma vez por sessão (não a cada
-    # rerun) procurando qualquer anúncio — de qualquer coleta, antiga ou
-    # recente — que ainda esteja com o link original do provedor em vez
-    # do R2. Cobre casos que a migração pontual de uma coleta específica
-    # não pega (falha silenciosa antiga, mídia coletada antes desse
-    # pipeline existir, etc.).
-    if (
-        not st.session_state.get("_verificacao_pendentes_feita_google")
-        and st.session_state.get("user")
-        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
-    ):
-        iniciar_verificacao_pendentes_google_background(st.session_state.user.id)
-        st.session_state["_verificacao_pendentes_feita_google"] = True
-
-    # Mesma ideia acima, mas pra OCR: varredura de segurança (uma vez por
-    # sessão) procurando qualquer imagem (anúncios em vídeo ficam de fora
-    # — ver _empresas_com_ocr_pendente) que já esteja migrada pro R2 mas
-    # ainda sem texto extraído, de qualquer empresa/coleta. Cobre o mesmo
-    # tipo de caso que a verificação de links acima: fila de OCR que
-    # nunca rodou (falha silenciosa, migração anterior a essa
-    # funcionalidade existir, etc.).
-    if (
-        not st.session_state.get("_verificacao_ocr_pendente_feita_google")
-        and st.session_state.get("user")
-        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
-    ):
-        iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
-        st.session_state["_verificacao_ocr_pendente_feita_google"] = True
-        # V105: a thread pode criar atividade OCR alguns instantes depois
-        # essa transição.
-        st.session_state["_gads_armar_poll_ocr"] = True
-
-    # V260: executa novamente uma única vez após o deploy, mesmo que a
-    # sessão antiga já tenha marcado a verificação anterior como feita.
-    # O critério mudou de URL de origem para URL R2 usada pelos cards.
-    if (
-        not st.session_state.get("_verificacao_ocr_r2_v260_feita")
-        and st.session_state.get("user")
-        and not _coleta_prioritaria_local_ativa(st.session_state.user.id)
-    ):
-        iniciar_verificacao_ocr_pendente_google_background(st.session_state.user.id)
-        st.session_state["_verificacao_ocr_r2_v260_feita"] = True
-        st.session_state["_gads_armar_poll_ocr"] = True
+        if time.time() - _ultima_manifesto_v269 >= 60.0:
+            iniciar_reconciliacao_manifesto_gads_pos_login_v261(
+                st.session_state.user.id,
+                origem="abertura_pagina_google_ads",
+            )
+        else:
+            print(
+                "[GADS-MANIFEST-V269] abertura coberta pela verificação "
+                "recente do login",
+                flush=True,
+            )
 
     # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
     # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
@@ -39779,6 +39885,13 @@ function imgFallback_{uid}(img){{
                     if not _ocr_txt_ad:
                         _ocr_txt_ad = ad.get("ocr_texto") or ""
                     _ocr_pendente_ad = bool(_img_principal_ad) and _img_principal_ad in _urls_ocr_pendente
+                    if videos:
+                        # Capa/thumbnail de vídeo nunca é conteúdo elegível a
+                        # OCR, mesmo que uma versão antiga tenha gravado OCR
+                        # para essa imagem. O texto relevante é o CC.
+                        _ocr_estr_ad = None
+                        _ocr_txt_ad = ""
+                        _ocr_pendente_ad = False
                     if not body_safe and not title_safe:
                         if _ocr_estr_ad:
                             # OCR estruturado (sabendo que é um anúncio do
@@ -39958,6 +40071,22 @@ function imgFallback_{uid}(img){{
                                 'Texto extraído da imagem (OCR)</div>'
                                 f'{_escapar_html_ocr(_ocr_txt_ad)}</div>'
                             )
+                        elif videos:
+                            if _cc_youtube_txt_v156:
+                                _cc_card_v267 = _cc_youtube_txt_v156[:600]
+                                if len(_cc_youtube_txt_v156) > 600:
+                                    _cc_card_v267 += "…"
+                                no_copy_html = (
+                                    '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
+                                    '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                    'text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">'
+                                    'Closed Caption do vídeo</div>'
+                                    f'{_escapar_html_ocr(_cc_card_v267)}</div>'
+                                )
+                            else:
+                                no_copy_html = (
+                                    '<div class="no-copy">Closed Caption do vídeo ainda não disponível.</div>'
+                                )
                         elif _ocr_pendente_ad:
                             # Em anúncio de VÍDEO, a imagem que está com OCR
                             # pendente é só um FRAME do vídeo (thumbnail),
@@ -49152,10 +49281,15 @@ html, body { background: transparent; overflow: hidden; }
                 _total_anuncios_ok_ativ = _detalhes_dict_ativ.get("total_anuncios_migrados", len(_anuncios_ok_ativ))
                 _erros_ocr_ativ = _detalhes_dict_ativ.get("erros_detalhados") or []
                 _total_erros_ocr_ativ = _detalhes_dict_ativ.get("total_erros_detalhados", len(_erros_ocr_ativ))
+                _ocr_ok_detalhados_ativ = _detalhes_dict_ativ.get("ocr_concluidos_detalhados") or []
+                _total_ocr_ok_detalhados_ativ = _detalhes_dict_ativ.get(
+                    "total_ocr_concluidos_detalhados", len(_ocr_ok_detalhados_ativ)
+                )
                 _tem_mais_info_ativ = (
                     bool(_anuncios_erro_ativ)
                     or bool(_anuncios_ok_ativ)
                     or bool(_erros_ocr_ativ)
+                    or bool(_ocr_ok_detalhados_ativ)
                 )
 
                 _mais_info_html = ""
@@ -49164,6 +49298,27 @@ html, body { background: transparent; overflow: hidden; }
                         return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
                     _secoes_resultado_html = []
+                    if _ocr_ok_detalhados_ativ:
+                        _itens_ocr_ok_html = "".join(
+                            '<li class="notif-resultado-ok-item">'
+                            f'<div><span class="notif-mais-info-id">Mídia: {_esc_notif(_it.get("id") or "—")}</span></div>'
+                            f'<div><strong>Anúncio:</strong> {_esc_notif(_it.get("ad_id") or "—")}</div>'
+                            f'<div><strong>Extraído:</strong> {_esc_notif(_it.get("titulo") or "OCR estruturado salvo")}</div>'
+                            f'<div class="notif-erro-ocr-url"><strong>Imagem:</strong> {_esc_notif(_it.get("url_cdn") or "—")}</div>'
+                            f'<div><strong>Concluído em:</strong> {_esc_notif(_it.get("concluido_em") or "—")}</div>'
+                            '</li>'
+                            for _it in _ocr_ok_detalhados_ativ
+                        )
+                        _nota_ocr_ok_html = (
+                            f'<div class="notif-mais-info-nota">mostrando {len(_ocr_ok_detalhados_ativ)} de {_total_ocr_ok_detalhados_ativ} OCRs concluídos</div>'
+                            if _total_ocr_ok_detalhados_ativ > len(_ocr_ok_detalhados_ativ) else ""
+                        )
+                        _secoes_resultado_html.append(
+                            '<div class="notif-resultado-titulo notif-resultado-ok">'
+                            f'OCR concluído ({_total_ocr_ok_detalhados_ativ})</div>'
+                            f'<ul class="notif-mais-info-list">{_itens_ocr_ok_html}</ul>{_nota_ocr_ok_html}'
+                        )
+
                     if _anuncios_ok_ativ:
                         _itens_ok_html = "".join(
                             '<li class="notif-resultado-ok-item">'
@@ -49433,6 +49588,7 @@ html, body { background: transparent; overflow: hidden; }
                                 len(_anuncios_ok_ativ)
                                 + len(_anuncios_erro_ativ)
                                 + len(_erros_ocr_ativ)
+                                + len(_ocr_ok_detalhados_ativ)
                             ),
                         )
 

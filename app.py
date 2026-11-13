@@ -13574,7 +13574,7 @@ def _ultima_execucao_acao(user_id: str, tipo_acao: str):
     try:
         res = (
             supabase.table("atividades")
-            .select("criado_em,status")
+            .select("criado_em,status,detalhes")
             .eq("user_id", user_id)
             .eq("tipo", tipo_acao)
             .order("criado_em", desc=True)
@@ -16575,6 +16575,133 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
     )
     return _cache_novo, _total_trocas
 
+
+def _encontrar_imagens_gads_pendentes_v257(gads_cache: dict) -> dict:
+    """Seleciona pelo relógio da imagem, sem deixar `videos` esconder `images`."""
+    _out = {}
+    for _empresa, _entry in (gads_cache or {}).items():
+        _ads = []
+        for _ad in ((_entry or {}).get("data") or []):
+            _urls = list((_ad or {}).get("images") or []) + list(
+                (_ad or {}).get("carousel_images") or []
+            )
+            if any(
+                str(_u or "").startswith(("http://", "https://", "data:"))
+                and not (R2_PUBLIC_BASE and str(_u).startswith(R2_PUBLIC_BASE))
+                for _u in _urls
+            ):
+                _ads.append(_ad)
+        if _ads:
+            _out[_empresa] = {**(_entry or {}), "data": _ads}
+    return _out
+
+
+def _forcar_armazenamento_imagens_gads_v257(
+    user_id: str, gads_cache: dict, atividade_id: str = None
+) -> tuple[dict, dict]:
+    """Restaura o salvamento forçado, restrito às imagens com relógio.
+
+    Usa o pipeline consolidado de mídia, que já aplica deduplicação, cota,
+    limite de tentativas e registro de falhas. Vídeos e demais campos do
+    anúncio não são tocados.
+    """
+    _cache = copy.deepcopy(gads_cache or {})
+    _pendentes = _encontrar_imagens_gads_pendentes_v257(_cache)
+    _total = sum(
+        1
+        for _entry in _pendentes.values()
+        for _ad in (_entry.get("data") or [])
+        for _campo in ("images", "carousel_images")
+        for _u in (_ad.get(_campo) or [])
+        if str(_u or "").startswith(("http://", "https://", "data:"))
+        and not (R2_PUBLIC_BASE and str(_u).startswith(R2_PUBLIC_BASE))
+    )
+    _feitas = 0
+    _salvas = 0
+    _falhas = 0
+    _empresas_salvas = []
+    _memo_url = {}
+
+    for _empresa, _entry in _pendentes.items():
+        _mudou_empresa = False
+        for _ad in (_entry.get("data") or []):
+            _ad_id = str(_ad.get("id") or "")
+            _referer = str(_ad.get("snapshot_url") or _ad.get("creative_url") or "")
+            for _campo in ("images", "carousel_images"):
+                _urls = list(_ad.get(_campo) or [])
+                for _idx, _url in enumerate(_urls):
+                    _url = str(_url or "")
+                    if not _url or (R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE)):
+                        continue
+                    if not _url.startswith(("http://", "https://", "data:")):
+                        continue
+                    _feitas += 1
+                    _nova = _memo_url.get(_url)
+                    if _nova is None:
+                        if _url.startswith("data:"):
+                            # A reconciliação V256 já tentou ligar data URI a
+                            # uma mídia existente. O pipeline normal aceita URL
+                            # HTTP; não envia base64 cru por acidente.
+                            _nova = _url
+                        else:
+                            _nova = baixar_e_persistir_midia(
+                                _url, user_id, str(_empresa), "imagem",
+                                ad_id=_ad_id, referer_hint=_referer,
+                            )
+                        _memo_url[_url] = _nova
+                    if _nova and _nova != _url and (
+                        not R2_PUBLIC_BASE or str(_nova).startswith(R2_PUBLIC_BASE)
+                    ):
+                        _urls[_idx] = _nova
+                        _salvas += 1
+                        _mudou_empresa = True
+                    else:
+                        _falhas += 1
+                    if atividade_id and (_feitas % 5 == 0 or _feitas == _total):
+                        atualizar_atividade(atividade_id, "em_andamento", {
+                            "versao_forcamento": "V257",
+                            "etapa": "armazenando_imagens_pendentes",
+                            "etapa_atual": 3,
+                            "total_etapas": 3,
+                            "processadas": _feitas,
+                            "total_imagens": _total,
+                            "salvas": _salvas,
+                            "falhas": _falhas,
+                            "empresa_atual": _empresa,
+                            "anuncio_atual": _ad_id,
+                            "aviso": (
+                                f"Salvando imagens com relógio: {_feitas} de {_total}. "
+                                f"{_salvas} salva(s); {_falhas} ainda pendente(s)."
+                            ),
+                            "ultimo_heartbeat_em": _agora_iso(),
+                        })
+                _ad[_campo] = _urls
+            _imgs = [str(_u or "") for _u in (_ad.get("images") or []) if _u]
+            if _imgs and R2_PUBLIC_BASE and all(_u.startswith(R2_PUBLIC_BASE) for _u in _imgs):
+                _ad.pop("images_b64", None)
+
+        if _mudou_empresa:
+            _ok, _erro = _salvar_checkpoint_gads_r2(user_id, _empresa, _cache[_empresa])
+            if _ok:
+                _empresas_salvas.append(str(_empresa))
+                iniciar_ocr_pendente_background(user_id, str(_empresa))
+            else:
+                _falhas += 1
+                print(
+                    f"[GADS-R2-V257] falha ao salvar checkpoint empresa={_empresa!r}: {_erro}",
+                    flush=True,
+                )
+
+    _stats = {
+        "total": _total,
+        "processadas": _feitas,
+        "salvas": _salvas,
+        "falhas": _falhas,
+        "empresas": _empresas_salvas,
+    }
+    print(f"[GADS-R2-V257] armazenamento forçado concluído stats={_stats}", flush=True)
+    return _cache, _stats
+
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
     estiver com link original. Devolve quantos anúncios foram
@@ -16638,59 +16765,59 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             )
             if _reconectadas_v256:
                 _fonte_verificacao = "r2_por_empresa_reconciliado"
-        pendentes = encontrar_ads_com_link_original(
-            gads_cache, incluir_foto_perfil=False
+        # V257: o relógio do card é definido por `images`. A regra histórica
+        # preferia `videos` quando os dois campos existiam e, por isso, 58
+        # anúncios eram classificados pelo vídeo enquanto a imagem HTTP nunca
+        # chegava ao armazenamento. A partir daqui a manutenção olha e salva
+        # explicitamente as imagens, sem alterar ou migrar os vídeos.
+        _pendentes_antes = _encontrar_imagens_gads_pendentes_v257(gads_cache)
+        _total_ads_antes = sum(len(e.get("data", [])) for e in _pendentes_antes.values())
+        print(
+            f"[GADS-R2-V257] imagens pendentes antes={_total_ads_antes} "
+            f"empresas={list(_pendentes_antes.keys())}",
+            flush=True,
         )
-        total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
-        print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
-        if pendentes:
-            _nomes_pendentes = list(pendentes.keys())
-            _amostra_bloqueada_v255 = []
-            for _empresa_v255, _entry_v255 in pendentes.items():
-                for _ad_v255 in (_entry_v255.get("data") or [])[:10]:
-                    _amostra_bloqueada_v255.append({
-                        "empresa": _empresa_v255,
-                        "id": _ad_v255.get("id"),
-                        "tem_base64": bool(_ad_v255.get("images_b64")),
-                        "images": len(_ad_v255.get("images") or []),
-                        "image_schemes": [
-                            "data" if str(_u or "").startswith("data:")
-                            else "http" if str(_u or "").startswith(("http://", "https://"))
-                            else "outro"
-                            for _u in (_ad_v255.get("images") or [])[:3]
-                        ],
-                        "videos": len(_ad_v255.get("videos") or []),
-                    })
-            if atividade_id:
-                atualizar_atividade(atividade_id, "erro", {
-                    "etapa": "reconciliacao_incompleta",
-                    "etapa_atual": 3,
-                    "total_etapas": 3,
-                    "empresas": _nomes_pendentes,
-                    "total_empresas": len(_nomes_pendentes),
-                    "total_anuncios": total_ads_pendentes,
-                    "fonte_verificacao": _fonte_verificacao,
-                    "amostra_diagnostico": _amostra_bloqueada_v255,
-                    "aviso": (
-                        f"Foram encontrados {total_ads_pendentes} anúncio(s) ainda com referência "
-                        f"original em {len(_nomes_pendentes)} empresa(s), mas a repetição automática "
-                        "foi bloqueada para evitar consumo. As mídias já existentes foram verificadas "
-                        "por URL, anúncio e hash do conteúdo."
-                    ),
-                    "motivo": "Migração automática repetida bloqueada pela proteção V256.",
-                    "ultimo_heartbeat_em": _agora_iso(),
-                })
-            print(
-                f"[GADS-R2-V256] bloqueada migração repetida de {total_ads_pendentes} "
-                f"anúncios; amostra={_amostra_bloqueada_v255}",
-                flush=True,
+        _stats_v257 = {"total": 0, "processadas": 0, "salvas": 0, "falhas": 0, "empresas": []}
+        if _pendentes_antes:
+            gads_cache, _stats_v257 = _forcar_armazenamento_imagens_gads_v257(
+                user_id, gads_cache, atividade_id=atividade_id
             )
-        elif atividade_id:
-            atualizar_atividade(atividade_id, "concluido", {
+        _pendentes_depois = _encontrar_imagens_gads_pendentes_v257(gads_cache)
+        _total_ads_depois = sum(len(e.get("data", [])) for e in _pendentes_depois.values())
+
+        if atividade_id:
+            _detalhes_finais_v257 = {
+                "versao_forcamento": "V257",
                 "fonte_verificacao": _fonte_verificacao,
-                "aviso": "Nenhum anúncio do Google Ads pendente de migração — tudo já está com link permanente.",
-            })
-        return total_ads_pendentes
+                "etapa": "armazenamento_finalizado",
+                "etapa_atual": 3,
+                "total_etapas": 3,
+                "anuncios_pendentes_antes": _total_ads_antes,
+                "anuncios_pendentes_depois": _total_ads_depois,
+                **_stats_v257,
+                "ultimo_heartbeat_em": _agora_iso(),
+            }
+            if _total_ads_depois:
+                _detalhes_finais_v257.update({
+                    "aviso": (
+                        f"{_stats_v257.get('salvas', 0)} imagem(ns) salva(s). "
+                        f"{_total_ads_depois} anúncio(s) ainda têm imagem pendente; "
+                        "as URLs com falha respeitarão o limite de tentativas."
+                    ),
+                    "motivo": "Algumas imagens ainda não puderam ser armazenadas.",
+                })
+                atualizar_atividade(atividade_id, "erro", _detalhes_finais_v257)
+            else:
+                _detalhes_finais_v257["aviso"] = (
+                    f"Armazenamento concluído: {_stats_v257.get('salvas', 0)} imagem(ns) "
+                    "salva(s) e nenhum relógio de imagem pendente. O OCR foi acionado."
+                )
+                atualizar_atividade(atividade_id, "concluido", _detalhes_finais_v257)
+        print(
+            f"[GADS-R2-V257] imagens pendentes depois={_total_ads_depois} stats={_stats_v257}",
+            flush=True,
+        )
+        return _total_ads_depois
     except Exception as e:
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google EXCEÇÃO: {e!r}", flush=True)
         if atividade_id:
@@ -16872,6 +16999,17 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
             _minutos_desde = _segundos_desde(_res_ultima.data[0]["criado_em"]) / 60
             if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS:
                 _status_ultima = str(_res_ultima.data[0].get("status") or "")
+                _detalhes_ultima = _res_ultima.data[0].get("detalhes") or {}
+                # Depois que a V257 já iniciou o armazenamento forçado, o
+                # intervalo de 15 minutos é obrigatório mesmo que ainda haja
+                # relógios. Isso impede F5/nova sessão de disparar novamente
+                # os mesmos downloads enquanto a tentativa anterior termina.
+                if _detalhes_ultima.get("versao_forcamento") == "V257":
+                    print(
+                        f"[GADS-R2-V257] throttle respeitado minutos={_minutos_desde:.1f}",
+                        flush=True,
+                    )
+                    return
                 # Uma verificação realmente ativa continua protegida contra
                 # duplicação. Uma verificação CONCLUÍDA, porém, não pode
                 # bloquear por 15 minutos se o cache canônico ainda contém

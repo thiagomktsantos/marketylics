@@ -850,6 +850,10 @@ def _get_gads_r2_memoria_v250() -> dict:
 
 _gads_r2_memoria_v250 = _get_gads_r2_memoria_v250()
 _GADS_R2_TTL_V250 = 180.0
+# V255: duas threads podiam errar o cache ao mesmo tempo e baixar os mesmos
+# checkpoints (~50 MB) em paralelo. A trava cobre apenas o primeiro
+# preenchimento; as leituras seguintes continuam saindo direto da memória.
+_gads_r2_primeiro_carregamento_v255 = threading.Lock()
 
 
 def _atualizar_gads_r2_memoria_v250(user_id: str, empresa: str, entry: dict) -> None:
@@ -948,7 +952,23 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
                 flush=True,
             )
             return _cache_mem
+    _gads_r2_primeiro_carregamento_v255.acquire()
     try:
+        # Outra thread pode ter preenchido a memória enquanto esta aguardava.
+        with _gads_r2_memoria_v250["lock"]:
+            _mem = _gads_r2_memoria_v250["usuarios"].get(_uid)
+            if (
+                _mem
+                and (time.monotonic() - float(_mem.get("quando") or 0)) < _GADS_R2_TTL_V250
+                and isinstance(_mem.get("cache"), dict)
+            ):
+                _cache_mem = copy.deepcopy(_mem["cache"])
+                print(
+                    f"[EGRESS-MONITOR-V255] fonte=MEMORIA_APOS_ESPERA operacao=carregar_gads "
+                    f"empresas={len(_cache_mem)} r2_download_duplicado_evitado=1",
+                    flush=True,
+                )
+                return _cache_mem
         _bytes_lidos = 0
         token = None
         while True:
@@ -983,6 +1003,8 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
     except Exception as exc:
         print(f"[GADS-OUTBOX-V194] falha ao listar: {exc!r}", flush=True)
         return pendentes
+    finally:
+        _gads_r2_primeiro_carregamento_v255.release()
 
 
 def _carregar_gads_cache_preferindo_r2_v249(user_id: str, operacao: str = "gads") -> dict:
@@ -16245,7 +16267,9 @@ def encontrar_ads_com_link_original(
     return pendentes
 
 
-def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -> tuple[dict, int]:
+def _reconectar_gads_r2_com_midias_salvas_v255(
+    user_id: str, gads_cache: dict, atividade_id: str = None
+) -> tuple[dict, int]:
     """Troca referências originais do cache canônico pelas URLs já salvas.
 
     Algumas execuções antigas concluíram o upload e criaram corretamente a
@@ -16253,9 +16277,10 @@ def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -
     a URL do Google. O card então usava o base64 como fallback, mostrava o
     relógio e não encontrava o OCR, que é indexado por ``url_cdn``.
 
-    Esta reconciliação é leve: não baixa criativo, não executa OCR e não envia
-    arquivo novamente. Apenas usa ``url_origem -> url_cdn`` já registrado e
-    salva de volta somente as empresas que realmente mudaram.
+    A V255 primeiro tenta URL, anúncio e base64. Se o cache não possui mais o
+    base64, baixa somente a imagem original pendente, calcula o SHA-256 e a
+    associa à mídia já registrada. Não envia arquivo, não comprime e não roda
+    OCR novamente.
     """
     if not gads_cache:
         return gads_cache or {}, 0
@@ -16268,12 +16293,12 @@ def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -
                 .eq("user_id", user_id)
                 .execute()
             ),
-            operacao="reconectar_gads_r2_v254",
+            operacao="reconectar_gads_r2_v255",
             tentativas=3,
         )
         _linhas = _res_midias.data or []
     except Exception as _exc:
-        print(f"[GADS-R2-V254] índice de mídias indisponível: {_exc!r}", flush=True)
+        print(f"[GADS-R2-V255] índice de mídias indisponível: {_exc!r}", flush=True)
         return gads_cache, 0
 
     def _chave_url(_url: str) -> str:
@@ -16311,6 +16336,106 @@ def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -
             _por_origem.setdefault(("", "", _tipo, _chave_url(_origem)), _cdn)
         if _empresa and _ad_id:
             _por_ad_tipo.setdefault((_empresa, _ad_id, _tipo), set()).add(_cdn)
+
+    _downloads_v255 = 0
+    _falhas_download_v255 = 0
+    _matches_hash_v255 = 0
+    _resultado_url_v255 = {}
+    _urls_candidatas_v255 = {
+        str(_url)
+        for _entry in (gads_cache or {}).values()
+        for _ad in ((_entry or {}).get("data") or [])
+        for _url in ((_ad or {}).get("images") or [])
+        if str(_url or "").startswith(("http://", "https://"))
+        and not (R2_PUBLIC_BASE and str(_url).startswith(R2_PUBLIC_BASE))
+    }
+    _total_urls_v255 = len(_urls_candidatas_v255)
+    _verificadas_v255 = 0
+
+    def _heartbeat_v255(_ad_id: str, _resultado: str) -> None:
+        nonlocal _verificadas_v255
+        _verificadas_v255 += 1
+        if not atividade_id:
+            return
+        if _verificadas_v255 % 5 and _verificadas_v255 < _total_urls_v255:
+            return
+        try:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "etapa": "reconectando_por_hash",
+                "etapa_atual": 2,
+                "total_etapas": 3,
+                "verificados": _verificadas_v255,
+                "total_verificar": _total_urls_v255,
+                "reconectados": _matches_hash_v255,
+                "falhas_download": _falhas_download_v255,
+                "anuncio_atual": _ad_id,
+                "resultado_atual": _resultado,
+                "aviso": (
+                    f"Conferindo imagens já salvas: {_verificadas_v255} de "
+                    f"{_total_urls_v255}. {_matches_hash_v255} reconectada(s)."
+                ),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+        except Exception:
+            pass
+
+    def _cdn_por_hash_da_url_v255(_url: str, _ad_id: str, _referer: str = "") -> str:
+        """Baixa só os bytes necessários ao vínculo; nunca persiste/upload."""
+        nonlocal _downloads_v255, _falhas_download_v255, _matches_hash_v255
+        _url = str(_url or "").strip()
+        if _url in _resultado_url_v255:
+            return _resultado_url_v255[_url]
+        if not _url.startswith(("http://", "https://")):
+            return ""
+        if R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE):
+            return ""
+        _ua = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+        _headers_lista = [
+            {},
+            {"User-Agent": _ua},
+            {"User-Agent": _ua, "Referer": "https://adstransparency.google.com/"},
+        ]
+        if _referer:
+            _headers_lista.append({"User-Agent": _ua, "Referer": _referer})
+        for _headers in _headers_lista:
+            try:
+                with _recurso_api_io():
+                    _resp = _http_get(_url, timeout=15, headers=_headers)
+                _ct = str(_resp.headers.get("content-type") or "").lower()
+                if _resp.status_code != 200 or not _resp.content or not _ct.startswith("image/"):
+                    continue
+                # Proteção contra respostas indevidas ou imagens gigantes.
+                if len(_resp.content) > 20 * 1024 * 1024:
+                    break
+                _downloads_v255 += 1
+                _hash = hashlib.sha256(_resp.content).hexdigest().lower()
+                _cdn = _por_hash.get(_hash, "")
+                if _cdn:
+                    _matches_hash_v255 += 1
+                    print(
+                        f"[GADS-R2-V255] hash localizado ad={_ad_id!r} bytes={len(_resp.content)}",
+                        flush=True,
+                    )
+                    _resultado_url_v255[_url] = _cdn
+                    _heartbeat_v255(_ad_id, "reconectada")
+                    return _cdn
+                print(
+                    f"[GADS-R2-V255] hash sem registro ad={_ad_id!r} hash={_hash[:12]}",
+                    flush=True,
+                )
+                _resultado_url_v255[_url] = ""
+                _heartbeat_v255(_ad_id, "hash_nao_encontrado")
+                return ""
+            except Exception as _exc_download:
+                continue
+        _falhas_download_v255 += 1
+        _resultado_url_v255[_url] = ""
+        _heartbeat_v255(_ad_id, "download_falhou")
+        print(f"[GADS-R2-V255] download seletivo falhou ad={_ad_id!r}", flush=True)
+        return ""
 
     _cache_novo = copy.deepcopy(gads_cache)
     _total_trocas = 0
@@ -16364,6 +16489,12 @@ def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -
                         _cdn = next(iter(_cdns_ad))
                     if not _cdn and _tipo == "imagem" and len(_cdns_por_base64) == 1:
                         _cdn = next(iter(_cdns_por_base64))
+                    if not _cdn and _tipo == "imagem":
+                        _cdn = _cdn_por_hash_da_url_v255(
+                            str(_url),
+                            _ad_id,
+                            str(_ad.get("snapshot_url") or _ad.get("creative_url") or ""),
+                        )
                     if _cdn:
                         _urls[_idx] = _cdn
                         _trocas_empresa += 1
@@ -16385,14 +16516,15 @@ def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -
                 # sucesso apenas na cópia temporária em memória.
                 _cache_novo[_empresa] = copy.deepcopy(gads_cache.get(_empresa) or {})
                 print(
-                    f"[GADS-R2-V254] falha ao salvar reconciliação "
+                    f"[GADS-R2-V255] falha ao salvar reconciliação "
                     f"empresa={_empresa!r}: {_erro}",
                     flush=True,
                 )
 
     print(
-        f"[GADS-R2-V254] reconciliação concluída trocas={_total_trocas} "
-        f"empresas={_empresas_alteradas}",
+        f"[GADS-R2-V255] reconciliação concluída trocas={_total_trocas} "
+        f"empresas={_empresas_alteradas} downloads={_downloads_v255} "
+        f"matches_hash={_matches_hash_v255} falhas_download={_falhas_download_v255}",
         flush=True,
     )
     return _cache_novo, _total_trocas
@@ -16450,15 +16582,15 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
             _fonte_verificacao = "gads_cache_legado"
-        # V254: antes de declarar a imagem pendente e baixá-la outra vez,
+        # V255: antes de declarar a imagem pendente e migrá-la outra vez,
         # reconecta o cache às mídias que já existem na biblioteca. Isso
         # corrige o relógio e permite que o renderer encontre o OCR pela
         # url_cdn sem repetir download, compressão ou processamento.
         if _fonte_verificacao == "r2_por_empresa":
-            gads_cache, _reconectadas_v254 = _reconectar_gads_r2_com_midias_salvas_v254(
-                user_id, gads_cache
+            gads_cache, _reconectadas_v255 = _reconectar_gads_r2_com_midias_salvas_v255(
+                user_id, gads_cache, atividade_id=atividade_id
             )
-            if _reconectadas_v254:
+            if _reconectadas_v255:
                 _fonte_verificacao = "r2_por_empresa_reconciliado"
         pendentes = encontrar_ads_com_link_original(
             gads_cache, incluir_foto_perfil=False
@@ -16467,14 +16599,14 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
         if pendentes:
             _nomes_pendentes = list(pendentes.keys())
-            _amostra_bloqueada_v254 = []
-            for _empresa_v254, _entry_v254 in pendentes.items():
-                for _ad_v254 in (_entry_v254.get("data") or [])[:10]:
-                    _amostra_bloqueada_v254.append({
-                        "empresa": _empresa_v254,
-                        "id": _ad_v254.get("id"),
-                        "tem_base64": bool(_ad_v254.get("images_b64")),
-                        "images": len(_ad_v254.get("images") or []),
+            _amostra_bloqueada_v255 = []
+            for _empresa_v255, _entry_v255 in pendentes.items():
+                for _ad_v255 in (_entry_v255.get("data") or [])[:10]:
+                    _amostra_bloqueada_v255.append({
+                        "empresa": _empresa_v255,
+                        "id": _ad_v255.get("id"),
+                        "tem_base64": bool(_ad_v255.get("images_b64")),
+                        "images": len(_ad_v255.get("images") or []),
                     })
             if atividade_id:
                 atualizar_atividade(atividade_id, "erro", {
@@ -16485,19 +16617,19 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                     "total_empresas": len(_nomes_pendentes),
                     "total_anuncios": total_ads_pendentes,
                     "fonte_verificacao": _fonte_verificacao,
-                    "amostra_diagnostico": _amostra_bloqueada_v254,
+                    "amostra_diagnostico": _amostra_bloqueada_v255,
                     "aviso": (
                         f"Foram encontrados {total_ads_pendentes} anúncio(s) ainda com referência "
                         f"original em {len(_nomes_pendentes)} empresa(s), mas a repetição automática "
                         "foi bloqueada para evitar consumo. As mídias já existentes foram verificadas "
                         "por URL, anúncio e hash do conteúdo."
                     ),
-                    "motivo": "Migração automática repetida bloqueada pela proteção V254.",
+                    "motivo": "Migração automática repetida bloqueada pela proteção V255.",
                     "ultimo_heartbeat_em": _agora_iso(),
                 })
             print(
-                f"[GADS-R2-V254] bloqueada migração repetida de {total_ads_pendentes} "
-                f"anúncios; amostra={_amostra_bloqueada_v254}",
+                f"[GADS-R2-V255] bloqueada migração repetida de {total_ads_pendentes} "
+                f"anúncios; amostra={_amostra_bloqueada_v255}",
                 flush=True,
             )
         elif atividade_id:

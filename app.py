@@ -1218,6 +1218,43 @@ def _ler_manifesto_gads_json_v261(user_id: str) -> tuple[dict | None, str]:
         return None, str(_exc)
 
 
+def _cache_minimo_do_manifesto_v265(_manifesto: dict) -> dict:
+    """Reconstrói só o necessário para recalcular o manifesto sem baixar
+    novamente todos os checkpoints pesados do R2."""
+    _cache = {}
+    for _empresa_doc in ((_manifesto or {}).get("empresas") or []):
+        _nome = str((_empresa_doc or {}).get("nome") or "")
+        if not _nome:
+            continue
+        _ads = []
+        for _ad in ((_empresa_doc or {}).get("anuncios") or []):
+            _ads.append({
+                "id": str((_ad or {}).get("id") or ""),
+                "ativo": bool((_ad or {}).get("ativo", True)),
+                "formato": str((_ad or {}).get("formato") or ""),
+                "snapshot_url": str((_ad or {}).get("url_criativo") or ""),
+                "images": [
+                    str((_img or {}).get("url") or "")
+                    for _img in ((_ad or {}).get("imagens") or [])
+                    if (_img or {}).get("url")
+                ],
+                "videos": [
+                    str((_video or {}).get("url") or "")
+                    for _video in ((_ad or {}).get("videos") or [])
+                    if (_video or {}).get("url")
+                ],
+            })
+        _cache[_nome] = {
+            "query": str((_empresa_doc or {}).get("pagina") or ""),
+            "ts": str((_empresa_doc or {}).get("coletado_em") or ""),
+            "_checkpoint_finalizado": bool(
+                (_empresa_doc or {}).get("checkpoint_finalizado", True)
+            ),
+            "data": _ads,
+        }
+    return _cache
+
+
 def _salvar_manifesto_gads_json_v261(
     user_id: str, gads_cache: dict = None, motivo: str = "reconciliacao"
 ) -> tuple[bool, dict]:
@@ -1240,22 +1277,36 @@ def _salvar_manifesto_gads_json_v261(
                         _urls_r2.add(_url)
 
     _midias_por_url = {}
-    _lista_urls = sorted(_urls_r2)
-    for _i in range(0, len(_lista_urls), 150):
+    # V265: lê as imagens do usuário por páginas. O filtro `.in_()` com até
+    # 150 URLs R2 gerava uma query extensa demais no PostgREST; blocos da
+    # BuyTicket Brasil falhavam inteiros e o manifesto mostrava 0 OCR mesmo
+    # com o conteúdo estruturado já visível nos cards.
+    _pagina_midias = 0
+    _tam_pagina_midias = 1000
+    while True:
         try:
             _res = (
                 supabase.table("midias")
                 .select("id,url_cdn,ocr_texto,ocr_estruturado")
                 .eq("user_id", user_id)
                 .eq("tipo", "imagem")
-                .in_("url_cdn", _lista_urls[_i:_i + 150])
+                .range(
+                    _pagina_midias * _tam_pagina_midias,
+                    ((_pagina_midias + 1) * _tam_pagina_midias) - 1,
+                )
                 .execute()
             )
-            for _row in (_res.data or []):
-                if _row.get("url_cdn"):
-                    _midias_por_url[str(_row["url_cdn"])] = _row
+            _rows_pagina = _res.data or []
+            for _row in _rows_pagina:
+                _url_row = str(_row.get("url_cdn") or "")
+                if _url_row and _url_row in _urls_r2:
+                    _midias_por_url[_url_row] = _row
+            if len(_rows_pagina) < _tam_pagina_midias:
+                break
+            _pagina_midias += 1
         except Exception as _exc_midias:
             print(f"[GADS-MANIFEST-V261] falha lendo OCR: {_exc_midias!r}", flush=True)
+            break
 
     _resumo = {
         "empresas": 0, "anuncios": 0, "midia_salva": 0,
@@ -1305,11 +1356,13 @@ def _salvar_manifesto_gads_json_v261(
                 _ocr_ok_por_imagem = []
                 for _url_r2 in _imgs_r2:
                     _row = _midias_por_url.get(_url_r2) or {}
-                    _txt_ok = bool(str(_row.get("ocr_texto") or "").strip())
                     _estr_ok = _ocr_estruturado_tem_conteudo(
                         _ocr_regression_parse_dict(_row.get("ocr_estruturado"))
                     )
-                    _ocr_ok_por_imagem.append(bool(_txt_ok and _estr_ok))
+                    # O JSON estruturado é a fonte real usada pelo card. O
+                    # campo achatado pode estar vazio em registros antigos
+                    # sem significar que o OCR não foi realizado.
+                    _ocr_ok_por_imagem.append(bool(_estr_ok))
                 _ocr_ok = bool(_ocr_ok_por_imagem) and all(_ocr_ok_por_imagem)
                 _status_ocr = "concluido" if _ocr_ok else "pendente"
                 _resumo["ocr_concluido" if _ocr_ok else "ocr_pendente"] += 1
@@ -11483,13 +11536,13 @@ def _garantir_registros_midias_para_imagens_r2_v263(
         return []
 
     _existentes = []
-    for _i in range(0, len(_urls), 150):
+    for _i in range(0, len(_urls), 25):
         _res = (
             supabase.table("midias")
             .select("id,empresa,url_cdn,url_origem,ocr_texto,ocr_estruturado")
             .eq("user_id", user_id)
             .eq("tipo", "imagem")
-            .in_("url_cdn", _urls[_i:_i + 150])
+            .in_("url_cdn", _urls[_i:_i + 25])
             .execute()
         )
         _existentes.extend(_res.data or [])
@@ -11595,8 +11648,8 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
     _ids_linhas = {str(_r.get("id") or "") for _r in _linhas if _r.get("id")}
     _limite = max(1, int(limite or 5000))
     # Blocos curtos evitam URL de consulta grande no PostgREST.
-    for _i in range(0, min(len(_urls), _limite), 150):
-        _bloco = _urls[_i:_i + 150]
+    for _i in range(0, min(len(_urls), _limite), 25):
+        _bloco = _urls[_i:_i + 25]
         _res = (
             supabase.table("midias")
             .select("id, empresa, url_cdn, url_origem, ocr_texto, ocr_estruturado")
@@ -11616,11 +11669,12 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
         _id = str(_r.get("id") or "")
         if not _id or _id in _vistos:
             continue
-        _tem_texto = bool(str(_r.get("ocr_texto") or "").strip())
         _tem_estruturado = _ocr_estruturado_tem_conteudo(
             _ocr_regression_parse_dict(_r.get("ocr_estruturado"))
         )
-        if not (_tem_texto and _tem_estruturado):
+        # Se o estruturado existe e tem conteúdo, o OCR está concluído. Não
+        # reprocessa uma imagem apenas porque o espelho `ocr_texto` está vazio.
+        if not _tem_estruturado:
             _vistos.add(_id)
             _pendentes.append(_r)
     print(
@@ -12821,15 +12875,15 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
     função sai sem criar atividade nenhuma."""
     if not user_id or not empresa:
         print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU CEDO: user_id={user_id!r} empresa={empresa!r}", flush=True)
-        return
+        return {"ok": False, "motivo": "usuario_ou_empresa_ausente"}
     if not _job_try_acquire("ocr_gads", user_id, empresa):
         print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: job central já ativo pra ({user_id!r}, {empresa!r})", flush=True)
-        return
+        return {"ok": True, "motivo": "job_ja_ativo", "empresa": empresa}
     with _lock_ocr_pendente:
         if (user_id, empresa) in _ocr_empresas_ativas_agora:
             _job_release("ocr_gads", user_id, empresa)
             print(f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: já tem fila ativa pra ({user_id!r}, {empresa!r})", flush=True)
-            return
+            return {"ok": True, "motivo": "fila_ja_ativa", "empresa": empresa}
         _ocr_empresas_ativas_agora.add((user_id, empresa))
     total = _contar_ocr_pendentes(user_id, empresa)
     if not total:
@@ -12837,7 +12891,7 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard((user_id, empresa))
         _job_release("ocr_gads", user_id, empresa)
-        return
+        return {"ok": False, "motivo": "nenhum_ocr_pendente", "empresa": empresa}
     print(f"[OCR-DEBUG] iniciar_ocr_pendente_background VAI CRIAR/REAPROVEITAR ATIVIDADE: empresa={empresa!r} total={total}", flush=True)
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
     _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
@@ -12866,7 +12920,12 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
                 f"[OCR-DEBUG] liberou job central após atividade em erro empresa={empresa!r}; Refazer permanece disponível",
                 flush=True,
             )
-            return
+            return {
+                "ok": False,
+                "motivo": "atividade_anterior_em_erro",
+                "empresa": empresa,
+                "atividade_id": atividade_id,
+            }
 
         if _status_ocr_atual == "erro" and force:
             print(
@@ -12901,6 +12960,13 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
         flush=True,
     )
     _garantir_worker_ocr_global()
+    return {
+        "ok": True,
+        "motivo": "ocr_enfileirado",
+        "empresa": empresa,
+        "atividade_id": atividade_id,
+        "total": total,
+    }
 
 
 # ---------------------------------------------------
@@ -17557,19 +17623,45 @@ def _reconciliar_manifesto_gads_pos_login_v261(
 
         # Só depois da mídia reconciliada procura OCR ausente pelas URLs R2.
         _empresas_ocr = _empresas_com_ocr_pendente(user_id)
+        _ocr_iniciados = []
+        _ocr_nao_iniciados = []
         for _empresa in _empresas_ocr:
-            iniciar_ocr_pendente_background(user_id, _empresa)
-        if _empresas_ocr:
-            _acoes.append(f"ocr_enfileirado:{len(_empresas_ocr)}")
+            # A reconciliação pós-login é uma ação explícita de recuperação.
+            # Se existe uma atividade antiga em erro, ela é reaberta e
+            # reutilizada em vez de a pendência ficar apenas no resumo.
+            _resultado_ocr = iniciar_ocr_pendente_background(
+                user_id, _empresa, force=True
+            ) or {"ok": False, "motivo": "sem_retorno"}
+            if _resultado_ocr.get("ok"):
+                _ocr_iniciados.append({
+                    "empresa": _empresa,
+                    "atividade_id": _resultado_ocr.get("atividade_id"),
+                    "motivo": _resultado_ocr.get("motivo"),
+                    "total": int(_resultado_ocr.get("total") or 0),
+                })
+            else:
+                _ocr_nao_iniciados.append({
+                    "empresa": _empresa,
+                    "atividade_id": _resultado_ocr.get("atividade_id"),
+                    "motivo": _resultado_ocr.get("motivo") or "não informado",
+                })
+        if _ocr_iniciados:
+            _acoes.append(f"ocr_enfileirado:{len(_ocr_iniciados)}")
+        if _ocr_nao_iniciados:
+            _acoes.append(f"ocr_nao_iniciado:{len(_ocr_nao_iniciados)}")
 
-        if _cache is not None or _manifesto_antigo is None:
-            _ok_manifesto, _manifesto_novo = _salvar_manifesto_gads_json_v261(
-                user_id, _cache or {}, motivo="reconciliacao_pos_login"
+        # Recalcula sempre os estados de OCR. Quando não foi necessário abrir
+        # os checkpoints, usa o próprio manifesto como índice leve. Isso evita
+        # manter por dias uma contagem antiga como "0 concluídos / 289
+        # pendentes" quando os cards já possuem OCR estruturado válido.
+        _cache_manifesto = _cache
+        if _cache_manifesto is None:
+            _cache_manifesto = _cache_minimo_do_manifesto_v265(
+                _manifesto_antigo or {}
             )
-        else:
-            # Manifesto existente e sem mídia pendente: a releitura já foi
-            # suficiente. O término do OCR atualizará o arquivo, se houver.
-            _ok_manifesto, _manifesto_novo = True, _manifesto_antigo
+        _ok_manifesto, _manifesto_novo = _salvar_manifesto_gads_json_v261(
+            user_id, _cache_manifesto or {}, motivo="reconciliacao_pos_login"
+        )
         _resumo = (_manifesto_novo.get("resumo") or {})
         _detalhes = {
             "etapa": "manifesto_reconciliado",
@@ -17582,6 +17674,8 @@ def _reconciliar_manifesto_gads_pos_login_v261(
             "ocr_concluidos": int(_resumo.get("ocr_concluido", 0) or 0),
             "ocr_pendentes": int(_resumo.get("ocr_pendente", 0) or 0),
             "empresas_ocr_enfileiradas": _empresas_ocr,
+            "atividades_ocr_iniciadas": _ocr_iniciados,
+            "ocr_nao_iniciados": _ocr_nao_iniciados,
             "empresas": [
                 str((_empresa or {}).get("nome") or "")
                 for _empresa in (_manifesto_novo.get("empresas") or [])
@@ -17591,14 +17685,23 @@ def _reconciliar_manifesto_gads_pos_login_v261(
         }
         _detalhes["total"] = len(_detalhes["por_empresa"])
         _detalhes["concluidas"] = _detalhes["total"]
-        if _ok_manifesto:
+        if _ok_manifesto and not _ocr_nao_iniciados:
             _detalhes["aviso"] = (
                 f"Controle geral atualizado: {_detalhes['total_anuncios']} anúncio(s), "
                 f"{_detalhes['midias_pendentes']} mídia(s) pendente(s) e "
-                f"{_detalhes['ocr_pendentes']} OCR(s) pendente(s)."
+                f"{_detalhes['ocr_pendentes']} OCR(s) pendente(s). "
+                f"{len(_ocr_iniciados)} atividade(s) de OCR iniciada(s)."
             )
             if atividade_id:
                 atualizar_atividade(atividade_id, "concluido", _detalhes)
+        elif _ok_manifesto and _ocr_nao_iniciados:
+            _detalhes["motivo"] = (
+                f"Foram encontrados OCRs pendentes, mas {len(_ocr_nao_iniciados)} "
+                "empresa(s) não tiveram a atividade iniciada."
+            )
+            _detalhes["aviso"] = _detalhes["motivo"]
+            if atividade_id:
+                atualizar_atividade(atividade_id, "erro", _detalhes)
         else:
             _detalhes["motivo"] = str(_manifesto_novo.get("erro") or "Falha ao salvar o manifesto.")
             if atividade_id:

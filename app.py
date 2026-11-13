@@ -16245,7 +16245,7 @@ def encontrar_ads_com_link_original(
     return pendentes
 
 
-def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -> tuple[dict, int]:
+def _reconectar_gads_r2_com_midias_salvas_v254(user_id: str, gads_cache: dict) -> tuple[dict, int]:
     """Troca referências originais do cache canônico pelas URLs já salvas.
 
     Algumas execuções antigas concluíram o upload e criaram corretamente a
@@ -16264,16 +16264,16 @@ def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -
         _res_midias = _supabase_resiliente(
             lambda: (
                 supabase.table("midias")
-                .select("empresa,ad_id,tipo,url_origem,url_cdn")
+                .select("empresa,ad_id,tipo,url_origem,url_cdn,hash_conteudo")
                 .eq("user_id", user_id)
                 .execute()
             ),
-            operacao="reconectar_gads_r2_v253",
+            operacao="reconectar_gads_r2_v254",
             tentativas=3,
         )
         _linhas = _res_midias.data or []
     except Exception as _exc:
-        print(f"[GADS-R2-V253] índice de mídias indisponível: {_exc!r}", flush=True)
+        print(f"[GADS-R2-V254] índice de mídias indisponível: {_exc!r}", flush=True)
         return gads_cache, 0
 
     def _chave_url(_url: str) -> str:
@@ -16294,16 +16294,21 @@ def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -
 
     _por_origem = {}
     _por_ad_tipo = {}
+    _por_hash = {}
     for _m in _linhas:
         _origem = str(_m.get("url_origem") or "").strip()
         _cdn = str(_m.get("url_cdn") or "").strip()
-        if not _origem or not _cdn or _origem == _cdn:
+        if not _cdn:
             continue
         _empresa = str(_m.get("empresa") or "")
         _ad_id = str(_m.get("ad_id") or "")
         _tipo = str(_m.get("tipo") or "imagem")
-        _por_origem[(_empresa, _ad_id, _tipo, _chave_url(_origem))] = _cdn
-        _por_origem.setdefault(("", "", _tipo, _chave_url(_origem)), _cdn)
+        _hash = str(_m.get("hash_conteudo") or "").strip().lower()
+        if _hash:
+            _por_hash[_hash] = _cdn
+        if _origem and _origem != _cdn:
+            _por_origem[(_empresa, _ad_id, _tipo, _chave_url(_origem))] = _cdn
+            _por_origem.setdefault(("", "", _tipo, _chave_url(_origem)), _cdn)
         if _empresa and _ad_id:
             _por_ad_tipo.setdefault((_empresa, _ad_id, _tipo), set()).add(_cdn)
 
@@ -16317,6 +16322,26 @@ def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -
             if not isinstance(_ad, dict):
                 continue
             _ad_id = str(_ad.get("id") or "")
+            # V254: quando o upload foi deduplicado por conteúdo, a linha de
+            # `midias` pode pertencer a outro anúncio/URL. Nesse caso o vínculo
+            # por origem da V253 não existe, mas o base64 provisório contém os
+            # mesmos bytes usados para calcular `hash_conteudo` no upload.
+            # Reconhece localmente, sem rede e sem novo processamento.
+            _cdns_por_base64 = set()
+            for _b64_item in (_ad.get("images_b64") or []):
+                _b64_txt = str(_b64_item or "")
+                if not _b64_txt.startswith("data:") or ";base64," not in _b64_txt:
+                    continue
+                try:
+                    import base64 as _base64_v254
+                    _payload_v254 = _b64_txt.split(";base64,", 1)[1]
+                    _bytes_v254 = _base64_v254.b64decode(_payload_v254, validate=False)
+                    _hash_v254 = hashlib.sha256(_bytes_v254).hexdigest().lower()
+                    _cdn_hash_v254 = _por_hash.get(_hash_v254)
+                    if _cdn_hash_v254:
+                        _cdns_por_base64.add(_cdn_hash_v254)
+                except Exception:
+                    continue
             for _campo, _tipo in (
                 ("images", "imagem"),
                 ("carousel_images", "imagem"),
@@ -16337,6 +16362,8 @@ def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -
                     # existe exatamente uma mídia permanente daquele tipo.
                     if not _cdn and len(_cdns_ad) == 1:
                         _cdn = next(iter(_cdns_ad))
+                    if not _cdn and _tipo == "imagem" and len(_cdns_por_base64) == 1:
+                        _cdn = next(iter(_cdns_por_base64))
                     if _cdn:
                         _urls[_idx] = _cdn
                         _trocas_empresa += 1
@@ -16358,13 +16385,13 @@ def _reconectar_gads_r2_com_midias_salvas_v253(user_id: str, gads_cache: dict) -
                 # sucesso apenas na cópia temporária em memória.
                 _cache_novo[_empresa] = copy.deepcopy(gads_cache.get(_empresa) or {})
                 print(
-                    f"[GADS-R2-V253] falha ao salvar reconciliação "
+                    f"[GADS-R2-V254] falha ao salvar reconciliação "
                     f"empresa={_empresa!r}: {_erro}",
                     flush=True,
                 )
 
     print(
-        f"[GADS-R2-V253] reconciliação concluída trocas={_total_trocas} "
+        f"[GADS-R2-V254] reconciliação concluída trocas={_total_trocas} "
         f"empresas={_empresas_alteradas}",
         flush=True,
     )
@@ -16423,15 +16450,15 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
             _fonte_verificacao = "gads_cache_legado"
-        # V253: antes de declarar a imagem pendente e baixá-la outra vez,
+        # V254: antes de declarar a imagem pendente e baixá-la outra vez,
         # reconecta o cache às mídias que já existem na biblioteca. Isso
         # corrige o relógio e permite que o renderer encontre o OCR pela
         # url_cdn sem repetir download, compressão ou processamento.
         if _fonte_verificacao == "r2_por_empresa":
-            gads_cache, _reconectadas_v253 = _reconectar_gads_r2_com_midias_salvas_v253(
+            gads_cache, _reconectadas_v254 = _reconectar_gads_r2_com_midias_salvas_v254(
                 user_id, gads_cache
             )
-            if _reconectadas_v253:
+            if _reconectadas_v254:
                 _fonte_verificacao = "r2_por_empresa_reconciliado"
         pendentes = encontrar_ads_com_link_original(
             gads_cache, incluir_foto_perfil=False
@@ -16440,34 +16467,39 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes_google: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
         if pendentes:
             _nomes_pendentes = list(pendentes.keys())
+            _amostra_bloqueada_v254 = []
+            for _empresa_v254, _entry_v254 in pendentes.items():
+                for _ad_v254 in (_entry_v254.get("data") or [])[:10]:
+                    _amostra_bloqueada_v254.append({
+                        "empresa": _empresa_v254,
+                        "id": _ad_v254.get("id"),
+                        "tem_base64": bool(_ad_v254.get("images_b64")),
+                        "images": len(_ad_v254.get("images") or []),
+                    })
             if atividade_id:
-                atualizar_atividade(atividade_id, "em_andamento", {
-                    "etapa": "enfileirando_salvamento",
+                atualizar_atividade(atividade_id, "erro", {
+                    "etapa": "reconciliacao_incompleta",
                     "etapa_atual": 3,
                     "total_etapas": 3,
                     "empresas": _nomes_pendentes,
                     "total_empresas": len(_nomes_pendentes),
                     "total_anuncios": total_ads_pendentes,
                     "fonte_verificacao": _fonte_verificacao,
+                    "amostra_diagnostico": _amostra_bloqueada_v254,
                     "aviso": (
-                        f"Etapa 3 de 3: encontrados {total_ads_pendentes} anúncio(s) "
-                        f"com imagens ainda não salvas em {len(_nomes_pendentes)} empresa(s): "
-                        f"{', '.join(_nomes_pendentes)}. Preparando o salvamento permanente."
+                        f"Foram encontrados {total_ads_pendentes} anúncio(s) ainda com referência "
+                        f"original em {len(_nomes_pendentes)} empresa(s), mas a repetição automática "
+                        "foi bloqueada para evitar consumo. As mídias já existentes foram verificadas "
+                        "por URL, anúncio e hash do conteúdo."
                     ),
+                    "motivo": "Migração automática repetida bloqueada pela proteção V254.",
                     "ultimo_heartbeat_em": _agora_iso(),
                 })
-            iniciar_migracao_midia_background(user_id, pendentes, plataforma="Google Ads")
-            if atividade_id:
-                atualizar_atividade(atividade_id, "concluido", {
-                    "empresas": list(pendentes.keys()),
-                    "total_anuncios": total_ads_pendentes,
-                    "fonte_verificacao": _fonte_verificacao,
-                    "aviso": (
-                        f"{total_ads_pendentes} anúncio(s) em {len(pendentes)} empresa(s) "
-                        f"ainda com link original — enviados pra migração agora "
-                        f"(acompanhe abaixo)."
-                    ),
-                })
+            print(
+                f"[GADS-R2-V254] bloqueada migração repetida de {total_ads_pendentes} "
+                f"anúncios; amostra={_amostra_bloqueada_v254}",
+                flush=True,
+            )
         elif atividade_id:
             atualizar_atividade(atividade_id, "concluido", {
                 "fonte_verificacao": _fonte_verificacao,

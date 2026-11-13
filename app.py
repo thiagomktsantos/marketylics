@@ -1093,13 +1093,18 @@ def _salvar_inventario_geral_gads_xml_v259(
                     for _u in ((_ad.get("images") or []))
                     if str(_u or "").strip()
                 ]
+                _images_b64 = [
+                    str(_u or "").strip()
+                    for _u in ((_ad.get("images_b64") or []))
+                    if str(_u or "").strip()
+                ]
                 _carousel = [
                     str(_u or "").strip()
                     for _u in ((_ad.get("carousel_images") or []))
                     if str(_u or "").strip()
                 ]
                 _todas_imagens = []
-                for _u in _images + _carousel:
+                for _u in _images_b64 + _images + _carousel:
                     if _u not in _todas_imagens:
                         _todas_imagens.append(_u)
                 _salvas = [
@@ -1283,7 +1288,7 @@ def _salvar_manifesto_gads_json_v261(
     _urls_r2 = set()
     for _entry in (_cache or {}).values():
         for _ad in ((_entry or {}).get("data") or []):
-            for _campo in ("images", "carousel_images"):
+            for _campo in ("images_b64", "images", "carousel_images"):
                 for _url in ((_ad or {}).get(_campo) or []):
                     _url = str(_url or "").strip()
                     if R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE):
@@ -1342,10 +1347,15 @@ def _salvar_manifesto_gads_json_v261(
             if not isinstance(_ad, dict):
                 continue
             _imgs = []
-            for _campo in ("images", "carousel_images"):
+            # V271: capturas visuais do Google podem ser migradas para o R2
+            # no campo `images_b64`. Apesar do nome legado, depois do upload
+            # ele contém URL HTTP permanente e é a mesma imagem exibida pelo
+            # card. Ignorá-lo fazia o manifesto marcar "sem imagem" enquanto
+            # a interface mostrava mídia com check verde.
+            for _campo in ("images_b64", "images", "carousel_images"):
                 for _url in (_ad.get(_campo) or []):
                     _url = str(_url or "").strip()
-                    if _url and _url not in _imgs:
+                    if _url.startswith(("http://", "https://")) and _url not in _imgs:
                         _imgs.append(_url)
             _imgs_r2 = [
                 _u for _u in _imgs
@@ -11573,7 +11583,9 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
         for _ad in ((_entry or {}).get("data") or []):
             if _gads_ad_eh_video_v267(_ad):
                 continue
-            for _campo in ("images", "carousel_images"):
+            # V271: `images_b64` também pode conter a URL R2 definitiva da
+            # captura visual usada no card.
+            for _campo in ("images_b64", "images", "carousel_images"):
                 for _url in ((_ad or {}).get(_campo) or []):
                     _url = str(_url or "").strip()
                     if R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE):
@@ -17387,7 +17399,7 @@ def _forcar_armazenamento_imagens_gads_v257(
         1
         for _entry in _pendentes.values()
         for _ad in (_entry.get("data") or [])
-        for _campo in ("images", "carousel_images")
+        for _campo in ("images_b64", "images", "carousel_images")
         for _u in (_ad.get(_campo) or [])
         if str(_u or "").startswith(("http://", "https://", "data:"))
         and not (R2_PUBLIC_BASE and str(_u).startswith(R2_PUBLIC_BASE))
@@ -17403,7 +17415,7 @@ def _forcar_armazenamento_imagens_gads_v257(
         for _ad in (_entry.get("data") or []):
             _ad_id = str(_ad.get("id") or "")
             _referer = str(_ad.get("snapshot_url") or _ad.get("creative_url") or "")
-            for _campo in ("images", "carousel_images"):
+            for _campo in ("images_b64", "images", "carousel_images"):
                 _urls = list(_ad.get(_campo) or [])
                 for _idx, _url in enumerate(_urls):
                     _url = str(_url or "")
@@ -39174,8 +39186,31 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 # Mesmos 3 estados: NULL = ainda não processado (mostra
                 # "Extraindo texto…"), "" = processado sem achar texto
                 # com texto = pronto (mostra no lugar da copy).
+                def _url_imagem_ocr_card_v271(_ad):
+                    """URL permanente da imagem realmente exibida no card."""
+                    _candidatas = []
+                    for _campo_v271 in ("images_b64", "images", "carousel_images"):
+                        for _url_v271 in ((_ad or {}).get(_campo_v271) or []):
+                            _url_v271 = str(_url_v271 or "").strip()
+                            if (
+                                _url_v271.startswith(("http://", "https://"))
+                                and _url_v271 not in _candidatas
+                            ):
+                                _candidatas.append(_url_v271)
+                    # A URL R2 é a identidade usada em `midias.url_cdn`.
+                    _r2_v271 = next(
+                        (
+                            _u_v271 for _u_v271 in _candidatas
+                            if R2_PUBLIC_BASE and _u_v271.startswith(R2_PUBLIC_BASE)
+                        ),
+                        "",
+                    )
+                    return _r2_v271 or (_candidatas[0] if _candidatas else "")
+
                 _urls_img_cards = list({
-                    (ad.get("images") or [""])[0] for ad in gads_visiveis_v239 if (ad.get("images") or [""])[0]
+                    _url_imagem_ocr_card_v271(ad)
+                    for ad in gads_visiveis_v239
+                    if _url_imagem_ocr_card_v271(ad)
                 })
                 _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
                 _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
@@ -39897,7 +39932,10 @@ function imgFallback_{uid}(img){{
                     # GOOGLE ADS"). Deixa claro que é texto extraído
                     # automaticamente (pode ter erro de leitura), não a
                     # copy oficial do anúncio.
-                    _img_principal_ad = images[0] if images else ""
+                    # V271: usa a mesma imagem permanente exibida pelo card.
+                    # Capturas visuais antigas frequentemente têm `images`
+                    # vazio e a URL R2 somente em `images_b64`.
+                    _img_principal_ad = _url_imagem_ocr_card_v271(ad)
                     _ocr_estr_ad = _mapa_ocr_estruturado.get(_img_principal_ad) if _img_principal_ad else None
                     _ocr_txt_ad = _mapa_ocr.get(_img_principal_ad, "") if _img_principal_ad else ""
                     # V223: anúncio de Texto pode não ter imagem por definição.

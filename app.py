@@ -12448,6 +12448,13 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
         if (_item or {}).get("id")
     }
 
+    def _ids_anuncios_atualizados_v274() -> list:
+        return sorted({
+            str((_item or {}).get("ad_id") or "").strip()
+            for _item in _ocr_concluidos_detalhados
+            if str((_item or {}).get("ad_id") or "").strip()
+        })
+
     try:
         while True:
             try:
@@ -12534,8 +12541,11 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                             "pendentes": pendentes_agora, "ultimo_heartbeat_em": _agora_iso(),
                             "modo_execucao": "ocr_externo_incremental_v142", "tamanho_lote": _OCR_ISOLADO_TAMANHO_LOTE,
                             "ultimo_id_salvo": _mid,
+                            "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
                             "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
                             "ultimo_ocr_concluido": _ocr_concluidos_detalhados[-1],
+                            "anuncios_atualizados_ids": _ids_anuncios_atualizados_v274(),
+                            "total_anuncios_atualizados": len(_ids_anuncios_atualizados_v274()),
                         })
                 except Exception as _e_gravar:
                     _ids_falharam.append(_mid)
@@ -12581,6 +12591,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "erros_detalhados": _erros_detalhados[:20], "total_erros_detalhados": len(_erros_detalhados),
                     "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
                     "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
+                    "anuncios_atualizados_ids": _ids_anuncios_atualizados_v274(),
+                    "total_anuncios_atualizados": len(_ids_anuncios_atualizados_v274()),
                     "modo_execucao": "ocr_externo_incremental_v142",
                 })
             else:
@@ -12589,6 +12601,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                     "pendentes": _contar_ocr_pendentes(user_id, empresa),
                     "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
                     "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
+                    "anuncios_atualizados_ids": _ids_anuncios_atualizados_v274(),
+                    "total_anuncios_atualizados": len(_ids_anuncios_atualizados_v274()),
                     "modo_execucao": "ocr_externo_incremental_v142",
                 })
     except BaseException as e:
@@ -12599,6 +12613,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 "processadas": processadas, "total": max(total, processadas),
                 "ocr_concluidos_detalhados": _ocr_concluidos_detalhados,
                 "total_ocr_concluidos_detalhados": len(_ocr_concluidos_detalhados),
+                "anuncios_atualizados_ids": _ids_anuncios_atualizados_v274(),
+                "total_anuncios_atualizados": len(_ids_anuncios_atualizados_v274()),
                 "modo_execucao": "ocr_externo_incremental_v142",
             })
     finally:
@@ -13009,18 +13025,34 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
     atividade_id = _atividade_ocr_mais_recente_id(user_id, empresa)
     _det_ocr = _detalhes_atividade_ocr(atividade_id) if atividade_id else {}
 
+    _status_ocr_atual = ""
+    if atividade_id:
+        try:
+            _r_status_ocr = (
+                supabase.table("atividades").select("status")
+                .eq("id", atividade_id).limit(1).execute()
+            )
+            _status_ocr_atual = str(
+                ((_r_status_ocr.data or [{}])[0].get("status") or "")
+            )
+        except Exception:
+            _status_ocr_atual = ""
+
+    # V274: uma atividade concluída representa um lote fechado. Se surgir
+    # nova pendência, cria outro card começando em 0/N para que o progresso e
+    # a lista de IDs pertençam exatamente à execução atual. Só atividades
+    # ativas/na fila são retomadas; erro pode ser reaberto com force=True.
+    if _status_ocr_atual in ("concluido", "concluido_com_erro"):
+        atividade_id = None
+        _det_ocr = {}
+        _status_ocr_atual = ""
+
     # V80 — uma atividade que terminou em ERRO não pode voltar
     # automaticamente para "Na fila" a cada polling. Isso fazia o mesmo
     # card oscilar Na fila -> Processando -> Erro -> Na fila e repetia a
     # mesma mídia defeituosa indefinidamente. Depois de erro, só uma ação
     # explícita de Refazer (force=True) reabre a fila.
     if atividade_id and not force:
-        try:
-            _r_status_ocr = (supabase.table("atividades").select("status")
-                             .eq("id", atividade_id).limit(1).execute())
-            _status_ocr_atual = ((_r_status_ocr.data or [{}])[0].get("status") or "")
-        except Exception:
-            _status_ocr_atual = ""
         if _status_ocr_atual == "erro" and not force:
             print(
                 f"[OCR-DEBUG] iniciar_ocr_pendente_background SAIU: atividade em erro aguarda Refazer manual empresa={empresa!r}",
@@ -39993,6 +40025,7 @@ function imgFallback_{uid}(img){{
                     card_opacity = "1" if is_ativo else "0.72"
 
                     status_dot_html = '<div class="status-dot">Ativo</div>' if is_ativo else '<div class="status-dot-inactive">Inativo</div>'
+                    status_bar_class = "status-bar status-bar-active" if is_ativo else "status-bar status-bar-inactive"
                     baixo_vol_badge = '<span class="badge-small">Baixo volume</span>' if baixo_vol else ""
 
                     page_avatar_html = (
@@ -40275,7 +40308,7 @@ function imgFallback_{uid}(img){{
 
                     card_html = f"""
 <div class="card" style="opacity:{card_opacity}" id="card_{uid}">
-    <div class="status-bar">
+    <div class="{status_bar_class}">
         <div style="display:flex;align-items:center;gap:6px">{status_dot_html}{baixo_vol_badge}</div>
         <div style="display:flex;align-items:center;gap:6px">{'<span class="ad-id">ID: ' + ad_id_short + '</span>' if ad_id_short else ''}</div>
     </div>
@@ -40559,13 +40592,13 @@ body{{padding-bottom:4px;min-height:0;}}
 .stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
 .ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
-.status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;border-bottom:1px solid #f0f2f5;background:#fafbfc;flex-wrap:wrap;gap:4px;}}
-.status-dot{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1aab40;}}
-.status-dot::before{{content:'';width:7px;height:7px;border-radius:50%;background:#1aab40;flex-shrink:0;}}
-.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#6b7280;}}
-.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#d1d5db;flex-shrink:0;}}
-.ad-id{{font-size:9px;color:#8a8d91;font-family:monospace;}}
-.badge-small{{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
+.status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 7px;border-bottom:1px solid transparent;flex-wrap:wrap;gap:4px;}}
+.status-bar-active{{background:#79dc99;border-bottom-color:#65cf87;}}
+.status-bar-inactive{{background:#cbd5e1;border-bottom-color:#bac5d2;}}
+.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;}}
+.status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
+.ad-id{{font-size:9px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
+.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
 .meta-row{{display:flex;align-items:center;gap:5px;font-size:11px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
@@ -49453,11 +49486,26 @@ html, body { background: transparent; overflow: hidden; }
                 _total_ocr_ok_detalhados_ativ = _detalhes_dict_ativ.get(
                     "total_ocr_concluidos_detalhados", len(_ocr_ok_detalhados_ativ)
                 )
+                _ids_ads_ocr_ativ = list(
+                    _detalhes_dict_ativ.get("anuncios_atualizados_ids") or []
+                )
+                if not _ids_ads_ocr_ativ:
+                    _ids_ads_ocr_ativ = sorted({
+                        str((_it or {}).get("ad_id") or "").strip()
+                        for _it in _ocr_ok_detalhados_ativ
+                        if str((_it or {}).get("ad_id") or "").strip()
+                    })
+                _total_ids_ads_ocr_ativ = int(
+                    _detalhes_dict_ativ.get(
+                        "total_anuncios_atualizados", len(_ids_ads_ocr_ativ)
+                    ) or 0
+                )
                 _tem_mais_info_ativ = (
                     bool(_anuncios_erro_ativ)
                     or bool(_anuncios_ok_ativ)
                     or bool(_erros_ocr_ativ)
                     or bool(_ocr_ok_detalhados_ativ)
+                    or bool(_ids_ads_ocr_ativ)
                 )
 
                 _mais_info_html = ""
@@ -49466,6 +49514,18 @@ html, body { background: transparent; overflow: hidden; }
                         return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
                     _secoes_resultado_html = []
+                    if _ids_ads_ocr_ativ:
+                        _ids_ads_html_ativ = "".join(
+                            '<li class="notif-resultado-ok-item">'
+                            f'<span class="notif-mais-info-id">ID: {_esc_notif(_id_ad_ocr)}</span>'
+                            '</li>'
+                            for _id_ad_ocr in _ids_ads_ocr_ativ
+                        )
+                        _secoes_resultado_html.append(
+                            '<div class="notif-resultado-titulo notif-resultado-ok">'
+                            f'Anúncios atualizados ({_total_ids_ads_ocr_ativ})</div>'
+                            f'<ul class="notif-mais-info-list">{_ids_ads_html_ativ}</ul>'
+                        )
                     if _ocr_ok_detalhados_ativ:
                         _itens_ocr_ok_html = "".join(
                             '<li class="notif-resultado-ok-item">'

@@ -1039,6 +1039,153 @@ def _carregar_gads_cache_preferindo_r2_v249(user_id: str, operacao: str = "gads"
         print(f"[EGRESS-MONITOR-V249] operacao={operacao} falha={_exc!r}", flush=True)
         return {}
 
+
+def _salvar_inventario_geral_gads_xml_v259(
+    user_id: str, gads_cache: dict = None, motivo: str = "atualizacao"
+) -> tuple[bool, dict]:
+    """Grava no R2 um inventário XML de TODOS os anúncios do Google Ads.
+
+    O arquivo é independente da interface. Ele registra anúncios com mídia
+    salva, pendente e sem imagem, além de manter links de vídeo apenas como
+    referência. É refeito depois da coleta e depois de cada atualização de
+    armazenamento, sempre a partir do cache canônico completo.
+    """
+    _stats = {
+        "anuncios": 0,
+        "salvos": 0,
+        "pendentes": 0,
+        "sem_imagem": 0,
+        "empresas": 0,
+    }
+    if not user_id or not r2_client or not R2_BUCKET:
+        return False, {**_stats, "erro": "R2 não configurado"}
+    try:
+        import xml.etree.ElementTree as _ET_v259
+
+        _cache = gads_cache
+        if _cache is None:
+            _cache = _carregar_checkpoints_gads_r2(user_id) or {}
+        _agora = _agora_iso()
+        _root = _ET_v259.Element("inventario_google_ads", {
+            "versao": "259",
+            "user_id": str(user_id),
+            "gerado_em": _agora,
+            "motivo": str(motivo or "atualizacao"),
+        })
+
+        for _empresa in sorted((_cache or {}).keys(), key=lambda x: str(x).lower()):
+            _entry = (_cache or {}).get(_empresa) or {}
+            _empresa_el = _ET_v259.SubElement(_root, "empresa", {
+                "nome": str(_empresa),
+                "pagina": str(_entry.get("query") or ""),
+                "coletado_em": str(_entry.get("ts") or ""),
+                "checkpoint_finalizado": str(
+                    bool(_entry.get("_checkpoint_finalizado", True))
+                ).lower(),
+            })
+            _stats["empresas"] += 1
+
+            for _ad in ((_entry or {}).get("data") or []):
+                if not isinstance(_ad, dict):
+                    continue
+                _images = [
+                    str(_u or "").strip()
+                    for _u in ((_ad.get("images") or []))
+                    if str(_u or "").strip()
+                ]
+                _carousel = [
+                    str(_u or "").strip()
+                    for _u in ((_ad.get("carousel_images") or []))
+                    if str(_u or "").strip()
+                ]
+                _todas_imagens = []
+                for _u in _images + _carousel:
+                    if _u not in _todas_imagens:
+                        _todas_imagens.append(_u)
+                _salvas = [
+                    _u for _u in _todas_imagens
+                    if R2_PUBLIC_BASE and _u.startswith(R2_PUBLIC_BASE)
+                ]
+                if not _todas_imagens:
+                    _status_midia = "sem_imagem"
+                    _stats["sem_imagem"] += 1
+                elif _salvas:
+                    _status_midia = "salvo_r2"
+                    _stats["salvos"] += 1
+                else:
+                    _status_midia = "pendente_r2"
+                    _stats["pendentes"] += 1
+                _stats["anuncios"] += 1
+
+                _ad_el = _ET_v259.SubElement(_empresa_el, "anuncio", {
+                    "id": str(_ad.get("id") or ""),
+                    "ativo": str(bool(_ad.get("ativo", True))).lower(),
+                    "formato": str(_ad.get("formato") or _ad.get("tipo") or ""),
+                    "status_midia": _status_midia,
+                    "imagens_total": str(len(_todas_imagens)),
+                    "imagens_no_r2": str(len(_salvas)),
+                })
+                for _tag, _valor in (
+                    ("titulo", _ad.get("titulo") or _ad.get("headline") or ""),
+                    ("descricao", _ad.get("descricao") or _ad.get("texto") or ""),
+                    ("url_criativo", _ad.get("snapshot_url") or _ad.get("creative_url") or ""),
+                    ("primeira_exibicao", _ad.get("primeira_exibicao") or _ad.get("start_date") or ""),
+                    ("ultima_exibicao", _ad.get("ultima_exibicao") or _ad.get("end_date") or ""),
+                ):
+                    _filho = _ET_v259.SubElement(_ad_el, _tag)
+                    _filho.text = str(_valor or "")
+
+                _imagens_el = _ET_v259.SubElement(_ad_el, "imagens")
+                for _indice, _url in enumerate(_todas_imagens, 1):
+                    _img_el = _ET_v259.SubElement(_imagens_el, "imagem", {
+                        "ordem": str(_indice),
+                        "armazenada_r2": str(
+                            bool(R2_PUBLIC_BASE and _url.startswith(R2_PUBLIC_BASE))
+                        ).lower(),
+                    })
+                    _img_el.text = _url
+
+                # Vídeo permanece como link. Nunca é classificado como imagem
+                # pendente nem entra no armazenamento forçado das imagens.
+                _videos_el = _ET_v259.SubElement(_ad_el, "videos")
+                for _url_video in (_ad.get("videos") or []):
+                    _video_el = _ET_v259.SubElement(_videos_el, "video", {
+                        "tipo": "link"
+                    })
+                    _video_el.text = str(_url_video or "")
+
+        _root.set("total_empresas", str(_stats["empresas"]))
+        _root.set("total_anuncios", str(_stats["anuncios"]))
+        _root.set("anuncios_salvos_r2", str(_stats["salvos"]))
+        _root.set("anuncios_pendentes_r2", str(_stats["pendentes"]))
+        _root.set("anuncios_sem_imagem", str(_stats["sem_imagem"]))
+        _ET_v259.indent(_root, space="  ")
+        _xml = _ET_v259.tostring(
+            _root, encoding="utf-8", xml_declaration=True, short_empty_elements=True
+        )
+        _key = f"manifests/google-ads/{user_id}/anuncios.xml"
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=_key,
+            Body=_xml,
+            ContentType="application/xml; charset=utf-8",
+            CacheControl="no-cache",
+            Metadata={
+                "gerado-em": _agora.replace(":", "-")[:64],
+                "total-anuncios": str(_stats["anuncios"]),
+                "pendentes-r2": str(_stats["pendentes"]),
+            },
+        )
+        _stats["storage_key"] = _key
+        _stats["url"] = f"{R2_PUBLIC_BASE}/{_key}" if R2_PUBLIC_BASE else ""
+        _stats["bytes"] = len(_xml)
+        print(f"[GADS-XML-V259] inventário salvo stats={_stats}", flush=True)
+        return True, _stats
+    except Exception as _exc:
+        _stats["erro"] = str(_exc)
+        print(f"[GADS-XML-V259] falha ao salvar inventário: {_exc!r}", flush=True)
+        return False, _stats
+
 def _excluir_cache_gads_r2_usuario(user_id: str) -> None:
     """Remove o cache canônico somente após a ação explícita Limpar cache."""
     if not r2_client or not R2_BUCKET:
@@ -15874,6 +16021,11 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "motivo": f"Mídias processadas, mas o cache por empresa não foi atualizado: {_erro_r2_migracao}",
                 })
                 return
+            # V259: o inventário geral acompanha o resultado do
+            # armazenamento, sem depender de alguém abrir a página.
+            _salvar_inventario_geral_gads_xml_v259(
+                user_id, motivo=f"armazenamento_concluido:{empresa}"
+            )
             _total_r2 = int(stats_midia.get("total", 0) or 0)
             _falhas_r2 = int(stats_midia.get("nao_migrados", 0) or 0)
             atualizar_atividade(
@@ -16161,6 +16313,52 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                     "migracao_midia",
                     user_id,
                     f"{plataforma}:{empresa}",
+                )
+
+        # V259: terminadas as empresas da coleta, faz uma conferência geral
+        # do inventário canônico. Isso inclui anúncios históricos que não
+        # vieram no lote atual e elimina a dependência de abrir a página para
+        # descobrir imagens ainda pendentes.
+        if "Google Ads" in _plataformas:
+            try:
+                _cache_pos_coleta_v259 = _carregar_checkpoints_gads_r2(user_id) or {}
+                _pendentes_pos_coleta_v259 = _encontrar_imagens_gads_pendentes_v257(
+                    _cache_pos_coleta_v259
+                )
+                if _pendentes_pos_coleta_v259:
+                    _total_pendentes_v259 = sum(
+                        len((_entry or {}).get("data") or [])
+                        for _entry in _pendentes_pos_coleta_v259.values()
+                    )
+                    _atividade_pos_coleta_v259 = criar_atividade(
+                        user_id,
+                        "verificacao_pendentes_gads",
+                        "Conferindo armazenamento geral dos anúncios do Google Ads",
+                        {
+                            "versao_forcamento": "V259",
+                            "anuncios_pendentes": _total_pendentes_v259,
+                            "aviso": (
+                                "A coleta terminou. Conferindo no inventário geral "
+                                "as imagens salvas e refazendo as pendentes."
+                            ),
+                        },
+                    )
+                    _reparar_imagens_visiveis_com_relogio_v258(
+                        user_id,
+                        _cache_pos_coleta_v259,
+                        _atividade_pos_coleta_v259,
+                    )
+                else:
+                    _salvar_inventario_geral_gads_xml_v259(
+                        user_id,
+                        _cache_pos_coleta_v259,
+                        motivo="conferencia_geral_pos_coleta",
+                    )
+            except Exception as _exc_pos_coleta_v259:
+                print(
+                    f"[GADS-XML-V259] conferência geral pós-coleta falhou: "
+                    f"{_exc_pos_coleta_v259!r}",
+                    flush=True,
                 )
     finally:
         if _ticket_fila_pesada is not None:
@@ -16576,20 +16774,29 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
     return _cache_novo, _total_trocas
 
 
+def _imagem_gads_exibe_relogio_v258(ad: dict) -> bool:
+    """Replica literalmente a regra visual do card de Google Ads.
+
+    O relógio amarelo pertence somente à imagem principal: ele aparece
+    quando o anúncio tem ao menos uma imagem, mas nenhuma URL de ``images``
+    aponta para o R2. Vídeos são links e não participam desta decisão.
+    """
+    _images = [str(_u or "").strip() for _u in ((ad or {}).get("images") or []) if _u]
+    if not _images:
+        return False
+    return not (
+        R2_PUBLIC_BASE
+        and any(_u.startswith(R2_PUBLIC_BASE) for _u in _images)
+    )
+
+
 def _encontrar_imagens_gads_pendentes_v257(gads_cache: dict) -> dict:
-    """Seleciona pelo relógio da imagem, sem deixar `videos` esconder `images`."""
+    """Seleciona exatamente os anúncios cujo card exibe o relógio."""
     _out = {}
     for _empresa, _entry in (gads_cache or {}).items():
         _ads = []
         for _ad in ((_entry or {}).get("data") or []):
-            _urls = list((_ad or {}).get("images") or []) + list(
-                (_ad or {}).get("carousel_images") or []
-            )
-            if any(
-                str(_u or "").startswith(("http://", "https://", "data:"))
-                and not (R2_PUBLIC_BASE and str(_u).startswith(R2_PUBLIC_BASE))
-                for _u in _urls
-            ):
+            if _imagem_gads_exibe_relogio_v258(_ad):
                 _ads.append(_ad)
         if _ads:
             _out[_empresa] = {**(_entry or {}), "data": _ads}
@@ -16701,6 +16908,112 @@ def _forcar_armazenamento_imagens_gads_v257(
     }
     print(f"[GADS-R2-V257] armazenamento forçado concluído stats={_stats}", flush=True)
     return _cache, _stats
+
+
+def _reparar_imagens_visiveis_com_relogio_v258(
+    user_id: str, cache_visivel: dict, atividade_id: str = None
+) -> None:
+    """Confere e repara exatamente os cards que a interface marcou.
+
+    Primeiro relê o cache canônico. Se o R2 já estiver vinculado ao anúncio,
+    basta a revisão local atualizar a tela. Caso o mesmo anúncio ainda esteja
+    sem URL permanente, reaplica somente o armazenamento das imagens.
+    """
+    try:
+        if atividade_id:
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "versao_forcamento": "V258",
+                "etapa": "conferindo_relogios_visiveis",
+                "aviso": "Conferindo no R2 as imagens que aparecem com relógio na tela.",
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
+
+        _visiveis = _encontrar_imagens_gads_pendentes_v257(cache_visivel)
+        _ids_visiveis = {
+            (str(_empresa), str((_ad or {}).get("id") or ""))
+            for _empresa, _entry in _visiveis.items()
+            for _ad in ((_entry or {}).get("data") or [])
+        }
+        _canonico = _carregar_checkpoints_gads_r2(user_id) or {}
+
+        # Trabalha com o registro canônico quando ele existe. Se o card da
+        # sessão for mais novo, usa o próprio registro visível como fallback.
+        _alvo = {}
+        for _empresa, _entry_vis in _visiveis.items():
+            _entry_can = _canonico.get(_empresa) or {}
+            _can_por_id = {
+                str((_ad or {}).get("id") or ""): _ad
+                for _ad in ((_entry_can or {}).get("data") or [])
+            }
+            _ads_alvo = []
+            for _ad_vis in ((_entry_vis or {}).get("data") or []):
+                _ad_id = str((_ad_vis or {}).get("id") or "")
+                _ad_atual = _can_por_id.get(_ad_id) or _ad_vis
+                if _imagem_gads_exibe_relogio_v258(_ad_atual):
+                    _ads_alvo.append(_ad_atual)
+            if _ads_alvo:
+                _base = copy.deepcopy(_entry_can or _entry_vis or {})
+                _base["data"] = _ads_alvo
+                _alvo[_empresa] = _base
+
+        _ja_estavam_no_r2 = max(0, len(_ids_visiveis) - sum(
+            len((_entry or {}).get("data") or []) for _entry in _alvo.values()
+        ))
+        _stats = {"total": 0, "processadas": 0, "salvas": 0, "falhas": 0, "empresas": []}
+        if _alvo:
+            # A função salva o checkpoint completo da empresa. Para não
+            # substituir anúncios alheios ao reparo por uma lista parcial,
+            # injeta os anúncios-alvo no snapshot canônico completo.
+            _cache_reparo = copy.deepcopy(_canonico)
+            for _empresa, _entry_alvo in _alvo.items():
+                if _empresa not in _cache_reparo:
+                    _cache_reparo[_empresa] = copy.deepcopy(_entry_alvo)
+            _cache_reparo, _stats = _forcar_armazenamento_imagens_gads_v257(
+                user_id, _cache_reparo, atividade_id=atividade_id
+            )
+
+        _depois = _carregar_checkpoints_gads_r2(user_id) or {}
+        _salvar_inventario_geral_gads_xml_v259(
+            user_id, _depois, motivo="reparo_imagens_com_relogio"
+        )
+        _pendentes_depois = _encontrar_imagens_gads_pendentes_v257(_depois)
+        _ids_pendentes_depois = {
+            (str(_empresa), str((_ad or {}).get("id") or ""))
+            for _empresa, _entry in _pendentes_depois.items()
+            for _ad in ((_entry or {}).get("data") or [])
+        }
+        _restantes = len(_ids_visiveis & _ids_pendentes_depois)
+        _det = {
+            "versao_forcamento": "V258",
+            "etapa": "reparo_dos_relogios_finalizado",
+            "anuncios_verificados": len(_ids_visiveis),
+            "ja_estavam_no_r2": _ja_estavam_no_r2,
+            "imagens_salvas": int(_stats.get("salvas", 0) or 0),
+            "anuncios_ainda_pendentes": _restantes,
+            "ultimo_heartbeat_em": _agora_iso(),
+        }
+        if _restantes:
+            _det["motivo"] = f"{_restantes} anúncio(s) ainda não puderam ter a imagem armazenada no R2."
+            _det["aviso"] = _det["motivo"]
+            if atividade_id:
+                atualizar_atividade(atividade_id, "erro", _det)
+        else:
+            _det["aviso"] = (
+                f"{len(_ids_visiveis)} anúncio(s) conferido(s): "
+                f"{_ja_estavam_no_r2} já estava(m) no R2 e "
+                f"{int(_stats.get('salvas', 0) or 0)} imagem(ns) foi(ram) armazenada(s)."
+            )
+            if atividade_id:
+                atualizar_atividade(atividade_id, "concluido", _det)
+        print(f"[GADS-R2-V258] reparo visual concluído detalhes={_det}", flush=True)
+    except Exception as _exc:
+        print(f"[GADS-R2-V258] reparo visual falhou: {_exc!r}", flush=True)
+        if atividade_id:
+            atualizar_atividade(atividade_id, "erro", {
+                "versao_forcamento": "V258",
+                "motivo": str(_exc),
+                "ultimo_heartbeat_em": _agora_iso(),
+            })
 
 def verificar_e_migrar_pendentes(user_id: str) -> int:
     """Roda a varredura completa e dispara a migração pra tudo que ainda
@@ -33867,6 +34180,14 @@ elif st.session_state.pagina == "google_ads":
                     flush=True,
                 )
 
+            # V259: a coleta já deixa um arquivo geral durável com todos os
+            # anúncios e o estado atual de cada imagem. Neste primeiro XML,
+            # links recém-coletados podem aparecer como `pendente_r2`; cada
+            # migração atualiza o mesmo arquivo quando termina.
+            _xml_ok_v259, _xml_stats_v259 = _salvar_inventario_geral_gads_xml_v259(
+                user_id, cache_atual, motivo="coleta_finalizada"
+            )
+
             if novos:
                 iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
             iniciar_retentativa_midias_background(user_id)
@@ -33900,6 +34221,15 @@ elif st.session_state.pagina == "google_ads":
                     for _ad_id in _ids_empresa
                 ],
                 "total_anuncios_com_erro": sum(len(v) for v in incompletos_ids.values()),
+                "inventario_xml": {
+                    "salvo": bool(_xml_ok_v259),
+                    "total_anuncios": int(_xml_stats_v259.get("anuncios", 0) or 0),
+                    "salvos_r2": int(_xml_stats_v259.get("salvos", 0) or 0),
+                    "pendentes_r2": int(_xml_stats_v259.get("pendentes", 0) or 0),
+                    "sem_imagem": int(_xml_stats_v259.get("sem_imagem", 0) or 0),
+                    "arquivo": str(_xml_stats_v259.get("storage_key") or ""),
+                    "erro": str(_xml_stats_v259.get("erro") or ""),
+                },
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa.items()},
             })
             print(
@@ -34200,6 +34530,106 @@ elif st.session_state.pagina == "google_ads":
         st.session_state["_gads_revisao_r2_v251"] = _rev_r2_agora_v251
         st.session_state.gads_cache = carregar_cache_ads(forcar=True)
         st.rerun()
+
+    # V258: a fonte da reparação é o próprio critério visual do relógio.
+    # Assim, a manutenção não pode concluir "zero pendentes" olhando outro
+    # snapshot enquanto a tela ainda mostra cards amarelos. Primeiro força
+    # uma releitura barata do cache canônico; persistindo o mesmo relógio,
+    # abre uma atividade e refaz somente o armazenamento das imagens.
+    _relogios_visiveis_v258 = _encontrar_imagens_gads_pendentes_v257(
+        st.session_state.get("gads_cache") or {}
+    )
+    if _relogios_visiveis_v258 and st.session_state.get("user"):
+        _itens_relogio_v258 = sorted(
+            (
+                str(_empresa),
+                str((_ad or {}).get("id") or ""),
+                tuple(str(_u or "") for _u in ((_ad or {}).get("images") or [])),
+            )
+            for _empresa, _entry in _relogios_visiveis_v258.items()
+            for _ad in ((_entry or {}).get("data") or [])
+        )
+        _assinatura_relogio_v258 = hashlib.sha256(
+            repr(_itens_relogio_v258).encode("utf-8")
+        ).hexdigest()
+        _agora_relogio_v258 = time.time()
+        _ultima_assinatura_v258 = st.session_state.get("_gads_relogio_assinatura_v258")
+        _ultima_tentativa_v258 = float(
+            st.session_state.get("_gads_relogio_tentativa_epoch_v258", 0.0) or 0.0
+        )
+
+        # Uma assinatura nova é conferida imediatamente. Se a única causa
+        # era cache de sessão antigo, os cards recebem o check sem download.
+        if _ultima_assinatura_v258 != _assinatura_relogio_v258:
+            _cache_fresco_v258 = carregar_cache_ads(forcar=True)
+            _relogios_frescos_v258 = _encontrar_imagens_gads_pendentes_v257(
+                _cache_fresco_v258
+            )
+            _ids_antes_v258 = {
+                (str(_e), str((_a or {}).get("id") or ""))
+                for _e, _en in _relogios_visiveis_v258.items()
+                for _a in ((_en or {}).get("data") or [])
+            }
+            _ids_depois_v258 = {
+                (str(_e), str((_a or {}).get("id") or ""))
+                for _e, _en in _relogios_frescos_v258.items()
+                for _a in ((_en or {}).get("data") or [])
+            }
+            st.session_state["_gads_relogio_assinatura_v258"] = _assinatura_relogio_v258
+            if _ids_antes_v258 != _ids_depois_v258:
+                st.session_state.gads_cache = _cache_fresco_v258
+                print(
+                    f"[GADS-R2-V258] sessão sincronizada relógios "
+                    f"{len(_ids_antes_v258)}->{len(_ids_depois_v258)}",
+                    flush=True,
+                )
+                st.rerun()
+
+        _reparo_ativo_v258 = _job_is_active(
+            "reparo_imagens_gads_v258", st.session_state.user.id, "google_ads"
+        )
+        if (
+            not _reparo_ativo_v258
+            and (
+                _ultima_assinatura_v258 != _assinatura_relogio_v258
+                or (_agora_relogio_v258 - _ultima_tentativa_v258) >= 900.0
+            )
+        ):
+            _atividade_reparo_v258 = criar_atividade(
+                st.session_state.user.id,
+                "verificacao_pendentes_gads",
+                "Verificando imagens com relógio no Google Ads",
+                {
+                    "versao_forcamento": "V258",
+                    "anuncios_visiveis_com_relogio": len(_itens_relogio_v258),
+                    "aviso": "Conferindo no R2 e refazendo somente o armazenamento das imagens ausentes.",
+                },
+            )
+            _iniciou_reparo_v258 = _job_start_thread(
+                "reparo_imagens_gads_v258",
+                st.session_state.user.id,
+                "google_ads",
+                _reparar_imagens_visiveis_com_relogio_v258,
+                args=(
+                    st.session_state.user.id,
+                    copy.deepcopy(st.session_state.gads_cache),
+                    _atividade_reparo_v258,
+                ),
+                daemon=True,
+                name="reparo-imagens-google-com-relogio-v258",
+            )
+            if _iniciou_reparo_v258:
+                st.session_state["_gads_relogio_tentativa_epoch_v258"] = _agora_relogio_v258
+                st.session_state["_gads_relogio_assinatura_v258"] = _assinatura_relogio_v258
+                print(
+                    f"[GADS-R2-V258] reparo iniciado anúncios={len(_itens_relogio_v258)}",
+                    flush=True,
+                )
+            elif _atividade_reparo_v258:
+                atualizar_atividade(_atividade_reparo_v258, "erro", {
+                    "versao_forcamento": "V258",
+                    "motivo": "Já existe uma verificação das imagens em execução.",
+                })
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
 
@@ -34560,6 +34990,14 @@ elif st.session_state.pagina == "google_ads":
         _coleta_em_andamento
         or _migracao_em_andamento
         or _ocr_em_andamento
+        or (
+            st.session_state.get("user")
+            and _job_is_active(
+                "reparo_imagens_gads_v258",
+                st.session_state.user.id,
+                "google_ads",
+            )
+        )
         or _sync_outbox_em_andamento
         or _sync_outbox_aguardando
         or _janela_poll_ocr
@@ -38459,10 +38897,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         # já aponta para o R2; usar apenas o índice 1 mantinha
                         # o relógio amarelo mesmo após a migração ter sido
                         # confirmada para o anúncio.
-                        _img_e_do_r2 = bool(R2_PUBLIC_BASE) and any(
-                            str(_u_img_r2 or "").startswith(R2_PUBLIC_BASE)
-                            for _u_img_r2 in images
-                        )
+                        # V258: o selo e a rotina automática usam a MESMA
+                        # função. Se este bloco mostra relógio, o mesmo anúncio
+                        # necessariamente entra na conferência/reparação.
+                        _img_e_do_r2 = not _imagem_gads_exibe_relogio_v258(ad)
                         if _img_e_do_r2:
                             origem_badge_img_html = """
     <div title="Imagem armazenada permanentemente — não expira"

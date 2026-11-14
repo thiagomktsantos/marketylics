@@ -24920,13 +24920,13 @@ function setHeightGeral(isOpen) {{
                 _presenca_txt = "Sua presença" if _is_minha_d0_insight else f'A presença de {_d0["nome"]}'
                 if _melhor[0] == _pior[0]:
                     _insight_txt = (
-                        f"{_presenca_txt} em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
+                        f"{_presenca_txt} em <b style=\"color:#55c7ff;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
                         f"Foque nos itens listados em oportunidades para evoluir."
                     )
                 else:
                     _insight_txt = (
-                        f"{_presenca_txt} é mais forte em <b style=\"color:#008ac7;\">{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
-                        f"<b style=\"color:#008ac7;\">{_pior[0]} ({_pior[1]}/100)</b> concentra as maiores oportunidades. "
+                        f"{_presenca_txt} é mais forte em <b style=\"color:#55c7ff;\">{_melhor[0]} ({_melhor[1]}/100)</b>, mas "
+                        f"<b style=\"color:#55c7ff;\">{_pior[0]} ({_pior[1]}/100)</b> concentra as maiores oportunidades. "
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )
 
@@ -25082,20 +25082,22 @@ function setHeightGeral(isOpen) {{
 """
                 else:
                     _painel_direita_html = f"""
-  <div style="background:#f0f5ff;border:2px solid #008ac7;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+  <div style="background:#102f4e;border:none;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);">
     <div>
       <div style="display:flex;align-items:center;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:7px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#008ac7;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#008ac7"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+        <div style="display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#ffffff;">
+          <span style="width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#55c7ff"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>
+          </span>
           Insight da IA
         </div>
       </div>
-      <hr style="border:none;border-top:1px solid #dbe6fb;margin:0 0 16px 0;">
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.14);margin:0 0 16px 0;">
     </div>
-    <div style="font-size:12.5px;color:#374151;line-height:1.7;">{_insight_txt}</div>
-    <div class="insight-cta" onclick="irParaAreaPrioritaria()" style="margin-top:16px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#008ac7;cursor:pointer;">
+    <div style="font-size:12.5px;color:#d9e8f7;line-height:1.7;">{_insight_txt}</div>
+    <div class="insight-cta" onclick="irParaAreaPrioritaria()" style="margin-top:18px;min-height:38px;padding:9px 13px;border-radius:9px;background:linear-gradient(90deg,#129ee7 0%,#16b8d4 52%,#22c55e 100%);display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:800;color:#ffffff;cursor:pointer;box-shadow:0 4px 12px rgba(18,158,231,.22);">
       {_cta_insight_txt}
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#008ac7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </div>
   </div>
 """

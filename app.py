@@ -5126,6 +5126,87 @@ def _normalizar_url_exibida(texto: str) -> str:
     texto = re.sub(r"(?<!http:)(?<!https:)/{2,}", "/", texto)
     return texto
 
+def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
+    """Aplica correções finais independentemente da rota usada pelo OCR.
+
+    Alguns layouts chegam ao resultado por detectores especializados e não
+    atravessam todas as normalizações do parser principal. Esta camada roda
+    imediatamente antes de salvar e também antes de exibir resultados antigos.
+    """
+    if not isinstance(d, dict):
+        return d
+    out = dict(d)
+
+    for campo_url in ("url_exibida", "url_final"):
+        linhas_corrigidas = []
+        for linha in str(out.get(campo_url) or "").splitlines():
+            linha = linha.strip()
+            if not linha:
+                continue
+            if re.search(r"(?i)(?:https?://|www\.|\.[a-z]{2,})", linha):
+                # Rede final específica para o erro observado. Funciona mesmo
+                # se a montagem do cabeçalho não tiver chamado o normalizador.
+                linha = re.sub(
+                    r"(?i)((?:https?://)?www\.[a-z0-9-]*?)com[-_.]+br(?=/|$)",
+                    r"\1.com.br",
+                    linha,
+                )
+                linha = _normalizar_url_exibida(linha)
+            linhas_corrigidas.append(linha)
+        out[campo_url] = "\n".join(linhas_corrigidas)
+
+    out["descricao"] = re.sub(
+        r"(?:\s*(?:\.{3}|…))+\s*$", "", str(out.get("descricao") or "")
+    ).rstrip()
+
+    # V282 — aplica a recomposição do hífen também aos resultados que já
+    # estavam salvos no banco. O detector antigo podia persistir:
+    #   Dia 5 | Avenged Sevenfold | Dia 11 | Stray Kids
+    # em quatro sitelinks. A estrutura inequívoca ``Dia <número>`` permite
+    # restaurar os dois itens sem depender de executar o OCR novamente:
+    #   Dia 5 - Avenged Sevenfold | Dia 11 - Stray Kids
+    _sitelinks_origem_v282 = out.get("sitelinks") or []
+    if not isinstance(_sitelinks_origem_v282, (list, tuple)):
+        _sitelinks_origem_v282 = [_sitelinks_origem_v282]
+    _sitelinks_v282 = []
+    _i_v282 = 0
+    while _i_v282 < len(_sitelinks_origem_v282):
+        _item_v282 = _sitelinks_origem_v282[_i_v282]
+        if isinstance(_item_v282, dict):
+            _atual_v282 = dict(_item_v282)
+        else:
+            _atual_v282 = {"titulo": str(_item_v282 or ""), "descricao": ""}
+        _titulo_v282 = re.sub(
+            r"\s+", " ", str(_atual_v282.get("titulo") or "")
+        ).strip()
+        if (
+            re.fullmatch(r"(?i)dia\s+\d{1,2}", _titulo_v282)
+            and _i_v282 + 1 < len(_sitelinks_origem_v282)
+        ):
+            _prox_item_v282 = _sitelinks_origem_v282[_i_v282 + 1]
+            if isinstance(_prox_item_v282, dict):
+                _prox_v282 = dict(_prox_item_v282)
+            else:
+                _prox_v282 = {"titulo": str(_prox_item_v282 or ""), "descricao": ""}
+            _prox_titulo_v282 = re.sub(
+                r"\s+", " ", str(_prox_v282.get("titulo") or "")
+            ).strip()
+            if _prox_titulo_v282 and not re.fullmatch(
+                r"(?i)dia\s+\d{1,2}", _prox_titulo_v282
+            ):
+                _atual_v282["titulo"] = f"{_titulo_v282} - {_prox_titulo_v282}"
+                _atual_v282["descricao"] = (
+                    str(_atual_v282.get("descricao") or "").strip()
+                    or str(_prox_v282.get("descricao") or "").strip()
+                )
+                _sitelinks_v282.append(_atual_v282)
+                _i_v282 += 2
+                continue
+        _sitelinks_v282.append(_atual_v282)
+        _i_v282 += 1
+    out["sitelinks"] = _sitelinks_v282
+    return out
+
 def _detectar_cor_fundo_pagina(img_bgr):
     """Detecta se a imagem tem uma margem/respiro CINZA (não branco) da
     PÁGINA sobrando ao redor do card do anúncio — comum quando o
@@ -11287,6 +11368,7 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
                     }],
                 }
             _ultima_chamada_ocr[0] = _time_ocr_estr.time()
+        _estruturado = _pos_processar_ocr_estruturado_v281(_estruturado)
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
         return (_estruturado, None) if retornar_diagnostico else _estruturado
     except ZeroDivisionError as e:
@@ -12632,6 +12714,8 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 _ids_entregues.add(_mid)
                 midia = _midias_por_id.get(_mid) or {"id": _mid, "url_cdn": "", "url_origem": ""}
                 _estruturado = _r.get("estruturado") if _r.get("ok") else None
+                if isinstance(_estruturado, dict):
+                    _estruturado = _pos_processar_ocr_estruturado_v281(_estruturado)
                 # V244 — dict vazio ou sem nenhum campo reconhecido não é
                 # sucesso. Mantém o registro pendente em vez de salvar
                 # ocr_texto="" e fazê-lo desaparecer para sempre da fila.
@@ -39556,6 +39640,15 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                                     _estr_render[_campo_txt_render] = ""
                                                 elif not isinstance(_v_render, str):
                                                     _estr_render[_campo_txt_render] = str(_v_render)
+
+                                            # V281 — aplica a mesma correção final
+                                            # também aos OCRs que já estavam salvos.
+                                            # Assim o card é corrigido imediatamente,
+                                            # sem depender de limpar cache ou executar
+                                            # novamente uma rota específica do parser.
+                                            _estr_render = _pos_processar_ocr_estruturado_v281(
+                                                _estr_render
+                                            )
 
                                             _ch_render_raw = _estr_render.get("chamadas") or []
                                             if isinstance(_ch_render_raw, str):

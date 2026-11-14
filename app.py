@@ -1,7 +1,3 @@
-# V187 — Google Ads onboarding faz auto-poll do job em background e exibe resultados assim que a busca conclui.
-# V171 — limpeza de comentários; lógica preservada.
-# V170 — badge CC com SVG + texto 'Closed Caption'.
-# V169 — badge CC YouTube usa SVG enviado pelo usuário e mostra apenas o ícone.
 import datetime
 import streamlit as st
 import multiprocessing
@@ -9,7 +5,6 @@ import tempfile
 import json
 import copy
 
-# V94 — Meta Ads: seletor de empresas mostra somente empresas com anúncios já baixados.
 import streamlit.components.v1 as components
 import google.generativeai as genai
 import pandas as pd
@@ -29,11 +24,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 import httpx
 
-# ---------------------------------------------------
-# LIMITES DE THREADS NATIVAS — definidos ANTES de importar torch/cv2
-# ---------------------------------------------------
-# Bibliotecas numéricas podem abrir pools próprios além dos threads que o
-# Python enxerga. Em container pequeno isso multiplica CPU/RAM sem benefício.
 for _var_threads in (
     "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
     "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
@@ -43,27 +33,9 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 _PROCESSO_INICIO_MONOTONIC = time.monotonic()
 
-# V98 — polling visual mais leve: reduz reruns automáticos e consultas repetidas.
 UI_POLL_INTERVAL_MS = int(st.secrets.get("UI_POLL_INTERVAL_MS", 8000))
 UI_POLL_INTERVAL_SEG = max(4.0, UI_POLL_INTERVAL_MS / 1000.0)
 
-# ---------------------------------------------------
-# LIMITES DE CPU DO OCR — V112
-# ---------------------------------------------------
-# NÃO importar torch/cv2 no startup da aplicação.
-#
-# A V110 revelou a causa do crash: o processo já estava em ~920 MB ANTES
-# de inicializar o EasyOCR. O motivo principal era esta própria seção,
-# que importava `torch` durante o startup só para limitar threads. Assim,
-# mesmo usuários que não estavam usando OCR carregavam toda a stack do
-# PyTorch na memória. Quando o EasyOCR carregava os modelos, o RSS saltava
-# para ~1,2 GB e o container podia ser encerrado por falta de memória.
-#
-# As variáveis OMP/MKL/OPENBLAS acima continuam limitando os pools nativos
-# desde o início do processo. `torch.set_num_threads(1)` e
-# `cv2.setNumThreads(1)` agora são aplicados DEPOIS que EasyOCR importar
-# essas bibliotecas, dentro de `_get_easyocr()`. Portanto a aplicação
-# normal permanece leve até o OCR ser realmente necessário.
 def _limitar_threads_cpu_ocr_apos_import():
     try:
         import torch
@@ -80,7 +52,6 @@ def _limitar_threads_cpu_ocr_apos_import():
     except Exception as e:
         print(f"[OCR-DEBUG] não consegui limitar threads do cv2: {e!r}", flush=True)
 
-# V112 — diagnóstico leve: confirma a memória da aplicação antes de qualquer OCR.
 def _rss_startup_sem_torch_mb():
     try:
         with open("/proc/self/status", "r", encoding="utf-8") as _f:
@@ -97,9 +68,6 @@ print(
     flush=True,
 )
 
-# ---------------------------------------------------
-# CONFIGURAÇÃO DA PÁGINA
-# ---------------------------------------------------
 
 st.set_page_config(
     page_title="Marketylics · Competitive Intelligence",
@@ -107,19 +75,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------------------------------------------
-# GERENCIADOR GLOBAL DE RECURSOS PESADOS
-# ---------------------------------------------------
-# O Streamlit Community Cloud tem CPU/RAM/processos bastante limitados.
-# Antes, cada subsistema controlava sua concorrência isoladamente: OCR
-# tinha um lock próprio, migração de mídia usava vários workers, ffmpeg
-# podia rodar em paralelo com OCR e Whisper etc. Individualmente cada
-# limite parecia seguro, mas juntos ainda podiam criar picos de CPU/RAM.
-#
-# A partir daqui, TODA tarefa realmente pesada de CPU/processo local
-# compartilha um único semáforo global. Downloads HTTP/Supabase continuam
-# concorrentes; só a parte pesada (EasyOCR, ffmpeg e Whisper) é serializada.
-# Isso troca um pouco de velocidade máxima por previsibilidade e estabilidade.
 _MAX_CPU_PESADA = int(st.secrets.get("MAX_CPU_PESADA_CONCORRENTE", 1))
 _MAX_DOWNLOADS_MIDIA = int(st.secrets.get("MAX_DOWNLOADS_MIDIA_CONCORRENTES", 1))
 _MAX_API_IO = int(st.secrets.get("MAX_API_IO_CONCORRENTE", 5))
@@ -150,12 +105,6 @@ def _recurso_api_io():
         _semaforo_api_io.release()
 
 
-# ---------------------------------------------------
-# V33 — HTTP COM REUSO DE CONEXÃO POR THREAD
-# ---------------------------------------------------
-# O app faz muitos downloads curtos (criativos, thumbnails, vídeos e páginas).
-# requests.get/post/head avulsos recriam conexão/TLS com frequência. Uma Session
-# por thread reaproveita keep-alive sem compartilhar estado mutável entre workers.
 _http_local = threading.local()
 
 def _http_session() -> requests.Session:
@@ -182,9 +131,6 @@ def _http_head(*args, **kwargs):
     return _http_session().head(*args, **kwargs)
 
 
-# ---------------------------------------------------
-# V98 — HELPERS COMPARTILHADOS META ADS / GOOGLE ADS
-# ---------------------------------------------------
 def _ads_empresa_tem_dados(cache: dict, nome_empresa: str) -> bool:
     entry = (cache or {}).get(nome_empresa) or {}
     return bool(entry.get("data"))
@@ -201,31 +147,6 @@ def _ads_resolver_empresa_ativa(todas_empresas: list, cache: dict, ativa: str):
         return ativa, com_dados
     return (com_dados[0]["nome"] if com_dados else ""), com_dados
 
-# ---------------------------------------------------
-# PLAYWRIGHT — GARANTE O CHROMIUM INSTALADO
-# ---------------------------------------------------
-# Usado como último recurso pra achar a imagem de criativos do Google Ads
-# (ver _extrair_imagem_pagina_google, na aba Google Ads): abre a página
-# humana da Central de Transparência com um navegador headless de
-# verdade, porque ela é uma SPA em Angular e não tem nada de criativo no
-# HTML puro.
-#
-# O detalhe que quebra isso no Streamlit Community Cloud: o `pip install
-# playwright` (via requirements.txt) só instala o pacote Python — o
-# BINÁRIO do Chromium (o navegador em si, ~150MB) precisa ser baixado à
-# parte com `playwright install chromium`, e a plataforma não roda esse
-# comando sozinha. Sem isso, `sync_playwright().chromium.launch()` falha
-# com "Executable doesn't exist", o `try/except` da função engole o erro
-# silenciosamente, e a imagem simplesmente nunca aparece — foi
-# exatamente isso que estava acontecendo.
-#
-# `st.cache_resource` garante que esse download só roda UMA VEZ por
-# contêiner (na primeira vez que o app sobe depois de um deploy/restart),
-# não em todo rerun da página — senão toda interação ficaria lenta.
-# Ainda falta o outro lado da dependência: as bibliotecas de sistema
-# (libnss3, libatk etc.) que o Chromium precisa pra rodar, que vêm de um
-# `packages.txt` na raiz do repo (a plataforma instala isso com root
-# antes do app subir — ver arquivo packages.txt enviado junto).
 _playwright_install_lock = threading.Lock()
 _playwright_install_status = [None]  # None=não tentou; True/False=resultado nesta instância
 
@@ -253,11 +174,6 @@ def _garantir_chromium_playwright() -> bool:
             _playwright_install_status[0] = False
         return bool(_playwright_install_status[0])
 
-# ---------------------------------------------------
-#  ÍCONES SVG — CLASSIFICAÇÃO DE SCORE (Excelente / Muito bom / Bom /
-#  Regular / Precisa melhorar). stroke="currentColor" faz o ícone herdar
-#  a cor do texto do badge onde é inserido, sem precisar passar cor à parte.
-# ---------------------------------------------------
 
 _SVG_ICONE_EXCELENTE = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
@@ -291,10 +207,6 @@ _SVG_ICONE_PRECISA_MELHORAR = (
     '</svg></span>'
 )
 
-# ---------------------------------------------------
-#  ÍCONES SVG — DIVERSOS (Dashboard Geral). Mesmo padrão dos acima:
-#  stroke/fill="currentColor" pra herdar a cor do elemento onde entram.
-# ---------------------------------------------------
 
 _SVG_ICONE_CHECK = (
     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -304,10 +216,6 @@ _SVG_ICONE_CHECK = (
     '</svg>'
 )
 
-# Bolinha verde preenchida com check branco — versão em SVG do emoji "✅",
-# usada nos hovers "Como é calculado" (Score de SEO, Score de Perfil, anéis
-# de Redes Sociais/Site/Anúncios) pra manter o mesmo padrão visual em vez
-# de misturar emoji com ícone vetorial.
 _SVG_ICONE_CHECK_BOLA = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:13px;height:13px;min-width:13px;border-radius:50%;background:#22c55e;'
@@ -397,10 +305,6 @@ _SVG_ICONE_PONTO = (
     'style="vertical-align:1px;flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>'
 )
 
-# ---------------------------------------------------
-#  ÍCONES SVG — BIBLIOTECA DE ADS. Badges sobre a thumb do vídeo
-#  (imagens alternativas do anúncio dinâmico e transcrição do áudio).
-# ---------------------------------------------------
 
 _SVG_ICONE_IMAGENS_ALT = (
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="#fff">'
@@ -477,10 +381,6 @@ _SVG_ICONE_TRANSCRICAO_PENDENTE = (
     '</svg>'
 )
 
-# Ícones do badge "Texto extraído (OCR)" no card de imagem do Google Ads —
-# mesmo padrão visual/estados do badge de transcrição acima, só trocando o
-# ícone (documento com "T" em vez do balão de fala), pra deixar claro que é
-# texto extraído de uma imagem, não de áudio.
 _SVG_ICONE_OCR = (
     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" '
     'stroke-linecap="round" stroke-linejoin="round">'
@@ -496,10 +396,6 @@ _SVG_ICONE_OCR_PENDENTE = (
     '</svg>'
 )
 
-# ---------------------------------------------------
-#  ÍCONES SVG — MÉTRICAS DO CARD DE REDES (curtidas, comentários,
-#  engajamento), no lugar dos emojis ❤️ 💬 ⚡.
-# ---------------------------------------------------
 
 _SVG_ICONE_CURTIDA = (
     '<svg width="13" height="13" viewBox="0 0 24 24" fill="#ef4444">'
@@ -520,9 +416,6 @@ _SVG_ICONE_ENGAJAMENTO = (
     '</svg>'
 )
 
-# ---------------------------------------------------
-#  SUPABASE
-# ---------------------------------------------------
 
 def get_supabase() -> Client:
     """Cliente Supabase isolado por sessão (guardado em st.session_state),
@@ -557,24 +450,9 @@ def get_supabase() -> Client:
     if "_supabase_client" not in st.session_state:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
-        # Importante: `ClientOptions` tem que vir do topo do pacote
-        # (`from supabase import ClientOptions`), não de
-        # `supabase.lib.client_options` — esse último é a dataclass
-        # BASE, que não tem o campo `httpx_client` (só existe nas
-        # subclasses `SyncClientOptions`/`AsyncClientOptions`; o
-        # `supabase/__init__.py` já expõe `SyncClientOptions` com o
-        # apelido `ClientOptions`). Importar do lugar errado dá
-        # `TypeError: unexpected keyword argument 'httpx_client'`
-        # direto na inicialização do app.
         from supabase import ClientOptions
         _opcoes_supabase = ClientOptions(
             httpx_client=httpx.Client(
-                # V87: coletas grandes de Google Ads podem atualizar um JSONB
-                # considerável. 30s ainda gerava "The read operation timed out"
-                # em instabilidades passageiras do gateway do Supabase.
-                # V222: AUTH pode atravessar picos longos do gateway. O retry
-                # agora tambem recria o client; cada conexao limpa recebe ate
-                # 120s de leitura e 20s para conectar.
                 timeout=httpx.Timeout(120.0, connect=20.0)
             ),
         )
@@ -584,11 +462,6 @@ def get_supabase() -> Client:
 
 supabase = get_supabase()
 
-# ---------------------------------------------------
-# V98 — CAMADA RESILIENTE DE SUPABASE
-# ---------------------------------------------------
-# Centraliza retry/backoff para operações críticas. Antes, cada área tinha
-# sua própria sequência de tentativas, com tempos e critérios diferentes.
 _SUPABASE_ERROS_TRANSITORIOS = (
     "timeout", "timed out", "read operation", "connection reset",
     "connection lost", "server disconnected", "521", "522", "502", "503", "504",
@@ -617,9 +490,6 @@ def _supabase_resiliente(fn, *, operacao: str = "supabase", tentativas: int = 4,
                 return fn()
         except Exception as exc:
             ultimo = exc
-            # Coletas podem durar mais que o JWT. O client continua vivo na
-            # thread, mas o PostgREST passa a devolver PGRST303. Renova uma
-            # vez e repete a mesma operação, sem refazer a coleta da Apify.
             if _erro_supabase_jwt_expirado(exc) and not _refresh_tentado:
                 _refresh_tentado = True
                 try:
@@ -652,26 +522,11 @@ def _persistir_cache_ads_db(user_id: str, coluna: str, payload: dict,
         backoff=(2, 4, 8, 12, 20),
     )
 
-# ---------------------------------------------------
-# COORDENADOR CENTRAL DE JOBS
-# ---------------------------------------------------
-# OCR e migração já tinham travas próprias; agora compartilham também uma
-# visão única de "job lógico ativo" para impedir workers duplicados entre
-# subsistemas diferentes.
-#
-# O registry precisa sobreviver aos reruns do Streamlit. Variáveis comuns de
-# módulo eram recriadas em cada execução do script, fazendo o processo perder
-# a referência dos workers que continuavam vivos e tornando impossível
-# distinguir uma coleta real de uma atividade órfã após crash/redeploy.
 @st.cache_resource(show_spinner=False)
 def _get_jobs_registry_v189() -> dict:
     return {
         "lock": threading.RLock(),
         "ativos": set(),
-        # Usuários com coleta ou sincronização protegida em curso. Esta
-        # marca sobrevive aos reruns do Streamlit e impede OCR, migração,
-        # transcrição e outras tarefas pesadas de iniciarem no intervalo
-        # entre uma tentativa de sincronização e a seguinte.
         "coleta_prioritaria_usuarios": set(),
     }
 
@@ -679,10 +534,6 @@ def _get_jobs_registry_v189() -> dict:
 _jobs_registry_v189 = _get_jobs_registry_v189()
 _jobs_lock = _jobs_registry_v189["lock"]
 _jobs_ativos = _jobs_registry_v189["ativos"]
-# V205: versões antigas guardavam apenas a chave lógica. Se uma thread
-# morresse/reiniciasse sem executar o finally, a chave podia permanecer para
-# sempre e todo clique seguinte era recusado silenciosamente. Mantemos também
-# a thread real para distinguir job vivo de trava órfã.
 _jobs_threads = _jobs_registry_v189.setdefault("threads", {})
 _coleta_prioritaria_usuarios = _jobs_registry_v189.setdefault(
     "coleta_prioritaria_usuarios", set()
@@ -804,13 +655,6 @@ def _job_start_thread(tipo: str, user_id: str, escopo: str, target, *,
         raise
 
 
-# ---------------------------------------------------
-#  CLOUDFLARE R2 (armazenamento permanente de mídias)
-# ---------------------------------------------------
-# R2 é compatível com a API S3, então usamos boto3 apontando pro
-# endpoint da Cloudflare. Credenciais e nomes de bucket vêm dos
-# secrets do Streamlit (ver instruções de configuração no final
-# deste bloco / no README de deploy).
 
 import boto3
 from botocore.config import Config as _BotoConfig
@@ -850,9 +694,6 @@ def _get_gads_r2_memoria_v250() -> dict:
 
 _gads_r2_memoria_v250 = _get_gads_r2_memoria_v250()
 _GADS_R2_TTL_V250 = 180.0
-# V255: duas threads podiam errar o cache ao mesmo tempo e baixar os mesmos
-# checkpoints (~50 MB) em paralelo. A trava cobre apenas o primeiro
-# preenchimento; as leituras seguintes continuam saindo direto da memória.
 _gads_r2_primeiro_carregamento_v255 = threading.Lock()
 
 
@@ -862,8 +703,6 @@ def _atualizar_gads_r2_memoria_v250(user_id: str, empresa: str, entry: dict) -> 
     with _gads_r2_memoria_v250["lock"]:
         _revisoes = _gads_r2_memoria_v250.setdefault("revisoes", {})
         _revisoes[_uid] = int(_revisoes.get(_uid, 0) or 0) + 1
-        # Não cria um snapshot parcial a partir de uma única empresa. O
-        # primeiro carregamento completo precisa vir da listagem do R2.
         _item = _gads_r2_memoria_v250["usuarios"].get(_uid)
         if not _item or not isinstance(_item.get("cache"), dict):
             return
@@ -879,13 +718,6 @@ def _revisao_gads_r2_v251(user_id: str) -> int:
             _gads_r2_memoria_v250.setdefault("revisoes", {}).get(_uid, 0) or 0
         )
 
-# ---------------------------------------------------
-# V194 — CHECKPOINT DURÁVEL DA COLETA GOOGLE ADS
-# ---------------------------------------------------
-# O Supabase pode ficar indisponível durante uma coleta longa. O R2 é usado
-# como outbox independente: cada lote normalizado é gravado aqui ANTES da
-# tentativa no banco. Assim, restart do Streamlit, 5xx ou JWT expirado não
-# obrigam a chamar a Apify novamente nem perdem anúncios já processados.
 def _gads_checkpoint_prefix(user_id: str) -> str:
     return f"checkpoints/google-ads/{user_id}/"
 
@@ -954,7 +786,6 @@ def _carregar_checkpoints_gads_r2(user_id: str) -> dict:
             return _cache_mem
     _gads_r2_primeiro_carregamento_v255.acquire()
     try:
-        # Outra thread pode ter preenchido a memória enquanto esta aguardava.
         with _gads_r2_memoria_v250["lock"]:
             _mem = _gads_r2_memoria_v250["usuarios"].get(_uid)
             if (
@@ -1150,8 +981,6 @@ def _salvar_inventario_geral_gads_xml_v259(
                     })
                     _img_el.text = _url
 
-                # Vídeo permanece como link. Nunca é classificado como imagem
-                # pendente nem entra no armazenamento forçado das imagens.
                 _videos_el = _ET_v259.SubElement(_ad_el, "videos")
                 for _url_video in (_ad.get("videos") or []):
                     _video_el = _ET_v259.SubElement(_videos_el, "video", {
@@ -1251,8 +1080,6 @@ def _cache_minimo_do_manifesto_v265(_manifesto: dict) -> dict:
                 ],
             }
             if _status_cc == "concluido":
-                # Marcador apenas para a pré-checagem leve. O worker de CC
-                # sempre relê o checkpoint completo antes de persistir.
                 _ad_min["video_cc_raw"] = "__cc_ja_salvo__"
             elif _status_cc in _YOUTUBE_CC_STATUS_FINAL_V159:
                 _ad_min["video_cc_status"] = _status_cc
@@ -1295,10 +1122,6 @@ def _salvar_manifesto_gads_json_v261(
                         _urls_r2.add(_url)
 
     _midias_por_url = {}
-    # V265: lê as imagens do usuário por páginas. O filtro `.in_()` com até
-    # 150 URLs R2 gerava uma query extensa demais no PostgREST; blocos da
-    # BuyTicket Brasil falhavam inteiros e o manifesto mostrava 0 OCR mesmo
-    # com o conteúdo estruturado já visível nos cards.
     _pagina_midias = 0
     _tam_pagina_midias = 1000
     while True:
@@ -1347,11 +1170,6 @@ def _salvar_manifesto_gads_json_v261(
             if not isinstance(_ad, dict):
                 continue
             _imgs = []
-            # V271: capturas visuais do Google podem ser migradas para o R2
-            # no campo `images_b64`. Apesar do nome legado, depois do upload
-            # ele contém URL HTTP permanente e é a mesma imagem exibida pelo
-            # card. Ignorá-lo fazia o manifesto marcar "sem imagem" enquanto
-            # a interface mostrava mídia com check verde.
             for _campo in ("images_b64", "images", "carousel_images"):
                 for _url in (_ad.get(_campo) or []):
                     _url = str(_url or "").strip()
@@ -1383,8 +1201,6 @@ def _salvar_manifesto_gads_json_v261(
                 _resumo["cc_nao_aplicavel"] += 1
 
             if _eh_video:
-                # A imagem de um anúncio em vídeo é capa/thumbnail. Não passa
-                # por OCR; o conteúdo textual correto vem da legenda/CC.
                 _status_midia = "salva_r2" if _imgs_r2 else ("pendente" if _imgs else "sem_imagem")
                 _status_ocr = "nao_aplicavel_video"
                 if _status_midia == "salva_r2":
@@ -1407,18 +1223,12 @@ def _salvar_manifesto_gads_json_v261(
             else:
                 _status_midia = "salva_r2"
                 _resumo["midia_salva"] += 1
-                # Um anúncio só está concluído quando TODAS as imagens
-                # permanentes têm OCR válido. Antes, bastava uma imagem do
-                # anúncio ter OCR e as demais podiam ficar invisíveis à fila.
                 _ocr_ok_por_imagem = []
                 for _url_r2 in _imgs_r2:
                     _row = _midias_por_url.get(_url_r2) or {}
                     _estr_ok = _ocr_estruturado_tem_conteudo(
                         _ocr_regression_parse_dict(_row.get("ocr_estruturado"))
                     )
-                    # O JSON estruturado é a fonte real usada pelo card. O
-                    # campo achatado pode estar vazio em registros antigos
-                    # sem significar que o OCR não foi realizado.
                     _ocr_ok_por_imagem.append(bool(_estr_ok))
                 _ocr_ok = bool(_ocr_ok_por_imagem) and all(_ocr_ok_por_imagem)
                 _status_ocr = "concluido" if _ocr_ok else "pendente"
@@ -1545,9 +1355,6 @@ def _restaurar_cache_gads_r2_mais_completo(user_id: str) -> dict:
                 atual_entry = atual_doc.get("entry") or {}
                 atual_qtd = len(atual_entry.get("data") or [])
 
-                # O maior arquivo nem sempre é o mais completo (base64 pode
-                # inflar uma versão com poucos anúncios). Examina as versões
-                # anteriores e escolhe a que realmente possui mais itens.
                 anterior_bruto = None
                 anterior_doc = None
                 anterior_qtd = -1
@@ -1600,15 +1407,6 @@ def _restaurar_cache_gads_r2_mais_completo(user_id: str) -> dict:
         print(f"[GADS-RECOVERY-V234] versionamento indisponível: {exc!r}", flush=True)
         return resultado
 
-# ---------------------------------------------------
-#  WHISPER LOCAL (transcrição de áudio dos vídeos, sem custo de API)
-# ---------------------------------------------------
-# Usado pra transcrever o áudio dos vídeos de anúncios, assim as análises
-# de IA recebem o texto falado no vídeo em vez do vídeo em si (a IA de
-# análise, Gemini, não recebe mais o arquivo de vídeo — só a transcrição).
-# Roda o modelo Whisper open-source localmente (via faster-whisper), na
-# CPU do próprio servidor — sem chamar API paga nenhuma. O "custo" aqui é
-# tempo de processamento, não dinheiro.
 
 @st.cache_resource(show_spinner=False)
 def get_whisper_model():
@@ -1646,10 +1444,6 @@ def get_whisper_model():
             try:
                 return _future.result(timeout=_timeout_carregar)
             except _cf.TimeoutError:
-                # Não dá pra matar a thread de download em andamento (ela
-                # continua rodando sozinha em segundo plano, mesmo depois
-                # do timeout — mesmo comportamento aceito no transcribe()).
-                # O importante é o app não ficar preso esperando por ela.
                 return None
     except Exception:
         return None
@@ -1666,37 +1460,13 @@ def whisper_model_ou_none():
     return get_whisper_model()
 
 
-# ---------------------------------------------------
-#  PLANOS — cota de ANÚNCIOS com mídia baixada/armazenada por mês
-# ---------------------------------------------------
-# Placeholder simples até o item 4 do roadmap (tabela uso_organizacao
-# + billing de verdade) existir. O único ponto que precisa mudar
-# quando o billing estiver pronto é obter_plano_usuario().
-#
-# IMPORTANTE: a cota é contada por ANÚNCIO (ad_id distinto), não por linha
-# individual da tabela `midias`. Um mesmo anúncio pode ter várias imagens
-# e/ou vídeo (cada upload bem-sucedido vira uma linha própria em `midias`
-# — ver baixar_e_persistir_midia + persistir_midias_de_ads, que cria uma
-# tarefa por URL de imagem/vídeo do anúncio, não uma por anúncio). Contar
-# por linha inflava o consumo real: uma biblioteca com poucos anúncios mas
-# 2-4 mídias cada batia o teto de 500 rapidinho sem ter nem perto de 500
-# anúncios de verdade. Como isto é uma biblioteca de ANÚNCIOS, faz mais
-# sentido cobrar por anúncio — ver _contar_midias_do_mes.
 PLANOS_QUOTA_MIDIAS = {
     "free":    0,     # não baixa mídia — mantém o link original do Facebook (pode expirar)
     "starter": 50,    # até 50 ANÚNCIOS com mídia baixada/armazenada por mês
     "pro":     500,   # até 500 ANÚNCIOS com mídia baixada/armazenada por mês
     "agencia": None,  # ilimitado
 }
-# Revisado em jul/2026, depois da virada de métrica pra "por anúncio"
-# (ver comentário acima): os números 500/50 foram mantidos de propósito,
-# Starter (10x) e, na prática, representa um AUMENTO real de capacidade
-# em ambos os planos (antes, 500/50 "mídias" cobriam bem menos anúncios
-# de verdade do que 500/50 anúncios cobrem agora).
 
-# Cota de concorrentes monitorados por plano — usada na aba "Uso do plano"
-# do perfil, pra mostrar quanto da cota já foi usado. Precisa ficar em
-# sincronia com o texto exibido nos cards de planos (aba "Plano").
 PLANOS_QUOTA_CONCORRENTES = {
     "free":    1,
     "starter": 5,
@@ -1704,17 +1474,8 @@ PLANOS_QUOTA_CONCORRENTES = {
     "agencia": None,  # ilimitado
 }
 
-# Quantas vezes tentamos baixar a mesma mídia antes de desistir de vez.
-# Sem esse teto, um link permanentemente quebrado (ex: anúncio removido
-# no Facebook) ficaria sendo tentado pra sempre a cada coleta.
 MAX_TENTATIVAS_MIDIA = 5
 
-# Janela (em horas) usada pra marcar um link original da Meta como "vai
-# expirar em breve" no card de Links Pendentes. URLs do CDN da Meta
-# (scontent-*.fbcdn.net) trazem embutido um parâmetro "oe" — um timestamp
-# Unix em hexadecimal com o instante exato em que aquele link para de
-# funcionar. Isso permite saber a expiração real sem precisar de uma nova
-# coleta. 48h é um valor de partida (link "na berlinda"); ajustável.
 JANELA_EXPIRACAO_LINK_HORAS = 48
 
 def _extrair_expiracao_url(url: str):
@@ -1778,11 +1539,6 @@ def _classificar_links_expiracao(ads: list, horas: int = JANELA_EXPIRACAO_LINK_H
     for ad in ads or []:
         _imagens_ad = ad.get("images") or []
         _videos_ad = ad.get("videos") or []
-        # Mesma regra de encontrar_ads_com_link_original: se o anúncio tem
-        # vídeo, só o link do vídeo importa (é dali que vem o thumb
-        # exibido no card) — as imagens desse tipo de anúncio só aparecem
-        # no modal opcional "🖼️ +N" e não derrubam nada visível se
-        # expirarem, então não entram na conta de urgência.
         urls = _videos_ad if _videos_ad else _imagens_ad
         exp_mais_proxima = None
         for u in urls:
@@ -1848,9 +1604,6 @@ def _formatar_tempo_restante(quando, agora=None) -> str:
     return f"{minutos}min"
 
 def obter_plano_usuario() -> str:
-    # TODO: plugar no sistema real de assinatura/billing (item 4 do roadmap).
-    # todo mundo na cota 0 do plano free antes do sistema de planos existir.
-    # Trocar pra "free" (ou remover o default) assim que o billing entrar.
     return st.session_state.get("plano_usuario", "pro")
 
 def _contar_midias_do_mes(user_id: str) -> int:
@@ -2016,8 +1769,6 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
             with open(entrada, "wb") as f:
                 f.write(conteudo)
 
-            # extrai só o áudio (mono, 16kHz) — bem menor que o vídeo
-            # original e já na taxa de amostragem que o Whisper espera
             cmd = [
                 "ffmpeg", "-y", "-i", entrada,
                 "-vn", "-ac", "1", "-ar", "16000",
@@ -2030,25 +1781,6 @@ def _transcrever_video_whisper(conteudo: bytes) -> str:
             if resultado.returncode != 0 or not os.path.exists(audio) or os.path.getsize(audio) == 0:
                 return ""  # sem faixa de áudio, ou falha ao extrair
 
-            # Diferente do ffmpeg acima (que roda em subprocess e por isso
-            # aceita `timeout` nativo), `whisper_model.transcribe()` roda
-            # dentro do próprio processo Python e devolve um GERADOR — a
-            # inferência de verdade só acontece quando iteramos nele (no
-            # `" ".join(...)` logo abaixo). Sem teto de tempo aqui, um
-            # áudio problemático (corrompido, silêncio longo confundindo
-            # o VAD, etc.) podia travar essa iteração indefinidamente e
-            # segurar pra sempre 1 dos 3 workers do ThreadPoolExecutor que
-            # chama esta função — foi isso que deixou uma migração real
-            # parada em "32 de 155" por mais de uma hora, mesmo com o
-            # progresso ao vivo funcionando certinho (o worker travado
-            # nunca chegava a reportar o próximo item).
-            #
-            # Como não dá pra matar uma thread Python à força, rodamos a
-            # transcrição numa thread própria e só ESPERAMOS por ela com
-            # prazo: se estourar, desistimos e devolvemos "" (mídia segue
-            # sem transcrição, sem quebrar o fluxo) — a thread órfã do
-            # Whisper continua rodando sozinha em segundo plano até
-            # terminar, mas não bloqueia mais ninguém.
             def _transcrever_sync():
                 with _recurso_cpu_pesada("whisper-inferencia"):
                     segmentos, _info = _wm.transcribe(audio, language="pt", vad_filter=True)
@@ -2193,8 +1925,6 @@ def _e_url_youtube(url: str) -> bool:
     return bool(url) and bool(_REGEX_YOUTUBE.search(url))
 
 
-# persistência definitiva; este cache só evita repetir GETs do mesmo vídeo
-# durante uma mesma execução/processo.
 _YOUTUBE_CC_CACHE_V150 = {}
 _YOUTUBE_CC_LOCK_V150 = threading.Lock() if "threading" in globals() else None
 
@@ -2242,7 +1972,6 @@ def _extrair_player_response_youtube_v150(html_text: str):
         except Exception:
             pass
 
-    # propriedade JSON. O raw_decode começa exatamente no objeto após a chave.
     for marcador in ('"playerResponse":', '"ytInitialPlayerResponse":'):
         pos = html_text.find(marcador)
         if pos < 0:
@@ -2284,7 +2013,6 @@ def _texto_json3_youtube_v150(payload):
         linha = " ".join(linha.replace("\n", " ").split())
         if linha:
             partes.append(linha)
-    # remove repetições consecutivas comuns em captions segmentadas
     saida = []
     anterior = None
     for p in partes:
@@ -2431,8 +2159,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
     else:
         cached = _YOUTUBE_CC_CACHE_V150.get(video_id)
 
-    # {"text": ""} e todas as verificações automáticas seguintes retornavam
-    # imediatamente esse vazio sem consultar o YouTube novamente.
     if cached is not None and str(cached.get("text") or "").strip():
         return dict(cached)
 
@@ -2516,11 +2242,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                     "cc_method": "player_captionTracks",
                 })
 
-        #
-        # O HTML /watch nem sempre expõe captionTracks (consentimento,
-        # resposta simplificada, cold start, mudanças do YouTube). Quando a
-        # primeira estratégia não encontrou texto, tentamos listar as faixas
-        # diretamente e baixar a escolhida.
         if not str(result.get("text") or "").strip():
             try:
                 _list_url_v152 = (
@@ -2601,7 +2322,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
 
                     _texto_v152 = ""
 
-                    # Primeiro tenta json3.
                     with _recurso_api_io():
                         _cap_json_v152 = _http_get(
                             _cap_url_v152 + "&fmt=json3",
@@ -2619,7 +2339,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
                         except Exception:
                             _texto_v152 = ""
 
-                    # Depois XML tradicional.
                     if not _texto_v152:
                         with _recurso_api_io():
                             _cap_xml_v152 = _http_get(
@@ -2699,7 +2418,6 @@ def obter_cc_youtube_v150(url_video: str) -> dict:
         else:
             _YOUTUBE_CC_CACHE_V150[video_id] = dict(result)
     else:
-        # Limpa inclusive eventual entrada vazia herdada no mesmo processo.
         if _YOUTUBE_CC_LOCK_V150:
             with _YOUTUBE_CC_LOCK_V150:
                 _YOUTUBE_CC_CACHE_V150.pop(video_id, None)
@@ -2812,8 +2530,6 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
             if escolhido:
                 ad["youtube_video_id"] = escolhido.get("video_id") or _youtube_video_id_v150(escolhido_url)
                 ad["youtube_url"] = escolhido_url
-                # Só grava os campos de CC quando há conteúdo. Isso distingue
-                # "vídeo YouTube sem CC" de "CC encontrado".
                 if (escolhido.get("text") or "").strip():
                     ad["video_cc_raw"] = escolhido["text"].strip()
                     ad["video_cc_language"] = escolhido.get("language") or ""
@@ -2822,16 +2538,6 @@ def _enriquecer_gads_com_cc_youtube_v150(dados: dict) -> dict:
     return resultado
 
 
-#
-# Diferente de uma flag de session_state "já verificado", este controle vive
-# no processo e só registra cooldown DEPOIS de uma verificação concluída.
-#
-# IMPORTANTE: o Streamlit reexecuta o arquivo inteiro a cada rerun. Portanto,
-# set/dict/Lock soltos no módulo eram recriados enquanto a thread anterior
-# continuava viva. Na prática, cada rerun perdia a trava e iniciava outra
-# varredura dos mesmos vídeos (o log mostra duas sequências simultâneas para
-# `tg57XiRcLBM`), elevando rapidamente RAM/CPU até o healthcheck cair.
-# `st.cache_resource` mantém um único registry por processo entre reruns.
 @st.cache_resource(show_spinner=False)
 def _get_youtube_cc_verify_registry_v188() -> dict:
     return {
@@ -2993,9 +2699,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
 
     _ticket_cc_v195 = None
     try:
-        # V195 — CC também participa da mesma faixa exclusiva usada por
-        # migração/OCR. Antes o yt-dlp rodava por fora e elevava o RSS do
-        # processo justamente quando a migração ou o EasyOCR estavam ativos.
         _esperar_coleta_prioritaria_v195(user_id, "CC YOUTUBE")
         _esperar_outra_acao_pesada_persistente(
             user_id,
@@ -3071,9 +2774,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
 
             _resultados_emp_v154 = {}
             for _vid_v154, _url_v154 in _videos_v154:
-                # Se uma coleta começar enquanto o pós-processamento está
-                # ativo, ela tem prioridade máxima. CC pausa entre vídeos e
-                # não abre novos downloads até a coleta terminar.
                 while any(
                     _job_any_active(_tipo_coleta, user_id)
                     for _tipo_coleta in ("coleta_ads_google", "coleta_ads", "coleta_redes")
@@ -3104,8 +2804,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
                 _resultados_emp_v154,
             )
 
-            # Persiste ao terminar CADA empresa. Se houver standby depois,
-            # as empresas já concluídas não entram de novo no lote.
             _salvar_checkpoint_gads_r2(
                 user_id,
                 _empresa_v154,
@@ -3124,7 +2822,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
                 flush=True,
             )
 
-        # Só persiste se algum CC novo entrou.
         _antes = {
             _vid: str(
                 next(
@@ -3178,8 +2875,6 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
                 flush=True,
             )
 
-        # de uma tentativa automática. Estados finais sem texto (sem CC real ou
-        # erro técnico) não mantêm a atividade aberta indefinidamente.
         _pendentes_depois = len(_gads_youtube_sem_cc_v151(_cache_enriquecido))
         if atividade_id:
             atualizar_atividade(atividade_id, "concluido", {
@@ -3193,13 +2888,10 @@ def _verificar_cc_youtube_background_v151(user_id: str, atividade_id: str = None
             user_id, _cache_enriquecido, motivo="cc_youtube_finalizado"
         )
 
-        # O cooldown começa somente depois que a verificação chegou ao fim.
-        # Falha/standby antes daqui não bloqueia a próxima tentativa.
         with _YOUTUBE_CC_VERIFY_LOCK_V151:
             _YOUTUBE_CC_VERIFY_LAST_OK_V151[user_id] = _time_cc151.monotonic()
 
     except Exception as _exc_cc151:
-        # Não grava LAST_OK: próxima renderização poderá tentar de novo.
         if atividade_id:
             atualizar_atividade(atividade_id, "erro", {
                 "verificados": 0,
@@ -3239,7 +2931,6 @@ def _recuperar_atividade_cc_youtube_orfa_v161(user_id: str, cache_sessao: dict) 
         if not _uid:
             return
 
-        # Se há worker vivo neste processo, a atividade não é órfã.
         with _YOUTUBE_CC_VERIFY_LOCK_V151:
             if _uid in _YOUTUBE_CC_VERIFY_ACTIVE_V151:
                 return
@@ -3322,8 +3013,6 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
     if not user_id or not _gads_youtube_sem_cc_v151(cache_sessao):
         return False
 
-    # Nunca inicia CC junto com coleta, migração ou OCR. A página fará nova
-    # tentativa em render posterior, depois que a faixa pesada estiver livre.
     if (not permitir_enfileirar) and (
         _job_any_active("coleta_ads_google", user_id)
         or _job_any_active("coleta_ads", user_id)
@@ -3344,9 +3033,6 @@ def iniciar_verificacao_cc_youtube_automatica_v151(
         if _ultimo_ok and (_agora - _ultimo_ok) < float(intervalo_segundos):
             return False
 
-        # Falha do Supabase não pode causar reinício em todo rerun. Um
-        # intervalo mínimo de 60s evita várias threads sucessivas baixando os
-        # mesmos 22 vídeos enquanto o banco continua indisponível.
         _ultima_tentativa = float(_YOUTUBE_CC_VERIFY_LAST_ATTEMPT_V195.get(user_id) or 0)
         if _ultima_tentativa and (_agora - _ultima_tentativa) < 60.0:
             return False
@@ -3398,11 +3084,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     if not pode_baixar_midia(user_id):
         return url_origem
 
-    # V93: reaproveita uma URL de origem que já foi persistida antes SEM
-    # baixar o arquivo novamente. O dedupe antigo era apenas por hash e,
-    # portanto, só descobria a duplicata depois de gastar uma requisição ao
-    # CDN da Meta/Google. Como URLs da Meta podem se repetir entre anúncios
-    # da mesma coleta, este atalho elimina downloads desnecessários.
     try:
         _por_origem = (
             supabase.table("midias")
@@ -3418,10 +3099,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
     except Exception:
         pass
 
-    # Teto de tentativas — sem isso, QUALQUER chamador (a varredura
-    # automática inclusive) tentava de novo pra sempre, mesmo pra uma
-    # URL que já provou repetidamente que não vai baixar (ex: 403 do
-    # CDN de vídeo do Facebook, que não é falha passageira).
     try:
         _falha_existente = (
             supabase.table("midias_falhas")
@@ -3444,22 +3121,9 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
         _e_youtube = _e_url_youtube(url_origem)
 
         if _e_youtube:
-            # Vídeo de anúncio do Google Ads: o "vídeo" é, na verdade, o
-            # próprio link do YouTube (youtube.com/watch?v=...), não um
-            # arquivo baixável com um GET simples. Não baixamos mais o
-            # vídeo de verdade aqui (isso exigia yt-dlp) — o link do
-            # YouTube não expira como os da Meta, então simplesmente
-            # devolve a própria url_origem sem tentar migrar pro R2; o
-            # player do card (aba Google Ads) já sabe reconhecer esse
-            # caso e abrir o embed oficial do YouTube.
             return url_origem
         else:
             if _e_midia_google:
-                # CDN do Google (tpc.googlesyndication.com) — igual em
-                # _url_para_base64 (aba Google Ads): um Referer forjado pode
-                # ser mais suspeito pro CDN do que nenhum Referer, então tenta
-                # em ordem, da tentativa mais "limpa" (sem headers) até a mais
-                # específica (a própria página do criativo, quando temos).
                 _tentativas_headers = [
                     {},
                     {"User-Agent": _user_agent},
@@ -3468,8 +3132,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                 if referer_hint:
                     _tentativas_headers.append({"User-Agent": _user_agent, "Referer": referer_hint})
             else:
-                # Meta/Instagram (comportamento original) — o link expira, mas
-                # é servido pelo CDN da Meta esperando um Referer de facebook.com.
                 _tentativas_headers = [
                     {"User-Agent": _user_agent, "Referer": "https://www.facebook.com/", "Accept": "*/*"},
                 ]
@@ -3489,21 +3151,12 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
                     f"bytes={len(_tentativa.content) if _tentativa.content else 0}",
                     flush=True,
                 )
-                # Validação de content-type pra QUALQUER origem (não só
-                # Google) — sem isso, uma resposta 200 com HTML/erro no
-                # corpo (ex.: página do YouTube, ou uma página de erro
-                # genérica de qualquer CDN) passava como "sucesso" e subia
-                # pro R2 disfarçada de imagem/vídeo.
                 if _tentativa.status_code == 200 and _tentativa.content and _ct_tentativa.startswith(("image/", "video/")):
                     resp = _tentativa
                     print(f"[MIDIA-DL:{ad_id}] SUCESSO na tentativa={_i_tent}", flush=True)
                     break
             if resp is None:
                 print(f"[MIDIA-DL:{ad_id}] TODAS as {len(_tentativas_headers)} tentativas falharam pra {url_origem} — mantém link original", flush=True)
-                # Nenhuma tentativa deu certo (nem status 200+content-type
-                # válido) — levanta pra cair no except abaixo, que registra
-                # a falha (alimenta MAX_TENTATIVAS_MIDIA) e devolve a
-                # url_origem sem quebrar o fluxo.
                 raise RuntimeError(f"download falhou em todas as {len(_tentativas_headers)} tentativas (status/content-type inválido)")
             conteudo = resp.content
             content_type = (
@@ -3513,13 +3166,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             )
         hash_conteudo = hashlib.sha256(conteudo).hexdigest()
 
-        # dedupe: mesma mídia já baixada antes pra esse usuário → reaproveita,
-        # MAS só depois de confirmar que o arquivo ainda existe de verdade no
-        # bucket. Sem essa checagem, se um arquivo for removido por qualquer
-        # motivo (ex: uma corrida durante o reprocessamento), o dedupe ficava
-        # devolvendo esse link morto pra sempre, pra qualquer anúncio novo
-        # que reusasse a mesma imagem (comum em anúncios "Dinâmicos", que
-        # repetem o mesmo criativo em vários cards).
         existente = (
             supabase.table("midias")
             .select("url_cdn")
@@ -3538,9 +3184,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             if _arquivo_existe:
                 _limpar_falha_midia(user_id, url_origem)
                 return _url_dedupe
-            # arquivo sumiu do bucket apesar do registro no banco — remove
-            # a linha órfã e segue pro upload normal abaixo, como se não
-            # tivesse achado dedupe nenhum.
             try:
                 supabase.table("midias").delete().eq("user_id", user_id).eq("hash_conteudo", hash_conteudo).execute()
             except Exception:
@@ -3559,14 +3202,6 @@ def baixar_e_persistir_midia(url_origem: str, user_id: str, empresa: str,
             conteudo_upload, content_type_upload, ext_comprimida = _comprimir_video(conteudo, content_type)
             if ext_comprimida:
                 ext = ext_comprimida
-            # Transcrição NÃO roda mais aqui. Antes, cada vídeo migrado podia
-            # segurar um dos workers da migração por até alguns minutos
-            # (ffmpeg + Whisper na CPU), fazendo a barra "X de Y salvos"
-            # andar bem mais devagar do que o download/upload em si
-            # precisaria. transcricao_video fica "" (vira NULL no banco,
-            # ver insert abaixo) e é isso que sinaliza "pendente" pra fila
-            # separada em _transcrever_pendentes_background — que roda
-            # depois de terminar a migração, sem bloquear o progresso dela.
 
         storage_key = f"{user_id}/{_slug_empresa(empresa)}/{hash_conteudo}{ext}"
 
@@ -3697,36 +3332,18 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
 
         for ad_idx, ad in enumerate(ads_novos):
             ad_id = ad.get("id")
-            # Rótulo legível do anúncio pro log de "quais anúncios foram
-            # migrados"/"quais deram erro" — sem isso o log só teria URLs
-            # de imagem/vídeo cruas, que não dizem nada pro usuário sobre
-            # qual anúncio é qual na tela de "mais informações".
             _titulo_ad = (
                 (ad.get("title") or "").strip()
                 or (ad.get("body") or "").strip()[:60]
                 or (f"Anúncio {ad_id}" if ad_id else "Anúncio sem título")
             )
-            # snapshot_url = página do criativo (Central de Transparência
-            # do Google, quando é um anúncio do Google Ads) — usada como
-            # Referer de último recurso em baixar_e_persistir_midia, pra
-            # imagens do Google que só carregam com o Referer exato da
-            # página do próprio anúncio (ver comentário na função).
             _referer_hint_ad = ad.get("snapshot_url") or ""
             for url_idx, u in enumerate(ad.get("images") or []):
                 tarefas_brutas.append((empresa, ad_idx, "images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
-            # "carousel_images" (1 imagem por card do carrossel, sem as
-            # duplicatas boa/ruim que "images" carrega) também precisa virar
-            # link permanente — sem isso, anúncios novos ficariam certos por
-            # ora mas com URL crua da Meta, que expira em algumas semanas e
-            # quebraria o modal do carrossel mais pra frente.
             for url_idx, u in enumerate(ad.get("carousel_images") or []):
                 tarefas_brutas.append((empresa, ad_idx, "carousel_images", url_idx, u, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
             for url_idx, u in enumerate(ad.get("videos") or []):
                 tarefas_brutas.append((empresa, ad_idx, "videos", url_idx, u, "video", ad_id, _titulo_ad, _referer_hint_ad))
-            # Foto de perfil da página — é a mesma URL pra todo anúncio
-            # dessa empresa, mas o dedupe por hash já evita subir de novo;
-            # sem isso, esse campo nunca passava pelo R2 e continuava
-            # dependendo do link do Facebook, que expira.
             _foto_perfil = ad.get("page_profile_picture")
             if _foto_perfil:
                 tarefas_brutas.append((empresa, ad_idx, "page_profile_picture", 0, _foto_perfil, "imagem", ad_id, _titulo_ad, _referer_hint_ad))
@@ -3734,10 +3351,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     if not tarefas_brutas:
         return resultado, {"total": 0, "nao_migrados": 0, "anuncios_com_erro": [], "total_anuncios_com_erro": 0, "anuncios_migrados": [], "total_anuncios_migrados": 0, "assets_encontrados": 0, "assets_unicos": 0, "duplicados_ignorados": 0, "reutilizados_biblioteca": 0}
 
-    # V93: uma única transferência por asset. Todas as ocorrências do mesmo
-    # arquivo (images/carousel/profile e anúncios diferentes) recebem depois
-    # a mesma URL permanente. Isso evita baixar s60 + s600 + original do mesmo
-    # arquivo e evita repetir a foto de perfil em cada anúncio.
     _grupos = {}
     for t in tarefas_brutas:
         empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint = t
@@ -3747,9 +3360,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         if _score_url(u, tipo) > _score_url(g["melhor"][4], tipo):
             g["melhor"] = t
 
-    # V98 — além do dedupe desta execução, consulta mídias já salvas em
-    # o pathname do asset; se a chave canônica já possui url_cdn, não baixa
-    # novamente.
     _cdn_existente_por_chave = {}
     try:
         _res_midias_exist = _supabase_resiliente(
@@ -3793,25 +3403,10 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         flush=True
     )
 
-    # Lock protege o contador de progresso (vários workers do
-    # ThreadPoolExecutor terminam "ao mesmo tempo") e o timestamp da
-    # última escrita no Supabase, que usamos pro throttle abaixo.
     _lock_progresso = threading.Lock()
     _estado_progresso = {"concluidas": 0, "ultima_escrita": 0.0}
     INTERVALO_MIN_ESCRITA_PROGRESSO = 1.5  # segundos entre updates no banco
 
-    # Nome da empresa (e plataforma) pra incluir em toda escrita de
-    # progresso — precisa ser regravado sempre porque atualizar_atividade
-    # substitui o dict de detalhes inteiro (não faz merge); sem isso, a
-    # primeira atualização de progresso ao vivo apagaria os campos
-    # "empresa"/"plataforma" que o botão Continuar/Refazer E o dedup de
-    # iniciar_migracao_midia_background (_atividade_migracao_mais_
-    # recente_id) dependem pra saber qual empresa/plataforma essa
-    # atividade é — perder "plataforma" aqui fazia o dedup nunca achar
-    # essa atividade de novo (caía no default "Meta Ads") e criar um
-    # CARD NOVO pra mesma empresa a cada verificação de segurança.
-    # `dados` sempre tem uma única empresa quando atividade_id é passado
-    # (é assim que _migrar_midia_background chama esta função).
     _empresa_progresso = next(iter(dados), None)
 
     def _reportar_progresso_live(concluidas: int):
@@ -3836,13 +3431,7 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     def _processar(t):
         empresa, ad_idx, campo, url_idx, u, tipo, ad_id, titulo_ad, referer_hint, chave_asset = t
         nova_url = baixar_e_persistir_midia(u, user_id, empresa, tipo, ad_id, referer_hint)
-        # "não migrado" = a URL não mudou E não é porque já era do R2
-        # (nesse caso o não-mudou é intencional, não uma falha)
         ja_era_r2 = bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
-        # V87: vídeo do Google Ads hospedado no YouTube é uma mídia externa
-        # permanente, não uma falha. `baixar_e_persistir_midia` devolve a URL
-        # original de propósito (não usamos yt-dlp). Antes isso era contado
-        # como `nao_migrado` e o card mostrava metade dos vídeos como erro.
         _externo_permanente = (tipo == "video" and _e_url_youtube(u))
         nao_migrado = (nova_url == u) and not ja_era_r2 and not _externo_permanente
         with _lock_progresso:
@@ -3851,17 +3440,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         _reportar_progresso_live(_concluidas_agora)
         return (empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, u, ad_id, titulo_ad, chave_asset)
 
-    # ── Heartbeat independente de tarefa concluída ──
-    # _reportar_progresso_live só grava quando um item TERMINA. Com vídeo
-    # (ffmpeg + Whisper), um único item pode levar bem mais que os 90s que
-    # _migracao_travada usa como limiar — se os 3 workers caem todos em
-    # itens lentos ao mesmo tempo, nenhum progresso é escrito por um bom
-    # tempo, e o heurístico de "travado" errava, achando que não tinha
-    # nenhuma thread rodando (e mostrando o botão "Continuar" no meio de
-    # uma migração que seguia ativa — o usuário clicava nele sem precisar,
-    # disparando um refazer_migracao_midia duplicado). Esse heartbeat gira
-    # sozinho a cada ~20s, independente de qualquer item ter terminado, só
-    # pra provar "ainda tem thread viva aqui".
     INTERVALO_HEARTBEAT_SEGUNDOS = 20
     _heartbeat_stop = threading.Event()
 
@@ -3893,14 +3471,8 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     ads_com_erro = {}    # ad_id -> título, pelo menos 1 mídia falhou
     ads_migrados = {}    # ad_id -> título, pelo menos 1 mídia migrou com sucesso
     try:
-        # Migração pesada serial: um asset por vez. O limite configurável de
-        # downloads continua existindo para outros fluxos leves, mas aqui não
-        # permitimos fan-out de threads porque esta rotina convive com imagens,
-        # vídeos, ffmpeg e buffers grandes no processo principal.
         with ThreadPoolExecutor(max_workers=1) as executor:
             for empresa, ad_idx, campo, url_idx, nova_url, nao_migrado, url_original, ad_id, titulo_ad, chave_asset in executor.map(_processar, tarefas):
-                # Propaga o resultado para TODAS as referências equivalentes
-                # do asset, inclusive variantes s60/s600/original.
                 for _ref in _grupos[chave_asset]["refs"]:
                     _emp, _idx, _campo, _url_idx, _u, _tipo, _aid, _titulo, _rh = _ref
                     if _campo == "page_profile_picture":
@@ -3919,18 +3491,10 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
         if _heartbeat_thread:
             _heartbeat_thread.join(timeout=2)
 
-    # Um mesmo anúncio pode ter, por exemplo, a imagem migrada mas o vídeo
-    # não — nesse caso ele conta só como "com erro" no log (não também como
-    # "migrado"), pra não esconder que esse anúncio específico ainda tem
-    # pendência.
     for _aid in list(ads_migrados):
         if _aid in ads_com_erro:
             del ads_migrados[_aid]
 
-    # Cap na amostra gravada nos detalhes da atividade (jsonb no Supabase) —
-    # uma empresa com milhares de anúncios não deve virar um payload gigante
-    # a cada atualização de progresso. O total real (sem cap) fica em
-    # total_anuncios_com_erro/total_anuncios_migrados.
     LIMITE_AMOSTRA_LOG_ANUNCIOS = 30
     stats = {
         "total": len(tarefas),
@@ -3947,34 +3511,6 @@ def persistir_midias_de_ads(dados: dict, user_id: str, atividade_id: str = None,
     }
     return resultado, stats
 
-# ---------------------------------------------------
-#  TRANSCRIÇÃO DE VÍDEO EM BACKGROUND (desacoplada da migração)
-# ---------------------------------------------------
-# Antes, a transcrição via Whisper rodava DENTRO de baixar_e_persistir_midia,
-# no meio da migração de mídia — cada vídeo podia segurar um dos workers
-# do ThreadPoolExecutor por até alguns minutos (ffmpeg + Whisper na CPU),
-# fazendo a barra "X de Y anúncios salvos" andar bem mais devagar do que
-# o download/upload em si precisaria (o próprio código já tinha um
-# comentário registrando que isso deixou uma migração real travada em
-# "32 de 155" por mais de uma hora). Agora a migração só baixa, comprime
-# e sobe a mídia pro R2 — rápido, principalmente I/O-bound — e a
-# transcrição roda depois, numa fila própria, sem bloquear o progresso.
-#
-# A fila processa os vídeos já migrados (url_cdn no R2, então nunca
-# expira) que ainda estão com `transcricao` NULL no banco. Cada vídeo
-# ainda passa pelo mesmo teto de tempo por item (ver
-# WHISPER_TRANSCRIBE_TIMEOUT_SEGUNDOS dentro de _transcrever_video_whisper)
-# — só que agora atrasar a transcrição de um vídeo problemático não
-# atrasa mais a migração de nenhuma empresa.
-#
-# A fila roda POR EMPRESA (não mais uma fila genérica por usuário) e
-# gera uma atividade `transcricao_video` própria — mesmo padrão da
-# `migracao_midia` (ver criar_atividade/atualizar_atividade mais abaixo):
-# assim o sino de notificações mostra "X de Y vídeos transcritos" por
-# empresa, com barra de progresso, em vez do badge "⏳ Transcrevendo…"
-# no card do vídeo ser a única pista (e uma pista sem nenhuma noção de
-# quantidade ou de tempo decorrido — exatamente o problema de "como sei
-# que não travou" que motivou essa mudança).
 
 import threading
 
@@ -3982,13 +3518,6 @@ _lock_transcricao_pendente = threading.Lock()
 
 @st.cache_resource
 def _get_transcricoes_empresa_ativas_agora() -> set:
-    # @st.cache_resource (não uma variável solta no módulo) porque o
-    # Streamlit reexecuta o script inteiro do zero a cada rerun — uma
-    # variável de módulo comum voltaria a set() vazio a cada rerun,
-    # quebrando a trava "já tem uma fila rodando pra essa empresa" (mesmo
-    # motivo pelo qual get_r2_client() e get_whisper_model() já usam esse
-    # decorator). cache_resource devolve sempre a MESMA instância do set,
-    # compartilhada por todo o processo, sobrevivendo aos reruns.
     return set()
 
 _transcricoes_empresa_ativas_agora = _get_transcricoes_empresa_ativas_agora()  # elementos: (user_id, empresa) — evita 2 filas rodando pra mesma empresa ao mesmo tempo
@@ -4058,9 +3587,6 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
     total = _contar_transcricoes_pendentes(user_id, empresa)
     _ids_tentados_neste_run = set()
     _ids_falharam = []
-    # V75 — diagnóstico por mídia. Antes o card só dizia "falha de rede/IA",
-    # o que não permitia saber se o problema era download, arquivo inválido,
-    # inicialização do EasyOCR, leitura OCR ou gravação no banco.
     _erros_detalhados = []
     _erros_update_amostra = []  # guarda a mensagem real de até 3 falhas, pra diagnosticar a causa (RLS, coluna estourada, etc.) sem precisar de acesso a log de servidor
     try:
@@ -4075,11 +3601,6 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                     .is_("transcricao", "null")
                 )
                 if _ids_tentados_neste_run:
-                    # Exclui linhas já tentadas NESTA execução — sucesso
-                    # ou falha, não volta pra fila até a próxima vez que
-                    # iniciar_transcricao_pendente_background for chamada
-                    # do zero. Sem isso, uma linha cujo UPDATE falha fica
-                    # NULL pra sempre e é reprocessada em loop infinito.
                     _query = _query.not_.in_("id", list(_ids_tentados_neste_run))
                 res = _query.limit(5).execute()
             except Exception:
@@ -4087,18 +3608,6 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
             pendentes = res.data or []
             if not pendentes:
                 break
-            # Pode ter surgido vídeo NOVO pra essa empresa depois que
-            # `total` foi calculado lá em cima (ex: outro fluxo de mídia —
-            # reprocessamento, retentativa, uma migração concorrente —
-            # inseriu mais um vídeo com `transcricao` NULL enquanto essa
-            # fila já estava rodando). Sem este recálculo, a barra
-            # chegava em "19 de 19" (100%) e ficava ali parada enquanto a
-            # thread, na real, seguia processando um 20º vídeo que o
-            # total antigo não previa — a atividade continuava
-            # 'em_andamento' (correto), mas visualmente parecia travada
-            # em 100% em vez de mostrar "19 de 20" e a barra recuando pra
-            # 95%. Só recalcula aqui (uma vez por lote de 5, não por
-            # vídeo) pra não gerar uma query extra a cada item.
             total_real = transcritas + _contar_transcricoes_pendentes(user_id, empresa)
             if total_real > total:
                 total = total_real
@@ -4111,10 +3620,6 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                     })
             for midia in pendentes:
                 _ids_tentados_neste_run.add(midia["id"])
-                # String vazia (em vez de deixar NULL) marca "já tentei
-                # transcrever esse vídeo" — sem isso, um vídeo sem áudio
-                # (ou que falha sempre) ficaria sendo pego por essa mesma
-                # fila pra sempre, a cada ciclo.
                 texto = ""
                 try:
                     resp = _http_get(midia["url_cdn"], timeout=30)
@@ -4125,23 +3630,11 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                 try:
                     supabase.table("midias").update({"transcricao": texto or ""}).eq("id", midia["id"]).execute()
                 except Exception as _e_update:
-                    # Não faz mais "pass" silencioso: fica registrado (id
-                    # já está em _ids_tentados_neste_run, então não volta
-                    # a ser tentado nesta execução) e vira um "erro" real
-                    # no fim, visível no sino, em vez de sumir sem deixar
-                    # rastro. Guarda a mensagem de verdade (até 3
-                    # amostras) pra dar pra diagnosticar a causa raiz.
                     _ids_falharam.append(str(midia["id"]))
                     if len(_erros_update_amostra) < 3:
                         _erros_update_amostra.append(f"{midia['id']}: {_e_update}")
                 transcritas += 1
                 if atividade_id:
-                    # Regrava 'empresa' em TODO update de detalhes (mesmo
-                    # cuidado de _migrar_midia_background) porque
-                    # atualizar_atividade substitui o dict inteiro, não
-                    # faz merge — sem isso, esse update apagaria a
-                    # empresa dos detalhes e o botão "Refazer" perderia a
-                    # referência de qual empresa é essa atividade.
                     atualizar_atividade(atividade_id, "em_andamento", {
                         "empresa": empresa,
                         "transcritas": transcritas,
@@ -4150,11 +3643,6 @@ def _transcrever_pendentes_background(user_id: str, empresa: str, atividade_id: 
                     })
         if atividade_id:
             if _ids_falharam:
-                # Pelo menos um UPDATE falhou de verdade — não marca
-                # 'concluido' fingindo que deu tudo certo. Fica 'erro',
-                # com o botão "Refazer" disponível (que só tenta de novo
-                # os que ainda estiverem NULL — os que tiveram sucesso
-                # não voltam pra fila).
                 atualizar_atividade(atividade_id, "erro", {
                     "empresa": empresa,
                     "transcritas": transcritas,
@@ -4201,9 +3689,6 @@ def _transcrever_pendentes_na_fila_global(user_id: str, empresa: str, atividade_
                 "aviso": "Transcrição em processamento.",
             })
 
-        # O modelo Whisper só é carregado DEPOIS que a transcrição ganha a
-        # vez na fila. Antes, iniciar_transcricao... carregava o modelo antes
-        # da fila e podia criar um pico de RAM enquanto o OCR estava ativo.
         if whisper_model_ou_none() is None:
             if atividade_id:
                 atualizar_atividade(atividade_id, "erro", {
@@ -4236,8 +3721,6 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
         _transcricoes_empresa_ativas_agora.add((user_id, empresa))
     total = _contar_transcricoes_pendentes(user_id, empresa)
     if not total:
-        # Nada pendente pra essa empresa agora — não cria atividade só
-        # pra mostrar "0 de 0", isso só poluiria o sino à toa.
         with _lock_transcricao_pendente:
             _transcricoes_empresa_ativas_agora.discard((user_id, empresa))
         return
@@ -4266,40 +3749,7 @@ def iniciar_transcricao_pendente_background(user_id: str, empresa: str):
     ).start()
 
 
-# ---------------------------------------------------
-#  OCR DE IMAGENS DO GOOGLE ADS — o Google Ads Transparency Center não
-#  expõe texto do anúncio (headline/descrição) via API pública, nem
-#  pros anúncios de formato "Texto" (ver comentário em
-#  _normalizar_item_apify, na aba Google Ads): tudo chega como imagem
-#  crua. Esta fila roda OCR via Gemini Vision sobre as imagens JÁ
-#  MIGRADAS pro R2 (link permanente, nunca expira), pra pelo menos
-#  mostrar o texto visível no criativo em vez de deixar o card sem
-#  nenhuma copy.
-#
-#  OCR, migração e transcrição compartilham a MESMA fila global exclusiva.
-#  chamada em _migrar_midia_background), pra não segurar os workers de
-#  download/upload da migração com uma chamada de IA por imagem.
-#
-#  REQUER MIGRAÇÃO NO BANCO — as colunas abaixo ainda não existem:
-#      ALTER TABLE midias ADD COLUMN ocr_texto text;
-#      ALTER TABLE midias ADD COLUMN ocr_estruturado jsonb;
-#  (mesma convenção 3-estados da coluna `transcricao`: NULL = ainda não
-#  processado, "" (ocr_texto) / NULL (ocr_estruturado) = processado e não
-#  achou texto, com texto = pronto)
-#
-#  `ocr_texto` guarda a versão "achatada" (uma linha por trecho) — usada
-#  desta migração, que só têm texto corrido, sem os campos separados.
-#  `ocr_estruturado` guarda o JSON com os campos reconhecendo que é um
-#  anúncio do Google (titulo, descricao, url_exibida, url_final, cta,
-#  sitelinks) — usado pra exibir o texto formatado no card.
 
-# V229 — estado de coordenação fora do namespace que o Streamlit reexecuta.
-#
-# Um rerun executa novamente este arquivo e, portanto, recriava Lock, Queue e
-# flags comuns. O worker antigo continuava vivo usando os objetos antigos,
-# enquanto o novo rerun enxergava uma fila "vazia" e abria outro EasyOCR.
-# Guardar o coordenador em sys.modules mantém UMA identidade por processo,
-# inclusive durante reruns, sem persistir dados entre deploys/restarts.
 import sys as _sys_runtime_ocr_v229
 import types as _types_runtime_ocr_v229
 
@@ -4316,49 +3766,13 @@ else:
 
 _lock_ocr_pendente = _runtime_ocr_v229.lock_ocr_pendente
 
-# ---------------------------------------------------
-# EASYOCR — leitor local, sem chamada de API/cota
-# ---------------------------------------------------
-# Substitui o Gemini como "leitor" da imagem: baixa a imagem e devolve o
-# texto bruto que o EasyOCR enxergou nela (sem nenhuma tentativa de
-# separar em título/descrição/CTA/url — isso fica pra uma etapa
-# seguinte, depois de ver como o texto bruto costuma vir). Roda no
-# próprio processo, sem limite de requisições por minuto.
-#
-# Trocamos o PaddleOCR pelo EasyOCR porque o `paddlepaddle` ainda não
-# publica wheel pro Python 3.14 (versão usada no Streamlit Community
-# Cloud), o que quebrava o build ("No matching distribution found for
-# paddlepaddle"). O EasyOCR depende do PyTorch, que já tem suporte
-# oficial ao Python 3.14 desde a versão 2.10.
 _lock_easyocr_init = threading.Lock()
 _easyocr_instancia = [None]
 
-# Cadência GLOBAL das chamadas ao EasyOCR — cada empresa roda numa thread
-# própria (ver iniciar_ocr_pendente_background), então várias empresas
-# com OCR pendente ao mesmo tempo podiam disparar várias inferências de
-# rede neural em paralelo, somando toda a CPU/RAM do processo de uma vez
-# só — foi isso que fez o Streamlit Cloud throttlar o app. Este lock
-# serializa as chamadas ao motor (uma imagem por vez, não importa quantas
-# threads estejam tentando), e o intervalo mínimo dá um respiro pro
-# processo entre uma inferência e outra.
-#
-# O valor de 1.5s não foi suficiente — o app foi throttlado por uso de
-# CPU mesmo assim, porque o intervalo só cobria o "descanso" entre
-# chamadas, mas cada chamada em si (download + banda de cor + inferência
-# do EasyOCR) já consome CPU por vários segundos, e com filas de várias
-# empresas rodando em sequência isso vira uso de CPU quase contínuo.
-# Subido pra 6s de respiro mínimo entre uma imagem e a próxima (além do
-# tempo que a própria imagem leva pra processar) — mais lento pra
-# esvaziar a fila, mas dá ao processo intervalos reais de ociosidade
-# entre inferências, que é o que o limitador de CPU do Streamlit Cloud
-# está olhando. Se ainda throttlar com esse valor, subir mais.
 _lock_easyocr_execucao = threading.Lock()
 _MIN_INTERVALO_OCR_SEG = 15.0  # V31: reduz duty-cycle de CPU e risco de throttling
 _ultima_chamada_ocr = [0.0]
 
-# O primeiro carregamento do EasyOCR é o ponto de maior pico de memória:
-# importa torch, abre os pesos e, se faltarem, baixa o detector. Mantemos
-# estado de falha/cooldown para não repetir esse pico em loop após erro.
 _easyocr_init_falhou_em = [0.0]
 _EASYOCR_INIT_COOLDOWN_SEG = 300.0
 
@@ -4411,12 +3825,6 @@ def _get_easyocr():
             return _easyocr_instancia[0]
         try:
             with _recurso_cpu_pesada("easyocr-init"):
-                # V112 — a trava de memória precisa olhar o RSS ANTES de
-                # importar EasyOCR/PyTorch. Na V111 ela era aplicada depois do
-                # import e, por isso, contava os ~650 MB normais do próprio
-                # PyTorch como se fossem memória ocupada pelo restante do app.
-                # Resultado observado: ~293 MB antes do import -> ~960 MB após
-                # o import -> bloqueio artificial no limite de 850 MB.
                 _rss_antes_easyocr = _liberar_memoria_ocr("antes EasyOCR init")
                 _LIMITE_RSS_ANTES_IMPORT_MB = int(
                     st.secrets.get("OCR_MAX_RSS_ANTES_IMPORT_EASYOCR_MB", 650)
@@ -4431,9 +3839,6 @@ def _get_easyocr():
                 print("[OCR-DEBUG] inicializando EasyOCR (única instância global)...", flush=True)
                 import easyocr
 
-                # Só agora torch/cv2 são carregados (como dependências do
-                # EasyOCR). O RSS daqui inclui o custo NORMAL do PyTorch e não
-                # deve ser usado como trava preventiva antes do Reader.
                 _limitar_threads_cpu_ocr_apos_import()
                 _liberar_memoria_ocr("apos import EasyOCR/torch, antes Reader")
 
@@ -4460,10 +3865,6 @@ def _baixar_imagem_cv2(url_imagem: str):
     _img = _cv2_ocr.imdecode(_arr, _cv2_ocr.IMREAD_COLOR)
     if _img is None:
         return None
-    # Evita que screenshots anormalmente gigantes façam o EasyOCR reservar
-    # dezenas/centenas de MB só para tensores intermediários. Criativos
-    # normais ficam intocados; apenas imagens acima de 2200 px no maior lado
-    # são reduzidas proporcionalmente.
     _h, _w = _img.shape[:2]
     _maior = max(_h, _w)
     if _maior > 2200:
@@ -4499,10 +3900,6 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     resultado = reader.readtext(img_bgr, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
         return ""
-    # Agrupa por linha (centro Y de cada caixa) antes de ordenar por X
-    # — do contrário, duas palavras de linhas DIFERENTES mas X parecido
-    # (comum quando uma linha começa mais à esquerda que a de cima)
-    # ficam vizinhas na ordenação e saem misturadas.
     _itens = [(bbox, (t or "").strip()) for bbox, t, _conf in resultado if (t or "").strip()]
     if not _itens:
         return ""
@@ -4529,65 +3926,16 @@ def _ocr_texto_bruto(img_bgr, reader) -> str:
     return "\n".join(linhas)
 
 _REGEX_PATROCINADO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])$", re.IGNORECASE)
-# o caso em que "Patrocinado" cai grudado, na MESMA banda de cor, com
-# a linha seguinte (nome da página/anunciante) — gap vertical pequeno
-# demais pra `_detectar_bandas_texto` separar em duas bandas — saindo
-# do OCR como "Patrocinado BuyTicket Brasil" ou "PatrocinadoBuyTicket
-# Brasil" em vez de duas linhas isoladas. Nesse caso o match EXATO
-# acima (`_REGEX_PATROCINADO`) falha, e sem esse segundo padrão a
-# banda inteira sobrevivia intacta como se fosse cabeçalho — grudando
-# a palavra "Patrocinado" na frente do nome da página/URL (validado
-# num anúncio real da BuyTicket Brasil, ver print reportado pelo
-# usuário). `[\s:\-]*` absorve o espaço/pontuação residual que
-# costuma sobrar entre o rótulo e o texto seguinte.
 _REGEX_PATROCINADO_PREFIXO = re.compile(r"^(patrocinad[oa]|sponsored|gesponsord|gesponsert|sponsoris[ée])", re.IGNORECASE)
-# Formato de domínio/URL: precisa ter pelo menos um "." separando
-# letras/números (ex: "kedu.com.br", "www.kedu.com.br/"). Usado pra
-# distinguir, dentro do cabeçalho (tudo antes do primeiro azul), a
-# linha que É a URL exibida das linhas que NÃO são (ex: nome da
-# página/anunciante ao lado do favicon, tipo "KEDU") — essas não têm
-# ponto e não devem ser misturadas no url_exibida.
 _REGEX_FORMATO_DOMINIO = re.compile(r"^[a-z0-9\-]+(\.[a-z0-9\-]+)+(/\S*)?$", re.IGNORECASE)
-# CTA final do anúncio (ex: botão "Enviar mensagem" do WhatsApp, "Ligar
-# um separador, com um ícone colorido à esquerda (ignorado na
-# classificação de cor — ver `_detectar_bandas_texto`) seguido de um
-# título curto e, na maioria das vezes, um subtítulo cinza logo abaixo
-# (ex: "pelo app WhatsApp"). Como o ícone fica fora da faixa usada pra
-# cor, essa banda chega classificada como "cinza" (não "misto"), e sem
-# esse reconhecimento por texto ela era só mais uma linha de descrição
-# grudada no sitelink anterior. Lista inicial validada com anúncios
-# reais da kedu — dá pra ir completando conforme aparecerem outros CTAs.
-# V91 — inclui também a forma imperativa real do Google Ads em PT-BR: "Compre Agora".
-# A lista anterior só reconhecia "Comprar Agora", então o look-ahead da V90 não
-# identificava o CTA final e deixava o texto promocional interno da arte ocupar o CTA.
 _REGEX_CTA_TITULO_CONHECIDO = re.compile(
     r"^(enviar\s*mensagem|ligar\s*agora|comprar\s*agora|compre\s*agora|saiba\s*mais|"
     r"cadastre-?se|fazer\s*pedido|agendar(\s*agora)?|reservar(\s*agora)?|"
     r"inscreva-?se|baixar\s*agora|instalar(\s*agora)?|pe(ç|c)a\s*já|"
-    # "entre em contato" aceita um complemento CURTO e ESPECÍFICO colado
-    # na mesma linha ("no app WhatsApp") — validado em anúncio real da
-    # isaac, onde o CTA e esse complemento saem juntos numa banda só do
-    # OCR. Restrito a essa continuação exata (não texto livre) porque
-    # uma versão anterior aceitava QUALQUER texto depois de qualquer
-    # gatilho da lista — e "saiba mais" também é um gatilho aqui, só
-    # que "saiba mais" é comum aparecer no MEIO de uma descrição normal
-    # (ex: "Saiba Mais Descubra como o Isaac pode ajudar..."), então
-    # aceitar texto livre depois dele fazia o meio da descrição virar
-    # CTA por engano, cortando o parágrafo ao meio.
     r"entre\s*em\s*contato(\s+no\s*app\s*whatsapp)?|fale\s*conosco|fale\s*com\s*a\s*gente)$",
     re.IGNORECASE,
 )
 
-# ---------------------------------------------------
-#  ÍCONES SVG — CTA FINAL DO ANÚNCIO DO GOOGLE ADS (ex: círculo verde do
-#  WhatsApp ao lado de "Enviar mensagem"). O ícone real fica fora da
-#  faixa usada por `_detectar_bandas_texto` pra classificar a cor da
-#  banda (ver comentário lá), então não dá pra recuperar a cor exata do
-#  pixel — a escolha do ícone/cor abaixo é por palavra-chave no texto do
-#  CTA e no subtítulo (ex: "pelo app WhatsApp"), reproduzindo visualmente
-#  o círculo colorido que a Central de Transparência mostra de verdade,
-#  em vez de deixar o CTA como só mais uma linha de texto sem ícone.
-# ---------------------------------------------------
 
 _SVG_CTA_WHATSAPP = (
     '<svg width="26" height="26" viewBox="0 0 24 24" fill="#25D366">'
@@ -4635,12 +3983,6 @@ _SVG_CTA_LINK = (
     '</svg>'
 )
 
-# Ícone de globo genérico — usado como "favicon" ao lado do nome do
-# anunciante (ex: "KEDU") no cabeçalho do anúncio extraído por OCR,
-# reproduzindo o círculo azul-claro com o globo que o próprio Google
-# mostra quando o site não tem favicon próprio (ver imagem de
-# referência). Não temos como saber o favicon real a partir do OCR, só
-# o nome — por isso sempre esse ícone genérico, nunca um específico.
 _SVG_ICONE_GLOBO_SITE = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:22px;height:22px;min-width:22px;border-radius:50%;background:#e8f0fe;flex-shrink:0;">'
@@ -4660,9 +4002,6 @@ def _icone_cta_google_ads(cta_texto: str, cta_subtitulo: str) -> str:
     etc.) devolve "" — não inventa ícone nenhum pra eles."""
     alvo = f"{cta_texto or ''} {cta_subtitulo or ''}".lower()
     if "whatsapp" in alvo:
-        # Sem fundo colorido — só o ícone oficial do WhatsApp (verde),
-        # "solto", igual ao que aparece de fato ao lado do CTA na
-        # Central de Transparência.
         return (
             '<span style="display:inline-flex;align-items:center;justify-content:center;'
             'width:30px;height:30px;min-width:30px;margin-right:8px;flex-shrink:0;">'
@@ -4697,25 +4036,6 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
     _campos = []
     if ocr_estr.get("url_exibida"):
         _linhas_url = [l for l in ocr_estr["url_exibida"].split("\n") if l]
-        # Sempre que tem 2+ linhas no cabeçalho (nome da página + domínio,
-        # OU domínio curto + URL completa com caminho — os dois formatos
-        # reais que a Central de Transparência mostra), a PRIMEIRA linha
-        # vem em negrito e sem a "/" final, igual ao anúncio de verdade.
-        # Antes isso só valia quando a 1ª linha NÃO parecia domínio (ex:
-        # "BuyTicket Brasil"), então um caso como "buyticketbrasil.com/"
-        # + "www.buyticketbrasil.com/seguro/confiavel" (as duas linhas
-        # parecendo domínio) caía no "senão" e nenhuma ficava em negrito.
-        #
-        # Com só 1 linha (nenhuma URL/domínio abaixo pra acompanhar) E
-        # essa linha NÃO parecendo um domínio (sem "www"/TLD), também
-        # vai em negrito — é o nome puro da empresa extraído de um
-        # anúncio de Display/gráfico (ver `_extrair_titulo_descricao_
-        # por_altura` em `_estruturar_anuncio_google_ads`), que nunca
-        # tem nenhuma linha de URL junto porque esse tipo de anúncio não
-        # mostra domínio nenhum. Sem esse caso, uma única linha caía
-        # direto no "senão" de baixo e saía sem negrito — como se fosse
-        # um domínio comum, quando na verdade é o nome da empresa (que
-        # todo outro tipo de anúncio já mostra em negrito).
         _PADRAO_PARECE_DOMINIO = r"\bwww\b|\.[a-z]{2,4}(?:$|/)"
         if len(_linhas_url) >= 2:
             _nome_pagina = _linhas_url[0].rstrip("/")
@@ -4832,9 +4152,6 @@ def _montar_html_debug_bandas_ocr(debug_bandas) -> str:
     investigar título/sitelink partido ou duplicado sem precisar puxar
     log nenhum. Devolve string vazia se não houver debug salvo (ex:
     linhas de OCR antigas, gravadas antes dessa mudança)."""
-    # V287 — diagnóstico preservado no OCR e no código, mas oculto da
-    # interface normal. Para investigar uma leitura no futuro, basta trocar
-    # `_MOSTRAR_DEBUG_BANDAS_OCR` para True.
     if not _MOSTRAR_DEBUG_BANDAS_OCR or not debug_bandas:
         return ""
     _linhas = []
@@ -4893,22 +4210,12 @@ def _normalizar_url_exibida(texto: str) -> str:
     if not texto:
         return texto
 
-    # V276 — o traço final da URL (normalmente "/") pode ser lido como
-    # fechamento de chave/colchete. Caso real: ``www.buyticketbrasil.com}``.
-    # A troca é restrita ao FINAL de uma linha que já termina num TLD
-    # conhecido; portanto não altera nomes de página nem caminhos válidos.
     texto = re.sub(
         r"(?i)(\.(?:com|net|org|io|app|shop|fr|de|nl|pt|be|es|it|uk|br)(?:\.br)?)[}\])|]+$",
         r"\1/",
         str(texto).strip(),
     )
 
-    # V102 — recuperação conservadora do ENDEREÇO DO SITE no cabeçalho.
-    # Casos reais:
-    # "NWW. funbuynet com brl" -> "www.funbuynet.com.br/"
-    # "NWW. fanticket. com_ brl" -> "www.fanticket.com.br/"
-    # "www. ticketswap. coml" -> "www.ticketswap.com/"
-    # Só roda quando já existe sinal inequívoco de URL.
     _url_v102 = str(texto).strip()
     _tem_sinal_url_v102 = bool(re.match(
         r"^(?:https?\s*[:;/lI|.-]*\s*)?[nNvVwW]{2,4}[.:]?\s*|^https?\s*[:;/lI|.-]+",
@@ -4926,22 +4233,12 @@ def _normalizar_url_exibida(texto: str) -> str:
         )
         _url_v102 = re.sub(r"\s+", "", _url_v102)
 
-        # V280 — corrige a leitura do domínio quando o ponto antes de
-        # ``com`` desaparece e o ponto antes de ``br`` vira ``-.``.
-        # Caso real: ``www.ingressovalidocom-.br/``. A regra só roda em
-        # texto que já passou pelo portão de URL acima e somente no fechamento
-        # ``com...br``, portanto não altera palavras comuns nem caminhos.
         _url_v102 = re.sub(
             r"(?i)(?<!\.)com[-_.]+br(?=/|$)",
             ".com.br",
             _url_v102,
         )
 
-        # V103 — o OCR também pode trocar o ponto entre o domínio e o TLD
-        # por vírgula/ponto-e-vírgula/dois-pontos. Exemplo real:
-        #   "www funbuynet , com brl" -> "www.funbuynet.com.br/"
-        # A troca é restrita ao separador imediatamente antes de um TLD
-        # conhecido, para não alterar pontuação legítima em caminhos da URL.
         _url_v102 = re.sub(
             r"(?<=[a-z0-9])[,;:_]+(?=(?:com|net|org|io|app|shop|fr|de|nl|pt|be|es|it|uk|br)(?:[._]?br[lI]?)?(?:/|$))",
             ".",
@@ -4949,7 +4246,6 @@ def _normalizar_url_exibida(texto: str) -> str:
             flags=re.IGNORECASE,
         )
 
-        # Normaliza separadores que o OCR troca por "_" ou simplesmente perde.
         _url_v102 = re.sub(
             r"\.?(?P<tld>com)[._]?br[lI]?(?=/|$)",
             lambda m: ".com.br/",
@@ -4963,105 +4259,15 @@ def _normalizar_url_exibida(texto: str) -> str:
         _url_v102 = re.sub(r"/+$", "/", _url_v102)
         texto = _url_v102
 
-    # Além do caso já validado http:ll, cobre variações comuns do OCR nas
-    # barras/pontuação do protocolo (http;//, http//, http:/, httpl//).
-    # IMPORTANTE: só corrige quando a linha COMEÇA por http/https; nunca
-    # inventa protocolo em uma URL que no criativo mostra apenas www.
     texto = re.sub(r"^(https?)\s*[;,.]?\s*[:;]?\s*[l|/]{1,3}(?=(?:www|[a-z0-9]))", r"\1://", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?)l(?=/{1,2}(?:www|[a-z0-9]))", r"\1:", texto, flags=re.IGNORECASE)
     texto = re.sub(r"^(https?):l{1,2}(?=[a-zA-Z0-9])", r"\1://", texto, flags=re.IGNORECASE)
-    # (ex: "Wwwedusummitbrasil...", sem "." nenhum entre o www e o
-    # domínio) — o lookahead garante que só mexe aqui se o que vem
-    # depois já parece início de domínio (letra/número), sem comer
-    # acidentalmente outro texto. O grupo opcional de protocolo no
-    # início (`(?:https?://)?`) cobre o caso em que o "www" grudado
-    # vem DEPOIS de um "http://"/"https://" já certo (ex: anúncio real
-    # "http://wwwisaac_.com.br/" — sem essa parte o `^` só bateria com
-    # a string começando direto em "www", e como aqui ela começa com
-    # entre "www" e "isaac").
-    #
-    # O primeiro caractere do grupo também aceita "n"/"N": validado num
-    # anúncio real da BuyTicket Brasil, onde o cabeçalho de URL saiu do
-    # EasyOCR como "NWW.: buyticketbrasil.coml" — o traço diagonal
-    # inicial do "N" é visualmente parecido com o primeiro "w" de "www"
-    # (mesma família de confusão de caractere do item 1 do docstring
-    # acima, só que na letra inicial em vez de maiúscula/minúscula). Só
-    # dispara com no MÍNIMO 2 caracteres consecutivos desse conjunto
-    # (`{2,4}`, sem baixar pra 1), então um domínio real que comece só
-    # com "n" (ex: "netflix.com") nunca cai aqui por engano — precisaria
-    # de pelo menos 2 letras seguidas em {n,N,w,W}, combinação rara em
-    # início de domínio de verdade.
-    #
-    # A pontuação logo depois também passa a aceitar ":" além de ".",
-    # em qualquer combinação de 0 a 2 caracteres (`[.:]{0,2}`, no lugar
-    # do antigo `\.?` que só cobria um ponto opcional) — no mesmo
-    # anúncio da BuyTicket o EasyOCR leu essa pontuação como ".:" (dois
-    # caracteres colados) em vez de só ".". Continua opcional (mínimo
-    # zero) pra não quebrar o caso "Wwwisaac_.com.br/" acima, que não
-    # tem nenhuma pontuação entre o "www" e o domínio.
-    #
-    # O conjunto de caracteres também aceita "V"/"v": validado em outro
-    # anúncio real da BuyTicket Brasil, onde o cabeçalho de URL saiu do
-    # EasyOCR como "VWW. buyticketbrasil coml" — o traço diagonal do "V"
-    # é visualmente parecido com o primeiro "w" de "www" (mesma família
-    # de confusão de caractere já coberta pelo "N", só que numa letra
-    # domínio final ficava com um "VWW." literal na frente.
     texto = re.sub(r"^((?:https?://)?)[nNvVwW]{2,4}[.:]{0,2}\s*(?=[a-zA-Z0-9])", r"\1www.", texto)
-    # Recompõe o fechamento do domínio como ".<tld>/" (ou ".<tld>.br/")
-    # removendo o "l" colado (item 2) SE ele existir, mas sem assumir
-    # que ele sempre existe: quando o EasyOCR acerta a barra de verdade
-    # (ex: ".com/"), essa barra cai no grupo "resto" abaixo e não pode
-    # ser duplicada.
-    #
-    # Cobre não só ".com.br" (o único caso validado originalmente), mas
-    # qualquer TLD comum SEM o "br" — ex: domínio real
-    # "buyticketbrasil.com/" saindo do EasyOCR como
-    # "buyticketbrasilcoml" (sem NENHUM ponto antes do "com" e sem a
-    # barra final, só o "l" colado). Como o regex antigo exigia
-    # "com.br" literal, esse caso não batia com nada e a URL inteira
-    # saía errada (sem "." nem "/"), diferente do "kedu.com.br" que já
-    # funcionava.
-    #
-    # O lookahead `(?=[l/]|$)` é o que evita casar "com" no MEIO de uma
-    # palavra comum (ex: "compre", "recomeceagora") — só dispara quando
-    # logo depois do TLD vem o artefato de OCR "l" (a barra lida
-    # errado), uma barra "/" de verdade, ou o fim da linha; nunca outra
-    # letra dando sequência a uma palavra.
-    #
-    # O separador entre TLD e "br" (grupo 2) aceita "." OU "_" — validado
-    # num anúncio real da FanTicket, onde o ponto entre "com" e "br" saiu
-    # do EasyOCR como underscore ("fanticket.com_br" em vez de
-    # "fanticket.com.br"). Sem aceitar "_" aqui, o grupo 2 nunca batia
-    # (exigia "." literal), o que também derrubava o lookahead final
-    # (não tinha "l"/"/" logo depois de "com", só o "_"), e o regex
-    # inteiro falhava — a normalização inteira era pulada e o "_" errado
-    # sobrevivia intacto no meio do domínio. Como o código logo abaixo já
-    # o separador original), aceitar "_" aqui não muda nada pro caso
-    # ".com.br" que já funcionava — só resolve o caso novo do "_".
-    # V45 — TLDs internacionais / ccTLDs.
-    #
-    # Alguns anúncios da TicketSwap usam domínios locais (.fr, .de, .nl,
-    # .pt etc.) e o EasyOCR frequentemente perde JUSTAMENTE o ponto antes
-    # do TLD e/ou lê a barra final como "l":
-    #   www.ticketswapfrl          -> www.ticketswap.fr/
-    #   http://www.ticketswapdel   -> http://www.ticketswap.de/
-    #   www.ticketswapptl          -> www.ticketswap.pt/
-    #
-    # O normalizador antigo só conhecia TLDs genéricos (com/net/org/io/
-    # shop/app) e .com.br, por isso esses domínios internacionais passavam
-    # vistos em campanhas internacionais. O lookahead continua exigindo
-    # barra, "l" (barra lida errado) ou fim da linha, evitando casar TLD
-    # no meio de palavras comuns.
     _tlds_ocr = (
         "com|net|org|io|shop|app|"
         "fr|de|nl|pt|be|es|it|uk|ie|at|ch|pl|cz|dk|se|no|fi|"
         "br|us|ca|au|nz|mx|ar|cl|co|pe|uy|za|jp|kr|sg|in"
     )
-    # V60 — a barra final do domínio também pode ser lida como "I"
-    # maiúsculo (caso real TicketSwap NL: ``www.ticketswap.nlI``).
-    # Como a regex usa IGNORECASE, ``[lI/]`` cobre l/L/I/i somente na
-    # posição imediatamente depois de um TLD reconhecido, sem alterar
-    # letras no nome do domínio.
     _match_tld = re.search(
         rf"\.?({_tlds_ocr})([._]?br)?(?=[lI/]|$)",
         texto,
@@ -5072,43 +4278,11 @@ def _normalizar_url_exibida(texto: str) -> str:
         _tld = _match_tld.group(1).lower()
         if _match_tld.group(2) and _tld != "br":
             _tld += ".br"
-        # V60: remove o artefato que substituiu a barra final. Além de
-        # ``l/L``, aceita ``I/i`` (validado em ``ticketswap.nlI``).
         if _resto[:1] in {"l", "L", "I", "i"}:
             _resto = _resto[1:]
         _resto = re.sub(r"^/+", "", _resto)  # evita barra dupla se já tinha "/"
         texto = _antes + "." + _tld + "/" + _resto
-    # 3) barra de CAMINHO (não a de fechamento do domínio, já coberta
-    # acima) colada DIRETO na palavra seguinte, sem nenhum espaço nem
-    # caixa de detecção separada — ex: "gestão" + "/" + "escolar" virando
-    # antes desta função, em `_estruturar_anuncio_google_ads`) não tem
-    # como ajudar, porque não sobrou nenhum espaço pra detectar. Restrito
-    # a acontecer logo depois de uma palavra terminada em "ão": em
-    # português não existe palavra real onde "ão" seja seguido direto
-    # por "l" sem separador ("ão" é sempre final de sílaba/palavra),
-    # então é seguro tratar esse "l" como barra sem risco de quebrar uma
-    # palavra de verdade.
     texto = re.sub(r"ãol", "ão/", texto, flags=re.IGNORECASE)
-    # 3b) mesmo problema do item 3, mas SEM "ão" antes — ex: breadcrumb
-    # real "www.buyticketbrasil.com/seguro/confiavel" saindo do EasyOCR
-    # como "...comlsegurolconfiavel": o "l" entre "seguro" e "confiavel"
-    # também é a barra de caminho lida errado, só que não dá pra usar o
-    # mesmo truque do "ão" (nenhuma combinação de letras antes do "l" é
-    # 100% impossível em português). Por isso, restrito a rodar só na
-    # parte de CAMINHO da URL (depois da primeira "/", já recomposta
-    # pelo item 2 acima) — nunca no nome de domínio/marca, que é onde um
-    # falso positivo custaria mais caro. Dentro do caminho, exige pelo
-    # menos 4 letras de cada lado do "l" (palavras de breadcrumb tipo
-    # "seguro"/"confiavel" nunca são tão curtas quanto os poucos casos
-    # reais de "l" genuína grudada, ex: "al", "el" de 2 letras).
-    #
-    # O piso era 3 letras originalmente, mas isso batia num falso
-    # positivo real: "tomorrowland" (nome do festival, "tomorrow" + "l"
-    # + "and") virava "tomorrow/and", porque "and" tem exatamente 3
-    # letras — o mínimo aceito. Subir o piso pra 4 letras resolve esse
-    # caso sem afetar o único caso de verdade já validado pra essa regra
-    # ("seguro"/"confiavel", 6 e 9 letras — bem acima de 4 dos dois
-    # lados).
     if "/" in texto:
         _pos_barra = texto.index("/")
         _dominio_parte, _caminho_parte = texto[:_pos_barra + 1], texto[_pos_barra + 1:]
@@ -5116,23 +4290,8 @@ def _normalizar_url_exibida(texto: str) -> str:
             r"(?<=[a-zà-úãõ]{4})l(?=[a-zà-úãõ]{4})", "/", _caminho_parte, flags=re.IGNORECASE
         )
         texto = _dominio_parte + _caminho_parte
-    # 4) "_" sobrando colado bem antes do TLD (ex: anúncio real
-    # "wwwisaac_.com.br" → o "_" aqui é ruído de leitura do EasyOCR,
-    # provavelmente confundindo um traço/sublinhado ou serifa da última
-    # letra do domínio com underscore — domínio de verdade não tem "_"
-    # nessa posição, então é seguro remover. Mesma lista de TLDs do
-    # item 2 acima (generalizado além de só ".com.br"), senão esse "_"
-    # ficava preso em domínios genéricos ".com" (ex: "isaac_.com").
     texto = re.sub(r"_+(?=\.?(?:com|net|org|io|shop|app)(?:\.?br)?)", "", texto, flags=re.IGNORECASE)
-    # Rede de segurança: colapsa qualquer barra dupla residual que ainda
-    # tenha sobrado por outro caminho não previsto pelas regras acima —
-    # EXCETO logo depois de "http:"/"https:", onde "//" é o protocolo
-    # de verdade, não duplicação por engano (lookbehind negativo evita
-    # comer a barra dupla certa que acabamos de recompor no item 3).
     texto = re.sub(r"(?<!http:)(?<!https:)/{2,}", "/", texto)
-    # V287 — EasyOCR pode confundir o contorno final do domínio com uma
-    # chave/colchete. Esses caracteres nunca são válidos no fim da URL
-    # exibida e apareciam no card como ``www.buyticketbrasil.com}``.
     texto = re.sub(r"[}\]>]+\s*$", "", texto).rstrip()
     return texto
 
@@ -5154,8 +4313,6 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
             if not linha:
                 continue
             if re.search(r"(?i)(?:https?://|www\.|\.[a-z]{2,})", linha):
-                # Rede final específica para o erro observado. Funciona mesmo
-                # se a montagem do cabeçalho não tiver chamado o normalizador.
                 linha = re.sub(
                     r"(?i)((?:https?://)?www\.[a-z0-9-]*?)com[-_.]+br(?=/|$)",
                     r"\1.com.br",
@@ -5168,10 +4325,6 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
     out["descricao"] = re.sub(
         r"(?:\s*(?:\.{3}|…))+\s*$", "", str(out.get("descricao") or "")
     ).rstrip()
-    # V288 — no criativo vertical da BuyTicket, o "O" inicial de
-    # "O maior mercado secundário..." é fino e isolado; o EasyOCR às vezes
-    # o elimina por completo. Corrige somente esse início inequívoco, sem
-    # alterar ocorrências normais de "maior" no meio de outras frases.
     out["descricao"] = re.sub(
         r"(?i)^\s*maior\s+mercado\b",
         "O maior mercado",
@@ -5179,12 +4332,6 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
         count=1,
     )
 
-    # V289 — no anúncio de Ed Sheeran a faixa inferior
-    # ``BTS World Tour - Arirang · Setor Do Rock`` pode ser classificada
-    # como continuação cinza da descrição. Retira a faixa do texto e a
-    # devolve como extensões. O hífen de ``BTS World Tour - Arirang`` faz
-    # parte do nome; somente o ponto médio (às vezes lido como outro hífen)
-    # separa ``Setor Do Rock``.
     _desc_v289 = str(out.get("descricao") or "")
     _m_ext_v289 = re.search(
         r"(?is)(?:\s+|^)"
@@ -5214,12 +4361,6 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
                 _titulos_existentes_v289.add(_titulo_ext_v289.casefold())
         out["sitelinks"] = _sitelinks_ext_v289
 
-    # V282 — aplica a recomposição do hífen também aos resultados que já
-    # estavam salvos no banco. O detector antigo podia persistir:
-    #   Dia 5 | Avenged Sevenfold | Dia 11 | Stray Kids
-    # em quatro sitelinks. A estrutura inequívoca ``Dia <número>`` permite
-    # restaurar os dois itens sem depender de executar o OCR novamente:
-    #   Dia 5 - Avenged Sevenfold | Dia 11 - Stray Kids
     _sitelinks_origem_v282 = out.get("sitelinks") or []
     if not isinstance(_sitelinks_origem_v282, (list, tuple)):
         _sitelinks_origem_v282 = [_sitelinks_origem_v282]
@@ -5259,11 +4400,6 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
                 continue
         _sitelinks_v282.append(_atual_v282)
         _i_v282 += 1
-    # V286 — extensões horizontais como
-    # ``BTS - World Tour Arirang · 5 Seconds of Summer`` podem chegar de
-    # versões anteriores já persistidas como três sitelinks: ``BTS``,
-    # ``World Tour Arirang`` e ``5 Seconds of Summer``. O hífen pertence ao
-    # primeiro item; somente o ponto médio separa a extensão seguinte.
     _sitelinks_v286 = []
     _i_v286 = 0
     while _i_v286 < len(_sitelinks_v282):
@@ -5396,30 +4532,6 @@ def _detectar_regiao_foto_embutida(img_bgr):
     n_blocos_x = largura_total // tam_bloco
     if n_blocos_y == 0 or n_blocos_x == 0:
         return None
-    # ANTES: contava tons RGB distintos (quantizados) por bloco, sem
-    # olhar se esses tons eram cores DE VERDADE diferentes ou só o
-    # degradê de anti-aliasing entre uma cor sólida e o fundo branco.
-    # Um título grande/em negrito (ex: headline azul de anúncio) tem
-    # muito mais pixels de borda por bloco 20x20 do que um ícone
-    # pequeno (~40x40px inteiro) — e cada pixel de borda é uma mistura
-    # ligeiramente diferente de "azul + branco" conforme a opacidade da
-    # fonte ali, cada uma quantizando pra um tom RGB distinto. Isso
-    # sozinho já passava fácil dos 15 tons, sem NENHUMA foto de
-    # verdade — bug real: o retângulo do título "Ingressos Ed Sheeran
-    # - Ed Sheeran / Aqui" (fonte grande e em negrito) foi detectado
-    # como foto e apagado por inteiro antes da detecção de bandas.
-    #
-    # A distinção real entre "foto" e "texto grande com anti-aliasing"
-    # não está na quantidade de tons RGB, e sim na diversidade de
-    # MATIZ (hue): o degradê azul→branco de uma letra é uma única
-    # matiz (o azul da fonte) variando só em saturação/luminosidade
-    # (branco = saturação baixa) — nunca "vira" outra cor. Uma foto de
-    # verdade tem pixels de matizes genuinamente diferentes (tons de
-    # pele, céu, roupa etc.) numa mesma área. Por isso: ignora pixels
-    # de saturação baixa (< 40 de 255 — é aí que mora o anti-aliasing
-    # contra o fundo branco/cinza, sem informação de matiz confiável) e
-    # conta blocos como "foto" pela diversidade de matiz DENTRE os
-    # pixels saturados que sobraram, não pelos tons RGB brutos.
     img_hsv = _cv2_foto.cvtColor(img_bgr, _cv2_foto.COLOR_BGR2HSV)
     matiz = img_hsv[:, :, 0].astype(_np_foto.int32)  # 0-179 no OpenCV
     saturacao = img_hsv[:, :, 1]
@@ -5431,10 +4543,6 @@ def _detectar_regiao_foto_embutida(img_bgr):
             x0, x1 = bx * tam_bloco, (bx + 1) * tam_bloco
             sat_bloco = saturacao[y0:y1, x0:x1]
             mask_saturado = sat_bloco >= 40
-            # Exige também uma quantidade mínima de pixels saturados —
-            # um bloco quase todo branco, com só uma pontinha de cor
-            # (ex: um cantinho de ícone), não deve contar como "área
-            # colorida" só porque essa pontinha tem uma matiz.
             if int(mask_saturado.sum()) < 30:
                 continue
             matizes_bloco = matiz_quantizada[y0:y1, x0:x1][mask_saturado]
@@ -5442,10 +4550,6 @@ def _detectar_regiao_foto_embutida(img_bgr):
                 grade_foto[by, bx] = True
     if not grade_foto.any():
         return None
-    # Agrupa blocos "foto" vizinhos (4-conectividade, flood fill) e
-    # fica só com o maior grupo contíguo — uma foto de verdade forma um
-    # bloco retangular sólido; ruído espalhado (ex: vários ícones
-    # pequenos em pontos diferentes) nunca forma um grupo grande.
     visitado = _np_foto.zeros_like(grade_foto)
     melhor_grupo = []
     for by in range(n_blocos_y):
@@ -5476,28 +4580,6 @@ def _detectar_regiao_foto_embutida(img_bgr):
     y_min_bloco, y_max_bloco = min(ys), max(ys)
     x_min_bloco, x_max_bloco = min(xs), max(xs)
 
-    # EXPANSÃO por densidade (não só por diversidade de matiz): a
-    # diversidade de matiz por bloco 20x20 (acima) só pega a parte
-    # "movimentada" de uma foto (ex: multidão colorida) — trechos mais
-    # uniformes da MESMA foto (céu, gramado, uma faixa de bandeira
-    # sólida) nunca passam de poucos matizes por bloco e ficam de fora
-    # do grupo, SUBESTIMANDO o retângulo real da foto. Bug real: anúncio
-    # de Display com layout lado a lado (foto ocupando a coluna
-    # esquerda inteira do card, texto na direita) — só o trecho da
-    # torcida foi reconhecido como foto (uma fatia no meio), o resto
-    # (céu, gramado) sobrou como "não-branco" comum, nunca deu o
-    # respiro em branco que separaria a foto do texto da coluna da
-    # direita, e a imagem inteira virou UMA banda só, gigante, sem
-    # estrutura nenhuma (título/descrição/botão grudados).
-    #
-    # Corrige com uma 2ª passada: cresce o retângulo já achado (âncora
-    # confiável — veio da diversidade de matiz, não é ruído aleatório)
-    # incluindo blocos VIZINHOS (4-conectividade, flood fill) que
-    # tenham densidade alta de pixel não-branco (>=35% da área do
-    # bloco), mesmo com pouca diversidade de matiz — cobre céu/gramado/
-    # bandeira sólidos que claramente fazem parte da MESMA foto
-    # retangular, sem exigir que cada bloco pareça "colorido o
-    # bastante" sozinho.
     nao_branco_total = _np_foto.any(img_rgb < 240, axis=2)
     densidade = _np_foto.zeros((n_blocos_y, n_blocos_x))
     for by in range(n_blocos_y):
@@ -5626,16 +4708,6 @@ def _detectar_regiao_grafico_criativo(img_bgr, _regiao_foto_precalculada=None):
     matiz = img_hsv[:, :, 0].astype(_np_graf.int32)
     saturacao = img_hsv[:, :, 1].copy()
 
-    # V49: se já existe uma FOTO embutida lateral (ex.: thumbnail do
-    # show à direita do título/descrição num anúncio de Busca), não deixe
-    # a diversidade de cores dessa foto enganar o detector de CRIATIVO
-    # GRÁFICO. Antes, uma foto 200x200 à direita deixava várias faixas
-    # horizontais "quentes" e esta função devolvia a largura INTEIRA da
-    # imagem como gráfico; `_detectar_bandas_texto` então apagava também
-    # o título e a descrição reais à esquerda — resultado: só sobrava o
-    # cabeçalho no OCR. A foto já é tratada separadamente por
-    # `_detectar_regiao_foto_embutida`, então aqui zeramos sua saturação
-    # antes de procurar um banner/criativo de largura ampla.
     _regiao_foto_local = _regiao_foto_precalculada
     if _regiao_foto_local is None:
         _regiao_foto_local = _detectar_regiao_foto_embutida(img_bgr)
@@ -5666,10 +4738,6 @@ def _detectar_regiao_grafico_criativo(img_bgr, _regiao_foto_precalculada=None):
         n_matizes = len(_np_graf.unique(matiz_quantizada[y0:y1, :][mask_sat]))
         faixa_e_quente.append(n_matizes > _LIMIAR_MATIZES)
 
-    # Maior sequência de faixas "quentes", com busca à frente (ver
-    # docstring acima) — bridging de lacunas frias de até
-    # `_LOOKAHEAD_FAIXAS` faixas, mas SEMPRE ancorada na última faixa
-    # quente de verdade encontrada (nunca extrapola pra depois dela).
     _LOOKAHEAD_FAIXAS = 6  # ~120px de tolerância
     melhor_inicio, melhor_fim, melhor_tam = None, None, 0
     _i = 0
@@ -5728,10 +4796,6 @@ def _detectar_bandas_texto(img_bgr):
     img_rgb = img_bgr[:, :, ::-1]
     altura_total, _largura, _c = img_rgb.shape
     nao_branco = _np_bandas.any(img_rgb < 240, axis=2)
-    # Trata a margem cinza da PÁGINA (se existir — ver
-    # `_detectar_cor_fundo_pagina`) como fundo também, não só o branco
-    # puro — senão ela nunca dá o gap que separa uma banda da outra
-    # (ver docstring da função acima pro mecanismo completo do bug).
     _cor_fundo_pagina = _detectar_cor_fundo_pagina(img_bgr)
     if _cor_fundo_pagina is not None:
         _cor_fundo_rgb = _cor_fundo_pagina[::-1]
@@ -5741,73 +4805,16 @@ def _detectar_bandas_texto(img_bgr):
         )
         nao_branco = nao_branco & ~_prox_fundo_pagina
 
-    # Exclui uma FOTO de verdade embutida no meio do anúncio (ver
-    # docstring de `_detectar_regiao_foto_embutida`) — sem isso, os
-    # pixels contínuos e coloridos da foto nunca dão o respiro que
-    # separa uma linha de descrição da outra quando a foto fica do lado
-    # do texto (ex: anúncio da FanTicket), e todas as linhas grudam
-    # numa banda só, gigante e mal classificada.
     _regiao_foto = _detectar_regiao_foto_embutida(img_bgr)
     if _regiao_foto is not None:
         _yf0, _yf1, _xf0, _xf1 = _regiao_foto
         nao_branco[_yf0:_yf1, _xf0:_xf1] = False
 
-    # Exclui um CRIATIVO GRÁFICO (banner promocional com texto/logo/selo
-    # desenhados dentro da própria imagem — comum em anúncio de Display,
-    # ver docstring de `_detectar_regiao_grafico_criativo`) — sem isso,
-    # o texto embutido no banner (não é copy real do anúncio, é arte
-    # gráfica) vaza pra dentro da banda de título/descrição de verdade
-    # logo acima, produzindo uma leitura de OCR toda embaralhada. Roda
-    # DEPOIS da exclusão de foto acima (independente uma da outra — um
-    # anúncio pode ter as duas, ou só uma).
     _regiao_grafico = _detectar_regiao_grafico_criativo(img_bgr, _regiao_foto)
     if _regiao_grafico is not None:
         _yg0, _yg1, _xg0, _xg1 = _regiao_grafico
         nao_branco[_yg0:_yg1, _xg0:_xg1] = False
 
-    # Máscara separada, usada tanto pra decidir ONDE quebrar uma banda
-    # quanto pra CLASSIFICAR a cor dela: ignora a faixa da esquerda
-    # (~13% da largura) onde favicons/avatars circulares costumam
-    # ficar. Dois problemas que isso evita:
-    # 1) Quebra: um ícone redondo "de pé" entre duas linhas de texto
-    #    verticalmente próximas (ex: "kedu.com.br" e "www.kedu.com.br/"
-    #    empilhadas do lado do favicon) preenche pixels non-white
-    #    contínuos entre as duas linhas, nunca dá o gap de 3px que
-    #    separaria as bandas, e elas acabam grudadas numa banda só.
-    # 2) Cor: um ícone/avatar azul ou colorido que divide a MESMA linha
-    #    de um texto preto/cinza (ex: nome da página ao lado do avatar)
-    #    entra na média de cor da banda e pode empurrar a classificação
-    #    pra "azul" mesmo sendo texto normal — que aí vira "título"
-    #    por engano.
-    # Ambos validados com imagens reais. O texto de cada banda continua
-    # sendo lido (via OCR) na largura inteira depois — só a decisão de
-    # "onde quebra" e "que cor é essa banda" ignora essa faixa.
-    #
-    # IMPORTANTE: essa faixa só pode ser ignorada perto do TOPO da
-    # imagem, onde o favicon/avatar de verdade existe (cabeçalho com
-    # nome da página/domínio) — nunca durante a altura inteira. Título
-    # e descrição não têm favicon do lado, e uma linha final de
-    # parágrafo quebrado pode ser uma palavra curta sozinha, alinhada
-    # bem à esquerda (ex.: "... Ingressos Do" / "Brasil") — se ela
-    # coubesse inteira dentro dessa faixa ignorada, o "n_quebra" dela
-    # dava 0, a linha nunca entrava em `linhas`, e a palavra
-    # simplesmente SUMIA da extração (nem chegava a ser mandada pro
-    # OCR) — foi exatamente isso que aconteceu com "Brasil" num
-    # anúncio real da BuyTicket Brasil. Restringindo a faixa ignorada a
-    # só essa janela no topo (onde o favicon cabe), qualquer linha
-    # abaixo dela conta com a largura cheia, mesmo que curta e rente à
-    # esquerda.
-    # IMPORTANTE: a janela de exclusão do favicon precisa ser ancorada no
-    # início do CONTEÚDO real da imagem (primeira linha com algum pixel
-    # não-branco), não no topo absoluto (y=0) — senão ela falha sempre que
-    # existir uma banda "Patrocinado" separada ACIMA do cabeçalho de
-    # verdade (avatar + nome da página), empurrando esse cabeçalho pra
-    # baixo o suficiente pra sair de uma janela calculada a partir de y=0.
-    # Validado num anúncio real da BuyTicket Brasil: com "Patrocinado" numa
-    # banda própria em y=32-50, o cabeçalho (avatar roxo + "BuyTicket
-    # Brasil" + domínio) só começava em y=88 — bem depois do antigo corte
-    # vazava pra média de cor da banda, classificando o cabeçalho inteiro
-    # como "azul" (virava título por engano) em vez de "cinza".
     _linhas_com_conteudo = _np_bandas.where(nao_branco.any(axis=1))[0]
     _y_primeiro_conteudo = int(_linhas_com_conteudo.min()) if len(_linhas_com_conteudo) else 0
     _y_limite_favicon = min(_y_primeiro_conteudo + 160, altura_total)
@@ -5845,23 +4852,6 @@ def _detectar_bandas_texto(img_bgr):
         g = sum(x[3] * x[1] for x in banda) / peso_total
         b = sum(x[4] * x[1] for x in banda) / peso_total
         altura = y_max - y_min + 1
-        # BOTÃO SÓLIDO (CTA de anúncio de Display, ex: "Compre Agora"
-        # com fundo azul/navy e texto branco por cima): a média de cor
-        # sozinha NÃO distingue esse caso de um título/link azul de
-        # anúncio de Busca — as duas dão média "azul" (lá porque é o
-        # TEXTO que é azul sobre fundo branco; aqui porque é o FUNDO do
-        # botão que é azul, e o texto branco por cima vira parte do
-        # "branco" ignorado). O que diferencia de verdade é quanto da
-        # PRÓPRIA CAIXA (bounding box apertado do conteúdo, não a
-        # largura da imagem) fica preenchida: um texto normal, mesmo
-        # grande/negrito, preenche só uns 25-40% da sua caixa (letras
-        # têm vãos entre si); um botão retangular sólido preenche 90%+.
-        # Validado pixel a pixel em 2 anúncios reais de Display
-        # (BuyTicket Brasil, "BTS World Tour" e "Copa do Mundo"):
-        # título/descrição saíram em 0.27-0.36; o botão "Compre Agora"
-        # saiu em 0.92-0.97 nos dois — checa isso ANTES da
-        # classificação por cor, senão o botão vira "azul" e o resto do
-        # pipeline trata ele como se fosse um novo título/sitelink.
         _cols_com_pixel_bandas = _np_bandas.where(
             nao_branco[y_min:y_max + 1].any(axis=0)
         )[0]
@@ -5873,15 +4863,6 @@ def _detectar_bandas_texto(img_bgr):
             _largura_conteudo_bandas = _x1c_bandas - _x0c_bandas + 1
             _caixa_bandas = nao_branco[y_min:y_max + 1, _x0c_bandas:_x1c_bandas + 1]
             _taxa_preenchimento_bandas = float(_caixa_bandas.mean())
-        # V6: além de classificar a banda como botão, localiza o RETÂNGULO
-        # sólido do CTA no eixo X. Em anúncios com foto ao lado do texto, a
-        # mesma faixa horizontal do botão pode atravessar detalhes da foto
-        # (ex.: "ORDEM E PROGRESSO" na bandeira do Brasil). Se o OCR rodar
-        # na largura inteira da banda, esse texto da foto vaza para o CTA e
-        # vira algo como "0RDE Compre Agora". O fundo sólido do botão,
-        # porém, ocupa uma sequência longa de colunas com alta ocupação
-        # vertical; texto/foto adjacente não. Guardamos esse intervalo para
-        # restringir o OCR do botão mais abaixo.
         _x_min_botao_bandas = None
         _x_max_botao_bandas = None
         if (
@@ -5914,69 +4895,13 @@ def _detectar_bandas_texto(img_bgr):
         elif b > r + 15 and b > 150:
             classe = "azul"
         else:
-            # CINZA (texto neutro, qualquer tom — preto, cinza, navy,
-            # indigo, roxo escuro etc.) vs MISTO (ícone colorido + texto,
-            # ex: ícone verde do WhatsApp + texto preto): não dá pra
-            # anúncio de Display usa um tom de marca diferente pro seu
-            # headline (já vimos ~(43,40,88), ~(37,30,111), cada um com
-            # uma "distância" different entre verde e azul), e por mais
-            # que a faixa seja alargada, o PRÓXIMO tom de marca sempre
-            # acaba caindo fora de novo — bug real, anúncio "Falta Só
-            # Alguns Cliques, Volta" da BuyTicket Brasil: headline em
-            # RGB~(37,30,111) escapava até de uma tolerância já alargada
-            # (abs(g-b)<60) e virava "misto" → tratado como CTA → título
-            # e descrição inteiros descartados.
-            #
-            # O que separa os dois casos de verdade não é QUAL cor, é SE
-            # a banda é preenchida por UMA cor só (texto, mesmo colorido/
-            # navy/indigo) ou por uma MISTURA de uma área colorida
-            # pequena (o ícone) com uma área bem maior de texto quase
-            # sem saturação (preto/cinza) — um ícone de verdade nunca
-            # ocupa a banda inteira, sempre convive com uma faixa grande
-            # de texto ao lado. Mede isso pela FRAÇÃO de pixels "não-
-            # branco" que são saturados (a "tinta" tem cor de verdade,
-            # não é só preto/cinza neutro): texto de uma cor só (mesmo
-            # navy escuro) tem quase toda a tinta saturada (~95-98%,
-            # validado nos exemplos acima); ícone+texto tem a maior
-            # parte da tinta vindo do TEXTO preto/cinza (baixa
-            # saturação), com só uma fatia saturada vindo do ícone.
             _mask_banda_cor = nao_branco[y_min:y_max + 1]
             _sat_banda = _saturacao_total[y_min:y_max + 1]
             _n_tinta = int(_mask_banda_cor.sum())
             _n_tinta_saturada = int((_mask_banda_cor & (_sat_banda >= 40)).sum())
             _fracao_saturada = (_n_tinta_saturada / _n_tinta) if _n_tinta else 0.0
             classe = "cinza" if _fracao_saturada >= 0.6 else "misto"
-        # Mesma janela [0, _y_limite_favicon) x [0, _x_ignorar_quebra)
-        # usada acima só pra decidir onde quebrar/qual cor — aqui
-        # devolve o limite X pra quem for rodar OCR de verdade nessa
-        # banda também PULAR o favicon/avatar, não só pra classificar.
-        # Sem isso, `_ocr_banda` lia a banda inteira (largura cheia,
-        # avatar incluso), e o EasyOCR às vezes lê o círculo colorido
-        # do avatar como se fosse um caractere de verdade — validado
-        # num anúncio real da BuyTicket Brasil: o avatar redondo virou
-        # um "i" solto grudado na frente do nome da página ("i
-        # BuyTicket Brasil" em vez de só "BuyTicket Brasil").
-        #
-        # MAS: só estar dentro da janela (perto do topo) não basta pra
-        # decidir que TEM avatar ali — "Patrocinado" fica no MESMO
-        # bloco superior (a janela precisa alcançar o avatar mesmo com
-        # "Patrocinado" numa banda própria acima dele, comentário mais
-        # abaixo), só que "Patrocinado" começa RENTE À ESQUERDA, sem
-        # nenhum avatar do lado. Aplicar o corte de largura pra ELE
-        # também comia as primeiras letras da palavra — validado num
-        # anúncio real: "Patrocinado" virou "cinado" (o corte comeu
-        # "Patro"). Por isso agora checa, banda por banda, se o que tem
-        # ali dentro é de fato um avatar (bloco de pixel bem SATURADO —
-        # ícone roxo/azul/colorido) e não apenas texto preto/cinza
-        # comum (baixa saturação, R≈G≈B) — só corta quando confirma que
-        # tem cor de verdade ali, não só qualquer tinta.
         x_min_favicon = 0
-        # V49: uma banda AZUL é headline/sitelink, não cabeçalho com
-        # avatar. Se o título começar logo abaixo do cabeçalho, ele ainda
-        # pode cair dentro da janela vertical do favicon; como o próprio
-        # texto azul é saturado, a regra antiga confundia as primeiras
-        # letras do headline com o avatar e cortava ~13% da esquerda.
-        # Nunca aplique o recorte de favicon em banda azul.
         if y_min < _y_limite_favicon and classe != "azul":
             _regiao_favicon = img_rgb[y_min:y_max + 1, 0:_x_ignorar_quebra]
             if _regiao_favicon.size:
@@ -6018,15 +4943,6 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return False
-    # Direção do limiar ADAPTADA ao fundo real do recorte, não sempre
-    # "fundo branco + tinta escura": num CTA de fundo ESCURO com texto
-    # BRANCO (ex: botão "Saiba Mais" em navy escuro da BuyTicket
-    # próprio fundo escuro já conta como "tinta"), então a função
-    # sempre achava um hífen/glifo que nunca existiu ali — era só o
-    # espaço normal entre duas palavras. Olha o brilho médio do PRÓPRIO
-    # recorte pra decidir: fundo escuro → tinta é o pixel CLARO (texto
-    # branco); fundo claro (o caso de sempre) → tinta é o pixel escuro,
-    # comportamento idêntico ao de antes.
     _cinza_hifen = recorte.mean(axis=2)
     if float(_np_hifen.median(_cinza_hifen)) < 128:
         nao_branco = _cinza_hifen > 160
@@ -6050,15 +4966,6 @@ def _detectar_hifen_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> bool:
     if largura_pixels < 3:
         return False  # descarta 1-2 pixels soltos (ruído)
 
-    # Reticências ("...") no fim de um texto truncado (ex: "100%
-    # Segura...") têm o MESMO perfil de um hífen — traço fino,
-    # centralizado na vertical — e por isso eram confundidas com um
-    # hífen de verdade (bug real: "100% Segura..." virava "100%
-    # Segura. -"). A diferença é que um hífen é UM traço contínuo,
-    # enquanto reticências são 2-3 pontinhos SEPARADOS por espaço em
-    # branco. Conta quantos blocos contínuos de pixel não-branco
-    # existem na faixa: 1 bloco = hífen de verdade; 2+ blocos =
-    # reticências (ou outro ruído pontuado), não é hífen.
     blocos = 0
     dentro_de_bloco = False
     for tem_pixel in colunas_com_pixel:
@@ -6094,9 +5001,6 @@ def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> b
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return False
-    # comentário lá) — sem ela, um vão normal entre palavras dentro de
-    # um CTA de fundo escuro (texto branco) sempre "achava" um glifo
-    # "tinta".
     _cinza_glifo = recorte.mean(axis=2)
     if float(_np_glifo.median(_cinza_glifo)) < 128:
         nao_branco = _cinza_glifo > 160
@@ -6114,14 +5018,6 @@ def _detectar_glifo_curto_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) -> b
     largura_pixels = int(colunas_com_pixel.sum())
     if largura_pixels < 2:
         return False  # 1 pixel solto — ruído, não uma letra
-    # Qualquer coisa que JÁ bata no perfil de hífen (fino e centralizado
-    # na vertical) é tratada por `_detectar_hifen_no_intervalo` — não
-    # duplica aqui, pra não inserir "-" E tentar reler a mesma marca
-    # como palavra ao mesmo tempo. Só sobra o que essa função rejeita:
-    # traços mais altos que um hífen (corpo de letra) OU fora do centro
-    # vertical (ex: só o acento, sem o corpo — ainda assim vale tentar
-    # reler, porque o restante da letra pode estar abaixo do limiar de
-    # branco por antialiasing, comum em texto azul/clicável fino).
     centro_relativo = (y_topo + y_base) / 2 / altura
     eh_perfil_hifen = (
         espessura <= max(3, int(altura * 0.35)) and 0.3 < centro_relativo < 0.7
@@ -6147,11 +5043,6 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
     recorte = recorte_bgr[:, x_esq:x_dir]
     if recorte.size == 0:
         return ""
-    # Limiar ADAPTATIVO ao fundo local. O anúncio real da BuyTicket usa
-    # fundo lilás muito claro (~230-240), então o antigo ``< 235`` marcava
-    # o próprio FUNDO como tinta e escondia justamente a vírgula. Medimos
-    # a distância de cor em relação à mediana do vão: só pixels realmente
-    # diferentes do fundo entram como glifo. Funciona também em fundo escuro.
     _pix = recorte.astype(_np_pont.int16)
     _cor_fundo = _np_pont.median(_pix.reshape(-1, 3), axis=0)
     _dist_fundo = _np_pont.max(_np_pont.abs(_pix - _cor_fundo), axis=2)
@@ -6166,16 +5057,10 @@ def _detectar_pontuacao_curta_no_intervalo(recorte_bgr, x_esq: int, x_dir: int) 
     altura_linha = max(1, tinta.shape[0])
     centro_y = (y0 + y1) / 2 / altura_linha
 
-    # Vírgula: marca baixa, curta e estreita. Os limites são relativos à
-    # própria linha para continuarem válidos em criativos de tamanhos
-    # diferentes. Evita confundir ``1`` verdadeiro, que ocupa quase toda a
-    # altura da linha.
     if (
         centro_y >= 0.50
         and h <= max(9, int(altura_linha * 0.58))
         and w <= max(8, int(altura_linha * 0.42))
-        # A vírgula tem que continuar sendo claramente menor que uma letra
-        # normal; este teto impede transformar um ``1`` legítimo em vírgula.
         and (h * w) <= max(48, int((altura_linha * altura_linha) * 0.18))
     ):
         return ","
@@ -6221,31 +5106,10 @@ def _recuperar_texto_no_intervalo(reader, recorte_bgr, x_esq: int, x_dir: int) -
         return ""
     textos = [t for _bbox, t, _conf in itens_texto]
     texto = textos[0] if len(textos) == 1 else "".join(textos)
-    # A margem generosa (pra não cortar a letra perdida rente à borda)
-    # também costuma capturar um pedacinho da MARGEM de uma letra
-    # vizinha real (ex: a "haste" do "w" de "Show" ou do "G" de
-    # "Garantido" logo ao lado) — o EasyOCR às vezes lê esse pedacinho
-    # como uma aspa/apóstrofo solto colado no resultado (validado num
-    # anúncio real: o "é" de "Entrar no Show é Garantido" voltou como
-    # "'é", com uma aspa fantasma na frente). Remove pontuação solta
-    # (aspas, apóstrofos, vírgulas etc.) só das BORDAS do texto
-    # recuperado — nunca do meio, pra não mexer num acento de verdade
-    # que faça parte da própria letra (ex: nunca remove o "´" de "é",
-    # que já vem embutido no caractere unicode, não como um símbolo à
-    # parte).
     texto = texto.strip("'\"`´,.;:!?()[]{}").strip()
     if not texto:
         return ""
 
-    # Esta função existe SOMENTE para recuperar um termo curto que o CRAFT
-    # deixou de abrir como caixa (ex.: "é"). Um número que aparece aqui não
-    # veio de uma caixa OCR normal: foi "inventado" pela releitura permissiva
-    # de um VÃO entre duas palavras já reconhecidas. Nos anúncios reais da
-    # BuyTicket isso gerava exatamente "Tá 1 Na" e "De Fã 1F Pra Fã".
-    #
-    # Portanto não aceitamos tokens recuperados que comecem por dígito. Um
-    # número legítimo ("Fórmula 1", "2026" etc.) continua intacto quando o
-    # EasyOCR o detecta normalmente como caixa; esta trava só vale para o
     if re.match(r"^\d", texto):
         print(
             f"[OCR-DEBUG] glifo recuperado rejeitado (começa por dígito): {texto!r}",
@@ -6326,13 +5190,6 @@ def _normalizar_aspas_ocr(texto: str) -> str:
     return texto
 
 _REGEX_ESPACO_ANTES_PONTUACAO = re.compile(r"\s+([,.;:!?])")
-# Conectivo "o" minúsculo isolado entre espaços (ex: "dia o ano todo")
-# sai lido do EasyOCR de duas formas erradas: como a LETRA maiúscula
-# "O", ou — mais comum ainda — como o DÍGITO "0" (zero), porque na
-# fonte usada no card do Google Ads o zero sem risco fica visualmente
-# idêntico a um "O" maiúsculo (validado num anúncio real da isaac:
-# "Mensalidades em dia O ano todo" na tela veio de um "0" no dado bruto
-# do OCR, não de um "O" de verdade). Cobre os dois caracteres.
 _REGEX_O_OU_ZERO_ISOLADO = re.compile(r"(?<=\s)[O0](?=\s)")
 
 def _corrigir_o_isolado(texto: str) -> str:
@@ -6369,43 +5226,17 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
     texto onde não tem nada de fato)."""
     if not texto:
         return texto
-    # Pontuação solta ANTES do primeiro caractere alfanumérico é quase
-    # sempre ruído de borda/ícone recuperado pelo OCR (bug real: o CTA
-    # "Compre Agora" apareceu como ",Compre Agora").
     texto = re.sub(r"^[,;:]+\s*", "", texto)
     texto = _REGEX_ESPACO_ANTES_PONTUACAO.sub(r"\1", texto)
-    # Ruído OCR observado em headline: um pequeno artefato entre duas
-    # palavras vira "~" isolado ("Ele ~ Tá"). Em texto publicitário comum,
-    # til solto entre palavras não é pontuação válida; remove somente quando
-    # está isolado por espaços e cercado por caracteres alfanuméricos.
     texto = re.sub(r"(?<=\w)\s+[~^]\s+(?=\w)", " ", texto)
     texto = re.sub(r"\s{2,}", " ", texto)  # colapsa espaço duplo que pode sobrar
 
-    # V48 — remove símbolos espúrios que o EasyOCR insere logo depois de
-    # separadores verticais em descrições de anúncios de Busca. Caso real:
-    #   "TicketSwap | $ Safe & fair ticket resale site | @ Buy & sell..."
-    # Na imagem original existem apenas os separadores "|"; os caracteres
-    # "$" e "@" são ruído de OCR. A regra é deliberadamente restrita:
-    # só remove $/@ quando aparecem como token isolado IMEDIATAMENTE depois
-    # de "|" e antes de uma palavra. Assim, não mexe em preços legítimos
-    # ("$ 50"), e-mails/handles ("@usuario") nem em outros usos reais.
     texto = re.sub(r"(?<=\|)\s*[$@]\s+(?=[A-Za-zÀ-ÿ])", " ", texto)
 
-    # V52 — corrige um ruído composto observado em descrições de anúncios:
-    # o ponto final entre duas frases pode ser lido como "_," (ex.:
-    # "Descubra agora_, A TicketSwap..."). Quando esse padrão aparece entre
-    # uma palavra e o início claro de uma nova frase em maiúscula, restaura
-    # o ponto. A restrição evita mexer em underscores legítimos de nomes/URLs.
     texto = re.sub(r"(?<=\w)_+\s*,\s+(?=[A-ZÀ-Ý])", ". ", texto)
 
     texto = re.sub(r"_+\s*$", "", texto).rstrip()  # underscore solto no final
 
-    # chegar já FUNDIDA pelo EasyOCR e, por isso, escapar do filtro geométrico
-    # de bboxes acima. Caso real: ``Show! N Na Buy``. Só remove a letra
-    # isolada quando: (1) vem imediatamente depois de fim de frase (!?.),
-    # (2) é exatamente a mesma inicial da palavra seguinte e (3) a palavra
-    # seguinte tem 2+ letras. Isso não toca em números, siglas ou artigos
-    # normais no meio da frase.
     def _remover_inicial_duplicada_pos_frase(_m):
         _pont, _letra, _palavra = _m.group(1), _m.group(2), _m.group(3)
         if _palavra and _palavra[0].lower() == _letra.lower():
@@ -6421,18 +5252,12 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         texto,
     )
 
-    # Em prosa longa, o EasyOCR às vezes cola um ruído fino à primeira
-    # letra seguinte e devolve "1F", "1N" etc. Só removemos esse 1
-    # quando não há nenhum outro dígito diferente de 1 na linha.
     _digitos = re.findall(r"\d", texto)
     _palavras_alpha = re.findall(r"[A-Za-zÀ-ÿ]{2,}", texto)
     if len(_palavras_alpha) >= 4 and _digitos and all(d == "1" for d in _digitos):
         texto = re.sub(r"(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])", "", texto)
 
     texto = _corrigir_o_isolado(texto)
-    # V276 — em algumas fontes o artigo inicial "O" é uma caixa muito
-    # estreita e o detector não a devolve. Só recompõe no padrão já validado
-    # em anúncios reais, evitando inventar artigo em frases genéricas.
     texto = re.sub(
         r"(?i)^maior\s+mercado\s+secund[aá]rio\b",
         lambda m: "O " + m.group(0),
@@ -6478,27 +5303,8 @@ def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = 
     if recorte_rgb.size == 0:
         return []
     if gap_minimo is None:
-        # Vão mínimo pra considerar "dois botões distintos" agora é
-        # PROPORCIONAL à altura da própria banda de texto, em vez de um
-        # zoom do print daquele anúncio específico — um print maior tem
-        # letras (e o respiro real entre pílulas) proporcionalmente
-        # específica deixava de separar a fileira sempre que o print
-        # vinha menor/mais compacto: o vão real entre as pílulas ficava
-        # abaixo de 18px, a banda inteira era lida como um texto só, e
-        # os botões grudavam (ex: "Matrícula Online Segura Sistema
-        # administração esc..." em vez de dois sitelinks distintos).
-        # 0.9x a altura da banda fica bem acima do espaço normal entre
-        # palavras de um mesmo texto (tipicamente ~0.25-0.35x) e abaixo
-        # do respiro real entre duas pílulas — com um piso de 14px pra
-        # não ficar sensível demais em bandas muito baixas/pequenas.
         gap_minimo = max(14, int((y_max - y_min) * 0.9))
     coluna_tem_pixel = _np_botoes.any(recorte_rgb < 235, axis=2).any(axis=0)
-    # Mesmo tratamento de margem cinza da página usado em
-    # `_detectar_bandas_texto` (ver docstring de
-    # `_detectar_cor_fundo_pagina` pro mecanismo completo): sem isso, a
-    # margem — se entrar no recorte desta banda — nunca daria o vão em
-    # branco que separa um botão do outro, e a fileira inteira viraria
-    # um bloco de coluna só.
     _cor_fundo_pagina_botoes = _detectar_cor_fundo_pagina(img_bgr)
     if _cor_fundo_pagina_botoes is not None:
         _cor_fundo_rgb_botoes = _cor_fundo_pagina_botoes[::-1]
@@ -6576,8 +5382,6 @@ def _reler_pontuacao_suspeita_caixa(reader, recorte_bgr, bbox, texto: str) -> st
         if _base(_cand) != _base(_t):
             return _t
 
-        # Preferimos a releitura quando ela elimina o ';' (caractere mais
-        # comum de confusão com vírgula) ou remove uma vírgula espúria de um
         if ";" in _t and ";" not in _cand:
             print(f"[OCR-DEBUG] pontuação relida: {_t!r} -> {_cand!r}", flush=True)
             return _cand
@@ -6608,15 +5412,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
     if not _t or not re.search(r"[A-Za-zÀ-ÿ0-9]$", _t):
         return _t
 
-    # V13 — recuperação de vírgula deve ser CONSERVADORA. Esta rotina é
-    # que realmente existe; ela não pode inventar pontuação em palavras
-    # curtas. Caso real: ``Ele Tá No Site`` virou ``Ele Tá No, Site``
-    # porque pixels de antialiasing depois de ``No`` pareciam um pequeno
-    # componente baixo. Palavras de 1–2 letras têm pouco corpo e deixam
-    # essa heurística ambígua demais. A vírgula legítima de ``Buy, Tá``
-    # continua coberta (``Buy`` tem 3 letras), enquanto ``No``, ``Na``,
-    # ``De``, ``E``, ``A`` etc. nunca recebem vírgula INVENTADA por este
-    # ``texto`` e não depende desta função.
     _base_curta = re.sub(r"[^A-Za-zÀ-ÿ]", "", _t)
     if len(_base_curta) < 3:
         return _t
@@ -6631,10 +5426,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         h = max(2, by1 - by0 + 1)
         w = max(2, bx1 - bx0 + 1)
 
-        # Região onde uma vírgula final pode existir: últimos ~22% da caixa
-        # + margem à direita, apenas na metade inferior. O fundo é estimado
-        # localmente pelos cantos e subtraído por DISTÂNCIA DE COR, não por
-        # limiar absoluto (funciona também no fundo lilás claro da BuyTicket).
         rx0 = max(0, bx1 - max(5, int(w * 0.22)))
         rx1 = min(recorte_bgr.shape[1], bx1 + max(7, int(h * 0.35)))
         ry0 = max(0, by0 + int(h * 0.48))
@@ -6654,23 +5445,12 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
         for _j in range(1, _n):
             _x, _y, _ww, _hh, _area = _stats[_j]
             if 2 <= _area <= max(90, int(h * h * 0.18)) and _hh <= max(9, int(h * 0.48)):
-                # componente pequeno e baixo; exige que esteja próximo do
-                # lado direito — reduz confusão com descendente do 'y'.
                 if (_x + _ww) >= int(_reg.shape[1] * 0.58):
                     _tem_componente = True
                     break
         if not _tem_componente:
             return _t
 
-        # V11: confirmação geométrica forte da vírgula. A V10 ainda exigia
-        # que uma segunda chamada do EasyOCR LESSE o caractere `,`; esse é
-        # justamente o glifo que o reconhecedor está omitindo, então mesmo
-        # com a vírgula claramente presente nos pixels a rotina voltava a
-        # devolver ``Buy``. Aqui verificamos o componente no recorte COMPLETO
-        # da palavra + margem: a vírgula precisa ser um componente pequeno,
-        # separado, baixo e situado à DIREITA dos componentes grandes que
-        # formam as letras. Assim um descendente conectado do ``y`` não vira
-        # vírgula, mas o componente separado de ``Buy,`` sim.
         _gx0 = max(0, bx0 - 2)
         _gx1 = min(recorte_bgr.shape[1], bx1 + max(10, int(h * 0.50)))
         _gy0 = max(0, by0 - 3)
@@ -6698,16 +5478,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
             if _grandes and _pequenos:
                 _direita_letras = max(g[0] + g[2] for g in _grandes)
                 _altura_g = max(1, _greg.shape[0])
-                # V36 — a confirmação anterior olhava apenas se o componente
-                # pequeno estava à direita e na metade inferior. Isso ainda
-                # aceitava antialiasing/fragmentos das próprias letras como
-                # vírgula (casos reais: ``Copa, 2026`` e ``Agora, Seu``).
-                # Uma vírgula verdadeira tem uma característica geométrica
-                # adicional: ela cai na região da LINHA DE BASE ou abaixo
-                # dela. Calculamos o fundo típico dos componentes grandes que
-                # formam as letras e exigimos que o pequeno componente chegue
-                # quando a vírgula realmente existe, sem inventar pontuação
-                # a partir de ruído dentro do corpo das letras.
                 _fundos_letras = sorted(g[1] + g[3] for g in _grandes)
                 _fundo_tipico_letras = _fundos_letras[len(_fundos_letras) // 2]
                 for _pp in _pequenos:
@@ -6751,11 +5521,6 @@ def _recuperar_virgula_final_caixa(reader, recorte_bgr, bbox, texto: str) -> str
             x = ''.join(c for c in _ud_vf.normalize('NFKD', x) if not _ud_vf.combining(c))
             return re.sub(r"[^A-Za-z0-9]", "", x).lower()
 
-        # V36 — a releitura ampliada sozinha não é prova suficiente. Em
-        # palavras sem vírgula, o EasyOCR às vezes transforma um pequeno
-        # fragmento de antialiasing em `,` na ampliação. Só aceitamos a
-        # vírgula relida quando a geometria forte acima também confirma um
-        # componente realmente compatível com pontuação na linha de base.
         if _virgula_geom_forte and _base(_cand) == _base(_t) and re.search(r",\s*$", _cand):
             _novo = re.sub(r"\s*,\s*$", ",", _cand)
             print(f"[OCR-DEBUG] vírgula final recuperada na caixa + geometria: {_t!r} -> {_novo!r}", flush=True)
@@ -6803,8 +5568,6 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
     def _tem_letra(t):
         return bool(re.search(r"[A-Za-zÀ-ÿ]", t or ""))
 
-    # Altura de referência da linha usando somente palavras normais (2+
-    # letras), para não deixar a própria caixa-ruído contaminar a mediana.
     _alturas_normais = []
     for _it in itens:
         _t = _txt(_it)
@@ -6827,20 +5590,10 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
         ta, tp = _txt(ant), _txt(prox)
         vizinhos_textuais = _tem_letra(ta) and _tem_letra(tp)
 
-        # Artefato puro entre palavras: ``Ele ~ Tá``. Não mexe em til que
-        # faça parte de uma palavra, porque aqui ele precisa ser uma caixa
-        # OCR isolada inteira.
         if vizinhos_textuais and t in {"~", "˜", "^", "`", "´"}:
             print(f"[OCR-DEBUG] caixa-ruído removida entre palavras: {t!r}", flush=True)
             continue
 
-        # V10: letra isolada duplicando o início da palavra seguinte. Caso
-        # real: ``Me Leva Pro Show! N Na Buy`` — o EasyOCR abriu uma caixa
-        # minúscula ``N`` imediatamente antes da caixa correta ``Na``.
-        # Não fazemos replace textual cego: só remove quando a letra isolada
-        # é igual ao PRIMEIRO caractere da palavra seguinte e a geometria
-        # também parece ruído (caixa estreita/colada ou baixa confiança).
-        # quando tem espaçamento/caixa normais.
         if vizinhos_textuais and re.fullmatch(r"[A-Za-zÀ-ÿ]", t):
             _prox_txt = tp.strip()
             if _prox_txt and _prox_txt[0].lower() == t.lower() and len(_prox_txt) >= 2:
@@ -6863,11 +5616,6 @@ def _filtrar_ruidos_ocr_linha(itens: list) -> list:
                     )
                     continue
 
-        # ``1`` / ``1F`` espúrio vindo de acento/antialiasing. Exige dois
-        # vizinhos com letras E pelo menos um sinal geométrico forte:
-        # caixa colada à palavra anterior, altura muito menor que a fonte
-        # normal da linha ou confiança baixa. Assim ``Fórmula 1`` não é
-        # removido só por ter um 1 entre palavras.
         if vizinhos_textuais and re.fullmatch(r"1[A-Za-zÀ-ÿ]?", t):
             x0, x1, y0, y1 = _bbox_geom(it)
             xa0, xa1, ya0, ya1 = _bbox_geom(ant)
@@ -6929,28 +5677,11 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     largura_total = img_bgr.shape[1]
     y0 = max(0, y_min - 4)
     y1 = min(altura_total, y_max + 5)
-    # x_min/x_max: usado só quando esta banda foi dividida em botões
-    # lado a lado por `_dividir_banda_em_botoes` — restringe a leitura
-    # a UM botão por vez, com uma margem pra não cortar letra na borda.
     x0 = max(0, x_min - 6) if x_min is not None else 0
     x1 = min(largura_total, x_max + 7) if x_max is not None else largura_total
     recorte = img_bgr[y0:y1, x0:x1]
     resultado = reader.readtext(recorte, detail=1, width_ths=0.15, height_ths=0.5)
     if not resultado:
-        # Segunda tentativa com limiares de detecção mais permissivos.
-        # O CRAFT (detector de texto do EasyOCR) às vezes devolve ZERO
-        # caixas pra uma banda inteira quando ela tem pouco texto — o
-        # caso mais comum é uma ÚNICA palavra curta sozinha numa linha,
-        # típico da 2ª linha de um título que quebrou (ex: título
-        # "Ingressos Harry Styles - Harry Styles" / "Aqui": a 2ª banda
-        # azul só tem a palavra "Aqui", que os limiares padrão
-        # (text_threshold~0.7, low_text~0.4 — pensados pra texto
-        # corrido, com várias palavras se reforçando) às vezes não
-        # atingem sozinha, e a banda inteira ficava muda, sem cair em
-        # título reconstruído. Baixa os limiares só NESTA segunda
-        # tentativa (nunca na primeira, pra não introduzir ruído em
-        # bandas que já leram normalmente) — só roda quando a primeira
-        # passada não achou NENHUMA caixa de detecção.
         resultado = reader.readtext(
             recorte, detail=1, width_ths=0.15, height_ths=0.5,
             text_threshold=0.4, low_text=0.3, link_threshold=0.3,
@@ -6958,43 +5689,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     if not resultado:
         return ("", []) if retornar_linhas else ""
 
-    # V5: corrige pontuação DENTRO da própria caixa OCR antes de agrupar
-    # palavras. O detector de vão só consegue recuperar uma vírgula que o
-    # CRAFT deixou FORA das caixas; quando a vírgula foi engolida pela caixa
-    # da palavra e lida como ';' (ex: "Brasileira;") ele nunca tinha chance
-    # de atuar. A releitura localizada resolve exatamente esse outro caso.
     _resultado_pont = []
     for _bbox_p, _txt_p, _conf_p in resultado:
         _txt_corr_p = _reler_pontuacao_suspeita_caixa(reader, recorte, _bbox_p, _txt_p)
-        # V10: a vírgula pode estar DENTRO do bbox da palavra e mesmo assim
-        # ter sido omitida pelo reconhecedor (``Buy,`` -> ``Buy``). Nessa
-        # situação o detector de vão nunca a encontra; tenta recuperação
-        # localizada na própria caixa antes de montar a frase.
-        # V38 — NÃO inventar vírgula dentro de uma caixa OCR.
-        # A recuperação geométrica no fim da própria palavra gerou falsos
-        # positivos reais (ex.: "Copa, 2026" e "Agora, Seu") mesmo quando
-        # não havia vírgula no criativo. Mantemos apenas a pontuação que o
-        # OCR realmente leu e a recuperação no VÃO ENTRE caixas, onde existe
-        # evidência espacial independente do texto.
-        # _txt_corr_p = _recuperar_virgula_final_caixa(reader, recorte, _bbox_p, _txt_corr_p)
         _resultado_pont.append((_bbox_p, _txt_corr_p, _conf_p))
     resultado = _resultado_pont
 
-    # Ordena em ordem de LEITURA de verdade: agrupa por LINHA primeiro
-    # (usando o centro vertical de cada caixa, com tolerância baseada na
-    # esquerda pra direita. Antes disso, ordenava só por X — o que
-    # funciona bem quando a banda tem uma linha só (o caso mais comum:
-    # um título ou uma linha de descrição sozinha), mas embaralha tudo
-    # quando a banda tem VÁRIAS linhas de tamanhos diferentes (bug real:
-    # anúncio de Display onde cabeçalho + título de 3 linhas + descrição
-    # de 3 linhas viram uma banda SÓ, sem nenhuma quebra de cor pra
-    # separar — ver `_detectar_bandas_texto`; ordenar só por X ali
-    # produzia "Cliques, Alguns Garanta Falta Com o..." em vez de
-    # "Falta Só Alguns Cliques, Volta. O Seu Ingresso Ainda Tá Aqui!...",
-    # porque palavras de LINHAS diferentes com X parecido saíam
-    # intercaladas). Pra uma banda de uma linha só, o resultado final é
-    # idêntico ao de antes (todas as palavras caem no mesmo grupo, cuja
-    # ordenação interna já é por X).
     def _y_centro_bbox(bbox):
         _ys = [p[1] for p in bbox]
         return sum(_ys) / len(_ys)
@@ -7024,14 +5724,8 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     resultado = []
     linha_idx_por_palavra = []
     linhas_y_range = []  # [(y_topo, y_base), ...] por índice de linha, no
-                          # sistema de coordenadas de `recorte` (local)
     for _idx_linha, _grupo in enumerate(_linhas_agrupadas):
         _grupo["itens"].sort(key=lambda item: item[0][0][0])
-        # V3: limpa caixas espúrias ANTES de montar ``palavras``. Nas
-        # versões anteriores tentávamos corrigir o ``1`` depois que ele já
-        # tinha virado texto; isso não funcionava quando o próprio EasyOCR
-        # entregava ``1``/``1F`` como uma caixa primária. Aqui ainda temos
-        # bbox + confiança + vizinhos, então dá para decidir pela geometria.
         _grupo["itens"] = _filtrar_ruidos_ocr_linha(_grupo["itens"])
         if not _grupo["itens"]:
             continue
@@ -7041,10 +5735,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         for _item in _grupo["itens"]:
             resultado.append(_item)
             linha_idx_por_palavra.append(_idx_linha)
-    # Monta `palavras` e filtra `linha_idx_por_palavra` NO MESMO laço,
-    # pelos mesmos índices — evita desalinhar as duas listas (o filtro
-    # "só quem tem texto" precisa ser idêntico nas duas, ou o índice de
-    # linha de uma palavra passaria a apontar pra outra por engano).
     palavras = []
     _linha_idx_filtrada = []
     for _i_item, (bbox, t, _conf) in enumerate(resultado):
@@ -7055,62 +5745,16 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     linha_idx_por_palavra = _linha_idx_filtrada
     if not palavras:
         return ("", []) if retornar_linhas else ""
-    # Margem vertical (px) somada pra cima/baixo do range da linha antes
-    # de recortar — cobre acento/til que sobe um pouco acima do topo
-    # medido e a haste descendente de "g"/"p"/"q"/"j" que desce um
-    # pouco abaixo da base medida, sem chegar a invadir a linha vizinha
-    # (as linhas deste anúncio ficam bem mais distantes entre si que
-    # essa margem).
     _MARGEM_VERTICAL_LINHA = 3
 
     def _recorte_da_linha(idx_linha):
-        # Recorte vertical de UMA linha só, no sistema de coordenadas de
-        # `recorte` — usado nas checagens de hífen/glifo abaixo em vez
-        # do `recorte` inteiro (todas as linhas da banda empilhadas).
-        # Sem isso, checar um "vão" só pela coordenada X (como o código
-        # fazia antes) varre a ALTURA INTEIRA da banda nessa faixa de X
-        # — e como várias linhas de texto (cabeçalho/título/descrição,
-        # tamanhos de fonte bem diferentes) ficam empilhadas na mesma
-        # banda quando ela não tem quebra de cor pra se separar (ver
-        # `_detectar_bandas_texto`), essa faixa de X quase sempre tinha
-        # tinta de ALGUMA outra linha passando por ali — o código
-        # confundia isso com um hífen/glifo perdido e tentava "recuperar"
-        # um texto que nunca existiu ali, alucinando lixo (bug real:
-        # "Ja0"/"ri"/"Un"/"RA8" aparecendo entre palavras de um anúncio
-        # de Display onde cabeçalho+título+descrição formam uma banda só).
         _y0_l, _y1_l = linhas_y_range[idx_linha]
         _y0_l = max(0, _y0_l - _MARGEM_VERTICAL_LINHA)
         _y1_l = min(recorte.shape[0], _y1_l + _MARGEM_VERTICAL_LINHA)
         return recorte[_y0_l:_y1_l, :]
 
-    # Largura MÁXIMA (px) de vão que ainda vale a pena checar pra hífen/
-    # glifo perdido. Um hífen ou uma letra isolada de verdade fica
-    # sempre GRUDADO ou bem perto da palavra vizinha (poucas dezenas de
-    # px); um vão bem maior que isso é quase sempre espaço em branco de
-    # verdade OU um elemento gráfico decorativo longe do texto — ex: a
-    # seta/chevron (»‏) no fim de um botão de CTA tipo "Saiba Mais [>]",
-    # que fica ~250-300px à direita da última palavra. Sem esse limite,
-    # o vão até a seta era varrido igual a um vão pequeno, achava tinta
-    # (a própria seta) e tentava "recuperar" um glifo que nunca existiu
-    # ali — alucinando um dígito (bug real: "Saiba Mais" virando "Saiba
-    # 1 Mais" num anúncio de Display, o "1" vindo da seta do botão).
     _LARGURA_MAX_VAO_GLIFO = 70
 
-    # Hífen no INÍCIO da linha (ex: um item de lista começando com "-
-    # Algum texto", ou uma banda que continua um trecho cortado que
-    # terminou com "-" na banda anterior) tinha o mesmo problema — só
-    # espelhado — do "hífen no final" tratado logo abaixo: o laço
-    # seguinte só olha o vão ENTRE duas palavras já reconhecidas NESTA
-    # banda, e um hífen ANTES da primeira palavra não tem "palavra
-    # anterior" pra formar o par — o vão nunca era testado e o "-" se
-    # perdia silenciosamente. Verifica o trecho entre a borda esquerda
-    # do recorte e o início da primeira palavra pra recuperar esse caso
-    # — restrito à altura da PRIMEIRA linha (ver `_recorte_da_linha`).
-    # V42 — guarda em quais linhas recuperamos um hífen NO FINAL da linha.
-    # Além de montar `_texto_completo`, essa informação é reaplicada em
-    # `_linhas_out` quando `retornar_linhas=True`; sem isso, o caminho de
-    # separação de título/descrição por altura poderia perder novamente o
-    # hífen que acabamos de recuperar.
     _linhas_com_hifen_final_recuperado = set()
 
     partes = []
@@ -7118,25 +5762,11 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
     _bbox_primeira = palavras[0][0]
     _x_esq_primeira = int(min(p[0] for p in _bbox_primeira))
     if _x_esq_primeira <= _LARGURA_MAX_VAO_GLIFO:
-        # Na borda esquerda só recupera hífen. Vírgula/letra curta aqui
-        # gerava falso positivo vindo da borda/ícone do CTA (",Compre Agora").
         if _detectar_hifen_no_intervalo(_recorte_primeira_linha, 0, _x_esq_primeira):
             partes.append("-")
     partes.append(palavras[0][1])
     for i in range(1, len(palavras)):
         if linha_idx_por_palavra[i - 1] != linha_idx_por_palavra[i]:
-            # V42 — fim de uma linha + começo da próxima. Antes a gente
-            # pulava QUALQUER inspeção aqui, então um hífen visual no final
-            # da linha ("Ingressos Para Luan Santana -" / quebra / "Ingressos
-            # Do Luan Santana") desaparecia: o CRAFT não cria bbox pro traço
-            # e não existe "próxima palavra na mesma linha" para o laço normal
-            # testar o vão. Também não dá pra exigir que o hífen esteja perto
-            # da BORDA DIREITA da imagem — em anúncios de Busca sobra bastante
-            # espaço branco depois do título. Portanto olhamos só uma janela
-            # LOCAL de até `_LARGURA_MAX_VAO_GLIFO` pixels imediatamente depois
-            # da última palavra da linha anterior, restrita verticalmente à
-            # própria linha. Isso recupera o traço sem confundir texto/ícones
-            # distantes do lado direito.
             _idx_linha_anterior = linha_idx_por_palavra[i - 1]
             _recorte_linha_anterior = _recorte_da_linha(_idx_linha_anterior)
             _bbox_fim_linha = palavras[i - 1][0]
@@ -7167,29 +5797,10 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
         if _detectar_hifen_no_intervalo(_recorte_linha_atual, x_dir_prev, x_esq_atual):
             partes.append("-")
         else:
-            # Pontuação pequena (principalmente vírgula) NÃO deve depender
-            # de `_detectar_glifo_curto_no_intervalo`: uma vírgula é tão
-            # baixa/pequena que esse detector pode rejeitá-la antes de a
-            # rotina específica ter chance de enxergá-la. Foi o que fazia
-            # "Tá Na Buy, Tá Na Boa." perder a vírgula depois de "Buy".
-            # Primeiro tenta pontuação diretamente pela geometria; só se não
-            # houver pontuação tenta recuperar uma palavra curta como "é".
             _pont = _detectar_pontuacao_curta_no_intervalo(
                 _recorte_linha_atual, x_dir_prev, x_esq_atual
             )
-            # V7: não inventa vírgula depois de artigo/conjunção de UMA
-            # letra ("A BuyTicket...", "E Agora..."). Nesses vãos o
-            # antialiasing da própria letra curta às vezes produz um pequeno
-            # grupo de pixels baixos com geometria parecida com vírgula.
-            # A vírgula real de "Buy, Tá" continua sendo recuperada porque
-            # a palavra anterior tem mais de um caractere.
             _prev_txt_pont = (palavras[i - 1][1] or "").strip()
-            # exige pelo menos 3 letras na palavra anterior. Isso evita
-            # falso positivo como ``No, Site`` (o antialiasing de ``No``
-            # formava um componente baixo no vão), sem perder ``Buy, Tá``.
-            # Pontuação que o EasyOCR leu de verdade continua intacta;
-            # esta trava só atua na vírgula que nós estamos tentando
-            # INVENTAR a partir dos pixels.
             _prev_base_pont = re.sub(r"[^A-Za-zÀ-ÿ]", "", _prev_txt_pont)
             if _pont == "," and len(_prev_base_pont) < 3:
                 print(
@@ -7208,26 +5819,12 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
                 if _txt_recuperado:
                     partes.append(_txt_recuperado)
         partes.append(palavras[i][1])
-    # Hífen no FINAL da linha (ex: "...escolas -" antes de uma quebra de
-    # título pra outra banda) nunca era checado: o laço acima só olha o
-    # vão ENTRE duas palavras já reconhecidas NESTA banda, e esse hífen
-    # fica depois da ÚLTIMA palavra — sem "próxima palavra" na mesma
-    # banda pra formar o par, o vão nunca era testado e o "-" era
-    # perdido silenciosamente sempre que o título quebrava em duas
-    # linhas logo depois dele. Verifica o trecho entre o fim da última
-    # palavra e a borda direita do recorte (mesma largura, restrito à
-    # altura da ÚLTIMA linha) pra recuperar esse caso.
     _idx_ultima_linha = linha_idx_por_palavra[-1]
     _recorte_ultima_linha = _recorte_da_linha(_idx_ultima_linha)
     _bbox_ultima = palavras[-1][0]
     _x_dir_ultima = int(max(p[0] for p in _bbox_ultima))
     _x_borda_direita = recorte.shape[1]
 
-    # V42 — procura hífen numa janela LOCAL depois da última palavra, em vez
-    # de só quando a palavra termina a <=70px da borda da imagem. Nos anúncios
-    # de Busca o título pode terminar no meio/lado esquerdo da tela e ainda
-    # assim possuir um "-" real no fim da linha; o espaço branco restante até
-    # a borda não deve impedir a detecção.
     _x_lim_busca_hifen_final = min(
         _recorte_ultima_linha.shape[1],
         _x_dir_ultima + _LARGURA_MAX_VAO_GLIFO,
@@ -7244,8 +5841,6 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             flush=True,
         )
 
-    # continuam restritos ao caso em que a última palavra realmente fica
-    # perto da borda. Só o hífen ganhou a busca local mais ampla acima.
     if (not _hifen_final_recuperado) and (_x_borda_direita - _x_dir_ultima <= _LARGURA_MAX_VAO_GLIFO):
         _pont = _detectar_pontuacao_curta_no_intervalo(
             _recorte_ultima_linha, _x_dir_ultima, _x_borda_direita
@@ -7270,18 +5865,9 @@ def _ocr_banda(reader, img_bgr, y_min: int, y_max: int, x_min: int = None, x_max
             if _txt_recuperado:
                 partes.append(_txt_recuperado)
     _texto_completo = " ".join(partes)
-    # Segunda passada só em bandas suspeitas. O recorte é ampliado para
-    # dar mais pixels à pontuação fina, evitando "Tá 1 Na" / "1F".
     _texto_completo = _reler_banda_ampliada_se_suspeita(reader, recorte, _texto_completo)
     if not retornar_linhas:
         return _texto_completo
-    # Reconstrói o texto de CADA linha separadamente (usando `palavras`
-    # agrupadas por `linha_idx_por_palavra`, sem os "extras" de hífen/
-    # glifo recuperado — perde um pouco de fidelidade textual aqui, mas
-    # não importa pro uso pretendido: dar pra quem chamou a ALTURA de
-    # cada linha, pra decidir onde cortar título de descrição num
-    # anúncio de Display, onde as duas ficam juntas na mesma banda sem
-    # nenhuma quebra de cor — ver `_extrair_titulo_descricao_por_altura`.
     _linhas_out = []
     _idx_linha_atual = None
     _palavras_linha_atual = []
@@ -7351,29 +5937,12 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
         (int(min(p[0] for p in bbox)), int(max(p[0] for p in bbox)), txt)
         for bbox, txt in palavras
     ]
-    # V82 — caixas do EasyOCR podem se sobrepor por 1+ px. Nesses casos
-    # o vão bruto fica negativo (ex.: -1) e a razão adaptativa mais abaixo
-    # fazia (gap + 1) no denominador, podendo virar divisão por zero.
-    # Sobreposição não representa um separador visual: para esta heurística
-    # ela equivale a vão zero. Normalizamos antes de ordenar/calcular razões.
     _vaos = [
         max(0, _caixas[i][0] - _caixas[i - 1][1])
         for i in range(1, len(_caixas))
     ]
     if not _vaos:
         return []
-    # pixels. Validado com OCR real (EasyOCR de verdade, não simulado)
-    # num anúncio da BuyTicket Brasil: os vãos da linha vieram
-    # [42, 0, 2, 13, 0, 2] — o separador onde sumiram "1" E "·" juntos
-    # rendeu um vão de 42px, mas o separador onde sumiu só o "·" (sem
-    # "2x o vão mediano + 14px" ≈ 16px) pega o primeiro (42) mas PERDE
-    # o segundo (13 < 16) — "Copa do Mundo 2026" ficava grudado em "Rio
-    # 2026". Ordenando os vãos ([0,0,2,2,13,42]) e comparando cada par
-    # consecutivo, o maior salto relativo é bem claro entre 2 e 13
-    # (razão ~4.7x) — bem maior que qualquer salto DENTRO do grupo dos
-    # vãos normais (razão ~1-3x entre 0/2/2). Esse salto separa os dois
-    # grupos ("espaço normal entre palavras do mesmo termo" vs "vão
-    # — se adapta ao tamanho de fonte/espaçamento de cada imagem.
     _vaos_ordenados = sorted(_vaos)
     _melhor_idx = None
     _melhor_razao = 1.0
@@ -7386,14 +5955,6 @@ def _dividir_termos_relacionados_por_gap(reader, img_bgr, y_min: int, y_max: int
     if _melhor_idx is None:
         return []  # todos os vãos são iguais — nenhum separador escondido
     _limiar = _vaos_ordenados[_melhor_idx + 1]
-    # Duas salvaguardas contra falso positivo: (1) o salto relativo
-    # precisa ser expressivo (>=2x, não só um pouquinho maior — evita
-    # reagir a ruído de sub-pixel numa linha com espaçamento bem
-    # uniforme); (2) o vão candidato a separador precisa ter uma
-    # largura mínima absoluta (>=8px) — numa linha com fonte pequena/
-    # compacta, mesmo o "maior salto relativo" pode ser só ruído de
-    # 2px pra 4px, que não é largura suficiente pra ter escondido um
-    # separador de verdade.
     if _melhor_razao < 2.0 or _limiar < 8:
         return []
     _termos = []
@@ -7486,9 +6047,6 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
         return re.sub(r"[^a-z0-9]", "", s.lower())
 
     def _sem_tld_final(s: str) -> str:
-        # Ordem importa: TLDs compostos ("combr") antes dos simples
-        # ("com"), senão "combr" perderia só o "br" e sobraria "com"
-        # grudado sem necessidade.
         for _tld in ("combr", "netbr", "orgbr", "iobr", "shopbr", "appbr",
                      "com", "net", "org", "io", "shop", "app"):
             if s.endswith(_tld) and len(s) > len(_tld):
@@ -7511,19 +6069,6 @@ def _corrigir_nome_pagina_com_empresa(nome_ocr: str, empresa: str) -> str:
             _limite = max(2, round(_maior * 0.15))
             if _distancia_levenshtein(_cand, _empresa_norm) <= _limite:
                 return empresa
-        # curta (ex: "BuyTicket"), enquanto o nome cadastrado é o nome
-        # completo (ex: "BuyTicket Brasil") — a checagem de tamanho
-        # acima nunca bate nesse caso (a diferença de tamanho é bem
-        # maior que 3), mesmo sendo claramente a mesma marca. Bug real:
-        # "uyTicket" (o "B" inicial sumiu na leitura) nunca era
-        # corrigido pra "BuyTicket Brasil" por causa disso. Compara o
-        # texto lido contra os primeiros N caracteres do nome
-        # cadastrado, testando um deslocamento de 1 caractere (cobre o
-        # caso comum de a 1ª letra ter sumido/sido lida errado — sem
-        # o deslocamento, "uyTicket" comparado direto contra "BuyTicke"
-        # já começa desalinhado e a distância de edição fica alta à
-        # toa). Limite mais apertado (20%, não 15%) porque comparar só
-        # por coincidência do que o nome INTEIRO batendo.
         if 4 <= len(_cand) < len(_empresa_norm) - 1:
             _limite_prefixo = max(1, round(len(_cand) * 0.2))
             for _offset in (0, 1):
@@ -7601,8 +6146,6 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         return " ".join(l["texto"] for l in linhas).strip(), []
 
     alturas = [float(l.get("altura") or 0) for l in linhas]
-    # O título está no topo, portanto não deixamos uma anomalia tardia da
-    # descrição definir a referência. Usa o máximo das 3 primeiras linhas.
     ref = max(alturas[: min(3, len(alturas))])
     corte = 1
     for i in range(1, len(linhas)):
@@ -7610,27 +6153,12 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
         txt = (linhas[i].get("texto") or "").strip()
         razao = h / ref if ref > 0 else 0
         continua = razao >= 0.80
-        # Tolerância estreita para a última linha curta de um headline
-        # quebrado: ``Emoção?`` ou ``Do Mundo``. Só vale se a linha anterior
-        # já pertence ao headline e o texto atual é curto; uma descrição
-        # normal longa não entra por esta exceção.
         if not continua and razao >= 0.76 and len(txt) <= 22 and corte >= 1:
             continua = True
         if not continua:
             break
         corte = i + 1
 
-    # V34 — proteção para headline de UMA linha seguido de descrição longa
-    # quebrada em 2+ linhas. Em alguns layouts Display (ex.: BuyTicket
-    # "Venda Seu Ingresso Aqui"), a primeira linha da descrição tem bbox
-    # quase tão alto quanto o headline e passa no limiar de 80%, sendo
-    # promovida indevidamente para o título. A estrutura textual ajuda a
-    # desempatar sem depender de palavras específicas: headline curto na
-    # primeira linha + segunda linha claramente muito mais longa + pelo menos
-    # uma continuação abaixo indica que a descrição começou na linha 2.
-    # Não afeta headlines multilinha típicos ("Ingressos Para Copa / Do Mundo"
-    # ou "Volta, Bora / Viver Essa / Emoção?"), cujas linhas seguintes são
-    # curtas e de comprimento semelhante ao começo do título.
     if len(linhas) >= 3 and corte > 1:
         _txt0 = (linhas[0].get("texto") or "").strip()
         _txt1 = (linhas[1].get("texto") or "").strip()
@@ -7652,9 +6180,6 @@ def _extrair_titulo_descricao_por_altura(linhas: list) -> tuple:
             )
             corte = 1
 
-    # Rede de segurança: se TODAS as linhas ficaram dentro do mesmo grupo,
-    # procura uma queda relativa forte (>18%) e usa o primeiro ponto. Isso
-    # evita transformar tudo em título em layouts com fontes muito próximas.
     if corte == len(linhas):
         for i in range(len(linhas) - 1):
             h0, h1 = alturas[i], alturas[i + 1]
@@ -7742,8 +6267,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
     if not caixas:
         return None
 
-    # CTA externo dos cards. Aceita pequenos erros do OCR, mas exige que
-    # a caixa esteja longe do topo (cabeçalho) e que a similaridade seja alta.
     ctas = []
     for c in caixas:
         n = _norm(c["texto"])
@@ -7754,7 +6277,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
         ):
             ctas.append(c)
 
-    # Deduplica caixas praticamente sobrepostas da mesma leitura.
     ctas.sort(key=lambda c: (c["yc"], c["xc"]))
     _ctas_dedup = []
     for c in ctas:
@@ -7766,17 +6288,12 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
     if len(ctas) < 3:
         return None
 
-    # Distância vertical máxima do título externo ao CTA. Em layouts reais,
-    # o título fica colado ao botão; já o texto dentro da arte termina mais
-    # acima. Escala com a altura pra continuar funcionando em outras resoluções.
     janela_titulo = max(70, min(145, int(h * 0.062)))
     cards = []
     debug = []
 
     for i, cta in enumerate(ctas):
         largura_cta = max(1.0, cta["x1"] - cta["x0"])
-        # Área horizontal da "coluna" do card: mais larga que o botão para
-        # incluir títulos longos, mas não invade a coluna vizinha.
         margem_x = max(80.0, largura_cta * 0.80)
         x_min = max(0.0, cta["x0"] - margem_x)
         x_max = min(float(w), cta["x1"] + margem_x)
@@ -7790,7 +6307,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
             gap = cta["y0"] - b["y1"]
             if gap < 4 or gap > janela_titulo:
                 continue
-            # centro dentro da mesma coluna + sobreposição horizontal mínima
             if not (x_min <= b["xc"] <= x_max):
                 continue
             overlap = max(0.0, min(b["x1"], x_max) - max(b["x0"], x_min))
@@ -7799,7 +6315,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
             n = _norm(b["texto"])
             if not n or "compre agora" in n:
                 continue
-            # não puxa cabeçalho/domínio por engano
             if empresa and _norm(empresa).replace(" ", "") in n.replace(" ", ""):
                 continue
             if ".com" in n or "http" in n or "www" in n:
@@ -7810,9 +6325,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
             continue
         candidatos.sort(key=lambda b: (b["yc"], b["x0"]))
 
-        # A janela pode pegar um pedaço do texto interno da arte no limite
-        # superior. O título externo forma o BLOCO CONTÍGUO mais próximo do CTA;
-        # anda de baixo para cima e para quando aparece um vão vertical grande.
         candidatos_por_proximidade = sorted(candidatos, key=lambda b: b["y1"], reverse=True)
         bloco = []
         limite_superior = cta["y0"]
@@ -7824,8 +6336,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
             limite_superior = min(limite_superior, b["y0"])
         bloco.sort(key=lambda b: (b["yc"], b["x0"]))
 
-        # Agrupa bboxes em linhas pela proximidade vertical e concatena da
-        # esquerda para a direita.
         linhas = []
         for b in bloco:
             colocado = False
@@ -7853,7 +6363,6 @@ def _detectar_grade_cards_google_ads(img_bgr, reader, empresa: str = None):
         if not titulo:
             continue
 
-        # Evita duplicatas do mesmo card por OCR repetido.
         if any(_norm(x["titulo"]) == _norm(titulo) for x in cards):
             continue
 
@@ -7907,7 +6416,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
 
     h, w = img_bgr.shape[:2]
 
-    # Card nitidamente vertical. Evita competir com Busca e demais layouts.
     if h < 650 or w < 300 or (w / max(float(h), 1.0)) > 0.72:
         return None
 
@@ -7920,8 +6428,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     _sat_linha = _hsv[:, :, 1].mean(axis=1)
     _gray_linha = _gray.mean(axis=1)
 
-    # 1) Detecta a foto/arte superior.
-    # Procura a primeira faixa branca sustentada após uma região visual.
     _quase_branco = ((_gray >= 242) & (_hsv[:, :, 1] <= 35)).mean(axis=1)
     _foto_fim = None
     _run = 0
@@ -7940,7 +6446,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     if _foto_fim is None:
         return None
 
-    # A região antes do corte precisa parecer realmente visual/fotográfica.
     _topo = _hsv[:max(1, _foto_fim - 3), :, :]
     if _topo.size == 0:
         return None
@@ -7949,8 +6454,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     if _sat_topo < 55 or _frac_topo_colorido < 0.25:
         return None
 
-    # 2) Detecta a faixa CTA inferior.
-    # Busca uma longa região colorida/escura começando depois de 65% da altura.
     _mask_cta_row = (_sat_linha >= 55) & (_gray_linha <= 205)
     _cta_inicio = None
     _run = 0
@@ -7968,13 +6471,11 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     if _cta_inicio is None:
         return None
 
-    # A faixa precisa ocupar parte relevante do rodapé.
     if not (0.72 <= (_cta_inicio / float(h)) <= 0.93):
         return None
     if (h - _cta_inicio) < h * 0.09:
         return None
 
-    # O miolo entre foto e CTA deve ser majoritariamente claro.
     _miolo = _hsv[_foto_fim:_cta_inicio, :, :]
     if _miolo.size == 0:
         return None
@@ -7983,7 +6484,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     if _miolo_claro < 0.62:
         return None
 
-    # 3) OCR separado: corpo branco e faixa CTA.
     _margem_x = max(8, int(w * 0.035))
     _body = img_bgr[_foto_fim:_cta_inicio, _margem_x:w-_margem_x]
     _cta_crop = img_bgr[_cta_inicio:h, _margem_x:w-_margem_x]
@@ -8024,7 +6524,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
     if not _caixas:
         return None
 
-    # Agrupa caixas OCR da mesma linha.
     _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
     _linhas = []
     for _c in _caixas:
@@ -8059,8 +6558,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
         _x0 = min(c["x0"] for c in _itens)
         _norm = _re_v.sub(r"[^a-z0-9]", "", _txt.lower())
 
-        # Logo/avatar da empresa: normalmente no alto e à esquerda do corpo.
-        # Ignoramos apenas quando o texto reconhecido bate com a empresa cadastrada.
         _eh_avatar = (
             bool(_emp_norm)
             and _l["yc"] <= _body.shape[0] * 0.38
@@ -8091,7 +6588,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
         if x
     ).strip()
 
-    # 4) CTA é lido independentemente dentro da faixa inferior.
     _cta = ""
     try:
         _ocr_cta = reader.readtext(
@@ -8120,8 +6616,6 @@ def _detectar_display_vertical_card(img_bgr, reader, empresa: str = None):
             _cta = _m.group(0).strip()
             break
 
-    # Esse layout precisa ter título + CTA para ser aceito. É uma proteção
-    # forte contra falso positivo em screenshots verticais comuns.
     if not _titulo or not _cta:
         return None
 
@@ -8188,7 +6682,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     if h < 320 or w < 360:
         return None
 
-    # Esse formato costuma ser aproximadamente quadrado / levemente paisagem.
     _ratio = w / max(float(h), 1.0)
     if not (0.82 <= _ratio <= 1.55):
         return None
@@ -8232,7 +6725,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     if len(_caixas) < 3:
         return None
 
-    # Agrupa caixas da mesma linha.
     _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
     _linhas = []
     for _c in _caixas:
@@ -8267,7 +6759,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
 
     _emp_norm = _norm(empresa)
 
-    # Cabeçalho: precisa estar no topo e casar com a empresa cadastrada.
     _idx_header = None
     for _i, _l in enumerate(_linhas):
         if _l["yc"] > h * 0.24:
@@ -8282,8 +6773,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     if _idx_header is None:
         return None
 
-    # Procura o primeiro texto após um grande vão vertical: esse é o bloco
-    # inferior que fica abaixo da foto central.
     _header = _linhas[_idx_header]
     _idx_bloco_inferior = None
     _maior_gap = 0.0
@@ -8334,8 +6823,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     if not _conteudo:
         return None
 
-    # Se o bloco inferior tiver mais de uma linha, usa a mesma heurística
-    # global por altura; caso real atual tem apenas título + CTA.
     _titulo, _desc_linhas = _extrair_titulo_descricao_por_altura(
         [{"texto": l["texto"], "altura": l["altura"]} for l in _conteudo]
     )
@@ -8347,8 +6834,6 @@ def _detectar_display_foto_central(img_bgr, reader, empresa: str = None):
     if not _titulo:
         return None
 
-    # Rede de segurança: CTA precisa existir nesse padrão. Isso evita que um
-    # anúncio comum com grande área vazia seja classificado por engano.
     if not _cta:
         return None
 
@@ -8424,8 +6909,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     except Exception:
         return None
 
-    # Procura uma transição horizontal forte de uma região visual/foto para um
-    # painel inferior muito claro. Limita a busca a 50%-82% da altura.
     _row_mean = _gray.mean(axis=1)
     _ini_y = int(h * 0.50)
     _fim_y = int(h * 0.82)
@@ -8455,25 +6938,9 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     _rodape_mean = float(_rodape.mean())
     _foto_std = float(_foto.std())
 
-    # V119 — proteção contra falso positivo em anúncios de BUSCA.
-    #
-    # O detector V116 olhava principalmente "salto de luminosidade + textura".
-    # Uma página branca com muito texto também pode ter std alto o bastante
-    # para parecer "foto", e isso fez um anúncio normal de Busca da FunBuyNet
-    # ser tratado como display-top-card. O efeito foi grave: o parser cortou
-    # toda a parte de cima e perdeu o título real.
-    #
-    # Uma FOTO verdadeira ocupa visualmente a região superior e, portanto,
-    # NÃO é majoritariamente branca. Já um anúncio de Busca tem fundo branco
-    # em praticamente toda a área acima da suposta emenda.
     _foto_frac_quase_branca = float((_foto >= 245).mean())
     _foto_mean = float(_foto.mean())
 
-    # Sinais conservadores do layout:
-    #   - rodapé claro;
-    #   - transição horizontal forte;
-    #   - região superior realmente fotográfica/visual;
-    #   - no máximo 55% de pixels quase brancos na área superior.
     if not (
         _score >= 45
         and _rodape_mean >= 205
@@ -8528,7 +6995,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     if len(_caixas) < 3:
         return None
 
-    # Agrupa itens na mesma linha.
     _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
     _linhas = []
     for _c in _caixas:
@@ -8570,18 +7036,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     _conteudo = []
     _avatar_ignorados = []
 
-    # V118 — neste layout o EasyOCR pode fundir, na MESMA linha OCR,
-    # a descrição central + o texto do avatar + o botão da direita.
-    # Caso real:
-    #   "O GP de Fórmula 1 de [Funbuynet São Paulo 2025 é um Abrir > evento imperdível"
-    #
-    # Portanto, antes de confiar no OCR geral do rodapé, fazemos duas
-    # leituras geométricas independentes:
-    #   (1) coluna central = descrição;
-    #   (2) bloco direito   = CTA.
-    #
-    # Isso replica a estrutura visual do anúncio e evita tentar "adivinhar"
-    # depois onde termina a descrição e começa o botão.
     def _ocr_texto_regiao(_img_regiao):
         if _img_regiao is None or getattr(_img_regiao, "size", 0) == 0:
             return ""
@@ -8620,7 +7074,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     _h_crop = _crop.shape[0]
     _w_crop = _crop.shape[1]
 
-    # Área central: começa depois do avatar e termina antes do botão.
     _desc_x0 = int(_w_crop * 0.20)
     _desc_x1 = int(_w_crop * 0.62)
     _desc_y0 = int(_h_crop * 0.30)
@@ -8628,15 +7081,12 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
         _crop[_desc_y0:_h_crop, _desc_x0:_desc_x1]
     )
 
-    # Área do botão à direita.
     _cta_x0 = int(_w_crop * 0.61)
     _cta_y0 = int(_h_crop * 0.28)
     _cta_geometrico_bruto = _ocr_texto_regiao(
         _crop[_cta_y0:_h_crop, _cta_x0:_w_crop]
     )
 
-    # O crop do botão pode trazer somente "Abrir >", ou pequenas sobras
-    # visuais. Procura explicitamente um CTA conhecido dentro do resultado.
     _m_cta_geo = _re_top.search(
         r"(?i)\b(abrir|saiba\s*mais|compre\s*agora|comprar\s*agora|"
         r"acesse|acessar|ver\s*mais|conferir|comprar|reservar)\b",
@@ -8650,7 +7100,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
         if not _txt:
             continue
 
-        # CTA costuma estar no terço direito e na metade inferior do rodapé.
         _txt_cta = _re_top.sub(r"\s*[>›»→❯➜]+\s*$", "", _txt).strip()
         if (
             _rx_cta.match(_txt)
@@ -8661,10 +7110,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
                 _cta = _txt_cta
             continue
 
-        # Se o OCR geral fundiu o CTA dentro de uma linha maior, remove
-        # somente a palavra/frase de CTA e a seta. A descrição verdadeira
-        # será preferencialmente substituída pelo crop geométrico central
-        # mais abaixo.
         if _cta:
             _txt = _re_top.sub(
                 r"(?i)\b" + _re_top.escape(_cta) + r"\b\s*[>›»→❯➜]*",
@@ -8676,8 +7121,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
             _l = dict(_l)
             _l["texto"] = _txt
 
-        # Avatar/logo: fica à esquerda na metade inferior e normalmente traz
-        # apenas o nome da empresa em fonte pequena.
         _eh_avatar = (
             _l["xc"] <= w * 0.28
             and _l["yc"] >= _crop.shape[0] * 0.32
@@ -8697,8 +7140,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
     if len(_conteudo) < 2:
         return None
 
-    # O headline é a primeira linha textual do rodapé e fica acima do bloco
-    # avatar/descrição/CTA. Não usa o texto da foto superior.
     _conteudo.sort(key=lambda l: l["yc"])
     _headline = _conteudo[0]
     if _headline["yc"] > _crop.shape[0] * 0.42:
@@ -8706,8 +7147,6 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
 
     _titulo = _limpar_pontuacao_ocr(_headline["texto"])
 
-    # Descrição: tudo que sobra abaixo do headline, excluindo elementos muito
-    # à direita (área do CTA) e o avatar já removido.
     _desc_linhas = []
     for _l in _conteudo[1:]:
         if _l["xc"] >= w * 0.64:
@@ -8716,14 +7155,9 @@ def _detectar_display_imagem_topo_card_rodape(img_bgr, reader, empresa: str = No
 
     _descricao = " ".join(_desc_linhas).strip()
 
-    # V118 — prefere a leitura isolada da coluna central. Ela não contém
-    # avatar nem botão, portanto é mais confiável que a linha OCR achatada
-    # do rodapé inteiro.
     if _descricao_geometrica:
         _descricao_geo_limpa = _descricao_geometrica
 
-        # Rede de segurança: caso a borda do avatar invada alguns pixels do
-        # crop central, remove um nome isolado da empresa apenas no COMEÇO.
         if empresa:
             _emp_rx = _re_top.escape(str(empresa).strip())
             _descricao_geo_limpa = _re_top.sub(
@@ -8812,7 +7246,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     if h < 220 or w < 360:
         return None
 
-    # O layout é aproximadamente quadrado/paisagem. Evita capturas verticais.
     _ratio = w / max(1.0, float(h))
     if not (0.90 <= _ratio <= 2.20):
         return None
@@ -8844,8 +7277,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
 
     _score, _seam_x, _media_esq_borda, _media_dir_borda = _melhor
 
-    # Sinal forte: painel direito muito claro e salto vertical grande.
-    # Não basta haver uma foto lateral pequena de anúncio de Busca.
     _painel_dir = _gray[:, min(w - 1, _seam_x + _faixa):]
     _painel_esq = _gray[:, :max(1, _seam_x - _faixa)]
     if _painel_dir.size == 0 or _painel_esq.size == 0:
@@ -8862,7 +7293,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     ):
         return None
 
-    # OCR SOMENTE no painel direito. Margem pequena elimina a própria borda.
     _x0 = min(w - 1, _seam_x + max(8, int(w * 0.025)))
     _x1 = max(_x0 + 1, w - max(5, int(w * 0.012)))
     _crop = img_bgr[:, _x0:_x1]
@@ -8909,7 +7339,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
 
     _caixas.sort(key=lambda c: (c["yc"], c["x0"]))
 
-    # Agrupa caixas próximas na mesma linha.
     _linhas = []
     for _c in _caixas:
         _alocada = False
@@ -8935,8 +7364,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
             " ".join(c["texto"] for c in _l["itens"]).strip()
         )
 
-    # Avatar/logo: caractere muito curto e grande na metade superior.
-    # Exemplo validado: "F" dentro do círculo azul da FunBuyNet.
     _alturas_validas = [l["altura"] for l in _linhas if l.get("texto")]
     _med_alt = float(_np_split.median(_alturas_validas)) if _alturas_validas else 0.0
 
@@ -8967,12 +7394,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
             _avatar_ignorados.append(_txt)
             continue
 
-        # V108 — CTAs desse layout costumam vir acompanhados do chevron/
-        # seta do botão. O EasyOCR pode juntar tudo na mesma linha, por
-        # exemplo "Abrir >", "Abrir ›" ou "Abrir →". Para decidir se
-        # é CTA, remove SOMENTE símbolos direcionais no FINAL da linha; o
-        # restante do texto continua intacto. O valor salvo fica limpo
-        # ("Abrir"), sem o ícone visual do botão.
         _txt_cta_split = _re_split.sub(
             r"\s*[>›»→❯➜➤►]+\s*$",
             "",
@@ -8980,7 +7401,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
         ).strip()
 
         if _rx_cta_split.match(_txt_cta_split) and _l["yc"] > h * 0.45:
-            # Se houver mais de um candidato, o mais baixo é o CTA final.
             if _l["yc"] > _cta_y:
                 _cta = _txt_cta_split
                 _cta_y = _l["yc"]
@@ -8995,7 +7415,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     if not _conteudo:
         return None
 
-    # Remove qualquer conteúdo que esteja ABAIXO do CTA (ruído/sombra).
     if _cta_y > 0:
         _conteudo = [l for l in _conteudo if l["yc"] < _cta_y - 5]
 
@@ -9004,8 +7423,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
 
     _conteudo.sort(key=lambda l: l["yc"])
 
-    # Split-card: usa também o espaçamento vertical para separar headline
-    # da descrição quando as alturas OCR ficam artificialmente parecidas.
     _corte_geo = None
     if len(_conteudo) >= 2:
         for _i_geo in range(1, len(_conteudo)):
@@ -9030,7 +7447,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     ]
     _descricao = " ".join(_descricao_linhas).strip()
 
-    # Rede de segurança: o padrão precisa produzir título + (descrição ou CTA).
     if not _titulo or not (_descricao or _cta):
         return None
 
@@ -9059,8 +7475,6 @@ def _detectar_card_split_google_ads(img_bgr, reader, empresa: str = None):
     return {
         "titulo": _titulo,
         "descricao": _descricao,
-        # Igual aos layouts gráficos já existentes: usa a empresa cadastrada
-        # como cabeçalho quando o criativo não traz URL textual própria.
         "url_exibida": empresa or "",
         "url_final": "",
         "cta": _cta,
@@ -9091,8 +7505,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     de texto bruto, porque provavelmente não é um anúncio de texto
     padrão (ex: anúncio de Display/imagem)."""
 
-    # V124 — Display com cabeçalho acima, foto central grande e bloco de
-    # título/CTA abaixo da foto.
     _display_vertical = _detectar_display_vertical_card(
         img_bgr, reader, empresa=empresa
     )
@@ -9105,44 +7517,21 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     if _display_foto_central is not None:
         return _display_foto_central
 
-    # V116 — Display com foto grande em cima e card textual no rodapé.
-    # Precisa rodar antes do parser linear porque, nesse formato, o texto do
-    # avatar e do botão pode ser fundido com a descrição em uma única banda.
     _display_top_card = _detectar_display_imagem_topo_card_rodape(
         img_bgr, reader, empresa=empresa
     )
     if _display_top_card is not None:
         return _display_top_card
 
-    # V107 — anúncio gráfico em duas colunas: a coluna esquerda é ARTE/foto
-    # e deve ser ignorada; a direita contém avatar + título + descrição + CTA.
-    # Precisa rodar antes do parser linear, porque nesse layout a análise de
-    # cor pode fundir todo o criativo em uma única banda azul.
     _split_card = _detectar_card_split_google_ads(img_bgr, reader, empresa=empresa)
     if _split_card is not None:
         return _split_card
 
-    # V8 — anúncio em grade/catálogo: vários cards independentes na mesma
-    # captura não podem passar pelo parser linear de bandas, porque linhas
-    # de colunas diferentes acabam fundidas. Detecta esse layout primeiro e
-    # devolve cada card estruturado separadamente.
     _grade = _detectar_grade_cards_google_ads(img_bgr, reader, empresa=empresa)
     if _grade is not None:
         return _grade
 
     bandas = _detectar_bandas_texto(img_bgr)
-    # Não descarta os separadores — só ignora eles pro OCR. Precisamos
-    # saber se existia uma linha divisória ANTES de cada banda de texto,
-    # porque duas azuis seguidas sem descrição no meio podem significar
-    # duas coisas bem diferentes:
-    #   1) quebra de linha do MESMO título (ex: "Matrículas Privadas -
-    #      Prospecção" / "Eficiente") — aí NÃO tem separador entre elas;
-    #   2) dois sitelinks distintos, cada um sem descrição (ex: "Kedu
-    #      Bank" / "Kedu Marketing") — aí SEMPRE tem uma linha divisória
-    #      fina entre eles.
-    # Se a gente jogar fora a info do separador antes de chegar no laço
-    # de agrupamento, os dois casos ficam indistinguíveis e o caso 2
-    # acaba grudado incorretamente como se fosse o caso 1.
     bandas_texto = []
     _sep_pendente = False
     for _b in bandas:
@@ -9167,12 +7556,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         + str([(i, b['y_min'], b['y_max'], b['classe'], b.get('sep_antes')) for i, b in enumerate(bandas_texto)]),
         flush=True,
     )
-    # prints só sobrevivem no log efêmero do Streamlit Cloud (se misturam
-    # com o resto do tráfego e somem depois de um tempo); isso aqui fica
-    # gravado na própria linha da mídia (coluna `ocr_estruturado`, jsonb)
-    # e pode ser mostrado direto no card de cada anúncio (ver
-    # `_montar_html_preview_ocr_estruturado`), sem depender de puxar log
-    # nenhum pra investigar por que um título saiu partido/duplicado.
     _debug_bandas = [
         {
             "idx": i, "y_min": b["y_min"], "y_max": b["y_max"], "classe": b["classe"],
@@ -9186,25 +7569,11 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     )
     _primeiro_texto_strip = primeiro_texto.strip()
     _eh_patrocinado = bool(_REGEX_PATROCINADO.match(_primeiro_texto_strip))
-    # Se não bateu o match EXATO, checa se "Patrocinado"/"Sponsored"
-    # grudado, na mesma banda, com a linha seguinte do cabeçalho (nome
-    # da página). Nesse caso não descarta a banda inteira (perderia o
-    # nome) — só tira o rótulo da frente e guarda o resto.
     _texto_apos_patrocinado = None
     if not _eh_patrocinado:
         _match_prefixo_patrocinado = _REGEX_PATROCINADO_PREFIXO.match(_primeiro_texto_strip)
         if _match_prefixo_patrocinado:
             _resto_bruto = _primeiro_texto_strip[_match_prefixo_patrocinado.end():]
-            # Só aceita como "rótulo grudado" quando logo depois vem um
-            # separador explícito (espaço/":"/"-": ex. "Patrocinado
-            # BuyTicket Brasil") OU uma nova palavra colada começando
-            # com MAIÚSCULA sem nenhum espaço (ex.: OCR real
-            # "PatrocinadoBuyTicket Brasil", sem espaço nenhum entre as
-            # duas). Nunca quando o "resto" continua em minúscula logo
-            # em seguida (ex.: "Patrocinador", "Patrocinada por..." —
-            # aí é outra palavra/frase, não o rótulo + cabeçalho
-            # colados, e tratar como tal cortaria letras de uma palavra
-            # de verdade).
             if _resto_bruto and (_resto_bruto[0] in " :-" or _resto_bruto[0].isupper()):
                 _texto_apos_patrocinado = _resto_bruto.lstrip(" :-").strip()
     print(
@@ -9223,76 +7592,18 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     else:
         _debug_bandas[0]["decisao"] = "não é rótulo de anúncio patrocinado"
 
-    # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
-    # Consome TODAS as bandas não-azuis consecutivas a partir daqui como
-    # url_exibida (não só uma) — na Central de Transparência é comum
-    # aparecer o nome da página numa linha e/ou o domínio/URL em
-    # outra(s), todas cinza, antes do título (sempre azul) começar.
-    #
-    # Antes, só entrava aqui a linha que batesse num regex estrito de
-    # formato de domínio (algo.algo) — a ideia era filtrar fora o nome
-    # da página (ex: "KEDU"), que não tem ponto. Só que isso também
-    # descartava a URL sempre que ELA MESMA, por algum motivo de OCR
-    # (glifo do ícone colado, TLD fora do comum etc.), não batesse
-    # exatamente o regex — e quando o cabeçalho tinha só essa uma linha
-    # (sem uma segunda linha de nome pra "sobrar"), o resultado era
-    # url_exibida vazio, sem nenhuma pista de por que sumiu.
-    #
-    # Mais simples e mais robusto: não filtra nada — junta TODAS as
-    # linhas não-azuis do cabeçalho com quebra de linha, do jeito que
-    # elas aparecem (nome da página, se houver, e a URL). O pior caso
-    # passa a ser "nome da página aparece como uma linha extra em cima
-    # da URL" (cosmético), em vez de "a URL inteira desaparece".
     _partes_dominio = []
-    # Maior altura entre as linhas de cabeçalho já confirmadas (não vazias)
-    # até agora — usado pela trava de SALTO DE FONTE logo abaixo.
     _altura_max_linha_cabecalho = 0
     while (
         idx < len(bandas_texto)
         and bandas_texto[idx]["classe"] not in ("azul", "botao")
-        # Trava também por SALTO VERTICAL anormal: cabeçalho de verdade
-        # (nome da página + domínio, às vezes quebrado em 2-3 linhas)
-        # nunca tem um vão de mais de ~80px até a próxima linha — só
-        # acontece um vão desse tamanho quando existe um banner/foto no
-        # meio (anúncio de Display), separando o cabeçalho do resto do
-        # texto do anúncio (título/descrição/botão). Sem essa trava,
-        # num anúncio de Display SEM sitelinks (nenhuma banda azul em
-        # lugar nenhum antes do botão) esse laço continuava "comendo"
-        # TUDO como se fosse domínio — título e descrição inteiros
-        # viravam url_exibida, garbled, e o botão (agora classe "botao"
-        # em vez de "azul", ver acima) nunca era alcançado por esse
-        # trecho. Bug real, anúncio "Ingressos BTS 2026" da BuyTicket
-        # Brasil: cabeçalho (2 linhas) + banner excluído + headline (2
-        # linhas) + descrição (2 linhas) todos ficavam a menos de 80px
-        # de distância DENTRO de cada grupo, mas o salto do fim do
-        # cabeçalho (y=67) pro início do headline (y=540+) é de mais de
-        # 470px — exatamente o sinal que separa os dois blocos.
         and (idx == 0 or bandas_texto[idx]["y_min"] - bandas_texto[idx - 1]["y_max"] <= 80)
-        # Trava também por SALTO DE FONTE, não só pelo vão vertical acima:
-        # bug real, anúncio "Ele Tá No Site Esperando Você" da BuyTicket
-        # Brasil — nesse layout o headline vem logo ABAIXO do cabeçalho
-        # pequeno, sem nenhum banner/foto separando os dois (o banner só
-        # aparece depois, entre a descrição e o botão), então o vão de
-        # ~80px nunca dispara e o laço "comia" o headline inteiro e a
-        # descrição inteira, banda por banda, como se fossem linhas de
-        # cabeçalho (nome da página/URL) — só parava no botão, tarde
-        # demais pro bloco de título/descrição de Display (mais abaixo)
-        # sobrar alguma banda pra processar.
-        # Cabeçalho de verdade é sempre um texto PEQUENO; o headline de
-        # Display é sempre bem maior. Assim que uma banda aparece com
-        # altura BEM maior (>= 60% mais alta) que a maior linha de
-        # cabeçalho já confirmada até aqui, ela já não é mais cabeçalho —
-        # é o início do título, e o laço para ali.
         and not (
             _altura_max_linha_cabecalho > 0
             and (bandas_texto[idx]["y_max"] - bandas_texto[idx]["y_min"] + 1)
                 >= _altura_max_linha_cabecalho * 1.6
         )
     ):
-        # Banda 0 com "Patrocinado" grudado na frente (ver acima): usa
-        # o texto já limpo do rótulo em vez de rodar o OCR de novo
-        # nessa banda — repetir o OCR aqui devolveria a mesma string
-        # bruta "Patrocinado ..." de novo, com o rótulo ainda colado.
         if idx == 0 and _texto_apos_patrocinado is not None:
             _txt_dominio = _texto_apos_patrocinado
         else:
@@ -9300,100 +7611,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"],
                 x_min=(bandas_texto[idx].get("x_min_favicon") or None),
             ).strip()
-        # Erro de leitura comum: quando a barra "/" vira sua PRÓPRIA
-        # caixa de detecção (comentário logo abaixo), o EasyOCR
-        # costuma ler esse traço vertical isolado como a letra "l" —
-        # ex: "kedu.com.br l gestão l escolar" em vez de
-        # ".../gestão/escolar". Corrige ANTES de remover os espaços
-        # (senão perde a única pista de que era um caractere isolado):
-        # só troca um "l" que está sozinho, cercado de espaço (ou
-        # início/fim da linha) dos dois lados — nunca um "l" colado a
-        # outras letras (ex: o "l" do meio de "escolar" continua
-        # intacto, porque ali ele faz parte da palavra de verdade, sem
-        # espaço ao redor).
         _txt_dominio = re.sub(r"(?<!\S)l(?!\S)", "/", _txt_dominio)
-        # Outro erro de leitura comum nas linhas de cabeçalho (nome da
-        # página, quando ele vem em várias linhas/bandas — ex.:
-        # "BuyTicket Brasil", "Tá Na Buy, Tá Na Boa", "Humano E De Fã
-        # Pra Fã."): um glifo pequeno perto do texto (vírgula que virou
-        # caixa de detecção própria, selo/ícone, marca de pontuação
-        # rara) é lido pelo EasyOCR como um DÍGITO "1" isolado — ou "1"
-        # + 1 letra maiúscula colada (ex: "1F") — bem no meio da frase.
-        # Ex. real: "Tá Na Buy, Tá Na Boa." virou "Tá 1 Na Buy Tá 1 Na
-        # Boa." (a vírgula sumiu e virou um "1" solto); "Fã Pra Fã."
-        # virou "Fã 1F Pra Fã.".
-        #
-        # Só remove um token EXATAMENTE "1" ou "1"+1 letra maiúscula
-        # cercado de espaço dos DOIS lados (ou início/fim de linha) —
-        # nunca um "1" colado a uma palavra (ex.: "top1" continua
-        # intacto) — pra reduzir o risco de apagar um número real que
-        # por acaso seja só "1" sozinho no meio da frase (ex.: "ganhe
-        # 1 ingresso"); esse risco existe mas é bem mais raro que o
-        # ruído de OCR que estamos corrigindo aqui.
         _txt_dominio = re.sub(r"(?<!\S)1[A-Z]?(?!\S)", "", _txt_dominio)
         _txt_dominio = re.sub(r"\s{2,}", " ", _txt_dominio).strip()
-        # Domínio/URL de verdade nunca tem espaço em branco interno —
-        # remove qualquer espaço que o EasyOCR tenha inserido por engano
-        # DENTRO desta linha (ex: "kedu. com.br", ou "www.kedu.com.br
-        # /gestão /escolar" quando a barra vira uma caixa de detecção
-        # separada). Essa limpeza roda POR LINHA, antes de juntar com as
-        # demais linhas do cabeçalho — se rodasse só uma vez no final,
-        # sobre o texto já concatenado, não teria como distinguir
-        # "espaço que separava duas linhas diferentes" (ex:
-        # "kedu.com.br" + "www.kedu.com.br/") de "espaço que era erro
-        # de OCR dentro da mesma linha", e acabaria apagando os dois
-        # igual — grudando as duas linhas numa só.
-        #
-        # SÓ VALE PRA LINHA DE DOMÍNIO/URL, não pro nome da página
-        # (ex: "BuyTicket Brasil", "Kedu Educação") — essa SIM pode ter
-        # espaço interno de verdade, entre palavras. Sem essa distinção,
-        # qualquer nome de página com mais de uma palavra saía com as
-        # palavras grudadas ("BuyTicket Brasil" → "BuyTicketBrasil"),
-        # porque a linha inteira do cabeçalho passava pela mesma limpeza
-        # "domínio nunca tem espaço". Heurística: só trata como
-        # domínio/URL se a linha tiver alguma pista de domínio (um
-        # "www." ou um ponto seguido de letras, tipo TLD — mesmo com
-        # ruído de OCR no meio, ex: "kedu. com.br"); caso contrário, só
-        # colapsa espaços duplicados, sem juntar palavras.
-        # Exceção rara mas real: quando o EasyOCR perde TODOS os pontos
-        # do domínio de uma vez (ex: "www.buyticketbrasil.com/" vira
-        # "WWW buyticketbrasil coml", sem nenhum "."), o regex original
-        # (que exige achar "www." ou ".xx" com ponto de verdade) não
-        # bate em nada, e a linha inteira cai no ramo errado de "nome da
-        # página" — só colapsando espaços duplicados, sem juntar as
-        # palavras nem recompor o "l" grudado no final como barra.
-        # `\bwww\b` cobre esse caso: um "WWW" isolado como palavra
-        # própria (mesmo sem o ponto depois) já é um sinal forte o
-        # bastante de que é uma URL — nenhum nome de página real usa
-        # "www" sozinho como uma das palavras. Com isso, a linha entra
-        # no ramo que remove TODOS os espaços (mais abaixo), e as
-        # correções de caractere já validadas em `_normalizar_url_exibida`
-        # (que junta "WWW"+domínio em "www." e recompõe "coml" em
-        # ".com/") fazem o resto — sem precisar duplicar essa lógica
-        # aqui.
-        # (ex: "VWW.", "NWW.") como pista de domínio/URL — mesmo
-        # conjunto de caracteres já validado em `_normalizar_url_exibida`
-        # (ver docstring lá). Sem isso, uma linha como "VWW.
-        # buyticketbrasil coml" caía no ramo de "nome da página" (só
-        # colapsa espaço duplicado, não remove o espaço interno de
-        # verdade), e o espaço entre "VWW." e "buyticketbrasil"
-        # sobrevivia até o card final ("VWW. buyticketbrasil.com/" em
-        # de caractere rodar.
-        # Sinal FORTE de que a linha É mesmo uma URL/domínio (não o nome
-        # da página): tem "www" de verdade (ou a variante já coberta de
-        # com protocolo "http(s)". Isso é bem diferente do sinal FRACO
-        # abaixo (`\.\s?[a-zA-Z]{2,4}\b`, que só olha se tem uma
-        # "pontuação + 2-4 letras" em algum lugar do texto): o nome da
-        # página às vezes é lido pelo EasyOCR já GRUDADO com um TLD
-        # (ex: "BuyTicket Brasil" virando "ouyticketbrasil.com", sem
-        # nenhum "www" — o "B" inicial some e um ".com" espúrio aparece
-        # no fim), o que faz esse sinal fraco disparar mesmo a linha
-        # sendo, na real, o nome da empresa com lixo de OCR. Por isso
-        # separamos os dois: o sinal FORTE (www/protocolo) nunca deve
-        # ser tratado como nome de página (é sempre e só URL de
-        # verdade), enquanto o sinal fraco sozinho ainda pode ser, na
-        # real, um nome de empresa maltratado pelo OCR — e é tentado
-        # contra `_corrigir_nome_pagina_com_empresa` antes de decidir.
         _tem_prefixo_www_forte = bool(re.search(
             r"^(?:https?://)?[nNvVwW]{2,4}[.:]|\bwww\b",
             _txt_dominio, re.IGNORECASE
@@ -9406,35 +7626,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _txt_dominio_sem_espaco = re.sub(r"\s+", "", _txt_dominio)
         else:
             _txt_dominio_sem_espaco = re.sub(r"\s+", " ", _txt_dominio).strip()
-        # Remove qualquer caractere-lixo NÃO alfanumérico grudado no
-        # início da linha — comum quando essa linha fica colada no
-        # favicon/ícone e o EasyOCR devolve um símbolo/glifo espúrio do
-        # próprio ícone como se fosse o primeiro caractere do texto (ex:
-        # "●www.kedu.com.br/gestão/escolar"). Puramente cosmético agora
-        # (não decide mais se a linha entra ou não), mas ainda vale a
-        # pena limpar antes de exibir.
         _txt_dominio_sem_espaco = re.sub(r"^[^a-zA-Z0-9]+", "", _txt_dominio_sem_espaco)
-        # Tenta corrigir contra o nome CADASTRADO da empresa em toda
-        # linha que não tenha o sinal FORTE de URL (ver acima) — mesmo
-        # que o sinal fraco tenha disparado, porque o próprio sinal
-        # fraco pode ter disparado por causa de um TLD que o OCR colou
-        # sem querer no nome da empresa (ver
-        # `_corrigir_nome_pagina_com_empresa`, que já lida com isso
-        # removendo um TLD final antes de comparar). Nunca tenta na
-        # linha que TEM o sinal forte: essa é garantidamente a URL de
-        # verdade, e o nome da empresa não necessariamente bate com o
-        # domínio (ex: razão social vs. domínio comercial) — sobrescrever
-        # ela destruiria a URL real.
         _nome_corrigido_p_empresa = False
         if not _tem_prefixo_www_forte and empresa:
             _txt_corrigido = _corrigir_nome_pagina_com_empresa(_txt_dominio_sem_espaco, empresa)
             if _txt_corrigido != _txt_dominio_sem_espaco:
                 _txt_dominio_sem_espaco = _txt_corrigido
                 _nome_corrigido_p_empresa = True
-                # Já sabemos agora que essa linha é o nome da página
-                # (confirmado batendo com a empresa cadastrada), não uma
-                # URL — evita rodar `_normalizar_url_exibida` (feita pra
-                # domínio) em cima do nome puro da empresa logo abaixo,
                 _parece_dominio_ou_url = False
         print(
             f"[OCR-DEBUG] header-linha idx={idx} classe={bandas_texto[idx]['classe']!r} "
@@ -9452,15 +7650,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             else "cabeçalho/URL (vazio após limpeza — descartada)"
         )
         if _txt_dominio_sem_espaco:
-            # Se a linha foi confirmada como NOME da página, não passe pela
-            # normalização de URL. Além disso, cadastros antigos podem guardar
-            # a empresa como slug (ex.: ``buyticketbrasil``). Para exibição,
-            # recupera separação/capitalização sem alterar a chave cadastrada.
             if _nome_corrigido_p_empresa and not _parece_dominio_ou_url:
                 _nome_exibicao = _txt_dominio_sem_espaco.strip()
                 if " " not in _nome_exibicao and _nome_exibicao.lower().endswith("brasil"):
                     _marca = _nome_exibicao[:-6]
-                    # como segundo elemento (buyticket -> BuyTicket).
                     if _marca.lower().endswith("ticket") and len(_marca) > 6:
                         _prefixo = _marca[:-6]
                         _marca = _prefixo[:1].upper() + _prefixo[1:].lower() + "Ticket"
@@ -9474,26 +7667,8 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             if _altura_linha_cabecalho_atual > _altura_max_linha_cabecalho:
                 _altura_max_linha_cabecalho = _altura_linha_cabecalho_atual
         idx += 1
-    # O favicon (ícone circular do site) às vezes vaza pro início da
-    # linha e o EasyOCR lê o glifo como um DÍGITO isolado colado no
-    # domínio (ex: favicon da BuyTicket virando "1buyticketbrasil.com/"
-    # em vez de só "buyticketbrasil.com/") — diferente do glifo-símbolo
-    # já tratado acima (regex de caractere não-alfanumérico), aqui o
-    # dígito passa por alfanumérico e nada removia. O resultado prático:
-    # a MESMA linha de domínio aparece 2x no cabeçalho, uma suja (com o
-    # dígito) e uma limpa (normalmente com "www." de verdade) — e como a
-    # linha suja também "parece domínio", o trecho de exibição (mais
-    # abaixo) nem tenta tratar nenhuma das duas como nome de página.
-    #
-    # Deduplica comparando as linhas já normalizadas SEM um possível
-    # duas linhas batem por essa chave, é a mesma URL lida duas vezes;
-    # fica só com a versão SEM o dígito líder (a mais limpa).
     def _chave_dedup_dominio(s: str) -> str:
         s2 = re.sub(r"^\d(?=[a-zA-Z])", "", s)
-        # V47: protocolo não muda a identidade da URL para deduplicação.
-        # Assim, se o OCR gerar as duas leituras "www.site.com/" e
-        # "http://www.site.com/", elas entram no mesmo grupo e podemos
-        # preferir abaixo a versão MAIS COMPLETA, com protocolo.
         s2 = re.sub(r"^https?://", "", s2, flags=re.IGNORECASE)
         s2 = re.sub(r"^www\.", "", s2, flags=re.IGNORECASE)
         return s2.lower()
@@ -9514,50 +7689,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _candidatos = _grupos_dominio[_k]
         _limpos = [c for c in _candidatos if not _linha_com_digito_lider(c)]
         _pool = _limpos if _limpos else _candidatos
-        # contém http:// ou https:// porque é exatamente o que aparece no
         _com_protocolo = [c for c in _pool if re.match(r"^https?://", c, re.IGNORECASE)]
         _partes_dominio.append(_com_protocolo[0] if _com_protocolo else _pool[0])
-    # Junta as linhas já limpas/normalizadas com quebra de linha (não
-    # espaço) pra reproduzir o layout real do Google Ads, onde
-    # "kedu.com.br" e "www.kedu.com.br/" aparecem empilhadas em duas
-    # linhas separadas — `_escapar_html_ocr` converte "\n" em "<br>" na
-    # exibição. Quando só existe uma linha (ex: só "www.kedu.com.br/"),
-    # o join não insere nada e o resultado fica igual a antes.
     resultado["url_exibida"] = "\n".join(_partes_dominio)
 
     pares = []  # [[titulo, [linhas_descricao]], ...]
     par_atual = None
 
-    # ANÚNCIO DE DISPLAY SEM SITELINKS (ex: os dois exemplos reais da
-    # BuyTicket Brasil — "BTS World Tour" e "Copa do Mundo"): quando
-    # não existe NENHUMA banda azul de verdade no resto do anúncio
-    # (nem título de Busca, nem sitelink), o headline vem em preto/
-    # cinza-escuro — mesma classe de cor "cinza" da descrição — e sem
-    # este bloco cairia discretamente no balde "cinza → descartada"
-    # (mais abaixo, dentro do laço principal), por nunca existir um
-    # `par_atual` aberto pra receber essas bandas. Resultado sem essa
-    # checagem: o anúncio inteiro (headline + descrição) desaparecia,
-    # e só sobrava o CTA (ver classe "botao" acima).
-    #
-    # Detecta o caso ANTES do laço principal: se, a partir daqui, não
-    # sobra NENHUMA banda "azul" até o fim do anúncio (ou até a
-    # próxima banda não-"cinza", tipicamente o botão), separa headline
-    # de descrição usando a ALTURA de cada banda como sinal de tamanho
-    # de fonte — mesmo princípio de `_extrair_titulo_descricao_por_
-    # altura` (já usado pra separar título/descrição DENTRO de uma
-    # banda fundida), só que aqui aplicado ENTRE bandas distintas: como
-    # elas já vêm naturalmente separadas por um respiro em branco de
-    # verdade (não uma fusão numa banda só), cada banda entra como uma
-    # "linha" pra essa função, e ela decide quantas das bandas iniciais
-    # (a(s) de fonte maior) formam o título.
-    # Pula banda(s) "azul" vazias (só ícone/logo, sem texto nenhum) NO
-    # INÍCIO do que resta do anúncio, ANTES de decidir se existe banda
-    # azul de verdade — sem isso, mesmo com `_tem_azul_de_verdade` já
-    # corrigido acima, a checagem logo abaixo (`_bandas_restantes_
-    # display[0]["classe"] in ("cinza", "misto")`) continuava falhando
-    # porque a primeira banda que sobrava ainda era essa "azul" vazia,
-    # e o bloco de agrupamento por altura nunca chegava a rodar pro
-    # headline de verdade logo depois dela.
     while idx < len(bandas_texto) and bandas_texto[idx]["classe"] == "azul":
         if _ocr_banda(reader, img_bgr, bandas_texto[idx]["y_min"], bandas_texto[idx]["y_max"]).strip():
             break
@@ -9565,21 +7703,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         idx += 1
 
     _bandas_restantes_display = bandas_texto[idx:]
-    # Só conta como "azul de verdade" se a banda tiver algum TEXTO real
-    # (não só a cor). Bug real, anúncio "BuyTicket: Ingressos" da
-    # BuyTicket Brasil: a banda do ícone/logo da empresa (só o símbolo
-    # "b", sem nenhuma letra do nome ao lado) saía classificada como
-    # "azul" pela cor, mesmo sem texto nenhum dentro dela — isso sozinho
-    # já fazia `_tem_azul_de_verdade` dar True e desligava TODO o bloco
-    # abaixo (agrupamento por altura pra anúncio de Display sem
-    # sitelinks), mesmo o anúncio não tendo nenhum título/sitelink azul
-    # de verdade. Sem o bloco, o headline real ("BuyTicket: Ingressos")
-    # caía no laço principal como uma banda "misto" comum, sem título
-    # nenhum aberto pra recebê-la — virava CTA por engano, e a
-    # descrição + o botão real ("Saiba Mais") eram descartados em
-    # cascata por "CTA já preenchido". OCR rápido só nas bandas "azul"
-    # (list pequena, custo desprezível) pra confirmar que têm texto de
-    # verdade antes de contar.
     _tem_azul_de_verdade = any(
         b["classe"] == "azul"
         and _ocr_banda(reader, img_bgr, b["y_min"], b["y_max"]).strip()
@@ -9590,19 +7713,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         and _bandas_restantes_display
         and _bandas_restantes_display[0]["classe"] in ("cinza", "misto")
     ):
-        # Aceita também classe "misto" nessa sequência inicial, não só
-        # "cinza": a heurística de cor (`_detectar_bandas_texto`) às
-        # vezes não consegue confirmar que um headline em navy/indigo
-        # escuro é "uma cor só" (texto) e cai em "misto" por segurança
-        # — mas um botão/CTA de verdade NUNCA é a primeira banda do
-        # anúncio (mesmo princípio já usado mais abaixo, na proteção do
-        # divisor de fileira de botões). Sem aceitar "misto" aqui
-        # também, esse headline (que É "misto" nessa leitura de cor)
-        # nunca entrava nesse bloco, ia parar direto no laço principal,
-        # e lá "misto" sem título aberto ainda vira CTA na hora — bug
-        # real, anúncio "Falta Só Alguns Cliques, Volta" da BuyTicket
-        # Brasil: o headline virava CTA e título/descrição do anúncio
-        # inteiro desapareciam.
         _fim_bloco_display = 0
         while (
             _fim_bloco_display < len(_bandas_restantes_display)
@@ -9612,12 +7722,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _bandas_display = _bandas_restantes_display[:_fim_bloco_display]
         _linhas_display = []
         for _b_display in _bandas_display:
-            # V5: usa a ALTURA REAL das caixas OCR da linha, não a altura
-            # inteira da banda detectada por pixels. A banda inclui respiro,
-            # antialiasing e às vezes bordas/elementos gráficos; em alguns
-            # layouts isso fazia título e descrição parecerem do mesmo
-            # tamanho e tudo virava título. Bug real: "Venda Seu Ingresso
-            # Aqui" + "A BuyTicket é Brasileira...".
             _txt_display_bruto, _linhas_bbox_display = _ocr_banda(
                 reader, img_bgr, _b_display["y_min"], _b_display["y_max"],
                 retornar_linhas=True,
@@ -9655,93 +7759,18 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         )
                 idx += _fim_bloco_display
 
-    # True assim que a gente reconhece a banda do título do CTA (via
-    # _REGEX_CTA_TITULO_CONHECIDO ou classe "misto") — enquanto estiver
-    # ligado, a(s) próxima(s) banda(s) cinza são tratadas como o
-    # SUBTÍTULO do CTA (ex: "pelo app WhatsApp"), não como mais uma
-    # linha de descrição do sitelink anterior.
     _cta_aberto = False
-    # V43 — blocos automáticos de avaliação do Google Ads (ex.:
-    # "Rating for ticketswap.com" seguido de "4.5 ★★★★★ (505)") NÃO
-    # pertencem ao texto publicitário. Eles ficam entre a descrição e os
-    # sitelinks/botões e, sem um descarte explícito, podem virar descrição,
-    # CTA ou sitelink. Quando a linha de cabeçalho de rating aparecer,
-    # ignoramos ela e também a próxima banda textual não vazia (nota/estrelas).
     _ignorar_proxima_linha_rating = False
-    # V44 — alguns anúncios de Busca/TicketSwap chegam com a descrição em
-    # uma tonalidade que o detector de cor classifica como AZUL, embora
-    # visualmente ela seja cinza. Isso fazia cada linha da descrição virar
-    # um novo sitelink. Quando uma linha textual logo após o headline começa
-    # com “Buy & sell”/“Buy and sell”, tratamos a partir dali como descrição
-    # corrida até a próxima estrutura de botões/separadores. A regra é
-    # estrutural + textual e não depende do nome TicketSwap.
     _descricao_busca_forcada = False
-    # Altura TÍPICA de uma linha de texto normal deste mesmo anúncio
-    # (mediana das alturas de todas as bandas — robusta a um único
-    # outlier). Usada logo abaixo como referência pra detectar bandas
-    # anormalmente altas (fileira de botões/pílulas COM BORDA, ex:
-    # "Sobre o isaac" / "Entre Em Contato" / "Saiba mais"): o contorno
-    # arredondado da pílula ocupa bem mais altura (y_max - y_min) do
-    # que só o texto, então `_dividir_banda_em_botoes` usando a altura
-    # da PRÓPRIA banda super-estima o vão mínimo entre botões (a
-    # pílula "empresta" altura, não largura) e a fileira inteira nunca
-    # quebra em blocos separados — cada botão fica em pé de igualdade
-    # com uma quebra de linha de título comum, sem estrutura nenhuma
-    # (ex.: "Sobre o isaac" + "Entre Em Contato" + "Saiba mais" saíam
-    # grudados num texto só, com até um "-" espúrio no meio detectado
-    # pela recuperação de hífen do `_ocr_banda`). Validado em anúncios
-    # reais da isaac.
     _alturas_bandas_texto = sorted(b["y_max"] - b["y_min"] for b in bandas_texto)
     _altura_tipica_texto = _alturas_bandas_texto[len(_alturas_bandas_texto) // 2] if _alturas_bandas_texto else None
     while idx < len(bandas_texto):
         banda = bandas_texto[idx]
         _altura_banda_atual = banda["y_max"] - banda["y_min"]
         _gap_minimo_botoes = None
-        # Um botão/pílula de verdade nunca é a PRIMEIRA banda do
-        # anúncio — ele sempre vem depois do título e da descrição (ver
-        # exemplos "Sobre o isaac" etc., sempre no fim do anúncio). A
-        # primeira banda azul é sempre o título, cuja fonte costuma ser
-        # maior que a da descrição — e como `_altura_tipica_texto` é a
-        # MEDIANA de todas as bandas (dominada pelas várias linhas
-        # pequenas de descrição), um título nessa fonte maior já passa
-        # sozinho do limiar de "1.6x" abaixo, mesmo sendo só uma linha
-        # contínua. Se o título tiver um respiro maior em volta de um
-        # "-" natural (ex: "Harry Styles Together 2026 - Últimos",
-        # onde o Google Ads junta headlines com " - "), esse gap passa
-        # do limiar REDUZIDO da pílula e o título é partido ao meio
-        # como se fossem 2 botões — foi exatamente esse o bug real.
-        # Por isso a troca pro gap_minimo agressivo só entra em jogo
-        # depois que o título já foi reconhecido (pares não-vazio ou
-        # par_atual aberto).
         _titulo_ja_reconhecido = bool(pares) or (par_atual is not None)
         if _titulo_ja_reconhecido and _altura_tipica_texto and _altura_banda_atual > _altura_tipica_texto * 1.6:
-            # Banda bem mais alta que uma linha de texto típica deste
-            # anúncio — provável fileira de botões com borda (ver
-            # comentário acima). Troca a referência de altura (que
-            # aqui seria a da PRÓPRIA banda, inflada pela borda) pela
-            # altura típica de uma linha de texto normal, com um fator
-            # menor (0.5x em vez do 0.9x padrão): a borda da pílula
-            # garante que colunas DENTRO de um mesmo botão nunca ficam
-            # com vão em branco (a borda "costura" as letras de ponta
-            # a ponta), então um vão mínimo baixo aqui é seguro — só o
-            # vão de verdade ENTRE dois botões distintos consegue
-            # ultrapassá-lo.
             _gap_minimo_botoes = max(14, int(_altura_tipica_texto * 0.5))
-        # Mesmo já com o título reconhecido, uma banda azul que é só a
-        # QUEBRA DE LINHA do título/sitelink em andamento (par_atual
-        # aberto, ainda sem nenhuma descrição, e sem separador antes
-        # dela — o MESMO critério usado mais abaixo pra juntar essa
-        # continuação em vez de abrir um sitelink novo) nunca pode ser
-        # uma fileira de botões de verdade: um botão sempre vem DEPOIS
-        # que o título E a descrição já fecharam (ver comentário acima
-        # sobre a primeira banda), nunca colado na 2ª linha do próprio
-        # título. Bug real: o título "Compre Ingresso Harry Styles - A
-        # sua" / "Chance de Ver o Harry" (2 linhas, fonte grande) tinha
-        # a 2ª linha partida em blocos ilegíveis ("7 n | | | | |") e
-        # classificada como fileira de botões — a proteção da PRIMEIRA
-        # banda (ver bloco `else` abaixo) não cobria esse caso porque
-        # `_titulo_ja_reconhecido` já estava True (a 1ª linha já tinha
-        # sido aceita como título).
         _continuacao_titulo_aberto = (
             par_atual is not None and not par_atual[1] and not banda.get("sep_antes")
         )
@@ -9752,69 +7781,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         ):
             _grupos_botoes = _dividir_banda_em_botoes(img_bgr, banda["y_min"], banda["y_max"], gap_minimo=_gap_minimo_botoes)
         else:
-            # A primeira banda azul do anúncio é SEMPRE o título — uma
-            # fileira de botões/pílulas de verdade nunca aparece ANTES
-            # dele (ver comentário acima, sobre `_gap_minimo_botoes`).
-            # Sem pular a divisão em colunas aqui, o respiro natural
-            # entre palavras do próprio título (ou um "-" cercado de
-            # espaço, comum em headlines do Google Ads) passava do gap
-            # padrão (0.9x a altura da banda) e a banda inteira virava
-            # "fileira de botões" por engano — bug real observado com
-            # o título "Ingressos NFL Rio Game - Compre Ingresso NFL
-            # Rio Game", que saía como 5 blocos ilegíveis ("| | | |")
-            # em vez de texto corrido. Isso não só perdia o título:
-            # como o título nunca ficava aberto, as linhas cinza de
-            # descrição logo depois ficavam sem onde encaixar (iam pro
-            # "descartada"), E a fileira de botões DE VERDADE mais
-            # abaixo também saía errada — sem `_titulo_ja_reconhecido`
-            # nunca virando True, ela nunca chegava a usar o gap
-            # calibrado pra pílula com borda (branch acima) e acabava
-            # lida como um texto corrido só, grudando os botões.
             _grupos_botoes = []
-        # Falso positivo comum: o CTA final (ícone colorido + UM texto só,
-        # ex: ícone do WhatsApp + "Enviar mensagem"/"Entre em contato no
-        # app WhatsApp") também aparece pra `_dividir_banda_em_botoes` como
-        # "2 blocos", porque o vão entre o ícone (uma faixa bem estreita,
-        # ~45px) e o início do texto costuma passar do gap_minimo — mesmo
-        # não sendo, de fato, dois botões/sitelinks lado a lado. Validado
-        # nos anúncios reais da kedu e da isaac: os dois batiam nesse
-        # padrão (33,78)+(114,...) e viravam sitelinks soltos em vez de
-        # cair no reconhecimento de CTA por `_REGEX_CTA_TITULO_CONHECIDO`
-        # (ver mais abaixo). Uma fileira de botões DE VERDADE (ex: "Sobre
-        # o isaac" / "Entre Em Contato" / "Saiba mais") sempre tem cada
-        # bloco com largura de texto normal — nunca um bloco tão estreito
-        # quanto um ícone sozinho. Por isso: só descarta a divisão quando
-        # são exatamente 2 blocos E um dos dois (primeiro OU último) é
-        # estreito o suficiente pra ser só o ícone — nesses casos, trata a
-        # banda inteira como um texto único (ícone some do OCR, sobra só o
-        # texto), deixando o resto do laço decidir se é CTA ou sitelink.
-        #
-        # Mesmo raciocínio vale espelhado pro lado direito: o título de
-        # um sitelink de UMA linha só (ex: "Quer Vender Seu Ingresso?")
-        # vem seguido da seta/chevron "›" clicável lá na borda direita da
-        # faixa (ver print da buyticketbrasil) — o vão até essa seta é
-        # bem maior que o gap_minimo, e o bloco da seta sozinha é tão
-        # estreito quanto o ícone do CTA. Sem checar o ÚLTIMO bloco
-        # também, esse título virava "fileira de botões (2 bloco(s))":
-        # fechava o par título/descrição em andamento e as linhas cinza
-        # de descrição que vinham depois ficavam sem título aberto pra
-        # anexar, sendo descartadas.
         if len(_grupos_botoes) == 2 and (
             (_grupos_botoes[0][1] - _grupos_botoes[0][0]) <= 55
             or (_grupos_botoes[-1][1] - _grupos_botoes[-1][0]) <= 55
         ):
             _grupos_botoes = []
 
-        # V54 — foto/thumbnail lateral NÃO é uma segunda coluna de botão.
-        # Layout real de Busca/TicketSwap: o texto da descrição ocupa a
-        # esquerda e uma miniatura quadrada fica à direita na MESMA altura.
-        # O detector de colunas enxergava "texto + foto" como 2 blocos e
-        # convertia cada linha da descrição em fileira de botões/sitelinks.
-        # Sinal geométrico conservador: exatamente 2 grupos, banda cinza/mista,
-        # título ainda aberto, sem separador antes, e o segundo grupo começa
-        # já no terço direito da imagem (>= 62% da largura). Em fileiras reais
-        # de dois botões, a segunda coluna começa perto do meio; a miniatura
-        # lateral começa bem mais à direita.
         if (
             len(_grupos_botoes) == 2
             and banda.get("classe") in ("misto", "cinza")
@@ -9823,12 +7796,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             and _grupos_botoes[1][0] >= int(img_bgr.shape[1] * 0.62)
         ):
             _grupos_botoes = []
-        # Em alguns anúncios (caso FanTicket/ACDC) o EasyOCR não devolve
-        # texto útil ao reler a banda inteira, embora o detector geométrico
-        # enxergue a linha horizontal como muitos microblocos (ex.: 13).
-        # Uma fileira real de botões/sitelinks não tem 5+ colunas na mesma
-        # linha neste layout. Portanto, 5 ou mais grupos estreitos são
-        # tratados como divisor visual e NÃO fecham a descrição em andamento.
         if len(_grupos_botoes) >= 5:
             _debug_bandas[idx]["decisao"] = (
                 f"divisor visual geométrico ({len(_grupos_botoes)} microblocos) → "
@@ -9837,18 +7804,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             idx += 1
             continue
 
-        # V88 — IMPORTANTE: o descarte de divisor visual precisa acontecer
-        # ANTES de transformar uma banda em "fileira de botões". Na V86 a
-        # proteção existia, mas vinha depois deste `if len(_grupos_botoes)`,
-        # portanto nunca era alcançada no caso real da FanTicket: uma linha
-        # horizontal do layout era fragmentada em 13 pequenos grupos e o fluxo
-        # já fechava `par_atual` como se fossem 13 botões. As linhas seguintes
-        # da descrição então caíam como CTA.
-        #
-        # Quando a banda foi dividida em 2+ grupos, fazemos UM OCR rápido da
-        # banda inteira antes de aceitar a interpretação de botões. Se o texto
-        # resultante for composto somente por barras/traços/artefatos verticais,
-        # título+descrição aberto.
         if len(_grupos_botoes) >= 2:
             _texto_pre_fileira_bruto = _ocr_banda(
                 reader, img_bgr, banda["y_min"], banda["y_max"]
@@ -9869,14 +7824,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 idx += 1
                 continue
 
-            # V278 — uma faixa horizontal de extensões pode ter grandes
-            # espaços visuais ao redor do hífen e do ponto médio. O detector
-            # geométrico interpreta esses espaços como limites de botões e
-            # quebra ``BTS - World Tour Arirang · 5 Seconds of Summer`` em
-            # três itens: ``BTS``, ``World Tour Arirang`` e ``5 Seconds...``.
-            # Se a releitura da faixa inteira recuperou um hífen textual,
-            # preservamos a faixa para o parser textual logo abaixo. Ele já
-            # separa somente por ``·``/``•`` e mantém o hífen no primeiro item.
             if re.search(r"\s[-–—]\s", _texto_pre_fileira or ""):
                 print(
                     "[OCR-DEBUG] divisão geométrica cancelada: faixa contém "
@@ -9890,15 +7837,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 _grupos_botoes = []
 
         if len(_grupos_botoes) >= 2:
-            # Fileira de botões/pílulas lado a lado (ex: "Sobre o
-            # isaac" / "Entre Em Contato" / "Saiba mais") — formato
-            # diferente do sitelink empilhado verticalmente que o
-            # resto deste laço já tratava. Cada bloco de coluna vira
-            # um sitelink próprio (sem descrição, já que botão não tem
-            # segunda linha), na ordem em que aparecem da esquerda pra
-            # direita. Fecha o par de título/descrição em andamento
-            # (se houver) antes, porque esses botões nunca são
-            # continuação dele.
             print(
                 f"[OCR-DEBUG] banda idx={idx} reconhecida como fileira de botões, "
                 f"{len(_grupos_botoes)} bloco(s): {_grupos_botoes}",
@@ -9920,9 +7858,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _debug_bandas[idx]["texto"] = " | ".join(_textos_botoes_debug)
             idx += 1
             continue
-        # V6: botão sólido é lido somente dentro do retângulo detectado.
-        # Isso impede texto pertencente à foto/arte na mesma altura (como
-        # "ORDE" da bandeira do Brasil) de contaminar "Compre Agora".
         if banda["classe"] == "botao" and banda.get("x_min_botao") is not None:
             _texto_banda_bruto = _ocr_banda(
                 reader, img_bgr, banda["y_min"], banda["y_max"],
@@ -9935,18 +7870,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         texto = _limpar_pontuacao_ocr(_texto_banda_bruto)
         _debug_bandas[idx]["texto"] = texto
 
-        # V86 — algumas linhas horizontais/divisores do próprio layout do
-        # Google Ads são fragmentadas pelo detector em várias colunas e o OCR
-        # devolve apenas uma sequência de barras (ex.: "| | | | | | | |").
-        # Isso NÃO é uma fileira de botões e, principalmente, não pode fechar
-        # o par título+descrição em andamento. Caso real da FanTicket:
-        #   descrição linha 1
-        #   descrição linha 2
-        #   | | | | | | | | | | | | |   <- divisor visual
-        #   descrição linha 3
-        #   descrição linha 4
-        # Sem este descarte, a banda era classificada como 13 botões, fechava
-        # a descrição e as duas linhas seguintes viravam CTA em negrito.
         _texto_ruido_sep = re.sub(r"\s+", "", (texto or ""))
         _texto_ruido_restante = re.sub(r"[|¦│┃!Il1_\-–—./\\]", "", _texto_ruido_sep)
         if (
@@ -9960,10 +7883,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             idx += 1
             continue
 
-        # V43 — remove o bloco "Rating for <domínio>" + a linha logo abaixo
-        # (nota, estrelas e quantidade de avaliações). É um elemento nativo
-        # do Google, não conteúdo do anunciante. O descarte é estrutural e
-        # genérico: não depende de TicketSwap nem de um domínio específico.
         _texto_rating_norm = re.sub(r"\s+", " ", (texto or "").strip())
         if re.match(r"(?i)^rating\s+for\b", _texto_rating_norm):
             _ignorar_proxima_linha_rating = True
@@ -9972,37 +7891,13 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             continue
 
         if _ignorar_proxima_linha_rating and _texto_rating_norm:
-            # A linha normalmente é algo como "4.5 ★★★★★ (505)". Mesmo se o
-            # OCR perder as estrelas e deixar só "4.5 (505)", continuamos
-            # descartando porque é a primeira linha textual após o cabeçalho.
             _ignorar_proxima_linha_rating = False
             _debug_bandas[idx]["decisao"] = "rating do Google → descartado (nota/estrelas/avaliações)"
             idx += 1
             continue
 
-        # V44 — descrição de anúncio de Busca que foi classificada como azul.
-        # Caso real: após o headline "Concertgebouw Brugge - Wed, Oct 29,
-        # 8:00 PM", as linhas "Buy & sell tickets for Kim Wilde |",
-        # "Concertgebouw Brugge, Bruges |" e a data/hora seguinte chegaram
-        # com cor azul/mista e viravam sitelinks. O começo “Buy & sell” é um
-        # forte sinal de prosa descritiva quando já existe um headline aberto.
-        # Uma vez ativado, continua anexando as bandas seguintes SEM separador
-        # como descrição, independentemente de terem sido classificadas como
-        # azul/cinza/misto. Fileira de botões é tratada antes deste ponto e
-        # encerra o par normalmente, portanto não contamina os sitelinks.
         _texto_desc_norm = re.sub(r"\s+", " ", (texto or "").strip())
 
-        # V50 — NÃO transformar em descrição uma continuação azul do próprio
-        # headline só porque ela começa com “Buy & sell”. Caso real:
-        #   Klangkuenstler Presents Outworld |
-        #   Buy & sell tickets | TS
-        # A segunda linha é azul, não tem separador antes, o par ainda não tem
-        # descrição e termina com o identificador curto “| TS”; estruturalmente
-        # ela é continuação do título. A regra V44 era agressiva e ativava a
-        # descrição forçada antes do parser azul ter chance de juntá-la.
-        # Mantemos o comportamento V44 para prosa de descrição como
-        # “Buy & sell tickets for Kim Wilde | ...”, mas liberamos este padrão
-        # curto de headline para seguir pelo fluxo normal de banda azul.
         _buy_sell_parece_continuacao_titulo = (
             banda["classe"] == "azul"
             and not banda.get("sep_antes")
@@ -10021,31 +7916,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         ):
             _descricao_busca_forcada = True
 
-        # V46 — a descrição forçada de Busca (iniciada por "Buy & sell")
-        # termina quando aparece a faixa azul de links relacionados no rodapé.
-        # Exemplo real TicketSwap:
-        #   How TicketSwap works · Download TicketSwap ·
-        # Essa faixa pode NÃO ter separador horizontal detectável; por isso o
-        # ponto médio/bolinha entre links é também um delimitador estrutural.
-        # Sem esta exceção, `_descricao_busca_forcada` engolia os links como
-        # mais uma linha da descrição e eles nunca chegavam ao parser azul,
-        # que já sabe transformá-los em sitelinks separados por <hr>.
         _azul_parece_links_relacionados = (
             banda["classe"] == "azul"
             and bool(re.search(r"[·•]", _texto_desc_norm))
             and len([p for p in re.split(r"\s*[·•]\s*", _texto_desc_norm) if p.strip()]) >= 2
         )
 
-        # V57 — TicketSwap: o ponto médio visual entre links do rodapé
-        # frequentemente vira hífen no OCR. Exemplo real:
-        #   How TicketSwap works · Download TicketSwap ·
-        # lido como:
-        #   How TicketSwap works - Download TicketSwap -
-        # Como a descrição de Busca já está em andamento, essa banda azul
-        # era engolida como descrição antes de chegar ao parser de sitelinks.
-        # Aqui encerramos a descrição forçada também para esse formato, mas
-        # apenas quando a linha azul contém 2+ itens de navegação típicos da
-        # TicketSwap separados por hífen/travessão.
         _empresa_norm_v57 = str(empresa or "").strip().lower().replace(" ", "")
         _partes_hifen_v57 = [
             p.strip()
@@ -10086,65 +7962,9 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             continue
 
         if banda["classe"] == "azul":
-            # Linha de "termos relacionados" no fim do anúncio (ex.:
-            # "Fórmula 1 · Rock In Rio 2026 · Copa do Mundo 2026") — o
-            # Google Ads mostra vários links curtos lado a lado NA MESMA
-            # linha, separados por um ponto médio "·"/"•". Diferente de
-            # um sitelink empilhado normal (um por linha) e diferente de
-            # uma quebra de linha do mesmo título (que nunca tem esse
-            # separador no meio) — sem tratar esse caso à parte, os
-            # termos saíam grudados como um título só, com o separador
-            # virando um "-"/"–" solto no meio do texto (feio e sem
-            # estrutura nenhuma pro card).
-            #
-            # Só entra aqui quando a banda tem uma linha divisória de
-            # verdade ANTES dela (sep_antes) — sinal forte de que é essa
-            # linha especial, não um título comum de uma linha só que só
-            # por acaso tem um traço no meio (ex.: "Show Ao Vivo -
-            # Ingressos", que nunca vem logo depois de um separador).
-            # O EasyOCR às vezes lê o "·"/"•" certo; quando erra, costuma
-            # confundir com um traço "–"/"—" cercado de espaço — por
-            # isso os dois padrões são aceitos, mas o traço só conta
-            # junto com o sep_antes, pra não arriscar quebrar um título
-            # de verdade em pedaços.
-            #
-            # `sep_antes` continua sendo o sinal mais forte, mas nem
-            # sempre o detector de cor pega essa linha divisória fina
-            # (ex.: quando fica colada na descrição de cima) — por
-            # isso também aceita a posição ESTRUTURAL como sinal: a
-            # linha de termos relacionados nunca é a primeira banda do
-            # anúncio (essa é sempre o título) nem uma continuação dele
-            # — ela só aparece DEPOIS que título+descrição já foram
-            # fechados. Só usa esse sinal de posição pra permitir a
-            # quebra por "·"/"•" (ponto médio quase nunca aparece de
-            # verdade dentro de um título ou sitelink comum).
-            #
-            # Pro traço "-"/"–"/"—" o risco de falso positivo é maior
-            # (headlines legítimas às vezes vêm coladas com UM traço
-            # só, ex.: "Ingressos Luan Santana - Compre Ingresso Luan
-            # Santana" — isso NUNCA pode virar 2 sitelinks). Por isso,
-            # pra traço, exige adicionalmente 2+ OCORRÊNCIAS no texto
-            # bruto (a linha de termos relacionados sempre tem pelo
-            # menos 2: um entre cada par de termos e mais um sobrando
-            # no final, ex.: "Termo A - Termo B -") — mas nem sempre
-            # tem esse traço sobrando (ex.: quando o print corta bem
-            # no fim do último termo), então a contagem de ocorrências
-            # não é confiável sozinha. Quem realmente protege o título
-            # de verdade (ex.: "Ingressos Luan Santana - Compre
-            # Ingresso Luan Santana", que tem só 1 traço e NUNCA pode
-            # virar 2 sitelinks) é a posição estrutural logo abaixo:
-            # esse título é sempre a 1ª banda do anúncio, então nunca
-            # bate em `_titulo_e_descricao_ja_fechados`. O traço aqui
-            # inclui o hífen ASCII simples "-" (não só "–"/"—"), porque
-            # é literalmente esse o caractere que `_ocr_banda` insere
-            # de verdade ao recuperar um traço perdido entre palavras
-            # (ver `partes.append("-")` acima).
             _titulo_e_descricao_ja_fechados = bool(pares) or (par_atual is not None and par_atual[1])
             _portao_seguranca_relacionados = bool(banda.get("sep_antes")) or _titulo_e_descricao_ja_fechados
             _partes_relacionados = None
-            # V83 — marca quando a separação veio de um separador textual confiável.
-            # um dos links em palavras menores (caso real TicketSwap ES:
-            # "Cómo funciona TicketSwap · Regístrate o entra").
             _relacionados_split_textual_confiavel = False
             if re.search(r"[·•]", texto):
                 _candidatos_relacionados = [p.strip() for p in re.split(r"\s*[·•]\s*", texto) if p.strip()]
@@ -10156,26 +7976,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 _candidatos_relacionados = [
                     p.strip() for p in re.split(r"\s+[\-–—]\s+", _texto_sem_travessao_final) if p.strip()
                 ]
-                # Exige 3+ candidatos aqui (não 2): validado com um anúncio
-                # real da BuyTicket Brasil que "sep_antes" NÃO é exclusivo
-                # da linha de termos relacionados — TODO sitelink empilhado
-                # tem uma linha divisória antes dele nesse layout (cada
-                # item da lista vem separado por um "hr"), então o portão
-                # de segurança sozinho não distingue "linha de termos
-                # relacionados" de "sitelink normal que só por acaso tem UM
-                # traço no meio do próprio nome". Dois sitelinks reais
-                # quebraram por causa disso: "BTS World Tour - Arirang"
-                # (nome do evento, com o traço fazendo parte do título) e,
-                # Garantido" — os dois viraram 2 sitelinks fantasmas em vez
-                # de 1 verdadeiro. A proteção por "posição estrutural"
-                # citada nos comentários acima (banda 0 = sempre título)
-                # não cobre sitelinks fora da banda 0, que é exatamente
-                # onde esses dois casos reais aconteceram. Como o exemplo
-                # de termos relacionados de verdade do Google sempre tem
-                # pelo menos 3 termos (2 separadores, ex.: "Fórmula 1 ·
-                # Rock In Rio 2026 · Copa do Mundo 2026"), subir o piso de
-                # 2 pra 3 elimina os dois falsos positivos reais acima sem
-                # perder a capacidade de reconhecer a linha de verdade.
                 if (
                     _portao_seguranca_relacionados
                     and len(_candidatos_relacionados) == 3
@@ -10196,15 +7996,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         )
                     )
                 ):
-                    # V122 — caso real FunBuyNet:
-                    # "Compre ou Venda Ingressos - GP Brasil - Sábado -"
-                    # "Compre ou Venda Ingressos - GP Brasil - 3 Dias -"
-                    #
-                    # O primeiro fragmento é navegação/CTA; os dois seguintes
-                    # formam um único sitelink de evento + variante/período.
-                    # Junta somente quando o último fragmento é um dia da semana
-                    # OU uma duração explícita como "3 Dias", evitando quebrar
-                    # títulos comuns com hífen.
                     _partes_relacionados = [
                         _candidatos_relacionados[0],
                         f"{_candidatos_relacionados[1]} - {_candidatos_relacionados[2]}",
@@ -10230,49 +8021,17 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         for _i_evento in (0, 2)
                     )
                 ):
-                    # V123 — fileira horizontal com DOIS sitelinks de evento,
-                    # cada um contendo um dia da semana no próprio nome.
-                    # Caso real FunBuyNet:
-                    #
-                    #   GP Brasil - Domingo - GP Brasil - Sábado -
-                    #
-                    # A regra genérica via 4 fragmentos e renderizava quatro
-                    # links independentes. Quando os fragmentos 2 e 4 são
-                    # inequivocamente dias da semana, emparelha:
-                    #   "GP Brasil - Domingo"
-                    #   "GP Brasil - Sábado"
-                    #
-                    # É conservador: só ativa com exatamente 4 fragmentos e
-                    # padrão alternado EVENTO / DIA / EVENTO / DIA.
                     _partes_relacionados = [
                         f"{_candidatos_relacionados[0]} - {_candidatos_relacionados[1]}",
                         f"{_candidatos_relacionados[2]} - {_candidatos_relacionados[3]}",
                     ]
                     _relacionados_split_textual_confiavel = True
-                # V276 — não existe separação genérica por hífen. O hífen
-                # pertence ao nome da extensão/evento (ex. ``BTS - World
-                # Tour Arirang``). Somente os casos estruturais específicos
-                # tratados acima podem interpretar um hífen como separador.
-                # A separação genérica de extensões continua sendo feita
-                # exclusivamente por ponto médio ``·``/``•``.
                 elif (
                     _titulo_e_descricao_ja_fechados
                     and not banda.get("sep_antes")
                     and len(_candidatos_relacionados) == 2
                     and all(re.search(r"\b(?:19|20)\d{2}\b", _p) for _p in _candidatos_relacionados)
                 ):
-                    # V41 — linha horizontal de DOIS links azuis. Caso real:
-                    # "Lollapalooza 2026 · Rock In Rio 2026". O ponto médio
-                    # visual foi lido pelo EasyOCR como hífen, então a proteção
-                    # antiga de 3+ candidatos mantinha os dois links grudados.
-                    #
-                    # Aceitamos 2 candidatos só neste cenário muito restrito:
-                    # o título+descrição principal já terminaram, NÃO existe hr
-                    # antes da banda (portanto não é um sitelink empilhado como
-                    # "BTS World Tour - Arirang") e os dois lados carregam um
-                    # hífen no próprio título e ainda separamos corretamente a
-                    # fileira horizontal de dois links quando o separador "·"
-                    # vira "-" no OCR.
                     _partes_relacionados = _candidatos_relacionados
                 elif (
                     _titulo_e_descricao_ja_fechados
@@ -10290,15 +8049,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         _candidatos_relacionados[1].strip(),
                     )
                 ):
-                    # V121 — dois links horizontais separados visualmente por "·".
-                    # Caso real FunBuyNet:
-                    # "Compre ou Venda Ingressos · Ingressos Artes e Teatro"
-                    # O EasyOCR pode trocar o ponto médio por hífen.
-                    #
-                    # Aceita 2 fragmentos somente quando o primeiro é uma
-                    # navegação explícita de compra/venda e o segundo é uma
-                    # categoria inequívoca. Assim não quebra nomes de eventos
-                    # que usam hífen de verdade.
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
                 elif (
@@ -10314,36 +8064,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         for _p in _candidatos_relacionados
                     )
                 ):
-                    # V55 — TicketSwap também exibe, no rodapé de alguns anúncios,
-                    # DOIS links azuis na mesma linha separados visualmente por "·".
-                    # Em certas capturas o EasyOCR troca esse ponto médio por "-",
-                    # ex.: "Testimonials & Reviews - How TicketSwap works".
-                    #
-                    # O ramo genérico de hífen exige 3+ candidatos para proteger
-                    # nomes reais de eventos com traço. Aqui aceitamos 2 somente
-                    # depois de título+descrição já fechados, sem hr antes, e apenas
-                    # para TicketSwap quando ao menos um lado tem vocabulário típico
-                    # de navegação/sitelink. Assim o separador visual vira dois
-                    # sitelinks independentes e o card os renderiza com <hr>.
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
                 elif (
                     _titulo_e_descricao_ja_fechados
                     and not banda.get("sep_antes")
                     and len(_candidatos_relacionados) == 2
-                    # V109 — no rodapé de alguns anúncios o Google mostra
-                    # DOIS links azuis separados por "·" e ainda deixa um
-                    # separador no final. O EasyOCR frequentemente troca
-                    # ambos os pontos médios por hífen:
-                    #
-                    #   Eventos em São Paulo · Compre ou Venda Ingressos ·
-                    # vira
-                    #   Eventos em São Paulo - Compre ou Venda Ingressos -
-                    #
-                    # O traço final é um sinal estrutural forte de que o
-                    # primeiro traço também era separador visual. Para não
-                    # quebrar títulos legítimos com hífen, ainda exigimos que
-                    # OS DOIS lados tenham vocabulário típico de navegação.
                     and bool(re.search(r"\s[\-–—]\s*$", texto or ""))
                     and all(
                         re.search(
@@ -10365,7 +8091,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 ):
                     _partes_relacionados = _candidatos_relacionados
                     _relacionados_split_textual_confiavel = True
-            # entre "Regístrate" e "entra" pode sumir/virar vírgula no EasyOCR.
             if (
                 str(empresa or "").strip().lower().replace(" ", "") == "ticketswap"
                 and _partes_relacionados
@@ -10374,36 +8099,10 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     re.sub(r"(?i)^reg[ií]strate\s*[,;:]\s*entra$", "Regístrate o entra", _p.strip())
                     for _p in _partes_relacionados
                 ]
-            # permitir — não só quando nenhum separador sobrou no texto.
-            # Motivo: às vezes UM separador sobrevive (ex.: um traço
-            # recuperado por pixel em `_ocr_banda`, contando como "achei
-            # candidatos") mas outro, colado a um termo curto tipo "1",
-            # some INTEIRO — caso real: "Fórmula 1 · Rock In Rio 2026 ·
-            # Copa do Mundo 2026" perdia só o "·" antes de "Copa" (virava
-            # um traço recuperado), mas o "1" e o "·" antes de "Rock"
-            # sumiam por completo, sem deixar rastro nenhum de separador
-            # no texto — a divisão por texto achava só 2 candidatos
-            # ("Fórmula Rock In Rio 2026" grudado + "Copa do Mundo
-            # 2026"), passava no portão (>=2) e nunca chegava a tentar o
-            # Por isso compara os dois resultados e usa o que tiver MAIS
-            # termos — mais termos é sempre sinal de que resolveu um
-            # separador que a divisão por texto não pegou, nunca o
             if _portao_seguranca_relacionados and not _relacionados_split_textual_confiavel:
                 _candidatos_gap = _dividir_termos_relacionados_por_gap(
                     reader, img_bgr, banda["y_min"], banda["y_max"]
                 )
-                # Mesmo piso de 3 candidatos e pelo mesmo motivo do ramo
-                # vãos entre palavras, sem entender de separador nenhum —
-                # basta UM gap um pouco maior que o normal (ex.: o vão
-                # deixado por uma palavra curta acentuada recuperada por
-                # `_recuperar_texto_no_intervalo`, ou simplesmente
-                # espaçamento irregular do próprio anúncio) pra ele achar
-                # "2 termos" onde só existe 1 sitelink de verdade — foi
-                # exatamente assim que "Entrar no Show é Garantido" virou
-                # 2 sitelinks fantasmas num anúncio real. Com 2 candidatos
-                # só, a informação é ambígua demais pra confiar; 3+ ainda
-                # é um sinal forte o bastante (nenhum sitelink normal tem
-                # 2 vãos anormalmente largos ao mesmo tempo).
                 if len(_candidatos_gap) >= 3 and len(_candidatos_gap) > len(_partes_relacionados or []):
                     _partes_relacionados = _candidatos_gap
             if _partes_relacionados and len(_partes_relacionados) >= 2:
@@ -10420,14 +8119,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 continue
             _cta_aberto = False
             if par_atual is not None and not par_atual[1] and not banda.get("sep_antes"):
-                # banda azul consecutiva, ainda sem nenhuma linha de
-                # descrição aberta E sem separador entre elas = é a
-                # QUEBRA DE LINHA do mesmo título/link (ex: "Matrículas
-                # Privadas - Prospecção" / "Eficiente" em duas bandas
-                # azuis seguidas), não um novo sitelink. Se HOUVER
-                # separador entre as duas (banda["sep_antes"]), é
-                # sempre um sitelink novo — mesmo que o anterior não
-                # tenha descrição (ex: "Kedu Bank" / "Kedu Marketing").
                 par_atual[0] = (par_atual[0] + " " + texto).strip()
                 _debug_bandas[idx]["decisao"] = "azul → quebra de linha do título/sitelink em andamento (juntada)"
             else:
@@ -10440,27 +8131,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 else:
                     _par_criado_via_empresa = False
                     if not pares and not resultado["url_exibida"] and empresa:
-                        # PRIMEIRO título/sitelink do anúncio inteiro
-                        # (nunca houve par_atual nem nenhum `pares`
-                        # antes) — só aqui faz sentido testar se a
-                        # banda COMEÇA com o nome da empresa cadastrada.
-                        # Cobre o anúncio de Display/gráfico, onde
-                        # cabeçalho (nome da empresa) + título +
-                        # descrição viram uma banda ÚNICA sem nenhuma
-                        # quebra de cor pra separar (diferente do
-                        # anúncio de Busca, que tem uma banda de
-                        # cabeçalho própria tratada lá em cima, antes
-                        # deste laço). Roda uma 2ª passada de OCR NESTA
-                        # MESMA banda pedindo o detalhamento por linha
-                        # (`retornar_linhas=True`) — o `texto` já
-                        # calculado acima é só a versão achatada, sem
-                        # separação por linha nem altura de fonte, que é
-                        # exatamente o que falta pra: (1) comparar só a
-                        # 1ª LINHA de verdade (não um chute de N
-                        # palavras) contra o nome cadastrado, e (2)
-                        # separar título de descrição pela altura da
-                        # fonte dentro da mesma banda — ver
-                        # `_extrair_titulo_descricao_por_altura`.
                         _, _linhas_banda = _ocr_banda(
                             reader, img_bgr, banda["y_min"], banda["y_max"], retornar_linhas=True
                         )
@@ -10473,35 +8143,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                         _linhas_banda[1:]
                                     )
                                 else:
-                                    # Cabeçalho (nome da empresa) veio
-                                    # SOZINHO nessa banda azul — sem
-                                    # título/descrição fundidos na mesma
-                                    # banda (layout diferente do caso
-                                    # "tudo fundido" que esse bloco foi
-                                    # feito pra cobrir originalmente:
-                                    # aqui cada elemento do anúncio de
-                                    # Display já vem em BANDAS
-                                    # SEPARADAS, e o que sobra depois do
-                                    # cabeçalho são bandas cinza
-                                    # distintas pro headline e pra
-                                    # descrição). Junta as bandas cinza
-                                    # CONSECUTIVAS logo depois dessa (até
-                                    # a próxima banda azul/botão ou o fim
-                                    # do anúncio) e separa título de
-                                    # descrição pela ALTURA de cada
-                                    # banda — mesmo princípio de
-                                    # `_extrair_titulo_descricao_por_
-                                    # altura`, só que aqui cada "linha"
-                                    # é uma banda inteira (não uma linha
-                                    # OCR dentro da banda). Bug real,
-                                    # anúncio "Compre Agora Seu
-                                    # Ingresso" da BuyTicket Brasil: o
-                                    # cabeçalho é só "BUYTICKET BRASIL"
-                                    # (nada mais na banda); sem este
-                                    # bloco, título ficava sempre vazio
-                                    # e a descrição virava um bloco só
-                                    # com TUDO (headline + descrição de
-                                    # verdade grudados).
                                     _fim_bloco_cinza = idx + 1
                                     while (
                                         _fim_bloco_cinza < len(bandas_texto)
@@ -10511,13 +8152,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                     _bandas_cinza_seguintes = bandas_texto[idx + 1:_fim_bloco_cinza]
                                     _linhas_seguintes = []
                                     for _b_seg in _bandas_cinza_seguintes:
-                                        # V11: este caminho (cabeçalho azul separado) ainda
-                                        # usava a ALTURA BRUTA da banda, enquanto o caminho
-                                        # sem cabeçalho azul já usava a altura real dos bboxes
-                                        # do EasyOCR desde a V5. Foi por isso que ``Volta, Bora``
-                                        # cortou antes de ``Viver Essa Emoção?`` apesar de as três
-                                        # linhas terem a mesma fonte visual. Usa exatamente a
-                                        # mesma medição real aqui para os dois layouts.
                                         _txt_seg_bruto, _linhas_bbox_seg = _ocr_banda(
                                             reader, img_bgr, _b_seg["y_min"], _b_seg["y_max"],
                                             retornar_linhas=True,
@@ -10558,26 +8192,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                                 _par_criado_via_empresa = True
                     if not _par_criado_via_empresa:
                         if not texto.strip():
-                            # Banda azul sem NENHUM texto reconhecido
-                            # (só o ícone/logo da empresa, ex: o "b" da
-                            # BuyTicket sozinho, sem nome ao lado) — bug
-                            # real: abrir `par_atual = ["", []]` aqui
-                            # "gasta" a vaga de título com um título
-                            # vazio, e `_titulo_ja_reconhecido` (que só
-                            # olha se `par_atual is not None`, não se
-                            # tem texto de verdade) passa a valer True
-                            # a partir daqui. Resultado: a PRÓXIMA banda
-                            # com o título real (ex: "BuyTicket:
-                            # Ingressos") era tratada como CTA em vez
-                            # de título, a descrição real virava
-                            # "descartada (CTA já preenchido)" e até o
-                            # botão de verdade no fim ("Saiba Mais")
-                            # era descartado pelo mesmo motivo — o
-                            # anúncio inteiro saía sem título, sem
-                            # descrição e sem CTA. Ignora a banda (não
-                            # abre par_atual nenhum) e deixa a próxima
-                            # banda com texto de verdade abrir o par
-                            # normalmente.
                             _debug_bandas[idx]["decisao"] = "azul → vazia (só ícone/logo, sem texto) — ignorada"
                         else:
                             par_atual = [texto, []]
@@ -10586,61 +8200,19 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                             )
         elif banda["classe"] == "cinza":
             if _cta_aberto:
-                # subtítulo do CTA (ex: "pelo app WhatsApp") — não é
-                # descrição de sitelink.
                 resultado["cta_subtitulo"] = (resultado["cta_subtitulo"] + " " + texto).strip()
                 _debug_bandas[idx]["decisao"] = "cinza → subtítulo do CTA"
             elif not resultado["cta"] and _REGEX_CTA_TITULO_CONHECIDO.match(texto):
-                # CTA final do anúncio (ex: "Enviar mensagem" do
-                # WhatsApp) que perdeu a classificação "misto" porque o
-                # ícone colorido ficou fora da faixa usada pra cor (ver
-                # comentário acima de _REGEX_CTA_TITULO_CONHECIDO). Sem
-                # este reconhecimento por texto, essa banda virava só
-                # mais uma linha de descrição grudada no sitelink
-                # anterior, em vez de aparecer separada — o modelo real
-                # do Google Ads sempre mostra esse CTA com uma linha
-                # divisória própria antes dele.
                 resultado["cta"] = texto
                 _cta_aberto = True
                 _debug_bandas[idx]["decisao"] = "cinza → CTA (bateu regex de CTA conhecido)"
             elif par_atual is not None:
                 _titulo_ou_desc_ja_existe = bool(par_atual[1]) or bool(pares)
                 if banda.get("sep_antes") and _titulo_ou_desc_ja_existe:
-                    # Sitelink em TEXTO PRETO (mesma classe de cor
-                    # "cinza" da descrição, não azul) — layout real
-                    # observado num anúncio da BuyTicket Brasil: os 4
-                    # sitelinks ("Compre Ingressos Harry Styles",
-                    # "Harry Styles Together", "BTS World Tour -
-                    # Arirang", "Rock In Rio 2026") vinham em preto,
-                    # cada um com sua própria linha divisória antes
-                    # (o mesmo sinal `sep_antes` que já usamos pra
-                    # separar sitelinks AZUIS uns dos outros). Sem
-                    # esta checagem, cada um virava só mais uma frase
-                    # colada na descrição do título principal — os 4
-                    # sitelinks reais sumiam dentro de um parágrafo só
-                    # ("...De Fã Para Fã. Compre Ingressos Harry Styles
-                    # Together BTS World Tour - Arirang Rock In Rio
-                    # 2026"), em vez de aparecerem como 4 itens de
-                    # lista separados.
-                    #
-                    # Só entra aqui quando JÁ existe descrição (ou
-                    # sitelink) anterior fechando o título principal —
-                    # mesma proteção estrutural usada nos outros casos
-                    # de falso positivo por `sep_antes` acima: a
-                    # PRIMEIRA linha cinza logo depois do título nunca
-                    # é sitelink (é sempre o início da descrição de
-                    # verdade), mesmo que ela venha, por algum erro
-                    # raro de detecção de cor, com `sep_antes` ligado.
                     pares.append(par_atual)
                     par_atual = [texto, []]
                     _debug_bandas[idx]["decisao"] = "cinza → NOVO sitelink em texto preto (por causa de separador antes)"
                 else:
-                    # V54 — uma faixa cinza visual sem texto OCR não pode
-                    # "iniciar" a descrição. Isso acontecia logo abaixo do
-                    # headline quando havia uma foto lateral; a lista ficava
-                    # com [""] e fazia as próximas linhas parecerem um bloco
-                    # já estruturado. Ignora vazio e espera a primeira linha
-                    # textual de verdade.
                     if (texto or "").strip():
                         par_atual[1].append(texto)
                         _debug_bandas[idx]["decisao"] = "cinza → descrição do título/sitelink em andamento"
@@ -10648,26 +8220,7 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         _debug_bandas[idx]["decisao"] = "cinza → vazia (sem texto OCR) — ignorada"
             else:
                 _debug_bandas[idx]["decisao"] = "cinza → descartada (sem título/sitelink aberto nem CTA)"
-            # texto cinza sem nenhum título azul aberto antes nem CTA
-            # reconhecido: raro nesse ponto do fluxo (já passamos da
-            # linha da URL) — ignora em vez de adivinhar onde encaixar.
         elif banda["classe"] == "botao":
-            # V9 — NÃO aceita cegamente a primeira faixa com alta taxa de
-            # preenchimento como CTA. Em anúncios verticais com uma arte
-            # promocional embutida, uma região sólida DENTRO da própria arte
-            # também pode parecer um botão para `_detectar_bandas_texto`.
-            # Caso real: o banner "Copa do Mundo é na BuyTicket" gerou uma
-            # banda falsa lida como "Cor" antes do CTA verdadeiro, que vinha
-            # mais abaixo como "Compre Agora". Como o código antigo ocupava
-            # `resultado["cta"]` com a PRIMEIRA banda `botao`, o CTA real era
-            # descartado depois como "CTA já preenchido".
-            #
-            # Regra nova: um texto curtíssimo/estranho (<= 4 caracteres) não
-            # pode ganhar a vaga de CTA se existe OUTRA banda `botao` não vazia
-            # mais abaixo. Fazemos um look-ahead só nesses casos suspeitos,
-            # restringindo o OCR ao retângulo sólido detectado da banda futura.
-            # Isso é deliberadamente conservador: não troca CTAs normais e não
-            # depende de uma lista fechada de palavras como "Compre Agora".
             _texto_cta_limpo = (texto or "").strip()
             _cta_suspeito_curto = bool(_texto_cta_limpo) and len(re.sub(r"[^A-Za-zÀ-ÿ0-9]", "", _texto_cta_limpo)) <= 4
             _cta_atual_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match(_texto_cta_limpo))
@@ -10675,19 +8228,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
             _ha_cta_conhecido_mais_abaixo = False
             _txt_cta_conhecido_mais_abaixo = ""
 
-            # V90 — banners/peças criativas dentro de anúncios Display podem
-            # conter um retângulo sólido com texto promocional. O detector
-            # geométrico enxerga essa região como `botao`, embora ela faça
-            # parte da ARTE e não seja o CTA final do Google. Caso real:
-            # um banner interno com texto sobre cupom foi lido como uma
-            # frase longa/gibberish e ocupou `resultado["cta"]`; logo abaixo
-            # existia o CTA real, perfeitamente legível, "Compre Agora".
-            #
-            # Regra: se o botão atual NÃO bate numa expressão de CTA
-            # conhecida e existe mais abaixo outra banda `botao` que bate,
-            # damos prioridade ao CTA conhecido mais baixo e ignoramos a
-            # região interna da arte. Isso é mais seguro do que usar só
-            # quando não há um CTA conhecido concorrente abaixo.
             if not resultado["cta"]:
                 for _j_cta in range(idx + 1, len(bandas_texto)):
                     _b_cta_fut = bandas_texto[_j_cta]
@@ -10727,9 +8267,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     "botao → ignorado como falso CTA (texto curto e existe botão válido mais abaixo)"
                 )
             else:
-                # Só fecha o título/descrição quando o botão foi aceito de
-                # verdade. Um falso botão dentro da arte não pode encerrar o
-                # par principal antes de chegar ao CTA real.
                 if par_atual is not None:
                     pares.append(par_atual)
                     par_atual = None
@@ -10742,49 +8279,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 else:
                     _debug_bandas[idx]["decisao"] = "botao → descartada (CTA já preenchido)"
         else:  # "misto" — pode ser texto normal OU ícone + CTA
-            # V37 — anúncios de Busca podem ter a DESCRIÇÃO classificada como
-            # "misto" (anti-aliasing/tons diferentes no texto cinza). Antes,
-            # assim que um título azul já existia, QUALQUER banda "misto" era
-            # promovida a CTA. Isso destruiu um layout real da BuyTicket:
-            #   título azul -> 4 linhas cinza/misto de descrição -> sitelinks
-            # e a primeira linha da descrição virou CTA, enquanto as outras 3
-            # foram descartadas.
-            #
-            # Regra estrutural mais segura: se há um par de título aberto e a
-            # banda "misto" vem SEM separador antes, ela continua sendo texto
-            # corrido da descrição — principalmente quando é uma frase longa
-            # ou quando a descrição já começou. CTA misto de verdade continua
-            # sendo aceito quando aparece fora desse bloco textual ou bate no
-            # regex de CTA conhecido.
             _misto_palavras = [p for p in re.split(r"\s+", (texto or '').strip()) if p]
             _misto_parece_frase = len(_misto_palavras) >= 4 or len((texto or '').strip()) >= 28
             _misto_cta_conhecido = bool(_REGEX_CTA_TITULO_CONHECIDO.match((texto or '').strip()))
-            # V85 — alguns anúncios de Busca com imagem lateral geram um
-            # falso `sep_antes=True` exatamente na PRIMEIRA linha da descrição.
-            # Isso fazia uma frase longa do corpo virar CTA (e ficar em negrito
-            # na UI), enquanto a linha seguinte era descartada.
-            #
-            # Sinal seguro desse falso separador:
-            #   • já há um título azul aberto;
-            #   • a banda atual é claramente texto corrido (frase longa, com
-            #     pontuação de corpo);
-            #   • a próxima banda também é `misto`, sem separador, portanto é
-            #     continuação natural da mesma descrição.
             _prox_banda_misto_sem_sep = False
             if idx + 1 < len(bandas_texto):
                 _prox_b = bandas_texto[idx + 1]
-                # V92 — neste ponto do pipeline as bandas futuras ainda NÃO
-                # possuem `texto` preenchido; o OCR da banda só é feito quando
-                # ela chega à iteração principal. A V85 consultava
-                # `_prox_b.get("texto")`, que portanto vinha vazio e fazia a
-                # proteção de falso separador nunca disparar.
-                #
-                # Para detectar continuação de descrição basta a estrutura:
-                # próxima banda também é `misto` e NÃO tem separador antes.
-                # O conteúdo da próxima linha será lido normalmente na próxima
-                # iteração. Isso cobre o caso real da FanTicket em que
-                # "Imagine Dragons 2025. Ingressos de fã para fã, com"
-                # chegava com sep_antes=True e virava CTA/negrito.
                 _prox_banda_misto_sem_sep = (
                     _prox_b.get("classe") == "misto"
                     and not _prox_b.get("sep_antes")
@@ -10811,29 +8311,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 )
             )
 
-            # V39 — em anúncios de TEXTO/Busca, os sitelinks podem aparecer em
-            # preto/cinza (classe "misto") em vez de azul. O sinal confiável
-            # desse layout é o separador horizontal antes de cada item.
-            # Caso real: depois do título + descrição vieram "Iron Maiden -
-            # 2026", "Harry Styles Together", "BTS World Tour - Arirang",
-            # "Fórmula 1" e "Rock In Rio 2026", todos com sep_antes=True.
-            # A V37 tratava o primeiro como CTA e descartava os demais.
-            # Aqui aplicamos a MESMA regra estrutural já usada para sitelinks
-            # cinza: se já existe o bloco principal/algum par anterior e há
-            # separador, fecha o par atual e abre um novo sitelink.
-            # V40 — há um segundo formato de sitelink preto/cinza em anúncios
-            # de Busca: além do título do sitelink, vêm 1–2 linhas de descrição
-            # logo abaixo. O primeiro item pode chegar num ponto em que
-            # `par_atual` já foi fechado pela heurística anterior, então a V39
-            # ainda deixava esse PRIMEIRO cabeçalho separado cair como CTA
-            # (ex.: "Quer Vender Seu Ingresso?"). Os itens seguintes então
-            # eram todos grudados na descrição principal.
-            #
-            # Sinal estrutural do layout: existem DOIS OU MAIS blocos `misto`
-            # com `sep_antes=True` depois do título/descrição principal. Isso é
-            # uma lista de sitelinks, não um CTA isolado. Um CTA real separado
-            # continua protegido pelo regex de CTA conhecido e, normalmente,
-            # aparece sozinho (não há vários separadores equivalentes depois).
             _misto_separados_restantes = 0
             if banda.get("sep_antes") and not _misto_cta_conhecido:
                 for _j_sl in range(idx, len(bandas_texto)):
@@ -10880,9 +8357,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                     "(frase corrida sem separador; não é CTA)"
                 )
             elif _titulo_ja_reconhecido:
-                # V54 — banda mista vazia não é CTA. Em anúncios com imagem
-                # lateral pode sobrar uma faixa sem caracteres entre a
-                # descrição e os sitelinks; antes ela abria um CTA vazio.
                 if not (texto or "").strip():
                     _debug_bandas[idx]["decisao"] = "misto → vazia (sem texto OCR) — ignorada"
                 elif not resultado["cta"]:
@@ -10892,15 +8366,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 else:
                     _debug_bandas[idx]["decisao"] = "misto → descartada (CTA já preenchido)"
             else:
-                # Um botão/CTA de verdade nunca é a PRIMEIRA banda do
-                # anúncio (mesmo princípio do divisor de fileira de
-                # botões, acima) — se chegou "misto" aqui sem nenhum
-                # título reconhecido ainda, trata como texto normal
-                # (mesmo destino de uma banda "cinza" nessa posição),
-                # não como CTA. Rede de segurança: o caso comum já é
-                # pego antes pelos blocos de Display sem sitelinks (ver
-                # início da função) — isso só cobre alguma banda
-                # "misto" que escape deles por algum motivo.
                 if par_atual is not None:
                     par_atual[1].append(texto)
                     _debug_bandas[idx]["decisao"] = "misto → descrição (título ainda não reconhecido, não pode ser CTA)"
@@ -10910,11 +8375,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
     if par_atual is not None:
         pares.append(par_atual)
 
-    # V276 — algumas extensões horizontais são classificadas com a mesma cor
-    # da descrição e acabam anexadas ao primeiro par. Mantém a informação de
-    # linha que ainda existe em ``pares[0][1]`` para retirar essas extensões
-    # antes de achatar a descrição. Ponto médio separa itens; hífen é sempre
-    # preservado dentro do item.
     if pares and pares[0][1]:
         _descricao_principal_v276 = []
         _extensoes_v276 = []
@@ -10962,22 +8422,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         if titulo_sl:
             resultado["sitelinks"].append({"titulo": _normalizar_aspas_ocr(titulo_sl), "descricao": descricao_sl})
 
-    # V280 — as reticências no fim da descrição são o indicador visual de
-    # truncamento do Google Ads, não conteúdo fornecido pelo anunciante.
-    # Remove somente no FINAL da descrição; reticências internas continuam
-    # preservadas porque podem fazer parte do texto real.
     resultado["descricao"] = re.sub(
         r"(?:\s*(?:\.{3}|…))+\s*$",
         "",
         str(resultado.get("descricao") or ""),
     ).rstrip()
 
-    # V280 — quando o detector geométrico encontra grandes espaços ao redor
-    # dos hífens, uma extensão como ``Dia 5 - Avenged Sevenfold`` pode chegar
-    # aqui como dois sitelinks consecutivos (``Dia 5`` e
-    # ``Avenged Sevenfold``). Recompõe pares inequívocos iniciados por
-    # ``Dia <número>``; o ponto médio entre eventos continua sendo o único
-    # separador e cada hífen permanece dentro do respectivo item.
     _sitelinks_v280 = list(resultado.get("sitelinks") or [])
     _sitelinks_corrigidos_v280 = []
     _idx_sl_v280 = 0
@@ -11011,9 +8461,6 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         _idx_sl_v280 += 1
     resultado["sitelinks"] = _sitelinks_corrigidos_v280
 
-    # V51 — pós-processamento restrito aos anúncios TicketSwap para repor
-    # separadores verticais e intervalos de data que o EasyOCR costuma
-    # fragmentar/embaralhar nesse layout específico.
     resultado = _corrigir_estrutura_ticketswap_ocr(resultado, empresa=empresa)
     return resultado
 
@@ -11040,21 +8487,12 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     titulo = re.sub(r"\s+", " ", (resultado.get("titulo") or "").strip())
     descricao = re.sub(r"\s+", " ", (resultado.get("descricao") or "").strip())
 
-    # V53 — TicketSwap Alemanha. O EasyOCR confunde a aspa alemã de
-    # abertura „ com uma vírgula logo após "für" (caso real:
-    # `Tickets für, Frei.Wild"`). Quando existe a aspa de fechamento
-    # depois do nome, recompõe o par como aspas duplas normais. Restrito
-    # a TicketSwap e ao padrão linguístico alemão, para não transformar
-    # vírgulas reais em outros anúncios.
     _eh_ticketswap_de = bool(re.search(r"ticketswap\.de(?:/|$)", _url_norm, re.IGNORECASE))
     if _eh_ticketswap_de:
         _rx_fuer_nome = re.compile(r'(?i)\bfür\s*,\s*([^"|]{2,80}?)"(?=\s*(?:\||kaufen|verkaufen|$))')
         titulo = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', titulo)
         descricao = _rx_fuer_nome.sub(lambda m: 'für "' + m.group(1).strip() + '"', descricao)
 
-        # No mesmo layout, os separadores verticais entre a ação, o local
-        # e a data podem sumir completamente no OCR. Exige termos fortes
-        # do anúncio TicketSwap DE antes de recolocar os pipes.
         descricao = re.sub(
             r'(?i)(\bund verkaufen)\s+(?=(?:Olympiahalle|Mercedes-Benz Arena|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)',
             r'\1 | ',
@@ -11067,33 +8505,18 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
             flags=re.IGNORECASE,
         )
 
-    # Barra vertical confundida com uma letra P isolada logo depois de outra
-    # barra. Caso real: ``Primavera Sound 2026 | P Porto``. Exige ano antes
-    # e palavra de lugar iniciada por maiúscula depois, reduzindo falsos
-    # positivos em textos normais.
     titulo = re.sub(
         r"(\b20\d{2})\s*\|\s*P\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\b",
         r"\1 | \2 |",
         titulo,
     )
 
-    # barra pode desaparecer. Só repõe quando TS está literalmente no FIM.
     titulo = re.sub(
         r"(?i)(\b(?:bilhetes|tickets))\s+TS$",
         r"\1 | TS",
         titulo,
     )
 
-    # V68 — TicketSwap: quando o separador vertical está no FINAL da primeira
-    # linha do headline, o EasyOCR pode simplesmente não reconhecê-lo. Ao
-    # juntar as duas bandas azuis, sobra algo como:
-    #   Klangkuenstler Presents Outworld Buy & sell tickets | TS
-    # enquanto o original é:
-    #   Klangkuenstler Presents Outworld | Buy & sell tickets | TS
-    # Recoloca o pipe somente em headlines que terminam em ``| TS`` e em que
-    # ``Buy & sell`` aparece no meio do título sem pontuação/separador antes.
-    # Isso evita alterar títulos legítimos como ``Olivia Dean Tickets: Buy &
-    # Sell - Sell Olivia Dean tickets``, que não terminam em ``| TS``.
     titulo = re.sub(
         r"(?i)(?<![|:;\-–—])\s+(?=Buy\s*&\s*sell\s+(?:tickets|bilhetes)\s*\|\s*TS$)",
         " | ",
@@ -11101,12 +8524,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         count=1,
     )
 
-    # V70 — TicketSwap: em headlines do tipo
-    #   Outbreak Festival 2025 tickets | Buy & sell on TicketSwap
-    # o separador vertical no fim da primeira linha pode desaparecer no OCR,
-    # deixando ``... tickets Buy & sell on TicketSwap``. Recoloca o ``|``
-    # somente quando a segunda parte termina explicitamente em TicketSwap,
-    # evitando mexer em frases corridas que contenham "buy & sell".
     titulo = re.sub(
         r"(?i)\b(tickets|bilhetes)\s+(?=Buy\s*&\s*sell\s+on\s+TicketSwap$)",
         r"\1 | ",
@@ -11114,13 +8531,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         count=1,
     )
 
-    # V59 — TicketSwap: o EasyOCR às vezes lê o próprio traço vertical do
-    # separador como uma letra isolada logo depois do pipe. Casos reais:
-    #   | F Palladium Köln, Cologne  -> | Palladium Köln, Cologne
-    #   | I Mon, Sep 29, 8.00 PM     -> | Mon, Sep 29, 8.00 PM
-    # Remove apenas F/I isolados imediatamente após ``|`` e somente quando
-    # o restante tem padrão forte de local ou data, para não apagar texto
-    # legítimo.
     _rx_pipe_ruido_local = re.compile(
         r"(?i)(\|)\s*[FI]\s+(?=(?:Palladium|Arena|Stadium|Stadion|Dome|Hall|Theatre|Theater|Olympiahalle|Mercedes-Benz|Uber Arena|Lanxess Arena|Barclays Arena|SAP Arena)\b)"
     )
@@ -11132,39 +8542,18 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
     descricao = _rx_pipe_ruido_local.sub(r"\1 ", descricao)
     descricao = _rx_pipe_ruido_data.sub(r"\1 ", descricao)
 
-    # V61 — TicketSwap: em alguns headlines o EasyOCR lê o próprio traço
-    # vertical do separador como um ``P`` EXTRA mesmo quando o ``|`` real
-    # também foi reconhecido. Caso real:
-    #   Imagine Dragons | P LOOM World Tour
-    # original:
-    #   Imagine Dragons | LOOM World Tour
-    # Remove o P somente imediatamente após ``|`` e quando a próxima palavra
-    # é um token em CAIXA ALTA com pelo menos 3 caracteres (LOOM, ABBA, etc.).
-    # Isso NÃO interfere no reparo antigo ``| P Porto`` porque ``Porto`` não
-    # é caixa alta e continua sendo tratado pela regra específica acima.
     _rx_pipe_p_extra_caps = re.compile(r"(\|)\s*P\s+(?=[A-ZÀ-Ý0-9]{3,}(?:\s|$))")
     titulo = _rx_pipe_p_extra_caps.sub(r"\1 ", titulo)
     descricao = _rx_pipe_p_extra_caps.sub(r"\1 ", descricao)
 
-    # Também elimina um hífen/travessão órfão no FIM da descrição quando ele
-    # não encerra uma palavra composta, ruído recorrente no corte do anúncio.
     descricao = re.sub(r"\s+[\-–—]+\s*$", "", descricao).strip()
 
-    # V58 — TicketSwap: em alguns headlines de turnê, o separador vertical
-    # imediatamente antes do link/palavra final "Tickets" some no OCR.
-    # Caso real: "Bad Bunny ... World Tour | Tickets" era retornado como
-    # "Bad Bunny ... World Tour Tickets". Restrito ao padrão "World Tour
-    # Tickets" no FIM do headline para não separar títulos legítimos como
-    # "Olivia Dean tickets".
     titulo = re.sub(
         r"(?i)\bWorld\s+Tour\s+Tickets$",
         lambda m: re.sub(r"\s+Tickets$", " | Tickets", m.group(0), flags=re.IGNORECASE),
         titulo,
     )
 
-    # Se uma cidade/termo curto ficou entre duas partes do headline e a barra
-    # posterior sumiu, repõe apenas antes de padrões muito típicos de segunda
-    # metade do título TicketSwap. Ex.: ``| Porto Compra e vende...``.
     titulo = re.sub(
         r"(\|\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+(?=(?:Compra e vende|Compre|Buy & sell|Koop en verkoop|Kaufe und verkaufe)\b)",
         r"\1 | ",
@@ -11172,14 +8561,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         flags=re.IGNORECASE,
     )
 
-    # Reparo estrutural de intervalo de datas que o OCR embaralha numa mesma
-    # linha. Exemplo real:
-    #   Porto 14/06. NOS Primavera Sound, Porto | 11/06 1 ~
-    # original:
-    #   Porto | NOS Primavera Sound, Porto | 11/06 – 14/06.
-    # Só aplica quando há exatamente esse formato de "data final deslocada"
-    # + ruído ``1 ~`` e quando as datas são do mesmo mês e a primeira data
-    # cronológica é menor que a segunda.
     _rx_data_deslocada = re.compile(
         r"(?P<local>[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]{2,})\s+"
         r"(?P<data_fim>\d{1,2}/\d{2})\.\s+"
@@ -11202,25 +8583,13 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
 
     descricao = _rx_data_deslocada.sub(_repor_intervalo, descricao)
 
-    # V56 — TicketSwap: corrige separadores de metadados de evento que o
-    # EasyOCR costuma confundir em descrições no formato:
-    #   Evento | Local, Cidade | Dia, Mês data, hora
-    # Caso real:
-    #   Live | = Ziggo Dome, Amsterdam Sun, Jun 14, 8.00 PM
-    # original:
-    #   Live | Ziggo Dome, Amsterdam | Sun, Jun 14, 8:00 PM
-    # Restrito a TicketSwap e a padrões fortes de local/data para não
-    # alterar sinais '=' ou pontos decimais legítimos em outros anúncios.
 
-    # Símbolos espúrios logo após um pipe (ex.: "| = Ziggo Dome").
     descricao = re.sub(
         r"\|\s*[=@$]+\s*(?=[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,5}\s*,)",
         "| ",
         descricao,
     )
 
-    # Pipe perdido entre "Cidade" e um bloco de data em inglês. Exige
-    # vírgula no local/cidade e abreviação explícita do dia da semana.
     descricao = re.sub(
         r"(\b[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
         r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
@@ -11228,8 +8597,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         descricao,
     )
 
-    # Também cobre local simples como "Ziggo Dome, Amsterdam Sun, ..."
-    # quando o primeiro termo do local tem duas palavras antes da cidade.
     descricao = re.sub(
         r"(\b(?:[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+){0,4})\s*,\s*"
         r"[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
@@ -11238,15 +8605,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         descricao,
     )
 
-    # V57 — TicketSwap: em descrições de evento, o OCR às vezes perde os
-    # dois pipes que separam evento/local/data. Caso real:
-    #   Bad Bunny ... World Tour GelreDome, Arnhem Tue, Jun 23, 2026, ...
-    # original:
-    #   Bad Bunny ... World Tour | GelreDome, Arnhem | Tue, Jun 23, 2026, ...
-    # "Venue, City Day, Mon DD". Para não engolir palavras do nome do evento,
-    # usamos o último token/grupo curto antes da vírgula e exigimos o bloco de
-    # data logo depois. Depois, a regra já existente abaixo repõe o pipe entre
-    # cidade e data.
     descricao = re.sub(
         r"(?<!\|)\s+(?P<venue>[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*(?:\s+[A-ZÀ-Ý][A-Za-zÀ-ÿ0-9.'’&-]*){0,2}\s*,\s*[A-ZÀ-Ý][A-Za-zÀ-ÿ'’.-]+)\s+"
         r"(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*,\s*[A-Z][a-z]{2}\s+\d{1,2}\b)",
@@ -11254,13 +8612,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         descricao,
     )
 
-    # V69 — TicketSwap / Concertgebouw Brugge: neste layout com thumbnail
-    # lateral, o EasyOCR pode perder o pipe imediatamente depois do nome do
-    # artista e ainda colar "Concertgebouw" em "Brugge". Caso real:
-    #   Buy & sell tickets for Kim Wilde ConcertgebouwBrugge,Bruges | Wed...
-    # original:
-    #   Buy & sell tickets for Kim Wilde | Concertgebouw Brugge, Bruges | Wed...
-    # descrições comuns de outros anúncios.
     descricao = re.sub(
         r"(?i)(Buy\s*&\s*sell\s+tickets\s+for\s+Kim\s+Wilde)\s+(?=Concertgebouw\s*Brugge\b)",
         r"\1 | ",
@@ -11277,8 +8628,6 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         descricao,
     )
 
-    # Horário inglês: EasyOCR lê com frequência 8.00 PM em vez de 8:00 PM.
-    # Só converte quando há AM/PM imediatamente depois.
     descricao = re.sub(
         r"(?<!\d)(\d{1,2})\.(\d{2})\s*(AM|PM)\b",
         r"\1:\2 \3",
@@ -11286,15 +8635,9 @@ def _corrigir_estrutura_ticketswap_ocr(resultado: dict, empresa: str = None) -> 
         flags=re.IGNORECASE,
     )
 
-    # Limpa restos isolados que podem sobrar no fim depois da recuperação de
-    # separadores/data, sem tocar em hífen/travessão que faça parte de frase.
     descricao = re.sub(r"\s+(?:1\s*)?[~^]+\s*$", "", descricao).strip()
     descricao = re.sub(r"\s+-\s*$", "", descricao).strip()
 
-    # V62 — TicketSwap PT: o EasyOCR pode inserir um ``r`` antes da
-    # conjunção ``e`` em frases muito comuns do anúncio, transformando
-    # ``comprar e vender ingressos`` em ``comprar re vender ingressos``.
-    # ``re`` em outros contextos e os demais idiomas da TicketSwap.
     descricao = re.sub(
         r"(?i)\bcomprar\s+r(?:e)?\s+vender\b",
         "comprar e vender",
@@ -11410,35 +8753,12 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
             with _recurso_cpu_pesada("easyocr-estruturado"):
                 _estruturado = _estruturar_anuncio_google_ads(_img, _reader, empresa=empresa)
             if _estruturado is None or not _ocr_estruturado_tem_conteudo(_estruturado):
-                # não reconheceu o padrão (ou não achou NENHUM campo de
-                # verdade — nem título/descrição, nem sequer a
-                # rodar o OCR duas vezes: já temos a imagem carregada.
-                # Antes essa checagem olhava só titulo/descricao, então
-                # um cabeçalho onde só a url_exibida foi reconhecida
-                # (sem título/descrição — ex: "apenas o site") caía nesse
-                # jogando tudo cru em "descricao" em vez de manter no
-                # campo certo.
                 _etapa_ocr_diag = "fallback_ocr_bruto"
                 with _recurso_cpu_pesada("easyocr-fallback-bruto"):
                     texto_bruto = _ocr_texto_bruto(_img, _reader)
-                # Heurística mínima pra não perder a separação título/
-                # descrição mesmo quando o reconhecimento de bandas falha
-                # por completo (ex: `_detectar_regiao_grafico_criativo`
-                # não achou a faixa do banner e devolveu None — o texto
-                # de arte do criativo vazou pra dentro das bandas de
-                # texto real e embaralhou tudo): a primeira linha "curta"
-                # lida vira título, o resto vira descrição. Não é tão
-                # preciso quanto o caminho estruturado, mas evita o card
-                # sair como um bloco corrido sem nenhuma hierarquia.
                 _linhas_fallback = [l.strip() for l in texto_bruto.split("\n") if l.strip()]
                 _titulo_fallback = _normalizar_aspas_ocr(_linhas_fallback[0]) if _linhas_fallback and len(_linhas_fallback[0]) <= 80 else ""
                 _descricao_fallback = _normalizar_aspas_ocr("\n".join(_linhas_fallback[1:] if _titulo_fallback else _linhas_fallback))
-                # decide nada, é puramente diagnóstico. Antes esse
-                # caminho estruturado gravava), então quando um anúncio
-                # detectadas" e não dava pra saber POR QUE falhou sem
-                # reproduzir localmente — foi exatamente isso que
-                # aconteceu com o card sem estrutura investigado junto
-                # com o usuário (o expander simplesmente não existia).
                 try:
                     _regiao_grafico_dbg = _detectar_regiao_grafico_criativo(_img)
                 except Exception as _e_dbg_graf:
@@ -11458,12 +8778,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
         print(f"[OCR-DEBUG] _extrair_ocr_estruturado_imagem OK url={url_imagem!r} titulo={_estruturado.get('titulo')!r} cta={_estruturado.get('cta')!r} cta_subtitulo={_estruturado.get('cta_subtitulo')!r} sitelinks={_estruturado.get('sitelinks')!r}", flush=True)
         return (_estruturado, None) if retornar_diagnostico else _estruturado
     except ZeroDivisionError as e:
-        # V81 — alguns criativos reais chegam a uma heurística geométrica
-        # do parser estruturado com denominador zero. Isso NÃO deve manter a
-        # mídia eternamente pendente: a imagem e o EasyOCR estão válidos, só
-        # a etapa de estruturação falhou. Nesses casos degradamos para OCR
-        # bruto e salvamos o conteúdo, em vez de marcar a mídia como erro.
-        # exata sem interromper o processamento das demais mídias.
         import traceback as _tb_v81
         _trace_v81 = _tb_v81.format_exc()
         print(
@@ -11503,8 +8817,6 @@ def _extrair_ocr_estruturado_imagem(url_imagem: str, empresa: str = None, retorn
                     "decisao": "V81 → fallback bruto automático após ZeroDivisionError",
                 }],
             }
-            # Mesmo que nenhum texto seja legível, a extração RODOU. Isso
-            # evita que uma imagem válida fique presa na fila para sempre.
             return (_fallback_v81, None) if retornar_diagnostico else _fallback_v81
         except Exception as _e_fb_v81:
             _diag = {
@@ -11539,15 +8851,6 @@ def _ocr_estruturado_tem_conteudo(d: dict) -> bool:
     )
 
 
-# ---------------------------------------------------
-# V101 — TESTES DE REGRESSÃO DO OCR
-# ---------------------------------------------------
-# IMPORTANTE: estes testes são SOMENTE LEITURA.
-# O `ocr_estruturado` que já está salvo na tabela `midias` é tratado como
-# baseline ("golden result"). O parser atual é executado novamente contra a
-# mesma imagem e o resultado é comparado com essa baseline. Nada é gravado
-# em `midias`, então uma versão nova do OCR não consegue "atualizar o
-# esperado" silenciosamente e esconder uma regressão.
 
 _OCR_REGRESSION_FIELDS = (
     "titulo", "descricao", "url_exibida", "url_final",
@@ -11567,10 +8870,6 @@ def _ocr_regression_parse_dict(valor):
     return None
 
 def _ocr_regression_norm_text(valor) -> str:
-    # Normaliza apenas diferenças irrelevantes de espaço/linha.
-    # Pontuação, caixa, hífens, travessões, vírgulas etc. permanecem
-    # exatamente comparáveis — justamente os tipos de regressão que já
-    # apareceram no OCR real.
     return re.sub(r"\s+", " ", str(valor or "")).strip()
 
 def _ocr_regression_norm_sitelinks(valor):
@@ -11737,7 +9036,6 @@ def _executar_regressao_ocr_background(user_id: str, empresa: str, atividade_id:
                     "erro": f"{type(exc).__name__}: {exc}",
                 })
 
-        # heartbeat/progresso sem gravar a cada imagem
         if pos == total or pos % 5 == 0:
             atualizar_atividade(atividade_id, "em_andamento", {
                 "empresa": empresa,
@@ -11839,9 +9137,6 @@ def _achatar_ocr_estruturado(d: dict) -> str:
             if sl.get("descricao"):
                 linhas.append(sl["descricao"])
         else:
-            # formato antigo (string única "título — descrição"),
-            # mantido só pra não quebrar linhas já salvas no banco antes
-            # dessa migração pra dict.
             linhas.append(sl)
     return "\n".join(linhas)
 
@@ -11853,8 +9148,6 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
     devem se encontrar pela URL permanente efetivamente gravada em ``images``.
     """
     _out = {}
-    # V261: prefere o manifesto pequeno no login/retry global. Isso evita
-    # baixar dezenas de MB de checkpoints apenas para descobrir URLs de OCR.
     try:
         _manifesto, _ = _ler_manifesto_gads_json_v261(user_id)
     except Exception:
@@ -11893,8 +9186,6 @@ def _urls_r2_imagens_gads_v260(user_id: str, empresa: str = "") -> dict:
         for _ad in ((_entry or {}).get("data") or []):
             if _gads_ad_eh_video_v267(_ad):
                 continue
-            # V271: `images_b64` também pode conter a URL R2 definitiva da
-            # captura visual usada no card.
             for _campo in ("images_b64", "images", "carousel_images"):
                 for _url in ((_ad or {}).get(_campo) or []):
                     _url = str(_url or "").strip()
@@ -11933,9 +9224,6 @@ def _garantir_registros_midias_para_imagens_r2_v263(
         _existentes.extend(_res.data or [])
     _por_url = {str(_r.get("url_cdn") or ""): _r for _r in _existentes}
 
-    # Recupera um ad_id representativo para auditoria. Uma mesma imagem pode
-    # ser reutilizada por vários anúncios; a identidade do OCR continua sendo
-    # a URL permanente, portanto uma única linha é suficiente.
     _ad_por_url = {}
     try:
         _manifesto, _ = _ler_manifesto_gads_json_v261(user_id)
@@ -11993,8 +9281,6 @@ def _garantir_registros_midias_para_imagens_r2_v263(
                     flush=True,
                 )
         except Exception as _exc_insert:
-            # Pode ser uma corrida com outra verificação. Relê a URL antes de
-            # considerar falha real.
             try:
                 _re = (
                     supabase.table("midias")
@@ -12024,17 +9310,9 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
     if not _urls:
         return []
 
-    # Primeiro reconcilia o caso "check verde, mas sem linha em midias".
-    # Assim toda imagem visível no card obrigatoriamente fica rastreável pelo
-    # OCR, inclusive dados salvos por versões antigas.
     _linhas = _garantir_registros_midias_para_imagens_r2_v263(
         user_id, empresa, _urls
     )
-    # `_garantir_registros_midias_para_imagens_r2_v263` já consulta todos os
-    # blocos, devolve as linhas existentes e inclui qualquer registro que
-    # precisou reconstruir. A versão anterior repetia aqui exatamente as
-    # mesmas consultas com `ocr_texto` e `ocr_estruturado`, duplicando a saída
-    # do Supabase a cada verificação de OCR pendente.
     _limite = max(1, int(limite or 5000))
     if len(_linhas) > _limite:
         _linhas = _linhas[:_limite]
@@ -12048,8 +9326,6 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
         _tem_estruturado = _ocr_estruturado_tem_conteudo(
             _ocr_regression_parse_dict(_r.get("ocr_estruturado"))
         )
-        # Se o estruturado existe e tem conteúdo, o OCR está concluído. Não
-        # reprocessa uma imagem apenas porque o espelho `ocr_texto` está vazio.
         if not _tem_estruturado:
             _vistos.add(_id)
             _pendentes.append(_r)
@@ -12155,9 +9431,6 @@ def resetar_ocr_formato_antigo(user_id: str) -> int:
             return 0
         ids = [r["id"] for r in linhas]
         empresas = sorted({r["empresa"] for r in linhas if r.get("empresa")})
-        # PostgREST não garante um "update em lote" seguro com listas muito
-        # grandes de ids na mesma query — quebra em blocos de 200 pra não
-        # estourar o tamanho da URL/payload.
         for i in range(0, len(ids), 200):
             bloco = ids[i:i + 200]
             supabase.table("midias").update({"ocr_texto": None}).in_("id", bloco).execute()
@@ -12316,12 +9589,6 @@ def _detalhes_atividade_ocr(atividade_id: str) -> dict:
         return {}
 
 
-# ===================================================
-# V125 — OCR ISOLADO EM PROCESSO FILHO
-# ===================================================
-# O EasyOCR/PyTorch NÃO deve permanecer residente no processo principal do
-# Streamlit. Cada lote roda em um processo filho Linux e termina por completo.
-# Ao terminar, o kernel devolve toda a RAM do PyTorch/modelos automaticamente.
 _OCR_ISOLADO_TAMANHO_LOTE = 100  # V142: worker fica vivo; resultados são persistidos item a item
 _OCR_ISOLADO_TIMEOUT_SEG = 3600
 
@@ -12352,11 +9619,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
     total_itens = len(itens)
 
     _base_dir = Path(__file__).resolve().parent
-    # V242 — compatibilidade com o nome já usado no repositório. Versões
-    # anteriores exigiam exclusivamente ``ocr_worker_v231.py`` e marcavam
-    # todos os anúncios como erro mesmo quando o worker válido já existia
-    # como ``ocr_worker.py``. Mantém preferência pelo nome versionado, mas
-    # usa automaticamente o nome original quando ele for o disponível.
     _worker_candidatos = [
         (_base_dir / "ocr_worker_v231.py").resolve(),
         (_base_dir / "ocr_worker.py").resolve(),
@@ -12374,7 +9636,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
             "resultados": [],
         }
 
-    # Identifica inequivocamente qual worker está sendo executado.
     try:
         _worker_bytes = _worker.read_bytes()
         _worker_sha = _hashlib_ocr.sha256(_worker_bytes).hexdigest()[:12]
@@ -12438,7 +9699,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
     def _entregar_resultados_incrementais_pendentes():
         """Executa callback no thread coordenador, nunca no thread que lê stdout."""
         if on_resultado is None:
-            # Ainda drena a fila para não acumular memória.
             while True:
                 try:
                     _resultados_incrementais.get_nowait()
@@ -12474,8 +9734,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
                     pass
             return _rss, _filhos
         except Exception:
-            # Streamlit Community Cloud pode não ter psutil disponível.
-            # Linux /proc fornece RSS do filho sem adicionar dependência.
             try:
                 _status = Path(f"/proc/{int(_pid)}/status").read_text(
                     encoding="utf-8",
@@ -12508,7 +9766,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
                         print(f"[OCR] V142 falha decodificando resultado incremental: {type(_exc_parse).__name__}: {_exc_parse}", flush=True)
                     continue
                 _destino.append(_linha)
-                # Limita memória dos próprios logs.
                 if len(_destino) > 500:
                     del _destino[:-500]
                 print(f"{_prefixo} {_linha}", flush=True)
@@ -12608,7 +9865,6 @@ def _executar_lote_ocr_isolado(empresa: str, itens: list, on_resultado=None) -> 
 
             time.sleep(0.20)
 
-        # Dá tempo para as threads drenarem as últimas linhas.
         try:
             _t_out.join(timeout=2)
             _t_err.join(timeout=2)
@@ -12738,8 +9994,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
     _ids_tentados_neste_run = set()
     _ids_falharam = []
     _erros_detalhados = []
-    # Histórico auditável do que esta atividade realmente concluiu. Reaproveita
-    # o checkpoint se a execução foi retomada e evita duplicar a mesma mídia.
     _ocr_concluidos_detalhados = list(
         _checkpoint_ocr.get("ocr_concluidos_detalhados") or []
     )
@@ -12793,9 +10047,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 _estruturado = _r.get("estruturado") if _r.get("ok") else None
                 if isinstance(_estruturado, dict):
                     _estruturado = _pos_processar_ocr_estruturado_v281(_estruturado)
-                # V244 — dict vazio ou sem nenhum campo reconhecido não é
-                # sucesso. Mantém o registro pendente em vez de salvar
-                # ocr_texto="" e fazê-lo desaparecer para sempre da fila.
                 if not _ocr_estruturado_tem_conteudo(_estruturado):
                     _estruturado = None
 
@@ -12867,7 +10118,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
             )
             _ret = _executar_lote_ocr_isolado(empresa, _payload, on_resultado=_persistir_resultado_incremental)
 
-            # não chegou pelo canal incremental, usa saida.json somente para esses IDs.
             for _r in (_ret.get("resultados") or []):
                 _mid = str((_r or {}).get("id") or "")
                 if _mid and _mid not in _ids_entregues:
@@ -12923,8 +10173,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
     finally:
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard(_chave_ativa)
-        # Mantém o controle geral coerente com cada término de OCR, inclusive
-        # quando parte do lote falha e continua pendente.
         try:
             _salvar_manifesto_gads_json_v261(
                 user_id, motivo=f"ocr_finalizado:{empresa}"
@@ -12936,14 +10184,6 @@ def _ocr_pendentes_background(user_id: str, empresa: str, atividade_id: str = No
                 flush=True,
             )
 
-# ---------------------------------------------------
-# FILA GLOBAL DE OCR
-# ---------------------------------------------------
-# Antes existia uma thread por empresa. O lock serializava as inferências,
-# mas ainda havia várias threads, atividades e imagens carregadas aguardando
-# a mesma trava. Em pouca RAM isso é desperdício. Agora existe UM worker de
-# OCR para o processo inteiro; empresas entram em FIFO e são processadas uma
-# depois da outra.
 if not hasattr(_runtime_ocr_v229, "fila_ocr_global"):
     _runtime_ocr_v229.fila_ocr_global = queue.Queue()
     _runtime_ocr_v229.lock_worker_ocr_global = threading.RLock()
@@ -12959,18 +10199,6 @@ _lock_worker_ocr_global = _runtime_ocr_v229.lock_worker_ocr_global
 _worker_ocr_global_ativo = _runtime_ocr_v229.worker_ocr_global_ativo
 _OCR_DELAY_PRIMEIRO_START_SEG = 2.0
 
-# Faixa exclusiva para tarefas pesadas do processo principal.
-# OCR e migração de mídia entram nesta mesma fila e nunca executam juntos.
-# Fila GLOBAL e EXCLUSIVA de ações pesadas.
-#
-# Regra: somente UMA ação pesada pode existir por vez no processo:
-# OCR -> termina tudo -> próxima ação;
-# MIGRAÇÃO -> termina tudo -> próxima ação;
-# TRANSCRIÇÃO -> termina tudo -> próxima ação.
-#
-# Diferente do Lock simples anterior, esta implementação usa tickets FIFO.
-# Quem chega primeiro entra primeiro, e nenhuma ação pesada consegue
-# ultrapassar outra que já esteja aguardando.
 _fila_pesada_cond = _runtime_ocr_v229.fila_pesada_cond
 _fila_pesada_proximo_ticket = _runtime_ocr_v229.fila_pesada_proximo_ticket
 _fila_pesada_ticket_atual = _runtime_ocr_v229.fila_pesada_ticket_atual
@@ -13008,8 +10236,6 @@ def _entrar_fila_acao_pesada(tipo: str, detalhe: str = ""):
     _tid = threading.get_ident()
 
     with _fila_pesada_cond:
-        # Reentrada pela MESMA thread: útil para funções internas de uma ação
-        # já exclusiva. Não cria novo ticket nem bloqueia a si própria.
         if _acao_pesada_owner_thread[0] == _tid:
             print(f"[FILA-PESADA] REENTRADA {_descricao}", flush=True)
             return None
@@ -13046,7 +10272,6 @@ def _sair_fila_acao_pesada(ticket=None):
     """Finaliza a ação atual e libera exatamente o próximo ticket FIFO."""
     _tid = threading.get_ident()
     with _fila_pesada_cond:
-        # Chamada de reentrada não é dona de um ticket novo.
         if ticket is None:
             return
         if _acao_pesada_owner_thread[0] != _tid:
@@ -13068,13 +10293,6 @@ def _sair_fila_acao_pesada(ticket=None):
         _fila_pesada_cond.notify_all()
 
 
-# ------------------------------------------------------------------
-# Fila pesada persistente
-# ------------------------------------------------------------------
-# threading.Lock protege apenas o processo atual. Em restart/rerun forte,
-# usamos as atividades no Supabase como segunda camada de coordenação.
-# Heartbeat considerado "vivo" por até 90s. Atividades sem heartbeat recente
-# não bloqueiam indefinidamente a aplicação.
 _FILA_PESADA_HEARTBEAT_MAX_SEG = 90
 
 
@@ -13121,7 +10339,6 @@ def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
                 continue
 
             _det = _a.get("detalhes") or {}
-            # Uma atividade apenas "na fila" não é execução pesada.
             if _det.get("status_visual") == "na_fila":
                 continue
             if _det.get("aguardando_fila_pesada") is True:
@@ -13134,7 +10351,6 @@ def _atividade_pesada_persistente_ativa(user_id: str, excluir_tipos=()):
             )
             _dt_hb = _parse_iso_utc_seguro(_hb)
             if _dt_hb is None:
-                # Sem heartbeat confiável, não prende a fila para sempre.
                 continue
 
             _idade = (_agora - _dt_hb).total_seconds()
@@ -13199,8 +10415,6 @@ def _esperar_outra_acao_pesada_persistente(
 def _worker_ocr_global():
     _ticket_fila_pesada = None
 
-    # Pega o primeiro user da fila apenas para consultar o estado persistente
-    # antes de ocupar a faixa pesada local. A fila continua intacta.
     _uid_fila = None
     try:
         with _fila_ocr_global.mutex:
@@ -13219,10 +10433,6 @@ def _worker_ocr_global():
 
     _ticket_fila_pesada = _entrar_fila_acao_pesada("OCR", "fila global")
     try:
-        # O OCR pesado roda em processo Python externo de
-        # uma imagem por vez. Não faz mais sentido segurar a fila por ~45s.
-        # Mantemos somente uma microespera de até 2s logo após boot/redeploy
-        # para o servidor terminar a inicialização básica.
         restante = _OCR_DELAY_PRIMEIRO_START_SEG - (time.monotonic() - _PROCESSO_INICIO_MONOTONIC)
         if restante > 0:
             print(
@@ -13284,8 +10494,6 @@ def _worker_ocr_global():
 
         with _lock_worker_ocr_global:
             _worker_ocr_global_ativo[0] = False
-            # Corrida possível: um item pode ter entrado entre o empty() e
-            # desligarmos a flag. Se aconteceu, religa um único worker.
             if not _fila_ocr_global.empty():
                 _worker_ocr_global_ativo[0] = True
                 threading.Thread(target=_worker_ocr_global, daemon=True, name="ocr-global-worker").start()
@@ -13341,20 +10549,11 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
         except Exception:
             _status_ocr_atual = ""
 
-    # V274: uma atividade concluída representa um lote fechado. Se surgir
-    # nova pendência, cria outro card começando em 0/N para que o progresso e
-    # a lista de IDs pertençam exatamente à execução atual. Só atividades
-    # ativas/na fila são retomadas; erro pode ser reaberto com force=True.
     if _status_ocr_atual in ("concluido", "concluido_com_erro"):
         atividade_id = None
         _det_ocr = {}
         _status_ocr_atual = ""
 
-    # V80 — uma atividade que terminou em ERRO não pode voltar
-    # automaticamente para "Na fila" a cada polling. Isso fazia o mesmo
-    # card oscilar Na fila -> Processando -> Erro -> Na fila e repetia a
-    # mesma mídia defeituosa indefinidamente. Depois de erro, só uma ação
-    # explícita de Refazer (force=True) reabre a fila.
     if atividade_id and not force:
         if _status_ocr_atual == "erro" and not force:
             print(
@@ -13382,8 +10581,6 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
             )
 
     if atividade_id:
-        # V74 — NUNCA zera um checkpoint existente. Se estava 2/3, a
-        # retomada permanece 2/3 e só a mídia pendente volta para a fila.
         _feitas_ocr = int(_det_ocr.get("processadas") or 0)
         _total_ocr = max(int(_det_ocr.get("total") or 0), _feitas_ocr + total)
         atualizar_atividade(atividade_id, "na_fila", {
@@ -13396,8 +10593,6 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
             {"empresa": empresa, "processadas": 0, "total": total,
              "mensagem_fila": "Aguardando a vez de iniciar o OCR."},
         )
-        # criar_atividade pode nascer pendente conforme implementação antiga;
-        # normaliza explicitamente para o novo estado da fila.
         atualizar_atividade(atividade_id, "na_fila", {
             "empresa": empresa, "processadas": 0, "total": total,
             "mensagem_fila": "Aguardando a vez de iniciar o OCR.",
@@ -13417,25 +10612,11 @@ def iniciar_ocr_pendente_background(user_id: str, empresa: str, force: bool = Fa
     }
 
 
-# ---------------------------------------------------
-#  TRANSCRIÇÃO DE REELS (REDES SOCIAIS) — mesmo padrão dos vídeos de
-#  Anúncios acima, mas adaptado: aqui não existe uma tabela `midias` por
-#  vídeo — os posts de Redes Sociais vivem inteiros dentro do JSON
-#  `ci_dados.metricas_redes.dados` (uma lista de perfis, cada um com sua
-#  lista de `posts`). Um post já processado ganha a chave "transcricao"
-#  no próprio dict (mesmo que "" — vídeo sem áudio/erro na transcrição —
-#  só a AUSÊNCIA da chave é que conta como pendente); isso evita ficar
-#  tentando pra sempre um Reel problemático, mesmo padrão do vídeo de
-#  Anúncio que grava "" em vez de deixar NULL.
-# ---------------------------------------------------
 
 _lock_transcricao_reels_pendente = threading.Lock()
 
 @st.cache_resource
 def _get_reels_transcricao_ativa_agora() -> set:
-    # Mesmo motivo do _get_transcricoes_empresa_ativas_agora: precisa
-    # sobreviver aos reruns do Streamlit, por isso cache_resource em vez
-    # de uma variável de módulo comum.
     return set()
 
 _reels_transcricao_ativa_agora = _get_reels_transcricao_ativa_agora()  # elementos: user_id — evita 2 filas rodando ao mesmo tempo pro mesmo usuário
@@ -13505,9 +10686,6 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
                 _falhas_reel += 1
                 _falhas_por_empresa_reel[_nome_empresa_reel] = _falhas_por_empresa_reel.get(_nome_empresa_reel, 0) + 1
 
-            # Salva a cada Reel processado (não só no final) — assim, se a
-            # thread cair no meio do caminho, o que já foi transcrito não
-            # se perde e não precisa ser refeito do zero.
             metricas["dados"] = dados
             try:
                 supabase.table("ci_dados").update({"metricas_redes": metricas}).eq("user_id", user_id).execute()
@@ -13552,8 +10730,6 @@ def iniciar_transcricao_reels_pendente_background(user_id: str):
         _reels_transcricao_ativa_agora.add(user_id)
     total = _contar_reels_pendentes_transcricao(user_id)
     if not total:
-        # Sem posts, ou sem Reels pendentes — não cria atividade só pra
-        # mostrar "0 de 0" e poluir o sino à toa.
         with _lock_transcricao_reels_pendente:
             _reels_transcricao_ativa_agora.discard(user_id)
         return
@@ -13567,12 +10743,6 @@ def iniciar_transcricao_reels_pendente_background(user_id: str):
         daemon=True,
     ).start()
 
-# ---------------------------------------------------
-#  LOG DE ATIVIDADES (sino de notificações)
-# ---------------------------------------------------
-# Registra ações de longa duração (coletas, migrações) com status
-# na_fila → em_andamento → concluido/erro, pra exibir no sino da
-# sidebar e, mais pra frente, servir de base pro item 3 (jobs).
 
 @st.cache_resource
 def _get_backups_desfazer_atividade() -> dict:
@@ -13588,10 +10758,6 @@ def criar_atividade(user_id: str, tipo: str, titulo: str, detalhes: dict = None,
     ser criada já "concluido" pra fatos instantâneos que não têm uma etapa
     de processamento depois (ex: alerta de posts novos detectados)."""
     try:
-        # apenas os status antigos (pendente/em_andamento/concluido/erro).
-        # "na_fila" é um status lógico/visual e é persistido como "pendente"
-        # + detalhes.status_visual="na_fila", evitando violar
-        # atividades_status_check sem exigir migração imediata do banco.
         _status_db = "pendente" if status == "na_fila" else status
         _detalhes_db = dict(detalhes or {})
         if status == "na_fila":
@@ -13635,21 +10801,12 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
     if not atividade_id:
         return
     import time
-    # O status lógico "na_fila" continua visível na UI, mas no banco é
-    # armazenado como "pendente" enquanto o CHECK não for migrado.
     _status_db = "pendente" if status == "na_fila" else status
     payload = {"status": _status_db}
-    # V143 — quando uma atividade antiga é RECOLOCADA NA FILA, ela passa a
-    # representar uma nova execução para o usuário. Renova o timestamp usado
-    # pela página de notificações para que suba para o topo e mostre o tempo
-    # correto. Heartbeats em ``em_andamento`` NÃO mexem nesse horário.
     if status == "na_fila":
         payload["criado_em"] = _agora_iso()
     if detalhes is not None:
         _detalhes_db = dict(detalhes or {})
-        # V210 — um worker costuma substituir `detalhes` inteiro a cada
-        # progresso/conclusão. Reanexa o snapshot criado antes de "Refazer"
-        # para o botão Desfazer continuar disponível depois que o job fechar.
         _backup_undo = _backups_desfazer_atividade.get(str(atividade_id))
         if _backup_undo and "backup_desfazer" not in _detalhes_db:
             _detalhes_db["backup_desfazer"] = _backup_undo
@@ -13669,10 +10826,6 @@ def atualizar_atividade(atividade_id: str, status: str, detalhes: dict = None):
         return
     except Exception as exc:
         print(f"[SUPABASE] falha final ao atualizar atividade {atividade_id!r}: {exc!r}", flush=True)
-    # Esgotou as tentativas (só acontece pra status terminal, depois de
-    # ~30s tentando): não tem mais o que fazer aqui sem travar essa
-    # thread pra sempre. O card fica em_andamento até o usuário clicar
-    # "Refazer" ou até uma nova coleta reiniciar essa mesma atividade.
 
 def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
     """Remove uma atividade do sino de notificações. Usado pelo botão de
@@ -13689,12 +10842,6 @@ def excluir_atividade(atividade_id: str, user_id: str = None) -> bool:
         if user_id:
             q = q.eq("user_id", user_id)
         res = q.execute()
-        # Antes retornava True sempre que não havia exceção — mas o Supabase
-        # não lança erro quando o RLS barra o delete ou quando o filtro não
-        # bate com nenhuma linha, ele só devolve 0 linhas afetadas. Isso fazia
-        # a exclusão "funcionar" na tela (toast de sucesso) sem apagar nada
-        # de verdade no banco. Agora só reporta sucesso se alguma linha foi
-        # de fato apagada.
         return bool(res.data)
     except Exception:
         return False
@@ -13800,12 +10947,6 @@ def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
     except Exception:
         return []
 
-# ---------------------------------------------------
-# V33 — CACHE CURTO DA PÁGINA DE NOTIFICAÇÕES
-# ---------------------------------------------------
-# Busca/status/cards pediam os mesmos dados mais de uma vez no mesmo rerun.
-# Cache de poucos segundos elimina duplicidade sem esconder progresso por tempo
-# perceptível. Fica em session_state, portanto não mistura usuários/sessões.
 _NOTIF_CACHE_TTL_SEG = 3.0
 
 def _notif_cache_get(chave: str):
@@ -13941,8 +11082,6 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
                 por_id[aid] = a
         itens = list(por_id.values())
         itens.sort(key=lambda a: a.get("criado_em") or "", reverse=True)
-        # Normaliza somente a cópia usada pela UI: fila persistida como
-        # pendente + status_visual passa a aparecer como "na_fila".
         for _a in itens:
             if isinstance(_a, dict):
                 _a["status"] = _status_logico_atividade(_a)
@@ -13980,10 +11119,6 @@ def resumo_sino_atividades(user_id: str) -> dict:
     except Exception:
         return {"total": 0, "erro": 0, "andamento": 0}
 
-# Ícones em SVG cheio (preenchido) por status — substituem os emojis
-# antigos (🕓 🔵 ✅ ⚠️) pra ter um visual consistente e nítido em
-# qualquer SO/navegador. "path" é o path data de um ícone sólido
-# (estilo Material Symbols "Filled"), renderizado via _svg_icone().
 _ATIVIDADE_STATUS_UI = {
     "pendente": {
         "path": "M12,20a8,8 0 1,1 0,-16a8,8 0 0,1 0,16M12,2a10,10 0 1,0 0,20a10,10 0 0,0 0,-20M12.5,7h-1.5v6l5.2,3.1 0.75,-1.23 -4.45,-2.64Z",
@@ -14005,11 +11140,6 @@ _ATIVIDADE_STATUS_UI = {
         "path": "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
         "cor": "#e05252", "label": "Erro",
     },
-    # Não é um status salvo no banco — é aplicado só na hora de renderizar
-    # (ver loop dos cards), quando uma atividade concluiu mas parte dela
-    # falhou (ex.: coleta de redes que trouxe 1 de 3 perfis). Sem isso, o
-    # card mostrava badge/ícone verdes de "Concluído", escondendo que teve
-    # erro — o "Com erro: ..." ficava perdido no meio do texto de detalhe.
     "concluido_com_erro": {
         "path": "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
         "cor": "#e05252", "label": "Concluído com erros",
@@ -14025,23 +11155,11 @@ def _svg_icone(path: str, cor: str, tamanho: int = 16) -> str:
         f'<path d="{path}"/></svg>'
     )
 
-# _formatar_detalhes_atividade() pros tipos que não têm um formatador
-# específico (ex: coleta_redes, migracao_midia, retentativa_midia,
-# analise_ia), assim toda atividade mostra pelo menos uma linha de
-# detalhe (e a setinha de expandir aparece) na página de notificações.
 _TIPO_ATIVIDADE_LABELS = {
     "coleta_ads": (
         "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
         "#f5a623", "Coleta de anúncios",
     ),
-    # Tipo separado do "coleta_ads" (Meta) só na tabela `atividades` —
-    # antes os dois usavam o mesmo `tipo`, e a sincronização da tela do
-    # Google Ads acabava seguindo por engano a atividade mais recente de
-    # Meta Ads (ou vice-versa), deixando o cache em memória travado numa
-    # versão antiga mesmo com a coleta já concluída no banco. A cota
-    # mensal continua contando os dois juntos como "coleta_ads" (isso não
-    # muda), só o rastreio de "qual atividade acabou de terminar" ficou
-    # isolado por plataforma.
     "coleta_ads_google": (
         "M3,9V15H7L12,20V4L7,9H3M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16.02C15.5,15.29 16.5,13.77 16.5,12M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23Z",
         "#f5a623", "Coleta de anúncios (Google Ads)",
@@ -14105,8 +11223,6 @@ _TIPO_ATIVIDADE_LABELS = {
     ),
 }
 
-# Ícones (cheios) usados nos avisos/motivos genéricos dentro do detalhe —
-# reaproveita os mesmos paths dos status pra manter consistência visual.
 _ICONE_AVISO  = ("M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z", "#e05252")
 _ICONE_INFO   = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M13,17H11V11H13V17M13,9H11V7H13V9Z", "#3a9fd6")
 _ICONE_OK     = ("M12,2A10,10 0 1,0 12,22A10,10 0 0,0 12,2M10,17L5,12L6.41,10.59L10,14.17L17.59,6.58L19,8L10,17Z", "#2ecc71")
@@ -14350,9 +11466,6 @@ def _tempo_relativo(iso_str: str) -> str:
         return ""
 
 _PARES_PROGRESSO_POR_TIPO = {
-    # tipo: (chave_feitos, chave_total) — usado só pra desenhar a barra
-    # de progresso com %; cobre os tipos cujos detalhes trazem uma
-    # contagem "x de y" pareada.
     "migracao_midia":        ("migradas", "total"),
     "transcricao_video":     ("transcritas", "total"),
     "cc_youtube":             ("verificados", "total"),
@@ -14360,12 +11473,6 @@ _PARES_PROGRESSO_POR_TIPO = {
     "reconciliacao_midia":   ("corrigidos", "verificados"),
     "retentativa_midia":     ("recuperadas", "verificadas"),
     "ocr_gads":              ("processadas", "total"),
-    # "coleta_ads" NÃO entra aqui: em vez de uma barra agregada única,
-    # esse tipo ganhou uma barra POR EMPRESA (ver 'por_empresa' nos
-    # detalhes, gravado por _executar_busca_background, e o bloco de
-    # renderização "_notif_empresa_html" na página de notificações) —
-    # faz mais sentido pro usuário ver o andamento de cada empresa da
-    # coleta individualmente do que um único "X de Y" agregado.
 }
 
 def _progresso_atividade(atividade: dict):
@@ -14401,10 +11508,6 @@ def _formatar_detalhes_atividade(atividade: dict):
     if d.get("aviso"):
         path, _cor = _ICONE_AVISO
         texto = d["aviso"]
-        # Deixa explícito se essa migração pendente está rodando agora (uma
-        # thread ativa processando) ou parada esperando a próxima tentativa
-        # automática — sem isso, "X de Y salvos, Z pendentes" fica ambíguo:
-        # o usuário não sabe se precisa esperar ou se travou de vez.
         if tipo == "migracao_midia" and atividade.get("status") == "em_andamento":
             if _migracao_travada(atividade):
                 texto += " · Parado no momento — vamos retomar automaticamente em instantes."
@@ -14443,13 +11546,6 @@ def _formatar_detalhes_atividade(atividade: dict):
         erros_d = d.get("com_erro") or {}
         incompletos_d = d.get("incompletos") or {}
         coletadas_d = d.get("coletadas", [])
-        # Enquanto está "em_andamento", mostra progresso de verdade (quantas
-        # empresas já foram processadas de quantas no total) em vez de só
-        # aparecer algo depois que TODAS terminassem — antes disso o card
-        # ficava com o rótulo genérico "Coleta de anúncios" a coleta
-        # inteira, sem nenhum sinal de avanço mesmo com várias empresas na
-        # fila (ver _executar_busca_background, que agora atualiza a
-        # atividade a cada empresa processada).
         if atividade.get("status") == "em_andamento":
             total_d = d.get("total") or len(d.get("empresas") or [])
             concluidas_d = d.get("concluidas", len(coletadas_d) + len(erros_d))
@@ -14477,11 +11573,6 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "coleta_redes" and ("coletados" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
         nomes_ok = d.get("coletados", [])
-        # Mesmo padrão do coleta_ads: enquanto está "em_andamento", mostra
-        # quantos perfis já foram processados de quantos no total, em vez
-        # de só aparecer algo quando TODOS já tivessem terminado (ver
-        # _coletar_redes_background, que agora atualiza a atividade a
-        # cada perfil processado).
         if atividade.get("status") == "em_andamento":
             total_d = d.get("total") or len(d.get("empresas") or [])
             concluidas_d = d.get("concluidas", len(nomes_ok) + len(erros_d))
@@ -14495,10 +11586,6 @@ def _formatar_detalhes_atividade(atividade: dict):
             return _svg_icone(path, "currentColor", 14), texto
         total_posts = d.get("total_posts", 0)
         texto = f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
-        # Info de "posts novos" (antes era uma notificação própria, "X novos
-        # posts detectados", que aparecia logo acima desta — redundante,
-        # já que as duas eram sobre a mesma coleta). Agora entra como
-        # primeira frase deste mesmo card, quando aplicável.
         _por_empresa_nv = d.get("por_empresa_novos") or {}
         if _por_empresa_nv:
             _partes_nv = [f"{_nome_nv} ({_qtd_nv})" for _nome_nv, _qtd_nv in _por_empresa_nv.items()]
@@ -14590,9 +11677,6 @@ def _formatar_detalhes_atividade(atividade: dict):
         texto = f"Novos posts: {', '.join(partes_empresa)}."
         return _svg_icone(path, "currentColor", 14), texto
 
-    # migracao_midia, retentativa_midia, analise_ia sem aviso/motivo) —
-    # mostra ao menos o label genérico do tipo, pra sempre ter algo pra
-    # ver por trás da setinha em vez de deixar a atividade sem detalhe.
     if tipo in _TIPO_ATIVIDADE_LABELS:
         path, _cor, texto = _TIPO_ATIVIDADE_LABELS[tipo]
         return _svg_icone(path, "currentColor", 14), texto
@@ -14600,13 +11684,6 @@ def _formatar_detalhes_atividade(atividade: dict):
     return "", ""
 
 
-# ---------------------------------------------------
-#  COOLDOWN + COTA MENSAL (anti-abuso + controle de custo)
-# ---------------------------------------------------
-# Reaproveita a tabela `atividades`: cada coleta/análise já grava uma
-# linha com tipo + criado_em, então usamos isso tanto pra cooldown
-# (olhar a última execução desse tipo) quanto pra cota mensal (contar
-# quantas rodaram esse mês) — sem precisar de tabela nova.
 
 PLANOS_COOLDOWN_SEGUNDOS = {
     "free":    300,   # 5 min entre cliques na mesma ação
@@ -14615,7 +11692,6 @@ PLANOS_COOLDOWN_SEGUNDOS = {
     "agencia": 0,     # sem cooldown
 }
 
-# limite de execuções por mês, por tipo de ação. None = ilimitado.
 PLANOS_COTA_MENSAL = {
     "coleta_ads":   {"free": 5,  "starter": 30, "pro": 150, "agencia": None},
     "coleta_redes": {"free": 5,  "starter": 30, "pro": 150, "agencia": None},
@@ -14657,8 +11733,6 @@ def _contar_execucoes_mes(user_id: str, tipo_acao: str) -> int:
             return res.data[0].get("quantidade", 0)
         return 0
     except Exception:
-        # se a tabela/RPC ainda não existir (migração não rodada), cai
-        # pro comportamento antigo — nunca bloqueia por causa disso.
         try:
             import datetime as _dt
             inicio_mes = _dt.datetime.now().replace(
@@ -14754,9 +11828,6 @@ def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = 
     return gemini_model.generate_content(prompt_ou_parts)
 
 
-# ---------------------------------------------------
-# CONFIGURAÇÃO GEMINI
-# ---------------------------------------------------
 
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -14764,9 +11835,6 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     gemini_model = None
 
-# ---------------------------------------------------
-# LISTA ESTADOS E CIDADES
-# ---------------------------------------------------
 
 ESTADOS_CIDADES = {
     "Acre": ["Rio Branco", "Cruzeiro do Sul"],
@@ -14808,9 +11876,6 @@ SUBNICHOS = {
     "Indústria": ["Manufatura", "Construção", "Agronegócio", "Química", "Têxtil", "Metalurgia", "Energia", "Logística"],
 }
 
-# ---------------------------------------------------
-# PALETA DE CORES GLOBAL PARA AVATARES
-# ---------------------------------------------------
 
 AVATAR_COLORS = ["#27ae60", "#3a9fd6", "#2ecc71", "#5bc4f5", "#1a7abf", "#1a2e4a"]
 
@@ -14823,9 +11888,6 @@ def get_minha_empresa_color() -> str:
 def get_concorrente_color(concorrente_index: int) -> str:
     return AVATAR_COLORS[(concorrente_index + 1) % len(AVATAR_COLORS)]
 
-# ---------------------------------------------------
-# FUNÇÕES AUXILIARES
-# ---------------------------------------------------
 
 def remover_acentos(texto):
     return ''.join(
@@ -14883,22 +11945,8 @@ def formatar_url(url):
         url = "https://" + url
     return url
 
-# ---------------------------------------------------
-# SUPABASE — USUÁRIOS / AUTH
-# ---------------------------------------------------
 
 def login_supabase(email: str, senha: str):
-    # Um retry só pra erros de REDE/TIMEOUT (não de credencial errada):
-    # um pico passageiro de IOwait no Supabase pode fazer a PRIMEIRA
-    # tentativa estourar o timeout mesmo com credenciais corretas — sem
-    # esse retry, a pessoa precisa perceber o erro e clicar em "Entrar"
-    # de novo à mão pra conseguir logar, quando muitas vezes a segunda
-    # tentativa (1-2s depois) já teria funcionado sozinha. Login por
-    # senha é uma operação segura de repetir (não duplica nada), então
-    # não tem risco em tentar de novo automaticamente. Erros de
-    # credencial (senha errada, usuário não existe etc.) vêm da API do
-    # GoTrue como resposta HTTP normal, não como exceção de timeout —
-    # esses NUNCA entram nesse retry, só falham direto na primeira vez.
     def _mensagem_login(exc) -> str:
         texto = str(exc or "")
         baixo = texto.lower()
@@ -14936,12 +11984,6 @@ def login_supabase(email: str, senha: str):
         try:
             res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
             if res.user:
-                # Login SEMPRE tem uma sessão autenticada válida (diferente do
-                # cadastro — ver comentário em `cadastro_supabase`), então este
-                # é o lugar confiável pra garantir a linha em `ci_dados`: cria
-                # se ainda não existir (idempotente — ver `garantir_linha_usuario`)
-                # e "autocura" contas que ficaram sem a linha porque o cadastro
-                # rodou sem sessão (confirmação de e-mail pendente na hora).
                 garantir_linha_usuario(res.user.id)
                 print(
                     f"[AUTH-V222] login concluido tentativa={_tentativa + 1}/3",
@@ -15002,17 +12044,6 @@ def cadastro_supabase(email: str, senha: str, nome: str = ""):
         if nome.strip():
             payload["options"] = {"data": {"full_name": nome.strip()}}
         res = supabase.auth.sign_up(payload)
-        # `sign_up` só devolve uma sessão autenticada (`res.session`) de
-        # verdade quando a confirmação de e-mail está DESLIGADA no projeto
-        # Supabase — com ela ligada (padrão em projeto novo), o usuário é
-        # criado mas a sessão só existe depois que a pessoa clica no link
-        # do e-mail. Tentar o insert em `ci_dados` aqui SEM sessão faz a
-        # chamada rodar como anônima — o RLS exige `auth.uid() = user_id`,
-        # que dá NULL pra um pedido anônimo, e a inserção é barrada com
-        # "new row violates row-level security policy" (erro reportado
-        # pelo usuário, aparecendo pra toda conta nova). Só tenta aqui
-        # quando já existe sessão de verdade; senão, `login_supabase` cria
-        # a linha no primeiro login (sempre com sessão válida).
         if res.user and res.session:
             garantir_linha_usuario(res.user.id)
         return res.user, None
@@ -15086,19 +12117,9 @@ def logout_supabase():
     except Exception:
         pass
 
-# ---------------------------------------------------
-# SUPABASE — DADOS DO USUÁRIO
-# ---------------------------------------------------
 
 def carregar_dados_usuario(user_id: str) -> dict:
     try:
-        # V230 — não carregar gads_cache no login.
-        #
-        # gads_cache pode ter dezenas de MB (todos os anúncios, textos e URLs
-        # do Google Ads). O código abaixo nunca usa essa coluna no login; ela é
-        # carregada sob demanda somente ao abrir a área Google Ads. O select(*)
-        # baixava esse JSON enorme para descartá-lo logo depois, consumindo
-        # egress do Supabase a cada nova sessão/reconexão.
         _colunas_login = (
             "minha_empresa,concorrentes,metricas_redes,ads_cache,"
             "analises_salvas,redes_analises_salvas,ads_analises_salvas,seo_cache"
@@ -15187,9 +12208,6 @@ def salvar_gads_analises():
     except Exception as e:
         st.toast(f"Erro ao salvar análises de Google Ads: {e}", icon="⚠️")
 
-# ---------------------------------------------------
-# ESTADO DA SESSÃO
-# ---------------------------------------------------
 
 if "logado" not in st.session_state:
     st.session_state.logado = False
@@ -15235,16 +12253,10 @@ for campo, valor in campos_padrao.items():
     if campo not in empresa:
         empresa[campo] = valor
 
-# ---------------------------------------------------
-# CONTROLE NAVEGAÇÃO
-# ---------------------------------------------------
 
 def trocar_pagina(destino):
-    # Limpa o flag de acesso manual ao home quando navega para outra página
     if destino != "home":
         st.session_state.pop("_home_acesso_manual", None)
-    # V269: ao sair da seção, libera uma nova reconciliação do manifesto na
-    # próxima entrada. Reruns enquanto a página permanece aberta não repetem.
     if destino != "google_ads":
         st.session_state.pop(
             "_manifesto_gads_abertura_pagina_v269_iniciado", None
@@ -15254,16 +12266,12 @@ def trocar_pagina(destino):
     st.session_state.editando_concorrente = None
     st.session_state.editar_empresa = False
 
-# ---------------------------------------------------
-# FUNÇÃO IA — BATTLE CARD
-# ---------------------------------------------------
 
 def montar_contexto_concorrente(nome: str) -> str:
     """Monta um resumo em texto dos dados REAIS já coletados sobre um
     concorrente (ads, redes sociais, SEO), para alimentar o prompt da IA."""
     partes = [f"Concorrente: {nome}"]
 
-    # ── Ads Library ──────────────────────────────────────────────
     ads_entry = st.session_state.get("ads_cache", {}).get(nome)
     if ads_entry and ads_entry.get("data"):
         ads = ads_entry["data"]
@@ -15279,7 +12287,6 @@ def montar_contexto_concorrente(nome: str) -> str:
     else:
         partes.append("Anúncios: nenhum dado coletado ainda na Biblioteca de Ads.")
 
-    # ── Redes sociais ────────────────────────────────────────────
     dados_redes = st.session_state.get("metricas_redes", {}).get("dados", [])
     perfil_redes = next((r for r in dados_redes if r.get("nome") == nome), None)
     if perfil_redes:
@@ -15291,7 +12298,6 @@ def montar_contexto_concorrente(nome: str) -> str:
     else:
         partes.append("Redes sociais: nenhum dado coletado ainda.")
 
-    # ── SEO / site ───────────────────────────────────────────────
     seo_entry = st.session_state.get("seo_cache", {}).get(nome)
     if seo_entry and seo_entry.get("status") == "ok":
         contato = seo_entry.get("contato", {})
@@ -15342,9 +12348,6 @@ diga isso explicitamente em vez de supor um valor.
     except Exception as e:
         return f"Erro: {str(e)}"
 
-# ---------------------------------------------------
-# TRAFILATURA — EXTRAÇÃO DE CONTEÚDO
-# ---------------------------------------------------
 
 def extrair_conteudo_site(url: str) -> str:
     url_fmt = formatar_url(url)
@@ -15380,9 +12383,6 @@ def extrair_conteudo_site(url: str) -> str:
     except Exception as e:
         return f"[Erro ao acessar {url}: {e}]"
 
-# ---------------------------------------------------
-# EXTRAÇÃO DE SEO — título, description, H1, H2s
-# ---------------------------------------------------
 
 def extrair_seo_site(url: str) -> dict:
     url_fmt = formatar_url(url)
@@ -15428,10 +12428,8 @@ def extrair_seo_site(url: str) -> dict:
             for h in h2s if _re.sub(r'<[^>]+>', '', h).strip()
         ][:6]
 
-        # ── Canais de Contato ─────────────────────────────────────
         ct = {}
 
-        # WhatsApp
         wa_link = _re.findall(
             r'(?:wa\.me|whatsapp\.com/send|api\.whatsapp\.com/send)[^\d]*(\d{8,15})',
             html, _re.IGNORECASE
@@ -15451,7 +12449,6 @@ def extrair_seo_site(url: str) -> dict:
         wa_todos = wa_link or wa_href or wa_texto_depois or wa_texto_antes
         ct["whatsapp"] = wa_todos[0] if wa_todos else ""
 
-        # Telefone
         tel_link = _re.findall(r'href=["\']tel:([+\d\s()\-]{6,20})["\']', html, _re.IGNORECASE)
         tel_depois = _re.findall(
             r'(?:telefone|fone|tel\.?|ligamos|ligue|celular|cel\.?)\D{0,20}(\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4})',
@@ -15510,19 +12507,16 @@ def extrair_seo_site(url: str) -> dict:
         mail_todos = cf_decoded if cf_decoded else (mail_link if mail_link else mail_texto)
         ct["email"] = mail_todos[0] if mail_todos else ""
 
-        # Chat ao vivo
         ct["chat_ao_vivo"] = bool(_re.search(
             r'(intercom|zendesk|freshchat|tawk\.to|livechat|crisp\.chat|jivochat|hubspot.*chat|tidio|drift|leadster)',
             html, _re.IGNORECASE
         ))
 
-        # Formulário de contato
         ct["formulario"] = bool(_re.search(
             r'<form[^>]*>.{0,600}(contato|contact|mensagem|message|nome|name|fale)',
             html, _re.IGNORECASE | _re.DOTALL
         ))
 
-        # Botão/widget flutuante
         ct["botao_flutuante"] = bool(
             _re.search(
                 r'(whatsapp[-_]?(button|widget|float|fixed|sticky|fab)'
@@ -15544,14 +12538,12 @@ def extrair_seo_site(url: str) -> dict:
             )
         )
 
-        # Popup de saída
         ct["popup_saida"] = bool(_re.search(
             r'(exit.?intent|mouseleave.*popup|exit.?popup|exit.?modal'
             r'|exitIntent|exit_intent|onmouseleave.*modal)',
             html, _re.IGNORECASE
         ))
 
-        # Popup de rolagem
         ct["popup_rolagem"] = bool(_re.search(
             r'(scroll.{0,20}(popup|modal|trigger|show|banner|offer|lead)'
             r'|scrollDepth|scroll_depth|scrollPercent|scroll.?percent'
@@ -15561,7 +12553,6 @@ def extrair_seo_site(url: str) -> dict:
             html, _re.IGNORECASE
         ))
 
-        # Instagram
         ig = _re.findall(
             r'instagram\.com/([a-zA-Z0-9_.]{2,30})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
@@ -15569,7 +12560,6 @@ def extrair_seo_site(url: str) -> dict:
         ig = [i for i in ig if i.lower() not in ('p', 'reel', 'reels', 'explore', 'stories', 'tv', 'share', 'accounts')]
         ct["instagram"] = ig[0] if ig else ""
 
-        # Facebook
         fb = _re.findall(
             r'facebook\.com/([a-zA-Z0-9_.]{2,60})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
@@ -15577,14 +12567,12 @@ def extrair_seo_site(url: str) -> dict:
         fb = [f for f in fb if f.lower() not in ('sharer', 'share', 'tr', 'login', 'dialog', 'plugins', 'photo', 'watch')]
         ct["facebook"] = fb[0] if fb else ""
 
-        # LinkedIn
         li = _re.findall(
             r'linkedin\.com/(?:company|in)/([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
         )
         ct["linkedin"] = li[0] if li else ""
 
-        # YouTube
         yt = _re.findall(
             r'youtube\.com/(?:channel/|@|c/)([a-zA-Z0-9_\-]{2,60})(?:/|["\'\s]|$)',
             html, _re.IGNORECASE
@@ -15609,7 +12597,6 @@ def extrair_e_salvar_seo(url: str, chave: str):
         st.session_state.seo_cache[chave] = seo
         salvar_seo_cache()
 
-# SITEMAP -----------------
 
 def extrair_sitemap(url: str) -> dict:
     import re as _re
@@ -15637,7 +12624,6 @@ def extrair_sitemap(url: str) -> dict:
                 return []
             conteudo = r.text
 
-            # Sitemap index — contém outros sitemaps
             sub_sitemaps = _re.findall(r'<loc>\s*(.*?sitemap.*?)\s*</loc>', conteudo, _re.IGNORECASE)
             if sub_sitemaps:
                 todas = []
@@ -15645,13 +12631,11 @@ def extrair_sitemap(url: str) -> dict:
                     todas += buscar_urls_sitemap(sub.strip(), profundidade + 1)
                 return todas
 
-            # Sitemap normal — contém páginas
             locs = _re.findall(r'<loc>\s*(https?://[^\s<]+)\s*</loc>', conteudo)
             return [l.strip() for l in locs]
         except Exception:
             return []
 
-    # 1. Tenta achar pelo robots.txt
     base = url_fmt.rstrip("/")
     try:
         robots = _http_get(f"{base}/robots.txt", headers=headers, timeout=8)
@@ -15684,7 +12668,6 @@ def extrair_sitemap(url: str) -> dict:
     resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
     return resultado
 
-# SALVAR — SEO CACHE  -------------
 def salvar_seo_cache():
     """Persiste st.session_state.seo_cache no Supabase (update parcial)."""
     try:
@@ -15696,9 +12679,6 @@ def salvar_seo_cache():
     except Exception as e:
         st.toast(f"Erro ao salvar SEO: {e}", icon="⚠️")
 
-# ---------------------------------------------------
-# GEMINI — RELATÓRIO DE POSICIONAMENTO
-# ---------------------------------------------------
 
 def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: list, user_id: str = None) -> str:
     if gemini_model is None:
@@ -15758,9 +12738,6 @@ Seja direto, objetivo e use dados do conteúdo real dos sites.
     except Exception as e:
         return f"Erro ao gerar relatório: {e}"
 
-# ---------------------------------------------------
-# CSS GLOBAL
-# ---------------------------------------------------
 
 st.markdown("""
 <style>
@@ -16164,7 +13141,6 @@ button[data-testid="baseButton-secondary"][kind="secondary"]:has(~ *) {
 </style>
 """, unsafe_allow_html=True)
 
-# ── Força fundo branco via JavaScript — bypass garantido do st-emotion-cache ──
 components.html("""
 <script>
 (function() {
@@ -16246,10 +13222,6 @@ components.html("""
 </script>
 """, height=0)
 
-# ── Força a fonte (Source Sans) via JavaScript — garante que os campos
-#    de texto e os selects fiquem com a MESMA font-family real usada
-#    pelo Streamlit internamente, via inline style important (que vence
-#    qualquer CSS, mesmo com !important). ──
 components.html("""
 <script>
 (function() {
@@ -16302,9 +13274,6 @@ components.html("""
 </script>
 """, height=0)
 
-# ---------------------------------------------------
-# CARD HELPERS
-# ---------------------------------------------------
 
 CARD_CSS = """
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -16318,9 +13287,6 @@ body { padding-bottom: 8px; }
 """
 CARD_FONT_IMPORT = """<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">"""
 
-# ---------------------------------------------------
-# LOGIN / CADASTRO (Supabase Auth)
-# ---------------------------------------------------
 
 import base64
 from pathlib import Path
@@ -16537,13 +13503,9 @@ if not st.session_state.logado:
         aba = st.tabs(["Já tenho conta", "Criar conta"])
 
         with aba[0]:
-            # V149 — estado de carregamento aparece no próprio botão de login.
             if "_login_autenticando" not in st.session_state:
                 st.session_state["_login_autenticando"] = False
 
-            # V221 — spinner animado dentro do botão. O botão permanece
-            # desabilitado para impedir cliques duplicados, mas a animação
-            # continua durante todas as retentativas automáticas do Supabase.
             st.markdown("""
             <style>
             @keyframes login-spinner-v221 {
@@ -16590,14 +13552,11 @@ if not st.session_state.logado:
                     key="_login_submit_button_",
                 )
 
-            # Exibe eventual erro após o estado do botão voltar ao normal.
             if (not st.session_state["_login_autenticando"]) and st.session_state.get("_login_erro"):
                 st.error(st.session_state.pop("_login_erro"))
 
             if submit_login:
                 if email_login and senha_login:
-                    # Guarda os dados apenas para atravessar o rerun que troca o
-                    # estado visual do botão antes de iniciar a chamada externa.
                     st.session_state["_login_email_pendente"] = email_login
                     st.session_state["_login_senha_pendente"] = senha_login
                     st.session_state["_login_autenticando"] = True
@@ -16606,14 +13565,11 @@ if not st.session_state.logado:
                 else:
                     st.warning("Preencha e-mail e senha.")
 
-            # No rerun seguinte o botão já foi renderizado como
-            # "Autenticando..." e desabilitado; só então fazemos o login.
             if st.session_state["_login_autenticando"]:
                 _email_pendente = st.session_state.get("_login_email_pendente", "")
                 _senha_pendente = st.session_state.get("_login_senha_pendente", "")
                 user, err = login_supabase(_email_pendente, _senha_pendente)
 
-                # Senha não permanece guardada após a tentativa.
                 st.session_state.pop("_login_senha_pendente", None)
 
                 if user:
@@ -16682,12 +13638,6 @@ if not st.session_state.logado:
 
     st.stop()
 
-# ---------------------------------------------------
-#  MIGRAÇÃO DE MÍDIA EM BACKGROUND
-# ---------------------------------------------------
-# A página abre rápido com os links originais do Facebook (que ainda
-# duram bem mais que 1 dia). Em paralelo, uma thread baixa e sobe as
-# mídias pro R2 e atualiza o ads_cache — sem bloquear a navegação.
 
 import threading
 
@@ -16722,8 +13672,6 @@ def _empresa_ainda_valida(user_id: str, empresa_nome: str, query_usada: str, pla
             if c.get("nome") != empresa_nome:
                 continue
             id_atual = (c.get(campo_id) or "").strip()
-            # nome bate; se não há id configurado pra essa plataforma ou
-            # ele continua igual ao usado na coleta, a empresa segue válida
             return (not id_atual) or (id_atual == query_usada)
         return False  # nome não existe mais na configuração do usuário
     except Exception:
@@ -16750,21 +13698,10 @@ def _contar_midias_travadas_no_teto(user_id: str, empresa: str) -> int:
     except Exception:
         return 0
 
-# Marca, em memória, qual (user_id, empresa) tem uma thread processando
-# ela agora mesmo — usado pela exibição (_migracao_travada) pra saber se
-# está "Rodando agora" sem depender só do heartbeat salvo no banco. Sem
-# isso, a tela dizia "Parado" por até uns 20s depois da thread já ter
-# começado a trabalhar de verdade (o primeiro heartbeat só sai depois
-# de INTERVALO_HEARTBEAT_SEGUNDOS — ver persistir_midias_de_ads), o que
-# é uma mensagem simplesmente errada: tinha thread ativa, sim.
 _lock_migracao_empresa_ativa = threading.Lock()
 
 @st.cache_resource
 def _get_migracoes_empresa_ativas_agora() -> set:
-    # Mesmo motivo do _get_transcricoes_empresa_ativas_agora acima: precisa
-    # sobreviver aos reruns do Streamlit, senão a trava contra threads
-    # duplicadas por (user_id, empresa) volta a zero a cada rerun e para
-    # de funcionar de fato.
     return set()
 
 _migracoes_empresa_ativas_agora = _get_migracoes_empresa_ativas_agora()  # elementos: (user_id, empresa)
@@ -16773,16 +13710,6 @@ def _migracao_empresa_esta_ativa_agora(user_id: str, empresa: str) -> bool:
     with _lock_migracao_empresa_ativa:
         return (user_id, empresa) in _migracoes_empresa_ativas_agora
 
-# ── RPCs por plataforma ──
-# `ads_cache` (Meta) e `gads_cache` (Google) são colunas jsonb separadas
-# na tabela `ci_dados`. Cada uma tem seu próprio par de RPCs no Supabase
-# pra fazer a escrita atômica (por id de anúncio, ou por substituição de
-# URL) sem ler-e-regravar a coluna inteira em Python. Esse mapeamento
-# existe porque antes só existia a versão de Meta (`..._no_ads_cache`) —
-# ela era chamada incondicionalmente pra QUALQUER plataforma, o que fazia
-# a migração do Google Ads parecer "concluída" (o upload pro R2 realmente
-# acontecia) mas nunca gravar a URL nova em `gads_cache`, deixando a
-# aba de Google pra sempre com o link original (selo de relógio).
 _RPC_ATUALIZAR_CACHE = {
     "Meta Ads": "atualizar_ads_no_cache",
     "Google Ads": "atualizar_gads_no_cache",
@@ -16827,32 +13754,12 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         )
         print(f"[MIGR-DEBUG] _migrar_midia_background persistir_midias_de_ads concluiu: empresa={empresa!r} stats={stats_midia}", flush=True)
 
-        # Os vídeos que acabaram de ser migrados já estão salvos no R2 e no
-        # registro `midias`, mas ainda sem transcrição (ver comentário em
-        # baixar_e_persistir_midia). Dispara a fila separada agora, JÁ
-        # PRA ESSA EMPRESA — ela roda numa thread própria e devolve na
-        # hora, então não atrasa o fechamento desta atividade de
-        # migração, e cria/atualiza a atividade `transcricao_video`
-        # correspondente pra essa mesma empresa.
         iniciar_transcricao_pendente_background(user_id, empresa)
 
-        # Mesma lógica acima, mas pra OCR das imagens do Google Ads (ver
-        # bloco "OCR DE IMAGENS DO GOOGLE ADS" acima) — empresas sem
-        # nenhuma imagem do Google simplesmente não têm nada pendente e
-        # a função retorna sem criar atividade nenhuma.
         iniciar_ocr_pendente_background(user_id, empresa)
 
-        # Atualização atômica: troca só os anúncios migrados (por id),
-        # direto no Postgres, sem ler-e-regravar o ads_cache inteiro em
-        # Python. Isso evita a corrida entre migrações concorrentes de
-        # empresas diferentes e nunca perde anúncios históricos que não
-        # vieram nessa coleta específica.
         _ads_migrado_empresa = migrado.get(empresa, {}).get("data", [])
         for _ad_mig in _ads_migrado_empresa:
-            # Só descarta o base64 provisório quando a imagem já virou um
-            # link permanente do R2 — enquanto sobrar link cru do Google
-            # sem migrar, o card depende desse base64 pra mostrar alguma
-            # coisa (ver _imagem_precisa_de_b64_provisorio).
             if not _imagem_precisa_de_b64_provisorio(_ad_mig):
                 _ad_mig.pop("images_b64", None)
         atualizacoes = {
@@ -16863,10 +13770,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
             return
 
         if plataforma == "Google Ads":
-            # V234: nunca substitui a empresa canônica por um recorte antigo
-            # vindo do Supabase. Parte do R2 atual e aplica somente os campos
-            # de mídia/OCR dos IDs processados. Assim anúncios novos, datas e
-            # metadados da coleta corrente permanecem intactos.
             _canonico_atual = dict(
                 (_carregar_checkpoints_gads_r2(user_id).get(empresa) or {})
             )
@@ -16902,8 +13805,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     if _campo in _campos_midia or _campo.startswith("video_cc"):
                         _ad_atual[_campo] = _valor
                 _atualizados += 1
-            # Se ainda não havia canônico para a empresa, ou se o legado tem
-            # um ID ausente, acrescenta sem remover nada do conjunto atual.
             for _ad_id, _ad_processado in _migrados_por_id.items():
                 if _ad_id not in _ids_atuais:
                     _dados_atuais.append(dict(_ad_processado))
@@ -16932,15 +13833,9 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "motivo": f"Mídias processadas, mas o cache por empresa não foi atualizado: {_erro_r2_migracao}",
                 })
                 return
-            # V259: o inventário geral acompanha o resultado do
-            # armazenamento, sem depender de alguém abrir a página.
             _salvar_manifesto_gads_json_v261(
                 user_id, motivo=f"armazenamento_concluido:{empresa}"
             )
-            # Agora que o checkpoint canônico já aponta para as URLs R2,
-            # a busca V260 encontra exatamente as imagens exibidas no card.
-            # A chamada anterior à gravação é mantida por compatibilidade;
-            # esta é a confirmação determinística do encadeamento.
             iniciar_ocr_pendente_background(user_id, empresa)
             _total_r2 = int(stats_midia.get("total", 0) or 0)
             _falhas_r2 = int(stats_midia.get("nao_migrados", 0) or 0)
@@ -16954,10 +13849,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                     "migradas": max(0, _total_r2 - _falhas_r2),
                     "nao_migradas": _falhas_r2,
                     "armazenamento_principal": "r2_por_empresa",
-                    # V246 — uma passada que terminou com imagens faltando
-                    # precisa deixar um checkpoint que o verificador consiga
-                    # reconhecer e retomar. Sem estes campos, a atividade
-                    # ficava laranja para sempre, sem nova tentativa.
                     "ultima_tentativa_em": _agora_iso(),
                     "aviso": (
                         f"{max(0, _total_r2 - _falhas_r2)} de {_total_r2} mídia(s) "
@@ -16980,40 +13871,11 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
         }).execute()
 
         if res.data:
-            # "concluído" só pode significar "tudo migrado". Enquanto sobrar
-            # item com link original, a atividade fica "em_andamento" (não
-            # "concluido") — assim o sino mostra quantos já foram e quantos
-            # faltam em vez de um selo verde escondendo o que não terminou,
-            # e a tela libera o botão "Refazer" pra essa mesma atividade.
             total = stats_midia.get("total", 0)
             nao_migrados = stats_midia.get("nao_migrados", 0)
             migradas = total - nao_migrados
             if nao_migrados:
-                # Se TODOS os pendentes desta passada já bateram no teto de
-                # MAX_TENTATIVAS_MIDIA (ver baixar_e_persistir_midia), não
-                # existe "vamos tentar de novo automaticamente" real — o
-                # próprio código já desiste dessas URLs antes de tentar
-                # baixar. Deixar como "em_andamento" nesse caso faz o retry
-                # automático (retentar_migracoes_travadas_automaticamente)
-                # ficar rodando essa empresa pra sempre, sem nenhuma chance
-                # de progresso, e mostra pro usuário uma mensagem enganosa
-                # de que vai se resolver sozinho. Aqui vira "erro" de
-                # verdade — só assim para de ser retentada à toa e o
-                # usuário sabe que precisa de uma ação real (nova coleta
-                # dessa empresa, pra pegar links do Facebook atualizados,
-                # antes de migrar de novo).
                 _travadas_no_teto = _contar_midias_travadas_no_teto(user_id, empresa)
-                # Antes de aceitar "em_andamento" (que promete retry automático),
-                # checa se o motivo real de sobrar pendente é a cota mensal do
-                # plano ter estourado (ver PLANOS_QUOTA_MIDIAS/pode_baixar_midia).
-                # Itens barrados por cota nem chegam a tentar o download — logo
-                # nunca aparecem em midias_falhas e não entram em
-                # _travadas_no_teto — então, sem esta checagem, o código caía
-                # direto no "em_andamento" com a mensagem "vamos tentar de novo
-                # automaticamente", que é falsa: o retry automático não baixa
-                # nada enquanto a cota não liberar no próximo ciclo (ou o plano
-                # mudar), então essa passada ficaria girando pra sempre sem
-                # nenhum progresso real.
                 _cota_esgotada = (_travadas_no_teto < nao_migrados) and not pode_baixar_midia(user_id)
                 if _travadas_no_teto >= nao_migrados:
                     status_final = "erro"
@@ -17035,12 +13897,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                         "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
                     }
                 elif _cota_esgotada:
-                    # "erro" aqui não significa "algo quebrou" — significa "o
-                    # retry automático não vai adiantar nada até a cota
-                    # liberar". Isso também tira essa atividade da varredura de
-                    # retentar_migracoes_travadas_automaticamente (que só olha
-                    # status "em_andamento"), evitando um retry infinito e
-                    # inútil enquanto a cota estiver estourada.
                     _limite_cota = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario())
                     status_final = "erro"
                     detalhes_finais = {
@@ -17066,15 +13922,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                 else:
                     status_final = "em_andamento"
                     detalhes_finais = {
-                        # "empresa"/"plataforma" precisam ser regravados aqui
-                        # (e em TODO update de detalhes desta atividade)
-                        # porque atualizar_atividade substitui o dict inteiro,
-                        # não faz merge — sem isso, a primeira atualização de
-                        # progresso apaga esses campos, e o dedup de
-                        # iniciar_migracao_midia_background (que casa por
-                        # empresa+plataforma) nunca mais acha essa atividade,
-                        # criando um card NOVO pra mesma empresa na próxima
-                        # verificação em vez de reaproveitar este.
                         "empresa": empresa,
                         "plataforma": plataforma,
                         "migradas": migradas,
@@ -17089,13 +13936,6 @@ def _migrar_midia_background(user_id: str, empresa: str, entry: dict, atividade_
                         "total_anuncios_com_erro": stats_midia.get("total_anuncios_com_erro", 0),
                         "anuncios_migrados": stats_midia.get("anuncios_migrados", []),
                         "total_anuncios_migrados": stats_midia.get("total_anuncios_migrados", 0),
-                        # Carimba quando essa passada terminou — é o que permite
-                        # diferenciar "ainda processando agora" de "já terminou
-                        # e está só esperando a próxima tentativa" sem precisar
-                        # de coluna nova no banco. O retry automático (ver
-                        # retentar_migracoes_travadas_automaticamente) usa esse
-                        # campo pra saber há quanto tempo essa atividade está
-                        # parada antes de decidir refazer sozinho.
                         "ultima_tentativa_em": _agora_iso(),
                     }
             elif total:
@@ -17129,8 +13969,6 @@ def _estimar_timeout_migracao(entry: dict) -> int:
     n_imagens = sum(len(a.get("images") or []) for a in ads)
     n_videos = sum(len(a.get("videos") or []) for a in ads)
 
-    # tetos generosos por item (pior caso: rede lenta, ffmpeg). Whisper
-    # não entra mais nessa conta — ver comentário em persistir_midias_de_ads.
     SEGUNDOS_POR_IMAGEM = 20
     SEGUNDOS_POR_VIDEO = 60
     PARALELISMO = 1  # migração pesada é deliberadamente serial
@@ -17152,7 +13990,6 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     _plataformas = sorted({str(t[3]) for t in tarefas})
     _detalhe = f"{', '.join(_plataformas)} · {len(tarefas)} empresa(s)"
 
-    # Se a faixa estiver ocupada, mostra no sino que a migração está em fila.
     if _fila_pesada_esta_ocupada():
         for empresa, _entry, atividade_id, plataforma in tarefas:
             try:
@@ -17172,9 +14009,6 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
     _ticket_fila_pesada = None
     try:
         _esperar_coleta_prioritaria_v195(user_id, "MIGRAÇÃO")
-        # Segunda camada: mesmo que o processo tenha reiniciado e perdido o
-        # threading.Lock anterior, uma atividade OCR com heartbeat recente
-        # impede que a migração comece imediatamente.
         _esperar_outra_acao_pesada_persistente(
             user_id,
             excluir_tipos=("migracao_midia",),
@@ -17231,10 +14065,6 @@ def _migrar_todas_empresas_sequencial(user_id: str, tarefas: list):
                     f"{plataforma}:{empresa}",
                 )
 
-        # V259: terminadas as empresas da coleta, faz uma conferência geral
-        # do inventário canônico. Isso inclui anúncios históricos que não
-        # vieram no lote atual e elimina a dependência de abrir a página para
-        # descobrir imagens ainda pendentes.
         if "Google Ads" in _plataformas:
             try:
                 _cache_pos_coleta_v259 = _carregar_checkpoints_gads_r2(user_id) or {}
@@ -17361,12 +14191,6 @@ def encontrar_ads_com_link_original(
             imagens = ad.get("images") or []
             videos = ad.get("videos") or []
             midias_relevantes = videos if videos else imagens
-            # No Google Ads, a foto de perfil não é a mídia do criativo e
-            # não controla o relógio exibido no card. Tratá-la como pendência
-            # fazia a manutenção concluir, salvar as imagens e, na próxima
-            # verificação, encontrar os mesmos anúncios novamente. O chamador
-            # do Google desativa este campo; a Meta mantém o comportamento
-            # anterior porque ali a foto da página faz parte da biblioteca.
             foto_perfil = ad.get("page_profile_picture")
             if incluir_foto_perfil and foto_perfil:
                 midias_relevantes = list(midias_relevantes) + [foto_perfil]
@@ -17422,8 +14246,6 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
             from urllib.parse import urlsplit
             _p = urlsplit(_u)
             _host = (_p.hostname or "").lower()
-            # URLs de criativo do Google podem trocar apenas query params;
-            # host + path continuam identificando o mesmo arquivo.
             if "google" in _host or "doubleclick" in _host:
                 return f"{_host}{_p.path}"
         except Exception:
@@ -17522,7 +14344,6 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
                 _ct = str(_resp.headers.get("content-type") or "").lower()
                 if _resp.status_code != 200 or not _resp.content or not _ct.startswith("image/"):
                     continue
-                # Proteção contra respostas indevidas ou imagens gigantes.
                 if len(_resp.content) > 20 * 1024 * 1024:
                     break
                 _downloads_v255 += 1
@@ -17600,11 +14421,6 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
             if not isinstance(_ad, dict):
                 continue
             _ad_id = str(_ad.get("id") or "")
-            # V254: quando o upload foi deduplicado por conteúdo, a linha de
-            # `midias` pode pertencer a outro anúncio/URL. Nesse caso o vínculo
-            # por origem da V253 não existe, mas o base64 provisório contém os
-            # mesmos bytes usados para calcular `hash_conteudo` no upload.
-            # Reconhece localmente, sem rede e sem novo processamento.
             _cdns_por_base64 = set()
             for _b64_item in (_ad.get("images_b64") or []):
                 _b64_txt = str(_b64_item or "")
@@ -17640,8 +14456,6 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
                             _por_origem.get((str(_empresa), _ad_id, _tipo, _chave_url(_url)))
                             or _por_origem.get(("", "", _tipo, _chave_url(_url)))
                         )
-                    # Fallback seguro: só usa o vínculo por anúncio quando
-                    # existe exatamente uma mídia permanente daquele tipo.
                     if not _cdn and len(_cdns_ad) == 1:
                         _cdn = next(iter(_cdns_ad))
                     if not _cdn and _tipo == "imagem" and len(_cdns_por_base64) == 1:
@@ -17668,9 +14482,6 @@ def _reconectar_gads_r2_com_midias_salvas_v256(
                 _total_trocas += _trocas_empresa
                 _empresas_alteradas.append(str(_empresa))
             else:
-                # A varredura precisa continuar enxergando as URLs originais
-                # quando o checkpoint não pôde ser gravado; assim não declara
-                # sucesso apenas na cópia temporária em memória.
                 _cache_novo[_empresa] = copy.deepcopy(gads_cache.get(_empresa) or {})
                 print(
                     f"[GADS-R2-V256] falha ao salvar reconciliação "
@@ -17848,8 +14659,6 @@ def _forcar_armazenamento_imagens_gads_v257(
                     _nova = _memo_url.get(_url)
                     if _nova is None:
                         if _url.startswith("data:"):
-                            # V273: a captura visual é uma mídia temporária e
-                            # precisa ser persistida como qualquer outra imagem.
                             _nova = _persistir_data_uri_imagem_gads_v273(
                                 _url, user_id, str(_empresa), _ad_id
                             )
@@ -17939,8 +14748,6 @@ def _reparar_imagens_visiveis_com_relogio_v258(
         }
         _canonico = _carregar_checkpoints_gads_r2(user_id) or {}
 
-        # Trabalha com o registro canônico quando ele existe. Se o card da
-        # sessão for mais novo, usa o próprio registro visível como fallback.
         _alvo = {}
         for _empresa, _entry_vis in _visiveis.items():
             _entry_can = _canonico.get(_empresa) or {}
@@ -17964,9 +14771,6 @@ def _reparar_imagens_visiveis_com_relogio_v258(
         ))
         _stats = {"total": 0, "processadas": 0, "salvas": 0, "falhas": 0, "empresas": []}
         if _alvo:
-            # A função salva o checkpoint completo da empresa. Para não
-            # substituir anúncios alheios ao reparo por uma lista parcial,
-            # injeta os anúncios-alvo no snapshot canônico completo.
             _cache_reparo = copy.deepcopy(_canonico)
             for _empresa, _entry_alvo in _alvo.items():
                 if _empresa not in _cache_reparo:
@@ -17979,8 +14783,6 @@ def _reparar_imagens_visiveis_com_relogio_v258(
         _salvar_manifesto_gads_json_v261(
             user_id, _depois, motivo="reparo_imagens_com_relogio"
         )
-        # Mesmo quando a imagem já estava no R2 e só faltava atualizar o
-        # card, o OCR precisa ser conferido e enfileirado.
         for _empresa_ocr_v260 in sorted(_visiveis.keys()):
             iniciar_ocr_pendente_background(user_id, str(_empresa_ocr_v260))
         _pendentes_depois = _encontrar_imagens_gads_pendentes_v257(_depois)
@@ -18121,11 +14923,6 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                 _em_verificacao=True,
             )
 
-        # V273: o manifesto é um índice, não pode decidir sozinho se precisa
-        # consultar a fonte real. Versões anteriores confiavam em um resumo
-        # antigo com zero pendências e nunca enxergavam novas capturas em
-        # `images_b64`. Toda reconciliação relê os checkpoints e regrava o
-        # manifesto antes de decidir migração, OCR ou CC.
         _cache = _carregar_checkpoints_gads_r2(user_id) or {}
         _ok_inicial, _manifesto_inicial = _salvar_manifesto_gads_json_v261(
             user_id, _cache, motivo="reconstrucao_fonte_real_v273"
@@ -18174,9 +14971,6 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                     "Mídias conferidas. Verificando OCR pendente por empresa.",
                 )
 
-        # Vídeo segue para CC, nunca para OCR. O cache leve do manifesto é
-        # suficiente para decidir se existe trabalho; o worker relê o
-        # checkpoint completo antes de salvar qualquer resultado.
         _cache_cc = _cache or _cache_minimo_do_manifesto_v265(
             _manifesto_antigo or {}
         )
@@ -18189,15 +14983,10 @@ def _reconciliar_manifesto_gads_pos_login_v261(
         if _cc_iniciado:
             _acoes.append("cc_youtube_enfileirado")
 
-        # Só depois da mídia reconciliada procura OCR ausente nas imagens de
-        # anúncios gráficos. Capas de anúncios em vídeo já foram excluídas.
         _empresas_ocr = _empresas_com_ocr_pendente(user_id)
         _ocr_iniciados = []
         _ocr_nao_iniciados = []
         for _empresa in _empresas_ocr:
-            # A reconciliação pós-login é uma ação explícita de recuperação.
-            # Se existe uma atividade antiga em erro, ela é reaberta e
-            # reutilizada em vez de a pendência ficar apenas no resumo.
             _resultado_ocr = iniciar_ocr_pendente_background(
                 user_id, _empresa, force=True
             ) or {"ok": False, "motivo": "sem_retorno"}
@@ -18219,10 +15008,6 @@ def _reconciliar_manifesto_gads_pos_login_v261(
         if _ocr_nao_iniciados:
             _acoes.append(f"ocr_nao_iniciado:{len(_ocr_nao_iniciados)}")
 
-        # Recalcula sempre os estados de OCR. Quando não foi necessário abrir
-        # os checkpoints, usa o próprio manifesto como índice leve. Isso evita
-        # manter por dias uma contagem antiga como "0 concluídos / 289
-        # pendentes" quando os cards já possuem OCR estruturado válido.
         _cache_manifesto = _cache
         if _cache_manifesto is None:
             _cache_manifesto = _cache_minimo_do_manifesto_v265(
@@ -18297,9 +15082,6 @@ def iniciar_reconciliacao_manifesto_gads_pos_login_v261(
     """Abre a reconciliação do manifesto sem duplicar um processo ativo."""
     if not user_id:
         return False
-    # V269: login e abertura da página usam o mesmo controlador. A checagem
-    # vem antes de criar a atividade para não deixar um card duplicado dizendo
-    # apenas que outra verificação já estava em execução.
     if _job_is_active("manifesto_gads_v261", user_id, "pos_login"):
         st.session_state["_manifesto_gads_ultima_solicitacao_epoch_v269"] = time.time()
         print(
@@ -18379,12 +15161,6 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
                 ),
                 "ultimo_heartbeat_em": _agora_iso(),
             })
-        # V248 — a interface usa os checkpoints por empresa no R2 como fonte
-        # canônica (V233). A verificação antiga ainda lia `ci_dados.gads_cache`,
-        # que pode estar desatualizado; ela anunciava sucesso sobre um recorte
-        # antigo enquanto os cards atuais continuavam com relógio. Varremos a
-        # mesma fonte que a tela renderiza e só usamos o banco legado como
-        # fallback de disponibilidade.
         try:
             gads_cache = _carregar_checkpoints_gads_r2(user_id) or {}
             _fonte_verificacao = "r2_por_empresa"
@@ -18393,21 +15169,12 @@ def _verificar_e_migrar_pendentes_google_bg(user_id: str, atividade_id: str = No
             res = supabase.table("ci_dados").select("gads_cache").eq("user_id", user_id).execute()
             gads_cache = (res.data[0].get("gads_cache") or {}) if res.data else {}
             _fonte_verificacao = "gads_cache_legado"
-        # V256: antes de declarar a imagem pendente e migrá-la outra vez,
-        # reconecta o cache às mídias que já existem na biblioteca. Isso
-        # corrige o relógio e permite que o renderer encontre o OCR pela
-        # url_cdn sem repetir download, compressão ou processamento.
         if _fonte_verificacao == "r2_por_empresa":
             gads_cache, _reconectadas_v256 = _reconectar_gads_r2_com_midias_salvas_v256(
                 user_id, gads_cache, atividade_id=atividade_id
             )
             if _reconectadas_v256:
                 _fonte_verificacao = "r2_por_empresa_reconciliado"
-        # V257: o relógio do card é definido por `images`. A regra histórica
-        # preferia `videos` quando os dois campos existiam e, por isso, 58
-        # anúncios eram classificados pelo vídeo enquanto a imagem HTTP nunca
-        # chegava ao armazenamento. A partir daqui a manutenção olha e salva
-        # explicitamente as imagens, sem alterar ou migrar os vídeos.
         _pendentes_antes = _encontrar_imagens_gads_pendentes_v257(gads_cache)
         _total_ads_antes = sum(len(e.get("data", [])) for e in _pendentes_antes.values())
         print(
@@ -18506,8 +15273,6 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
             _ativos.append("finalização protegida de uma coleta")
         return _ativos
 
-    # V250: quando o cache já comprova que existem imagens com relógio,
-    # inicia a correção imediatamente. A coleta continua tendo prioridade.
     _bloqueios_iniciais_v250 = _bloqueios_coleta_atuais()
     _pendencias_confirmadas_v250 = False
     if not _bloqueios_iniciais_v250:
@@ -18534,9 +15299,6 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
         })
         print("[MIGR-DEBUG] V250 pula janela: imagens com relógio confirmadas", flush=True)
 
-    # Etapa 1: reserva uma janela real para o usuário iniciar uma coleta.
-    # A notificação agora mostra a contagem regressiva em vez da mensagem
-    # vaga "aguardando" que parecia um travamento.
     for _passo in range(0 if _pendencias_confirmadas_v250 else 24):  # 120 segundos, em passos de 5s
         _bloqueios = _bloqueios_coleta_atuais()
         _restantes = max(0, 120 - (_passo * 5))
@@ -18571,8 +15333,6 @@ def _verificar_pendentes_google_apos_janela_coleta_v205(user_id: str, atividade_
             })
         time.sleep(5)
 
-    # Se uma coleta realmente começou, mantém o card vivo e informa
-    # exatamente qual ação está bloqueando a manutenção.
     _ultimo_texto_bloqueio = None
     while True:
         _bloqueios = _bloqueios_coleta_atuais()
@@ -18638,21 +15398,12 @@ def iniciar_verificacao_pendentes_google_background(user_id: str):
             if _minutos_desde < _MIN_MINUTOS_ENTRE_VERIFICACOES_PENDENTES_GADS:
                 _status_ultima = str(_res_ultima.data[0].get("status") or "")
                 _detalhes_ultima = _res_ultima.data[0].get("detalhes") or {}
-                # Depois que a V257 já iniciou o armazenamento forçado, o
-                # intervalo de 15 minutos é obrigatório mesmo que ainda haja
-                # relógios. Isso impede F5/nova sessão de disparar novamente
-                # os mesmos downloads enquanto a tentativa anterior termina.
                 if _detalhes_ultima.get("versao_forcamento") == "V257":
                     print(
                         f"[GADS-R2-V257] throttle respeitado minutos={_minutos_desde:.1f}",
                         flush=True,
                     )
                     return
-                # Uma verificação realmente ativa continua protegida contra
-                # duplicação. Uma verificação CONCLUÍDA, porém, não pode
-                # bloquear por 15 minutos se o cache canônico ainda contém
-                # imagens com relógio — foi exatamente o que ocorreu após a
-                # primeira migração da V246/V247.
                 if _status_ultima in ("pendente", "em_andamento") and _minutos_desde < 5:
                     return
                 try:
@@ -18761,9 +15512,6 @@ def iniciar_verificacao_ocr_pendente_google_background(user_id: str):
                 _status_ultima = str(_res_ultima.data[0].get("status") or "")
                 if _status_ultima in ("pendente", "em_andamento") and _minutos_desde < 5:
                     return
-                # A verificação anterior pode ter rodado ANTES da migração e
-                # concluído "zero". Se agora já existem imagens salvas sem
-                # OCR, ela precisa rodar novamente imediatamente.
                 if not _empresas_com_ocr_pendente(user_id):
                     return
                 print(
@@ -18825,8 +15573,6 @@ def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
                                 precisa_reparar = True
                     ad_copia[campo] = urls
 
-                # foto de perfil é um campo único (string), não uma lista —
-                # mesma verificação, sem indexação.
                 _foto = ad.get("page_profile_picture")
                 if _foto and R2_PUBLIC_BASE and _foto.startswith(R2_PUBLIC_BASE):
                     verificados += 1
@@ -19040,9 +15786,6 @@ def _ids_gads_incompletos_dos_detalhes(detalhes: dict) -> dict:
     estruturado = detalhes.get("incompletos_ids_por_empresa") or {}
     if estruturado:
         return {str(k): [str(x) for x in (v or [])] for k, v in estruturado.items() if v}
-    # Durante o "Refazer", os campos de erro podem ser substituídos pelos
-    # dados de progresso. O backup persistente continua identificando os IDs
-    # e deve participar da deduplicação da fila.
     por_empresa_backup = ((detalhes.get("backup_desfazer") or {}).get("por_empresa") or {})
     if por_empresa_backup:
         convertido_backup = {}
@@ -19070,9 +15813,6 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
     if not user_id:
         return ""
     try:
-        # V235: o cache canônico do Google Ads está no R2 por empresa.
-        # Consultar o JSON legado do Supabase recriava notificações antigas
-        # e podia deixar de enxergar anúncios da coleta mais recente.
         _cache = _carregar_checkpoints_gads_r2(user_id)
         _ids_por_empresa = {}
         for _empresa, _entry in _cache.items():
@@ -19138,11 +15878,6 @@ def garantir_atividade_gads_incompletos(user_id: str) -> str:
             atividade_existente = None
             atividade_agrupada = None
 
-            # Uma coleta já em andamento para a empresa tem prioridade. Não
-            # exige que o anúncio já tenha sido corrigido no cache: justamente
-            # enquanto ele ainda está sendo coletado a varredura voltará a vê-lo
-            # como incompleto. Remove somente duplicatas sintéticas criadas pela
-            # varredura, preservando a atividade original e todo o histórico.
             atividade_ativa_empresa = None
             for ativ in _atividades:
                 if ativ.get("status") not in ("pendente", "em_andamento"):
@@ -19235,9 +15970,6 @@ def preparar_refazer_gads_incompletos(user_id: str, atividade: dict) -> tuple:
     if not atividade_id or not ids_por_empresa:
         return False, [], "A notificação não contém IDs pendentes."
     try:
-        # V235: backup sempre nasce da fonte canônica atual. O Supabase
-        # conserva somente o legado/índice e não contém necessariamente os
-        # 299 anúncios recém-coletados.
         cache = _carregar_checkpoints_gads_r2(user_id)
         backup_por_empresa = {}
         for _empresa, _ids in ids_por_empresa.items():
@@ -19288,18 +16020,11 @@ def refazer_migracao_midia(user_id: str, empresa: str, atividade_id: str, plataf
         if not entry:
             return False
 
-        # Segurança V210: não inicia nenhuma alteração sem snapshot válido.
         if not _criar_backup_antes_de_refazer_migracao(
             user_id, atividade_id, empresa, plataforma, entry
         ):
             return False
 
-        # Reseta o teto de tentativas antes de tentar de novo — sem isso,
-        # "Refazer" numa atividade que virou "erro" por ter esgotado as
-        # tentativas (ver _migrar_midia_background) bateria no mesmo teto
-        # na hora, sem baixar nada de verdade, e voltaria a "erro"
-        # imediatamente — dando a falsa impressão de que o botão não fez
-        # nada.
         _resetar_falhas_midia_empresa(user_id, empresa)
 
         atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "plataforma": plataforma})
@@ -19410,9 +16135,6 @@ def refazer_transcricao_video(user_id: str, empresa: str, atividade_id: str) -> 
         return False
     with _lock_transcricao_pendente:
         if (user_id, empresa) in _transcricoes_empresa_ativas_agora:
-            # já tem uma fila rodando pra essa empresa (ex: o auto-retry de
-            # 15s religou antes do clique chegar) — não duplica a thread,
-            # mas ainda assim é um "sucesso" do ponto de vista do usuário.
             return True
         _transcricoes_empresa_ativas_agora.add((user_id, empresa))
     atualizar_atividade(atividade_id, "em_andamento", {"empresa": empresa, "transcritas": 0, "total": total})
@@ -19439,8 +16161,6 @@ def refazer_ocr_gads(user_id: str, empresa: str, atividade_id: str) -> bool:
         atualizar_atividade(atividade_id, "concluido", {"empresa": empresa, "processadas": 0, "total": 0})
         return False
 
-    # Libera marcas locais antigas para que o coordenador único possa
-    # reencaminhar a empresa sem criar execução paralela.
     try:
         with _lock_ocr_pendente:
             _ocr_empresas_ativas_agora.discard((user_id, empresa))
@@ -19451,8 +16171,6 @@ def refazer_ocr_gads(user_id: str, empresa: str, atividade_id: str) -> bool:
     except Exception:
         pass
 
-    # ao recolocá-la em ``na_fila``; iniciar_ocr_pendente_background(force)
-    # cuida do FIFO e só a transforma em processando quando chegar a vez.
     iniciar_ocr_pendente_background(user_id, empresa, force=True)
     return True
 
@@ -19516,30 +16234,9 @@ def refazer_coleta_redes(user_id: str, atividade_id: str, empresas_com_erro: lis
     ).start()
     return True
 
-# ---------------------------------------------------
-#  RETRY AUTOMÁTICO DE MIGRAÇÃO TRAVADA
-# ---------------------------------------------------
-# Antes disso, uma migração que terminava uma passada com itens pendentes
-# ficava "em_andamento" pra sempre, esperando um gatilho que só vinha
-# manual (botão "Refazer"/"Corrigir agora") ou na próxima coleta — podia
-# passar horas/dias sem ninguém perceber. Aqui a gente detecta esse
-# estado ("aviso" presente = já terminou uma passada e está esperando) e
-# refaz sozinho depois de um tempo parado, reaproveitando o mesmo
-# refazer_migracao_midia que o botão já usa — sem criar um caminho novo.
-#
-# Só retenta UMA empresa por vez (a mais parada), mesmo se várias
-# estiverem travadas ao mesmo tempo: migrações concorrentes de vídeo já
-# causaram esgotamento de processos do SO antes (ver comentário em
-# _migrar_todas_empresas_sequencial), então manter o retry automático
-# sequencial também evita repetir esse problema.
 
 LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS = 90
 
-# Heartbeat (ver persistir_midias_de_ads) grava a cada 20s, independente de
-# qualquer item ter terminado — por isso pode usar um limiar bem mais
-# apertado que o antigo (baseado em item concluído) sem gerar falso
-# positivo: perder 2 heartbeats seguidos (40s) já é sinal forte de thread
-# morta; damos folga extra pra jitter de rede/Supabase.
 LIMIAR_HEARTBEAT_TRAVADA_SEGUNDOS = 50
 
 def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TRAVADA_SEGUNDOS) -> bool:
@@ -19570,45 +16267,19 @@ def _migracao_travada(atividade: dict, limiar_segundos: int = LIMIAR_MIGRACAO_TR
     if empresa and _migracao_empresa_esta_ativa_agora(atividade.get("user_id"), empresa):
         return False
     if not d.get("aviso"):
-        # Sem 'aviso' = ou nunca rodou uma passada ainda (recém-criada),
-        # ou é uma migração antiga sem esse campo — nesses casos não dá
-        # pra saber com segurança se tem thread ativa, então não mexe.
         return False
     if d.get("ultimo_heartbeat_em"):
         return _segundos_desde(d["ultimo_heartbeat_em"]) >= LIMIAR_HEARTBEAT_TRAVADA_SEGUNDOS
     return _segundos_desde(d.get("ultima_tentativa_em", "")) >= limiar_segundos
 
-# Protege contra o fragment de 15s da sidebar disparando uma nova leva de
-# retry antes da anterior sequer ter tido tempo de escrever seu primeiro
-# heartbeat (~20s) — ver o comentário completo dentro de
-# retentar_migracoes_travadas_automaticamente, onde essa trava é usada.
 _lock_retry_migracao = threading.Lock()
 
 @st.cache_resource
 def _get_usuarios_retry_migracao_ativo() -> set:
-    # Mesmo motivo das outras duas acima — precisa ser um singleton que
-    # sobrevive aos reruns do Streamlit, não uma variável de módulo comum.
     return set()
 
 _usuarios_retry_migracao_ativo = _get_usuarios_retry_migracao_ativo()
 
-# ---------------------------------------------------
-#  BUSCA DE ANUNCIANTES (Google Ads Transparency) EM BACKGROUND
-# ---------------------------------------------------
-# Registry de jobs de busca por job_id, seguindo o mesmo raciocínio do
-# singleton acima (_get_usuarios_retry_migracao_ativo): precisa ser um
-# `st.cache_resource` — não um dict de módulo comum — pra sobreviver aos
-# reruns do Streamlit e ficar visível tanto pro script principal quanto
-# pra thread de fundo que o preenche.
-#
-# Por que um registry em memória (em vez de reaproveitar a tabela
-# `atividades`, usada por migracao_midia/transcricao_video/ocr_gads): essa
-# busca é rápida (segundos a ~1-2min), por empresa, e é só um passo do
-# onboarding — não faz sentido virar um item persistente no sino de
-# notificações nem sobreviver a um restart do processo. O que ela
-# precisa mesmo é só o "buscar em background e ler o status depois" que
-# esses jobs de mídia já resolvem com `atividades`; aqui ela ganha o
-# equivalente mínimo disso.
 _lock_gads_onboarding_jobs = threading.Lock()
 
 @st.cache_resource
@@ -19656,11 +16327,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     try:
         res = (
             supabase.table("atividades")
-            # V246 — `_migracao_travada` exige status="em_andamento".
-            # A consulta antiga não trazia a coluna status; por isso TODAS
-            # as atividades viravam status=None durante a verificação e
-            # nenhuma migração parada era retomada automaticamente. Era o
-            # caso do card preso por horas em "Salvando anúncios...".
             .select("id, titulo, detalhes, status, criado_em")
             .eq("user_id", user_id)
             .eq("tipo", "migracao_midia")
@@ -19671,11 +16337,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     except Exception:
         return False
 
-    # Mais antiga primeiro — respeita a mesma ordem que a fila
-    # sequencial original seguiria. O select acima não traz 'user_id'
-    # (não precisa pro resto da query), mas _migracao_travada precisa
-    # dele pra checar o flag de execução ativa em memória — injeta aqui
-    # em vez de pedir mais uma coluna que a gente já sabe de antemão.
     candidatas = [a for a in (res.data or []) if _migracao_travada({**a, "user_id": user_id})]
     if not candidatas:
         return False
@@ -19689,48 +16350,15 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
 
     tarefas = []
     for alvo in candidatas:
-        # "plataforma" só existe nos detalhes de atividades criadas depois
-        # dessa distinção existir (ver iniciar_migracao_midia_background) —
-        # atividades antigas sem esse campo são tratadas como Meta Ads, que
-        # era a única plataforma antes disso. Sem separar por plataforma
-        # aqui, uma migração travada de Google Ads nunca era encontrada
-        # (ela está em `gads_cache`, não em `ads_cache`) e acabava sendo
-        # marcada como "erro" por engano depois de algumas tentativas
-        # (ver o bloco "BUG CORRIGIDO" abaixo) — não porque a empresa
-        # tivesse sumido de verdade, e sim porque a busca olhava a coluna
-        # errada.
         plataforma_alvo = (alvo.get("detalhes") or {}).get("plataforma") or "Meta Ads"
         cache_da_plataforma = gcache_atual if plataforma_alvo == "Google Ads" else cache_atual
         empresa = (alvo.get("detalhes") or {}).get("empresa")
         if not empresa:
-            # Registro antigo sem 'empresa' nos detalhes (ver
-            # retry automático desistia dessa atividade em silêncio pra
-            # sempre, sem nenhum sinal visível pro usuário de que parou de
-            # tentar. Com ele, o retry automático volta a funcionar mesmo
-            # pra atividades antigas já quebradas no banco.
             empresa = _extrair_empresa_do_titulo_migracao(alvo.get("titulo") or "")
         if not empresa:
             continue
         entry = cache_da_plataforma.get(empresa)
         if not entry:
-            # BUG CORRIGIDO: antes, quando a empresa não era encontrada no
-            # ads_cache na hora de montar o lote de retry, a atividade era
-            # simplesmente pulada — sem log, sem erro, sem nenhum sinal.
-            # Ela continuava "em_andamento" com o mesmo 'aviso' de antes, e
-            # a cada novo ciclo de 15s do fragment da sidebar o retry
-            # detectava de novo que ela estava "travada" (heartbeat velho),
-            # tentava de novo, caía direto neste mesmo miss, e assim pra
-            # sempre — o card ficava preso mostrando "vamos tentar de novo
-            # automaticamente" por horas, mesmo com a aba aberta, porque
-            # nada nunca marcava isso como erro nem tentava de outro jeito.
-            # Agora: conta quantas vezes seguidas isso aconteceu pra essa
-            # atividade e, depois de algumas, desiste visivelmente (status
-            # "erro" de verdade, com motivo explicado) em vez de girar pra
-            # sempre sem chance real de progresso. Enquanto isso não bate
-            # o teto, também regrava 'ultima_tentativa_em' — sem isso, o
-            # próximo ciclo de 15s acharia de novo que já passou tempo
-            # demais (heartbeat/tentativa antigos) e martelaria a mesma
-            # query de ads_cache periodicamente à toa.
             _detalhes_atuais = alvo.get("detalhes") or {}
             _tentativas_cache_ausente = _detalhes_atuais.get("tentativas_cache_ausente", 0) + 1
             print(
@@ -19761,19 +16389,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     if not tarefas:
         return False
 
-    # Trava contra sobreposição: sem isso, se a leva de retry anterior
-    # ainda não tiver escrito nenhum heartbeat (o primeiro só sai depois
-    # de ~20s — ver INTERVALO_HEARTBEAT_SEGUNDOS em persistir_midias_de_ads),
-    # a atividade continua parecendo "travada" pro próximo ciclo de 15s
-    # do fragment da sidebar, que dispararia OUTRA thread fazendo o mesmo
-    # trabalho ao mesmo tempo — competindo pelos mesmos downloads/ffmpeg
-    # e piorando exatamente o travamento que o retry deveria resolver
-    # (era isso que deixava empresas grandes, com muito item, presas em
-    # "em_andamento" sem nenhum avanço por horas, enquanto empresas
-    # pequenas conseguiam terminar rápido o suficiente pra escapar do
-    # ciclo). Com a trava, um ciclo de 15s que encontrar uma leva ainda
-    # ativa simplesmente não faz nada — espera a leva atual progredir e
-    # escrever seu próprio heartbeat.
     with _lock_retry_migracao:
         if user_id in _usuarios_retry_migracao_ativo:
             return False
@@ -19789,27 +16404,6 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
     threading.Thread(target=_rodar_lote_e_liberar, daemon=True).start()
     return True
 
-# ---------------------------------------------------
-#  RETRY AUTOMÁTICO DE TRANSCRIÇÃO COM ERRO
-# ---------------------------------------------------
-# Diferente de migracao_midia (onde 'erro' às vezes é PERMANENTE de
-# propósito — cota mensal estourada, link do Facebook expirado de vez —
-# e por isso NUNCA é retentado sozinho, só via clique manual em
-# "Refazer"), o 'erro' de transcricao_video hoje só significa "o UPDATE
-# que grava a transcrição falhou" (rede instável, sessão expirada, RLS
-# mal configurado — foi exatamente isso que deixou atividades de vídeo
-# presas em 'erro' no sino pra sempre até a policy de UPDATE ser criada
-# na tabela `midias`). Causas desse tipo tendem a ser transitórias ou já
-# corrigidas, então aqui faz sentido retentar sozinho — sem isso, o
-# usuário ficava refém de clicar "Refazer" manualmente em cada card, ou
-# via de exclusão em massa (ver excluir_atividades_com_erro), só pra
-# fazer o alerta do sino sumir.
-#
-# Como _transcrever_pendentes_background já tem proteção contra loop
-# infinito (cada linha só é tentada uma vez por execução — ver comentário
-# lá), não tem risco de reprocessar a mesma linha pra sempre. Ainda assim
-# verdade AINDA não tiver sido corrigido, não faz sentido martelar o
-# banco periodicamente tentando de novo a mesma coisa que vai falhar de novo.
 LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS = 300  # 5 min entre tentativas automáticas
 
 def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
@@ -19837,24 +16431,13 @@ def retentar_transcricoes_com_erro_automaticamente(user_id: str) -> bool:
         empresa = d.get("empresa")
         if not empresa:
             continue
-        # 'falhou_em' só existe em atividades marcadas erro depois desta
-        # "já passou do cooldown há muito tempo" (_segundos_desde devolve
-        # infinito pra string vazia), então são retentados na primeira
-        # oportunidade em vez de ficarem presos pra sempre por falta do
-        # campo novo.
         if _segundos_desde(d.get("falhou_em", "")) < LIMIAR_TRANSCRICAO_ERRO_COOLDOWN_SEGUNDOS:
             continue
         if refazer_transcricao_video(user_id, empresa, a["id"]):
             disparou = True
     return disparou
 
-# ---------------------------------------------------
-# SIDEBAR (apenas quando logado)
-# ---------------------------------------------------
 
-# V261: primeira ação operacional após autenticar. Não depende da página
-# selecionada. A flag é marcada antes de abrir a thread para que reruns do
-# Streamlit não criem verificações duplicadas durante o próprio login.
 if (
     st.session_state.get("user")
     and not st.session_state.get("_manifesto_gads_pos_login_v261_iniciado")
@@ -19886,8 +16469,6 @@ with st.sidebar:
             elif p == "perfil_menu":
                 st.session_state.mostrar_perfil_menu = not st.session_state.get("mostrar_perfil_menu", False)
             elif p == "home":
-                # Marca que o usuário navegou para cá intencionalmente —
-                # impede o redirecionamento automático para o Dashboard Geral.
                 st.session_state["_home_acesso_manual"] = True
                 trocar_pagina(p)
             else:
@@ -19898,35 +16479,9 @@ with st.sidebar:
     user_email = st.session_state.user.email if st.session_state.user else ""
     _resumo_sino = resumo_sino_atividades(st.session_state.user.id) if st.session_state.user else {"total": 0, "erro": 0, "andamento": 0}
 
-    # ── Retry automático de migração travada ──
-    # Antes, essa checagem rodava "de carona" em qualquer rerun do script
-    # inteiro (clique em botão, navegação, ou o botão fantasma clicado via
-    # JS entre iframes) — mas a página de Notificações usa um
-    # st.fragment(run_every="2s") pra se atualizar sozinha, e reruns de
-    # fragment NÃO rerodam o resto do script (só a função decorada). Então
-    # enquanto o usuário ficava OLHANDO a tela de notificações — o cenário
-    # onde mais se esperava que o retry funcionasse —, o bloco da sidebar
-    # (fora do fragment) só rerodava se algo forçasse um rerun completo, e
-    # o truque de botão fantasma + JS clicando via window.parent.document
-    # é frágil (depende do iframe ser remontado, de nenhum bloqueador
-    # interferir, etc.) — na prática, migrações ficavam paradas horas com
-    # a aba aberta e logada.
-    #
-    # Agora usamos o mesmo mecanismo nativo que já funciona pra atualizar
-    # as notificações sozinhas: um st.fragment(run_every=...) próprio,
-    # que o Streamlit rerruna periodicamente por conta própria (via
-    # websocket, sem precisar de nenhum clique real ou simulado) enquanto
-    # a aba estiver aberta e conectada — em QUALQUER página, porque a
-    # sidebar é renderizada em todas elas. Substitui por completo o antigo
-    # bloco "Auto-poll global" (botão escondido + setInterval em JS).
     @st.fragment(run_every="120s")
     def _auto_retry_migracoes_travadas():
         if st.session_state.user:
-            # V241 — um fragmento também é executado durante todo rerun da
-            # aplicação. Sem esta trava, abrir qualquer página fazia quatro
-            # varreduras pesadas de OCR no banco antes mesmo dos 120s. Na
-            # primeira renderização apenas armamos o relógio; a manutenção
-            # ocorre depois, no rerun isolado do próprio fragmento.
             _agora_retry_v241 = time.monotonic()
             _ultimo_retry_v241 = float(
                 st.session_state.get("_ultimo_retry_sidebar_v241") or 0.0
@@ -19939,76 +16494,25 @@ with st.sidebar:
             st.session_state["_ultimo_retry_sidebar_v241"] = _agora_retry_v241
 
             retentar_migracoes_travadas_automaticamente(st.session_state.user.id)
-            # Mesmo ciclo cuida de pegar vídeos que já foram migrados (têm
-            # url_cdn no R2) mas ainda não têm transcrição — seja de uma
-            # migração recente que não chegou a chamar a fila por algum
-            # erro, seja de vídeos migrados antes dessa fila existir, seja
-            # de uma fila que estava rodando e morreu no meio (ex: reinício
-            # do processo do servidor). _empresas_com_transcricao_pendente
-            # varre por empresa, e iniciar_transcricao_pendente_background
-            # já se protege contra rodar 2x ao mesmo tempo pra mesma
-            # empresa, então chamar aqui a cada 120s é seguro (é só uma
-            # checagem "já tem uma fila rodando pra essa empresa?") — é
-            # esse religamento automático que garante que a transcrição
-            # é revista automaticamente a cada ~120s com a aba aberta,
-            # mesmo se a thread original tiver morrido.
             for _empresa_pendente in _empresas_com_transcricao_pendente(st.session_state.user.id):
                 iniciar_transcricao_pendente_background(st.session_state.user.id, _empresa_pendente)
-            # Diferente da migração (onde 'erro' pode ser permanente de
-            # propósito e por isso nunca é retentado sozinho), 'erro' em
-            # transcricao_video hoje só significa falha transitória no
-            # UPDATE (ver retentar_transcricoes_com_erro_automaticamente)
-            # — vale a pena tentar de novo sozinho, respeitando um
-            # cooldown, em vez de deixar o alerta vermelho no sino
-            # esperando um clique manual em "Refazer" pra sempre.
             retentar_transcricoes_com_erro_automaticamente(st.session_state.user.id)
 
-            # V230 — NÃO baixar gads_cache neste fragment global.
-            #
-            # Este fragment roda em qualquer página enquanto a aba está aberta.
-            # Antes ele buscava o JSON completo de Google Ads a cada 120s para
-            # procurar CC do YouTube. Com um cache de ~28 MB isso podia gerar
-            # ~20 GB/dia em uma única sessão (720 leituras/dia), exatamente o
-            # pico observado no painel do Supabase. A verificação de CC continua
-            # existindo na própria página Google Ads, usando o cache já presente
-            # na sessão, e também é disparada no fluxo de coleta. Portanto, não
-            # perdemos a recuperação; apenas eliminamos o download global.
 
-            # Mesmo religamento automático acima, mas pra fila de OCR
-            # (ver bloco "OCR DE IMAGENS DO GOOGLE ADS"). Antes, o OCR só
-            # disparava UMA VEZ, no momento exato da migração — se essa
-            # chamada única falhasse (exceção, reinício do processo,
-            # imagem migrada antes da fila de OCR existir), a imagem
-            # ficava pendente pra sempre, sem nenhum mecanismo de
-            # esse retry desde sempre). Igual acima: chamar aqui a cada
-            # 15s é seguro porque iniciar_ocr_pendente_background já se
-            # protege contra 2 filas rodando ao mesmo tempo pra mesma
-            # empresa.
             for _empresa_ocr_pendente in _empresas_com_ocr_pendente(st.session_state.user.id):
                 iniciar_ocr_pendente_background(st.session_state.user.id, _empresa_ocr_pendente)
 
     if st.session_state.user:
         _auto_retry_migracoes_travadas()
-        # V78 — o resumo do sino era calculado ANTES do fragment acima.
-        # Se o fragment detectasse OCR/transcrição pendente e criasse a atividade
-        # nesse mesmo ciclo, o badge continuava usando o snapshot antigo (zero)
-        # até algum rerun completo posterior. Reconsulta depois de enfileirar para
-        # que "Na fila"/"Processando" apareçam no sino imediatamente.
         _resumo_sino = resumo_sino_atividades(st.session_state.user.id)
 
     _qtd_atividades_pendentes = _resumo_sino["total"]
-    # vermelho = tem erro pedindo ação; amarelo = só coisa em andamento/
-    # incompleta; sem selo = nada pendente. Antes era sempre vermelho.
     _cor_badge_sino = "#e05252" if _resumo_sino["erro"] else "#f59e0b"
     _badge_html = (
         f'<span class="badge" style="background:{_cor_badge_sino}">{_qtd_atividades_pendentes}</span>'
         if _qtd_atividades_pendentes else ""
     )
 
-    # Botão-fantasma só pra forçar um rerun (recalcula _resumo_sino do
-    # banco) sem trocar de página — usado pelo polling em JS abaixo, que
-    # só liga enquanto houver algo "em andamento", pra não ficar
-    # recarregando a tela à toa quando não tem nada rodando.
     st.button("_sino_refresh_ghost_", key="_hidden_sino_refresh")
 
     _nome_exibido = obter_nome_usuario()
@@ -20349,13 +16853,7 @@ function triggerPerfilBtn(label) {
                         del st.session_state[k]
                 st.rerun()
 
-# ---------------------------------------------------
-# HELPER — CABEÇALHO COM PERÍODO
-# ---------------------------------------------------
 
-# ---------------------------------------------------
-# FUNÇÕES GLOBAIS
-# ---------------------------------------------------
 
 def _render_modal_redes_ia(fase: str, nome_analise: str, pct: int, _ph):
     is_done   = fase == "concluido"
@@ -20411,13 +16909,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     with _ph:
         components.html(html_modal, height=600, scrolling=False)
 
-# ===================================================
-# PÁGINAS
-# ===================================================
 
-# ---------------------------------------------------
-# FUNÇÃO salvar_cache_ads 
-# ---------------------------------------------------
  
 def _imagem_precisa_de_b64_provisorio(ad: dict) -> bool:
     """True quando o anúncio é do Google Ads e a imagem AINDA não foi
@@ -20467,14 +16959,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
     """
     try:
         import time
-        # `user_id` deve ser passado explicitamente quando essa função é
-        # chamada de uma thread em background (ex: dentro da coleta de
-        # anúncios) — `st.session_state` não tem contexto válido fora da
-        # thread principal do Streamlit, e ler `st.session_state.user.id`
-        # nesse caso falha silenciosamente (cai no except abaixo), fazendo
-        # o save nunca acontecer de verdade, mesmo com a atividade sendo
-        # `st.session_state` quando chamado do próprio script principal
-        # (onde o contexto existe e é seguro).
         user_id = user_id or st.session_state.user.id
 
         dados_limpos = {}
@@ -20486,14 +16970,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
             entry_limpa["data"] = ads_limpos
             dados_limpos[empresa] = entry_limpa
 
-        # Antes de persistir: troca os links do Facebook (que expiram) por
-        # URLs permanentes no Cloudflare R2, respeitando a cota do plano.
-        # Isolado em try/except próprio: se o pipeline de mídia falhar por
-        # qualquer motivo, o save do ads_cache tem que acontecer do mesmo
-        # jeito (com os links originais), nunca pode travar o essencial.
-        # migrar_midia=False pula essa etapa (usado no save "rápido" logo
-        # após a coleta — a migração real roda depois, em background).
-        # próprio anúncio independentemente de R2/Whisper.
         dados_limpos = _enriquecer_gads_com_cc_youtube_v150(dados_limpos)
 
         if migrar_midia:
@@ -20516,13 +16992,6 @@ def salvar_cache_ads(dados: dict, migrar_midia: bool = True, user_id: str = None
                 except Exception:
                     pass
 
-        # V87 — NÃO persistir base64 das imagens no `gads_cache`.
-        # Com o teto antigo de 100 anúncios isso ainda era tolerável, mas ao
-        # coletar até 1.000 anúncios por anunciante cada `images_b64` podia
-        # acrescentar dezenas/centenas de KB ao JSONB. Como o cache inteiro é
-        # enviado em cada update, o payload chegava a dezenas de MB e o
-        # Supabase começava a responder 503 / read timeout. O link original
-        # continua em `images` e logo depois a fila de migração troca pelo R2;
         for entry_limpa in dados_limpos.values():
             for ad_limpo in entry_limpa.get("data", []):
                 ad_limpo.pop("images_b64", None)
@@ -20563,8 +17032,6 @@ def _gads_html_estruturado_valido(valor) -> bool:
     if not isinstance(valor, dict):
         return False
     url = str(valor.get("url_exibida") or "").strip()
-    # URL exibida pode conter nome da empresa na primeira linha; procura uma
-    # linha que seja realmente domínio/caminho, sem espaços ou sintaxe JS.
     tem_dominio = any(
         re.fullmatch(r"(?:https?://)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:/[^\s{};]*)?/?", linha.strip(), re.I)
         for linha in url.splitlines()
@@ -20615,15 +17082,6 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
         dados_limpos = {}
         for empresa, entry in dados.items():
             entry_limpa = dict(entry)
-            # "_raw" é o dump bruto (até 100 itens) da resposta da Apify,
-            # esse campo de volta do cache. Como cada item bruto costuma vir
-            # bem mais pesado que o anúncio já normalizado em "data" (texto,
-            # HTML, várias URLs de asset por item), guardá-lo pra TODAS as
-            # empresas do cache mergeado a cada save inflava o payload do
-            # `update` o suficiente pra derrubar a conexão no meio do
-            # caminho (era exatamente o "gateway error: Network connection
-            # lost" / JSON could not be generated que a atividade mostrava).
-            # Remove aqui, sem afetar nada que a UI realmente usa.
             entry_limpa.pop("_raw", None)
             ads_limpos = [dict(ad) for ad in entry.get("data", [])]
             for ad_limpo in ads_limpos:
@@ -20657,22 +17115,11 @@ def salvar_cache_gads(dados: dict, migrar_midia: bool = True, user_id: str = Non
                 except Exception:
                     pass
 
-        # Só descarta o base64 depois de saber o resultado final da
-        # migração (acima) — se ainda sobrou link cru do Google sem
-        # migrar, o card depende desse base64 pra mostrar alguma coisa
-        # (ver _imagem_precisa_de_b64_provisorio).
         for entry_limpa in dados_limpos.values():
             for ad_limpo in entry_limpa.get("data", []):
                 if not _imagem_precisa_de_b64_provisorio(ad_limpo):
                     ad_limpo.pop("images_b64", None)
 
-        # Retry com backoff curto: cobre instabilidades transitórias do
-        # Supabase (521, 57P03, timeouts de conexão) sem desistir na
-        # primeira tentativa. 5 tentativas (era 3) com backoff um pouco
-        # mais longo — depois de tirar o "_raw" (acima) o payload já deve
-        # ficar bem menor, mas um 502/"network connection lost" ainda pode
-        # ser só uma instabilidade passageira do gateway, e vale a pena
-        # insistir um pouco mais antes de marcar a atividade como erro.
         ultimo_erro = None
         try:
             _persistir_cache_ads_db(
@@ -20712,12 +17159,6 @@ def _sincronizar_outbox_gads_background(user_id: str):
         _marcar_coleta_prioritaria(user_id, False)
         return
 
-    # V233 — os objetos por empresa no R2 são agora a fonte canônica. Não
-    # reenviamos mais o JSON completo para a coluna gads_cache: esse payload
-    # grande era o responsável pelos 520/521 e pelo consumo de CPU/memória.
-    # Esta etapa apenas confirma que o R2 contém os resultados finais e fecha
-    # as atividades relacionadas. O bloco legado abaixo permanece inacessível
-    # por compatibilidade de código, sem executar qualquer gravação pesada.
     _marcar_coleta_prioritaria(user_id, True)
     _finais_por_atividade = {}
     for _nome_r2, _entry_r2 in pendentes.items():
@@ -20765,7 +17206,6 @@ def _sincronizar_outbox_gads_background(user_id: str):
                             "status": "ok",
                             "msg": "Coleta confirmada e preservada no R2.",
                         }
-                        # Remove somente o erro transitório de sincronização.
                         if "sincroniza" in str(_erros_r2.get(_nome_r2, "")).lower() or "proteg" in str(_erros_r2.get(_nome_r2, "")).lower():
                             _erros_r2.pop(_nome_r2, None)
                 _det_r2["coletadas"] = _coletadas_r2
@@ -20781,16 +17221,11 @@ def _sincronizar_outbox_gads_background(user_id: str):
             flush=True,
         )
     except Exception as _exc_r2:
-        # Os anúncios continuam seguros e disponíveis no R2 mesmo se somente
-        # a atualização visual da notificação falhar temporariamente.
         print(f"[GADS-R2-V233] falha ao concluir notificações: {_exc_r2!r}", flush=True)
     finally:
         _marcar_coleta_prioritaria(user_id, False)
     return
 
-    # Sincronizar dados já coletados continua sendo parte da coleta e tem
-    # prioridade máxima. A marca só é retirada depois que não restar nenhum
-    # checkpoint final no R2.
     _marcar_coleta_prioritaria(user_id, True)
 
     _ids_atividades = {
@@ -20820,10 +17255,6 @@ def _sincronizar_outbox_gads_background(user_id: str):
                     continue
                 _empresas_ativ = [str(x) for x in (_det.get("empresas") or []) if x]
                 _aguardando_ant = [str(x) for x in (_det.get("aguardando_sincronizacao") or []) if x]
-                # Checkpoints novos carregam o id exato da atividade. Nesse
-                # caso nao se deve alterar coletas antigas das mesmas empresas.
-                # O cruzamento por nome fica apenas como compatibilidade com
-                # checkpoints legados, anteriores ao campo `_atividade_id`.
                 if _ids_atividades:
                     _relacionada = _aid in _ids_atividades
                 else:
@@ -20961,8 +17392,6 @@ def _sincronizar_outbox_gads_background(user_id: str):
                 pendentes_agora=ainda_pendentes,
                 motivo="Dados protegidos. O banco ainda nao confirmou toda a sincronizacao; nova verificacao sera automatica.",
             )
-            # Banco instável: não martela as demais empresas no mesmo ciclo.
-            # O próximo ciclo retoma exatamente daqui, sem nova coleta.
             break
 
         try:
@@ -21021,13 +17450,6 @@ def _sincronizar_outbox_gads_background(user_id: str):
     if not ainda_pendentes:
         _marcar_coleta_prioritaria(user_id, False)
 
-# ---------------------------------------------------
-#  REPROCESSAMENTO — comprimir mídias já salvas no R2
-# ---------------------------------------------------
-# Diferente da migração inicial, aqui NÃO precisamos do link original do
-# Facebook (que pode já ter expirado) — a mídia já está no nosso próprio
-# bucket, então baixamos da nossa cópia, comprimimos, subimos a versão
-# nova, e atualizamos as referências (tabela midias + ads_cache).
 
 def _comprimir_midia_existente(tipo: str, conteudo: bytes, mime_type: str):
     """Roteia pra função de compressão certa (imagem ou vídeo) de acordo
@@ -21054,16 +17476,12 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
         for m in midias:
             try:
                 url_antiga = m["url_cdn"]
-                # vídeos são maiores e demoram mais pra baixar/reencodar
-                # que imagens, então usamos um timeout maior pra eles.
                 timeout_download = 120 if m.get("tipo") == "video" else 20
                 resp = _http_get(url_antiga, timeout=timeout_download)
                 resp.raise_for_status()
                 conteudo_original = resp.content
                 tamanho_original = len(conteudo_original)
 
-                # transcreve vídeos que ainda não têm transcrição salva —
-                # roda mesmo que a recompressão abaixo não ajude em nada
                 if m.get("tipo") == "video" and not (m.get("transcricao") or "").strip():
                     transcricao_nova = _transcrever_video_whisper(conteudo_original)
                     if transcricao_nova:
@@ -21097,11 +17515,6 @@ def _reprocessar_midias_background(user_id: str, atividade_id: str):
                     except Exception:
                         pass
 
-                # atualiza as referências no ads_cache — troca atômica
-                # via RPC no Postgres, sem ler-e-regravar o blob inteiro
-                # em Python (evita corrida com outras migrações/coletas
-                # rodando ao mesmo tempo, mesmo com o reprocessamento
-                # levando bastante tempo pra terminar todos os itens).
                 supabase.rpc("substituir_url_no_ads_cache", {
                     "p_user_id": user_id,
                     "p_url_antiga": url_antiga,
@@ -21136,13 +17549,6 @@ def iniciar_reprocessamento_midia_background(user_id: str):
     ).start()
 
 
-# ---------------------------------------------------
-#  RECONCILIAÇÃO — reconecta mídias já migradas que ficaram órfãs
-# ---------------------------------------------------
-# Corrige retroativamente o caso de mídias que já foram baixadas pro R2
-# (existem na tabela `midias`, com url_origem -> url_cdn mapeados) mas
-# cujo ads_cache ainda aponta pro link original — por causa da corrida
-# precisa coletar de novo: só usa o mapeamento que já está salvo.
 
 def _reconciliar_midia_background(user_id: str, atividade_id: str):
     try:
@@ -21186,17 +17592,6 @@ def iniciar_reconciliacao_midia_background(user_id: str):
     ).start()
 
 
-# ---------------------------------------------------
-#  RETENTATIVA — mídias que falharam no download (registradas por ad_id)
-# ---------------------------------------------------
-# Toda vez que baixar_e_persistir_midia falha (rede instável, Facebook
-# derrubando a conexão, etc.) o anúncio fica registrado em
-# `midias_falhas` com o ad_id, a empresa e quantas vezes já tentamos.
-# Essa rotina varre esses registros e tenta baixar de novo — só os que
-# ainda não bateram no teto de MAX_TENTATIVAS_MIDIA. É isso que garante
-# que "sempre tem a opção de baixar o vídeo": em vez do card ficar pra
-# sempre com o link original do Facebook na primeira falha, ele volta a
-# ser tentado nas próximas coletas até dar certo ou esgotar o limite.
 
 def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
     try:
@@ -21221,13 +17616,6 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
                 url_antiga, user_id, f["empresa"], f.get("tipo", "imagem"), f.get("ad_id")
             )
             if nova_url == url_antiga:
-                # continua falhando — baixar_e_persistir_midia já incrementou a
-                # tentativa. Se essa foi a última chance (teto atingido), conta
-                # aqui pra reportar de forma visível no card da atividade —
-                # antes isso ficava mudo: o card fechava como "concluído" sem
-                # nenhum aviso, e a mídia ficava pra sempre com o selo de
-                # relógio (link não permanente) sem o usuário saber que já
-                # esgotamos as tentativas.
                 _tentativas_agora = (f.get("tentativas", 0) or 0) + 1
                 if _tentativas_agora >= MAX_TENTATIVAS_MIDIA:
                     if "googlesyndication.com" in url_antiga or "googleusercontent.com" in url_antiga:
@@ -21236,8 +17624,6 @@ def _tentar_novamente_midias_background(user_id: str, atividade_id: str = None):
                         esgotadas_meta += 1
                 continue
 
-            # sucesso: baixar_e_persistir_midia já limpou o registro de
-            # falha; falta só apontar o ads_cache pra URL nova no R2.
             try:
                 supabase.rpc(_rpc_substituir_url_cache(_plataforma_da_url(url_antiga)), {
                     "p_user_id": user_id,
@@ -21303,18 +17689,6 @@ def contar_midias_pendentes_retentativa(user_id: str) -> int:
         return 0
 
 
-# ---------------------------------------------------
-#  VARREDURA GERAL — migra mídia pendente em TODOS os anúncios salvos
-# ---------------------------------------------------
-# A retentativa acima só age sobre mídia que já passou por uma tentativa
-# registrada em `midias_falhas`. Isso deixa de fora anúncios antigos,
-# coletados antes desse sistema existir (ou numa época em que a cota do
-# plano ou o R2 não permitiam o download) — a mídia nunca chegou a
-# "falhar" de um jeito que gerasse registro, só nunca foi tentada. Essa
-# varredura resolve esse caso: relê o ads_cache inteiro do banco e tenta
-# migrar qualquer imagem/vídeo que ainda esteja com o link original,
-# empresa por empresa (mesmo padrão sequencial da migração normal, pra
-# não esgotar processos do SO com vários vídeos ao mesmo tempo).
 
 def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
     try:
@@ -21379,9 +17753,6 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
 
             verificadas_total += stats.get("total", 0)
             ainda_pendentes_total += stats.get("nao_migrados", 0)
-            # Empresa vai junto no título aqui porque a varredura geral mistura
-            # várias empresas numa atividade só — sem isso, "mais informações"
-            # mostraria uma lista de anúncios sem dizer de qual empresa é cada um.
             if len(_log_com_erro_geral) < LIMITE_AMOSTRA_LOG_GERAL:
                 for a in stats.get("anuncios_com_erro", []):
                     if len(_log_com_erro_geral) >= LIMITE_AMOSTRA_LOG_GERAL:
@@ -21393,15 +17764,6 @@ def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
                         break
                     _log_migrados_geral.append({"id": a["id"], "titulo": f"{a['titulo']} ({empresa})"})
 
-        # Mesma regra da migração pontual: só é "concluido" se não sobrou
-        # nenhum anúncio pendente. Sobrando algum, fica "em_andamento" com
-        # o progresso visível, em vez de fechar como sucesso escondendo o
-        # que ainda falta migrar.
-        #
-        # Mesma ressalva da migração pontual (ver _migrar_midia_background):
-        # se o motivo de sobrar pendente é a cota mensal ter estourado, não
-        # existe "vamos tentar de novo automaticamente" de verdade — fecha
-        # como cota esgotada em vez de prometer um retry que não vai rodar.
         if ainda_pendentes_total and not pode_baixar_midia(user_id):
             _limite_cota = PLANOS_QUOTA_MIDIAS.get(obter_plano_usuario())
             atualizar_atividade(atividade_id, "erro", {
@@ -21455,9 +17817,6 @@ def iniciar_migracao_pendente_geral_background(user_id: str):
     ).start()
 
 
-# ---------------------------------------------------
-# SUPORTE ADMINISTRATIVO — inventário de mídias por empresa
-# ---------------------------------------------------
 
 def _suporte_resumo_cc_youtube_v153(user_id: str) -> dict:
     """
@@ -21477,7 +17836,6 @@ def _suporte_resumo_cc_youtube_v153(user_id: str) -> dict:
                 _vid = _youtube_video_id_v150(_url)
                 if not _vid:
                     continue
-                # Se qualquer ocorrência do mesmo vídeo tiver CC, considera CC.
                 _prev = _videos.get(_vid, False)
                 _videos[_vid] = bool(_prev or _cc)
                 _prev_emp = _empresa_map.get(_vid, False)
@@ -21546,9 +17904,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
     _itens = []
     _vistos = set()
 
-    # Mapa do formato real de cada anúncio do Google Ads. Um anúncio em
-    # formato Vídeo pode carregar também uma imagem de capa/thumbnail em
-    # `images`; essa imagem NÃO é uma peça gráfica pendente de OCR.
     _gads_formato_por_ad = {}
     for _empresa_fmt, _entry_fmt in (_gads_cache or {}).items():
         for _ad_fmt in (_entry_fmt.get("data") or []):
@@ -21579,9 +17934,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
                         _formato_ad = ""
                         if _plataforma == "Google Ads":
                             _formato_ad = _gads_formato_por_ad.get((_empresa_norm, _ad_id), "")
-                        # Imagem associada a anúncio de formato Vídeo é capa/thumbnail:
-                        # continua sendo inventariada como mídia, mas não entra como
-                        # "imagem sem OCR" e não oferece ação de refazer OCR.
                         _ocr_elegivel = (
                             _tipo == "imagem"
                             and _plataforma == "Google Ads"
@@ -21607,7 +17959,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
                             "indice": _idx,
                             "url": _url,
                             "eh_youtube": _eh_youtube,
-                            # virar arquivo permanente. YouTube é uma categoria própria.
                             "so_link_pendente": bool((not _salva) and (not _eh_youtube)),
                             "salva": _salva,
                             "midia_id": _m.get("id"),
@@ -21625,8 +17976,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
     _add_cache(_ads_cache, "Meta Ads")
     _add_cache(_gads_cache, "Google Ads")
 
-    # Inclui arquivos permanentes que ainda existem no banco, mas não aparecem
-    # mais no cache atual (útil pra suporte detectar sobra/orfandade de dados).
     _urls_vistas = {i["url"] for i in _itens}
     for _m in _mid_rows:
         _url = _m.get("url_cdn")
@@ -21638,13 +17987,6 @@ def _suporte_inventario_midias(user_id: str) -> list:
         _ocr = _m.get("ocr_texto")
         _empresa_norm = _m.get("empresa") or "Sem empresa"
         _ad_id_norm = str(_m.get("ad_id") or "")
-        # V277 — mídias permanentes órfãs do cache não podem depender só da
-        # URL original para descobrir a plataforma. Depois da migração para
-        # o R2, ``url_origem`` pode estar vazia, incompleta ou apontar para
-        # um host genérico do Google; o fallback antigo então classificava
-        # criativos CR... como Meta Ads e desabilitava o OCR no Suporte.
-        # O prefixo CR identifica o creative ID do Google Ads Transparency
-        # Center. Também considera a presença do anúncio no mapa do cache.
         _ad_google_no_cache = (_empresa_norm, _ad_id_norm) in _gads_formato_por_ad
         _id_google_ads = bool(re.match(r"(?i)^CR\d+$", _ad_id_norm.strip()))
         if _ad_google_no_cache or _id_google_ads:
@@ -21741,8 +18083,6 @@ def _suporte_refazer_midia_especifica(user_id: str, item: dict):
     _tipo = item.get("tipo") or ""
     _plataforma = item.get("plataforma") or "Meta Ads"
 
-    # Link externo: baixa somente ESTA URL, salva no R2 e troca a URL no
-    # cache inteiro via RPC atômica (sem reprocessar o anúncio completo).
     if not item.get("salva"):
         _url_antiga = item.get("url") or item.get("url_origem") or ""
         if not _url_antiga:
@@ -21767,7 +18107,6 @@ def _suporte_refazer_midia_especifica(user_id: str, item: dict):
             iniciar_ocr_pendente_background(user_id, _empresa)
         return True, "Mídia salva novamente e enviada para o processamento correspondente."
 
-    # Arquivo já permanente: refaz só o processamento derivado.
     try:
         if _tipo == "video":
             _q = supabase.table("midias").update({"transcricao": None}).eq("user_id", user_id)
@@ -21796,16 +18135,7 @@ def _suporte_refazer_midia_especifica(user_id: str, item: dict):
     except Exception as _e:
         return False, f"Não foi possível refazer esta mídia: {_e}"
 
-# ---------------------------------------------------
-# HOME — Pagina - Minha Empresa
-# ---------------------------------------------------
 
-# ── Coleta de perfis do Instagram via RapidAPI ──────────────────────
-# Movido para escopo de módulo (antes vivia só dentro do bloco da
-# página "redes") pra poder ser reutilizado pelo botão "Tentar
-# novamente" das notificações (refazer_coleta_redes, abaixo), que
-# roda a partir da página "notificacoes" — um escopo totalmente
-# separado do bloco onde essas funções viviam antes.
 def _rapidapi_get_com_retry(url: str, headers: dict, tentativas: int = 3, timeout: int = 20):
     """GET com retry + backoff pra aguentar instabilidade da API do
     RapidAPI (timeouts pontuais são comuns em horários de pico).
@@ -22001,18 +18331,6 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
                 except Exception:
                     continue
 
-        # Guarda contra "sucesso fantasma": a API às vezes responde 200
-        # com um perfil válido mas sem follower_count/media_count e sem
-        # nenhum post (perfil privado, endpoint instável, etc). Sem essa
-        # checagem isso virava um resultado "ok" com seguidores=0 e
-        # posts=0 — a atividade "Coleta de redes sociais" marcava
-        # Concluído e listava o perfil como coletado com sucesso, mas na
-        # prática nenhum dado real chegou (perfil ficava com 0/0 e "Sem
-        # postagens disponíveis" na tela). Agora isso conta como erro,
-        # pra notificação refletir a realidade e o usuário saber que
-        # precisa tentar coletar de novo.
-        # /profile2 não traz mais media_count (sempre vem null) — como
-        # coleta em vez de deixar o total zerado (ficaria enganoso na UI).
         if total_posts == 0 and posts_data:
             total_posts = len(posts_data)
 
@@ -22089,13 +18407,6 @@ def _coletar_rapidapi_sem_cache(handle: str) -> dict:
 _RAPIDAPI_CACHE_TTL = 1800  # 30 min
 
 def coletar_rapidapi(handle: str) -> dict:
-    # Cache manual por handle em session_state (em vez de
-    # @st.cache_data) de propósito: só grava no cache quando a
-    # coleta dá certo (erro is None). Assim, um timeout pontual da
-    # RapidAPI não fica "preso" no cache por 30 min pro mesmo
-    # handle — e, diferente de um @st.cache_data.clear() global,
-    # isso não afeta o cache de outros handles já coletados com
-    # sucesso.
     import time
     cache = st.session_state.setdefault("_cache_rapidapi", {})
     agora = time.time()
@@ -22114,9 +18425,6 @@ if st.session_state.pagina == "home":
     emp = st.session_state.dados["minha_empresa"]
     tem_dados = empresa_tem_dados(emp)
  
-    # ── Redirecionamento automático ───────────────────────────────
-    # Se a empresa já tem dados E o usuário não clicou explicitamente
-    # em "Minha Empresa" na sidebar, vai direto pro Dashboard Geral.
     if (
         tem_dados
         and not st.session_state.editar_empresa
@@ -22416,9 +18724,7 @@ html, body { background: transparent; overflow: hidden; }
                         st.error("Informe pelo menos o nome da empresa.")
 
     else:
-        # ── MODO VISUALIZAÇÃO ─────────────────────────────────────
 
-        # Botão ghost — oculto via CSS, acionado pelo HTML abaixo
         if st.button("Editar Empresa", key="btn_home_editar_ghost"):
             st.session_state.editar_empresa = True
             st.rerun()
@@ -22679,9 +18985,6 @@ if (window.ResizeObserver && card_el) {{
         </div>
         """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# PAGINA - CONCORRENTES
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "cad":
  
@@ -23138,7 +19441,6 @@ body {{ padding-bottom: 8px; }}
 </html>
 """, height=est_height, scrolling=False)
 
-        # ── Botões Streamlit reais (ocultos via CSS) ─────────────
         for i, c in enumerate(concorrentes):
             b1, b2 = st.columns(2)
             with b1:
@@ -23156,7 +19458,6 @@ body {{ padding-bottom: 8px; }}
                     salvar_empresa_e_concorrentes()
                     st.rerun()
 
-        # ── Banner "Mantenha seus concorrentes atualizados" ──────
         st.markdown("""
         <div style='background:#e7fbff;border:1px solid #6fd1f3;border-radius:12px;
                     padding:14px 20px;display:flex;align-items:center;gap:16px;
@@ -23191,9 +19492,6 @@ body {{ padding-bottom: 8px; }}
         </div>
         """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# PAGINA - DASHBOARD GERAL
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "geral":
 
@@ -23253,10 +19551,6 @@ elif st.session_state.pagina == "geral":
         else:
             criterios.append({"label": "CTA na bio", "ok": False, "pts": 0, "peso": 15})
 
-        # "Diferenciação no mercado" é o único critério com crédito parcial
-        # (5 de 10 pontos quando o engajamento é mediano) — por isso guarda
-        # os pontos ganhos à parte de "ok", pra o hover do anel (que soma
-        # 'pts' de cada critério) bater exatamente com o score exibido.
         if eng_pct >= 3.0:
             score += 10
             criterios.append({"label": "Diferenciação no mercado", "ok": True, "pts": 10, "peso": 10})
@@ -23333,8 +19627,6 @@ elif st.session_state.pagina == "geral":
 
         pesos = [20, 20, 15, 15, 15, 15]
         score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
-        # Pontos/peso por critério, pro hover do anel mostrar a soma exata
-        # que chega no score (mesmo padrão do calcular_score_bio).
         for _p, _c in zip(pesos, criterios):
             _c["pts"] = _p if _c["ok"] else 0
             _c["peso"] = _p
@@ -23362,7 +19654,6 @@ elif st.session_state.pagina == "geral":
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
 
-    # ── Lista de empresas ──────────────────────────────────────────────
     todas_empresas_geral = []
     if emp.get("nome"):
         todas_empresas_geral.append({
@@ -23379,11 +19670,9 @@ elif st.session_state.pagina == "geral":
                 "setor": "", "tipo_nicho": "", "cidade": "", "estado": "",
             })
 
-    # ── Filtro ────────────────────────────────────────────────────────
     if "geral_empresa_filtro" not in st.session_state:
         st.session_state.geral_empresa_filtro = 0
 
-    # Botões fantasmas para receber clique do JS
     _filtro_ghost_css = []
     for _i in range(len(todas_empresas_geral)):
         _k = f"btn_geral_filtro_{_i}"
@@ -23405,13 +19694,11 @@ elif st.session_state.pagina == "geral":
             st.session_state.geral_empresa_filtro = _i
             st.rerun()
 
-    # Garante sempre int válido
     filtro_empresa_ativo = int(st.session_state.get("geral_empresa_filtro", 0))
     if filtro_empresa_ativo >= len(todas_empresas_geral):
         filtro_empresa_ativo = 0
         st.session_state.geral_empresa_filtro = 0
 
-    # ── Cache de redes ─────────────────────────────────────────────────
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
     for r in cache_redes:
@@ -23426,7 +19713,6 @@ elif st.session_state.pagina == "geral":
         if n >= 1_000:     return f"{n/1_000:.1f}K"
         return str(n)
 
-    # ── Dados de coleta da empresa selecionada ─────────────────────────
     empresa_sel_geral = todas_empresas_geral[filtro_empresa_ativo] if todas_empresas_geral else None
     nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
 
@@ -23437,7 +19723,6 @@ elif st.session_state.pagina == "geral":
     def _fmt_ultima_coleta(valor):
         return str(valor) if valor else "Sem coleta"
 
-    # Garante que metricas_redes está carregado do banco
     if not st.session_state.metricas_redes.get("ultima_coleta"):
         try:
             _res_redes = (
@@ -23484,9 +19769,6 @@ elif st.session_state.pagina == "geral":
     )
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
-    # ══════════════════════════════════════════════════════════════════
-    # CABEÇALHO
-    # ══════════════════════════════════════════════════════════════════
     h1, h2 = st.columns([5, 5])
 
     with h1:
@@ -23786,9 +20068,6 @@ function setHeightGeral(isOpen) {{
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 24px 0'/>", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════
-    # FUNÇÕES DE DONUT
-    # ══════════════════════════════════════════════════════════════════
 
     def make_donut_svg(pct, color, label, count, size=50, stroke=5, font_size=None):
         r = (size / 2) - stroke - 2
@@ -23797,9 +20076,6 @@ function setHeightGeral(isOpen) {{
         dash = round(pct / 100 * circum, 2)
         gap  = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
-        # via font_size pra deixar o número mais em destaque (ex.: nos rings
-        # de "Desempenho por Área", que precisam do número bem visível dentro
-        # do anel, igual ao print de referência).
         _font_size = font_size if font_size is not None else max(11, round(size * 0.24))
         return (
             f'<div style="display:flex;align-items:center;gap:4px;flex:1;min-width:0;">'
@@ -23957,25 +20233,9 @@ function setHeightGeral(isOpen) {{
                 dominio = _re.sub(r'^https?://','',url).split('/')[0].split('?')[0].replace('www.','').strip().lower()
                 if dominio and '.' in dominio and 'facebook.com' not in dominio and 'fb.com' not in dominio and 'fbcdn' not in dominio:
                     return dominio
-            # caption só "WhatsApp", sem "." — a Meta às vezes devolve um
-            # rótulo em vez de URL), mas o texto indica claramente que o
-            # destino é o WhatsApp, agrupa no mesmo domínio já usado pelos
-            # anúncios que têm link completo (api.whatsapp.com). Sem isso
-            # esses anúncios ficavam de fora da contagem de destinos.
             for url in candidatos:
                 if isinstance(url, str) and 'whatsapp' in url.lower():
                     return "api.whatsapp.com"
-            # Mesmo caso do WhatsApp, agora pro Messenger/Facebook: um link
-            # completo tipo "facebook.com/messages/t/..." cai no domínio
-            # "facebook.com" e é descartado no loop acima (propositalmente,
-            # pra não contar o próprio permalink do anúncio no Facebook como
-            # se fosse um "destino"). Aqui a gente só resgata os casos que
-            # são claramente um CTA de Messenger — link com "/messages/",
-            # "m.me" ou caption igual a "facebook"/"facebook.com" sozinho
-            # (rótulo puro, sem path) — e agrupa no mesmo bucket do fb.me,
-            # já que ambos levam ao mesmo destino (conversa no Messenger).
-            # Um facebook.com genérico (ex.: link da própria página/post)
-            # continua fora da contagem, pra não inflar o ranking.
             for url in candidatos:
                 if not isinstance(url, str): continue
                 low = url.strip().lower()
@@ -24012,7 +20272,6 @@ function setHeightGeral(isOpen) {{
 
     seo_cache = st.session_state.get("seo_cache", {})
 
-    # ── Tooltip CSS ────────────────────────────────────────────────
     tooltip_css = """
 .oport-wrap {
     position: relative; display: inline-flex; align-items: center; cursor: default;
@@ -24045,9 +20304,6 @@ function setHeightGeral(isOpen) {{
 }
 """
 
-    # ══════════════════════════════════════════════════════════════════
-    # MONTA DADOS POR EMPRESA
-    # ══════════════════════════════════════════════════════════════════
     if todas_empresas_geral:
 
         empresas_cards_data = []
@@ -24156,8 +20412,6 @@ function setHeightGeral(isOpen) {{
                 {"label": "Seções (H2)", "ok": bool(seo.get("h2s"))},
                 {"label": "Sitemap",     "ok": sitemap.get("status") == "ok"},
             ]
-            # 5 itens, 20 pontos cada (100/5) — pro hover do anel de Site
-            # mostrar a soma exata que chega no score.
             for _c_seo in seo_items_check:
                 _c_seo["pts"] = 20 if _c_seo["ok"] else 0
                 _c_seo["peso"] = 20
@@ -24184,10 +20438,8 @@ function setHeightGeral(isOpen) {{
                 "tem_ads": tem_ads, "ads": ads_info,
             })
 
-        # ── Monta HTML de cada empresa ─────────────────────────────────
         for d in empresas_cards_data:
 
-            # ── REDES SOCIAIS ──────────────────────────────────────────
             if d["tem_redes"]:
                 m = d["redes"]
 
@@ -24210,11 +20462,6 @@ function setHeightGeral(isOpen) {{
                 path_post = '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>'
                 path_enm  = '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
 
-                # Comparativo vs concorrentes: antes existia duplicado — um
-                # de Engaj.% e, mais abaixo, um card "Desempenho vs
-                # Concorrentes" inteiro repetindo Seguidores/Engajamento/Posts
-                # com o percentual real. Unificado: cada stat já mostra aqui
-                # o percentual real vs a média dos outros perfis monitorados.
                 def _outros_valores(campo, cast=float):
                     vals = []
                     for _nome_o, _r_o in dados_redes_map.items():
@@ -24238,8 +20485,6 @@ function setHeightGeral(isOpen) {{
                     acima = pct >= 0
 
                     if pct == 0:
-                        # Empatado com a média: "0% acima/abaixo" soa estranho,
-                        # então usa um texto neutro com um ícone de "igual".
                         cor = "#6b7280"
                         cor_bg = "#6b7280"
                         _texto = "Na média"
@@ -24250,11 +20495,6 @@ function setHeightGeral(isOpen) {{
                         )
                     else:
                         cor = "#15803d" if acima else "#b45309"
-                        # Fundo do círculo do ícone: mesmas cores usadas no
-                        # Score de SEO (verde #22c55e do check, laranja #f59e0b
-                        # do "melhoria sugerida") — o texto ao lado continua
-                        # com a cor de sempre (#15803d/#b45309), só o fundo do
-                        # SVG muda.
                         cor_bg = "#22c55e" if acima else "#f59e0b"
                         if acima:
                             _icone_svg = (
@@ -24316,9 +20556,6 @@ function setHeightGeral(isOpen) {{
 
                 score_nok = m["score_oportunidades"]
 
-                # ── Checklist dos critérios (mesmos 6 critérios de sempre — só o
-                # visual mudou pro formato "anel + lista" do print de referência).
-                # Item ok: check verde. Item não-ok: aviso âmbar + "Melhoria sugerida".
                 _total_criterios = len(m["score_criterios"])
                 _ok_criterios = _total_criterios - m["score_oportunidades"]
 
@@ -24352,11 +20589,6 @@ function setHeightGeral(isOpen) {{
 
                 score_ring_svg = make_score_ring_svg(m["score_val"], m["score_cor"], size=110, stroke=10)
 
-                # Cor final da barra de progresso: segue a mesma lógica simplificada
-                # (verde/âmbar/vermelho) usada na barra do Score de SEO, em vez da
-                # cor de classificação em 5 níveis — assim o gradiente azul→cor
-                # sempre fica visível em duas cores, mesmo quando a classificação
-                # (ex.: "Muito bom") usa o mesmo azul do início do gradiente.
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
 
                 score_block_html = (
@@ -24417,7 +20649,6 @@ function setHeightGeral(isOpen) {{
                 )
             d["redes_block_html"] = redes_block_html
 
-            # ── ANÚNCIOS ───────────────────────────────────────────────
             if d["tem_ads"]:
                 a = d["ads"]
                 total_ads = a["total"] or 1
@@ -24511,8 +20742,6 @@ function setHeightGeral(isOpen) {{
 
                     if _chave_plat and _chave_plat in PLAT_ICONS_SVG:
                         _cor_marca, _, _path_marca = PLAT_ICONS_SVG[_chave_plat]
-                        # combinar com fundo branco. Aqui o fundo do círculo já
-                        # é a cor da marca, então força o traço pra branco.
                         _path_branco = re.sub(r'fill="[^"]*"', 'fill="#fff"', _path_marca)
                         _icone_html = f'<svg width="13" height="13" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">{_path_branco}</svg>'
                         return _icone_html, _cor_marca
@@ -24585,11 +20814,6 @@ function setHeightGeral(isOpen) {{
                 )
             d["ads_block_html"] = ads_block_html
 
-        # ══════════════════════════════════════════════════════════════
-        # RESUMO EXECUTIVO — item nº1 do feedback: antes de mergulhar nos
-        # detalhes de cada área, o gestor precisa entender em 5 segundos
-        # "como estou / onde estou perdendo / o que fazer agora".
-        # ══════════════════════════════════════════════════════════════
         if empresas_cards_data:
             _d0 = empresas_cards_data[0]
 
@@ -24619,12 +20843,6 @@ function setHeightGeral(isOpen) {{
                 else:
                     _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
 
-                # ── Comparação com concorrentes: recalcula o score geral (mesma
-                # fórmula acima) de CADA empresa cadastrada — não só a
-                # selecionada — pra saber à frente de quantos % delas a
-                # empresa selecionada está. Versão enxuta: só o número final
-                # de cada uma, sem montar o card inteiro (isso seria caro
-                # demais pra rodar em toda empresa a cada render). ──
                 def _score_geral_leve(_nome_emp):
                     _areas_leve = []
                     _r_leve = dados_redes_map.get(_nome_emp)
@@ -24665,15 +20883,7 @@ function setHeightGeral(isOpen) {{
                 if _scores_concorrentes:
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
-                    # (verde/âmbar/vermelho) em vez da cor de classificação em 5
-                    # níveis, pra garantir que o gradiente sempre tenha duas
-                    # cores visíveis (ex.: "Muito bom" usa o mesmo azul do início
-                    # do gradiente e "sumia" o efeito).
                     _sg_bar_cor = "#22c55e" if _score_geral >= 80 else ("#f59e0b" if _score_geral >= 40 else "#ef4444")
-                    # Texto no 2ª pessoa ("Você") só faz sentido pra empresa do
-                    # próprio usuário. Quando a empresa selecionada no filtro é
-                    # um concorrente, troca pelo nome dele e ajusta o universo
-                    # da comparação (que aqui inclui a própria empresa também).
                     _is_minha_d0 = _d0["badge_lbl"] == "Minha Empresa"
                     _sujeito_frente = "Você está" if _is_minha_d0 else f'<b style="color:#1a2e4a;">{_d0["nome"]}</b> está'
                     _universo_frente = "dos concorrentes" if _is_minha_d0 else "das demais empresas monitoradas"
@@ -24686,11 +20896,6 @@ function setHeightGeral(isOpen) {{
                 else:
                     _comparacao_html = ""
 
-                # ── Rings "Desempenho por Área" ── anel colorido com um círculo
-                # branco no centro e um ícone em SVG representando a área
-                # (Instagram/redes, globo/site, megafone/anúncios), no estilo
-                # da referência enviada — em vez do número cru dentro do anel.
-                # O número e a classificação continuam abaixo do anel.
                 def _svg_ring_area(pct, color, size=64, stroke=6, icon_svg=None, icon_size=None):
                     r = (size / 2) - stroke - 2
                     cx = cy = size / 2
@@ -24748,11 +20953,6 @@ function setHeightGeral(isOpen) {{
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_area)
                     _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
-                    # Hover no anel: mesmo padrão visual do "Como é calculado"
-                    # usado no Score de SEO e no Score de Perfil — cabeçalho +
-                    # uma linha por critério com a bolinha verde de check (SVG)
-                    # e o peso de cada um, em vez do layout antigo (✓/– com
-                    # coluna de pontos à direita e linha de "Total" separada).
                     _linhas_crit_ring = [
                         f'{_SVG_ICONE_CHECK_BOLA} {_cr.get("label","")} +{_cr.get("peso", _cr.get("pts", 0))}<br>'
                         for _cr in _crit_ring
@@ -24777,10 +20977,6 @@ function setHeightGeral(isOpen) {{
                         '</div></div>'
                     )
 
-                # ── Textos das oportunidades: em vez do nome cru do critério
-                # que falta (ex.: "H1"), um texto mais estratégico/acionável +
-                # um ganho estimado (heurístico — não há histórico de conversão
-                # pra calcular um valor real). ──
                 _OPORT_TEXTOS = {
                     "Title":                    ("Otimizar o título das páginas (SEO)", "+8% de cliques na busca", "Inclua a palavra-chave principal no início do title, com até 60 caracteres."),
                     "H1":                       ("Estruturar o H1 das páginas principais", "+6% de relevância para buscadores", "Adicione um H1 único por página, claro e alinhado com a busca do usuário."),
@@ -24801,9 +20997,6 @@ function setHeightGeral(isOpen) {{
                     "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "+15% de alcance", "Rode anúncios em mais de uma plataforma (Meta, Google, TikTok) simultaneamente."),
                 }
 
-                # Nas abas de concorrentes, a lacuna detectada precisa virar
-                # vantagem para a empresa do usuário — não uma correção para
-                # melhorar o próprio concorrente.
                 _OPORT_TEXTOS_CONCORRENTE = {
                     "Title":                    ("Ganhar relevância com títulos mais fortes", "+8% de cliques na busca", "Na sua empresa, use títulos claros, específicos e alinhados às buscas que o concorrente ainda não atende bem."),
                     "H1":                       ("Superar com páginas mais bem estruturadas", "+6% de relevância na busca", "Na sua empresa, mantenha um H1 único e objetivo em cada página importante."),
@@ -24826,12 +21019,8 @@ function setHeightGeral(isOpen) {{
 
                 _is_aba_concorrente = _d0["badge_lbl"] != "Minha Empresa"
                 _oport_textos_ativos = _OPORT_TEXTOS_CONCORRENTE if _is_aba_concorrente else _OPORT_TEXTOS
-                # O título permanece igual em todas as abas. O que muda nas
-                # abas dos concorrentes é o direcionamento do conteúdo: as
-                # lacunas deles viram oportunidades para a empresa do usuário.
                 _oport_titulo_secao = "Oportunidades prioritárias"
 
-                # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
                 _oportunidades_top = []
                 for _lbl, _sc, _falt, _cor_a, _cnt_ignora in _areas_ordenadas:
@@ -24842,8 +21031,6 @@ function setHeightGeral(isOpen) {{
 
                 if _oportunidades_top:
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
-                    # Todos os selos usam a mesma largura, calculada pelo maior
-                    # rótulo ("Anúncios"), para não variar entre as páginas.
                     _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
                     _selo_width_px = 40 + (_maior_badge_chars * 6)
                     _lampada_selo_svg = (
@@ -24880,17 +21067,6 @@ function setHeightGeral(isOpen) {{
                             f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
                             f'{_ganho_html}</div></div>'
                         )
-                    # ── Paginação: 2 oportunidades por página, com bolinhas de
-                    # navegação abaixo da lista. Como o card roda num iframe
-                    # isolado (ver comentário de syncH()/irParaAreaPrioritaria()
-                    # logo abaixo), a troca de página é 100% client-side via JS
-                    # — sem round-trip com o Streamlit.
-                    # Todas as páginas ficam empilhadas na MESMA célula de um
-                    # CSS grid (visibility:hidden nas inativas, não display:none)
-                    # — assim a altura da linha do grid sempre acompanha a
-                    # página mais alta automaticamente, sem precisar medir nada
-                    # via JS, e a navegação nunca "sobe" quando uma página tem
-                    # menos itens. ──
                     _OPORT_POR_PAGINA = 2
                     _oport_paginas = []
                     for _p_ini in range(0, len(_oport_rows), _OPORT_POR_PAGINA):
@@ -24943,9 +21119,6 @@ function setHeightGeral(isOpen) {{
                     _oport_pagina_html = ""
                     _oport_count_badge_html = ""
 
-                # ── Insight da IA: texto-guia baseado na área mais fraca e mais forte ──
-                # "Sua" só cabe quando a empresa selecionada é a do próprio
-                # usuário; pra concorrente, troca pelo nome dela.
                 _melhor = max(_areas, key=lambda a: a[1])
                 _pior = min(_areas, key=lambda a: a[1])
                 _is_minha_d0_insight = _d0["badge_lbl"] == "Minha Empresa"
@@ -24962,12 +21135,6 @@ function setHeightGeral(isOpen) {{
                         f"Priorize os itens pendentes dessa área para elevar o score geral."
                     )
 
-                # ── CTA do insight: manda direto pra página da área mais
-                # fraca (a mesma que o texto acima já recomendou priorizar)
-                # em vez de um "ver todos os insights" genérico que levaria
-                # pra página de Insights (estratégias por concorrente —
-                # assunto diferente, sem relação com pendências por área).
-                # Ver 'irParaAreaPrioritaria()' no <script> logo abaixo.
                 _MAPA_AREA_PAGINA_CTA = {
                     "Redes Sociais": ("redes", "Redes"),
                     "Site":          ("sites", "Site"),
@@ -24978,13 +21145,6 @@ function setHeightGeral(isOpen) {{
                 )
                 _cta_insight_txt = f"Ver oportunidades em {_label_prioritaria_cta}"
 
-                # ── Card "Classificação do concorrente": quando a empresa
-                # selecionada (_d0) é um concorrente (e não a própria empresa
-                # do usuário), o painel da direita deixa de mostrar o
-                # "Insight da IA" (que fala em 2ª pessoa, "sua presença...")
-                # e passa a mostrar um veredito rápido de ameaça competitiva:
-                # nível de concorrência + checklist de sinais fortes, no
-                # mesmo espírito do card de referência solicitado.
                 if not _is_minha_d0_insight:
                     def _area_por_label(_lbl_busca):
                         for _a in _areas:
@@ -24995,10 +21155,6 @@ function setHeightGeral(isOpen) {{
                     _area_ads_conc   = _area_por_label("Anúncios")
                     _area_redes_conc = _area_por_label("Redes Sociais")
 
-                    # Cada item só entra na lista se existir dado de verdade
-                    # pra julgá-lo — senão ele ficaria marcado como "não
-                    # identificado" mesmo quando na real não há como saber
-                    # (ex.: concorrente sem anúncios coletados ainda).
                     _data_estrategia = bool(_area_ads_conc)
                     _data_presenca   = bool(_area_redes_conc)
                     _data_discurso   = bool(_area_ads_conc) or bool(_d0["seo_status_ok"])
@@ -25025,10 +21181,6 @@ function setHeightGeral(isOpen) {{
                         _conc_nivel, _conc_grad = "BAIXA", "linear-gradient(135deg,#22c55e,#16a34a)"
                         _conc_desc = "Ainda sem ameaça significativa para seu mercado."
 
-                    # Só 3 sinais — os que têm dado sólido e recorrente por
-                    # trás (estratégia de anúncios, presença em redes,
-                    # discurso/comunicação). "Volume de anúncios" foi
-                    # removido: não é um sinal relevante por si só.
                     _conc_itens_base = [
                         ("Estratégia bem definida",     _conc_item_estrategia, _data_estrategia),
                         ("Presença ativa e contínua",   _conc_item_presenca,   _data_presenca),
@@ -25036,10 +21188,6 @@ function setHeightGeral(isOpen) {{
                     ]
                     _conc_itens_ok  = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and ok]
                     _conc_itens_off = [lbl for lbl, ok, tem_dado in _conc_itens_base if tem_dado and not ok]
-                    # Lista simples (ícone + rótulo, sem caixa) — mesmo padrão
-                    # visual já usado nos outros checklists do app (círculo
-                    # verde com check pra item identificado, círculo cinza
-                    # pro que ainda não foi).
                     _icon_ok_ci = (
                         '<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;'
                         'display:flex;align-items:center;justify-content:center;flex-shrink:0;">'
@@ -25052,9 +21200,6 @@ function setHeightGeral(isOpen) {{
                         '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" '
                         'stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>'
                     )
-                    # Tooltip de cada sinal — explica o critério por trás do
-                    # rótulo (mesmo padrão do "?" do título do card, mas com
-                    # "i" pra indicar "info" em vez de "como é calculado").
                     _conc_tooltips = {
                         "Estratégia bem definida":     "Score de Anúncios desse concorrente igual ou acima de 60.",
                         "Presença ativa e contínua":   "Score de Redes Sociais desse concorrente igual ou acima de 60.",
@@ -25088,10 +21233,6 @@ function setHeightGeral(isOpen) {{
                     )
 
 
-                    # Pré-seleciona esse concorrente na página de Insights,
-                    # pro botão "Ver comparação detalhada" já abrir focado
-                    # nele (mesmo índice usado pelo seletor de lá — a lista
-                    # de lá não inclui "Minha Empresa", por isso o -1).
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
@@ -25775,9 +21916,6 @@ setTimeout(syncH,50);setTimeout(syncH,150);setTimeout(syncH,300);setTimeout(sync
             unsafe_allow_html=True
         )
         
-# ---------------------------------------------------
-# PAGINA - CONFRONTO DE SITES
-# ---------------------------------------------------
  
 elif st.session_state.pagina == "sites":
 
@@ -25792,7 +21930,6 @@ elif st.session_state.pagina == "sites":
     if "redes_analise_vistas" not in st.session_state:
         st.session_state.redes_analise_vistas = 0
 
-    # ── Inicializar estados ────────────────────────────────────────
     if "sites_main_tab" not in st.session_state:
         st.session_state.sites_main_tab = "sites"
     if "relatorio_sites" not in st.session_state:
@@ -25806,7 +21943,6 @@ elif st.session_state.pagina == "sites":
     if "seo_cache" not in st.session_state:
         st.session_state.seo_cache = {}
 
-    # ── Montar lista de sites ──────────────────────────────────────
     sites_disponiveis = []
     if emp.get("site"):
         sites_disponiveis.append({
@@ -25824,13 +21960,11 @@ elif st.session_state.pagina == "sites":
         st.info("Cadastre o site da sua empresa e de pelo menos um concorrente para usar esta funcionalidade.")
         st.stop()
 
-    # ── Estado das análises individuais ───────────────────────────
     for idx_s, s in enumerate(sites_disponiveis):
         chave = f"sites_analise_{idx_s}"
         if chave not in st.session_state:
             st.session_state[chave] = ""
 
-    # ── Cabeçalho ──────────────────────────────────────────────────
     h1, h2 = st.columns([7, 3])
     with h1:
         components.html("""
@@ -25878,7 +22012,6 @@ html, body { background: transparent; overflow: hidden; }
         if st.button("Gerar Análise Comparativa", key="btn_gerar_comparativa_ghost"):
             st.session_state._gerar_comparativa = True
 
-        # CSS de ocultação do botão nativo do Streamlit (innerHTML funciona via st.markdown)
         st.markdown("""
 <style>
 .st-key-btn_gerar_comparativa_ghost,
@@ -25895,9 +22028,6 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
-        # Botão "fake" estilizado + script — precisa ir via components.html
-        # (st.markdown injeta via innerHTML e <script> NUNCA executa nesse caso,
-        # por isso o clique não disparava o botão ghost do Streamlit)
         components.html("""
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -25957,9 +22087,6 @@ html, body { background: transparent; overflow: hidden; }
 
     st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — Navegação de abas
-    # ══════════════════════════════════════════════════════════════
     st.markdown("""
     <style>
     .st-key-_sites_ghost_tab_sites_,
@@ -25983,9 +22110,6 @@ html, body { background: transparent; overflow: hidden; }
         st.session_state.sites_main_tab = "analise"
         st.rerun()
 
-    # ══════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — Análise individual por site
-    # ══════════════════════════════════════════════════════════════
     ghost_css_ia = "\n".join([
         f".st-key-btn_site_ia_{i} {{ display: none !important; }}"
         f".stElementContainer:has(.st-key-btn_site_ia_{i}) {{ display: none !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }}"
@@ -25998,9 +22122,6 @@ html, body { background: transparent; overflow: hidden; }
         triggered = st.button(f"SITE_IA_{idx_s}", key=f"btn_site_ia_{idx_s}")
         site_ia_triggers[idx_s] = triggered
 
-    # ══════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — Remover análises salvas
-    # ══════════════════════════════════════════════════════════════
     analises_para_rm = st.session_state.get("analises_salvas", [])
     acoes_rm = {}
     for i in range(len(analises_para_rm)):
@@ -26019,9 +22140,6 @@ html, body { background: transparent; overflow: hidden; }
             salvar_analises_padrao()
             st.rerun()
 
-    # ══════════════════════════════════════════════════════════════
-    # PROCESSAR — Análise individual com overlay de loading
-    # ══════════════════════════════════════════════════════════════
     for idx_s, s in enumerate(sites_disponiveis):
         if site_ia_triggers.get(idx_s):
             is_minha = s["tipo"] == "minha"
@@ -26171,9 +22289,6 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()
 
-    # ══════════════════════════════════════════════════════════════
-    # PROCESSAR — Relatório geral com modal de loading
-    # ══════════════════════════════════════════════════════════════
     def _gerar_comparativa_background(user_id: str, sites_disponiveis: list, atividade_id: str):
         """Roda a extração dos sites + geração do relatório numa thread —
         sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
@@ -26278,9 +22393,6 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             if st.button("🔄 Verificar se o relatório terminou", key="_btn_verificar_comparativa"):
                 st.rerun()
 
-    # ══════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO PRINCIPAL
-    # ══════════════════════════════════════════════════════════════
     main_tab = st.session_state.sites_main_tab
     analises_nav = st.session_state.get("analises_salvas", [])
     qtd_total_analise = len(analises_nav)
@@ -26387,9 +22499,6 @@ function triggerTab(label) {{
 </script>
 """, height=90, scrolling=False)
 
-    # ══════════════════════════════════════════════════════════════
-    # ABA: SITES CONFIGURADOS
-    # ══════════════════════════════════════════════════════════════
     if main_tab == "sites":
 
         cards_data = []
@@ -26662,9 +22771,6 @@ setTimeout(syncHeight, 3000);
 
         components.html(_html_cards, height=1200, scrolling=False)
         
-    # ══════════════════════════════════════════════════════════════
-    # ABA: ANÁLISE DE IA
-    # ══════════════════════════════════════════════════════════════
     elif main_tab == "analise":
 
         import json as _json_sites
@@ -26910,8 +23016,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             def _wrap_section(html_str):
                 import re as _r2
 
-                # remove <hr> isolados (vêm dos "---" do markdown entre seções) —
-                # a separação visual já é feita pelos cards/banners.
                 html_str = _r2.sub(r'<hr\s*/?>', '', html_str)
 
                 _EMOJI_RE = _r2.compile(
@@ -26926,11 +23030,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 )
 
                 def _limpar_titulo(hdr_txt):
-                    # remove tags HTML remanescentes
                     limpo = _r2.sub(r'<[^>]+>', '', hdr_txt)
-                    # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                     limpo = _EMOJI_RE.sub('', limpo)
-                    # remove espaços/pontuação que ficam sobrando após remover o emoji
                     limpo = _r2.sub(r'^[\s:\-–—]+', '', limpo)
                     return limpo.strip()
 
@@ -26959,8 +23060,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     )
 
                 def _make_plain_card(conteudo):
-                    # usado para conteúdo solto sob um h2 (ex.: parágrafo de abertura,
-                    # lista de recomendações) — sem repetir o título, que já está no banner.
                     return (
                         f'<div class="sec-card sec-plain">'
                         f'  <div class="sec-content">{conteudo}</div>'
@@ -27011,12 +23110,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         i2 += 1
 
                         if tag == 'h2':
-                            # Título de seção numerada (ex.: "1. Proposta de Valor")
-                            # vira um banner leve.
                             flush_buffer()
                             output_parts.append(_make_banner(hdr_txt_clean))
-                            # se vier texto/lista solta direto sob o h2 (ex.: Recomendações),
-                            # agora também ganha um card em vez de ficar sem estilo.
                             if conteudo.strip():
                                 output_parts.append(_make_plain_card(conteudo))
                         else:
@@ -27026,14 +23121,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                             is_competitor = lower_t.startswith('concorrente')
 
                             if is_numbered:
-                                # título de seção numerada (ex.: "1. Proposta de Valor")
-                                # também vira banner leve, mesmo sendo h3 no markdown.
                                 flush_buffer()
                                 output_parts.append(_make_banner(hdr_txt_clean))
                                 if conteudo.strip():
                                     output_parts.append(_make_plain_card(conteudo))
                             elif is_own or is_competitor:
-                                # agrupa "Minha Empresa" + "Concorrente — X" lado a lado
                                 if buffer_kind != 'compare':
                                     flush_buffer()
                                     buffer_kind = 'compare'
@@ -27700,9 +23792,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             </div>
             """, unsafe_allow_html=True)
 
-# ---------------------------------------------------
-# PAGINA - ADS (Biblioteca de Anúncios com Meta Ad Library API)
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "ads":
 
@@ -27738,9 +23827,6 @@ elif st.session_state.pagina == "ads":
         resultado = dict(cache_existente)
         for nome_empresa, novo_entry in novos.items():
             novos_ads = novo_entry.get("data", [])
-            # V207: anúncios conhecidos preservam integralmente os dados já
-            # salvos (texto, mídia, OCR, datas e demais campos). A coleta nova
-            # serve para descobrir IDs novos e atualizar apenas ativo/inativo.
             novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
             novos_sem_id = [a for a in novos_ads if not a.get("id")]
 
@@ -27752,26 +23838,21 @@ elif st.session_state.pagina == "ads":
             for ad in ads_anteriores:
                 ad_id = str(ad.get("id", ""))
                 if ad_id and ad_id in novos_por_id:
-                    # Já existia e voltou: mantém a versão armazenada.
                     ad_atualizado = dict(ad)
                     ad_atualizado["ativo"] = True
                     ads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
-                    # marca como inativo quando dava pra saber (tinha id
-                    # pra comparar contra a coleta nova)
                     ad_preservado = dict(ad)
                     ad_preservado["ativo"] = False if ad_id else ad.get("ativo", True)
                     ads_atualizados.append(ad_preservado)
 
-            # anúncios com id que não existiam antes -> entram como novos
             for ad_id, ad in novos_por_id.items():
                 if ad_id not in ids_processados:
                     ad_novo = dict(ad)
                     ad_novo["ativo"] = True
                     ads_atualizados.append(ad_novo)
 
-            # anúncios sem id (raro) -> não dá pra comparar, sempre entram
             for ad in novos_sem_id:
                 ad_novo = dict(ad)
                 ad_novo["ativo"] = True
@@ -27846,8 +23927,6 @@ elif st.session_state.pagina == "ads":
             except Exception:
                 return str(start_raw)[:10]
 
-        # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
-        # mas datetime.now() continuou naive, causando TypeError na subtração.
         if dto.tzinfo is None:
             dto = dto.replace(tzinfo=_dt.timezone.utc)
         else:
@@ -28029,14 +24108,6 @@ elif st.session_state.pagina == "ads":
         hd = [u for u in vids if u not in sd]
         return sd + hd
 
-    # inferir a região dos anúncios do Meta (ver `_regiao_por_dominio`
-    # logo abaixo). Não existe campo de país/região confiável nos dados
-    # do Meta Ad Library pra anúncios comuns — `country_iso_code` e
-    # `targeted_or_reached_countries` vêm sempre vazios/null (validado
-    # em anúncios reais). O único sinal disponível é o domínio do site
-    # anunciado (campo `caption`, ex: "ticketswap.se", "ticketswap.de")
-    # quando o anunciante usa subdomínios por país — não é garantido,
-    # mas é o melhor sinal que temos sem inventar dado.
     _MAPA_REGIAO_POR_TLD = {
         "com.br": "Brasil", "pt": "Portugal", "es": "Espanha", "de": "Alemanha",
         "se": "Suécia", "nl": "Holanda", "fr": "França", "it": "Itália",
@@ -28088,17 +24159,6 @@ elif st.session_state.pagina == "ads":
         videos = _extract_videos(item)
         copy   = _extract_copy(item)
 
-        # Uma imagem por CARD do carrossel — usado só quando o anúncio é
-        # Carrossel de verdade (ver "carousel_images" no dict retornado).
-        # Por quê não reaproveitar "images" aqui: aquela lista junta vários
-        # campos possíveis (image_url, original_image_url, resized_image_url,
-        # thumbnail_url...) tanto do anúncio quanto de CADA card, tudo numa
-        # bolsa só — pra um card só, isso pode gerar 2+ entradas na lista que
-        # são a MESMA foto em qualidades/tamanhos diferentes (ex.: original
-        # nítida + resized menor/comprimida). No modal do carrossel isso
-        # aparecia como "slide 2" repetindo a foto do slide 1, só que com
-        # qualidade pior. Aqui pega só a MELHOR opção disponível por card,
-        # então cada posição da lista é garantidamente um slide diferente.
         carousel_images = []
         for _card in cards:
             if not isinstance(_card, dict):
@@ -28441,11 +24501,6 @@ elif st.session_state.pagina == "ads":
             _nomes_empresas = [x["nome"] for x in empresas]
             _total_empresas = len(_nomes_empresas)
             _processadas = 0
-            # Status por empresa pra desenhar uma barra individual por
-            # empresa no card (em vez de só um "X de Y" agregado pro lote
-            # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
-            # (chamando a Apify agora), "ok" (coletada), "cache" (pulada
-            # por já ter cache fresco) ou "erro" (com a mensagem).
             _status_por_empresa = {nome: {"status": "pendente"} for nome in _nomes_empresas}
 
             def _grava_progresso():
@@ -28466,17 +24521,9 @@ elif st.session_state.pagina == "ads":
                     _pula = True
 
                 if not _pula:
-                    # Marca "rodando" ANTES de chamar a Apify (que pode
-                    # demorar segundos/minutos) — sem isso, o card ficava
-                    # sem nenhum sinal de qual empresa está sendo coletada
-                    # agora enquanto a chamada não termina.
                     _status_por_empresa[ck] = {"status": "rodando"}
                     _grava_progresso()
 
-                # O ads_id (quando a empresa já tem um configurado) vem pronto
-                # dentro de query_values, montado na thread principal antes de
-                # chamar executar_busca — não dá pra ler st.session_state aqui
-                # dentro, já que essa função roda numa thread separada.
                 query = query_values.get(ck, "").strip() if not _pula else ""
                 if not _pula and not query:
                     _pula = True
@@ -28498,29 +24545,13 @@ elif st.session_state.pagina == "ads":
                         }
                         _status_por_empresa[ck] = {"status": "ok"}
 
-                # Progresso incremental — sem isso, o card ficava mostrando só
-                # o rótulo genérico "Coleta de anúncios" do início ao fim,
-                # porque os detalhes só eram gravados de uma vez só, quando
-                # TODAS as empresas já tinham terminado. Grava a cada empresa
-                # processada (sucesso, erro OU pulada por cache fresco) pra
-                # a barra de cada empresa e o texto do card atualizarem em
-                # tempo real — contar também as puladas garante que o total
-                # bata no final, mesmo quando alguma empresa é pulada por já
-                # ter cache fresco.
                 _processadas += 1
                 _grava_progresso()
 
             cache_mergeado = merge_ads(cache_atual, novos)
 
-            # válidos por bem mais que 1 dia). A troca pelos links
-            # permanentes do R2 acontece depois, em background também.
             _salvo_ok, _erro_salvar = salvar_cache_ads(cache_mergeado, migrar_midia=False, user_id=user_id)
             if not _salvo_ok:
-                # Coleta rodou certinho (Apify respondeu), mas o ads_cache
-                # não chegou a ser gravado no Supabase (ex: instabilidade
-                # 521/57P03 do banco). Antes isso virava "concluído" do
-                # mesmo jeito — o card mostrava sucesso, mas os dados novos
-                # nunca apareciam, porque o merge nunca foi persistido.
                 atualizar_atividade(atividade_id, "erro", {
                     "empresas": _nomes_empresas,
                     "total": _total_empresas,
@@ -28588,8 +24619,6 @@ elif st.session_state.pagina == "ads":
             st.info("Já existe uma coleta de Meta Ads em processamento.")
             return
 
-        # Marca que tem uma coleta rodando — a página usa isso pra mostrar
-        # um aviso em vez de fingir que os dados já estão atualizados.
         st.session_state["_coleta_ads_em_andamento"] = True
         st.rerun()
 
@@ -28638,12 +24667,6 @@ elif st.session_state.pagina == "ads":
     if "ads_erro" not in st.session_state:
         st.session_state.ads_erro = {}
 
-    # Verificação de segurança: roda uma vez por sessão (não a cada
-    # rerun) procurando qualquer anúncio — de qualquer coleta, antiga ou
-    # recente — que ainda esteja com o link original do Facebook em vez
-    # do R2. Cobre casos que a migração pontual de uma coleta específica
-    # não pega (falha silenciosa antiga, mídia coletada antes desse
-    # pipeline existir, etc.).
     if not st.session_state.get("_verificacao_pendentes_feita") and st.session_state.get("user"):
         threading.Thread(
             target=verificar_e_migrar_pendentes,
@@ -28652,61 +24675,25 @@ elif st.session_state.pagina == "ads":
         ).start()
         st.session_state["_verificacao_pendentes_feita"] = True
 
-    # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
-    # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
-    # `_coleta_ads_em_andamento` estivesse True — e essa flag só existia
-    # porque um botão-fantasma era clicado via JS a cada ~4s enquanto a
-    # aba Ads ficasse montada. Se o usuário saísse da aba, recarregasse a
-    # página, ou o rerun automático falhasse por qualquer motivo enquanto
-    # a coleta ainda rodava em background, a flag se perdia (ou nunca era
-    # setada de novo) e `ads_cache` ficava travado pra sempre na versão
-    # antiga — mesmo com o merge/migração já concluído certinho no banco
-    # (é isso que fazia "Baixar JSON" e "Últ. busca" mostrarem dado velho).
-    #
-    # Agora essa checagem roda em TODO render da página, comparando o id
-    # da atividade mais recente com o último id que a sessão já processou
-    # — independente do valor da flag. Isso garante que, assim que a
-    # página é renderizada de novo (mesmo que só porque o usuário voltou
-    # pra aba ou recarregou), o cache é ressincronizado com o Supabase.
     _ultima_atividade_ads = None
     if st.session_state.get("user"):
         _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
 
     if "_ads_ultima_atividade_id_vista" not in st.session_state:
-        # Primeira renderização dessa sessão: `ads_cache` acabou de ser
-        # carregado fresco do banco (bloco acima), então já está em dia
-        # com essa atividade — só marca a "baseline", sem forçar reload.
         st.session_state["_ads_ultima_atividade_id_vista"] = (
             _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
         )
         if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento"):
-            # Chegou na página com uma coleta já rodando (ex: iniciada
-            # antes de um refresh) — garante que o polling seja retomado.
             st.session_state["_coleta_ads_em_andamento"] = True
     elif _ultima_atividade_ads and _ultima_atividade_ads.get("id") != st.session_state["_ads_ultima_atividade_id_vista"]:
         if _ultima_atividade_ads.get("status") in ("concluido", "erro"):
-            # Atividade nova (que a sessão ainda não tinha visto) já
-            # terminou — busca os dados direto do Supabase, ignorando
-            # qualquer coisa que já estivesse em `ads_cache`, libera o
-            # botão de novo e atualiza a tela automaticamente.
             st.session_state.ads_cache = carregar_cache_ads(forcar=True)
             st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads["id"]
             st.session_state["_coleta_ads_em_andamento"] = False
             st.rerun()
         else:
-            # ativo mesmo que a flag local tivesse se perdido.
             st.session_state["_coleta_ads_em_andamento"] = True
 
-    # ── Sincronização resiliente pra migração de mídia (links do R2) ──
-    # A coleta em si (`coleta_ads`) salva rápido com os links originais
-    # do Facebook; a troca pelos links permanentes do R2 acontece DEPOIS,
-    # numa atividade separada (`migracao_midia`, uma por empresa, cada
-    # uma terminando num momento diferente). O bloco acima só observava
-    # `coleta_ads` — por isso a coleta podia aparecer "concluída" e até
-    # atualizar "Últ. busca", mas os anúncios continuavam com os links
-    # antigos até a sessão recarregar o cache por qualquer outro motivo.
-    # Aqui a gente rastreia os ids de migração já vistos e força reload
-    # assim que qualquer uma nova aparece concluída/com erro.
     _migracoes_midia = []
     if st.session_state.get("user"):
         _migracoes_midia = _atividades_migracao_midia_recentes(st.session_state.user.id)
@@ -28719,9 +24706,6 @@ elif st.session_state.pagina == "ads":
     )
 
     if "_ads_migracao_ids_vistos" not in st.session_state:
-        # Primeira renderização dessa sessão: `ads_cache` já foi carregado
-        # fresco do banco, então já reflete essas migrações — só marca a
-        # baseline, sem forçar reload.
         st.session_state["_ads_migracao_ids_vistos"] = set(_migracoes_finalizadas_ids)
     else:
         _novas_migracoes_finalizadas = _migracoes_finalizadas_ids - st.session_state["_ads_migracao_ids_vistos"]
@@ -28730,21 +24714,11 @@ elif st.session_state.pagina == "ads":
             st.session_state["_ads_migracao_ids_vistos"] |= _novas_migracoes_finalizadas
             st.rerun()
 
-    # Guarda se há uma coleta rodando em background pra essa sessão — usado
-    # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
-    # (sem clique) enquanto o processo não termina.
     _coleta_em_andamento = bool(st.session_state.get("_coleta_ads_em_andamento"))
 
-    # busca em si está ativa, mas também enquanto sobrar migração de
-    # mídia pendente — senão a troca de link acontece "silenciosa" e só
-    # aparece na tela na próxima ação manual do usuário.
     _precisa_polling_ads = _coleta_em_andamento or _migracao_em_andamento
 
     if _coleta_em_andamento and _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
-        # Cobre o caso em que a atividade mais recente já era a mesma
-        # id vista antes (ex: sessão nova mas ficou marcada como em
-        # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
-        # sem um id novo pra comparar.
         st.session_state.ads_cache = carregar_cache_ads(forcar=True)
         st.session_state["_ads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
         st.session_state["_coleta_ads_em_andamento"] = False
@@ -28753,11 +24727,6 @@ elif st.session_state.pagina == "ads":
         st.rerun()
 
     if _precisa_polling_ads:
-        # Botão-fantasma (oculto): usado só pra receber o clique disparado
-        # automaticamente pelo timer em JS logo abaixo, que verifica de
-        # tempos em tempos se coleta, migração e/ou OCR já terminaram —
-        # sem exigir nenhuma ação do usuário nem mostrar
-        # avisos na tela.
         st.button("_ads_verificar_coleta_trigger_", key="_btn_verificar_coleta_ads")
         st.markdown("""
         <style>
@@ -28798,10 +24767,6 @@ elif st.session_state.pagina == "ads":
         if c.get("nome"):
             todas_empresas.append({"nome": c["nome"], "tipo": "concorrente", "idx": i})
 
-    # V96 — O seletor principal da Biblioteca de Meta Ads volta a mostrar
-    # TODAS as empresas cadastradas, igual ao Google Ads. As que ainda não
-    # possuem anúncios baixados/salvos continuam visíveis em cinza e ficam
-    # desabilitadas; somente empresas com dados podem ser selecionadas.
     _ativa_meta_atual = st.session_state.get("ads_empresa_ativa", "")
     _ativa_meta_resolvida, empresas_meta_com_dados = _ads_resolver_empresa_ativa(
         todas_empresas, st.session_state.ads_cache, _ativa_meta_atual
@@ -28832,9 +24797,6 @@ elif st.session_state.pagina == "ads":
     if "ads_aba_conteudo" not in st.session_state:
         st.session_state.ads_aba_conteudo = {}
     if "ads_main_tab" not in st.session_state:
-        # Só faz sentido abrir direto em Configuração quando NENHUMA empresa
-        # tem ID configurado ainda (usuário novo, nada pra ver na lista de
-        # anúncios mesmo) — mesmo critério usado no Google Ads.
         _nenhuma_empresa_configurada_init = todas_empresas and all(not empresa_tem_ads_id(e) for e in todas_empresas)
         st.session_state.ads_main_tab = "configuracao" if _nenhuma_empresa_configurada_init else "empresas"
     if "ads_config_empresa_selecionada" not in st.session_state:
@@ -29236,8 +25198,6 @@ elif st.session_state.pagina == "ads":
                 continue
 
             if busca_por_id:
-                # O ID é o critério de correspondência.
-                # Se o scraper devolveu um page_id, ele precisa ser exatamente o pesquisado.
                 if pid and pid != termo:
                     continue
                 classe, sim = 10, 1.0
@@ -29301,26 +25261,14 @@ elif st.session_state.pagina == "ads":
 
         return saida
 
-    # ══════════════════════════════════════════════════════════════════
-    # CABEÇALHO DA PÁGINA
-    # ══════════════════════════════════════════════════════════════════
 
     _ultima_ts = ""
     _emp_ativa_ts_ref = st.session_state.get("ads_empresa_ativa", "")
     if st.session_state.ads_cache:
-        # Prioridade 1: timestamp da própria empresa selecionada — é o que
-        # o usuário espera ver ao lado do botão "Buscar / Atualizar" dela.
-        # Antes o código pegava o MIN (mais antigo) entre TODAS as empresas
-        # do cache, sem filtrar pela selecionada: se qualquer outra empresa
-        # monitorada estivesse desatualizada há dias, "Últ. busca" ficava
-        # preso nela mesmo depois de rodar uma coleta nova pra empresa atual.
         _entry_ativa = st.session_state.ads_cache.get(_emp_ativa_ts_ref, {}) if _emp_ativa_ts_ref else {}
         _ultima_ts = _entry_ativa.get("ts", "")
 
         if not _ultima_ts:
-            # mostra a coleta mais recente do cache geral. Usa parsing de
-            # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
-            # não ordena corretamente como texto.
             def _parse_ts_ads(s):
                 try:
                     return _dt.datetime.strptime(s, "%d/%m/%Y %H:%M")
@@ -29360,7 +25308,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 """, height=104 if _ultima_ts else 78)
  
     with h2_col:
-        # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
         _emp_dd_ghost_css_parts = []
         for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])
@@ -29404,9 +25351,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
             st.session_state.ads_empresa_ativa = ""
  
         for _ci_h, _e_h in enumerate(todas_empresas):
-            # Empresa sem anúncios permanece no menu, porém não recebe
-            # botão-fantasma clicável (mesmo comportamento visual/funcional
-            # adotado no Google Ads).
             if not _meta_empresa_tem_dados(_e_h["nome"]):
                 continue
             _sk_h = safe_key(_e_h["nome"])
@@ -29470,10 +25414,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
             st.rerun()
  
-        # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
         gerar_btn_ads_header = st.button("ads_buscar_header_trigger", key="ads_buscar_header_btn")
  
-        # Ghost: limpar cache
         if st.session_state.ads_cache:
             if st.button("ads_limpar_cache", key="ads_limpar_cache_btn"):
                 st.session_state.ads_cache = {}
@@ -29485,7 +25427,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 st.toast("Cache limpo!", icon="🗑️")
                 st.rerun()
 
-        # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
         _djs = "[]"
         _fn = ""
         if _ultima_ts:
@@ -29948,9 +25889,6 @@ setHeight(false);
         </div>
         """, unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)
-    # ══════════════════════════════════════════════════════════════════
 
     st.markdown("""
     <style>
@@ -29982,7 +25920,6 @@ setHeight(false);
         st.session_state.ads_main_tab = "analise"
         st.rerun()
 
-    # Ghost para lápis de empresa
     lapiz_ghost_css_parts = []
     for ci, e in enumerate(todas_empresas):
         sk = safe_key(e["nome"])
@@ -30012,14 +25949,12 @@ setHeight(false);
             st.rerun()
         lapiz_triggers[ci] = lapiz_key
 
-    # ── Calcular dados
     main_tab              = st.session_state.ads_main_tab
     empresas_configuradas = [e for e in todas_empresas if empresa_tem_ads_id(e)]
     empresas_sem_config   = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
     n_configuradas        = len(empresas_configuradas)
     n_sem_config          = len(empresas_sem_config)
 
-    # ── Processar busca do cabeçalho
     if gerar_btn_ads_header:
         query_values_header = {}
         for e in todas_empresas:
@@ -30032,9 +25967,6 @@ setHeight(false);
         else:
             st.warning("Configure pelo menos uma empresa antes de buscar.")
 
-    # ══════════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO PRINCIPAL — 3 abas
-    # ══════════════════════════════════════════════════════════════════
 
     _n_analises = len(st.session_state.get("ads_analises_salvas", []))
 
@@ -30169,9 +26101,6 @@ function triggerTab(label) {{
     if not st.secrets.get("APIFY_TOKEN", ""):
         st.warning("Configure `APIFY_TOKEN` no secrets.toml para usar esta funcionalidade.")
 
-# ══════════════════════════════════════════════════════════════════
-# ABA: CONFIGURAÇÃO — Cards de empresa
-# ══════════════════════════════════════════════════════════════════
 
     if main_tab == "configuracao":
 
@@ -30179,15 +26108,10 @@ function triggerTab(label) {{
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
 
-        # V187: a busca de anunciantes roda em thread de fundo. Enquanto
-        # o job ainda estiver ativo, esta própria tela agenda um rerun curto.
-        # Assim a UI não depende do polling global de notificações para
-        # perceber que o job terminou.
         if onboarding_buscando and st.session_state.gads_onboarding_job_id:
             _time.sleep(2.5)
             st.rerun()
 
-        # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
             if qk in st.query_params:
@@ -30199,7 +26123,6 @@ function triggerTab(label) {{
                 if re.fullmatch(r"[A-Z]{2}|ALL", _reg_qp):
                     st.session_state[f"cfg_region_temp_{ci}"] = _reg_qp
 
-        # ── CSS ocultar ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
         .st-key-cfg_ghost_cancel_{ci},
@@ -30220,7 +26143,6 @@ function triggerTab(label) {{
         }}
         """ for ci in range(len(todas_empresas))])
 
-        # CSS ocultar ghost buttons do "Usar página"
         usar_ghost_css_parts = []
         for ci, e in enumerate(todas_empresas):
             for pi in range(8):
@@ -30240,7 +26162,6 @@ function triggerTab(label) {{
 
         st.markdown(f"<style>{all_ghost_css}{''.join(usar_ghost_css_parts)}</style>", unsafe_allow_html=True)
 
-        # ── Ghost triggers principais
         ghost_edit       = {}
         ghost_cancel     = {}
         ghost_do_buscar  = {}
@@ -30254,7 +26175,6 @@ function triggerTab(label) {{
             ghost_do_salvar[ci]  = st.button(f"do_salvar_{ci}",  key=f"cfg_do_salvar_{ci}")
             ghost_do_ampliar[ci] = st.button(f"do_ampliar_{ci}", key=f"cfg_do_ampliar_{ci}")
 
-        # ── Ghost triggers "Usar página"
         ghost_usar_pg = {}
         for ci, e in enumerate(todas_empresas):
             ghost_usar_pg[ci] = {}
@@ -30263,7 +26183,6 @@ function triggerTab(label) {{
                 k = f"cfg_usar_pg_{sk_e}_{ci}_{pi}"
                 ghost_usar_pg[ci][pi] = st.button(f"usar_pg_{ci}_{pi}", key=k)
 
-        # ── Processar ações
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
                 st.session_state.ads_editando_empresa   = e["nome"]
@@ -30350,7 +26269,6 @@ function triggerTab(label) {{
                     st.toast(f"{e['nome']} salvo!", icon="✅")
                     st.rerun()
 
-            # Processar "Usar página" da lista de resultados
             if onboarding_empresa == e["nome"] and onboarding_paginas:
                 e_ob = e
                 for pi, pg in enumerate(onboarding_paginas[:12]):
@@ -30367,7 +26285,6 @@ function triggerTab(label) {{
                         st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 
-        # ── INFO BOX
         st.markdown("""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:13px;color:#0369a1;
@@ -30390,7 +26307,6 @@ function triggerTab(label) {{
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Monta HTML dos cards
         cards_html = ""
         for ci, e in enumerate(todas_empresas):
             is_minha   = e["tipo"] == "minha"
@@ -30466,7 +26382,6 @@ function triggerTab(label) {{
                 if is_editing else "border:1px solid #e5e7eb;"
             )
 
-            # Bloco de resultados encontrados (dentro do card, após os botões)
             resultados_block = ""
             if is_editing and onboarding_empresa == e["nome"] and onboarding_paginas:
                 pgs_html = ""
@@ -30541,14 +26456,6 @@ function triggerTab(label) {{
                     {_expandir_html}
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == []:
-                # Busca já rodou pra essa empresa mas não achou nenhuma página —
-                # antes disso simplesmente não aparecia nada na tela (parecia
-                # que o botão tinha travado ou que nada tinha acontecido).
-                # Mostra um aviso claro + sugestão de usar o ID numérico da
-                # página (que sempre funciona, mesmo quando o nome buscado
-                # não bate com o nome exato cadastrado no Facebook) e deixa
-                # claro que dá pra salvar o texto digitado direto, sem
-                # precisar de um resultado de busca pra confirmar.
                 _expandir_vazio_html = ""
                 if not st.session_state.get("ads_onboarding_busca_ampliada", False):
                     _expandir_vazio_html = f'''
@@ -30867,9 +26774,6 @@ window.addEventListener('load', syncHeight);
 </script>
 """, height=700, scrolling=False)
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: EMPRESAS CONFIGURADAS — Cards estilo imagem 2
-    # ══════════════════════════════════════════════════════════════════
     elif main_tab == "empresas":
 
         if not empresas_configuradas:
@@ -30889,7 +26793,6 @@ window.addEventListener('load', syncHeight);
             ads_id_salvo = emp.get("ads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("ads_id","")
             query_values[ck] = ads_id_salvo
 
-        # ── Ghost buttons de conteúdo por empresa ─────────────────────────
         conteudo_tab_ghost_css = []
         for e in empresas_configuradas:
             sk = safe_key(e["nome"])
@@ -30918,13 +26821,11 @@ window.addEventListener('load', syncHeight);
                     st.session_state.ads_aba_conteudo[ck] = tab_name
                     st.rerun()
 
-        # ── Dados e helpers ──────────────────────────────────────────
         empresas_com_dados = [
             e for e in empresas_configuradas
             if e["nome"] in st.session_state.ads_cache or e["nome"] in st.session_state.ads_erro
         ]
 
-        # ── Plataformas SVG JS ────────────────────────────────────────
         def _plat_svg_js(uid: str) -> str:
             return f"""
 (function(){{
@@ -30950,9 +26851,6 @@ window.addEventListener('load', syncHeight);
 }})();
 """
 
-        # ══════════════════════════════════════════════════════════════
-        # FUNÇÃO PRINCIPAL: render_ads_empresa
-        # ══════════════════════════════════════════════════════════════
         def render_ads_empresa(emp_item):
             ck       = emp_item["nome"]
             nome     = emp_item["nome"]
@@ -30999,7 +26897,6 @@ window.addEventListener('load', syncHeight);
             else:
                 ads_list = ads_list_raw
 
-            # Ghost buttons para análise IA
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_anuncios_{sk}", f"btn_ia_geral_{sk}"]:
                 ia_analise_ghost_css.append(f"""
@@ -31042,7 +26939,6 @@ window.addEventListener('load', syncHeight);
                         import requests as _req
                         import base64 as _b64
 
-                        # Monta partes do prompt: texto + imagens reais
                         parts = []
 
                         resumo_completo = "\n".join([
@@ -31065,7 +26961,6 @@ Dados dos anúncios:
 
 Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (quando disponíveis):""")
 
-                        # Envia até 6 imagens reais para o Gemini
                         imgs_enviadas = 0
                         for i, a in enumerate(ads_list[:15]):
                             if imgs_enviadas >= 6:
@@ -31096,19 +26991,12 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             except Exception:
                                 continue
 
-                        # Vídeos não são enviados pro Gemini — em vez disso, manda a
-                        # transcrição do áudio (via Whisper) como texto. Diferente das
-                        # imagens (que custam tokens multimodais e por isso têm teto
-                        # baixo), transcrição é só texto — então cobre todos os vídeos
-                        # dentro dos mesmos 15 anúncios já usados no resumo, e não um
-                        # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
                         vids_transcritos = 0
                         _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
                         for i, a in enumerate(ads_list[:15]):
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            # vídeos baixáveis normais.
                             transcricao_vid = ""
                             if not transcricao_vid:
                                 transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
@@ -31129,7 +27017,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Recomendações Práticas (3 ações concretas)""")
 
-                        # Converte parts para formato Gemini multimodal
                         gemini_parts = []
                         for p in parts:
                             if isinstance(p, str):
@@ -31257,7 +27144,6 @@ Amostra dos anúncios:
 </script>
 """, height=0)
 
-            # Ghost buttons análise individual por anúncio
             ia_ind_ghost_css = []
             for j in range(len(ads_list) if 'ads_list' in dir() else 0):
                 _gk_ind = f"btn_ia_ind_{sk}_{j}"
@@ -31312,7 +27198,6 @@ Amostra dos anúncios:
             page_display = configured_page if configured_page else "—"
             lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Meta Ad Library</a>' if lib_url else ""
 
-            # ── Calcular insights rápidos dos anúncios ──────────────
             _palavras_beneficio = [
                 "resultado", "transforma", "melhora", "aumenta", "economiza",
                 "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
@@ -31351,7 +27236,6 @@ Amostra dos anúncios:
             _n_video_ins = sum(1 for _a in ads_list if "Vídeo" in _a.get("formato", ""))
             _n_carrossel_ins = sum(1 for _a in ads_list if "Carrossel" in _a.get("formato", ""))
 
-            # Monta chips de insights
             _insight_chips = []
             if _n_beneficio > 0:
                 _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
@@ -31554,7 +27438,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
             aba_conteudo_atual = st.session_state.ads_aba_conteudo.get(ck, "anuncios")
 
-            # ── ABA: ANÚNCIOS ─────────────────────────────────────────
             if aba_conteudo_atual == "anuncios":
 
                 col_key = f"ads_cols_{sk}"
@@ -31647,23 +27530,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # Filtro de Região (Meta) — mesma regra do Google Ads: só
-                # aparece se houver mais de uma região distinta entre os
-                # anúncios baixados. "regiao" aqui é uma HEURÍSTICA baseada
-                # no domínio do site anunciado (ver `_regiao_por_dominio`
-                # na normalização do item) — o Meta Ad Library não expõe
-                # país/região de verdade pra anúncios comuns.
                 regioes_disponiveis_ads = sorted(set(
                     (a.get("regiao") or "").strip() for a in ads_list if (a.get("regiao") or "").strip()
                 ))
                 mostrar_filtro_regiao_ads = len(regioes_disponiveis_ads) > 1
 
                 with st.container(key=filtros_key):
-                    # "Tipo" reduzido (2.5 -> 1.7): era a mesma largura dos
-                    # outros filtros só por padrão, mas o texto das opções
-                    # (ex: "Tipo (todos)") é bem mais curto que o de
-                    # "Plataforma"/"Status", então sobrava espaço vazio à
-                    # toa. Diferença redistribuída entre Busca e Plataforma.
                     if mostrar_filtro_regiao_ads:
                         fcol1, fcol2, fcol3, fcol7, fcol4, fcol5, fcol6 = st.columns([2.6, 1.5, 2.2, 2, 2.2, 2.2, 0.6])
                     else:
@@ -31775,14 +27647,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                # "page_profile_picture" salva (o campo só passou a ser
-                # capturado depois, ou a captura falhou naquela época).
-                # Como a foto de perfil da página é a MESMA pra todos os
-                # anúncios de uma empresa, em vez de cair pro círculo com
-                # a inicial só porque aquele anúncio específico não tem o
-                # campo, usamos a primeira foto válida encontrada entre
-                # TODOS os anúncios da empresa (ads_list, não só ads_f, pra
-                # único anúncio que tinha a foto).
                 _page_pic_fallback = next(
                     (
                         (a.get("page_profile_picture") or "").strip()
@@ -31820,25 +27684,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
                 }
 
-                # Transcrições já salvas dos vídeos, buscadas em lote (uma
-                # query só) pra alimentar o badge "💬 Transcrição" do card.
-                # Só lê o que já está pronto na tabela `midias` — NÃO chama
-                # obter_transcricao_video aqui, porque essa função roda o
-                # o que travaria a tela inteira esperando transcrever um por
-                # um. Um vídeo recém-migrado, então, fica sem o badge até a
-                # fila separada (_transcrever_pendentes_background) terminar
-                # de processar ele — nada quebra, só demora a aparecer.
-                #
-                # `transcricao` tem 3 estados possíveis na linha de `midias`
-                # (ver baixar_e_persistir_midia/_transcrever_pendentes_background):
-                #   NULL       → vídeo migrado, mas a fila de transcrição
-                #                ainda não chegou nele (badge "⏳ Transcrevendo…")
-                #   ""         → fila já tentou, não achou fala nenhuma
-                #                (vídeo mudo, só música, erro de áudio etc.)
-                #                — tratado como "nunca vai ter", sem badge
-                #   com texto  → transcrição pronta (badge "💬 Transcrição")
-                # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
-                # migrou pro R2 — também sem badge nenhum.
                 _urls_video_cards = list({
                     u for ad in ads_f for u in (ad.get("videos") or [])[:1] if u
                 })
@@ -31861,8 +27706,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _txt_transc = _val_transc.strip()
                                 if _txt_transc:
                                     _mapa_transcricoes[_url_row] = _txt_transc
-                                # "" (tentou, sem fala) fica de fora dos dois —
-                                # de propósito, pra não mostrar badge nenhum.
                     except Exception:
                         pass  # sem transcrição em lote não pode travar a tela — badge só some
 
@@ -31894,13 +27737,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    # Antes usava o link salvo em CADA anúncio individualmente,
-                    # anúncios antigos costumam ter esse campo preenchido com um
-                    # link do Meta que já expirou (não vazio, só quebrado) — daí
-                    # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
-                    # usa sempre o MESMO link do cabeçalho (page_pic_empresa),
-                    # que já é a primeira foto válida entre todos os anúncios
-                    # da empresa — foto de perfil da página é uma só pra todos.
                     page_pic    = page_pic_empresa or _page_pic_fallback
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
@@ -31914,12 +27750,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc_safe  = _truncar(desc_clean, 120).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
                     img_thumb_url = images[1] if len(images) > 1 else (images[0] if images else "")
-                    # V287 — ordem determinística de recuperação. A versão
-                    # permanente vem primeiro; depois entram todas as demais
-                    # variantes, sem pular o índice zero quando ocorre erro.
-                    # Isso é especialmente importante após trocar de empresa,
-                    # quando uma URL antiga pode estar expirada, mas outra
-                    # referência válida continua salva no mesmo anúncio.
                     img_fallbacks = []
                     for _img_candidata_v287 in [*images_b64, *images]:
                         _img_candidata_v287 = str(_img_candidata_v287 or "").strip()
@@ -31943,10 +27773,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         vid_fallback_modal_esc = vid_fallback_modal.replace("'","").replace('"',"") if vid_fallback_modal else ""
                         snap_url_safe_vid      = snap_url_safe
 
-                        # Badge de origem da mídia: se já foi migrada pro nosso
-                        # R2 mostra um ícone de "armazenado" (permanente); senão
-                        # mostra um relógio avisando que é o link original da
-                        # Meta e pode expirar a qualquer momento.
                         _vid_e_do_r2 = bool(R2_PUBLIC_BASE) and vid_modal.startswith(R2_PUBLIC_BASE)
                         if _vid_e_do_r2:
                             origem_badge_html = """
@@ -31974,31 +27800,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         </svg>
     </div>"""
 
-                        # Badge "🖼️ +N": anúncios Dinâmicos costumam vir com
-                        # imagens alternativas junto do vídeo (Meta testa
-                        # combinações de criativo), mas o card sempre priorizava
-                        # o vídeo e escondia essas imagens de vez — nenhum lugar
-                        # da tela dava pra vê-las. Aqui expõe um botão que abre
-                        # elas num modal à parte, sem interferir no clique
-                        # normal do card (que continua abrindo o vídeo).
-                        #
-                        # O clique NÃO vai num onclick="" inline com o JSON das
-                        # imagens embutido direto (era assim antes e não
-                        # funcionava): esse JSON tem aspas duplas dentro dele
-                        # (cada URL vem entre "..."), e colocar isso dentro de
-                        # um atributo HTML também delimitado por aspas duplas
-                        # (onclick="...") faz o navegador fechar o atributo na
-                        # primeira aspa que aparecer no meio do array — o
-                        # onclick ficava truncado/quebrado e o clique não fazia
-                        # resto do card (ver wrapEl.addEventListener acima):
-                        # o array vai numa variável JS separada, dentro de um
-                        # <script>, e o clique é ligado via addEventListener.
-                        # Exclui a própria capa do vídeo (video_preview_image_url,
-                        # que entra misturada na lista geral de imagens do
-                        # anúncio) — sem isso, quando o anúncio dinâmico não
-                        # tinha NENHUMA imagem realmente alternativa, o badge
-                        # "+1" aparecia e o modal só reexibia a mesma thumb já
-                        # visível no card (parecia quebrado/redundante).
                         _imgs_dyn_alt = [
                             u for u in images[:4]
                             if u and u not in (img_thumb_url, img_primary)
@@ -32031,27 +27832,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             imgs_badge_html = ""
                             imgs_badge_script = ""
 
-                        # Badge "💬 Transcrição": mostra o texto falado do
-                        # vídeo (Whisper) num tooltip customizado ao passar o
-                        # mouse — usamos um elemento próprio (via JS) em vez
-                        # do atributo `title` nativo do navegador, que é lento
-                        # pra aparecer, corta em uma linha e não é confiável
-                        # dentro do iframe. Só aparece quando já foi
-                        # transcrito e salvo em `midias` (ver
-                        # _mapa_transcricoes acima — não dispara transcrição
-                        # nova aqui, só lê o que já está pronto, pra não
-                        # travar a tela renderizando os cards).
-                        #
-                        # Se ainda não tem texto pronto, mas o vídeo já está
-                        # migrado e só aguardando a fila de transcrição (linha
-                        # em `midias` com transcricao NULL — ver
-                        # _urls_transcricao_pendente acima), mostra um badge
-                        # diferente avisando que é passageiro, em vez de
-                        # simplesmente esconder tudo (o que antes deixava
-                        # "sem transcrição ainda" indistinguível de "nunca vai
-                        # ter transcrição").
-                        # no próprio anúncio. Para vídeo comum continua usando
-                        # a transcrição Whisper da tabela `midias`.
                         _transcricao_txt = (
                             ""
                             or _mapa_transcricoes.get(vid_thumb)
@@ -32158,22 +27938,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                     elif img_primary:
                         all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)
-                        # A lógica abaixo (pegar só índice 0 e 2, e comparar a
-                        # proporção pra descartar duplicata) foi criada pros
-                        # anúncios "Dinâmico"/formato Imagem, que às vezes têm
-                        # 2 recortes (quadrado + vertical) da MESMA arte — daí
-                        # faz sentido colapsar pra 1 se forem parecidos. Já
-                        # pros anúncios Carrossel de verdade, usa-se a lista
-                        # "carousel_images" — montada por CARD do carrossel lá
-                        # na normalização, uma única URL (a de melhor
-                        # qualidade disponível) por card. Não dá pra usar
-                        # "images"/"images_b64" por índice aqui: essas listas
-                        # juntam vários campos possíveis (original, resized,
-                        # thumbnail...) tanto do anúncio quanto de cada card
-                        # numa bolsa só, então o índice 1, por exemplo, podia
-                        # ser só a MESMA foto do card 1 num tamanho pior, não
-                        # o card 2 — o modal "repetia" o primeiro slide com
-                        # qualidade ruim no lugar do segundo.
                         _e_carrossel = "Carrossel" in (ad.get("formato") or "")
                         _carousel_imgs_ad = ad.get("carousel_images") or []
                         _metodo_carrossel = "n/a"
@@ -32181,18 +27945,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
                             _metodo_carrossel = "carousel_images (por card, correto)"
                         elif _e_carrossel and len(images) > 1:
-                            # Anúncio Carrossel salvo em cache ANTES dessa
-                            # esperados) ainda não tem "carousel_images". Nesse
-                            # caso, usa a lista genérica "images" — só que ela
-                            # traz, pra CADA card, tanto a "original_image_url"
-                            # (qualidade cheia) quanto a "resized_image_url"
-                            # (comprimida/redimensionada) como URLs diferentes
-                            # entre si, então a dedup por igualdade exata não
-                            # pega esse par como duplicata — sobra a mesma foto
-                            # 2x, uma boa e uma ruim. A Meta sempre marca a
-                            # versão redimensionada com o parâmetro "stp=" na
-                            # URL (ex.: "stp=dst-jpg_s600x600_tt6"), então filtra
-                            # essa variante fora e fica só com a versão cheia.
                             _legacy_carousel_srcs = []
                             for _limg in images[:20]:
                                 if not _limg or _limg in _legacy_carousel_srcs:
@@ -32205,44 +27957,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 if _limg and _limg not in _dedup_geral:
                                     _dedup_geral.append(_limg)
                             if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
-                                # O filtro "stp=" não removeu nada — sinal de
-                                # que essas imagens já foram migradas pro R2
-                                # arquivo viram hash aleatório, perdem o "stp=").
-                                # Nesses casos, como a extração sempre insere
-                                # original_image_url ANTES de resized_image_url
-                                # pra cada card, a lista final fica em pares
-                                # (boa, ruim, boa, ruim...) na ordem dos cards —
-                                # então os índices pares (0, 2, 4...) tendem a
-                                # ser as versões boas. Não é garantido (é uma
-                                # aposta educada pra dado antigo sem outra
-                                # pista), mas é bem melhor que mostrar as 2x
-                                # imagens juntas.
                                 _legacy_carousel_srcs = _dedup_geral[::2]
                                 _metodo_carrossel = "índice par (mídia já migrada, sem stp=)"
                             elif len(_legacy_carousel_srcs) <= 1:
-                                # Nenhuma imagem "sem stp=" sobrou (raro) — melhor
-                                # mostrar tudo deduplicado do que nada.
                                 _legacy_carousel_srcs = _dedup_geral
                                 _metodo_carrossel = "sem filtro (nada sobrou ao filtrar stp=)"
                             else:
                                 _metodo_carrossel = "filtro stp= (mídia ainda com link cru da Meta)"
                             main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs[:10], ensure_ascii=True)
                         else:
-                            # Usa images_b64 (versão permanente/migrada) em vez de
-                            # `images` cru: a URL original da Meta expira, então o
-                            # modal (que antes usava `images`) parava de carregar
-                            # mesmo quando o thumb (que já usava images_b64) ainda
-                            # aparecia normalmente — mesma imagem, fonte diferente.
                             _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
                             _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
                             main_modal_imgs_js = _json.dumps(
                                 [img for img in [_modal_src_0, _modal_src_2] if img],
                                 ensure_ascii=True
                             )
-                        # Mesmo selo de origem que o card de vídeo já tem —
-                        # antes só existia lá, então cards de imagem (como os
-                        # de anúncio "Dinâmico") ficavam sem indicar se o link
-                        # é permanente (R2) ou o original da Meta.
                         _img_e_do_r2 = bool(R2_PUBLIC_BASE) and img_thumb_url.startswith(R2_PUBLIC_BASE)
                         if _img_e_do_r2:
                             origem_badge_img_html = """
@@ -32329,6 +28058,7 @@ function imgFallback_{uid}(img){{
                         )
                     else:
                         status_dot_html = '<div class="status-dot">Ativo</div>' if is_ativo else '<div class="status-dot-inactive">Inativo</div>'
+                    status_bar_class = "status-bar status-bar-active" if is_ativo and not _ad_incompleto_card else "status-bar status-bar-inactive"
                     baixo_vol_badge = '<span class="badge-small">Baixo volume</span>' if baixo_vol else ""
 
                     page_avatar_html = (
@@ -32358,7 +28088,7 @@ function imgFallback_{uid}(img){{
 
                     card_html = f"""
 <div class="card" style="opacity:{card_opacity}" id="card_{uid}">
-    <div class="status-bar">
+    <div class="{status_bar_class}">
         <div style="display:flex;align-items:center;gap:6px">{status_dot_html}{baixo_vol_badge}</div>
         <div style="display:flex;align-items:center;gap:6px">{'<span class="ad-id">ID: ' + ad_id_short + '</span>' if ad_id_short else ''}</div>
     </div>
@@ -32652,13 +28382,13 @@ body{{padding-bottom:4px;min-height:0;}}
 .stat-lbl{{color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;margin-top:2px;}}
 .ads-grid{{display:grid;grid-template-columns:repeat({n_cols},1fr);gap:12px;align-items:start;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
-.status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 6px;border-bottom:1px solid #f0f2f5;background:#fafbfc;flex-wrap:wrap;gap:4px;}}
-.status-dot{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#1aab40;}}
-.status-dot::before{{content:'';width:7px;height:7px;border-radius:50%;background:#1aab40;flex-shrink:0;}}
-.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#6b7280;}}
-.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#d1d5db;flex-shrink:0;}}
-.ad-id{{font-size:9px;color:#8a8d91;font-family:monospace;}}
-.badge-small{{background:#f3f4f6;color:#6b7280;border:1px solid #e5e7eb;padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
+.status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 7px;border-bottom:1px solid transparent;flex-wrap:wrap;gap:4px;}}
+.status-bar-active{{background:#79dc99;border-bottom-color:#65cf87;}}
+.status-bar-inactive{{background:#829ca9;border-bottom-color:#718c99;}}
+.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;}}
+.status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
+.ad-id{{font-size:9px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
+.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
 .meta-row{{display:flex;align-items:center;gap:5px;font-size:11px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
@@ -32860,7 +28590,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 </body></html>
 """, height=100, scrolling=False)
 
-        # ── Renderização final: chamada APÓS as definições das funções ──
         if not empresas_com_dados:
             st.markdown("""
             <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
@@ -32877,9 +28606,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                 st.session_state.ads_empresa_ativa = _emp_render["nome"]
             render_ads_empresa(_emp_render)
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: ANÁLISE DE IA (resumo comparativo) — Ads
-    # ══════════════════════════════════════════════════════════════════
     elif main_tab == "analise":
  
         if not st.session_state.ads_cache and not st.session_state.get("ads_analises_salvas"):
@@ -32889,7 +28615,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
         import json as _json_analises
         import re as _re_md
  
-        # ── Gerar comparativo se flag ativa ────────────────────────
         if st.session_state.pop("ads_gerar_comparativo", False):
             if gemini_model is None:
                 st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
@@ -32998,7 +28723,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             for stk, _, _ in subtabs_ads_def
         }
  
-        # ── Barra de subtabs ────────────────────────────────────────
         components.html(f"""
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -33163,11 +28887,6 @@ setTimeout(syncHeightTabs, 800);
             close_all()
             html = '\n'.join(output)
  
-            # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
-            # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
-            # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
-            # pois ficava no "buraco" entre \u21FF (fim das setas) e \u2600
-            # (início do bloco de símbolos diversos).
             _EMOJI_RE_ADS = _re.compile(
                 "["
                 "\U0001F1E6-\U0001FAFF"
@@ -33181,21 +28900,11 @@ setTimeout(syncHeightTabs, 800);
             )
  
             def _limpar_titulo_ads(hdr_txt):
-                # remove tags HTML remanescentes
                 limpo = _re.sub(r'<[^>]+>', '', hdr_txt)
-                # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                 limpo = _EMOJI_RE_ADS.sub('', limpo)
-                # remove espaços/pontuação que ficam sobrando após remover o emoji
                 limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
-            # Antes, o teste era `any(w in t for w in [...])`, ou seja,
-            # substring simples. Isso é arriscado: se uma keyword curta
-            # como "cta" for adicionada a uma lista, ela "casaria" com
-            # qualquer título contendo a palavra "CTAs" (ex.: "Padrão de
-            # CTAs"), mesmo sem nenhuma relação com a categoria pretendida.
-            # Usando \b (word boundary), "cta" só bate com a palavra "cta"
-            # isolada, não com "ctas" no plural.
             def _match_palavra_ads(texto, palavras):
                 for p in palavras:
                     if _re.search(r'\b' + _re.escape(p) + r'\b', texto):
@@ -33880,7 +29589,6 @@ setTimeout(syncH, 600);
             </div>
             """, unsafe_allow_html=True)
  
-        # ── Ghost buttons subtabs ───────────────────────────────────
         ghost_subtabs_css_ads = ", ".join([
             f".st-key-btn_ads_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_ads_analise_sub_{stk})"
             for stk, _, _ in subtabs_ads_def
@@ -33902,9 +29610,6 @@ setTimeout(syncH, 600);
                 st.rerun()
                 
 
-# ---------------------------------------------------
-# PAGINA - GOOGLE ADS (Google Ads Transparency Center via Apify)
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "google_ads":
 
@@ -33947,9 +29652,6 @@ elif st.session_state.pagina == "google_ads":
         resultado = dict(cache_existente)
         for nome_empresa, novo_entry in novos.items():
             novos_ads = novo_entry.get("data", [])
-            # V207: anúncios conhecidos preservam integralmente os dados já
-            # salvos (texto, mídia, OCR, datas e demais campos). A coleta nova
-            # serve para descobrir IDs novos e atualizar apenas ativo/inativo.
             novos_por_id = {str(a.get("id", "")): a for a in novos_ads if a.get("id")}
             novos_sem_id = [a for a in novos_ads if not a.get("id")]
 
@@ -33961,10 +29663,6 @@ elif st.session_state.pagina == "google_ads":
             for ad in gads_anteriores:
                 ad_id = str(ad.get("id", ""))
                 if ad_id and ad_id in novos_por_id:
-                    # V211: preserva anúncios já válidos. A única exceção é
-                    # um registro antigo sem mídia quando o MESMO ID volta
-                    # agora com mídia validada. Isso corrige somente o item
-                    # incompleto e nunca troca um anúncio válido já salvo.
                     _novo_mesmo_id = novos_por_id[ad_id]
                     _antigo_tem_midia = bool((ad.get("images") or []) or (ad.get("images_b64") or []) or (ad.get("videos") or []) or (ad.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(ad.get("ocr_estruturado"))))
                     _novo_tem_midia = bool((_novo_mesmo_id.get("images") or []) or (_novo_mesmo_id.get("images_b64") or []) or (_novo_mesmo_id.get("videos") or []) or (_novo_mesmo_id.get("origem_texto") == "html_google" and _gads_html_estruturado_valido(_novo_mesmo_id.get("ocr_estruturado"))))
@@ -33973,20 +29671,16 @@ elif st.session_state.pagina == "google_ads":
                     gads_atualizados.append(ad_atualizado)
                     ids_processados.add(ad_id)
                 else:
-                    # marca como inativo quando dava pra saber (tinha id
-                    # pra comparar contra a coleta nova)
                     ad_preservado = dict(ad)
                     ad_preservado["ativo"] = False if ad_id else ad.get("ativo", True)
                     gads_atualizados.append(ad_preservado)
 
-            # anúncios com id que não existiam antes -> entram como novos
             for ad_id, ad in novos_por_id.items():
                 if ad_id not in ids_processados:
                     ad_novo = dict(ad)
                     ad_novo["ativo"] = True
                     gads_atualizados.append(ad_novo)
 
-            # anúncios sem id (raro) -> não dá pra comparar, sempre entram
             for ad in novos_sem_id:
                 ad_novo = dict(ad)
                 ad_novo["ativo"] = True
@@ -34012,24 +29706,6 @@ elif st.session_state.pagina == "google_ads":
     def _url_para_base64(url: str, referer_especifico: str = "", tag: str = "GADS-B64") -> str:
         if not url or not url.startswith("http"):
             return ""
-        # As imagens de criativo do Google (tpc.googlesyndication.com/archive/
-        # simgad/...) às vezes bloqueiam ou falham dependendo dos headers
-        # enviados — um Referer "forjado" pode inclusive ser mais suspeito
-        # pro CDN do que nenhum Referer. Por isso tenta em ordem: sem headers
-        # nenhum primeiro (é assim que essas URLs costumam ser servidas —
-        # direto, sem exigir referer), depois só com User-Agent de navegador,
-        # depois com o Referer genérico da Transparency Center e, por
-        # último — só quando o chamador passa `referer_especifico` (a
-        # própria página /advertiser/.../creative/... do anúncio) — com
-        # esse Referer exato, que é o que um navegador de verdade manda
-        # quando carrega essa imagem dentro da página do criativo. Qualquer
-        # tentativa que funcione (200 + corpo não vazio + content-type de
-        # imagem de verdade) já é aceita — não precisa das outras.
-        #
-        # Antes essa função falhava 100% em silêncio (só `return ""`), o
-        # que deixava impossível diferenciar "o CDN bloqueou" de "deu 200
-        # mas era HTML de erro/captcha disfarçado" — por isso os prints
-        # abaixo (tag [GADS-B64] por padrão).
         tentativas = [
             {},
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"},
@@ -34051,10 +29727,6 @@ elif st.session_state.pagina == "google_ads":
                 if r.status_code == 200 and r.content:
                     ct = (ct_raw or "image/jpeg").split(";")[0].strip()
                     if not ct.startswith("image/"):
-                        # 200 mas corpo não é imagem (ex.: HTML de erro/
-                        # bloqueio disfarçado de 200) — rejeita, senão o
-                        # <img> do card quebra silenciosamente com um
-                        # data:URI que não é imagem nenhuma.
                         print(f"[{tag}] tentativa={i} REJEITADA: content-type não é image/* ({ct_raw!r})", flush=True)
                         continue
                     data = _b64.b64encode(r.content).decode("utf-8")
@@ -34093,10 +29765,6 @@ elif st.session_state.pagina == "google_ads":
             if not _garantir_chromium_playwright():
                 print("[GADS-IMG] fallback Playwright indisponível; seguindo sem browser", flush=True)
                 return ""
-            # Importação lazy: o Playwright só é carregado nos raros
-            # criativos em que Apify/preview.js não entregam uma imagem.
-            # Antes, sync_playwright era usado sem existir neste escopo e o
-            # fallback sempre terminava em NameError.
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
                 browser = p.chromium.launch(
@@ -34119,10 +29787,6 @@ elif st.session_state.pagina == "google_ads":
                     page.on("response", lambda resp: _checar_url(resp.url))
 
                     try:
-                        # V87: `networkidle` é ruim para a Transparency Center
-                        # esperar 20s mesmo quando a imagem já tinha aparecido.
-                        # `domcontentloaded` + pequena janela para os listeners
-                        # de rede reduz muito o tempo sem perder o asset.
                         page.goto(pagina_url, wait_until="domcontentloaded", timeout=8000)
                     except Exception as e_goto:
                         print(f"[GADS-IMG] goto falhou/timeout: {e_goto!r}", flush=True)
@@ -34133,9 +29797,6 @@ elif st.session_state.pagina == "google_ads":
                                 break
                             page.wait_for_timeout(250)
 
-                    # renderizado, caso ele apareça só como atributo (src/
-                    # background-image) sem gerar uma requisição nova
-                    # capturada pelos listeners acima
                     if not achado[0]:
                         try:
                             html = page.content()
@@ -34247,9 +29908,6 @@ elif st.session_state.pagina == "google_ads":
                 chamadas.append(txt)
             if len(chamadas) >= 3:
                 break
-        # Alguns previews usam componentes semânticos próprios: o texto está
-        # visível, mas não dentro de <a>/<h1>. Se os estilos não bastarem,
-        # usa a ordem visual após o domínio (cabeçalho -> chamadas -> copy).
         if not chamadas and url_exibida:
             _idx_url = next((i for i, x in enumerate(limpos) if x["text"] == url_exibida), -1)
             if _idx_url >= 0:
@@ -34292,7 +29950,6 @@ elif st.session_state.pagina == "google_ads":
                 continue
             if 3 <= len(txt) <= 100 and not _parece_dominio(txt):
                 sitelinks.append({"titulo": txt, "descricao": ""})
-        # Dedupe preservando ordem.
         sitelinks = list({x["titulo"]: x for x in sitelinks}.values())[:6]
 
         estruturado = {
@@ -34337,9 +29994,6 @@ elif st.session_state.pagina == "google_ads":
                         page.goto(alvo, wait_until="domcontentloaded", timeout=20000)
                     except Exception as exc:
                         print(f"[GADS-HTML-V223] goto parcial id={creative_id}: {exc!r}", flush=True)
-                    # O ID já está na URL desde o primeiro instante, mas o
-                    # criativo Angular/iframe demora alguns segundos para
-                    # aparecer. V224 saía do loop após 0,5 s e lia só o shell.
                     page.wait_for_timeout(8000)
                     if creative_id not in page.url and creative_id not in page.content():
                         print(f"[GADS-HTML-V223] ID não validado na página: {creative_id}", flush=True)
@@ -34364,9 +30018,6 @@ elif st.session_state.pagina == "google_ads":
                     for frame in page.frames:
                         try:
                             elementos.extend(frame.evaluate(_js_deep))
-                            # Fallback por linhas do innerText: cobre web
-                            # components fechados que ainda expõem texto ao
-                            # mecanismo de acessibilidade do navegador.
                             _texto_frame = frame.locator("body").inner_text(timeout=3000)
                             for _linha in str(_texto_frame or "").splitlines():
                                 _linha = _linha.strip()
@@ -34437,9 +30088,6 @@ elif st.session_state.pagina == "google_ads":
                             altura = float(caixa.get("height", 0))
                             x = float(caixa.get("x", 0))
                             y = float(caixa.get("y", 0))
-                            # Frames de medição são minúsculos. Frames de
-                            # navegação ocupam quase a tela toda. O criativo
-                            # fica no miolo da página de detalhes.
                             if largura < 180 or altura < 90:
                                 continue
                             if largura > 1250 or altura > 850:
@@ -34458,8 +30106,6 @@ elif st.session_state.pagina == "google_ads":
                             centro_x = x + largura / 2
                             centro_y = y + altura / 2
                             distancia = abs(centro_x - 720) + abs(centro_y - 540)
-                            # Área visual pesa mais; proximidade do centro
-                            # desempata. O src serve apenas para auditoria.
                             pontuacao = area - (distancia * 120)
                             candidatos.append((pontuacao, indice, loc, src, url_frame, caixa))
                         except Exception:
@@ -34480,9 +30126,6 @@ elif st.session_state.pagina == "google_ads":
                                 return ""
                             if not png or len(png) < 2000 or not png.startswith(b"\x89PNG"):
                                 continue
-                            # Rejeita frame vazio/branco. Alguns iframes de
-                            # medição têm dimensões grandes, mas nenhum
-                            # criativo visível.
                             try:
                                 import io as _io_frame_v236
                                 from PIL import Image as _ImageFrameV236
@@ -34493,9 +30136,6 @@ elif st.session_state.pagina == "google_ads":
                                 _desvio = float(
                                     _ImageStatFrameV236.Stat(_img_teste).stddev[0]
                                 )
-                                # Uma tela de erro/carga uniforme também é
-                                # rejeitada. Texto e imagens reais superam
-                                # com folga esse limiar.
                                 _cores = _img_teste.resize((96, 96)).getcolors(maxcolors=9217) or []
                                 _qtd_cores = len(_cores)
                                 if _desvio < 4.0 or _qtd_cores < 12:
@@ -34560,15 +30200,10 @@ elif st.session_state.pagina == "google_ads":
                 return resultado
             texto = r.text
 
-            # Criativos de Texto costumam vir como HTML serializado dentro
-            # do próprio content.js. Antes de recorrer ao navegador, tenta
-            # aproveitar essa fonte barata. O parser coleta apenas texto e
-            # links; não executa o JavaScript recebido.
             try:
                 import html as _html_preview
                 from html.parser import HTMLParser as _HTMLParserPreview
                 _dec = _html_preview.unescape(texto)
-                # Escapes comuns do literal JS/JSON.
                 _dec = _dec.replace(r"\u003c", "<").replace(r"\u003e", ">")
                 _dec = _dec.replace(r"\x3c", "<").replace(r"\x3e", ">")
                 _dec = _dec.replace(r"\n", " ").replace(r"\'", "'").replace(r'\"', '"')
@@ -34605,24 +30240,11 @@ elif st.session_state.pagina == "google_ads":
             if m_img:
                 resultado["image_url"] = m_img.group(1)
 
-            # ID do vídeo do YouTube embutido na própria URL da thumbnail
-            # (regex separado, direto no texto todo, funciona mesmo se a
-            # chamada acima não bater)
             m_yt = re.search(r"i\.ytimg\.com/vi/([a-zA-Z0-9_-]{11})/", texto)
             if m_yt:
                 vid = m_yt.group(1)
                 resultado["youtube_id"] = vid
                 resultado["youtube_url"] = f"https://www.youtube.com/watch?v={vid}"
-                # Às vezes o `insertPreviewImageContent` acima não bate
-                # (o JS do preview de vídeo pode montar a chamada de um
-                # jeito ligeiramente diferente), mas já temos o ID do
-                # vídeo — dá pra montar a URL da thumbnail na mão, sem
-                # depender do regex anterior. Isso importa: sem isso,
-                # via Playwright (página humana), que aí pegava a
-                # PRIMEIRA imagem `tpc.googlesyndication.com/archive/
-                # simgad/...` da página — que costuma ser o LOGO do
-                # anunciante (aparece em toda página de criativo dele),
-                # não o criativo de verdade.
                 if not resultado["image_url"]:
                     resultado["image_url"] = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
         except Exception:
@@ -34662,8 +30284,6 @@ elif st.session_state.pagina == "google_ads":
             except Exception:
                 return str(start_raw)[:10]
 
-        # V93/V94 trocaram utcfromtimestamp() por fromtimestamp(..., UTC),
-        # mas datetime.now() continuou naive, causando TypeError na subtração.
         if dto.tzinfo is None:
             dto = dto.replace(tzinfo=_dt.timezone.utc)
         else:
@@ -34846,19 +30466,6 @@ elif st.session_state.pagina == "google_ads":
         return sd + hd
 
     def _normalizar_item_apify(item: dict, permitir_browser_texto: bool = False) -> dict:
-        # Formato do actor "automation-lab/google-ads-scraper" (Google Ads
-        # Transparency Center): cada item já vem achatado (sem "snapshot"
-        # aninhado como no Meta). Campos documentados: advertiserId,
-        # advertiserName, isVerified, creativeId, adFormat (Text/Image/
-        # Video), firstShown, lastShown, previewUrl, imageUrl, region.
-        #
-        # IMPORTANTE — limitação real da fonte de dados: o Google Ads
-        # Transparency Center (ao contrário da Meta Ad Library) não expõe
-        # o texto do anúncio (headline/descrição), URL de vídeo nem
-        # impressões via essa API pública. Por isso body/title/description/
-        # cta/impressoes ficam vazios de propósito — não é um bug de
-        # mapeamento, é o que a fonte oferece. Quem quiser o texto do
-        # anúncio precisa abrir o "previewUrl" manualmente.
         ad_id     = str(item.get("creativeId") or item.get("id") or "")
         page_id   = str(item.get("advertiserId") or "")
         page_name = item.get("advertiserName") or ""
@@ -34875,24 +30482,11 @@ elif st.session_state.pagina == "google_ads":
         image_url = (item.get("imageUrl") or "").strip()
         print(f"[GADS] ad_id={ad_id} page_id={page_id} raw_format={raw_format!r} imageUrl_apify={image_url!r} previewUrl_apify={item.get('previewUrl')!r}", flush=True)
 
-        # A página humana (/advertiser/.../creative/...) sempre existe
-        # quando temos page_id + ad_id — é montada aqui em cima (antes da
-        # extração de imagem) porque agora ela também serve de último
-        # recurso pra achar a imagem, não só como link pro modal/"ver na
-        # Central de Transparência".
         _human_page_url = (
             f"https://adstransparency.google.com/advertiser/{page_id}/creative/{ad_id}"
             if page_id and ad_id else ""
         )
 
-        # O `previewUrl` (endpoint .js do preview, ver _extrair_preview_google
-        # acima) já vem com o thumbnail pronto e, quando o anúncio é de
-        # vídeo, com o ID do vídeo do YouTube embutido na URL da própria
-        # thumbnail. Só vale a pena baixar esse .js quando falta algo que
-        # só ele tem: imagem (quando o Apify não trouxe `imageUrl`) ou
-        # confirmação/vídeo de um anúncio já marcado como "Vídeo" — assim
-        # não gasta uma requisição extra à toa pros anúncios de imagem/
-        # texto que já vieram completos.
         _preview_url_raw = item.get("previewUrl") or ""
         _preview_info = {}
         if _preview_url_raw and (not image_url or raw_format == "video"):
@@ -34901,10 +30495,6 @@ elif st.session_state.pagina == "google_ads":
             if not image_url and _preview_info.get("image_url"):
                 image_url = _preview_info["image_url"]
 
-        # V223 — anúncio de texto: reaproveita exatamente o esquema do OCR,
-        # mas preenche-o com o HTML oficial do Google. Em uma coleta normal
-        # usamos somente o preview.js (barato). No fluxo Refazer, que já chega
-        # filtrado por CR..., permitimos abrir a página humana do MESMO ID.
         _texto_estruturado = _preview_info.get("texto_estruturado") or {}
         if _texto_estruturado and not _gads_html_estruturado_valido(_texto_estruturado):
             print(f"[GADS-HTML-V224] preview rejeitado id={ad_id}; abrindo página exata", flush=True)
@@ -34917,24 +30507,12 @@ elif st.session_state.pagina == "google_ads":
             _texto_estruturado["_pagina_origem"] = _human_page_url
         _texto_achatado = _achatar_ocr_estruturado(_texto_estruturado) if _texto_estruturado else ""
 
-        # V237: no Refazer por ID, quando o Google protege o conteúdo do
-        # frame e o HTML não pode ser lido, captura a área visual renderizada
-        # na página do CR exato. O ID é validado antes e depois.
         _frame_validado_b64 = ""
         if not image_url and not _texto_estruturado and permitir_browser_texto:
             _frame_validado_b64 = _capturar_frame_criativo_google(
                 _human_page_url, ad_id
             )
 
-        # V204 — recoleta limpa por ID. Não tenta mais adivinhar a mídia
-        # abrindo a página humana e pegando a primeira requisição `simgad`.
-        # Essa página pode carregar logo, variação ou mídia de outro card e
-        # foi exatamente assim que um criativo de Zeca/Alcione acabou salvo
-        # no ID da Hayley Williams. A mídia só é aceita quando vem vinculada
-        # ao item atual pelo Apify (`imageUrl`) ou pelo `previewUrl` do mesmo
-        # item. Se nenhuma das duas fontes entregar mídia, o anúncio novo é
-        # salvo sem mídia e será marcado como incompleto — nunca preenchido
-        # com o arquivo antigo nem com uma captura não validada.
         if not image_url and not _texto_estruturado and not _frame_validado_b64:
             print(
                 f"[GADS-V204] ad_id={ad_id} sem mídia validada; "
@@ -34961,21 +30539,9 @@ elif st.session_state.pagina == "google_ads":
         if images:
             b64 = _url_para_base64(images[0], referer_especifico=_human_page_url, tag=f"GADS-B64:{ad_id}")
             if not b64:
-                # Sem base64 (CDN bloqueou todas as tentativas), o card
-                # cai pro <img src> direto na URL crua do Google — que
-                # tem boa chance de falhar no navegador do usuário por
-                # hotlink/referrer (o <img> do card usa
-                # referrerpolicy="no-referrer", que tende a ser bloqueado
-                # por esse CDN), resultando no card "sem imagem" mesmo o
-                # backend tendo achado a URL certa.
                 print(f"[GADS] ad_id={ad_id} ATENÇÃO: base64 falhou, card vai depender do <img src> direto (pode quebrar por hotlink)", flush=True)
             images_b64.append(b64 if b64 else images[0])
 
-        # Se o previewUrl revelou um ID do YouTube, isso é bem mais valioso
-        # que o thumbnail estático: vira o vídeo do anúncio de verdade
-        # (jogado em "videos", igual já se faz no Meta Ads) e confirma o
-        # formato como "Vídeo" mesmo que o campo adFormat não tenha vindo
-        # certo do Apify.
         youtube_url = _preview_info.get("youtube_url") or ""
         videos = [youtube_url] if youtube_url else []
         if youtube_url:
@@ -34985,15 +30551,6 @@ elif st.session_state.pagina == "google_ads":
         last_shown  = item.get("lastShown") or ""
         start_fmt   = _dias_ativo(str(first_shown)) if first_shown else ""
 
-        # `previewUrl` NÃO é uma página navegável — é um endpoint .js com
-        # callback (content.js?...&responseCallback=fletchCallbackXXX),
-        # feito pra ser injetado dentro da própria Central de Transparência
-        # via <script>, não pra ser aberto direto no navegador. Abrir ele
-        # numa aba nova só mostra o texto cru do JS. A página humana já
-        # foi montada em `_human_page_url` (lá em cima) e continua sendo a
-        # fonte preferida pros links/modal; o previewUrl só entra como
-        # último recurso se por algum motivo não der pra montar a página
-        # humana.
         snap_url = _human_page_url or _preview_url_raw
 
         regiao = (item.get("region") or "").upper()
@@ -35030,15 +30587,6 @@ elif st.session_state.pagina == "google_ads":
         }
 
     def _apify_run_sync(search_term: str, limit: int = 1000, deadline_seconds: int = 600, region: str = "BR", on_chunk=None, chunk_size: int = 50, ids_alvo=None) -> tuple:
-        # `on_chunk` (opcional): callback chamado a cada `chunk_size` anúncios
-        # já normalizados (ver loop no fim da função). Existe pra quem chama
-        # (executar_busca) poder ir salvando no Supabase aos poucos — em vez
-        # de normalizar centenas de anúncios de uma empresa inteiros (cada um
-        # pra achar a imagem) pra só então salvar tudo de uma vez no final.
-        # Empresa com muitos anúncios "difíceis" (sem imagem pronta da
-        # Apify) podia passar 15-30+ minutos "rodando" sem nada persistido
-        # até o fim — com o chunk, o progresso vai sendo salvo no meio do
-        # caminho.
         api_token = st.secrets.get("APIFY_TOKEN", "")
         if not api_token:
             return [], [], "APIFY_TOKEN não configurada nos secrets."
@@ -35050,30 +30598,6 @@ elif st.session_state.pagina == "google_ads":
 
         termo = search_term.strip()
 
-        # O actor "automation-lab/google-ads-scraper" aceita 3 formas de
-        # busca (searchTerms / domains / advertiserIds). Detecta
-        # automaticamente qual usar a partir do texto digitado:
-        #  - "AR" + dígitos  -> ID do anunciante (formato do Google, ex.
-        #    "AR16735076323512287233" — visto na URL da Transparency Center)
-        #  - tem ponto e não tem espaço -> domínio (ex. "nike.com")
-        #  - qualquer outra coisa -> nome do anunciante
-        #
-        # de região do actor é sobre onde o ANÚNCIO foi exibido, não sobre
-        # o país do anunciante — um domínio pode aparecer normalmente na
-        # Central de Transparência (sem filtro nenhum) mas ter 0 anúncios
-        # marcados como exibidos na região BR nos dados do actor (ex.:
-        # anunciante roda campanha só em outras regiões, ou o dado de
-        # região daquele anúncio específico está incompleto/desatualizado
-        # no actor). Nesse caso, forçar region="BR" sempre faz a busca
-        # voltar vazia mesmo com o anunciante existindo de verdade —
-        # validado com o domínio real "buyticketbrasil.com", que tem
-        # anúncios confirmados na Transparency Center mas não retornava
-        # agora tenta de novo com region="" (todas as regiões) como
-        # última etapa da cascata, quando as tentativas com BR falham.
-        # V87: removido o teto artificial de 100 do nosso app. O Actor
-        # `automation-lab/google-ads-scraper` aceita no máximo 1.000 anúncios
-        # por anunciante, então usamos o máximo suportado quando o chamador não
-        # pedir explicitamente um valor menor.
         _max_ads_actor = max(1, min(int(limit or 1000), 1000))
         payload = {"maxAds": _max_ads_actor}
         if region:
@@ -35120,18 +30644,10 @@ elif st.session_state.pagina == "google_ads":
         print(f"[APIFY-DEBUG] termo={termo!r} run_id={run_id} status_final={status} dataset_id={dataset_id}", flush=True)
 
         if status != "SUCCEEDED":
-            # Status mais comum aqui quando o deadline curto (45s) da busca
-            # síncrona estoura ANTES do actor terminar: "RUNNING" mesmo (o
-            # loop saiu pelo `while _time.time() < deadline`, não por um
-            # status terminal) — nesse caso o run pode até ter sucesso
-            # depois, mas a busca já desistiu e devolveu erro pro usuário.
             return [], [], f"Run Apify terminou com status: {status}"
         if not dataset_id:
             return [], [], "Apify não retornou dataset ID."
 
-        # V87: lê o dataset em páginas. Mesmo com `maxAds=1000`, não
-        # dependemos de uma única resposta HTTP grande (menos chance de timeout
-        # e pronto para mudanças de paginação do endpoint).
         raw_items = []
         _offset = 0
         _page_size = 250
@@ -35161,17 +30677,10 @@ elif st.session_state.pagina == "google_ads":
         if not raw_items:
             return [], [], None
 
-        # V218 — o ator consulta por anunciante (AR...), mas um reprocessamento
-        # nasce de IDs criativos específicos (CR...). Filtra o dataset ANTES
-        # da normalização e do download das mídias para que somente os anúncios
-        # pendentes sejam efetivamente processados. A coleta normal continua
-        # sem filtro quando ids_alvo não é informado.
         def _id_cr_canonico(valor):
             texto = str(valor or "").strip().upper()
             if not texto:
                 return ""
-            # Algumas versões do ator entregam creativeId apenas numérico;
-            # outras já incluem o prefixo CR usado pela Central.
             if texto.isdigit():
                 return f"CR{texto}"
             return texto
@@ -35337,9 +30846,6 @@ elif st.session_state.pagina == "google_ads":
                 f"empresas={[e.get('nome') for e in empresas]} forcar={forcar}",
                 flush=True,
             )
-            # Recupera primeiro qualquer coleta anterior protegida no R2.
-            # Mesmo com o Supabase fora do ar a Apify pode continuar, pois o
-            # outbox passa a ser a garantia de durabilidade do resultado.
             _outbox_anterior = _carregar_checkpoints_gads_r2(user_id)
             if _outbox_anterior:
                 _marcar_coleta_prioritaria(user_id, True)
@@ -35359,22 +30865,10 @@ elif st.session_state.pagina == "google_ads":
             novos = {}
             incompletos = {}
             incompletos_ids = {}
-            # Resultados já coletados e preservados no outbox/R2 quando o
-            # Supabase estiver temporariamente indisponível. Esta coleção
-            # precisa existir mesmo quando nenhum checkpoint for necessário,
-            # pois também participa do cálculo e do payload do status final.
             protegidos = {}
             _nomes_empresas = [x["nome"] for x in empresas]
             _total_empresas = len(_nomes_empresas)
             _processadas = 0
-            # Status por empresa pra desenhar uma barra individual por
-            # empresa no card (em vez de só um "X de Y" agregado pro lote
-            # inteiro) — "pendente" (ainda não chegou a vez), "rodando"
-            # (chamando a Apify agora), "ok" (coletada e já salva), "cache"
-            # (pulada por já ter cache fresco), "erro" (falha na Apify) ou
-            # "erro_ao_salvar" (Apify respondeu, mas não persistiu no
-            # Supabase — distingue do "erro" de coleta porque o retry aqui
-            # não precisa chamar a Apify de novo, só tentar salvar de novo).
             _status_por_empresa = {nome: {"status": "pendente"} for nome in _nomes_empresas}
 
             def _grava_progresso():
@@ -35412,21 +30906,12 @@ elif st.session_state.pagina == "google_ads":
 
             for e in empresas:
                 ck = e["nome"]
-                # V231 — idempotência por atividade + empresa. Se esta mesma
-                # atividade já concluiu a coleta da empresa e o resultado
-                # final está protegido no R2, NUNCA chama a Apify novamente,
-                # mesmo quando `forcar=True`. Apenas conserva o checkpoint
-                # para o sincronizador. Uma coleta manual realmente nova tem
-                # outro activity_id e, portanto, continua funcionando.
                 _checkpoint_existente = _outbox_anterior.get(ck) or {}
                 _ids_alvo_da_empresa = list((ids_alvo_por_empresa or {}).get(ck) or [])
                 _checkpoint_mesma_atividade = bool(
                     isinstance(_checkpoint_existente, dict)
                     and _checkpoint_existente.get("_checkpoint_finalizado", True) is not False
                     and str(_checkpoint_existente.get("_atividade_id") or "") == str(atividade_id or "")
-                    # Refazer por ID reutiliza a notificação original de
-                    # propósito. Nesse caso o checkpoint final não significa
-                    # que os criativos incompletos já foram reprocessados.
                     and not _ids_alvo_da_empresa
                 )
                 if _checkpoint_mesma_atividade:
@@ -35457,10 +30942,6 @@ elif st.session_state.pagina == "google_ads":
                     )
 
                 if not _pula:
-                    # Marca "rodando" ANTES de chamar a Apify (que pode
-                    # demorar segundos/minutos) — sem isso, o card ficava
-                    # sem nenhum sinal de qual empresa está sendo coletada
-                    # agora enquanto a chamada não termina.
                     _status_por_empresa[ck] = {"status": "rodando"}
                     _grava_progresso()
                     print(
@@ -35468,10 +30949,6 @@ elif st.session_state.pagina == "google_ads":
                         flush=True,
                     )
 
-                # O gads_id (quando a empresa já tem um configurado) vem pronto
-                # dentro de query_values, montado na thread principal antes de
-                # chamar executar_busca — não dá pra ler st.session_state aqui
-                # dentro, já que essa função roda numa thread separada.
                 query = query_values.get(ck, "").strip() if not _pula else ""
                 if not _pula and not query:
                     _pula = True
@@ -35479,16 +30956,6 @@ elif st.session_state.pagina == "google_ads":
                 if _pula:
                     _status_por_empresa[ck] = {"status": "cache"}
                 else:
-                    # Processa e salva em LOTES DENTRO da própria empresa
-                    # (não só empresa a empresa) — cada anúncio pode custar
-                    # headless pra achar a imagem (ver _extrair_imagem_
-                    # pagina_google), e uma empresa com muitos anúncios
-                    # "difíceis" podia passar dezenas de minutos "rodando"
-                    # sem NADA persistido até terminar tudo. `on_chunk` (ver
-                    # _apify_run_sync) chama esse callback a cada ~15
-                    # anúncios já normalizados: salva o que já foi
-                    # processado até ali e atualiza o card com a contagem
-                    # parcial, em vez de um único "lotão" silencioso.
                     _ads_ck_acumulados = []
 
                     def _on_chunk_ck(chunk_normalizado, _ck=ck, _query=query):
@@ -35503,9 +30970,6 @@ elif st.session_state.pagina == "google_ads":
                             "_atividade_id": atividade_id,
                         }
                         _cache_parcial = merge_ads(cache_atual, {_ck: _entry_parcial})
-                        # O checkpoint durável vem antes do Supabase. Se o
-                        # banco cair, este lote continua disponível após um
-                        # restart e será sincronizado sem nova chamada Apify.
                         _salvo_parcial_ok, _erro_parcial = _salvar_checkpoint_gads_r2(
                             user_id, _ck, _entry_parcial
                         )
@@ -35545,18 +31009,7 @@ elif st.session_state.pagina == "google_ads":
                             "_checkpoint_finalizado": True,
                             "_atividade_id": atividade_id,
                         }
-                        # Salva JÁ essa empresa, sozinha — usa o `cache_atual`
-                        # que já vai sendo atualizado em memória a cada
-                        # sucesso (não precisa reler o banco de novo aqui:
-                        # cache_atual já reflete o último save bem-sucedido
-                        # desta mesma execução, e uma releitura extra por
-                        # empresa só significava mais uma ida ao Supabase
-                        # sem ganho real).
                         _cache_com_uma = merge_ads(cache_atual, {ck: entry_nova})
-                        # O checkpoint FINAL precisa guardar a entrada já
-                        # mesclada com o histórico. Guardar apenas a resposta
-                        # nova faria a sincronização posterior substituir e
-                        # apagar anúncios antigos da empresa.
                         _entry_protegida_final = dict(
                             _cache_com_uma.get(ck) or entry_nova
                         )
@@ -35593,15 +31046,6 @@ elif st.session_state.pagina == "google_ads":
                                 "msg": erros[ck],
                             }
 
-                # Progresso incremental — sem isso, o card ficava mostrando só
-                # o rótulo genérico "Coleta de anúncios" do início ao fim,
-                # porque os detalhes só eram gravados de uma vez só, quando
-                # TODAS as empresas já tinham terminado. Grava a cada empresa
-                # processada (sucesso, erro OU pulada por cache fresco) pra
-                # a barra de cada empresa e o texto do card atualizarem em
-                # tempo real — contar também as puladas garante que o total
-                # bata no final, mesmo quando alguma empresa é pulada por já
-                # ter cache fresco.
                 _processadas += 1
                 _grava_progresso()
                 print(
@@ -35611,10 +31055,6 @@ elif st.session_state.pagina == "google_ads":
                     flush=True,
                 )
 
-            # V259: a coleta já deixa um arquivo geral durável com todos os
-            # anúncios e o estado atual de cada imagem. Neste primeiro XML,
-            # links recém-coletados podem aparecer como `pendente_r2`; cada
-            # migração atualiza o mesmo arquivo quando termina.
             _manifest_ok_v261, _manifest_doc_v261 = _salvar_manifesto_gads_json_v261(
                 user_id, cache_atual, motivo="coleta_finalizada"
             )
@@ -35623,9 +31063,6 @@ elif st.session_state.pagina == "google_ads":
                 iniciar_migracao_midia_background(user_id, novos, plataforma="Google Ads")
             iniciar_retentativa_midias_background(user_id)
 
-            # V233 — confirmação final é a gravação por empresa no R2. O
-            # Supabase recebe somente atividade/índice pequeno e nunca mais o
-            # cache completo de anúncios.
             _erros_reais = {k: v for k, v in erros.items() if k not in protegidos}
             if incompletos or (_erros_reais and not novos and not protegidos):
                 _status_final = "erro"
@@ -35675,9 +31112,6 @@ elif st.session_state.pagina == "google_ads":
             )
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
         finally:
-            # Coleta sem checkpoint pendente encerrou de verdade. Quando há
-            # checkpoint, a prioridade permanece com o sincronizador até o
-            # banco confirmar e o R2 ser limpo.
             try:
                 _pendencias_finais = {
                     _nome: _entry
@@ -35704,10 +31138,6 @@ elif st.session_state.pagina == "google_ads":
             {"empresas": [e["nome"] for e in empresas], "plataforma": "Google Ads"},
         )
         if atividade_id_existente:
-            # Se o clique/retomada aponta para uma atividade cujas empresas
-            # já possuem checkpoint final, a única ação válida é sincronizar.
-            # Isso fecha a brecha que repetiu a coleta completa várias vezes
-            # quando o Supabase ficou indisponível.
             _outbox_existente = _carregar_checkpoints_gads_r2(st.session_state.user.id)
             _nomes_requisitados = [str(e.get("nome") or "") for e in empresas]
             _ja_coletadas = [
@@ -35716,9 +31146,6 @@ elif st.session_state.pagina == "google_ads":
                 and (_outbox_existente[_nome].get("_checkpoint_finalizado", True) is not False)
                 and str(_outbox_existente[_nome].get("_atividade_id") or "") == str(_atividade_id)
             ]
-            # Uma fila com IDs alvo é um reprocessamento real e deliberado.
-            # Não pode cair na retomada de sincronização só porque reutiliza
-            # a atividade original que gerou o checkpoint.
             _tem_ids_alvo = any(
                 (ids_alvo_por_empresa or {}).get(_nome)
                 for _nome in _nomes_requisitados
@@ -35784,7 +31211,6 @@ elif st.session_state.pagina == "google_ads":
             flush=True,
         )
         if not _iniciou_coleta:
-            # Não remove a prioridade se outra coleta real continua viva.
             if not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads"):
                 _marcar_coleta_prioritaria(st.session_state.user.id, False)
             atualizar_atividade(_atividade_id, "erro", {
@@ -35795,8 +31221,6 @@ elif st.session_state.pagina == "google_ads":
             st.info("Já existe uma coleta de Google Ads em processamento.")
             return
 
-        # Marca que tem uma coleta rodando — a página usa isso pra mostrar
-        # um aviso em vez de fingir que os dados já estão atualizados.
         st.session_state["_coleta_gads_em_andamento"] = True
         st.rerun()
 
@@ -35873,10 +31297,6 @@ elif st.session_state.pagina == "google_ads":
         except Exception:
             return []
 
-    # V234: uma migração antiga da V233 podia sobrescrever o objeto canônico
-    # de uma empresa. Faz a verificação uma única vez por sessão, antes de
-    # carregar o cache ou iniciar qualquer sincronização. A restauração só
-    # ocorre quando uma versão anterior contém mais anúncios que a atual.
     if (
         st.session_state.get("user")
         and not st.session_state.get("_gads_recovery_v234_verificada", False)
@@ -35888,30 +31308,16 @@ elif st.session_state.pagina == "google_ads":
         if _resultado_recovery_v234.get("restauradas"):
             st.session_state.pop("gads_cache", None)
 
-    # Tenta descarregar resultados protegidos no R2 em toda nova visita à
-    # área, mas com trava global para nunca abrir workers duplicados. Esta
-    # sincronização só grava o que já foi coletado; não chama a Apify.
-    # V232 — este valor fica em session_state e pode sobreviver a uma
-    # reconexão enquanto o processo/container do Streamlit é reiniciado.
-    # time.monotonic() não é uma referência persistente entre processos e,
-    # nesse cenário, o delta podia ficar negativo e impedir novas tentativas
-    # para sempre. Epoch real é estável entre reinícios.
     _agora_outbox = time.time()
     _ultimo_outbox = float(st.session_state.get("_gads_outbox_ultima_tentativa_epoch", 0.0) or 0.0)
-    # Compatibilidade defensiva: relógio futuro/corrompido nunca bloqueia a
-    # retomada. O valor antigo monotônico é deliberadamente ignorado.
     if _ultimo_outbox > (_agora_outbox + 60.0) or _ultimo_outbox < 0:
         _ultimo_outbox = 0.0
     if (
         st.session_state.get("user")
-        # Cinco minutos entre tentativas. Quando o PostgREST está em 5xx,
-        # repetir payloads grandes a cada minuto prolonga a indisponibilidade.
         and (_agora_outbox - _ultimo_outbox) >= 300.0
         and not _job_is_active("coleta_ads_google", st.session_state.user.id, "google_ads")
         and not _job_is_active("sincronizar_gads_outbox", st.session_state.user.id, "google_ads")
     ):
-        # Marca antes de abrir a thread para eliminar a janela de corrida em
-        # que OCR/migração poderiam iniciar no mesmo rerun.
         _marcar_coleta_prioritaria(st.session_state.user.id, True)
         _iniciou_sync_outbox = _job_start_thread(
             "sincronizar_gads_outbox", st.session_state.user.id, "google_ads",
@@ -35921,8 +31327,6 @@ elif st.session_state.pagina == "google_ads":
             name="sincronizar-google-ads-outbox",
         )
         if _iniciou_sync_outbox:
-            # Só inicia o cooldown quando a thread realmente nasceu. Antes, uma
-            # falha de abertura silenciava o retry por mais cinco minutos.
             st.session_state["_gads_outbox_ultima_tentativa_epoch"] = _agora_outbox
             print(
                 f"[GADS-OUTBOX-V232] tentativa iniciada epoch={_agora_outbox:.0f}",
@@ -35936,15 +31340,9 @@ elif st.session_state.pagina == "google_ads":
             print("[GADS-OUTBOX-V232] worker nao iniciou; retry liberado", flush=True)
     if "gads_cache" not in st.session_state or not st.session_state.gads_cache:
         st.session_state.gads_cache = carregar_cache_ads()
-    # V251: workers de migração atualizam o R2 fora do contexto da sessão.
-    # O acompanhamento por IDs de atividade não recarregava a tela quando a
-    # atividade já estava na baseline da sessão. A revisão local é alterada
-    # no instante de cada escrita e torna a invalidação determinística.
     _rev_r2_agora_v251 = _revisao_gads_r2_v251(st.session_state.user.id)
     if "_gads_revisao_r2_v251" not in st.session_state:
         st.session_state["_gads_revisao_r2_v251"] = _rev_r2_agora_v251
-        # Primeira execução desta versão: a sessão pode ter sobrevivido ao
-        # deploy carregando os links antigos. Força uma única sincronização.
         st.session_state.gads_cache = carregar_cache_ads(forcar=True)
         print("[GADS-R2-V251] primeira sincronização visual forçada", flush=True)
         st.rerun()
@@ -35959,11 +31357,6 @@ elif st.session_state.pagina == "google_ads":
         st.session_state.gads_cache = carregar_cache_ads(forcar=True)
         st.rerun()
 
-    # V268: a fonte da reparação é o próprio critério visual do relógio.
-    # Assim, a manutenção não pode concluir "zero pendentes" olhando outro
-    # snapshot enquanto a tela ainda mostra cards amarelos. Primeiro força
-    # uma releitura barata do cache canônico; persistindo o mesmo relógio,
-    # abre uma atividade e refaz somente o armazenamento das imagens.
     _relogios_visiveis_v258 = _encontrar_imagens_gads_pendentes_v257(
         st.session_state.get("gads_cache") or {}
     )
@@ -35986,8 +31379,6 @@ elif st.session_state.pagina == "google_ads":
             st.session_state.get("_gads_relogio_tentativa_epoch_v258", 0.0) or 0.0
         )
 
-        # Uma assinatura nova é conferida imediatamente. Se a única causa
-        # era cache de sessão antigo, os cards recebem o check sem download.
         if _ultima_assinatura_v258 != _assinatura_relogio_v258:
             _cache_fresco_v258 = carregar_cache_ads(forcar=True)
             _relogios_frescos_v258 = _encontrar_imagens_gads_pendentes_v257(
@@ -36023,11 +31414,6 @@ elif st.session_state.pagina == "google_ads":
                 or (_agora_relogio_v258 - _ultima_tentativa_v258) >= 900.0
             )
         ):
-            # Não abre uma segunda atividade de verificação. O manifesto pós-login
-            # é o controlador único e já transforma relógios, OCRs e CCs pendentes
-            # nas respectivas atividades de execução. A página apenas invalida o
-            # cache visual; na próxima autenticação/reconciliação o manifesto
-            # decide e registra a ação necessária.
             st.session_state["_gads_relogio_tentativa_epoch_v258"] = _agora_relogio_v258
             st.session_state["_gads_relogio_assinatura_v258"] = _assinatura_relogio_v258
             print(
@@ -36038,10 +31424,6 @@ elif st.session_state.pagina == "google_ads":
     if "gads_erro" not in st.session_state:
         st.session_state.gads_erro = {}
 
-    # V269: a primeira abertura da página Google Ads em cada sessão aciona o
-    # manifesto, mesmo que a reconciliação pós-login já tenha terminado. Se a
-    # reconciliação do login ainda estiver ativa, o mesmo processo é reutilizado
-    # e nenhum card duplicado é criado. Reruns do Streamlit não repetem a ação.
     if (
         st.session_state.get("user")
         and not st.session_state.get("_manifesto_gads_abertura_pagina_v269_iniciado")
@@ -36065,30 +31447,10 @@ elif st.session_state.pagina == "google_ads":
                 flush=True,
             )
 
-    # ── Sincronização resiliente (fonte da verdade = tabela `atividades`) ──
-    # Antes, a tela só reconsultava o Supabase enquanto a flag de sessão
-    # `_coleta_gads_em_andamento` estivesse True — e essa flag só existia
-    # porque um botão-fantasma era clicado via JS a cada ~4s enquanto a
-    # aba Ads ficasse montada. Se o usuário saísse da aba, recarregasse a
-    # página, ou o rerun automático falhasse por qualquer motivo enquanto
-    # a coleta ainda rodava em background, a flag se perdia (ou nunca era
-    # setada de novo) e `gads_cache` ficava travado pra sempre na versão
-    # antiga — mesmo com o merge/migração já concluído certinho no banco
-    # (é isso que fazia "Baixar JSON" e "Últ. busca" mostrarem dado velho).
-    #
-    # Agora essa checagem roda em TODO render da página, comparando o id
-    # da atividade mais recente com o último id que a sessão já processou
-    # — independente do valor da flag. Isso garante que, assim que a
-    # página é renderizada de novo (mesmo que só porque o usuário voltou
-    # pra aba ou recarregou), o cache é ressincronizado com o Supabase.
     _ultima_atividade_ads = None
     if st.session_state.get("user"):
         _ultima_atividade_ads = _ultima_atividade_coleta_ads(st.session_state.user.id)
 
-    # V226 — recuperação de coleta órfã após crash/redeploy. Antes este bloco
-    # marcava erro imediatamente, mesmo quando todas as empresas já tinham
-    # sido coletadas e estavam protegidas na outbox aguardando apenas o
-    # Supabase voltar. Agora a outbox é consultada antes de decidir.
     if (
         _ultima_atividade_ads
         and (
@@ -36103,9 +31465,6 @@ elif st.session_state.pagina == "google_ads":
             st.session_state.user.id,
             "google_ads",
         )
-        # V228 — nunca diagnostica a atividade enquanto o sincronizador esta
-        # entre "confirmou no banco" e "atualizou a notificacao". Esse era o
-        # intervalo que gerava o falso "interrompida" visto no log.
         and not _job_is_active(
             "sincronizar_gads_outbox",
             st.session_state.user.id,
@@ -36121,9 +31480,6 @@ elif st.session_state.pagina == "google_ads":
         _protegidas_orfa = [x for x in _empresas_orfas if x in _outbox_orfa]
         _nao_estao_outbox_orfa = [x for x in _empresas_orfas if x not in _outbox_orfa]
 
-        # V228 — checkpoint ausente nao significa automaticamente coleta
-        # interrompida: ele pode ter acabado de ser removido porque a empresa
-        # ja foi sincronizada. Confirma no banco usando o id da atividade.
         _confirmadas_db_orfa = []
         _verificacao_db_orfa_ok = not bool(_nao_estao_outbox_orfa)
         if _nao_estao_outbox_orfa:
@@ -36160,9 +31516,6 @@ elif st.session_state.pagina == "google_ads":
             x for x in _empresas_orfas
             if x not in _protegidas_orfa and x not in _confirmadas_db_orfa
         ]
-        # Checkpoints antigos (anteriores à V226) não tinham a marca abaixo.
-        # Eles são aceitos como finais somente quando TODAS as empresas da
-        # atividade estão presentes, que é o cenário da coleta já concluída.
         _todos_checkpoints_finais = all(
             (_outbox_orfa.get(x) or {}).get("_checkpoint_finalizado", True) is not False
             for x in _protegidas_orfa
@@ -36209,8 +31562,6 @@ elif st.session_state.pagina == "google_ads":
                 flush=True,
             )
         elif not _verificacao_db_orfa_ok:
-            # Sem resposta do banco nao ha evidencia suficiente para declarar
-            # erro. Mantem laranja e tenta de novo no proximo ciclo.
             _det_adiado = dict(_detalhes_orfa)
             _det_adiado["aguardando_sincronizacao"] = list(_protegidas_orfa)
             _det_adiado["motivo"] = (
@@ -36244,40 +31595,20 @@ elif st.session_state.pagina == "google_ads":
         st.session_state["_coleta_gads_em_andamento"] = False
 
     if "_gads_ultima_atividade_id_vista" not in st.session_state:
-        # Primeira renderização dessa sessão: `gads_cache` acabou de ser
-        # carregado fresco do banco (bloco acima), então já está em dia
-        # com essa atividade — só marca a "baseline", sem forçar reload.
         st.session_state["_gads_ultima_atividade_id_vista"] = (
             _ultima_atividade_ads.get("id") if _ultima_atividade_ads else None
         )
         if _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("pendente", "na_fila", "em_andamento"):
-            # Chegou na página com uma coleta já rodando (ex: iniciada
-            # antes de um refresh) — garante que o polling seja retomado.
             st.session_state["_coleta_gads_em_andamento"] = True
     elif _ultima_atividade_ads and _ultima_atividade_ads.get("id") != st.session_state["_gads_ultima_atividade_id_vista"]:
         if _ultima_atividade_ads.get("status") in ("concluido", "erro"):
-            # Atividade nova (que a sessão ainda não tinha visto) já
-            # terminou — busca os dados direto do Supabase, ignorando
-            # qualquer coisa que já estivesse em `gads_cache`, libera o
-            # botão de novo e atualiza a tela automaticamente.
             st.session_state.gads_cache = carregar_cache_ads(forcar=True)
             st.session_state["_gads_ultima_atividade_id_vista"] = _ultima_atividade_ads["id"]
             st.session_state["_coleta_gads_em_andamento"] = False
             st.rerun()
         else:
-            # ativo mesmo que a flag local tivesse se perdido.
             st.session_state["_coleta_gads_em_andamento"] = True
 
-    # ── Sincronização resiliente pra migração de mídia (links do R2) ──
-    # A coleta em si (`coleta_ads`) salva rápido com os links originais
-    # original; a troca pelos links permanentes do R2 acontece DEPOIS,
-    # numa atividade separada (`migracao_midia`, uma por empresa, cada
-    # uma terminando num momento diferente). O bloco acima só observava
-    # `coleta_ads` — por isso a coleta podia aparecer "concluída" e até
-    # atualizar "Últ. busca", mas os anúncios continuavam com os links
-    # antigos até a sessão recarregar o cache por qualquer outro motivo.
-    # Aqui a gente rastreia os ids de migração já vistos e força reload
-    # assim que qualquer uma nova aparece concluída/com erro.
     _migracoes_midia = []
     if st.session_state.get("user"):
         _migracoes_midia = _atividades_migracao_midia_recentes(st.session_state.user.id)
@@ -36290,9 +31621,6 @@ elif st.session_state.pagina == "google_ads":
     )
 
     if "_gads_migracao_ids_vistos" not in st.session_state:
-        # Primeira renderização dessa sessão: `gads_cache` já foi carregado
-        # fresco do banco, então já reflete essas migrações — só marca a
-        # baseline, sem forçar reload.
         st.session_state["_gads_migracao_ids_vistos"] = set(_migracoes_finalizadas_ids)
     else:
         _novas_migracoes_finalizadas = _migracoes_finalizadas_ids - st.session_state["_gads_migracao_ids_vistos"]
@@ -36301,36 +31629,15 @@ elif st.session_state.pagina == "google_ads":
             st.session_state["_gads_migracao_ids_vistos"] |= _novas_migracoes_finalizadas
             st.rerun()
 
-    # Guarda se há uma coleta rodando em background pra essa sessão — usado
-    # mais abaixo pra deixar o botão "Buscar / Atualizar Anúncios" travado
-    # (sem clique) enquanto o processo não termina.
-    # V194 — o botão segue o worker REAL desta instância. O status no
-    # Supabase é somente informativo e pode ficar antigo se o banco cair ou
-    # o JWT expirar. Quando a thread termina, o botão é liberado pelo
-    # `finally` de `_job_run_guarded`, mesmo que o update terminal falhe.
     _coleta_em_andamento = _job_is_active(
         "coleta_ads_google", st.session_state.user.id, "google_ads"
     ) if st.session_state.get("user") else False
     st.session_state["_coleta_gads_em_andamento"] = _coleta_em_andamento
 
-    # V105 — faltava acompanhar a TERCEIRA etapa assíncrona: OCR.
-    # Antes a página fazia polling durante coleta e migração, mas parava
-    # enquanto o OCR continuava no worker. O banco ficava atualizado, porém
-    # a tela aberta permanecia com o snapshot antigo. Entrar em outra página
-    # e voltar causava um novo render e então o OCR aparecia.
-    # V110 — usa o job realmente ativo nesta instância em vez de consultar
-    # até 100 atividades do Supabase em todo rerun. Atividades órfãs antigas
-    # não mantêm mais a página em polling infinito.
     _ocr_em_andamento = False
     if st.session_state.get("user"):
         _ocr_em_andamento = _job_any_active("ocr_gads", st.session_state.user.id)
 
-    # V243 — o worker grava o OCR diretamente na tabela ``midias``, mas o
-    # card é montado a partir de ``gads_cache``. Antes, ao terminar o worker,
-    # o polling apenas parava e a tela continuava com o snapshot anterior,
-    # exibindo "Texto não disponibilizado" apesar do OCR já concluído.
-    # Detecta a transição ativo -> finalizado, força a releitura e só então
-    # encerra o polling.
     _ocr_estava_ativo_v243 = bool(
         st.session_state.get("_gads_ocr_estava_ativo_v243", False)
     )
@@ -36340,10 +31647,6 @@ elif st.session_state.pagina == "google_ads":
         st.rerun()
     st.session_state["_gads_ocr_estava_ativo_v243"] = bool(_ocr_em_andamento)
 
-    # V227 — a sincronizacao protegida e uma etapa ativa da coleta, como o
-    # OCR. Mesmo depois que o worker termina uma tentativa, o card continua
-    # em polling enquanto ainda houver empresa aguardando confirmacao. Isso
-    # permite nova tentativa automatica sem clique e sem nova coleta.
     _sync_outbox_em_andamento = False
     _sync_outbox_aguardando = False
     if st.session_state.get("user"):
@@ -36366,8 +31669,6 @@ elif st.session_state.pagina == "google_ads":
         st.session_state["_gads_poll_ocr_ate"] = 0.0
         _janela_poll_ocr = False
 
-    # A tela agora se atualiza enquanto qualquer etapa que altera os cards
-    # estiver rodando: coleta, migração OU OCR.
     _precisa_polling_ads = (
         _coleta_em_andamento
         or _migracao_em_andamento
@@ -36386,10 +31687,6 @@ elif st.session_state.pagina == "google_ads":
     )
 
     if _coleta_em_andamento and _ultima_atividade_ads and _ultima_atividade_ads.get("status") in ("concluido", "erro"):
-        # Cobre o caso em que a atividade mais recente já era a mesma
-        # id vista antes (ex: sessão nova mas ficou marcada como em
-        # andamento) e já terminou — sincroniza do mesmo jeito, mesmo
-        # sem um id novo pra comparar.
         st.session_state.gads_cache = carregar_cache_ads(forcar=True)
         st.session_state["_gads_ultima_atividade_id_vista"] = _ultima_atividade_ads.get("id")
         st.session_state["_coleta_gads_em_andamento"] = False
@@ -36398,11 +31695,6 @@ elif st.session_state.pagina == "google_ads":
         st.rerun()
 
     if _precisa_polling_ads:
-        # Botão-fantasma (oculto): usado só pra receber o clique disparado
-        # automaticamente pelo timer em JS logo abaixo, que verifica de
-        # tempos em tempos se a coleta e/ou a migração de mídia já
-        # terminaram — sem exigir nenhuma ação do usuário nem mostrar
-        # avisos na tela.
         st.button("_gads_verificar_coleta_trigger_", key="_btn_verificar_coleta_gads")
         st.markdown("""
         <style>
@@ -36417,8 +31709,6 @@ elif st.session_state.pagina == "google_ads":
         }
         </style>
         """, unsafe_allow_html=True)
-        # 8 segundos durante essa etapa pesada. A atualização continua
-        # automática, só fica menos agressiva enquanto OCR está ativo.
         _poll_ms_gads = 60000 if (_ocr_em_andamento or _sync_outbox_aguardando) else UI_POLL_INTERVAL_MS
         components.html(f"""
         <script>
@@ -36460,36 +31750,12 @@ elif st.session_state.pagina == "google_ads":
     if "gads_onboarding_paginas" not in st.session_state:
         st.session_state.gads_onboarding_paginas = []
     if "gads_onboarding_buscando" not in st.session_state:
-        # Flag "busca em andamento". Existe pra evitar uma condição de
-        # corrida: o polling global de 12s (sino de notificações) roda
-        # um rerun completo mesmo enquanto a chamada bloqueante ao Apify
-        # ainda está em andamento (ela pode levar até 90-180s). Sem essa
-        # flag, esse rerun de fundo lê o estado intermediário — empresa
-        # já setada em gads_onboarding_empresa mas gads_onboarding_paginas
-        # ainda vazio porque a busca de verdade não terminou — e conclui
-        # erroneamente "busca terminou, sem resultado", mostrando o card
-        # de "Nenhuma página encontrada" antes da hora.
         st.session_state.gads_onboarding_buscando = False
     if "gads_onboarding_timeout" not in st.session_state:
         st.session_state.gads_onboarding_timeout = False
     if "gads_onboarding_buscando_inicio" not in st.session_state:
-        # Timestamp (epoch seconds) de quando `gads_onboarding_buscando`
-        # virou True. Existe pra destravar a flag sozinha se a execução
-        # que fazia a busca de verdade for morta no meio do caminho (ver
-        # comentário logo abaixo, onde a flag é lida) — sem isso, uma vez
-        # presa em True ela fica assim pra sempre, porque a única linha
-        # que a zeraria é a de DEPOIS da chamada bloqueante ao Apify, que
-        # nunca chega a rodar se o script for interrompido antes.
         st.session_state.gads_onboarding_buscando_inicio = None
     if "gads_onboarding_job_id" not in st.session_state:
-        # id do job de busca em background (ver _gads_onboarding_iniciar
-        # mais abaixo). Substitui o antigo esquema de "chamada bloqueante
-        # + flag `gads_onboarding_buscando` + watchdog de 240s": agora o
-        # clique em "Buscar anunciantes" só dispara uma thread e guarda o
-        # id aqui; cada rerun (incluindo o polling de 12s do sino) lê o
-        # status desse job em memória — nunca fica esperando a chamada ao
-        # Apify terminar dentro do mesmo script run, então não existe mais
-        # a corrida onde um rerun de fundo lê estado "no meio do caminho".
         st.session_state.gads_onboarding_job_id = None
     if "gads_onboarding_termo" not in st.session_state:
         st.session_state.gads_onboarding_termo = ""
@@ -36498,11 +31764,6 @@ elif st.session_state.pagina == "google_ads":
     if "gads_aba_conteudo" not in st.session_state:
         st.session_state.gads_aba_conteudo = {}
     if "gads_main_tab" not in st.session_state:
-        # Antes usava any() — bastava UMA empresa sem configurar (de várias)
-        # pra cair na aba de Configuração por padrão, mesmo com outras já
-        # configuradas e com dados. Só faz sentido abrir direto em
-        # Configuração quando NENHUMA empresa tem ID configurado ainda
-        # (usuário novo, nada pra ver na lista de anúncios mesmo).
         _nenhuma_empresa_configurada_init = todas_empresas and all(not empresa_tem_gads_id(e) for e in todas_empresas)
         st.session_state.gads_main_tab = "configuracao" if _nenhuma_empresa_configurada_init else "empresas"
     if "gads_config_empresa_selecionada" not in st.session_state:
@@ -36525,19 +31786,6 @@ elif st.session_state.pagina == "google_ads":
         salvar_empresa_e_concorrentes()
 
     def buscar_anunciantes_google(termo: str) -> tuple:
-        # Mesmo raciocínio do Meta Ads: essa busca trava a tela toda
-        # (síncrona, dentro do clique do botão), então usa um deadline
-        # bem menor que os 180s padrão da coleta completa em background.
-        #
-        # Quando o termo é um domínio (ex: "site.com.br"), o Google Ads
-        # Transparency Center às vezes só tem o anunciante cadastrado com
-        # uma variação mais curta do domínio (ex: "site.com" ou só
-        # "site"). Em vez de desistir na primeira tentativa vazia, tenta
-        # de novo removendo um nível do domínio por vez, da direita pra
-        # esquerda: "site.com.br" → "site.com" → "site" (última tentativa,
-        # já sem ponto nenhum — nesse ponto vira busca por nome mesmo,
-        # graças à mesma detecção automática de domínio vs. nome que já
-        # existe em _apify_run_sync).
         termo = termo.strip()
         candidatos = [termo]
         if "." in termo and " " not in termo:
@@ -36548,45 +31796,6 @@ elif st.session_state.pagina == "google_ads":
                     candidatos.append(candidato)
         print(f"[GADS-BUSCA-DEBUG] termo original={termo!r} -> candidatos={candidatos}", flush=True)
 
-        # Duas passadas de região: primeiro BR (caso mais comum), depois
-        # SEM filtro nenhum (todas as regiões) — só usada se a passada BR
-        # inteira vier vazia. Precisa dessa segunda passada porque o
-        # filtro de região do actor é sobre onde o ANÚNCIO foi exibido,
-        # não sobre o país do anunciante — um domínio pode existir e ter
-        # anúncios de verdade na Central de Transparência (sem filtro
-        # nenhum) mas nenhum marcado como exibido na região BR nos dados
-        # do actor (ex. validado com "buyticketbrasil.com": aparece na
-        #
-        # As combinações candidato×região eram testadas uma de cada vez,
-        # em sequência — cada tentativa vazia consome o deadline_seconds
-        # (45s) inteiro antes de partir pra próxima. Com até 3 candidatos
-        # x 2 regiões = 6 combinações, o pior caso passava de 4 minutos
-        # (e o caso comum de um domínio "cascateando" — ex.: ".com.br"
-        # falha, ".com" acha — já levava uns 100s, tudo isso com a tela
-        # travada sem feedback nenhum).
-        #
-        # Dispara as combinações em DUAS ONDAS (não mais as 6 de uma vez):
-        # onda 1 = todos os candidatos com região BR, onda 2 = todos os
-        # candidatos sem filtro de região — só roda se a onda 1 inteira
-        # vier vazia. Isso reduz o número de runs simultâneos batendo na
-        # mesma conta Apify ao mesmo tempo (de até 6 pra até 3), o que
-        # ajuda o actor não competir tanto por recursos/concorrência e
-        # terminar dentro do deadline com mais consistência.
-        #
-        # Motivo de ter mais de uma onda em primeiro lugar: o filtro de
-        # região do actor é sobre onde o ANÚNCIO foi exibido, não sobre
-        # o país do anunciante — um domínio pode existir e ter anúncios
-        # de verdade na Central de Transparência (sem filtro nenhum) mas
-        # nenhum marcado como exibido na região BR nos dados do actor
-        # (ex. validado com "buyticketbrasil.com": aparece na Transparency
-        #
-        # deadline_seconds subiu de 45 pra 90: o actor "google-ads-scraper"
-        # pode ter cold start lento, e com múltiplos runs concorrentes na
-        # mesma conta Apify o run às vezes ainda está "RUNNING" quando o
-        # prazo curto estourava — nesse caso o código tratava como "sem
-        # resultado" mesmo o anunciante tendo anúncios de verdade (log real:
-        # "buyticketbrasil.com" achou 20 anúncios numa tentativa e deu
-        # timeout "RUNNING" em outra, pro MESMO termo).
         ondas = [("BR",), ("",)]
 
         def _tentar(combo):
@@ -36619,9 +31828,6 @@ elif st.session_state.pagina == "google_ads":
                         ads, erro = None, str(e)
                     resultados[combo] = (ads, erro)
 
-            # Percorre na ordem de prioridade original (não na ordem de
-            # chegada) — assim o comportamento continua idêntico ao
-            # sequencial, só que muito mais rápido.
             for combo in combinacoes:
                 candidato, regiao = combo
                 ads, erro = resultados.get(combo, (None, "sem resultado"))
@@ -36653,15 +31859,6 @@ elif st.session_state.pagina == "google_ads":
         return [], houve_timeout
 
     def _gads_onboarding_worker(job_id: str, termo: str):
-        # Roda em thread separada, fora do script run do Streamlit — por
-        # isso só grava no registry em memória (_gads_onboarding_job_set),
-        # nunca em st.session_state diretamente (session_state pertence
-        # ao script run que o criou; escrever nele de outra thread não é
-        # seguro nem é lido de volta com garantia). Quem lê esse
-        # resultado é sempre o script principal, no próximo rerun, via
-        # _gads_onboarding_job_get — inclusive o rerun disparado pelo
-        # polling de 12s do sino, que agora só faz uma leitura barata em
-        # memória em vez de esperar a chamada ao Apify terminar.
         try:
             paginas, houve_timeout = buscar_anunciantes_google(termo)
             _gads_onboarding_job_set(
@@ -36695,26 +31892,14 @@ elif st.session_state.pagina == "google_ads":
         threading.Thread(target=_gads_onboarding_worker, args=(job_id, termo), daemon=True).start()
         return job_id
 
-    # ══════════════════════════════════════════════════════════════════
-    # CABEÇALHO DA PÁGINA
-    # ══════════════════════════════════════════════════════════════════
 
     _ultima_ts = ""
     _emp_ativa_ts_ref = st.session_state.get("gads_empresa_ativa", "")
     if st.session_state.gads_cache:
-        # Prioridade 1: timestamp da própria empresa selecionada — é o que
-        # o usuário espera ver ao lado do botão "Buscar / Atualizar" dela.
-        # Antes o código pegava o MIN (mais antigo) entre TODAS as empresas
-        # do cache, sem filtrar pela selecionada: se qualquer outra empresa
-        # monitorada estivesse desatualizada há dias, "Últ. busca" ficava
-        # preso nela mesmo depois de rodar uma coleta nova pra empresa atual.
         _entry_ativa = st.session_state.gads_cache.get(_emp_ativa_ts_ref, {}) if _emp_ativa_ts_ref else {}
         _ultima_ts = _entry_ativa.get("ts", "")
 
         if not _ultima_ts:
-            # mostra a coleta mais recente do cache geral. Usa parsing de
-            # data (não comparação de string) porque "dd/mm/aaaa hh:mm"
-            # não ordena corretamente como texto.
             def _parse_ts_ads(s):
                 try:
                     return _dt.datetime.strptime(s, "%d/%m/%Y %H:%M")
@@ -36754,7 +31939,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 """, height=104 if _ultima_ts else 78)
  
     with h2_col:
-        # ── Ghost buttons ocultos: seleção de empresa / comparativo / buscar / limpar ──
         _emp_dd_ghost_css_parts = []
         for _ci_h, _e_h in enumerate(todas_empresas):
             _sk_h = safe_key(_e_h["nome"])
@@ -36861,16 +32045,10 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     st.toast(f"Erro ao gerar comparativo: {e}", icon="⚠️")
             st.rerun()
  
-        # Ghost: dispara a busca/atualização (equivalente ao "Coletar dados" do Redes)
         gerar_btn_gads_header = st.button("gads_buscar_header_trigger", key="gads_buscar_header_btn")
 
-        # Ghost legado do ícone de atualização. Desde a V206, o botão
-        # principal "Buscar / Atualizar Anúncios" também força uma coleta
-        # real; nenhum clique manual pode ser convertido silenciosamente em
-        # simples leitura do cache.
         gerar_btn_gads_forcar = st.button("gads_forcar_header_trigger", key="gads_forcar_header_btn")
  
-        # Ghost: limpar cache
         if st.session_state.gads_cache:
             if st.button("gads_limpar_cache", key="gads_limpar_cache_btn"):
                 st.session_state.gads_cache = {}
@@ -36886,7 +32064,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 st.toast("Cache limpo!", icon="🗑️")
                 st.rerun()
 
-        # ── Dados para "Última busca" + JSON bruto (igual ao modal do Redes) ──
         _djs = "[]"
         _fn = ""
         if _ultima_ts:
@@ -36939,12 +32116,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
         else:
             _selected_html = '<div style="font-size:13px;color:#9ca3af;flex:1">Selecione uma empresa</div>'
  
-        # Empresa "tem dados" quando já existe uma coleta de Google Ads
-        # salva pra ela em `gads_cache` com pelo menos um anúncio (`data`
-        # não vazio) — mesmo critério usado em `empresas_com_dados` mais
-        # abaixo, só que aqui olhando empresa por empresa (pra decidir o
-        # cinza no item da lista) e no agregado (pra decidir se o
-        # dropdown inteiro deve ficar desativado).
         def _gads_empresa_tem_dados(nome_emp: str) -> bool:
             return bool((st.session_state.gads_cache.get(nome_emp) or {}).get("data"))
 
@@ -36970,9 +32141,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
                 '</svg>'
             )
-            # Empresa sem nenhum anúncio coletado ainda: item fica em
-            # cinza (classe "no-data") e sem onclick — não tem pra onde
-            # navegar mesmo se o usuário clicar.
             _dd_item_classes_d = 'dd-item'
             if _is_active_d:
                 _dd_item_classes_d += ' selected'
@@ -37384,9 +32552,6 @@ setHeight(false);
         </div>
         """, unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════
-    # GHOST BUTTONS — navegação principal (COMPLETAMENTE OCULTOS)
-    # ══════════════════════════════════════════════════════════════════
 
     st.markdown("""
     <style>
@@ -37418,7 +32583,6 @@ setHeight(false);
         st.session_state.gads_main_tab = "analise"
         st.rerun()
 
-    # Ghost para lápis de empresa
     lapiz_ghost_css_parts = []
     for ci, e in enumerate(todas_empresas):
         sk = safe_key(e["nome"])
@@ -37448,15 +32612,12 @@ setHeight(false);
             st.rerun()
         lapiz_triggers[ci] = lapiz_key
 
-    # ── Calcular dados
     main_tab              = st.session_state.gads_main_tab
     empresas_configuradas = [e for e in todas_empresas if empresa_tem_gads_id(e)]
     empresas_sem_config   = [e for e in todas_empresas if not empresa_tem_gads_id(e)]
     n_configuradas        = len(empresas_configuradas)
     n_sem_config          = len(empresas_sem_config)
 
-    # V211 — a notificação cria o backup e entrega somente as empresas com
-    # criativos incompletos para esta página iniciar a coleta real.
     _refazer_incompletos_nomes = st.session_state.pop("_gads_refazer_incompletos_empresas", [])
     _refazer_incompletos_atividade = st.session_state.pop("_gads_refazer_incompletos_atividade", None)
     _refazer_incompletos_ids = st.session_state.pop("_gads_refazer_incompletos_ids", {})
@@ -37478,11 +32639,8 @@ setHeight(false);
         else:
             st.error("Não foi possível refazer: as empresas pendentes não possuem mais um ID do Google Ads configurado.")
 
-    # ── Processar busca do cabeçalho
     if gerar_btn_gads_header:
         query_values_header = {}
-        # V235: o seletor do cabeçalho define o alvo da coleta. Antes o
-        # botão ignorava a seleção visível e percorria todas as empresas.
         _empresas_header = (
             [_emp_ativa_obj]
             if _emp_ativa_obj and empresa_tem_gads_id(_emp_ativa_obj)
@@ -37493,10 +32651,6 @@ setHeight(false);
             gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
             query_values_header[ck] = gads_id_salvo
         if query_values_header:
-            # V206 — ação manual significa coleta real. O cache/histórico
-            # continua sendo usado no merge por ID, mas nunca para pular a
-            # chamada à Apify. IDs que voltarem substituem integralmente os
-            # antigos; os que vierem sem mídia validada ficam incompletos.
             executar_busca(
                 _empresas_header,
                 query_values_header,
@@ -37505,7 +32659,6 @@ setHeight(false);
         else:
             st.warning("Selecione uma empresa configurada antes de buscar.")
 
-    # ── Processar FORÇAR atualização do cabeçalho (ignora cache de 24h)
     if gerar_btn_gads_forcar:
         query_values_header = {}
         _empresas_header = (
@@ -37522,9 +32675,6 @@ setHeight(false);
         else:
             st.warning("Selecione uma empresa configurada antes de buscar.")
 
-    # ══════════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO PRINCIPAL — 3 abas
-    # ══════════════════════════════════════════════════════════════════
 
     _n_analises = len(st.session_state.get("gads_analises_salvas", []))
 
@@ -37659,9 +32809,6 @@ function triggerTab(label) {{
     if not st.secrets.get("APIFY_TOKEN", ""):
         st.warning("Configure `APIFY_TOKEN` no secrets.toml para usar esta funcionalidade.")
 
-# ══════════════════════════════════════════════════════════════════
-# ABA: CONFIGURAÇÃO — Cards de empresa
-# ══════════════════════════════════════════════════════════════════
 
     if main_tab == "configuracao":
 
@@ -37671,19 +32818,6 @@ function triggerTab(label) {{
         onboarding_timeout  = st.session_state.gads_onboarding_timeout
         onboarding_buscando = st.session_state.gads_onboarding_buscando
 
-        # ── Sincroniza com o job de busca em background (se houver um
-        # em andamento pra essa sessão). A busca em si não roda mais
-        # dentro do script run que renderiza a tela — só dispara uma
-        # thread (`_gads_onboarding_iniciar`, no clique de "Buscar
-        # anunciantes") e guarda o job_id em session_state. Isso é o que
-        # elimina a corrida original: antes, o polling de 12s do sino
-        # forçava um rerun completo enquanto a chamada bloqueante ao
-        # Apify ainda estava em andamento no script run anterior, e esse
-        # rerun via um estado "no meio do caminho" (empresa já setada,
-        # páginas ainda vazias) que era indistinguível de "terminou sem
-        # resultado". Agora todo rerun — inclusive o do sino — só faz
-        # essa leitura barata em memória; a busca de verdade roda numa
-        # thread própria e nunca é interrompida por um rerun.
         GADS_ONBOARDING_JOB_MAX_SEGUNDOS = 240  # mesmo raciocínio do watchdog antigo: cobre o pior caso (2 ondas x 90s) + margem de rede
         job_id = st.session_state.gads_onboarding_job_id
         if job_id:
@@ -37693,9 +32827,6 @@ function triggerTab(label) {{
                 onboarding_buscando = True
                 inicio = job.get("iniciado_em") or st.session_state.gads_onboarding_buscando_inicio
                 if inicio is None or (_time.time() - inicio) > GADS_ONBOARDING_JOB_MAX_SEGUNDOS:
-                    # Job travado (ou o registry em memória foi perdido,
-                    # ex. reinício do processo) — libera a tela em vez de
-                    # deixar o spinner girando pra sempre.
                     onboarding_buscando = False
                     onboarding_timeout = True
                     st.session_state.gads_onboarding_buscando = False
@@ -37704,11 +32835,6 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_job_id = None
             elif job_status in ("concluido", "erro"):
                 onboarding_paginas = job.get("paginas") or []
-                # Um "erro" na thread (exceção não prevista) recebe o
-                # mesmo tratamento visual de timeout — mensagem pedindo
-                # pra tentar de novo, sem afirmar que o anunciante não
-                # tem anúncios (que é o que o card de "sem resultado"
-                # implicaria, e seria enganoso aqui).
                 onboarding_timeout = bool(job.get("timeout")) or job_status == "erro"
                 onboarding_buscando = False
                 st.session_state.gads_onboarding_paginas  = onboarding_paginas
@@ -37725,9 +32851,6 @@ function triggerTab(label) {{
                 with _lock_gads_onboarding_jobs:
                     _gads_onboarding_jobs.pop(job_id, None)
             else:
-                # job_id setado mas sem entrada no registry (processo
-                # reiniciado depois do clique, antes da thread terminar
-                # de escrever) — mesmo tratamento do watchdog acima.
                 inicio = st.session_state.gads_onboarding_buscando_inicio
                 if inicio is None or (_time.time() - inicio) > GADS_ONBOARDING_JOB_MAX_SEGUNDOS:
                     onboarding_buscando = False
@@ -37737,13 +32860,11 @@ function triggerTab(label) {{
                     st.session_state.gads_onboarding_timeout = True
                     st.session_state.gads_onboarding_job_id = None
 
-        # ── Recupera valores via query_params
         for ci in range(len(todas_empresas)):
             qk = f"_gads_cfg_val_{ci}"
             if qk in st.query_params:
                 st.session_state[f"gads_cfg_val_temp_{ci}"] = st.query_params[qk]
 
-        # ── CSS ocultar ghost buttons
         all_ghost_css = "".join([f"""
         .st-key-cfg_ghost_edit_{ci},
         .st-key-cfg_ghost_cancel_{ci},
@@ -37762,7 +32883,6 @@ function triggerTab(label) {{
         }}
         """ for ci in range(len(todas_empresas))])
 
-        # CSS ocultar ghost buttons do "Usar página"
         usar_ghost_css_parts = []
         for ci, e in enumerate(todas_empresas):
             for pi in range(8):
@@ -37782,7 +32902,6 @@ function triggerTab(label) {{
 
         st.markdown(f"<style>{all_ghost_css}{''.join(usar_ghost_css_parts)}</style>", unsafe_allow_html=True)
 
-        # ── Ghost triggers principais
         ghost_edit      = {}
         ghost_cancel    = {}
         ghost_do_buscar = {}
@@ -37794,7 +32913,6 @@ function triggerTab(label) {{
             ghost_do_buscar[ci] = st.button(f"do_buscar_{ci}", key=f"cfg_do_buscar_{ci}")
             ghost_do_salvar[ci] = st.button(f"do_salvar_{ci}", key=f"cfg_do_salvar_{ci}")
 
-        # ── Ghost triggers "Usar página"
         ghost_usar_pg = {}
         for ci, e in enumerate(todas_empresas):
             ghost_usar_pg[ci] = {}
@@ -37803,7 +32921,6 @@ function triggerTab(label) {{
                 k = f"cfg_usar_pg_{sk_e}_{ci}_{pi}"
                 ghost_usar_pg[ci][pi] = st.button(f"usar_pg_{ci}_{pi}", key=k)
 
-        # ── Processar ações
         for ci, e in enumerate(todas_empresas):
             if ghost_edit[ci]:
                 st.session_state.pop(f"gads_cfg_val_temp_{ci}", None)
@@ -37832,12 +32949,6 @@ function triggerTab(label) {{
                     st.session_state.gads_editando_empresa    = e["nome"]
                     st.session_state.gads_onboarding_paginas  = []
                     st.session_state.gads_onboarding_timeout  = False
-                    # Dispara a busca numa thread de fundo e volta na
-                    # hora — não bloqueia mais o script run pelos até
-                    # ~90-180s que o Apify pode levar (ver
-                    # _gads_onboarding_iniciar/_gads_onboarding_worker
-                    # caso raro do job sumir do registry em memória (ex.
-                    # reinício do processo) antes da thread terminar.
                     st.session_state.gads_onboarding_buscando = True
                     st.session_state.gads_onboarding_buscando_inicio = _time.time()
                     st.session_state.gads_onboarding_job_id = _gads_onboarding_iniciar(val)
@@ -37861,7 +32972,6 @@ function triggerTab(label) {{
                     st.toast(f"{e['nome']} salvo!", icon="✅")
                     st.rerun()
 
-            # Processar "Usar página" da lista de resultados
             if onboarding_empresa == e["nome"] and onboarding_paginas:
                 e_ob = e
                 for pi, pg in enumerate(onboarding_paginas[:12]):
@@ -37879,7 +32989,6 @@ function triggerTab(label) {{
                         st.toast(f"{pg.get('nome', '')} selecionado!", icon="✅")
                         st.rerun()
 
-        # ── INFO BOX
         st.markdown("""
         <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
                     padding:11px 16px;font-size:13px;color:#0369a1;
@@ -37902,29 +33011,12 @@ function triggerTab(label) {{
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Monta HTML dos cards
         cards_html = ""
         for ci, e in enumerate(todas_empresas):
             is_minha   = e["tipo"] == "minha"
             gads_id     = emp.get("gads_id","") if is_minha else concs[e["idx"]].get("gads_id","")
             page_pic   = emp.get("gads_page_pic","") if is_minha else concs[e["idx"]].get("gads_page_pic","")
             has_id     = bool(gads_id.strip())
-            # Empresa/concorrente já tem nome e domínio cadastrados em "Minha
-            # Empresa" / "Concorrentes" mesmo sem ter configurado o Google
-            # Ads ainda — usa isso como sugestão inicial no campo em vez de
-            # deixar em branco, pra economizar um passo de quem for buscar.
-            #
-            # IMPORTANTE: se o usuário já digitou algo nesse campo (valor
-            # persistido em gads_cfg_val_temp_{ci} via query param — ver oninput
-            # do input abaixo), esse valor tem prioridade sobre a sugestão.
-            # Sem isso, qualquer rerun do app enquanto a pessoa está editando
-            # (ex.: o polling global de 12s que atualiza o sininho de
-            # notificações enquanto há atividade em andamento) recria esse
-            # card do zero com `value="{gads_id_sugestao}"` e APAGA o que
-            # foi digitado, sempre voltando pro domínio cadastrado (o
-            # relato de "digitei .com mas sempre volta o .br" era isso:
-            # o valor digitado só era salvo no clique do botão, então um
-            # rerun de fundo no meio da digitação sempre revertia o campo).
             _dominio_conhecido = emp.get("site","") if is_minha else concs[e["idx"]].get("url","")
             _valor_em_edicao   = st.session_state.get(f"gads_cfg_val_temp_{ci}", "").strip()
             gads_id_sugestao   = _valor_em_edicao or gads_id or _dominio_conhecido or e["nome"]
@@ -37964,17 +33056,8 @@ function triggerTab(label) {{
                 if is_editing else "border:1px solid #e5e7eb;"
             )
 
-            # Bloco de resultados encontrados (dentro do card, após os botões)
             resultados_block = ""
             if is_editing and onboarding_empresa == e["nome"] and onboarding_buscando:
-                # Busca ainda em andamento (chamada bloqueante ao Apify
-                # rodando). Isso pode aparecer se um rerun de fundo — o
-                # polling de 12s do sino de notificações — acontecer
-                # enquanto a busca de verdade ainda não terminou. Sem essa
-                # checagem, esse rerun via "gads_onboarding_empresa já
-                # setada + gads_onboarding_paginas ainda vazia" era
-                # indistinguível de "busca terminou sem resultado", e o
-                # card de erro aparecia antes da hora.
                 resultados_block = f"""
                 <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
                     <div style="display:flex;align-items:center;gap:10px;
@@ -38046,14 +33129,6 @@ function triggerTab(label) {{
                     {pgs_html}
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and onboarding_timeout and not onboarding_buscando:
-                # A busca não achou nenhum resultado a tempo, mas pelo
-                # menos uma das tentativas (candidato x região) ainda
-                # estava "RUNNING" no Apify quando o deadline estourou —
-                # ou seja, isso NÃO é evidência de que o anunciante não
-                # tem anúncios, só que a busca não teve tempo de terminar.
-                # Mostrar "Nenhuma página encontrada" nesse caso é
-                # enganoso, então usa uma mensagem separada pedindo pra
-                # tentar de novo em vez de sugerir ID/domínio.
                 resultados_block = f"""
                 <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
                     <div style="display:flex;align-items:flex-start;gap:10px;
@@ -38072,11 +33147,6 @@ function triggerTab(label) {{
                     </div>
                 </div>"""
             elif is_editing and onboarding_empresa == e["nome"] and onboarding_paginas == [] and not onboarding_buscando:
-                # Mesmo tratamento do Meta Ads: busca já rodou pra essa
-                # empresa mas não achou nenhuma página no Google Ads
-                # Transparency Center — antes disso não aparecia nada na
-                # tela. Mostra aviso claro + sugestões específicas do
-                # Google (ID do anunciante ou domínio do site).
                 resultados_block = f"""
                 <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:12px;">
                     <div style="display:flex;align-items:flex-start;gap:10px;
@@ -38093,16 +33163,6 @@ function triggerTab(label) {{
                 </div>"""
 
 
-            # Enquanto a busca dessa empresa esta em andamento (chamada
-            # bloqueante ao Apify), o botao "Buscar anunciantes" precisa
-            # nascer travado/com spinner ja no HTML gerado pelo Python --
-            # e nao so via JS no clique -- porque o components.html inteiro
-            # e recriado do zero a cada rerun (ex.: o polling de 12s do
-            # sino de notificacoes). Sem essa checagem aqui, um rerun de
-            # fundo durante a busca substituia o botao ja travado por um
-            # novo, destravado, permitindo cliques duplicados enquanto a
-            # busca de verdade ainda rodava. Mesmo padrao do botao
-            # "Buscar / Atualizar Anuncios" do cabecalho (_coleta_em_andamento).
             _buscando_esta_empresa = is_editing and onboarding_empresa == e["nome"] and onboarding_buscando
             if _buscando_esta_empresa:
                 _btn_buscar_html = (
@@ -38393,9 +33453,6 @@ window.addEventListener('load', syncHeight);
 </script>
 """, height=700, scrolling=False)
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: EMPRESAS CONFIGURADAS — Cards estilo imagem 2
-    # ══════════════════════════════════════════════════════════════════
     elif main_tab == "empresas":
 
         if not empresas_configuradas:
@@ -38415,7 +33472,6 @@ window.addEventListener('load', syncHeight);
             gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
             query_values[ck] = gads_id_salvo
 
-        # ── Ghost buttons de conteúdo por empresa ─────────────────────────
         conteudo_tab_ghost_css = []
         for e in empresas_configuradas:
             sk = safe_key(e["nome"])
@@ -38444,13 +33500,11 @@ window.addEventListener('load', syncHeight);
                     st.session_state.gads_aba_conteudo[ck] = tab_name
                     st.rerun()
 
-        # ── Dados e helpers ──────────────────────────────────────────
         empresas_com_dados = [
             e for e in empresas_configuradas
             if e["nome"] in st.session_state.gads_cache or e["nome"] in st.session_state.gads_erro
         ]
 
-        # ── Plataformas SVG JS ────────────────────────────────────────
         def _plat_svg_js(uid: str) -> str:
             return f"""
 (function(){{
@@ -38476,9 +33530,6 @@ window.addEventListener('load', syncHeight);
 }})();
 """
 
-        # ══════════════════════════════════════════════════════════════
-        # FUNÇÃO PRINCIPAL: render_gads_empresa
-        # ══════════════════════════════════════════════════════════════
         def render_gads_empresa(emp_item):
             ck       = emp_item["nome"]
             nome     = emp_item["nome"]
@@ -38508,9 +33559,6 @@ window.addEventListener('load', syncHeight);
             ts           = cache_entry["ts"]
             query        = cache_entry.get("query","")
 
-            # Coletas antigas (antes da renomeação "Imagem" → "Gráfico") ficaram
-            # gravadas com "formato": "Imagem" no gads_cache persistido no banco.
-            # Normaliza aqui na leitura pra não depender de recoletar tudo de novo.
             for _a in gads_list_raw:
                 if _a.get("formato") == "Imagem":
                     _a["formato"] = "Gráfico"
@@ -38532,7 +33580,6 @@ window.addEventListener('load', syncHeight);
             else:
                 gads_list = gads_list_raw
 
-            # Ghost buttons para análise IA
             ia_analise_ghost_css = []
             for _gk in [f"btn_ia_anuncios_{sk}", f"btn_ia_geral_{sk}"]:
                 ia_analise_ghost_css.append(f"""
@@ -38575,7 +33622,6 @@ window.addEventListener('load', syncHeight);
                         import requests as _req
                         import base64 as _b64
 
-                        # Monta partes do prompt: texto + imagens reais
                         parts = []
 
                         resumo_completo = "\n".join([
@@ -38598,7 +33644,6 @@ Dados dos anúncios:
 
 Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (quando disponíveis):""")
 
-                        # Envia até 6 imagens reais para o Gemini
                         imgs_enviadas = 0
                         for i, a in enumerate(gads_list[:15]):
                             if imgs_enviadas >= 6:
@@ -38629,19 +33674,12 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             except Exception:
                                 continue
 
-                        # Vídeos não são enviados pro Gemini — em vez disso, manda a
-                        # transcrição do áudio (via Whisper) como texto. Diferente das
-                        # imagens (que custam tokens multimodais e por isso têm teto
-                        # baixo), transcrição é só texto — então cobre todos os vídeos
-                        # dentro dos mesmos 15 anúncios já usados no resumo, e não um
-                        # tem 65 vídeos e 0 imagens, ficariam com quase nada analisado).
                         vids_transcritos = 0
                         _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
                         for i, a in enumerate(gads_list[:15]):
                             vids = a.get("videos") or []
                             if not vids:
                                 continue
-                            # vídeos baixáveis normais.
                             transcricao_vid = ""
                             if not transcricao_vid:
                                 transcricao_vid = obter_transcricao_video(vids[0], _user_id_transcricao)
@@ -38662,7 +33700,6 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
 ### ⚠️ O que Melhorar (2 pontos)
 ### 💡 Recomendações Práticas (3 ações concretas)""")
 
-                        # Converte parts para formato Gemini multimodal
                         gemini_parts = []
                         for p in parts:
                             if isinstance(p, str):
@@ -38790,7 +33827,6 @@ Amostra dos anúncios:
 </script>
 """, height=0)
 
-            # Ghost buttons análise individual por anúncio
             ia_ind_ghost_css = []
             for j in range(len(gads_list) if 'gads_list' in dir() else 0):
                 _gk_ind = f"btn_ia_ind_{sk}_{j}"
@@ -38818,13 +33854,6 @@ Amostra dos anúncios:
                 "",
             )
 
-            # O Google Ads Transparency Center não expõe foto de perfil
-            # (page_profile_picture normalizado sempre vem vazio — ver
-            # _normalizar_item_apify, na coleta do Google Ads). Se essa
-            # mesma empresa já tiver dados baixados no Meta Ads, reaproveita
-            # a foto de perfil de lá (Facebook/Instagram da página, a
-            # mesma que aparece nos cards do Meta Ads) em vez de cair
-            # direto pro círculo colorido com iniciais.
             if not page_pic_empresa:
                 _meta_cache_entry_avatar = st.session_state.get("ads_cache", {}).get(nome)
                 if _meta_cache_entry_avatar:
@@ -38864,7 +33893,6 @@ Amostra dos anúncios:
             page_display = configured_page if configured_page else "—"
             lib_btn_top = f'<a href="{lib_url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#042b6b;color:#fff;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap">Ver no Google Ads Transparency Center</a>' if lib_url else ""
 
-            # ── Calcular insights rápidos dos anúncios ──────────────
             _palavras_beneficio = [
                 "resultado", "transforma", "melhora", "aumenta", "economiza",
                 "conquista", "lucro", "ganho", "crescimento", "solução", "resolver",
@@ -38903,7 +33931,6 @@ Amostra dos anúncios:
             _n_video_ins = sum(1 for _a in gads_list if "Vídeo" in _a.get("formato", ""))
             _n_carrossel_ins = sum(1 for _a in gads_list if "Carrossel" in _a.get("formato", ""))
 
-            # Monta chips de insights
             _insight_chips = []
             if _n_beneficio > 0:
                 _insight_chips.append(("🎯", f"{_n_beneficio} com benefício", "#15803d", "#f0fdf4", "#bbf7d0"))
@@ -39106,7 +34133,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
             aba_conteudo_atual = st.session_state.gads_aba_conteudo.get(ck, "anuncios")
 
-            # ── ABA: ANÚNCIOS ─────────────────────────────────────────
             if aba_conteudo_atual == "anuncios":
 
                 col_key = f"gads_cols_{sk}"
@@ -39192,18 +34218,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     return ''.join(c for c in s if _ud.category(c) not in ('So','Sm','Sk','Mn')).strip()
                 formatos_disponiveis = sorted(set(_limpar_formato(a["formato"]) for a in gads_list))
 
-                # V63 — filtro por domínio na seção de busca.
-                #
-                # O domínio dos anúncios de Busca/Texto vem do OCR estruturado
-                # (url_exibida). Para não criar opções duplicadas como
-                # "http://www.ticketswap.com/", "www.ticketswap.com/" e
-                # "ticketswap.com", a chave do filtro ignora protocolo, www,
-                # barra/caminho final e caixa. A exibição também usa a forma
-                # limpa, ex.: "ticketswap.com".
-                #
-                # Esta consulta é feita UMA vez para todos os anúncios e o
-                # resultado é reaproveitado mais abaixo na renderização dos
-                # cards, evitando uma segunda consulta idêntica ao Supabase.
                 def _dominio_canonico_filtro(valor):
                     _v = str(valor or "").strip()
                     if not _v:
@@ -39218,20 +34232,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     _v = re.sub(r"^www\.", "", _v, flags=re.IGNORECASE)
                     _v = _v.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
                     _v = _v.rstrip("./|\\")
-                    # evita transformar nome de anunciante (ex.: TicketSwap)
-                    # em opção de domínio; precisa ter TLD reconhecível.
                     if not re.search(r"\.[a-z]{2,}(?::\d+)?$", _v, re.IGNORECASE):
                         return ""
                     return _v
 
-                # V148 — carregar OCR de TODAS as imagens/variações do anúncio.
-                # Antes só a primeira URL de `images` entrava no lote. Em anúncios
-                # responsivos, o texto pesquisado pode estar em outra peça/variante.
-                # V272: a consulta que efetivamente carrega o OCR precisa usar
-                # todas as fontes de imagem aceitas pelo card e pelo manifesto.
-                # V271 corrigiu a identidade visual, mas este lote ainda lia
-                # somente `images`; capturas guardadas em `images_b64` nunca
-                # entravam em `_ocr_lote_todos`, embora o OCR existisse no banco.
                 _urls_img_todos_filtro = list({
                     str(_u_img_gads or "").strip()
                     for ad in gads_list
@@ -39244,18 +34248,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     )
                 })
                 _ocr_lote_todos = {}
-                # V286 — reserva de URLs por anúncio. O reprocessamento do OCR
-                # não pode fazer a imagem desaparecer do card quando a lista
-                # do cache estiver incompleta: a própria linha de ``midias``
-                # conserva a URL permanente e a URL de origem como fallback.
                 _midias_img_por_ad_v286 = {}
                 if _urls_img_todos_filtro:
-                    # V104 — não manda centenas/milhares de URLs num único
-                    # `.in_()`. Quando a empresa acumula muitos anúncios, essa
-                    # consulta pode exceder URL/timeout do gateway e a página
-                    # parece "não carregar" justamente quando há OCR salvo.
-                    # Os blocos são independentes: se um falhar, os demais
-                    # continuam renderizando.
                     _BATCH_OCR_RENDER = 120
                     for _ini_ocr_render in range(0, len(_urls_img_todos_filtro), _BATCH_OCR_RENDER):
                         _lote_urls_render = _urls_img_todos_filtro[
@@ -39290,10 +34284,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                         ):
                                             _lista_mid_v286.append(_url_mid_v286)
                                 if _u:
-                                    # V270: a mesma URL pode ter linhas antigas
-                                    # duplicadas. Preserva a linha com OCR útil,
-                                    # em vez de deixar a última linha vazia da
-                                    # resposta esconder um OCR concluído.
                                     def _pontuar_ocr_render_v270(_row):
                                         try:
                                             _estr_v270 = _ocr_regression_parse_dict(
@@ -39368,10 +34358,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 tem_copy_ads       = bool(st.session_state.get(chave_copy_ads, ""))
                 tem_geral_ads      = bool(st.session_state.get(chave_geral_ads, ""))
 
-                # V67 — filtros uniformes + busca flexível; rótulo visual Domínio → Site.
-                # Tipo/Domínio/Status/Ordenação usam todos a largura do maior
-                # campo (+ margem). Todo o espaço restante continua entregue ao
-                # campo "Pesquisar no copy", sem criar espaço vazio na linha.
                 _opts_fmt = ["Tipo (todos)"] + formatos_disponiveis
                 _opts_dom = ["Site (todos)"] + dominios_disponiveis
                 _opts_status = ["Status (todos)", "Ativos", "Inativos (histórico)"]
@@ -39386,17 +34372,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 _w_status = _largura_campo_px(_opts_status, minimo=145)
                 _w_ordem = _largura_campo_px(_opts_ordem, minimo=145)
 
-                # V66 — todos os selects usam a mesma largura: a largura do
-                # maior deles. Isso deixa a barra visualmente mais harmoniosa
-                # sem mexer no campo de busca, que continua flexível.
                 _w_select = max(_w_fmt, _w_dom, _w_status, _w_ordem)
                 _w_fmt = _w_dom = _w_status = _w_ordem = _w_select
                 _w_view = 44
 
-                # Base visual da barra (em "pixels de peso"). Como st.columns
-                # escala os pesos para a largura disponível, a busca cresce ou
-                # encolhe junto com a tela e os demais campos permanecem na
-                # proporção do conteúdo. Não há mais coluna-espaçador.
                 _largura_total_filtros = 1260
                 _w_busca = max(
                     300,
@@ -39418,8 +34397,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 """, unsafe_allow_html=True)
 
                 with st.container(key=filtros_key):
-                    # A linha inteira é preenchida pelos 6 controles. A busca
-                    # recebe todo o espaço excedente; não existe coluna vazia.
                     fcol1, fcol2, fcol3, fcol4, fcol5, fcol6 = st.columns(
                         [_w_busca, _w_fmt, _w_dom, _w_status, _w_ordem, _w_view],
                         gap="small",
@@ -39475,15 +34452,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             st.session_state[col_key] = 3 if n_cols_atual == 4 else 4
                             st.rerun()
 
-                # V147 — índice de busca inclui copy original + OCR.
-                #
-                # Antes a busca olhava somente body/title/body_raw do payload
-                # do Google. Como muitos anúncios responsive/display têm o
-                # conteúdo textual apenas na imagem, palavras visíveis no card
-                # (e já extraídas por OCR) não eram encontradas.
-                #
-                # A normalização remove acentos e ignora caixa:
-                #   segurança == SEGURANÇA == seguranca
                 import unicodedata as _ud_busca_gads
 
                 def _normalizar_busca_gads_v147(valor):
@@ -39494,8 +34462,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 def _texto_ocr_busca_gads_v148(ad):
                     _partes = [
-                        # Mantém a busca por ID do anúncio e da página, sem
-                        # reintroduzir a recuperação seletiva revertida.
                         ad.get("id") or "",
                         ad.get("page_id") or "",
                         ad.get("body") or "",
@@ -39522,17 +34488,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             else:
                                 _partes.append(str(_sl_html or ""))
 
-                    # V148 — agrega OCR de TODAS as imagens do anúncio.
                     for _img_busca in (ad.get("images") or []):
                         if not _img_busca:
                             continue
 
                         _row_busca = _ocr_lote_todos.get(_img_busca) or {}
 
-                        # OCR bruto/achatado.
                         _partes.append(_row_busca.get("ocr_texto") or "")
 
-                        # OCR estruturado: todos os campos exibidos nos cards.
                         _estr_busca = _row_busca.get("ocr_estruturado")
                         if _estr_busca and not isinstance(_estr_busca, dict):
                             try:
@@ -39601,12 +34564,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                # V239 — carregamento progressivo (paginação invisível). O cache da empresa pode ter
-                # centenas de anúncios e dezenas de MB em imagens base64.
-                # Montar todos os cards no mesmo rerun duplica esse conteúdo
-                # no HTML e bloqueia a tela por vários minutos. Os filtros e
-                # contadores continuam usando a lista completa; somente os
-                # cards e consultas auxiliares são limitados à página atual.
                 _GADS_LOTE_V239 = 20
                 _total_filtrado_v239 = len(gads_f)
                 _limite_key_v239 = f"gads_limite_v239_{sk}"
@@ -39629,14 +34586,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 _tem_mais_v239 = _fim_v239 < _total_filtrado_v239
                 gads_visiveis_v239 = gads_f[:_fim_v239]
 
-                # "page_profile_picture" salva (o campo só passou a ser
-                # capturado depois, ou a captura falhou naquela época).
-                # Como a foto de perfil da página é a MESMA pra todos os
-                # anúncios de uma empresa, em vez de cair pro círculo com
-                # a inicial só porque aquele anúncio específico não tem o
-                # campo, usamos a primeira foto válida encontrada entre
-                # TODOS os anúncios da empresa (gads_list, não só gads_f, pra
-                # único anúncio que tinha a foto).
                 _page_pic_fallback = next(
                     (
                         (a.get("page_profile_picture") or "").strip()
@@ -39671,25 +34620,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
                 }
 
-                # Transcrições já salvas dos vídeos, buscadas em lote (uma
-                # query só) pra alimentar o badge "💬 Transcrição" do card.
-                # Só lê o que já está pronto na tabela `midias` — NÃO chama
-                # obter_transcricao_video aqui, porque essa função roda o
-                # o que travaria a tela inteira esperando transcrever um por
-                # um. Um vídeo recém-migrado, então, fica sem o badge até a
-                # fila separada (_transcrever_pendentes_background) terminar
-                # de processar ele — nada quebra, só demora a aparecer.
-                #
-                # `transcricao` tem 3 estados possíveis na linha de `midias`
-                # (ver baixar_e_persistir_midia/_transcrever_pendentes_background):
-                #   NULL       → vídeo migrado, mas a fila de transcrição
-                #                ainda não chegou nele (badge "⏳ Transcrevendo…")
-                #   ""         → fila já tentou, não achou fala nenhuma
-                #                (vídeo mudo, só música, erro de áudio etc.)
-                #                — tratado como "nunca vai ter", sem badge
-                #   com texto  → transcrição pronta (badge "💬 Transcrição")
-                # Sem linha nenhuma em `midias` pra aquele vídeo = ainda nem
-                # migrou pro R2 — também sem badge nenhum.
                 _urls_video_cards = list({
                     u for ad in gads_visiveis_v239 for u in (ad.get("videos") or [])[:1] if u
                 })
@@ -39712,19 +34642,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _txt_transc = _val_transc.strip()
                                 if _txt_transc:
                                     _mapa_transcricoes[_url_row] = _txt_transc
-                                # "" (tentou, sem fala) fica de fora dos dois —
-                                # de propósito, pra não mostrar badge nenhum.
                     except Exception:
                         pass  # sem transcrição em lote não pode travar a tela — badge só some
 
-                # Texto extraído por OCR das imagens (ver bloco "OCR DE
-                # IMAGENS DO GOOGLE ADS"), buscado em lote pelo mesmo
-                # motivo/padrão da transcrição acima — só lê o que já
-                # está pronto em `midias.ocr_texto`, nunca chama o Gemini
-                # na hora (isso travaria a tela renderizando os cards).
-                # Mesmos 3 estados: NULL = ainda não processado (mostra
-                # "Extraindo texto…"), "" = processado sem achar texto
-                # com texto = pronto (mostra no lugar da copy).
                 def _url_imagem_ocr_card_v271(_ad):
                     """URL permanente da imagem realmente exibida no card."""
                     _candidatas = []
@@ -39736,7 +34656,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 and _url_v271 not in _candidatas
                             ):
                                 _candidatas.append(_url_v271)
-                    # A URL R2 é a identidade usada em `midias.url_cdn`.
                     _r2_v271 = next(
                         (
                             _u_v271 for _u_v271 in _candidatas
@@ -39753,29 +34672,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 })
                 _mapa_ocr = {}              # url -> texto achatado extraído (não vazio)
                 _mapa_ocr_estruturado = {}  # url -> dict {titulo, descricao, url_exibida, url_final, cta, sitelinks}
-                # Começa com TODAS as URLs de imagem como "pendente" —
-                # não só as que já têm linha em `midias` com ocr_texto
-                # NULL. Antes, uma URL sem NENHUMA linha ainda em
-                # `midias` (comum logo que a página carrega: a imagem
-                # ainda nem foi migrada/inserida, quanto mais ter OCR
-                # rodado) não caía nem aqui nem em `_mapa_ocr` — ficava
-                # de fora dos dois mapas e o card renderizava direto o
-                # Google Ads Transparency Center", como se o OCR já
-                # tivesse rodado e não achado nada, mesmo ele nunca
-                # tendo tido chance de rodar. Com o set pré-populado,
-                # essa URL simplesmente permanece "pendente" até a
-                # linha aparecer com `ocr_texto` preenchido (mostrando
-                # "Extraindo texto da imagem via OCR…" nesse meio
-                # tempo). V270: só sai do set quando existir OCR estruturado
-                # útil ou `ocr_texto` realmente preenchido. NULL e string
-                # vazia continuam corretamente marcados como pendentes.
                 _urls_ocr_pendente = set(_urls_img_cards)
                 if _urls_img_cards:
                     try:
                         import json as _json_ocr_cards
-                        # V63 — reaproveita a consulta feita antes dos filtros
-                        # para montar o campo Domínio. Assim a página não faz
-                        # duas leituras iguais de `midias` no mesmo rerun.
                         for _url_consulta in _urls_img_cards:
                             _row = _ocr_lote_todos.get(_url_consulta)
                             if not _row:
@@ -39791,19 +34691,12 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 _estr_render
                             )
                             _txt_ocr = str(_val_ocr or "").strip()
-                            # V270: NULL e string vazia continuam pendentes
-                            # quando não existe OCR estruturado útil. Essa é a
-                            # mesma regra usada pelo manifesto e pelo worker.
                             if _estr_util_v270 or _txt_ocr:
                                 _urls_ocr_pendente.discard(_url_row)
                                 if _txt_ocr:
                                     _mapa_ocr[_url_row] = _txt_ocr
                                 if _estr_util_v270 and isinstance(_estr_render, dict):
                                     try:
-                                            # V104 — OCR pronto não pode derrubar
-                                            # a página por um campo legado/anômalo.
-                                            # Coage campos textuais para string e
-                                            # sanitiza sitelinks antes do HTML.
                                             _estr_render = dict(_estr_render)
                                             for _campo_txt_render in (
                                                 "titulo", "descricao", "url_exibida",
@@ -39815,11 +34708,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                                 elif not isinstance(_v_render, str):
                                                     _estr_render[_campo_txt_render] = str(_v_render)
 
-                                            # V281 — aplica a mesma correção final
-                                            # também aos OCRs que já estavam salvos.
-                                            # Assim o card é corrigido imediatamente,
-                                            # sem depender de limpar cache ou executar
-                                            # novamente uma rota específica do parser.
                                             _estr_render = _pos_processar_ocr_estruturado_v281(
                                                 _estr_render
                                             )
@@ -39872,18 +34760,10 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                             f"{_exc_json_ocr_card!r}",
                                             flush=True,
                                         )
-                                        # impedir o restante da página de abrir
                     except Exception:
                         pass
 
                 def _escapar_html_ocr(s: str) -> str:
-                    # Erro comum do OCR: o conectivo "o" minúsculo (ex:
-                    # "dia o ano todo") sai lido como "O" maiúsculo — ou,
-                    # mais frequente ainda, como o DÍGITO "0" (zero), que
-                    # na fonte do card fica idêntico a um "O" na tela —
-                    # quando fica isolado entre espaços. Corrige antes de
-                    # escapar/exibir (ver `_corrigir_o_isolado`), mas
-                    # depois de ". "/"! "/"? ".
                     s = _corrigir_o_isolado(s)
                     return (
                         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -39897,9 +34777,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                          .replace("\n", " ")
                     )
 
-                # O botão é acionado pelo rodapé da grade quando ele se aproxima
-                # da área visível. Ele fica oculto e funciona como ponte segura
-                # entre o JavaScript do componente e o estado do Streamlit.
                 def _carregar_mais_gads_v239():
                     _atual = int(st.session_state.get(_limite_key_v239, _GADS_LOTE_V239) or _GADS_LOTE_V239)
                     st.session_state[_limite_key_v239] = min(
@@ -39931,10 +34808,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     is_dyn      = ad.get("is_dynamic", False)
                     baixo_vol   = ad.get("baixo_volume", False)
                     ad_id       = ad.get("id","")
-                    # Recupera as referências guardadas junto do OCR antes de
-                    # escolher a imagem principal. A URL R2 continua tendo
-                    # prioridade; ``url_origem`` entra apenas como alternativa
-                    # caso a referência do cache tenha sumido ou falhe.
                     for _url_rec_v286 in _midias_img_por_ad_v286.get(str(ad_id), []):
                         if R2_PUBLIC_BASE and _url_rec_v286.startswith(R2_PUBLIC_BASE):
                             if _url_rec_v286 not in images_b64:
@@ -39947,10 +34820,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     data_raw_ad = ad.get("data_raw","")
                     data_inicio = _dias_ativo(data_raw_ad) if data_raw_ad else ad.get("data_inicio","")
                     data_fim_raw_ad = ad.get("data_fim_raw","")
-                    # Reaproveita _dias_ativo só pra parsear/formatar a data
-                    # (ela devolve "dd/mm/aaaa (N dias ativo)") — aqui a
-                    # gente só quer a data, o texto "dias ativo" não faz
-                    # sentido pra "última exibição".
                     ultima_exib = (_dias_ativo(data_fim_raw_ad).split(" (")[0] if data_fim_raw_ad else "") or "—"
                     impressoes  = ad.get("impressoes","")
                     body        = ad.get("body") or ""
@@ -39958,13 +34827,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc        = ad.get("description") or ""
                     cta         = ad.get("cta") or ""
                     uid         = f"{sk}_{j}"
-                    # Antes usava o link salvo em CADA anúncio individualmente,
-                    # anúncios antigos costumam ter esse campo preenchido com um
-                    # link do Meta que já expirou (não vazio, só quebrado) — daí
-                    # ficavam sem imagem mesmo tendo um "page_pic" salvo. Agora
-                    # usa sempre o MESMO link do cabeçalho (page_pic_empresa),
-                    # que já é a primeira foto válida entre todos os anúncios
-                    # da empresa — foto de perfil da página é uma só pra todos.
                     page_pic    = page_pic_empresa or _page_pic_fallback
 
                     snap_url_safe = snap_url.replace("'", "").replace('"', "").replace("&", "%26")
@@ -40000,31 +34862,13 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         vid_fallback_modal_esc = vid_fallback_modal.replace("'","").replace('"',"") if vid_fallback_modal else ""
                         snap_url_safe_vid      = snap_url_safe
 
-                        # Anúncio de vídeo do Google Ads: o "vídeo" salvo em
-                        # `videos` (ver _normalizar_item_apify) não é um
-                        # arquivo .mp4 baixável — é o próprio link do
-                        # YouTube (youtube.com/watch?v=...). Não dá pra
-                        # jogar isso num <video src="...">, que só toca
-                        # arquivo de vídeo de verdade; o card precisa
-                        # reconhecer esse caso e abrir o player oficial do
-                        # YouTube (iframe embed) dentro do modal, em vez de
-                        # tentar (e falhar) tocar como arquivo.
                         _yt_id_gads = ""
                         _m_yt_gads = _REGEX_YOUTUBE.search(vid_modal) if vid_modal else None
                         if _m_yt_gads:
                             _yt_id_gads = _m_yt_gads.group(1)
 
-                        # Badge de origem da mídia: se já foi migrada pro nosso
-                        # R2 mostra um ícone de "armazenado" (permanente); senão
-                        # mostra um relógio avisando que é o link original da
-                        # Meta e pode expirar a qualquer momento.
                         _vid_e_do_r2 = bool(R2_PUBLIC_BASE) and vid_modal.startswith(R2_PUBLIC_BASE)
                         if _yt_id_gads:
-                            # Vídeo do YouTube: não é "migrado pro R2" nem
-                            # "link da Meta que expira" — é o próprio
-                            # YouTube, que não tem esse tipo de expiração.
-                            # O selo de origem (R2/Meta) não faz sentido
-                            # aqui, então some.
                             origem_badge_html = ""
                         elif _vid_e_do_r2:
                             origem_badge_html = """
@@ -40052,31 +34896,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         </svg>
     </div>"""
 
-                        # Badge "🖼️ +N": anúncios Dinâmicos costumam vir com
-                        # imagens alternativas junto do vídeo (Meta testa
-                        # combinações de criativo), mas o card sempre priorizava
-                        # o vídeo e escondia essas imagens de vez — nenhum lugar
-                        # da tela dava pra vê-las. Aqui expõe um botão que abre
-                        # elas num modal à parte, sem interferir no clique
-                        # normal do card (que continua abrindo o vídeo).
-                        #
-                        # O clique NÃO vai num onclick="" inline com o JSON das
-                        # imagens embutido direto (era assim antes e não
-                        # funcionava): esse JSON tem aspas duplas dentro dele
-                        # (cada URL vem entre "..."), e colocar isso dentro de
-                        # um atributo HTML também delimitado por aspas duplas
-                        # (onclick="...") faz o navegador fechar o atributo na
-                        # primeira aspa que aparecer no meio do array — o
-                        # onclick ficava truncado/quebrado e o clique não fazia
-                        # resto do card (ver wrapEl.addEventListener acima):
-                        # o array vai numa variável JS separada, dentro de um
-                        # <script>, e o clique é ligado via addEventListener.
-                        # Exclui a própria capa do vídeo (video_preview_image_url,
-                        # que entra misturada na lista geral de imagens do
-                        # anúncio) — sem isso, quando o anúncio dinâmico não
-                        # tinha NENHUMA imagem realmente alternativa, o badge
-                        # "+1" aparecia e o modal só reexibia a mesma thumb já
-                        # visível no card (parecia quebrado/redundante).
                         _imgs_dyn_alt = [
                             u for u in images[:4]
                             if u and u not in (img_thumb_url, img_primary)
@@ -40109,29 +34928,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             imgs_badge_html = ""
                             imgs_badge_script = ""
 
-                        # Badge "💬 Transcrição": mostra o texto falado do
-                        # vídeo (Whisper) num tooltip customizado ao passar o
-                        # mouse — usamos um elemento próprio (via JS) em vez
-                        # do atributo `title` nativo do navegador, que é lento
-                        # pra aparecer, corta em uma linha e não é confiável
-                        # dentro do iframe. Só aparece quando já foi
-                        # transcrito e salvo em `midias` (ver
-                        # _mapa_transcricoes acima — não dispara transcrição
-                        # nova aqui, só lê o que já está pronto, pra não
-                        # travar a tela renderizando os cards).
-                        #
-                        # Se ainda não tem texto pronto, mas o vídeo já está
-                        # migrado e só aguardando a fila de transcrição (linha
-                        # em `midias` com transcricao NULL — ver
-                        # _urls_transcricao_pendente acima), mostra um badge
-                        # diferente avisando que é passageiro, em vez de
-                        # simplesmente esconder tudo (o que antes deixava
-                        # "sem transcrição ainda" indistinguível de "nunca vai
-                        # ter transcrição").
-                        # também precisa priorizar o CC persistido no próprio
-                        # anúncio. Antes ela consultava apenas `_mapa_transcricoes`
-                        # da tabela `midias`, por isso o backend capturava o CC
-                        # corretamente mas o card não mostrava nada.
                         _cc_youtube_txt_v156 = (ad.get("video_cc_raw") or "").strip()
                         _transcricao_txt = (
                             _cc_youtube_txt_v156
@@ -40172,12 +34968,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             transcricao_badge_html = ""
 
                         if _yt_id_gads:
-                            # Anúncio de vídeo do YouTube: em vez de tentar
-                            # tocar o link do YouTube como se fosse um
-                            # arquivo de vídeo (o que sempre falhava — ver
-                            # comentário acima em _yt_id_gads), o card usa a
-                            # thumbnail oficial do próprio YouTube como capa
-                            # e abre o player embed de verdade no modal.
                             _yt_thumb_url_gads = f"https://i.ytimg.com/vi/{_yt_id_gads}/hqdefault.jpg"
                             media_block = f"""
 <div class="media-block video-thumb-block" style="position:relative;background:#000;cursor:pointer"
@@ -40287,22 +35077,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                     elif img_primary:
                         all_imgs_js = _json.dumps(images[:4], ensure_ascii=True)
-                        # A lógica abaixo (pegar só índice 0 e 2, e comparar a
-                        # proporção pra descartar duplicata) foi criada pros
-                        # anúncios "Dinâmico"/formato Imagem, que às vezes têm
-                        # 2 recortes (quadrado + vertical) da MESMA arte — daí
-                        # faz sentido colapsar pra 1 se forem parecidos. Já
-                        # pros anúncios Carrossel de verdade, usa-se a lista
-                        # "carousel_images" — montada por CARD do carrossel lá
-                        # na normalização, uma única URL (a de melhor
-                        # qualidade disponível) por card. Não dá pra usar
-                        # "images"/"images_b64" por índice aqui: essas listas
-                        # juntam vários campos possíveis (original, resized,
-                        # thumbnail...) tanto do anúncio quanto de cada card
-                        # numa bolsa só, então o índice 1, por exemplo, podia
-                        # ser só a MESMA foto do card 1 num tamanho pior, não
-                        # o card 2 — o modal "repetia" o primeiro slide com
-                        # qualidade ruim no lugar do segundo.
                         _e_carrossel = "Carrossel" in (ad.get("formato") or "")
                         _carousel_imgs_ad = ad.get("carousel_images") or []
                         _metodo_carrossel = "n/a"
@@ -40310,18 +35084,6 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             main_modal_imgs_js = _json.dumps(_carousel_imgs_ad[:10], ensure_ascii=True)
                             _metodo_carrossel = "carousel_images (por card, correto)"
                         elif _e_carrossel and len(images) > 1:
-                            # Anúncio Carrossel salvo em cache ANTES dessa
-                            # esperados) ainda não tem "carousel_images". Nesse
-                            # caso, usa a lista genérica "images" — só que ela
-                            # traz, pra CADA card, tanto a "original_image_url"
-                            # (qualidade cheia) quanto a "resized_image_url"
-                            # (comprimida/redimensionada) como URLs diferentes
-                            # entre si, então a dedup por igualdade exata não
-                            # pega esse par como duplicata — sobra a mesma foto
-                            # 2x, uma boa e uma ruim. A Meta sempre marca a
-                            # versão redimensionada com o parâmetro "stp=" na
-                            # URL (ex.: "stp=dst-jpg_s600x600_tt6"), então filtra
-                            # essa variante fora e fica só com a versão cheia.
                             _legacy_carousel_srcs = []
                             for _limg in images[:20]:
                                 if not _limg or _limg in _legacy_carousel_srcs:
@@ -40334,52 +35096,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 if _limg and _limg not in _dedup_geral:
                                     _dedup_geral.append(_limg)
                             if len(_legacy_carousel_srcs) == len(_dedup_geral) and len(_dedup_geral) >= 4 and len(_dedup_geral) % 2 == 0:
-                                # O filtro "stp=" não removeu nada — sinal de
-                                # que essas imagens já foram migradas pro R2
-                                # arquivo viram hash aleatório, perdem o "stp=").
-                                # Nesses casos, como a extração sempre insere
-                                # original_image_url ANTES de resized_image_url
-                                # pra cada card, a lista final fica em pares
-                                # (boa, ruim, boa, ruim...) na ordem dos cards —
-                                # então os índices pares (0, 2, 4...) tendem a
-                                # ser as versões boas. Não é garantido (é uma
-                                # aposta educada pra dado antigo sem outra
-                                # pista), mas é bem melhor que mostrar as 2x
-                                # imagens juntas.
                                 _legacy_carousel_srcs = _dedup_geral[::2]
                                 _metodo_carrossel = "índice par (mídia já migrada, sem stp=)"
                             elif len(_legacy_carousel_srcs) <= 1:
-                                # Nenhuma imagem "sem stp=" sobrou (raro) — melhor
-                                # mostrar tudo deduplicado do que nada.
                                 _legacy_carousel_srcs = _dedup_geral
                                 _metodo_carrossel = "sem filtro (nada sobrou ao filtrar stp=)"
                             else:
                                 _metodo_carrossel = "filtro stp= (mídia ainda com link cru da Meta)"
                             main_modal_imgs_js = _json.dumps(_legacy_carousel_srcs[:10], ensure_ascii=True)
                         else:
-                            # Usa images_b64 (versão permanente/migrada) em vez de
-                            # `images` cru: a URL original da Meta expira, então o
-                            # modal (que antes usava `images`) parava de carregar
-                            # mesmo quando o thumb (que já usava images_b64) ainda
-                            # aparecia normalmente — mesma imagem, fonte diferente.
                             _modal_src_0 = (images_b64[0] if len(images_b64) > 0 else "") or (images[0] if len(images) > 0 else "")
                             _modal_src_2 = (images_b64[2] if len(images_b64) > 2 else "") or (images[2] if len(images) > 2 else "")
                             main_modal_imgs_js = _json.dumps(
                                 [img for img in [_modal_src_0, _modal_src_2] if img],
                                 ensure_ascii=True
                             )
-                        # Mesmo selo de origem que o card de vídeo já tem —
-                        # antes só existia lá, então cards de imagem (como os
-                        # de anúncio "Dinâmico") ficavam sem indicar se o link
-                        # é permanente (R2) ou o original da Meta.
-                        # Um anúncio pode carregar variantes da mesma arte.
-                        # Considera salvo quando ao menos a variante exibível
-                        # já aponta para o R2; usar apenas o índice 1 mantinha
-                        # o relógio amarelo mesmo após a migração ter sido
-                        # confirmada para o anúncio.
-                        # V258: o selo e a rotina automática usam a MESMA
-                        # função. Se este bloco mostra relógio, o mesmo anúncio
-                        # necessariamente entra na conferência/reparação.
                         _img_e_do_r2 = not _imagem_gads_exibe_relogio_v258(ad)
                         if _img_e_do_r2:
                             origem_badge_img_html = """
@@ -40484,22 +35215,9 @@ function imgFallback_{uid}(img){{
                     else:
                         body_display = ""
 
-                    # Sem copy nenhuma vinda da API (comum no Google Ads —
-                    # ver comentário em _normalizar_item_apify): tenta
-                    # preencher com o texto extraído por OCR da própria
-                    # imagem do criativo (ver bloco "OCR DE IMAGENS DO
-                    # GOOGLE ADS"). Deixa claro que é texto extraído
-                    # automaticamente (pode ter erro de leitura), não a
-                    # copy oficial do anúncio.
-                    # V271: usa a mesma imagem permanente exibida pelo card.
-                    # Capturas visuais antigas frequentemente têm `images`
-                    # vazio e a URL R2 somente em `images_b64`.
                     _img_principal_ad = _url_imagem_ocr_card_v271(ad)
                     _ocr_estr_ad = _mapa_ocr_estruturado.get(_img_principal_ad) if _img_principal_ad else None
                     _ocr_txt_ad = _mapa_ocr.get(_img_principal_ad, "") if _img_principal_ad else ""
-                    # V223: anúncio de Texto pode não ter imagem por definição.
-                    # Nesse caso o HTML estruturado fica no próprio registro do
-                    # anúncio e entra como fallback do mesmo renderer do OCR.
                     if not _ocr_estr_ad and ad.get("ocr_estruturado"):
                         _ocr_estr_ad = ad.get("ocr_estruturado")
                         if isinstance(_ocr_estr_ad, str):
@@ -40511,65 +35229,18 @@ function imgFallback_{uid}(img){{
                         _ocr_txt_ad = ad.get("ocr_texto") or ""
                     _ocr_pendente_ad = bool(_img_principal_ad) and _img_principal_ad in _urls_ocr_pendente
                     if videos:
-                        # Capa/thumbnail de vídeo nunca é conteúdo elegível a
-                        # OCR, mesmo que uma versão antiga tenha gravado OCR
-                        # para essa imagem. O texto relevante é o CC.
                         _ocr_estr_ad = None
                         _ocr_txt_ad = ""
                         _ocr_pendente_ad = False
                     elif img_primary and not _ocr_estr_ad and not str(_ocr_txt_ad or "").strip():
-                        # V272: uma imagem não-vídeo efetivamente exibida nunca
-                        # pode cair no fallback "texto não disponibilizado" se
-                        # não há OCR carregado. Mesmo se uma URL legada divergir
-                        # do índice, o estado correto é pendente até que algum
-                        # conteúdo OCR válido seja encontrado.
                         _ocr_pendente_ad = True
                     if not body_safe and not title_safe:
                         if _ocr_estr_ad:
-                            # OCR estruturado (sabendo que é um anúncio do
-                            # Google): título, descrição, url exibida, url
-                            # final (só se diferente), CTA e sitelinks —
-                            # cada campo no seu próprio bloco em vez de um
-                            # texto corrido só.
                             _campos_ocr_html = []
-                            # Cabeçalho (domínio/site) primeiro — no anúncio
-                            # real do Google Ads o domínio/URL sempre
-                            # aparece ACIMA do título (é a primeira linha
-                            # azul), então a prévia extraída por OCR segue
-                            # a mesma ordem em vez de jogar isso depois da
-                            # descrição.
                             if _ocr_estr_ad.get("url_exibida"):
-                                # A primeira linha do cabeçalho, quando NÃO
-                                # tem formato de domínio (ex: "KEDU"), é o
-                                # nome do anunciante — no anúncio real ela
-                                # vem ao lado do favicon do site, com o
-                                # domínio embaixo dela. Como o OCR não
-                                # recupera o favicon de verdade, entra o
-                                # globo genérico (ver _SVG_ICONE_GLOBO_SITE)
-                                # numa "coluna" à esquerda, e nome + domínio
-                                # empilhados numa segunda coluna à direita —
-                                # mesmo layout de duas colunas do anúncio
-                                # real, com o texto em preto (não mais
-                                # verde, que era só pra imitar a cor de URL
-                                # de resultado orgânico do Google, mas o
-                                # anúncio real usa preto/cinza aqui).
                                 _linhas_url_ad = [
                                     l for l in str(_ocr_estr_ad.get("url_exibida") or "").split("\n") if l
                                 ]
-                                # Mesma regra da versão reutilizável em
-                                # `_montar_html_preview_ocr_estruturado`:
-                                # com 2+ linhas no cabeçalho, a primeira
-                                # sempre vem em negrito e sem "/" final —
-                                # independente de parecer nome de página
-                                # ou já ser domínio (ex: "buyticketbrasil.com/"
-                                # + "www.buyticketbrasil.com/seguro/confiavel",
-                                # as duas domínio, mas só a 1ª em negrito).
-                                # Com só 1 linha e ela NÃO parecendo domínio
-                                # (sem "www"/TLD), também vai em negrito — é
-                                # o nome puro da empresa extraído de um
-                                # anúncio de Display/gráfico (ver
-                                # `_extrair_titulo_descricao_por_altura`),
-                                # que não tem nenhuma linha de URL junto.
                                 if len(_linhas_url_ad) >= 2:
                                     _nome_pagina_ad = _linhas_url_ad[0].rstrip("/")
                                     _resto_url_ad = "\n".join(_linhas_url_ad[1:])
@@ -40637,8 +35308,6 @@ function imgFallback_{uid}(img){{
                                         _sl_titulo = _sl.get("titulo") or ""
                                         _sl_desc = _sl.get("descricao") or ""
                                     elif isinstance(_sl, str) and " — " in _sl:
-                                        # formato antigo, string única
-                                        # salva antes da migração pra
                                         _sl_titulo, _sl_desc = _sl.split(" — ", 1)
                                     else:
                                         _sl_titulo, _sl_desc = str(_sl or ""), ""
@@ -40652,17 +35321,6 @@ function imgFallback_{uid}(img){{
                                     )
                                 _campos_ocr_html.append("".join(_blocos_sitelinks))
                             if _ocr_estr_ad.get("cta"):
-                                # Renderizado DEPOIS dos sitelinks (mesma
-                                # posição do modelo real do Google Ads —
-                                # ver imagem de referência) e com sua
-                                # própria linha divisória, igual a de
-                                # cada sitelink acima — sem isso o CTA
-                                # (ex: "Enviar mensagem" do WhatsApp)
-                                # ficava indistinguível de uma descrição
-                                # de sitelink comum. O círculo colorido
-                                # com o ícone (WhatsApp, telefone etc.)
-                                # entra à esquerda do texto, igual ao
-                                # anúncio real — ver _icone_cta_google_ads.
                                 _cta_icone_html = _icone_cta_google_ads(
                                     _ocr_estr_ad["cta"], _ocr_estr_ad.get("cta_subtitulo") or ""
                                 )
@@ -40693,9 +35351,6 @@ function imgFallback_{uid}(img){{
                                 '</div>'
                             )
                         elif _ocr_txt_ad:
-                            # Linha antiga, migrada antes do OCR virar
-                            # estruturado — só tem o texto corrido salvo em
-                            # `ocr_texto`, sem os campos separados.
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
                                 '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
@@ -40716,22 +35371,8 @@ function imgFallback_{uid}(img){{
                                     f'{_escapar_html_ocr(_cc_card_v267)}</div>'
                                 )
                             else:
-                                # Sem CC pronto não reserva uma seção vazia no
-                                # card. Quando o texto for obtido, o bloco volta
-                                # a aparecer automaticamente.
                                 no_copy_html = ""
                         elif _ocr_pendente_ad:
-                            # Em anúncio de VÍDEO, a imagem que está com OCR
-                            # pendente é só um FRAME do vídeo (thumbnail),
-                            # não um criativo de texto de verdade — o card já
-                            # mostra a transcrição do vídeo separadamente
-                            # (ver badge/bloco de transcrição no
-                            # video-thumb-block acima). Mostrar "Extraindo
-                            # texto da imagem via OCR…" aqui só confundia,
-                            # prometendo um texto que nunca é o conteúdo
-                            # relevante do anúncio. `videos` é a mesma lista
-                            # já usada mais acima nesta iteração pra decidir
-                            # entre video-thumb-block e img-block.
                             no_copy_html = "" if videos else '<div class="no-copy">OCR pendente — aguardando processamento.</div>'
                         else:
                             no_copy_html = '<div class="no-copy">Texto não disponibilizado pelo Google Ads Transparency Center — abra o criativo para ver o anúncio original.</div>'
@@ -41378,7 +36019,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 </body></html>
 """, height=100, scrolling=False)
 
-        # ── Renderização final: chamada APÓS as definições das funções ──
         if not empresas_com_dados:
             st.markdown("""
             <div style='background:#fff;border:1px dashed #d1d5db;border-radius:14px;padding:48px 32px;text-align:center;margin-top:8px'>
@@ -41395,9 +36035,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
                 st.session_state.gads_empresa_ativa = _emp_render["nome"]
             render_gads_empresa(_emp_render)
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: ANÁLISE DE IA (resumo comparativo) — Ads
-    # ══════════════════════════════════════════════════════════════════
     elif main_tab == "analise":
  
         if not st.session_state.gads_cache and not st.session_state.get("gads_analises_salvas"):
@@ -41407,7 +36044,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
         import json as _json_analises
         import re as _re_md
  
-        # ── Gerar comparativo se flag ativa ────────────────────────
         if st.session_state.pop("gads_gerar_comparativo", False):
             if gemini_model is None:
                 st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
@@ -41516,7 +36152,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             for stk, _, _ in subtabs_gads_def
         }
  
-        # ── Barra de subtabs ────────────────────────────────────────
         components.html(f"""
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -41681,11 +36316,6 @@ setTimeout(syncHeightTabs, 800);
             close_all()
             html = '\n'.join(output)
  
-            # Adicionada a faixa \U00002300-\U000023FF (Miscellaneous Technical),
-            # onde moram os símbolos de relógio/cronômetro (⏰⏱⏲⏳⌚ etc).
-            # Antes dessa faixa, "⏱" (U+23F1) não era removido do título,
-            # pois ficava no "buraco" entre \u21FF (fim das setas) e \u2600
-            # (início do bloco de símbolos diversos).
             _EMOJI_RE_ADS = _re.compile(
                 "["
                 "\U0001F1E6-\U0001FAFF"
@@ -41699,21 +36329,11 @@ setTimeout(syncHeightTabs, 800);
             )
  
             def _limpar_titulo_ads(hdr_txt):
-                # remove tags HTML remanescentes
                 limpo = _re.sub(r'<[^>]+>', '', hdr_txt)
-                # remove emojis/pictogramas — o ícone já aparece à esquerda do card
                 limpo = _EMOJI_RE_ADS.sub('', limpo)
-                # remove espaços/pontuação que ficam sobrando após remover o emoji
                 limpo = _re.sub(r'^[\s:\-–—]+', '', limpo)
                 return limpo.strip()
  
-            # Antes, o teste era `any(w in t for w in [...])`, ou seja,
-            # substring simples. Isso é arriscado: se uma keyword curta
-            # como "cta" for adicionada a uma lista, ela "casaria" com
-            # qualquer título contendo a palavra "CTAs" (ex.: "Padrão de
-            # CTAs"), mesmo sem nenhuma relação com a categoria pretendida.
-            # Usando \b (word boundary), "cta" só bate com a palavra "cta"
-            # isolada, não com "ctas" no plural.
             def _match_palavra_ads(texto, palavras):
                 for p in palavras:
                     if _re.search(r'\b' + _re.escape(p) + r'\b', texto):
@@ -42398,7 +37018,6 @@ setTimeout(syncH, 600);
             </div>
             """, unsafe_allow_html=True)
  
-        # ── Ghost buttons subtabs ───────────────────────────────────
         ghost_subtabs_css_ads = ", ".join([
             f".st-key-btn_gads_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_gads_analise_sub_{stk})"
             for stk, _, _ in subtabs_gads_def
@@ -42419,9 +37038,6 @@ setTimeout(syncH, 600);
                 st.session_state.gads_analise_subtab = stk
                 st.rerun()
                 
-# ---------------------------------------------------
-# PAGINA - INSIGHTS
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "insights":
 
@@ -42442,7 +37058,6 @@ elif st.session_state.pagina == "insights":
         """, unsafe_allow_html=True)
         st.stop()
 
-    # ── Estado ────────────────────────────────────────────────────
     if "insights_target_idx" not in st.session_state:
         st.session_state.insights_target_idx = 0
     st.session_state.insights_target_idx = min(
@@ -42462,7 +37077,6 @@ elif st.session_state.pagina == "insights":
         {"value": "90", "label": "Últimos 90 dias"},
     ]
 
-    # ── Cabeçalho com painel de controle (2 colunas, igual a Redes) ─
     target_atual = concorrentes[st.session_state.insights_target_idx]["nome"]
     periodo_atual = st.session_state.insights_periodo
     opts_html = "".join(
@@ -42747,7 +37361,6 @@ setHeight(false);
         </div>
     """, unsafe_allow_html=True)
 
-   # ── Histórico de insights (cards no padrão das outras páginas) ─
     historico = [
         a for a in st.session_state.get("analises_salvas", [])
         if a.get("tipo") == "insight_concorrente"
@@ -43379,13 +37992,7 @@ setTimeout(syncH, 600);
 </script>
 """, height=100, scrolling=False)
 
-    # ══════════════════════════════════════════════════════════════
-    # 👻 CONTROLES OCULTOS (ghost) — ficam no final da página de
-    # propósito, para que o espaçamento extra que o Streamlit deixa
-    # entre eles não empurre o título/conteúdo para baixo.
-    # ══════════════════════════════════════════════════════════════
 
-    # ── Ghost button: selecionar concorrente ────────────────────────
     ghost_sel_key = "btn_insights_sel_target"
     st.markdown(f"""
     <style>
@@ -43422,7 +38029,6 @@ setTimeout(syncH, 600);
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Ghost button: selecionar período ────────────────────────────
     ghost_periodo_key = "btn_insights_sel_periodo"
     st.markdown(f"""
     <style>
@@ -43456,7 +38062,6 @@ setTimeout(syncH, 600);
     </style>
     """, unsafe_allow_html=True)
 
-    # ── Ghost button: gerar insight ──────────────────────────────
     ghost_gerar_key = "btn_insights_gerar"
     st.markdown(f"""
     <style>
@@ -43474,7 +38079,6 @@ setTimeout(syncH, 600);
 
     gerar = st.button("insights_gerar", key=ghost_gerar_key)
 
-    # ── Ghost buttons de exclusão (um por item do histórico) ───────
     if historico:
         acoes_rm_ins = {}
         for i in range(len(historico)):
@@ -43501,7 +38105,6 @@ setTimeout(syncH, 600);
                 salvar_analises_padrao()
                 st.rerun()
 
-    # ── Geração do insight (processa o clique do botão Gerar) ──────
     if gerar:
         target_gerar = concorrentes[st.session_state.insights_target_idx]["nome"]
         periodo_gerar = st.session_state.get("insights_periodo", "30")
@@ -43568,9 +38171,6 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
             st.toast(f"{resposta}", icon="⚠️")
         st.rerun()
 
-# ---------------------------------------------------
-# PAGINA - REDES SOCIAIS
-# ---------------------------------------------------
 
 elif st.session_state.pagina == "redes":
 
@@ -43599,13 +38199,6 @@ elif st.session_state.pagina == "redes":
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
 
-    # Checkin de segurança: roda uma vez por sessão (não a cada rerun),
-    # verificando se já existem posts coletados e, entre eles, Reels
-    # ainda sem transcrição — se houver, dispara a transcrição em segundo
-    # plano (ver iniciar_transcricao_reels_pendente_background). Cobre
-    # tanto posts que ficaram pendentes de uma coleta anterior (ex: a
-    # sessão foi fechada antes da transcrição rodar) quanto o caso normal
-    # de qualquer usuário que abre a página com dados já salvos.
     if not st.session_state.get("_verificacao_reels_pendentes_feita") and st.session_state.get("user"):
         threading.Thread(
             target=iniciar_transcricao_reels_pendente_background,
@@ -43614,11 +38207,9 @@ elif st.session_state.pagina == "redes":
         ).start()
         st.session_state["_verificacao_reels_pendentes_feita"] = True
 
-    # ── Cabeçalho ──────────────────────────────────────────────────
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
 
-    # ── Última coleta (acima do painel) ────────────────────────────
     ultima_coleta = st.session_state.metricas_redes.get("ultima_coleta", "")
 
     import json as _jr
@@ -43626,7 +38217,6 @@ elif st.session_state.pagina == "redes":
     _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
     fn = f'dados_redes_{ultima_coleta.replace("/","_").replace(" ","_").replace(":","")}.json' if ultima_coleta else ""
 
-    # ── Cabeçalho com painel de controle ───────────────────────────
     col1, col2 = st.columns([5, 5])
 
     with col1:
@@ -43651,7 +38241,6 @@ html, body { background: transparent; overflow: hidden; }
 """, height=65)
 
     with col2:
-        # Monta lista de empresas para o select
         todas_empresas_ctrl = []
         _emp_ctrl = st.session_state.dados["minha_empresa"]
         _conc_ctrl = st.session_state.dados["concorrentes"]
@@ -44120,7 +38709,6 @@ function setHeight(isOpen) {{
 </script>
 """, height=104 if ultima_coleta else 78, scrolling=False)
 
-    # ── Ghost button coletar dados ──────────────────────────────────
     ghost_coletar_key = "btn_coletar_dados_redes"
     st.markdown(f"""
     <style>
@@ -44138,7 +38726,6 @@ function setHeight(isOpen) {{
 
     coletar = st.button("coletar_dados_redes", key=ghost_coletar_key)
 
-    # ── Ghost button limpar cache ───────────────────────────────────
     if "redes_confirmar_limpar" not in st.session_state:
         st.session_state.redes_confirmar_limpar = False
 
@@ -44167,7 +38754,6 @@ function setHeight(isOpen) {{
         </div>
     """, unsafe_allow_html=True)
 
-    # ── Helpers ────────────────────────────────────────────────────
     def fmt_num(n):
         n = int(n or 0)
         if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
@@ -44199,8 +38785,6 @@ function setHeight(isOpen) {{
             pass
         return {}
 
-    # (coleta_rapidapi, _coletar_rapidapi_sem_cache, _rapidapi_get_com_retry
-    # e _RAPIDAPI_CACHE_TTL agora vivem em escopo de módulo, ver acima)
     def calcular_score_bio(bio: str, ext_url: str, seguidores: int, eng_pct: float) -> dict:
         score = 0
         criterios = []
@@ -44324,7 +38908,6 @@ function setHeight(isOpen) {{
         return (
             f'<div style="display:flex;flex-direction:column;gap:0;">'
 
-            # Primeira linha: ícone + link + "e mais N"
             f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
             f'{icon_svg}'
             f'<a href="{urls[0]}" target="_blank" style="font-size:13px;font-weight:600;'
@@ -44343,7 +38926,6 @@ function setHeight(isOpen) {{
             f'</button>'
             f'</div>'
 
-            # Links extras ocultos
             f'<div id="extra_links_{uid}" style="display:none;">{extra_rows}</div>'
 
             f'</div>'
@@ -44369,7 +38951,6 @@ function setHeight(isOpen) {{
             )
         return ''.join(rows)
     
-    # ── Lista de perfis ─────────────────────────────────────────────
     todas = []
     if emp.get("nome") and emp.get("instagram") and emp["instagram"] not in ("@", ""):
         todas.append({"key": "__minha__", "nome": emp["nome"], "instagram": emp["instagram"], "tipo": "minha"})
@@ -44437,10 +39018,6 @@ function setHeight(isOpen) {{
             resultados_lista = []
             _nomes_todas_redes = [e["nome"] for e in todas]
             _total_todas_redes = len(_nomes_todas_redes)
-            # Status por perfil pra desenhar uma barra individual por
-            # empresa no card (mesmo padrão do coleta_ads — ver
-            # _executar_busca_background): "pendente", "rodando",
-            # "ok" ou "erro" (com a mensagem).
             _status_por_empresa_redes = {nome: {"status": "pendente"} for nome in _nomes_todas_redes}
 
             def _grava_progresso_redes():
@@ -44457,10 +39034,6 @@ function setHeight(isOpen) {{
 
             for e in todas:
                 _nome_e = e["nome"]
-                # Marca "rodando" ANTES de chamar o RapidAPI (que pode
-                # demorar) — sem isso, o card não tinha nenhum sinal de
-                # qual perfil está sendo coletado agora enquanto a
-                # chamada não retorna.
                 _status_por_empresa_redes[_nome_e] = {"status": "rodando"}
                 _grava_progresso_redes()
 
@@ -44487,10 +39060,6 @@ function setHeight(isOpen) {{
             )
             _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
 
-            # "Posts novos" entra dentro da MESMA atividade de coleta, em vez
-            # de virar uma segunda notificação separada logo acima desta —
-            # as duas eram sobre o mesmo evento (a coleta que acabou de
-            # rodar), então ficavam redundantes lado a lado no sino.
             _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
             atualizar_atividade(atividade_id, _status_final_redes, {
                 "empresas": _nomes_todas_redes,
@@ -44503,11 +39072,6 @@ function setHeight(isOpen) {{
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa_redes.items()},
             })
 
-            # Checkin: essa coleta pode ter trazido Reels novos (ou Reels
-            # que já existiam mas ainda não tinham transcrição) — dispara
-            # a transcrição pendente em segundo plano, sem bloquear a
-            # coleta em si (que já terminou e já atualizou a atividade
-            # acima).
             iniciar_transcricao_reels_pendente_background(user_id)
         except Exception as e:
             atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
@@ -44560,11 +39124,6 @@ function setHeight(isOpen) {{
             st.session_state["_coleta_redes_em_andamento"] = False
             st.rerun()
         else:
-            # Botão-fantasma (oculto): recebe o clique disparado automaticamente
-            # pelo timer em JS logo abaixo, que verifica de tempos em tempos se
-            # a coleta já terminou — sem exigir ação do usuário nem mostrar
-            # avisos na tela (o próprio botão "Coletar dados" já indica o
-            # estado de carregamento).
             st.button("_redes_verificar_coleta_trigger_", key="_btn_verificar_coleta_redes")
             st.markdown("""
             <style>
@@ -44594,12 +39153,7 @@ function setHeight(isOpen) {{
     ok = []
     if cache.get("dados"):
         ok = [r for r in cache["dados"] if not r.get("erro")]
-        # Erros de coleta (perfil sem dados, API instável etc.) não são mais
-        # exibidos aqui na página — já aparecem no sino de notificações,
-        # dentro da atividade "Coleta de redes sociais" ("Com erro: ..."),
-        # que é o lugar certo pra esse tipo de aviso pontual/transitório.
 
-    # Detectar perfis configurados que ainda não foram coletados
     handles_coletados = {r.get("instagram", "").lstrip("@").strip().lower() for r in cache.get("dados", [])}
     novas_empresas = [
         e for e in todas
@@ -44607,8 +39161,6 @@ function setHeight(isOpen) {{
     ]
     if novas_empresas:
         nomes = ", ".join(e["nome"] for e in novas_empresas)
-        # Container com key própria pra dar mais espaço embaixo dessa caixa
-        # azul específica (sem afetar outros st.info() espalhados pelo app).
         st.markdown("""
         <style>
         .st-key-_redes_info_sem_dados_ { margin-bottom: 28px; }
@@ -44621,7 +39173,6 @@ function setHeight(isOpen) {{
                 f"Clique em **Coletar dados** para incluí-las."
             )
 
-    # ── Estado de navegação ─────────────────────────────────────────
     if "redes_main_tab" not in st.session_state:
         st.session_state.redes_main_tab = "perfis"
     if "redes_aba_ativa" not in st.session_state:
@@ -44631,7 +39182,6 @@ function setHeight(isOpen) {{
     if "redes_analises_salvas" not in st.session_state:
         st.session_state.redes_analises_salvas = []
 
-    # ── Ghost buttons — abas principais ────────────────────────────
     st.markdown("""
     <style>
     .st-key-_redes_ghost_tab_perfis_,
@@ -44655,7 +39205,6 @@ function setHeight(isOpen) {{
         st.session_state.redes_main_tab = "analise"
         st.rerun()
 
-    # ── Ghost buttons — abas de empresa ────────────────────────────
     aba_empresa_ghost_css = []
     for i in range(len(ok)):
         k = f"btn_redes_aba_{i}"
@@ -44698,9 +39247,6 @@ function setHeight(isOpen) {{
 
     main_tab = st.session_state.redes_main_tab
 
-    # ══════════════════════════════════════════════════════════════════
-    # BARRA DE NAVEGAÇÃO PRINCIPAL (2 abas)
-    # ══════════════════════════════════════════════════════════════════
 
     analises_redes_nav = st.session_state.get("redes_analises_salvas", [])
     qtd_redes_analises = len(analises_redes_nav)
@@ -44846,7 +39392,6 @@ setTimeout(syncHeightNav, 800);
     """, unsafe_allow_html=True)
 
 
-# ── Ghost button comparativo (sempre renderizado) ───────────────
     ghost_comp_key = "btn_redes_comp_geral"
     st.markdown(f"""
     <style>
@@ -44868,9 +39413,6 @@ setTimeout(syncHeightNav, 800);
         st.session_state.redes_gerar_comparativo = True
         st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: PERFIS CONFIGURADOS
-    # ══════════════════════════════════════════════════════════════════
 
     if main_tab == "perfis":
 
@@ -44890,7 +39432,6 @@ setTimeout(syncHeightNav, 800);
 
         aba_ativa = min(st.session_state.get("redes_aba_ativa", 0), len(ok) - 1)
 
-        # ── Cards de empresa no topo ─────────────────────────────────
         empresas_redes_json = []
         for i, r in enumerate(ok):
             is_minha = r.get("tipo") == "minha"
@@ -44908,7 +39449,6 @@ setTimeout(syncHeightNav, 800);
 
         empresas_redes_str = json.dumps(empresas_redes_json, ensure_ascii=False)
 
-        # ── Dados do perfil ativo ────────────────────────────────────
         r = ok[aba_ativa]
         is_minha  = r.get("tipo") == "minha"
         badge_bg  = "#eff6ff" if is_minha else "#f3f4f6"
@@ -44941,14 +39481,12 @@ setTimeout(syncHeightNav, 800);
         avatar_letras = gerar_avatar(r["nome"])
         profile_pic_url = r.get("profile_pic", "")
 
-        # ── Estado de subtab ────────────────────────────────────────
         redes_subtab_key = f"redes_subtab_{aba_ativa}"
         if redes_subtab_key not in st.session_state:
             st.session_state[redes_subtab_key] = "postagens"
 
         subtab_atual = st.session_state.get(redes_subtab_key, "postagens")
 
-        # ── Ghost buttons subtabs ───────────────────────────────────
         for sub in ["postagens"]:
             ghost_k = f"btn_redes_sub_{aba_ativa}_{sub}"
             st.markdown(f"""
@@ -44968,7 +39506,6 @@ setTimeout(syncHeightNav, 800);
                 st.session_state[redes_subtab_key] = sub
                 st.rerun()
 
-        # ── Ghost button bio IA ─────────────────────────────────────
         chave_bio_ia = f"ia_bio_{r.get('handle','').replace('@','')}"
         if chave_bio_ia not in st.session_state:
             st.session_state[chave_bio_ia] = ""
@@ -45057,9 +39594,6 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
         bio_resultado = st.session_state.get(chave_bio_ia, "")
         bio_resultado_html = bio_resultado.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>") if bio_resultado else ""
 
-        # ══════════════════════════════════════════════════════════════
-        # IFRAME UNIFICADO: header + bio + tabs + conteúdo
-        # ══════════════════════════════════════════════════════════════
  
         if subtab_atual == "postagens":
             posts_col_key = f"posts_cols_{aba_ativa}"
@@ -45098,7 +39632,6 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
             ):
                 st.session_state[posts_col_key] = 3 if n_cols_posts == 4 else 4
                 st.rerun()
-            # ADICIONAR — ghost button oculto para toggle de colunas
             cols_toggle_ghost_key = f"ghost_cols_toggle_{handle_clean_toggle}"
             st.markdown(f"""
             <style>
@@ -45201,14 +39734,6 @@ Como interpretar as métricas desta postagem?
                 if not c_imgs_hd and c_imgs:
                     c_imgs_hd = c_imgs
 
-                # Status da transcrição do Reel, pro badge "💬 Transcrito" no
-                # card (ver _transcrever_reels_pendentes_background):
-                #   "pronta"   → já tem texto salvo (post["transcricao"] não-vazio)
-                #   "sem_fala" → já tentou, não achou fala (transcricao == "") —
-                #                tratado como estado final, sem badge nenhum
-                #   "pendente" → é vídeo mas ainda não tem a chave "transcricao"
-                #                (checkin ainda não chegou nesse Reel)
-                #   ""         → não é vídeo, não se aplica
                 if not p.get("is_video"):
                     _transc_status = ""
                 elif "transcricao" in p:
@@ -46172,9 +40697,6 @@ setTimeout(syncHeight, 300); setTimeout(syncHeight, 800); setTimeout(syncHeight,
 </body></html>
 """, height=500, scrolling=False)
  
-        # ══════════════════════════════════════════════════════════════
-        # SUB-ABA: ANÁLISE DE IA
-        # ══════════════════════════════════════════════════════════════
         
         resultados_ia_btns = {}
         for btn_sfx in ["postagens", "geral"]:
@@ -46260,8 +40782,6 @@ Seja direto e objetivo.
 
 Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando disponíveis):"""]
 
-                    # Envia até 6 imagens reais (posts de imagem/carrossel) pro Gemini —
-                    # mesmo padrão usado na análise de Anúncios.
                     imgs_enviadas = 0
                     for i, p in enumerate(posts_list[:12]):
                         if imgs_enviadas >= 6:
@@ -46297,12 +40817,6 @@ Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando d
                         except Exception:
                             continue
 
-                    # Reels não são enviados pro Gemini como vídeo — manda a
-                    # transcrição do áudio (via Whisper). Prioriza a transcrição
-                    # que o checkin da página de Redes Sociais já deixou salva
-                    # no próprio post (ver _transcrever_reels_pendentes_background)
-                    # transcrever na hora) se esse checkin ainda não rodou pra
-                    # esse Reel específico.
                     vids_transcritos = 0
                     _user_id_transcricao = st.session_state.user.id if st.session_state.get("user") else None
                     for i, p in enumerate(posts_list[:12]):
@@ -46319,7 +40833,6 @@ Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando d
                             )
                             vids_transcritos += 1
 
-                    # Converte parts para formato Gemini multimodal
                     gemini_parts = []
                     for p_part in parts:
                         if isinstance(p_part, str):
@@ -46398,9 +40911,6 @@ Seja direto e objetivo.
                     st.session_state[chave_geral] = f"Erro: {e}"
                     st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════
-    # ABA: ANÁLISE DE IA — Comparativo geral
-    # ══════════════════════════════════════════════════════════════════
 
     elif main_tab == "analise":
 
@@ -46411,7 +40921,6 @@ Seja direto e objetivo.
         import json as _json_redes
         import datetime as _dt_redes
 
-        # ── Gerar comparativo se flag ativa ────────────────────────
         if st.session_state.pop("redes_gerar_comparativo", False):
             if gemini_model is None:
                 st.toast("Configure GEMINI_API_KEY nos secrets.", icon="⚠️")
@@ -46457,8 +40966,6 @@ Para cada perfil, 1-2 pontos fortes.
  
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
-                    # Sempre adiciona uma NOVA análise — nunca sobrepõe as anteriores
-                    # (mesmo comportamento de "postagem" e "geral_perfil")
                     st.session_state.redes_analises_salvas.append({
                         "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                         "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -46480,7 +40987,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 
         analises_redes = st.session_state.get("redes_analises_salvas", [])
 
-        # Marcar como vistas
         st.session_state.redes_analise_vistas = len(analises_redes)
 
         ICON_SVG = {
@@ -46518,7 +41024,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             else:
                 contagens[stk] = len([a for a in analises_redes if a.get("tipo") == stk])
 
-        # ── Barra de subtabs
         components.html(f"""
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
@@ -46585,7 +41090,6 @@ setTimeout(syncHeightTabs, 800);
 </script>
 """, height=52, scrolling=False)
 
-        # ── Conteúdo da subtab ativa
         if subtab_analise == "postagem":
             lista_ativa = [
                 a for a in analises_redes
@@ -47345,7 +41849,6 @@ setTimeout(syncH, 600);
             </div>
             """, unsafe_allow_html=True)
 
-        # ── Ghost buttons subtabs (SEM duplicar o ghost_comp_key) ──
         ghost_subtabs_css = ", ".join([
             f".st-key-btn_redes_analise_sub_{stk}, .stElementContainer:has(.st-key-btn_redes_analise_sub_{stk})"
             for stk, _, _ in subtabs_def
@@ -47366,9 +41869,6 @@ setTimeout(syncH, 600);
                 st.session_state.redes_analise_subtab = stk
                 st.rerun()
 
-# ---------------------------------------------------
-# PERFIL — Editar dados do usuário
-# ---------------------------------------------------
 elif st.session_state.pagina == "perfil":
 
     st.markdown("""
@@ -47543,12 +42043,6 @@ html, body { background: transparent; overflow: hidden; }
 
         _user_id_uso = st.session_state.user.id if st.session_state.get("user") else None
 
-        # _midias_usadas conta ANÚNCIOS distintos com mídia migrada este mês
-        # (é essa a base real da cota — ver _contar_midias_do_mes). O
-        # card já mostrava a composição em arquivos individuais
-        # (imagens/vídeos) antes, mas isso é uma contagem diferente (por
-        # linha, não por anúncio) misturada no mesmo card — confuso, então
-        # ficou só a contagem que realmente importa pra cota: anúncios.
         _midias_usadas = _contar_midias_do_mes(_user_id_uso) if _user_id_uso else 0
         _midias_limite = PLANOS_QUOTA_MIDIAS.get(_plano_atual_perfil, 0)
         _detalhe_midias = ""
@@ -47564,11 +42058,6 @@ html, body { background: transparent; overflow: hidden; }
 
         _nome_minha_empresa = ((st.session_state.get("dados") or {}).get("minha_empresa") or {}).get("nome", "")
 
-        # Quebra de "Anúncios com mídia salva" por empresa (a própria +
-        # cada concorrente) — pra mostrar quem está de fato consumindo a
-        # cota mensal, não só o total. "ultima_coleta" vem do cache de
-        # anúncios (mesmo "ts" usado no bloco de Links Pendentes), pra
-        # manter os dois blocos com o mesmo formato de informação.
         _ads_cache_uso = st.session_state.get("ads_cache") or {}
         _midias_por_empresa = _contar_midias_do_mes_por_empresa(_user_id_uso) if _user_id_uso else {}
         _linhas_midia_empresa = []
@@ -47595,8 +42084,6 @@ html, body { background: transparent; overflow: hidden; }
         _max_midia_empresa = max([_l["usado"] for _l in _linhas_midia_empresa] + [1])
 
 
-        # Estas três já têm contador real no sistema de cooldown/cota
-        # mensal (tabela `atividades`) usado em verificar_pode_executar_acao.
         _coleta_ads_usadas   = _contar_execucoes_mes(_user_id_uso, "coleta_ads")   if _user_id_uso else 0
         _coleta_ads_limite   = PLANOS_COTA_MENSAL.get("coleta_ads", {}).get(_plano_atual_perfil)
         _coleta_redes_usadas = _contar_execucoes_mes(_user_id_uso, "coleta_redes") if _user_id_uso else 0
@@ -47614,7 +42101,6 @@ html, body { background: transparent; overflow: hidden; }
         _detalhe_coleta_redes = _detalhe_ultima_execucao("coleta_redes")
         _detalhe_analises_ia  = _detalhe_ultima_execucao("analise_ia")
 
-        # Ícones (viewBox 0 0 24 24, estilo outline) — um por métrica.
         _SVG_FILM = '<rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>'
         _SVG_TARGET = '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'
         _SVG_DOWNLOAD = '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
@@ -47763,18 +42249,6 @@ html, body { background: transparent; overflow: hidden; }
                 _row_pct = round((_l["usado"] / maximo_linhas) * 100) if maximo_linhas else 0
                 _row_pct = max(0, min(100, _row_pct))
                 _mini = _mini_donut_svg(_row_pct, _l["cor"])
-                # Só a urgência de expiração fica por linha (última coleta já
-                # aparece uma vez só, lá em cima) — e ganha destaque em
-                # vermelho pra chamar atenção de verdade, não é só mais uma
-                # informação neutra no meio das outras.
-                #
-                # Duas badges separadas, porque são situações diferentes:
-                # "já expirado" (vermelho mais escuro, problema acontecendo
-                # agora) e "expira em Xh Ymin" (vermelho normal, com o tempo
-                # "até 48h" igual pra tudo que caísse na janela). Cada uma
-                # tem um title= (tooltip nativo do navegador, aparece ao
-                # passar o mouse) listando os ids dos anúncios por trás do
-                # número, pra dar pra conferir na prática.
                 _partes_urgencia_link = []
                 def _esc_tooltip(txt: str) -> str:
                     return (txt.replace("&", "&amp;").replace('"', "&quot;")
@@ -47850,19 +42324,9 @@ html, body { background: transparent; overflow: hidden; }
             </div>
             """)
 
-        # Anúncios que ainda têm pelo menos um link original da Meta (não
-        # migrado pro R2) — ao contrário das outras métricas, aqui "alto
-        # %" é ruim (quer dizer que muito anúncio ainda depende da Meta e
-        # pode quebrar). A unidade aqui é o ANÚNCIO, não o link
-        # individual — um anúncio com 5 links pendentes conta 1 vez, não 5.
         _pendentes_link_dict = encontrar_ads_com_link_original(_ads_cache_uso)
         _total_pendentes_link = sum(len(e.get("data", [])) for e in _pendentes_link_dict.values())
         _total_ads_geral = sum(len(e.get("data", [])) for e in _ads_cache_uso.values())
-        # Classificação real (timestamp exato da URL, recalculado a cada
-        # rerun contra o relógio atual — ver _classificar_links_expiracao)
-        # em vez de um único número que misturava "já morreu" com "vai
-        # morrer logo". _total_expirando_link = ainda não venceu mas
-        # vence dentro da janela; _total_expirados_link = já venceu.
         _total_expirando_link = 0
         _total_expirados_link = 0
         _todos_ids_expirados_link = []
@@ -47872,9 +42336,6 @@ html, body { background: transparent; overflow: hidden; }
             _total_expirados_link += _u["expirados"]
             _todos_ids_expirados_link.extend(_u["ids_expirados"])
         _total_urgente_link = _total_expirando_link + _total_expirados_link
-        # O texto principal vira a frase de urgência (quantos anúncios têm
-        # link já expirado ou prestes a expirar) em vez do % cru de
-        # migração, com a contagem total de anúncios logo abaixo.
         if not _total_ads_geral:
             _pct_expiravel = 0
             _texto_pct_links = '<div style="font-size:14px;color:#9ca3af">nenhum anúncio coletado ainda</div>'
@@ -47920,10 +42381,6 @@ html, body { background: transparent; overflow: hidden; }
 
         _ultima_coleta_link = _ultima_coleta_mais_recente(_ads_cache_uso)
 
-        # Quebra de "Links da Meta" por empresa (a própria + cada
-        # concorrente) — quantos ANÚNCIOS daquela empresa ainda têm link
-        # original, quantos disso vão expirar logo, e quando foi a
-        # última coleta de anúncios daquela empresa (o "ts" do cache).
         def _linha_link_pendente(nome: str, cor: str, tag: str) -> dict:
             _ads_pendentes_empresa = (_pendentes_link_dict.get(nome) or {}).get("data", [])
             _urgencia_empresa = _classificar_links_expiracao(_ads_pendentes_empresa)
@@ -47999,7 +42456,6 @@ html, body { background: transparent; overflow: hidden; }
             unsafe_allow_html=True,
         )
 
-        # ── Ícones SVG por tipo de recurso (estilo Feather/Lucide, stroke-based) ──
         _ICONE_CHECK  = '<path d="M20 6 9 17l-5-5"/>'
         _ICONE_MINUS  = '<line x1="5" y1="12" x2="19" y2="12"/>'
         _ICONE_ADS    = '<path d="M17 3H7a2 2 0 0 0-2 2v13l4-2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><line x1="7" y1="8" x2="15" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/>'
@@ -48306,8 +42762,6 @@ html, body { background: transparent; overflow: hidden; }
             _tot_gads_com_cc = int((_suporte_cc_google or {}).get("com_cc") or 0)
             _tot_gads_sem_cc = int((_suporte_cc_google or {}).get("sem_cc") or 0)
 
-            # V84 — painel de suporte com identidade visual do produto e
-            # detalhamento acionável para TODOS os indicadores do resumo.
             st.markdown(
                 """
                 <style>
@@ -48377,18 +42831,6 @@ html, body { background: transparent; overflow: hidden; }
                     return "Com OCR" if _item.get("tem_ocr") else "Sem OCR"
                 return _item.get("motivo_ocr") or "Processamento não aplicável"
 
-            #
-            # st.expander NÃO é lazy no Streamlit: mesmo fechado, todo o corpo
-            # é executado em cada rerun. Antes desta versão, as oito listas de
-            # detalhamento eram montadas e todas as linhas/colunas/botões eram
-            # renderizados mesmo sem o usuário abrir nenhum menu.
-            #
-            # Agora:
-            # - a tela inicial mostra somente os botões/contadores;
-            # - apenas UMA categoria fica ativa por vez;
-            # - a lista daquela categoria é filtrada e renderizada somente
-            #   depois do clique;
-            # - clicar novamente na categoria aberta fecha o detalhamento.
             _SUPORTE_DETALHE_KEY_V164 = "_suporte_detalhe_aberto_v164"
 
             def _toggle_detalhe_sup_v164(_chave):
@@ -48398,8 +42840,6 @@ html, body { background: transparent; overflow: hidden; }
                 )
 
             def _filtrar_detalhe_sup_v164(_chave):
-                # IMPORTANTE: somente a categoria escolhida percorre/filtra
-                # o inventário. As demais não geram listas intermediárias.
                 if _chave == "todas":
                     return list(_suporte_itens)
                 if _chave == "salvas":
@@ -48554,8 +42994,6 @@ html, body { background: transparent; overflow: hidden; }
 
             _det_aberto_v164 = st.session_state.get(_SUPORTE_DETALHE_KEY_V164)
 
-            # Os contadores abaixo usam os totais já calculados para os cards.
-            # Nenhuma lista detalhada é criada apenas para exibir estes números.
             _menus_det_v164 = [
                 ("todas", "Todas as mídias", _tot_mid),
                 ("salvas", "Mídias salvas", _tot_salvas),
@@ -48567,8 +43005,6 @@ html, body { background: transparent; overflow: hidden; }
                 ("sem_ocr", "Imagens sem OCR", _tot_sem_ocr),
             ]
 
-            # Botões compactos em duas colunas. Apenas o clique altera a seção
-            # ativa; o conteúdo pesado é renderizado mais abaixo somente para ela.
             for _menu_row_v164 in range(0, len(_menus_det_v164), 2):
                 _cols_menu_v164 = st.columns(2)
                 for _offset_v164, _col_menu_v164 in enumerate(_cols_menu_v164):
@@ -48588,9 +43024,6 @@ html, body { background: transparent; overflow: hidden; }
                             _toggle_detalhe_sup_v164(_chave_v164)
                             st.rerun()
 
-            # LAZY LOAD REAL: este filtro/render só existe para a categoria
-            # atualmente aberta. Com nenhuma seção aberta, nenhuma linha de
-            # detalhamento é construída.
             _det_aberto_v164 = st.session_state.get(_SUPORTE_DETALHE_KEY_V164)
             if _det_aberto_v164:
                 _meta_det_v164 = {
@@ -48815,16 +43248,6 @@ html, body { background: transparent; overflow: hidden; }
             )
             st.rerun()
 
-        # Duas situações caem no mesmo balde aqui — ver docstring de
-        # _contar_ocr_formato_antigo: (1) OCR salvo ANTES do texto virar
-        # estruturado (texto corrido, sem título/descrição/CTA separados)
-        # e (2) OCR gravado como "vazio" por causa de uma falha de rede/
-        # Gemini/parsing (bug já corrigido na extração, mas que já tinha
-        # visível, mas marcada como "sem texto" pra sempre). Botão
-        # separado do de cima porque a ação é diferente: não é "processar
-        # o que nunca foi processado", é "jogar fora o que já foi
-        # processado errado/desatualizado e reprocessar do zero" (reseta
-        # ocr_texto pra NULL e reenvia pra fila normal de OCR).
         try:
             _qtd_ocr_formato_antigo = _contar_ocr_formato_antigo(st.session_state.user.id)
         except Exception:
@@ -48849,15 +43272,6 @@ html, body { background: transparent; overflow: hidden; }
                     st.toast("Nenhuma OCR antiga/vazia pra reprocessar.", icon="⚠️")
                 st.rerun()
 
-        # Reset forçado por empresa — cobre o caso em que `ocr_estruturado`
-        # JÁ ESTÁ preenchido, mas com conteúdo errado (gravado por uma
-        # versão mais antiga/pior do parser por cor: título vazio, tudo
-        # despejado em `descricao` como texto corrido). O botão acima
-        # ("Refazer essas OCRs") NÃO pega esse caso — ele só enxerga
-        # `ocr_estruturado IS NULL`, e aqui o campo tem conteúdo (só que
-        # errado). Como não dá pra distinguir programaticamente um
-        # `ocr_estruturado` certo de um errado (mesmas chaves, ambos
-        # empresa e reprocessa tudo do zero, mesmo o que já estava certo.
         _empresas_gads_perfil = []
         try:
             _empresas_gads_perfil = _empresas_com_imagens_google_ads(st.session_state.user.id)
@@ -48930,14 +43344,8 @@ html, body { background: transparent; overflow: hidden; }
                     )
                 st.rerun()
 
-# ---------------------------------------------------
-# NOTIFICAÇÕES — histórico de atividades
-# ---------------------------------------------------
 elif st.session_state.pagina == "notificacoes":
 
-    # V212 — reconcilia o cache antes de montar a lista. Assim, um anúncio
-    # antigo sem mídia gera sua atividade mesmo quando a coleta original não
-    # chegou a registrar a falha. A função é idempotente e não duplica cards.
     if st.session_state.get("user"):
         garantir_atividade_gads_incompletos(st.session_state.user.id)
 
@@ -48995,19 +43403,6 @@ html, body { background: transparent; overflow: hidden; }
 </script>
 """, height=70)
 
-    # O campo de busca é estilizado via JS (em vez de CSS por seletor
-    # ".st-key-...") porque a estrutura interna que o Streamlit gera pro
-    # text_input (quantos <div> de wrapper existem, em qual nível a classe
-    # "st-key-_busca_notif" realmente é aplicada) varia entre versões e é
-    # fácil de acertar errado — foi exatamente o que aconteceu aqui antes.
-    # Em vez de tentar adivinhar o seletor CSS certo, o script abaixo acha o
-    # <input> de verdade pelo texto do placeholder (isso é garantido de
-    # existir, é o texto que a gente mesmo definiu) e estiliza ELE e o
-    # elemento pai dele diretamente — sem depender de nome de classe nenhum.
-    # Roda em cima de window.parent.document (o componente vive num iframe
-    # à parte) com algumas tentativas (setTimeout) porque o Streamlit pode
-    # ainda não ter terminado de montar o <input> no instante em que esse
-    # iframe carrega.
     components.html("""
     <script>
     (function() {
@@ -49047,13 +43442,6 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
-    # V26: essa versão do Streamlit trocou o BaseWeb pelo React Aria — o
-    # selectbox não tem mais [data-baseweb="select"]; agora é um
-    # .react-aria-ComboBox com um <div role="group"> por dentro (é esse group
-    # que desenha a caixa visual) envolvendo o <input role="combobox">. A V19
-    # ainda procurava pelo seletor antigo e nunca encontrava nada — por isso
-    # o fundo continuava transparente. Aqui buscamos pelo input[role=combobox]
-    # e subimos até o [role="group"] mais próximo, que é a caixa real.
     components.html("""
     <script>
     (function() {
@@ -49122,26 +43510,7 @@ html, body { background: transparent; overflow: hidden; }
     </script>
     """, height=0)
 
-    # Barra de ações da página: busca por texto (filtra os cards abaixo),
-    # "Marcar como lidas" (tira o alerta vermelho do sino sem apagar nada —
-    # ver marcar_erros_como_lidos) e "Limpar com erro" (apaga de vez — ver
-    # excluir_atividades_com_erro). Existem porque nem todo 'erro' é
-    # retentável sozinho (ex: migracao_midia com cota mensal estourada, ou
-    # link do Facebook expirado de vez — ver comentário em
-    # _migrar_midia_background) e por isso nunca somem do sino sozinhas,
-    # mesmo com os retries automáticos existentes (que só cobrem os casos
-    # transitórios). "Limpar" tem confirmação em 2 passos (sem modal JS,
-    # só st.session_state) porque é uma ação em lote e irreversível — evita
-    # apagar tudo com 1 clique errado. "Marcar como lidas" não precisa de
-    # confirmação porque não é destrutivo (o card continua no histórico).
     if st.session_state.user:
-        # V33 — uma única consulta alimenta contadores do status e dos erros.
-        # Antes havia uma query separada só para erro/lida e logo depois outra
-        # query de resumo, lendo a mesma tabela duas vezes em todo rerun da página.
-        # V17: contagem REAL por status (banco inteiro) no próprio filtro.
-        # Isso também explica visualmente o número do sino: antes o badge
-        # podia mostrar 10 porque ele contava atividades ativas antigas, mas
-        # a tela trazia só as 50 mais recentes e essas 10 podiam ficar fora.
         _cont_status_notif = resumo_status_notificacoes(st.session_state.user.id)
         _n_erros_notif = int(_cont_status_notif.get("erro", 0) or 0)
         _n_erros_nao_lidos = int(_cont_status_notif.get("erro_nao_lido", 0) or 0)
@@ -49153,9 +43522,6 @@ html, body { background: transparent; overflow: hidden; }
             "concluido_com_erro": "Concluído com erros",
             "erro": "Erro",
         }
-        # Migra o valor salvo pela V16 (que guardava o label visível) para a
-        # chave estável usada a partir da V17. Evita SelectboxValueError no
-        # primeiro acesso após deploy.
         _valor_status_antigo = st.session_state.get("_filtro_status_notif")
         _map_status_antigo = {v: k for k, v in _STATUS_NOTIF_LABELS.items()}
         if _valor_status_antigo in _map_status_antigo:
@@ -49163,10 +43529,6 @@ html, body { background: transparent; overflow: hidden; }
         elif _valor_status_antigo not in _STATUS_NOTIF_LABELS:
             st.session_state["_filtro_status_notif"] = "todos"
 
-        # V25 — 1 linha para busca/status/ações; "Selecionar todas" sai daqui
-        # e vai acima da lista de notificações (ver mais abaixo), alinhado à
-        # direita e sem caixa de fundo — só os campos de entrada e os botões
-        # mantêm o visual de "campo" (fundo branco + borda).
         _col_busca, _col_status, _col_lidas, _col_excluir = st.columns(
             [2.55, 1.2, 1.15, 1.15]
         )
@@ -49186,9 +43548,6 @@ html, body { background: transparent; overflow: hidden; }
                 label_visibility="collapsed",
             )
 
-        # Carrega a mesma janela usada nos cards para montar as opções de seleção.
-        # Pendentes/em andamento/erros antigos também entram porque
-        # listar_atividades_notificacoes já os inclui mesmo fora do histórico recente.
         _atividades_selecao = listar_atividades_notificacoes(
             st.session_state.user.id, limite_recentes=100
         )
@@ -49212,8 +43571,6 @@ html, body { background: transparent; overflow: hidden; }
             return True
 
         _atividades_selecao = [a for a in _atividades_selecao if _bate_filtros_toolbar(a)]
-        # V143 — com paginação, "Selecionar todas" significa todas as
-        # notificações VISÍVEIS na página atual, não todas as páginas do filtro.
         _notif_page_size_toolbar = 10
         _notif_total_pag_toolbar = max(1, (len(_atividades_selecao) + _notif_page_size_toolbar - 1) // _notif_page_size_toolbar)
         _notif_pag_toolbar = max(1, min(int(st.session_state.get("_notif_pagina", 1) or 1), _notif_total_pag_toolbar))
@@ -49222,7 +43579,6 @@ html, body { background: transparent; overflow: hidden; }
         _por_id_sel = {str(a.get("id")): a for a in _atividades_selecao if a.get("id")}
         _ids_visiveis = list(_por_id_sel.keys())
 
-        # Remove automaticamente IDs que deixaram de existir/ficaram fora do filtro.
         _sel_antiga = [str(x) for x in st.session_state.get("_notificacoes_selecionadas", [])]
         _sel_valida = [x for x in _sel_antiga if x in _por_id_sel]
         if _sel_valida != _sel_antiga:
@@ -49239,18 +43595,7 @@ html, body { background: transparent; overflow: hidden; }
             _prefixo = f"{_empresa} · " if _empresa else ""
             return f"{_prefixo}{_titulo} — {_lbl_st}"
 
-        # V22 foi removida: dependia de [data-baseweb="select"], que não existe
-        # mais nesta versão do Streamlit (React Aria). A estilização real do
-        # select de status agora é feita só pela V26, lá em cima. Manter os
-        # dois scripts também estava somando um bloco vazio a mais no fluxo
-        # vertical da página (cada components.html(...) conta como um item na
-        # coluna, mesmo com height=0), o que ajudava a abrir aquele vão grande
-        # antes do "Selecionar todas".
 
-        # V25 — seleção direta nos próprios cards. Cada notificação tem um
-        # checkbox visual à esquerda; a contagem de selecionados/elegíveis
-        # calculada aqui alimenta os botões "Marcar lidas"/"Excluir" abaixo e
-        # o "Selecionar todas" que é desenhado mais adiante, acima da lista.
         _sel_antiga_cards = [str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", [])]
         _sel_valida_cards = [x for x in _sel_antiga_cards if x in _por_id_sel]
         if _sel_valida_cards != _sel_antiga_cards:
@@ -49406,9 +43751,6 @@ html, body { background: transparent; overflow: hidden; }
                 st.toast(f"{_n_marcadas} notificação(ões) selecionada(s) marcada(s) como lida(s).", icon="✅")
                 st.rerun()
 
-            # O botão-fantasma só é acionado pelo botão vermelho do modal JS
-            # acima. Usa a seleção atual dos cards, então não precisa manter um
-            # segundo estado de "confirmação" nem renderizar st.dialog.
             if st.button(
                 "_confirmar_excluir_notificacoes_selecionadas_",
                 key="_btn_confirmar_excluir_notificacoes_selecionadas",
@@ -49440,18 +43782,6 @@ html, body { background: transparent; overflow: hidden; }
         </style>
         """, unsafe_allow_html=True)
 
-        # V28 — "Selecionar todas" com estado persistente.
-        #
-        # O bug anterior acontecia porque, em cada rerun, o código recalculava
-        # `_todos_devem_estar` usando a seleção ANTIGA e sobrescrevia o valor do
-        # próprio widget ANTES de o clique ser tratado. Resultado: o usuário
-        # clicava, o checkbox chegava como True no session_state, mas era
-        # imediatamente devolvido para False e visualmente "não ficava".
-        #
-        # corpo do script no rerun e atualiza a lista de IDs selecionados com o
-        # valor que o usuário acabou de marcar/desmarcar. Depois disso a
-        # sincronização visual pode continuar sendo derivada da lista real sem
-        # apagar a interação do usuário.
         st.session_state["_ids_visiveis_notif_cards"] = [str(x) for x in _ids_visiveis]
 
         def _ao_alterar_selecionar_todas_notif_cards():
@@ -49463,14 +43793,10 @@ html, body { background: transparent; overflow: hidden; }
                 list(_ids_atuais) if _marcado else []
             )
 
-        # V144 — "Selecionar todas" e paginação superior na MESMA linha.
-        # A paginação usa o padrão numérico (página atual, próxima, reticências,
-        # última página e Prev/Next), como no restante da interface de referência.
         def _notif_paginas_visiveis_v144(_atual: int, _total: int):
             if _total <= 1:
                 return [_atual]
             _vals = []
-            # começo da sequência
             if _atual <= 2:
                 _vals.extend(range(1, min(_total, 3) + 1))
             else:
@@ -49629,8 +43955,6 @@ html, body { background: transparent; overflow: hidden; }
         </style>
         """, unsafe_allow_html=True)
 
-    # V31 — 2s reconstruía a lista inteira até 30x/min. Com muitos cards, isso
-    # gerava CPU contínua mesmo sem o usuário interagir. 10s reduz ~80% desses
     @st.fragment(run_every="20s")
     def _renderizar_atividades_ao_vivo():
         """Desenha a lista de atividades (cards, texto e barra de progresso)
@@ -49644,11 +43968,6 @@ html, body { background: transparent; overflow: hidden; }
         _todas_atividades = listar_atividades_notificacoes(st.session_state.user.id, limite_recentes=100) if st.session_state.user else []
         _selecionadas_cards_set = set(str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", []))
 
-        # Filtro de busca (texto digitado na caixa da barra de ações, acima):
-        # compara com o título e com a empresa nos detalhes, sem acento/case,
-        # pra achar tanto "Kedu" quanto "kedu" ou "salvando". Feito em Python
-        # sobre a lista já carregada (não é uma query nova no Supabase) —
-        # simples e rápido o bastante pro volume de 50 atividades recentes.
         _termo_busca = remover_acentos((st.session_state.get("_busca_notif") or "").strip().lower())
         if _termo_busca:
             def _atividade_bate_busca(a):
@@ -49657,10 +43976,6 @@ html, body { background: transparent; overflow: hidden; }
                 return _termo_busca in remover_acentos(_alvo.lower())
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_busca(a)]
 
-        # V17 — filtro por status usando CHAVES estáveis. O número exibido
-        # no select vem de resumo_status_notificacoes (banco inteiro), enquanto
-        # listar_atividades_notificacoes garante que pendentes/em andamento/
-        # erros apareçam mesmo se forem mais antigos que o histórico recente.
         _filtro_status_notif = st.session_state.get("_filtro_status_notif", "todos")
         if _filtro_status_notif != "todos":
             def _atividade_bate_status(a):
@@ -49679,8 +43994,6 @@ html, body { background: transparent; overflow: hidden; }
                 return True
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
 
-        # V143 — paginação das notificações. O filtro é aplicado ANTES da
-        # paginação; ao trocar busca/status voltamos automaticamente à página 1.
         _notif_page_size = 10
         _notif_filtro_sig = f"{_termo_busca}|{_filtro_status_notif}"
         if st.session_state.get("_notif_paginacao_filtro_sig") != _notif_filtro_sig:
@@ -49697,9 +44010,6 @@ html, body { background: transparent; overflow: hidden; }
             st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_paginas))
 
         def _render_paginacao_notif(_posicao: str):
-            # V144 — paginação numérica no padrão da referência. No topo ela
-            # já é desenhada ao lado de "Selecionar todas"; aqui renderizamos
-            # somente o rodapé, alinhado à direita.
             if _notif_total_itens <= _notif_page_size or _posicao == "topo":
                 return
 
@@ -49783,13 +44093,6 @@ html, body { background: transparent; overflow: hidden; }
             _desfazer_ids = []
             _excluir_ids = []
             _cards_notif_html = ""
-            # Acumulador de altura real, card a card (em vez de "n * 92px
-            # cabeçalho (~68px); só os que abrem sozinhos por padrão
-            # (migração/transcrição rodando AGORA, ver _rodando_agora_ativ)
-            # somam a altura extra do corpo (texto + barra de progresso).
-            # Isso evita tanto sobrar espaço vazio (estimativa alta demais
-            # quando a maioria dos cards está fechada) quanto cortar cards
-            # (estimativa baixa demais quando vários estão abertos).
             _altura_total_estim = 20
 
             for _pos, _a in enumerate(_todas_atividades):
@@ -49797,10 +44100,6 @@ html, body { background: transparent; overflow: hidden; }
                 if _a.get("status") == "concluido" and (_a.get("detalhes") or {}).get("com_erro"):
                     _ui = dict(_ATIVIDADE_STATUS_UI["concluido_com_erro"])
                 if _a.get("status") == "erro" and _a.get("lida"):
-                    # Erro já marcado como lido (via "Marcar como lidas" na
-                    # barra de ações) — continua no histórico, só deixa de
-                    # contar pro alerta do sino (ver resumo_sino_atividades),
-                    # mas o card sinaliza isso pra não parecer que sumiu.
                     _ui["label"] = _ui["label"] + " · lida"
 
                 _id_ativ = _a["id"]
@@ -49808,40 +44107,12 @@ html, body { background: transparent; overflow: hidden; }
                 _selecionada_ativ = _id_ativ_str in _selecionadas_cards_set
                 _empresa_ativ = (_a.get("detalhes") or {}).get("empresa")
                 if not _empresa_ativ and _a.get("tipo") == "migracao_midia":
-                    # Registro antigo sem 'empresa' nos detalhes (ver
-                    # _extrair_empresa_do_titulo_migracao) — recupera do
-                    # título em vez de deixar o botão escondido até a
-                    # próxima gravação de progresso.
                     _empresa_ativ = _extrair_empresa_do_titulo_migracao(_a.get("titulo") or "")
-                # Só oferece o botão quando dá pra saber qual empresa refazer —
-                # sem isso o painel expandido abriria vazio (só a setinha, sem
-                # texto e sem botão), uma UX capenga.
-                #
-                # "em_andamento" NUNCA mostra botão, mesmo quando está travada
-                # (parada esperando a próxima passada): enquanto o usuário
-                # estiver logado com a aba aberta, retentar_migracoes_travadas_
-                # automaticamente() já cuida de retomar sozinha (ver bloco
-                # "Retry automático de migração travada" / "Auto-poll global"
-                # na sidebar) — não existe estado em que uma migração parada
-                # precise de clique manual pra continuar. Oferecer um botão
-                # "Continuar" ali só sugeria (errado) que a retomada dependia
-                # do usuário. O botão de refazer manual fica reservado só pra
-                # "erro" de verdade (falha real que o retry automático não
-                # resolve sozinho).
                 _migracao_parada_ativ = (
                     _a.get("tipo") == "migracao_midia"
                     and _a.get("status") == "em_andamento"
                     and _migracao_travada(_a)
                 )
-                # transcricao_video não tem uma checagem de "travada"
-                # separada (heartbeat próprio, teto de tempo etc.) porque
-                # já não precisa: o auto-retry de 15s (ver
-                # _empresas_com_transcricao_pendente na sidebar) religa
-                # sozinho a fila de qualquer empresa com vídeo pendente
-                # sempre que não há nenhuma thread ativa pra ela — então
-                # "em_andamento" aqui nunca fica "esperando o usuário"
-                # por mais do que esse intervalo, mesmo que a thread
-                # original tenha morrido (ex: reinício do servidor).
                 _pode_refazer_redes = (
                     _a.get("tipo") == "coleta_redes"
                     and bool((_a.get("detalhes") or {}).get("com_erro"))
@@ -49858,15 +44129,6 @@ html, body { background: transparent; overflow: hidden; }
                     and bool(_empresa_ativ)
                     and _a.get("status") == "erro"
                 ) or _pode_refazer_redes or _pode_refazer_gads_incompletos or _pode_refazer_retentativa
-                # "Reparar e refazer" — diferente de "Refazer" (só aparece em
-                # status "erro"), esse botão existe pra migrações que
-                # CONCLUÍRAM (status "concluido") mas cujo resultado pode
-                # content-type em baixar_e_persistir_midia, que salvava uma
-                # página de erro/bloqueio do CDN disfarçada de mídia e
-                # fechava em "100%". É manual porque não dá pra saber, só
-                # olhando a atividade, se ela está mesmo corrompida (isso
-                # exige consultar `midias`) — o usuário aciona quando
-                # desconfia (ver reparar_e_refazer_migracao).
                 _pode_reparar = (
                     _a.get("tipo") == "migracao_midia"
                     and bool(_empresa_ativ)
@@ -49889,14 +44151,6 @@ html, body { background: transparent; overflow: hidden; }
                     _desfazer_ids.append(_id_ativ)
                 _excluir_ids.append(_id_ativ)  # excluir sempre disponível — limpa erro/lixo acumulado
 
-                # Cards com uma migração ou transcrição realmente rodando
-                # agora (progresso + status em_andamento e não travada)
-                # começam ABERTOS por padrão — não dá pra confiar no estado
-                # de expandido/recolhido do JS (data-idx toggle) porque o
-                # fragment redesenha esses cards do zero a cada atualização
-                # "ao vivo" (a cada ~2s), o que resetaria um card que o
-                # usuário tinha aberto manualmente de volta pra fechado
-                # toda hora.
                 _rodando_agora_ativ = (
                     _a.get("tipo") in ("migracao_midia", "transcricao_video")
                     and _a.get("status") == "em_andamento"
@@ -49908,11 +44162,6 @@ html, body { background: transparent; overflow: hidden; }
                 _detalhe_safe = (_detalhe_texto_ativ or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 _tempo_safe = _tempo_relativo(_a.get("criado_em", ""))
 
-                # V208 — o resultado pertence à notificação, não só ao log.
-                # Antes, as listas abaixo só apareciam em status="erro" e
-                # sumiam visualmente quando uma retentativa era concluída.
-                # Agora a notificação terminal conserva e exibe tanto quem foi
-                # corrigido quanto quem continuou pendente.
                 _detalhes_dict_ativ = _a.get("detalhes") or {}
                 _anuncios_erro_ativ = _detalhes_dict_ativ.get("anuncios_com_erro") or []
                 if not _anuncios_erro_ativ and _a.get("tipo") == "coleta_ads_google":
@@ -50054,10 +44303,6 @@ html, body { background: transparent; overflow: hidden; }
                         + '</div>'
                     )
 
-                # V216 — abre automaticamente SOMENTE atividades realmente
-                # ativas. A atividade mais recente deixa de ser uma exceção:
-                # se estiver concluída ou com erro, começa recolhida como todo
-                # o restante do histórico e pode ser aberta manualmente.
                 _status_ativ_atual = _a.get("status") or "pendente"
                 _atividade_ativa_ativ = _status_ativ_atual in ("pendente", "na_fila", "em_andamento")
                 _resultado_visivel_ativ = (
@@ -50113,19 +44358,7 @@ html, body { background: transparent; overflow: hidden; }
                         </div>
                     """
 
-                # Barra de andamento POR EMPRESA (coleta_ads e coleta_redes,
-                # que sempre lidam com um lote de empresas de uma vez) — em
-                # vez de um "X de Y" agregado só, o usuário vê o andamento de
-                # cada empresa individualmente: aguardando / coletando
-                # agora / coletada / já em cache / erro (com o motivo).
-                # Ver 'por_empresa', gravado incrementalmente por
-                # _executar_busca_background / _coletar_redes_background a
-                # cada empresa processada.
                 _empresa_rows_html = ""
-                # Em um card já marcado como Erro, a caixa "Ainda com erro"
-                # acima contém empresa, motivo e IDs. Repetir a mesma mensagem
-                # numa barra vermelha logo abaixo polui a leitura. As barras por
-                # empresa ficam restritas às atividades em curso ou concluídas.
                 if (
                     _a.get("tipo") in (
                         "coleta_ads", "coleta_ads_google", "coleta_redes",
@@ -50197,21 +44430,11 @@ html, body { background: transparent; overflow: hidden; }
                             "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z",
                             "#374151", 14,
                         )
-                        # Sempre "Refazer": _pode_refazer só é True pra status
-                        # "erro" agora (migração travada/parada se resolve
-                        # sozinha via retry automático, sem botão — ver
-                        # comentário acima de _pode_refazer), então não existe
-                        # mais o caso "Continuar" aqui.
                         _corpo_html += (
                             f'<button class="btn-refazer" data-idx="{_id_ativ}">'
                             f'<span class="btn-refazer-icon">{_refazer_svg}</span>Refazer</button>'
                         )
                     if _pode_reparar:
-                        # Mesmo ícone de "erro" (triângulo de alerta) já usado
-                        # em _ATIVIDADE_STATUS_UI — reaproveitado aqui de
-                        # propósito, pra sinalizar visualmente que essa ação
-                        # é diferente de um "Refazer" comum (desconfia do
-                        # resultado, não só repete a tentativa).
                         _reparar_svg = _svg_icone(
                             "M12,2L1,21H23L12,2M13,16H11V18H13V16M13,10H11V14H13V10Z",
                             "#b45309", 14,
@@ -50240,9 +44463,6 @@ html, body { background: transparent; overflow: hidden; }
 
                 _altura_total_estim += 68  # cabeçalho do card (fechado) + margem
                 if _rodando_agora_ativ or _resultado_visivel_ativ:
-                    # corpo forçado aberto: soma texto de detalhe + barra de
-                    # progresso (os únicos elementos possíveis nesse estado —
-                    # "rodando agora" nunca tem botão "Refazer")
                     _altura_total_estim += 16  # padding do corpo
                     if _detalhe_safe:
                         _altura_total_estim += 40
@@ -50251,9 +44471,6 @@ html, body { background: transparent; overflow: hidden; }
                     if _empresa_rows_html:
                         _altura_total_estim += 52 * len(_detalhes_dict_ativ.get("por_empresa") or {})
                     if _tem_mais_info_ativ:
-                        # A caixa possui rolagem própria e altura máxima de
-                        # 180px; reserva espaço suficiente para ela não ser
-                        # cortada pelo iframe quando o resultado nasce aberto.
                         _altura_total_estim += min(
                             200,
                             42 + 26 * (
@@ -50280,13 +44497,6 @@ html, body { background: transparent; overflow: hidden; }
         {_body_bloco}
     </div>"""
 
-            # Altura calculada card a card (ver _altura_total_estim acumulada
-            # scroll interno criava DUAS barras de rolagem na tela (a da
-            # página toda + a de dentro da caixa de notificações), o que é
-            # pior UX do que uma altura calculada com folga pequena. Como a
-            # estimativa por card agora é precisa (cabeçalho ~68px, e só os
-            # cards abertos por padrão somam a altura real do corpo), o erro
-            # acumulado fica pequeno mesmo com muitas atividades — o JS
             _altura_estim_cards = _altura_total_estim
 
             NOTIF_CSS = """
@@ -50649,18 +44859,6 @@ html, body { background: transparent; overflow: hidden; }
 
             _render_paginacao_notif("rodape")
 
-            # Botões nativos ocultos (um por atividade que pode ser "refeita") —
-            # o clique no botão "🔄 Refazer" dentro do iframe acima aciona esse
-            # botão via JS (mesmo truque usado pra excluir análises), já que o
-            # conteúdo do iframe não consegue rodar código Python diretamente.
-            #
-            # Todos ficam dentro de UM container (key="_ghost_wrap_cards_notif",
-            # ver abaixo, compartilhado com os botões de excluir) escondido como
-            # bloco único. Antes, cada botão era escondido individualmente via
-            # CSS (":has()" por id) e, com até 50 atividades, o "gap" do layout
-            # flex do Streamlit entre esses itens ocultos se acumulava e sobrava
-            # como um espaço vazio enorme na página — mesmo com cada botão
-            # colapsado, o espaçamento ENTRE eles continuava lá.
             _wrap_ghost_cards_notif = st.container(key="_ghost_wrap_cards_notif")
 
             _acoes_refazer = {}
@@ -50738,14 +44936,6 @@ html, body { background: transparent; overflow: hidden; }
                     _plataforma_rep = (_atividade_rep.get("detalhes") or {}).get("plataforma") if _atividade_rep else None
                     _plataforma_rep = _plataforma_rep or "Meta Ads"
                     if _empresa_rep:
-                        # Roda na hora (não numa thread em segundo plano) —
-                        # ao contrário de refazer_migracao_midia, aqui a
-                        # parte de reparo (query + RPC + delete por item
-                        # corrompido) precisa terminar ANTES de disparar a
-                        # migração de novo, senão ela ainda bateria no
-                        # early-return "já é uma mídia nossa no R2". Pra um
-                        # punhado de itens corrompidos isso é rápido; com
-                        # spinner pra não parecer travado.
                         with st.spinner(f"Verificando e reparando a migração de {_empresa_rep}..."):
                             _resultado_reparo = reparar_e_refazer_migracao(
                                 st.session_state.user.id, _empresa_rep, _rid, _plataforma_rep
@@ -50780,13 +44970,6 @@ html, body { background: transparent; overflow: hidden; }
                     st.toast(_msg_undo, icon="↩️" if _ok_undo else "⚠️")
                     st.rerun()
 
-            # Exclusão de notificações — agora feita direto pelo ícone de lixeira
-            # dentro de cada card (mesmo truque já usado no botão "🔄 Refazer"):
-            # o clique no iframe aciona, via JS, um botão nativo escondido com
-            # o mesmo id da atividade. A confirmação é um window.confirm() no
-            # próprio navegador, então não precisa de estado de confirmação
-            # no servidor. Isso elimina a lista nativa duplicada que ficava
-            # embaixo dos cards.
             _acoes_excluir = {}
             _acoes_selecionar = {}
             with _wrap_ghost_cards_notif:
@@ -50820,10 +45003,5 @@ html, body { background: transparent; overflow: hidden; }
                         st.toast("Não consegui excluir essa notificação — tenta de novo.", icon="⚠️")
                     st.rerun()
 
-    # V27 — o fragment da lista é um bloco Streamlit independente do container
-    # "Selecionar todas". Por isso mover só o checkbox (V26) não fazia os
-    # cards acompanharem. Envolvemos a lista em um container com key própria
-    # para deslocar TODO o bloco de notificações junto e eliminar o espaço
-    # vertical que permanecia entre o checkbox e o primeiro card.
     with st.container(key="_lista_notificacoes_wrap"):
         _renderizar_atividades_ao_vivo()

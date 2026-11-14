@@ -21019,7 +21019,11 @@ function setHeightGeral(isOpen) {{
 
                 _is_aba_concorrente = _d0["badge_lbl"] != "Minha Empresa"
                 _oport_textos_ativos = _OPORT_TEXTOS_CONCORRENTE if _is_aba_concorrente else _OPORT_TEXTOS
-                _oport_titulo_secao = "Oportunidades prioritárias"
+                _oport_titulo_secao = (
+                    "Oportunidades para sua empresa"
+                    if _is_aba_concorrente
+                    else "Ações prioritárias"
+                )
 
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
                 _oportunidades_top = []
@@ -21546,11 +21550,12 @@ body {{ padding-bottom:8px; }}
 .col-title {{
     display:flex; align-items:center; gap:6px; font-size:16px; font-weight:800;
     text-transform:uppercase; letter-spacing:0.5px;
-    padding:8px 12px; border-radius:8px; margin-bottom:10px;
+    padding:10px 12px; border-radius:8px; margin-bottom:10px;
+    background:#102f4e; color:#fff;
 }}
-.col-title-redes  {{ background:#fff; color:#1d4ed8; border-left:3px solid #3b82f6; }}
-.col-title-site   {{ background:#fff; color:#15803d; border-left:3px solid #22c55e; }}
-.col-title-ads    {{ background:#fff; color:#8b5cf6; border-left:3px solid #9a71f7; }}
+.col-title-redes  {{ border-left:4px solid #3b82f6; }}
+.col-title-site   {{ border-left:4px solid #22c55e; }}
+.col-title-ads    {{ border-left:4px solid #9a71f7; }}
 .col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
 .col-ads    {{ border-left:2px solid #9a71f720; padding-left:8px; margin-left:-8px; }}

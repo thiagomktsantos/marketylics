@@ -24662,7 +24662,6 @@ function setHeightGeral(isOpen) {{
                     "Site": "SITE",
                     "Anúncios": "ANÚNCIOS",
                 }
-                _COR_DESEMPENHO = "#3478f6"
                 for _lbl, _sc, _falt, _cor_area, _crit_ring in _areas:
                     if _sc >= 91:   _area_txt = "Excelente"
                     elif _sc >= 81: _area_txt = "Muito bom"
@@ -24670,8 +24669,8 @@ function setHeightGeral(isOpen) {{
                     elif _sc >= 40: _area_txt = "Regular"
                     else:           _area_txt = "Precisa melhorar"
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
-                    _icon_svg = _icon_tpl.format(c=_COR_DESEMPENHO)
-                    _svg_only = _svg_ring_area(_sc, _COR_DESEMPENHO, size=72, stroke=6, icon_svg=_icon_svg)
+                    _icon_svg = _icon_tpl.format(c=_cor_area)
+                    _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
                     # Hover no anel: mesmo padrão visual do "Como é calculado"
                     # usado no Score de SEO e no Score de Perfil — cabeçalho +
                     # uma linha por critério com a bolinha verde de check (SVG)
@@ -24693,11 +24692,11 @@ function setHeightGeral(isOpen) {{
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;width:92px;flex-shrink:0;">'
                         + _svg_com_tip +
                         '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
-                        f'<div style="font-size:11px;font-weight:900;color:{_COR_DESEMPENHO};line-height:1.15;letter-spacing:.15px;">{_AREA_LABELS_CURTOS.get(_lbl, _lbl.upper())}</div>'
+                        f'<div style="font-size:11px;font-weight:900;color:{_cor_area};line-height:1.15;letter-spacing:.15px;">{_AREA_LABELS_CURTOS.get(_lbl, _lbl.upper())}</div>'
                         f'<div style="display:flex;align-items:baseline;justify-content:center;line-height:1;">'
-                        f'<span style="color:{_COR_DESEMPENHO};font-size:18px;font-weight:900;letter-spacing:-.5px;">{_sc}</span>'
+                        f'<span style="color:{_cor_area};font-size:18px;font-weight:900;letter-spacing:-.5px;">{_sc}</span>'
                         f'<span style="color:#8b95a7;font-size:11px;font-weight:700;">/100</span></div>'
-                        f'<div style="display:inline-flex;align-items:center;justify-content:center;border:1px solid {_COR_DESEMPENHO};border-radius:4px;padding:1px 5px;font-size:10px;line-height:1.2;font-weight:800;color:{_COR_DESEMPENHO};background:#fff;white-space:nowrap;">{_area_txt}</div>'
+                        f'<div style="display:inline-flex;align-items:center;justify-content:center;margin-top:3px;border:1px solid {_cor_area};border-radius:4px;padding:1px 5px;font-size:10px;line-height:1.2;font-weight:800;color:{_cor_area};background:#fff;white-space:nowrap;">{_area_txt}</div>'
                         '</div></div>'
                     )
 

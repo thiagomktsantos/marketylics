@@ -24810,6 +24810,36 @@ function setHeightGeral(isOpen) {{
                     "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "Ganho estimado: +15% de alcance", "Rode anúncios em mais de uma plataforma (Meta, Google, TikTok) simultaneamente."),
                 }
 
+                # Nas abas de concorrentes, a lacuna detectada precisa virar
+                # vantagem para a empresa do usuário — não uma correção para
+                # melhorar o próprio concorrente.
+                _OPORT_TEXTOS_CONCORRENTE = {
+                    "Title":                    ("Ganhar relevância com títulos mais fortes", "Vantagem potencial: +8% de cliques na busca", "Na sua empresa, use títulos claros, específicos e alinhados às buscas que o concorrente ainda não atende bem."),
+                    "H1":                       ("Superar o concorrente com páginas mais bem estruturadas", "Vantagem potencial: +6% de relevância na busca", "Na sua empresa, mantenha um H1 único e objetivo em cada página importante."),
+                    "Meta Desc.":               ("Atrair mais cliques que o concorrente na busca", "Vantagem potencial: +5% de CTR na busca", "Na sua empresa, escreva descrições de 120–160 caracteres com benefício claro e chamada para ação."),
+                    "Seções (H2)":              ("Oferecer conteúdo mais claro que o concorrente", "Vantagem potencial: +4% de tempo na página", "Organize o conteúdo da sua empresa em seções fáceis de ler, com subtítulos úteis e específicos."),
+                    "Sitemap":                  ("Ocupar mais espaço nos resultados de busca", "Vantagem potencial: +10% de indexação", "Garanta que o site da sua empresa tenha sitemap atualizado e enviado ao Google Search Console."),
+                    "Tem bio":                  ("Apresentar sua empresa com mais clareza nas redes", "Vantagem potencial: +10% de conversão no perfil", "Use uma bio completa para comunicar rapidamente o que sua empresa oferece."),
+                    "Proposta de valor clara":  ("Destacar uma proposta de valor mais clara", "Vantagem potencial: +12% de reconhecimento de marca", "Deixe evidente na bio da sua empresa qual problema ela resolve e por que é uma escolha melhor."),
+                    "Link na bio":              ("Capturar o tráfego que o concorrente não direciona", "Vantagem potencial: +15% de tráfego para o site", "Na sua empresa, use um link direto para a página de maior conversão, site ou WhatsApp."),
+                    "Posicionamento da marca":  ("Diferenciar sua marca com um posicionamento mais forte", "Oportunidade de diferenciação no mercado", "Comunique na sua empresa uma promessa clara e distinta do posicionamento desse concorrente."),
+                    "CTA na bio":               ("Converter melhor com uma chamada mais direta", "Vantagem potencial: +8% de conversão", "Inclua na bio da sua empresa uma ação objetiva, como 'Compre agora' ou 'Fale conosco'."),
+                    "Diferenciação no mercado": ("Ocupar o espaço de diferenciação deixado pelo concorrente", "Vantagem potencial: +20% de alcance orgânico", "Reforce nos conteúdos da sua empresa os atributos que o concorrente ainda não comunica."),
+                    "Volume de anúncios ativos":("Ganhar presença com maior cobertura de anúncios", "Vantagem potencial: +25% de alcance pago", "Teste na sua empresa mais públicos e criativos enquanto o concorrente mantém baixa presença publicitária."),
+                    "Usa prova social":         ("Gerar mais confiança que o concorrente", "Vantagem potencial: +18% de confiança e CTR", "Use avaliações, depoimentos e números reais nos anúncios da sua empresa."),
+                    "Usa gatilho de urgência":  ("Criar vantagem com mensagens de urgência", "Vantagem potencial: +10% de conversão", "Quando fizer sentido, use prazo, disponibilidade ou condição limitada nos anúncios da sua empresa."),
+                    "CTA direto consistente":   ("Conquistar mais cliques com chamadas consistentes", "Vantagem potencial: +12% de cliques", "Padronize CTAs claros nos anúncios da sua empresa para facilitar a decisão do público."),
+                    "Comunica benefícios claros":("Evidenciar benefícios que o concorrente não destaca", "Vantagem potencial: +9% de CTR", "Mostre nos anúncios da sua empresa benefícios concretos e fáceis de comparar."),
+                    "Diversifica plataformas":  ("Ampliar presença onde o concorrente ainda não atua", "Vantagem potencial: +15% de alcance", "Distribua os anúncios da sua empresa entre os canais mais relevantes ainda pouco explorados pelo concorrente."),
+                }
+
+                _is_aba_concorrente = _d0["badge_lbl"] != "Minha Empresa"
+                _oport_textos_ativos = _OPORT_TEXTOS_CONCORRENTE if _is_aba_concorrente else _OPORT_TEXTOS
+                # O título permanece igual em todas as abas. O que muda nas
+                # abas dos concorrentes é o direcionamento do conteúdo: as
+                # lacunas deles viram oportunidades para a empresa do usuário.
+                _oport_titulo_secao = "Oportunidades prioritárias"
+
                 # ── Oportunidades prioritárias: uma por área, ordenadas pela pior nota ──
                 _areas_ordenadas = sorted(_areas, key=lambda a: a[1])
                 _oportunidades_top = []
@@ -24820,33 +24850,44 @@ function setHeightGeral(isOpen) {{
                         break
 
                 if _oportunidades_top:
-                    _chevron_svg = (
-                        '<svg width="22" height="22" viewBox="0 0 24 24">'
-                        '<circle cx="12" cy="12" r="12" fill="#6b7280"/>'
-                        '<g transform="translate(6.2,6.2) scale(0.48)">'
-                        '<path fill="#ffffff" d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>'
-                        '</g></svg>'
-                    )
                     _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
+                    # Todos os selos usam a mesma largura, calculada pelo maior
+                    # rótulo ("Anúncios"), para não variar entre as páginas.
+                    _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
+                    _selo_width_px = 48 + (_maior_badge_chars * 6)
+                    _lampada_selo_svg = (
+                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" '
+                        'stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                        '<path d="M9 18h6"/><path d="M10 22h4"/>'
+                        '<path d="M8.2 14.6A7 7 0 1 1 15.8 14.6C14.7 15.4 14 16.5 14 18h-4c0-1.5-.7-2.6-1.8-3.4z"/>'
+                        '</svg>'
+                    )
                     _oport_rows = []
                     for _i, (_lbl, _falt_raw, _cor_op) in enumerate(_oportunidades_top):
-                        _titulo_op, _ganho_op, _como_op = _OPORT_TEXTOS.get(_falt_raw, (_falt_raw, "", "Priorize esse item para elevar o score dessa área."))
+                        _fallback_op = (
+                            f"Aproveitar a lacuna do concorrente em {_falt_raw}", "",
+                            "Fortaleça esse ponto na sua empresa para criar uma vantagem competitiva."
+                        ) if _is_aba_concorrente else (
+                            _falt_raw, "", "Priorize esse item para elevar o score dessa área."
+                        )
+                        _titulo_op, _ganho_op, _como_op = _oport_textos_ativos.get(_falt_raw, _fallback_op)
                         _ganho_html = (
                             f'<div style="font-size:10px;color:#f59e0b;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
                             if _ganho_op else ""
                         )
                         _badge_txt = _BADGE_LBL.get(_lbl, _lbl)
+                        _match_pct = re.search(r"\+\d+%", _ganho_op or "")
+                        _badge_pct = _match_pct.group(0) if _match_pct else "+0%"
                         _oport_rows.append(
                             f'<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 0;'
                             f'border-bottom:1px solid #f3f4f6;">'
-                            f'<div style="width:56px;padding:3px 6px;border-radius:8px;background:{_cor_op};color:#fff;'
-                            f'font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;'
-                            f'text-align:center;flex-shrink:0;margin-top:1px;">{_badge_txt}</div>'
-                            f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
-                            f'{_ganho_html}</div>'
-                            f'<div class="oport-tip-wrap" style="flex-shrink:0;margin-top:2px;">{_chevron_svg}'
+                            f'<div class="oport-tip-wrap oport-selo" style="width:{_selo_width_px}px;background:{_cor_op};">'
+                            f'<div class="oport-selo-icone">{_lampada_selo_svg}</div>'
+                            f'<div class="oport-selo-texto"><span>{_badge_txt}</span><strong>{_badge_pct}</strong></div>'
                             f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}</div>'
-                            f'</div></div>'
+                            f'</div>'
+                            f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
+                            f'{_ganho_html}</div></div>'
                         )
                     # ── Paginação: 2 oportunidades por página, com bolinhas de
                     # navegação abaixo da lista. Como o card roda num iframe
@@ -25032,7 +25073,7 @@ function setHeightGeral(isOpen) {{
                     def _conc_item_row(_lbl_ci, _icon_html, _cor_lbl):
                         _tip_txt = _conc_tooltips.get(_lbl_ci, "")
                         return (
-                            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+                            '<div class="conc-sinal" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;">'
                             f'<div style="display:flex;align-items:center;gap:8px;">{_icon_html}'
                             f'<div style="font-size:12.5px;font-weight:700;color:{_cor_lbl};">{_lbl_ci}</div></div>'
                             '<div class="conc-tooltip-wrap"><div class="q-badge" style="margin-left:0;">i</div>'
@@ -25042,16 +25083,16 @@ function setHeightGeral(isOpen) {{
 
                     _conc_itens_html = ""
                     for _lbl_ci in _conc_itens_ok:
-                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_ok_ci, "#1a2e4a")
+                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_ok_ci, "#ffffff")
                     for _lbl_ci in _conc_itens_off:
-                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_off_ci, "#9ca3af")
+                        _conc_itens_html += _conc_item_row(_lbl_ci, _icon_off_ci, "#9fb3c8")
                     if not _conc_itens_ok and not _conc_itens_off:
                         _conc_itens_html = (
                             '<div style="font-size:12px;color:#9ca3af;line-height:1.5;">'
                             'Ainda não há dados suficientes desse concorrente para avaliar esses sinais.</div>'
                         )
                     _conc_itens_html = (
-                        '<div style="display:flex;flex-direction:column;gap:10px;">'
+                        '<div class="conc-sinais" style="display:flex;flex-direction:column;">'
                         f'{_conc_itens_html}</div>'
                     )
 
@@ -25063,20 +25104,19 @@ function setHeightGeral(isOpen) {{
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;">
+  <div style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
     <div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
-        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#1a2e4a;line-height:1.3;">Classificação do concorrente</div>
-        <div class="conc-tooltip-wrap"><div class="q-badge">?</div>
+      <div style="display:flex;align-items:center;gap:6px;background:#183f62;margin:0 -20px 17px;padding:14px 20px;">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#ffffff;line-height:1.3;">Classificação do concorrente</div>
+        <div class="conc-tooltip-wrap"><div class="q-badge" style="border-color:rgba(255,255,255,.45);color:#d9e8f7;">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença e discurso desse concorrente.</div>
         </div>
       </div>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;">
-      <div style="background:{_conc_grad};border-radius:10px;padding:9px 14px;text-align:center;margin:10px 0 6px 0;">
+      <div style="background:{_conc_grad};border-radius:10px;padding:10px 14px;text-align:center;margin:0 0 7px 0;box-shadow:0 4px 12px rgba(0,0,0,.12);">
         <span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:0.3px;">Concorrência: {_conc_nivel}</span>
       </div>
-      <div style="font-size:11.5px;color:#6b7280;line-height:1.5;margin-bottom:10px;text-align:center;">{_conc_desc}</div>
-      <div style="margin-top:10px;">{_conc_itens_html}</div>
+      <div style="font-size:11.5px;color:#c4d7e9;line-height:1.5;margin-bottom:7px;text-align:center;">{_conc_desc}</div>
+      <div style="margin-top:5px;">{_conc_itens_html}</div>
     </div>
   </div>
 """
@@ -25132,6 +25172,9 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     border:5px solid transparent; border-bottom-color:#1a2e4a;
 }}
 .conc-tooltip-wrap:hover .tip {{ display:block; }}
+.conc-sinais .conc-sinal + .conc-sinal {{
+    border-top:1px solid rgba(255,255,255,.11);
+}}
 .q-badge {{
     width:14px; height:14px; border-radius:50%; background:transparent; border:1px solid #cbd5e1;
     display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#9ca3af;
@@ -25149,6 +25192,23 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     border:5px solid transparent; border-top-color:#1a2e4a;
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
+.oport-selo {{
+    height:42px; padding:4px; border-radius:10px; color:#fff; flex-shrink:0; margin-top:1px;
+    display:flex; align-items:center; gap:6px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
+}}
+.oport-selo:hover {{
+    transform:translateY(-1px); filter:brightness(.96); box-shadow:0 4px 10px rgba(26,46,74,.18);
+}}
+.oport-selo-icone {{
+    width:32px; height:34px; border-radius:8px; background:rgba(255,255,255,.16);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}}
+.oport-selo-texto {{
+    min-width:0; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; line-height:1.05; text-align:center; white-space:nowrap;
+}}
+.oport-selo-texto span {{ font-size:10px; font-weight:800; }}
+.oport-selo-texto strong {{ font-size:11px; font-weight:900; margin-top:3px; }}
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
@@ -25189,7 +25249,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
       <div>
         <div style="display:flex;align-items:center;margin-bottom:10px;">
-          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Oportunidades prioritárias</div>
+          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">{_oport_titulo_secao}</div>
           {_oport_count_badge_html}
         </div>
         {_oport_html}

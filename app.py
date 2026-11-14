@@ -34818,39 +34818,56 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         min(int(_destino), _total_paginas_v287),
                     )
 
-                def _render_paginacao_gads_v287(_posicao):
-                    _col_anterior, _col_info, _col_proxima = st.columns([1, 2.2, 1])
-                    with _col_anterior:
-                        st.button(
-                            "← Anterior",
-                            key=f"gads_pag_ant_v287_{sk}_{_posicao}",
-                            disabled=_pagina_atual_v287 <= 1,
-                            on_click=_ir_pagina_gads_v287,
-                            args=(_pagina_atual_v287 - 1,),
-                            use_container_width=True,
-                        )
-                    with _col_info:
-                        st.markdown(
-                            f"""
-                            <div style="text-align:center;padding:7px 8px 0;color:#475569;
-                                        font-size:13px;line-height:1.35">
-                                <strong style="color:#0e2a47">Página {_pagina_atual_v287} de {_total_paginas_v287}</strong><br>
-                                Exibindo {_inicio_v239 + 1}–{_fim_v239} de {_total_filtrado_v239} anúncios
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-                    with _col_proxima:
-                        st.button(
-                            "Próxima →",
-                            key=f"gads_pag_prox_v287_{sk}_{_posicao}",
-                            disabled=_pagina_atual_v287 >= _total_paginas_v287,
-                            on_click=_ir_pagina_gads_v287,
-                            args=(_pagina_atual_v287 + 1,),
-                            use_container_width=True,
-                        )
+                _pag_prev_key_v287 = f"gads_pag_hidden_prev_v287_{sk}"
+                _pag_next_key_v287 = f"gads_pag_hidden_next_v287_{sk}"
+                st.button(
+                    "gads_pag_prev_v287",
+                    key=_pag_prev_key_v287,
+                    disabled=_pagina_atual_v287 <= 1,
+                    on_click=_ir_pagina_gads_v287,
+                    args=(_pagina_atual_v287 - 1,),
+                )
+                st.button(
+                    "gads_pag_next_v287",
+                    key=_pag_next_key_v287,
+                    disabled=_pagina_atual_v287 >= _total_paginas_v287,
+                    on_click=_ir_pagina_gads_v287,
+                    args=(_pagina_atual_v287 + 1,),
+                )
+                st.markdown(
+                    f"""
+                    <style>
+                    .st-key-{_pag_prev_key_v287}, .st-key-{_pag_next_key_v287},
+                    .stElementContainer:has(.st-key-{_pag_prev_key_v287}),
+                    .stElementContainer:has(.st-key-{_pag_next_key_v287}) {{
+                        display:none!important;height:0!important;min-height:0!important;
+                        max-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;
+                    }}
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-                _render_paginacao_gads_v287("topo")
+                _prev_disabled_v287 = " disabled" if _pagina_atual_v287 <= 1 else ""
+                _next_disabled_v287 = " disabled" if _pagina_atual_v287 >= _total_paginas_v287 else ""
+                _paginacao_html_v287 = f"""
+                <style>
+                .gads-pagination{{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:18px;width:98%;margin:0 auto 18px;}}
+                .gads-page-btn{{height:38px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0e2a47;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;}}
+                .gads-page-btn:hover:not(:disabled){{background:#0e2a47;color:#fff;border-color:#0e2a47;}}
+                .gads-page-btn:disabled{{background:#f8fafc;color:#a8b1bf;border-color:#e2e8f0;cursor:default;}}
+                .gads-page-info{{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;font-size:11px;line-height:1.45;white-space:nowrap;}}
+                .gads-page-info strong{{color:#0e2a47;font-size:13px;}}
+                </style>
+                <div class="gads-pagination">
+                    <button class="gads-page-btn" onclick="mudarPaginaGads('prev')"{_prev_disabled_v287}>← Anterior</button>
+                    <div class="gads-page-info">
+                        <strong>Página {_pagina_atual_v287} de {_total_paginas_v287}</strong>
+                        <span>Exibindo {_inicio_v239 + 1}–{_fim_v239} de {_total_filtrado_v239} anúncios</span>
+                    </div>
+                    <button class="gads-page-btn" onclick="mudarPaginaGads('next')"{_next_disabled_v287}>Próxima →</button>
+                </div>
+                """
 
                 all_cards_html = []
 
@@ -35768,11 +35785,20 @@ body{{padding-bottom:4px;min-height:0;}}
 
 <div class="stats-row">{"".join(stats_cards)}</div>
 
+{_paginacao_html_v287}
+
 <div class="ads-grid">{cards_joined}</div>
 
 <div id="gads_scroll_sentinel_v239" style="height:2px;width:100%;"></div>
 
 <script>
+function mudarPaginaGads(direcao) {{
+    var classe = direcao === 'prev'
+        ? '.st-key-{_pag_prev_key_v287} button'
+        : '.st-key-{_pag_next_key_v287} button';
+    var btn = window.parent.document.querySelector(classe);
+    if (btn && !btn.disabled) btn.click();
+}}
 function openModalEmbedGads(snapUrl) {{
     var doc = window.parent.document;
     var old = doc.getElementById('gads_modal_overlay');
@@ -36036,8 +36062,6 @@ setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight,
 </script>
 </body></html>
 """, height=100, scrolling=False)
-
-                _render_paginacao_gads_v287("rodape")
 
         if not empresas_com_dados:
             st.markdown("""

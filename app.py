@@ -21392,12 +21392,24 @@ def _suporte_inventario_midias(user_id: str) -> list:
         if not _url or _url in _urls_vistas:
             continue
         _orig = _m.get("url_origem") or ""
-        _plat = _plataforma_da_url(_orig)
         _tipo = _m.get("tipo") or ("video" if ("video" in (_m.get("mime_type") or "")) else "imagem")
         _trans = _m.get("transcricao")
         _ocr = _m.get("ocr_texto")
         _empresa_norm = _m.get("empresa") or "Sem empresa"
         _ad_id_norm = str(_m.get("ad_id") or "")
+        # V277 — mídias permanentes órfãs do cache não podem depender só da
+        # URL original para descobrir a plataforma. Depois da migração para
+        # o R2, ``url_origem`` pode estar vazia, incompleta ou apontar para
+        # um host genérico do Google; o fallback antigo então classificava
+        # criativos CR... como Meta Ads e desabilitava o OCR no Suporte.
+        # O prefixo CR identifica o creative ID do Google Ads Transparency
+        # Center. Também considera a presença do anúncio no mapa do cache.
+        _ad_google_no_cache = (_empresa_norm, _ad_id_norm) in _gads_formato_por_ad
+        _id_google_ads = bool(re.match(r"(?i)^CR\d+$", _ad_id_norm.strip()))
+        if _ad_google_no_cache or _id_google_ads:
+            _plat = "Google Ads"
+        else:
+            _plat = _plataforma_da_url(_orig)
         _formato_ad = _gads_formato_por_ad.get((_empresa_norm, _ad_id_norm), "") if _plat == "Google Ads" else ""
         _ocr_elegivel = (
             _tipo == "imagem"

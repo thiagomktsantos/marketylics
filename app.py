@@ -25981,16 +25981,13 @@ setHeight(false);
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 .nav-bar {{
-    display:grid; grid-template-columns:auto 1fr 1fr; gap:12px; width:100%;
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%;
 }}
 .nav-item {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
     padding:16px 20px; cursor:pointer;
     display:flex; align-items:center; gap:14px;
     transition:all 0.15s; position:relative; overflow:hidden;
-}}
-.nav-item.icon-only {{
-    padding:16px 22px; justify-content:center;
 }}
 .nav-item:hover {{ border-color:#3a9fd6; box-shadow:0 2px 12px rgba(58,159,214,0.12); }}
 .nav-item.active {{
@@ -26026,14 +26023,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
 </style>
 <div class="nav-bar">
-    <div class="nav-item icon-only {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')" title="Configuração">
-        <div class="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'configuracao' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-        </div>
-    </div>
     <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
         <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'empresas' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -32279,6 +32268,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .sep {{ color:#d1d5db; font-size:12px; }}
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
+.cfg-btn {{
+    width:44px; height:44px; border-radius:10px; border:1px solid rgba(14,42,71,.16);
+    background:#fff; color:#6b7280; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0; transition:all .15s;
+}}
+.cfg-btn:hover {{ color:#0e2a47; border-color:#0e2a47; box-shadow:0 2px 10px rgba(14,42,71,.14); }}
+.cfg-btn.active {{ background:#0e2a47; color:#fff; border-color:#0e2a47; }}
 </style>
  
 <div class="ctrl-box">
@@ -32301,6 +32297,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
+    <button class="cfg-btn{' active' if main_tab == 'configuracao' else ''}" onclick="triggerConfig()" title="Configuração">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+    </button>
 </div>
  
 <script>
@@ -32347,6 +32349,7 @@ function triggerGhost(label, tentativas){{
     console.warn('[gads] Não encontrei o botão-fantasma "' + label + '". Botões visíveis no parent:', candidatos);
 }}
 function triggerBuscar(){{ triggerGhost('gads_buscar_header_trigger'); }}
+function triggerConfig(){{ triggerGhost('tab_cfg'); }}
 function triggerForcar() {{
     abrirConfirmacao(
         '🔄 Forçar atualização',
@@ -32689,7 +32692,7 @@ setHeight(false);
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; -webkit-font-smoothing:antialiased; }}
 .nav-bar {{
-    display:grid; grid-template-columns:auto 1fr 1fr; gap:12px; width:100%;
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%;
 }}
 .nav-item {{
     background:#fff; border:1px solid #e5e7eb; border-radius:14px;
@@ -32734,14 +32737,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
 </style>
 <div class="nav-bar">
-    <div class="nav-item icon-only {'active' if main_tab == 'configuracao' else ''}" onclick="triggerTab('tab_cfg')" title="Configuração">
-        <div class="nav-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'configuracao' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-        </div>
-    </div>
     <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
         <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="{'#ffffff' if main_tab == 'empresas' else '#6b7280'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -12030,23 +12030,14 @@ def _buscar_midias_ocr_pendentes(user_id: str, empresa: str = "", limite: int = 
     _linhas = _garantir_registros_midias_para_imagens_r2_v263(
         user_id, empresa, _urls
     )
-    _ids_linhas = {str(_r.get("id") or "") for _r in _linhas if _r.get("id")}
+    # `_garantir_registros_midias_para_imagens_r2_v263` já consulta todos os
+    # blocos, devolve as linhas existentes e inclui qualquer registro que
+    # precisou reconstruir. A versão anterior repetia aqui exatamente as
+    # mesmas consultas com `ocr_texto` e `ocr_estruturado`, duplicando a saída
+    # do Supabase a cada verificação de OCR pendente.
     _limite = max(1, int(limite or 5000))
-    # Blocos curtos evitam URL de consulta grande no PostgREST.
-    for _i in range(0, min(len(_urls), _limite), 25):
-        _bloco = _urls[_i:_i + 25]
-        _res = (
-            supabase.table("midias")
-            .select("id, empresa, ad_id, url_cdn, url_origem, ocr_texto, ocr_estruturado")
-            .eq("user_id", user_id)
-            .eq("tipo", "imagem")
-            .in_("url_cdn", _bloco)
-            .execute()
-        )
-        for _row in (_res.data or []):
-            if str(_row.get("id") or "") not in _ids_linhas:
-                _linhas.append(_row)
-                _ids_linhas.add(str(_row.get("id") or ""))
+    if len(_linhas) > _limite:
+        _linhas = _linhas[:_limite]
 
     _pendentes = []
     _vistos = set()

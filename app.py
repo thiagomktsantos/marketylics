@@ -4887,6 +4887,16 @@ def _normalizar_url_exibida(texto: str) -> str:
     if not texto:
         return texto
 
+    # V276 — o traço final da URL (normalmente "/") pode ser lido como
+    # fechamento de chave/colchete. Caso real: ``www.buyticketbrasil.com}``.
+    # A troca é restrita ao FINAL de uma linha que já termina num TLD
+    # conhecido; portanto não altera nomes de página nem caminhos válidos.
+    texto = re.sub(
+        r"(?i)(\.(?:com|net|org|io|app|shop|fr|de|nl|pt|be|es|it|uk|br)(?:\.br)?)[}\])|]+$",
+        r"\1/",
+        str(texto).strip(),
+    )
+
     # V102 — recuperação conservadora do ENDEREÇO DO SITE no cabeçalho.
     # Casos reais:
     # "NWW. funbuynet com brl" -> "www.funbuynet.com.br/"
@@ -6242,6 +6252,14 @@ def _limpar_pontuacao_ocr(texto: str) -> str:
         texto = re.sub(r"(?<![A-Za-zÀ-ÿ0-9])1(?=[A-Za-zÀ-ÿ])", "", texto)
 
     texto = _corrigir_o_isolado(texto)
+    # V276 — em algumas fontes o artigo inicial "O" é uma caixa muito
+    # estreita e o detector não a devolve. Só recompõe no padrão já validado
+    # em anúncios reais, evitando inventar artigo em frases genéricas.
+    texto = re.sub(
+        r"(?i)^maior\s+mercado\s+secund[aá]rio\b",
+        lambda m: "O " + m.group(0),
+        texto,
+    )
     return texto
 
 def _dividir_banda_em_botoes(img_bgr, y_min: int, y_max: int, gap_minimo: int = None) -> list:
@@ -10033,8 +10051,12 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                         f"{_candidatos_relacionados[2]} - {_candidatos_relacionados[3]}",
                     ]
                     _relacionados_split_textual_confiavel = True
-                elif _portao_seguranca_relacionados and len(_candidatos_relacionados) >= 3:
-                    _partes_relacionados = _candidatos_relacionados
+                # V276 — não existe separação genérica por hífen. O hífen
+                # pertence ao nome da extensão/evento (ex. ``BTS - World
+                # Tour Arirang``). Somente os casos estruturais específicos
+                # tratados acima podem interpretar um hífen como separador.
+                # A separação genérica de extensões continua sendo feita
+                # exclusivamente por ponto médio ``·``/``•``.
                 elif (
                     _titulo_e_descricao_ja_fechados
                     and not banda.get("sep_antes")
@@ -10689,6 +10711,46 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         idx += 1
     if par_atual is not None:
         pares.append(par_atual)
+
+    # V276 — algumas extensões horizontais são classificadas com a mesma cor
+    # da descrição e acabam anexadas ao primeiro par. Mantém a informação de
+    # linha que ainda existe em ``pares[0][1]`` para retirar essas extensões
+    # antes de achatar a descrição. Ponto médio separa itens; hífen é sempre
+    # preservado dentro do item.
+    if pares and pares[0][1]:
+        _descricao_principal_v276 = []
+        _extensoes_v276 = []
+        for _linha_desc_v276 in pares[0][1]:
+            _linha_norm_v276 = re.sub(r"\s+", " ", str(_linha_desc_v276 or "")).strip()
+            _partes_ponto_v276 = [
+                p.strip() for p in re.split(r"\s*[·•]\s*", _linha_norm_v276) if p.strip()
+            ]
+            _tem_ponto_v276 = len(_partes_ponto_v276) >= 2
+            _palavras_v276 = re.findall(r"[A-Za-zÀ-ÿ0-9]+", _linha_norm_v276)
+            _iniciais_altas_v276 = sum(
+                1 for p in _palavras_v276
+                if p[:1].isupper() or p.isupper() or p.isdigit()
+            )
+            _parece_extensao_hifen_v276 = bool(
+                re.search(r"\s[-–—]\s", _linha_norm_v276)
+                and 2 <= len(_palavras_v276) <= 12
+                and _iniciais_altas_v276 >= max(2, len(_palavras_v276) // 2)
+                and not re.search(r"[.!?]\s*$", _linha_norm_v276)
+                and bool(_descricao_principal_v276)
+            )
+            if _tem_ponto_v276 or _parece_extensao_hifen_v276:
+                _extensoes_v276.extend(
+                    _partes_ponto_v276 if _tem_ponto_v276 else [_linha_norm_v276]
+                )
+            elif _linha_norm_v276:
+                _descricao_principal_v276.append(_linha_norm_v276)
+        pares[0][1] = _descricao_principal_v276
+        for _ext_v276 in _extensoes_v276:
+            if _ext_v276 and not any(
+                str(_sl.get("titulo") or "").strip().casefold() == _ext_v276.casefold()
+                for _sl in resultado["sitelinks"]
+            ):
+                resultado["sitelinks"].append({"titulo": _ext_v276, "descricao": ""})
 
     resultado["_debug_bandas"] = _debug_bandas
 
@@ -40594,7 +40656,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .card{{background:#fff;border:1px solid #fff;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 4px rgba(0,0,0,0.06);}}
 .status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 7px;border-bottom:1px solid transparent;flex-wrap:wrap;gap:4px;}}
 .status-bar-active{{background:#79dc99;border-bottom-color:#65cf87;}}
-.status-bar-inactive{{background:#cbd5e1;border-bottom-color:#bac5d2;}}
+.status-bar-inactive{{background:#829ca9;border-bottom-color:#718c99;}}
 .status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;}}
 .status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
 .ad-id{{font-size:9px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}

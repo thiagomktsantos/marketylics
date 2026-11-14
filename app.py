@@ -25154,10 +25154,12 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 </style>
 </head><body>
-<div style="display:flex;gap:16px;margin-top:16px;align-items:stretch;">
-  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 22px;flex:1;min-width:0;">
-    <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:12px;">RESUMO EXECUTIVO</div>
-    <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 16px 0;">
+<div style="display:flex;gap:16px;margin-top:16px;margin-bottom:20px;align-items:stretch;">
+  <div style="background:#fff;border:3px solid #173653;border-radius:16px;overflow:hidden;flex:1;min-width:0;box-shadow:0 4px 14px rgba(23,54,83,.08);">
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:linear-gradient(180deg,#f5f8fc 0%,#e9eff6 100%);border-bottom:1px solid #d7e0ea;">
+      <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#173653;">RESUMO EXECUTIVO</div>
+    </div>
+    <div style="padding:17px 20px 18px;">
     <div style="display:grid;grid-template-columns:auto minmax(230px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
       <div style="display:flex;flex-direction:column;width:270px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:18px;">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
@@ -25193,6 +25195,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         {_oport_html}
         {_oport_pagina_html}
       </div>
+    </div>
     </div>
   </div>
   {_painel_direita_html}
@@ -25330,7 +25333,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=390, scrolling=False)
+                components.html(resumo_executivo_html, height=420, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

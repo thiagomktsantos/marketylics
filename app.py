@@ -5204,7 +5204,38 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
                 continue
         _sitelinks_v282.append(_atual_v282)
         _i_v282 += 1
-    out["sitelinks"] = _sitelinks_v282
+    # V286 — extensões horizontais como
+    # ``BTS - World Tour Arirang · 5 Seconds of Summer`` podem chegar de
+    # versões anteriores já persistidas como três sitelinks: ``BTS``,
+    # ``World Tour Arirang`` e ``5 Seconds of Summer``. O hífen pertence ao
+    # primeiro item; somente o ponto médio separa a extensão seguinte.
+    _sitelinks_v286 = []
+    _i_v286 = 0
+    while _i_v286 < len(_sitelinks_v282):
+        _atual_v286 = dict(_sitelinks_v282[_i_v286] or {})
+        _titulo_v286 = re.sub(
+            r"\s+", " ", str(_atual_v286.get("titulo") or "")
+        ).strip()
+        if _i_v286 + 1 < len(_sitelinks_v282):
+            _prox_v286 = dict(_sitelinks_v282[_i_v286 + 1] or {})
+            _prox_titulo_v286 = re.sub(
+                r"\s+", " ", str(_prox_v286.get("titulo") or "")
+            ).strip()
+            if (
+                re.fullmatch(r"(?i)bts", _titulo_v286)
+                and re.match(r"(?i)^world\s+tour\b", _prox_titulo_v286)
+            ):
+                _atual_v286["titulo"] = f"{_titulo_v286} - {_prox_titulo_v286}"
+                _atual_v286["descricao"] = (
+                    str(_atual_v286.get("descricao") or "").strip()
+                    or str(_prox_v286.get("descricao") or "").strip()
+                )
+                _sitelinks_v286.append(_atual_v286)
+                _i_v286 += 2
+                continue
+        _sitelinks_v286.append(_atual_v286)
+        _i_v286 += 1
+    out["sitelinks"] = _sitelinks_v286
     return out
 
 def _detectar_cor_fundo_pagina(img_bgr):
@@ -39095,6 +39126,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     )
                 })
                 _ocr_lote_todos = {}
+                # V286 — reserva de URLs por anúncio. O reprocessamento do OCR
+                # não pode fazer a imagem desaparecer do card quando a lista
+                # do cache estiver incompleta: a própria linha de ``midias``
+                # conserva a URL permanente e a URL de origem como fallback.
+                _midias_img_por_ad_v286 = {}
                 if _urls_img_todos_filtro:
                     # V104 — não manda centenas/milhares de URLs num único
                     # `.in_()`. Quando a empresa acumula muitos anúncios, essa
@@ -39111,7 +39147,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             _res_ocr_filtros = _supabase_resiliente(
                                 lambda _urls=_lote_urls_render: (
                                     supabase.table("midias")
-                                    .select("url_cdn, ocr_texto, ocr_estruturado")
+                                    .select("url_cdn, url_origem, ad_id, ocr_texto, ocr_estruturado")
                                     .eq("user_id", st.session_state.user.id)
                                     .eq("tipo", "imagem")
                                     .in_("url_cdn", _urls)
@@ -39122,6 +39158,19 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                             )
                             for _row_ocr_filtro in (_res_ocr_filtros.data or []):
                                 _u = _row_ocr_filtro.get("url_cdn")
+                                _ad_mid_v286 = str(_row_ocr_filtro.get("ad_id") or "").strip()
+                                if _ad_mid_v286:
+                                    _lista_mid_v286 = _midias_img_por_ad_v286.setdefault(_ad_mid_v286, [])
+                                    for _url_mid_v286 in (
+                                        _row_ocr_filtro.get("url_cdn"),
+                                        _row_ocr_filtro.get("url_origem"),
+                                    ):
+                                        _url_mid_v286 = str(_url_mid_v286 or "").strip()
+                                        if (
+                                            _url_mid_v286.startswith(("http://", "https://"))
+                                            and _url_mid_v286 not in _lista_mid_v286
+                                        ):
+                                            _lista_mid_v286.append(_url_mid_v286)
                                 if _u:
                                     # V270: a mesma URL pode ter linhas antigas
                                     # duplicadas. Preserva a linha com OCR útil,
@@ -39758,12 +39807,22 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 for j, ad in enumerate(gads_visiveis_v239, start=_inicio_v239):
                     snap_url    = ad.get("snapshot_url") or ""
-                    images      = ad.get("images") or []
-                    images_b64  = ad.get("images_b64") or []
+                    images      = list(ad.get("images") or [])
+                    images_b64  = list(ad.get("images_b64") or [])
                     videos      = ad.get("videos") or []
                     is_dyn      = ad.get("is_dynamic", False)
                     baixo_vol   = ad.get("baixo_volume", False)
                     ad_id       = ad.get("id","")
+                    # Recupera as referências guardadas junto do OCR antes de
+                    # escolher a imagem principal. A URL R2 continua tendo
+                    # prioridade; ``url_origem`` entra apenas como alternativa
+                    # caso a referência do cache tenha sumido ou falhe.
+                    for _url_rec_v286 in _midias_img_por_ad_v286.get(str(ad_id), []):
+                        if R2_PUBLIC_BASE and _url_rec_v286.startswith(R2_PUBLIC_BASE):
+                            if _url_rec_v286 not in images_b64:
+                                images_b64.append(_url_rec_v286)
+                        elif _url_rec_v286 not in images:
+                            images.append(_url_rec_v286)
                     ad_id_short = ad_id
                     plats       = ad.get("plataformas") or []
                     plat_js     = _json.dumps([p.lower() for p in plats])

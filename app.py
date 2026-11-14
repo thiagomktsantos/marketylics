@@ -12255,12 +12255,22 @@ for campo, valor in campos_padrao.items():
 
 
 def trocar_pagina(destino):
+    pagina_anterior = st.session_state.get("pagina")
     if destino != "home":
         st.session_state.pop("_home_acesso_manual", None)
     if destino != "google_ads":
         st.session_state.pop(
             "_manifesto_gads_abertura_pagina_v269_iniciado", None
         )
+    if pagina_anterior != destino:
+        if destino == "ads":
+            st.session_state.pop("ads_main_tab", None)
+            st.session_state.pop("ads_config_empresa_selecionada", None)
+            st.session_state.pop("ads_editando_empresa", None)
+        elif destino == "google_ads":
+            st.session_state.pop("gads_main_tab", None)
+            st.session_state.pop("gads_config_empresa_selecionada", None)
+            st.session_state.pop("gads_editando_empresa", None)
     st.session_state.pagina = destino
     st.session_state.mostrar_form_concorrente = False
     st.session_state.editando_concorrente = None
@@ -25890,7 +25900,7 @@ setHeight(false);
             <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
                 <strong>{_nomes}</strong>
                 {'precisa ser configurada' if len(_empresas_sem_config) == 1 else 'precisam ser configuradas'}.
-                Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+                Clique na {_SVG_ROLDANA_ALERTA} no topo para adicionar o ID da página.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -26110,6 +26120,9 @@ function triggerTab(label) {{
 
 
     if main_tab == "configuracao":
+
+        st.markdown("### Configuração de empresas")
+        st.caption("Defina a página usada para coletar os anúncios de cada empresa.")
 
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
@@ -32555,7 +32568,7 @@ setHeight(false);
             <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
                 <strong>{_nomes}</strong>
                 {'precisa ser configurada' if len(_empresas_sem_config) == 1 else 'precisam ser configuradas'}.
-                Vá na aba {_SVG_ROLDANA_ALERTA} logo abaixo para adicionar o ID da página.
+                Clique na {_SVG_ROLDANA_ALERTA} no topo para adicionar o ID da página.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -32823,6 +32836,9 @@ function triggerTab(label) {{
 
 
     if main_tab == "configuracao":
+
+        st.markdown("### Configuração de empresas")
+        st.caption("Defina a página usada para coletar os anúncios de cada empresa.")
 
         editando_empresa    = st.session_state.gads_editando_empresa
         onboarding_empresa  = st.session_state.gads_onboarding_empresa
@@ -34576,9 +34592,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     st.warning("Nenhum anúncio com os filtros aplicados.")
                     return
 
-                _GADS_LOTE_V239 = 20
+                _GADS_ITENS_POR_PAGINA = 20
                 _total_filtrado_v239 = len(gads_f)
-                _limite_key_v239 = f"gads_limite_v239_{sk}"
+                _pagina_key_v287 = f"gads_pagina_v287_{sk}"
                 _filtro_sig_key_v239 = f"gads_filtro_sig_v239_{sk}"
                 _filtro_sig_v239 = (
                     str(busca_texto or ""),
@@ -34589,14 +34605,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 )
                 if st.session_state.get(_filtro_sig_key_v239) != _filtro_sig_v239:
                     st.session_state[_filtro_sig_key_v239] = _filtro_sig_v239
-                    st.session_state[_limite_key_v239] = _GADS_LOTE_V239
-                _limite_v239 = int(st.session_state.get(_limite_key_v239, _GADS_LOTE_V239) or _GADS_LOTE_V239)
-                _limite_v239 = max(_GADS_LOTE_V239, min(_limite_v239, _total_filtrado_v239))
-                st.session_state[_limite_key_v239] = _limite_v239
-                _inicio_v239 = 0
-                _fim_v239 = min(_limite_v239, _total_filtrado_v239)
-                _tem_mais_v239 = _fim_v239 < _total_filtrado_v239
-                gads_visiveis_v239 = gads_f[:_fim_v239]
+                    st.session_state[_pagina_key_v287] = 1
+                _total_paginas_v287 = max(
+                    1,
+                    (_total_filtrado_v239 + _GADS_ITENS_POR_PAGINA - 1)
+                    // _GADS_ITENS_POR_PAGINA,
+                )
+                _pagina_atual_v287 = int(st.session_state.get(_pagina_key_v287, 1) or 1)
+                _pagina_atual_v287 = max(1, min(_pagina_atual_v287, _total_paginas_v287))
+                st.session_state[_pagina_key_v287] = _pagina_atual_v287
+                _inicio_v239 = (_pagina_atual_v287 - 1) * _GADS_ITENS_POR_PAGINA
+                _fim_v239 = min(
+                    _inicio_v239 + _GADS_ITENS_POR_PAGINA,
+                    _total_filtrado_v239,
+                )
+                gads_visiveis_v239 = gads_f[_inicio_v239:_fim_v239]
 
                 _page_pic_fallback = next(
                     (
@@ -34789,26 +34812,45 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                          .replace("\n", " ")
                     )
 
-                def _carregar_mais_gads_v239():
-                    _atual = int(st.session_state.get(_limite_key_v239, _GADS_LOTE_V239) or _GADS_LOTE_V239)
-                    st.session_state[_limite_key_v239] = min(
-                        _atual + _GADS_LOTE_V239,
-                        _total_filtrado_v239,
+                def _ir_pagina_gads_v287(_destino):
+                    st.session_state[_pagina_key_v287] = max(
+                        1,
+                        min(int(_destino), _total_paginas_v287),
                     )
 
-                _auto_key_v239 = f"gads_auto_mais_v239_{sk}"
-                if _tem_mais_v239:
-                    st.button(
-                        "Carregar mais anúncios",
-                        key=_auto_key_v239,
-                        on_click=_carregar_mais_gads_v239,
-                    )
-                    st.markdown(
-                        f"<style>.st-key-{_auto_key_v239}{{display:none!important}}</style>",
-                        unsafe_allow_html=True,
-                    )
+                def _render_paginacao_gads_v287(_posicao):
+                    _col_anterior, _col_info, _col_proxima = st.columns([1, 2.2, 1])
+                    with _col_anterior:
+                        st.button(
+                            "← Anterior",
+                            key=f"gads_pag_ant_v287_{sk}_{_posicao}",
+                            disabled=_pagina_atual_v287 <= 1,
+                            on_click=_ir_pagina_gads_v287,
+                            args=(_pagina_atual_v287 - 1,),
+                            use_container_width=True,
+                        )
+                    with _col_info:
+                        st.markdown(
+                            f"""
+                            <div style="text-align:center;padding:7px 8px 0;color:#475569;
+                                        font-size:13px;line-height:1.35">
+                                <strong style="color:#0e2a47">Página {_pagina_atual_v287} de {_total_paginas_v287}</strong><br>
+                                Exibindo {_inicio_v239 + 1}–{_fim_v239} de {_total_filtrado_v239} anúncios
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    with _col_proxima:
+                        st.button(
+                            "Próxima →",
+                            key=f"gads_pag_prox_v287_{sk}_{_posicao}",
+                            disabled=_pagina_atual_v287 >= _total_paginas_v287,
+                            on_click=_ir_pagina_gads_v287,
+                            args=(_pagina_atual_v287 + 1,),
+                            use_container_width=True,
+                        )
 
-                st.caption(f"Exibindo {_fim_v239} de {_total_filtrado_v239} anúncios")
+                _render_paginacao_gads_v287("topo")
 
                 all_cards_html = []
 
@@ -35991,45 +36033,11 @@ document.addEventListener('DOMContentLoaded', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 200); setTimeout(syncHeight, 600); setTimeout(syncHeight, 1500);
 
-// V240: paginação invisível estável. Só verifica o próximo lote depois de
-// uma rolagem REAL do usuário e quando o iframe já calculou sua altura.
-// Isso impede o rerun prematuro que deixava a tela branca no carregamento.
-(function() {{
-    var hasMore = {str(_tem_mais_v239).lower()};
-    if (!hasMore) return;
-    var fired = false;
-    var parentWin = window.parent;
-    var initialScrollY = parentWin.scrollY || parentWin.pageYOffset || 0;
-    var maxScrollY = initialScrollY;
-    function findOwnFrame() {{
-        var frames = parentWin.document.querySelectorAll('iframe');
-        for (var i = 0; i < frames.length; i++) {{
-            try {{ if (frames[i].contentWindow === window) return frames[i]; }} catch(e) {{}}
-        }}
-        return null;
-    }}
-    function checkBottom() {{
-        if (fired) return;
-        var currentY = parentWin.scrollY || parentWin.pageYOffset || 0;
-        maxScrollY = Math.max(maxScrollY, currentY);
-        // Não dispara durante a montagem inicial nem por pequenos ajustes
-        // automáticos de posição realizados pelo próprio Streamlit.
-        if (maxScrollY < initialScrollY + 180) return;
-        var frame = findOwnFrame();
-        if (!frame) return;
-        var rect = frame.getBoundingClientRect();
-        if (rect.height < 300) return;
-        if (rect.bottom <= parentWin.innerHeight + 500) {{
-            var btn = parentWin.document.querySelector('.st-key-{_auto_key_v239} button');
-            if (btn && !btn.disabled) {{ fired = true; btn.click(); }}
-        }}
-    }}
-    parentWin.addEventListener('scroll', checkBottom, {{passive:true}});
-    parentWin.addEventListener('resize', checkBottom, {{passive:true}});
-}})();
 </script>
 </body></html>
 """, height=100, scrolling=False)
+
+                _render_paginacao_gads_v287("rodape")
 
         if not empresas_com_dados:
             st.markdown("""

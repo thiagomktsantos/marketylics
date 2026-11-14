@@ -4920,6 +4920,17 @@ def _normalizar_url_exibida(texto: str) -> str:
         )
         _url_v102 = re.sub(r"\s+", "", _url_v102)
 
+        # V280 — corrige a leitura do domínio quando o ponto antes de
+        # ``com`` desaparece e o ponto antes de ``br`` vira ``-.``.
+        # Caso real: ``www.ingressovalidocom-.br/``. A regra só roda em
+        # texto que já passou pelo portão de URL acima e somente no fechamento
+        # ``com...br``, portanto não altera palavras comuns nem caminhos.
+        _url_v102 = re.sub(
+            r"(?i)(?<!\.)com[-_.]+br(?=/|$)",
+            ".com.br",
+            _url_v102,
+        )
+
         # V103 — o OCR também pode trocar o ponto entre o domínio e o TLD
         # por vírgula/ponto-e-vírgula/dois-pontos. Exemplo real:
         #   "www funbuynet , com brl" -> "www.funbuynet.com.br/"
@@ -10783,6 +10794,55 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
         descricao_sl = _normalizar_aspas_ocr(" ".join(l for l in linhas_sl if l).strip())
         if titulo_sl:
             resultado["sitelinks"].append({"titulo": _normalizar_aspas_ocr(titulo_sl), "descricao": descricao_sl})
+
+    # V280 — as reticências no fim da descrição são o indicador visual de
+    # truncamento do Google Ads, não conteúdo fornecido pelo anunciante.
+    # Remove somente no FINAL da descrição; reticências internas continuam
+    # preservadas porque podem fazer parte do texto real.
+    resultado["descricao"] = re.sub(
+        r"(?:\s*(?:\.{3}|…))+\s*$",
+        "",
+        str(resultado.get("descricao") or ""),
+    ).rstrip()
+
+    # V280 — quando o detector geométrico encontra grandes espaços ao redor
+    # dos hífens, uma extensão como ``Dia 5 - Avenged Sevenfold`` pode chegar
+    # aqui como dois sitelinks consecutivos (``Dia 5`` e
+    # ``Avenged Sevenfold``). Recompõe pares inequívocos iniciados por
+    # ``Dia <número>``; o ponto médio entre eventos continua sendo o único
+    # separador e cada hífen permanece dentro do respectivo item.
+    _sitelinks_v280 = list(resultado.get("sitelinks") or [])
+    _sitelinks_corrigidos_v280 = []
+    _idx_sl_v280 = 0
+    while _idx_sl_v280 < len(_sitelinks_v280):
+        _sl_atual_v280 = dict(_sitelinks_v280[_idx_sl_v280] or {})
+        _titulo_atual_v280 = re.sub(
+            r"\s+", " ", str(_sl_atual_v280.get("titulo") or "")
+        ).strip()
+        if (
+            re.fullmatch(r"(?i)dia\s+\d{1,2}", _titulo_atual_v280)
+            and _idx_sl_v280 + 1 < len(_sitelinks_v280)
+        ):
+            _sl_seguinte_v280 = dict(_sitelinks_v280[_idx_sl_v280 + 1] or {})
+            _titulo_seguinte_v280 = re.sub(
+                r"\s+", " ", str(_sl_seguinte_v280.get("titulo") or "")
+            ).strip()
+            if _titulo_seguinte_v280 and not re.fullmatch(
+                r"(?i)dia\s+\d{1,2}", _titulo_seguinte_v280
+            ):
+                _sl_atual_v280["titulo"] = (
+                    f"{_titulo_atual_v280} - {_titulo_seguinte_v280}"
+                )
+                _sl_atual_v280["descricao"] = (
+                    str(_sl_atual_v280.get("descricao") or "").strip()
+                    or str(_sl_seguinte_v280.get("descricao") or "").strip()
+                )
+                _sitelinks_corrigidos_v280.append(_sl_atual_v280)
+                _idx_sl_v280 += 2
+                continue
+        _sitelinks_corrigidos_v280.append(_sl_atual_v280)
+        _idx_sl_v280 += 1
+    resultado["sitelinks"] = _sitelinks_corrigidos_v280
 
     # V51 — pós-processamento restrito aos anúncios TicketSwap para repor
     # separadores verticais e intervalos de data que o EasyOCR costuma

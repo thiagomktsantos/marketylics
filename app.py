@@ -24845,9 +24845,9 @@ function setHeightGeral(isOpen) {{
                     # Todos os selos usam a mesma largura, calculada pelo maior
                     # rótulo ("Anúncios"), para não variar entre as páginas.
                     _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
-                    _selo_width_px = 48 + (_maior_badge_chars * 6)
+                    _selo_width_px = 40 + (_maior_badge_chars * 6)
                     _lampada_selo_svg = (
-                        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" '
+                        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" '
                         'stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
                         '<path d="M9 18h6"/><path d="M10 22h4"/>'
                         '<path d="M8.2 14.6A7 7 0 1 1 15.8 14.6C14.7 15.4 14 16.5 14 18h-4c0-1.5-.7-2.6-1.8-3.4z"/>'
@@ -25184,22 +25184,22 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
 .oport-selo {{
-    height:42px; padding:4px; border-radius:10px; color:#fff; flex-shrink:0; margin-top:1px;
-    display:flex; align-items:center; gap:6px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
+    height:38px; padding:3px; border-radius:9px; color:#fff; flex-shrink:0; margin-top:1px;
+    display:flex; align-items:center; gap:4px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
 }}
 .oport-selo:hover {{
     transform:translateY(-1px); filter:brightness(.96); box-shadow:0 4px 10px rgba(26,46,74,.18);
 }}
 .oport-selo-icone {{
-    width:32px; height:34px; border-radius:8px; background:rgba(255,255,255,.16);
+    width:28px; height:30px; border-radius:7px; background:rgba(255,255,255,.16);
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .oport-selo-texto {{
     min-width:0; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
     color:#fff; line-height:1.05; text-align:center; white-space:nowrap;
 }}
-.oport-selo-texto span {{ font-size:10px; font-weight:800; }}
-.oport-selo-texto strong {{ font-size:11px; font-weight:900; margin-top:3px; }}
+.oport-selo-texto span {{ font-size:9px; font-weight:800; }}
+.oport-selo-texto strong {{ font-size:10px; font-weight:900; margin-top:2px; }}
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}

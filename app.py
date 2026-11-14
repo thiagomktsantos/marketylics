@@ -34594,7 +34594,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
 
                 _GADS_ITENS_POR_PAGINA = 20
                 _total_filtrado_v239 = len(gads_f)
-                _pagina_key_v287 = f"gads_pagina_v287_{sk}"
+                _limite_key_v288 = f"gads_limite_v288_{sk}"
                 _filtro_sig_key_v239 = f"gads_filtro_sig_v239_{sk}"
                 _filtro_sig_v239 = (
                     str(busca_texto or ""),
@@ -34605,21 +34605,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 )
                 if st.session_state.get(_filtro_sig_key_v239) != _filtro_sig_v239:
                     st.session_state[_filtro_sig_key_v239] = _filtro_sig_v239
-                    st.session_state[_pagina_key_v287] = 1
-                _total_paginas_v287 = max(
-                    1,
-                    (_total_filtrado_v239 + _GADS_ITENS_POR_PAGINA - 1)
-                    // _GADS_ITENS_POR_PAGINA,
+                    st.session_state[_limite_key_v288] = _GADS_ITENS_POR_PAGINA
+                _limite_v288 = int(
+                    st.session_state.get(_limite_key_v288, _GADS_ITENS_POR_PAGINA)
+                    or _GADS_ITENS_POR_PAGINA
                 )
-                _pagina_atual_v287 = int(st.session_state.get(_pagina_key_v287, 1) or 1)
-                _pagina_atual_v287 = max(1, min(_pagina_atual_v287, _total_paginas_v287))
-                st.session_state[_pagina_key_v287] = _pagina_atual_v287
-                _inicio_v239 = (_pagina_atual_v287 - 1) * _GADS_ITENS_POR_PAGINA
-                _fim_v239 = min(
-                    _inicio_v239 + _GADS_ITENS_POR_PAGINA,
-                    _total_filtrado_v239,
+                _limite_v288 = max(
+                    _GADS_ITENS_POR_PAGINA,
+                    min(_limite_v288, _total_filtrado_v239),
                 )
-                gads_visiveis_v239 = gads_f[_inicio_v239:_fim_v239]
+                st.session_state[_limite_key_v288] = _limite_v288
+                _inicio_v239 = 0
+                _fim_v239 = min(_limite_v288, _total_filtrado_v239)
+                _tem_mais_v288 = _fim_v239 < _total_filtrado_v239
+                gads_visiveis_v239 = gads_f[:_fim_v239]
 
                 _page_pic_fallback = next(
                     (
@@ -34812,34 +34811,28 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                          .replace("\n", " ")
                     )
 
-                def _ir_pagina_gads_v287(_destino):
-                    st.session_state[_pagina_key_v287] = max(
-                        1,
-                        min(int(_destino), _total_paginas_v287),
+                def _carregar_mais_gads_v288():
+                    _atual_v288 = int(
+                        st.session_state.get(_limite_key_v288, _GADS_ITENS_POR_PAGINA)
+                        or _GADS_ITENS_POR_PAGINA
+                    )
+                    st.session_state[_limite_key_v288] = min(
+                        _atual_v288 + _GADS_ITENS_POR_PAGINA,
+                        _total_filtrado_v239,
                     )
 
-                _pag_prev_key_v287 = f"gads_pag_hidden_prev_v287_{sk}"
-                _pag_next_key_v287 = f"gads_pag_hidden_next_v287_{sk}"
+                _carregar_key_v288 = f"gads_carregar_mais_hidden_v288_{sk}"
                 st.button(
-                    "gads_pag_prev_v287",
-                    key=_pag_prev_key_v287,
-                    disabled=_pagina_atual_v287 <= 1,
-                    on_click=_ir_pagina_gads_v287,
-                    args=(_pagina_atual_v287 - 1,),
-                )
-                st.button(
-                    "gads_pag_next_v287",
-                    key=_pag_next_key_v287,
-                    disabled=_pagina_atual_v287 >= _total_paginas_v287,
-                    on_click=_ir_pagina_gads_v287,
-                    args=(_pagina_atual_v287 + 1,),
+                    "gads_carregar_mais_v288",
+                    key=_carregar_key_v288,
+                    disabled=not _tem_mais_v288,
+                    on_click=_carregar_mais_gads_v288,
                 )
                 st.markdown(
                     f"""
                     <style>
-                    .st-key-{_pag_prev_key_v287}, .st-key-{_pag_next_key_v287},
-                    .stElementContainer:has(.st-key-{_pag_prev_key_v287}),
-                    .stElementContainer:has(.st-key-{_pag_next_key_v287}) {{
+                    .st-key-{_carregar_key_v288},
+                    .stElementContainer:has(.st-key-{_carregar_key_v288}) {{
                         display:none!important;height:0!important;min-height:0!important;
                         max-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;
                     }}
@@ -34848,24 +34841,20 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     unsafe_allow_html=True,
                 )
 
-                _prev_disabled_v287 = " disabled" if _pagina_atual_v287 <= 1 else ""
-                _next_disabled_v287 = " disabled" if _pagina_atual_v287 >= _total_paginas_v287 else ""
-                _paginacao_html_v287 = f"""
+                _carregar_mais_html_v288 = f"""
                 <style>
-                .gads-pagination{{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:18px;width:98%;margin:0 auto 18px;}}
-                .gads-page-btn{{height:38px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0e2a47;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;}}
-                .gads-page-btn:hover:not(:disabled){{background:#0e2a47;color:#fff;border-color:#0e2a47;}}
-                .gads-page-btn:disabled{{background:#f8fafc;color:#a8b1bf;border-color:#e2e8f0;cursor:default;}}
-                .gads-page-info{{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;font-size:11px;line-height:1.45;white-space:nowrap;}}
-                .gads-page-info strong{{color:#0e2a47;font-size:13px;}}
+                .gads-load-wrap{{width:100%;padding:18px 0 4px;}}
+                .gads-load-btn{{width:100%;height:48px;border:none;border-radius:12px;background:#0e2a47;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;}}
+                .gads-load-btn:hover{{background:#1a3f6a;box-shadow:0 3px 12px rgba(14,42,71,.2);}}
+                .gads-load-info{{text-align:center;color:#64748b;font-size:11px;margin-top:7px;}}
                 </style>
-                <div class="gads-pagination">
-                    <button class="gads-page-btn" onclick="mudarPaginaGads('prev')"{_prev_disabled_v287}>← Anterior</button>
-                    <div class="gads-page-info">
-                        <strong>Página {_pagina_atual_v287} de {_total_paginas_v287}</strong>
-                        <span>Exibindo {_inicio_v239 + 1}–{_fim_v239} de {_total_filtrado_v239} anúncios</span>
-                    </div>
-                    <button class="gads-page-btn" onclick="mudarPaginaGads('next')"{_next_disabled_v287}>Próxima →</button>
+                <div class="gads-load-wrap">
+                    <button class="gads-load-btn" onclick="carregarMaisGads()">Carregar mais anúncios</button>
+                    <div class="gads-load-info">Exibindo {_fim_v239} de {_total_filtrado_v239} anúncios</div>
+                </div>
+                """ if _tem_mais_v288 else f"""
+                <div style="width:100%;padding:16px 0 4px;text-align:center;color:#64748b;font-size:11px;">
+                    Exibindo todos os {_total_filtrado_v239} anúncios
                 </div>
                 """
 
@@ -35785,18 +35774,15 @@ body{{padding-bottom:4px;min-height:0;}}
 
 <div class="stats-row">{"".join(stats_cards)}</div>
 
-{_paginacao_html_v287}
-
 <div class="ads-grid">{cards_joined}</div>
+
+{_carregar_mais_html_v288}
 
 <div id="gads_scroll_sentinel_v239" style="height:2px;width:100%;"></div>
 
 <script>
-function mudarPaginaGads(direcao) {{
-    var classe = direcao === 'prev'
-        ? '.st-key-{_pag_prev_key_v287} button'
-        : '.st-key-{_pag_next_key_v287} button';
-    var btn = window.parent.document.querySelector(classe);
+function carregarMaisGads() {{
+    var btn = window.parent.document.querySelector('.st-key-{_carregar_key_v288} button');
     if (btn && !btn.disabled) btn.click();
 }}
 function openModalEmbedGads(snapUrl) {{

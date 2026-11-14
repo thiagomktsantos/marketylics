@@ -4818,6 +4818,9 @@ def _montar_html_preview_ocr_estruturado(ocr_estr: dict) -> str:
     )
 
 
+_MOSTRAR_DEBUG_BANDAS_OCR = False
+
+
 def _montar_html_debug_bandas_ocr(debug_bandas) -> str:
     """Renderiza (dentro de um <details> recolhido por padrão) a lista de
     bandas detectadas por `_estruturar_anuncio_google_ads`, banda por
@@ -4829,7 +4832,10 @@ def _montar_html_debug_bandas_ocr(debug_bandas) -> str:
     investigar título/sitelink partido ou duplicado sem precisar puxar
     log nenhum. Devolve string vazia se não houver debug salvo (ex:
     linhas de OCR antigas, gravadas antes dessa mudança)."""
-    if not debug_bandas:
+    # V287 — diagnóstico preservado no OCR e no código, mas oculto da
+    # interface normal. Para investigar uma leitura no futuro, basta trocar
+    # `_MOSTRAR_DEBUG_BANDAS_OCR` para True.
+    if not _MOSTRAR_DEBUG_BANDAS_OCR or not debug_bandas:
         return ""
     _linhas = []
     for _b in debug_bandas:
@@ -5124,6 +5130,10 @@ def _normalizar_url_exibida(texto: str) -> str:
     # de verdade, não duplicação por engano (lookbehind negativo evita
     # comer a barra dupla certa que acabamos de recompor no item 3).
     texto = re.sub(r"(?<!http:)(?<!https:)/{2,}", "/", texto)
+    # V287 — EasyOCR pode confundir o contorno final do domínio com uma
+    # chave/colchete. Esses caracteres nunca são válidos no fim da URL
+    # exibida e apareciam no card como ``www.buyticketbrasil.com}``.
+    texto = re.sub(r"[}\]>]+\s*$", "", texto).rstrip()
     return texto
 
 def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
@@ -5158,6 +5168,51 @@ def _pos_processar_ocr_estruturado_v281(d: dict) -> dict:
     out["descricao"] = re.sub(
         r"(?:\s*(?:\.{3}|…))+\s*$", "", str(out.get("descricao") or "")
     ).rstrip()
+    # V288 — no criativo vertical da BuyTicket, o "O" inicial de
+    # "O maior mercado secundário..." é fino e isolado; o EasyOCR às vezes
+    # o elimina por completo. Corrige somente esse início inequívoco, sem
+    # alterar ocorrências normais de "maior" no meio de outras frases.
+    out["descricao"] = re.sub(
+        r"(?i)^\s*maior\s+mercado\b",
+        "O maior mercado",
+        out["descricao"],
+        count=1,
+    )
+
+    # V289 — no anúncio de Ed Sheeran a faixa inferior
+    # ``BTS World Tour - Arirang · Setor Do Rock`` pode ser classificada
+    # como continuação cinza da descrição. Retira a faixa do texto e a
+    # devolve como extensões. O hífen de ``BTS World Tour - Arirang`` faz
+    # parte do nome; somente o ponto médio (às vezes lido como outro hífen)
+    # separa ``Setor Do Rock``.
+    _desc_v289 = str(out.get("descricao") or "")
+    _m_ext_v289 = re.search(
+        r"(?is)(?:\s+|^)"
+        r"(BTS\s+World\s+Tour\s*[-–—]\s*Arirang)"
+        r"\s*(?:[·•]|[-–—])\s*"
+        r"(Setor\s+Do\s+Rock)\s*$",
+        _desc_v289,
+    )
+    if _m_ext_v289:
+        out["descricao"] = _desc_v289[:_m_ext_v289.start()].rstrip(" .·•-–—")
+        _sitelinks_ext_v289 = out.get("sitelinks") or []
+        if not isinstance(_sitelinks_ext_v289, list):
+            _sitelinks_ext_v289 = list(_sitelinks_ext_v289) if isinstance(_sitelinks_ext_v289, tuple) else []
+        else:
+            _sitelinks_ext_v289 = list(_sitelinks_ext_v289)
+        _titulos_existentes_v289 = {
+            re.sub(r"\s+", " ", str(
+                (_sl_v289 or {}).get("titulo")
+                if isinstance(_sl_v289, dict) else _sl_v289 or ""
+            )).strip().casefold()
+            for _sl_v289 in _sitelinks_ext_v289
+        }
+        for _titulo_ext_v289 in (_m_ext_v289.group(1), _m_ext_v289.group(2)):
+            _titulo_ext_v289 = re.sub(r"\s+", " ", _titulo_ext_v289).strip()
+            if _titulo_ext_v289.casefold() not in _titulos_existentes_v289:
+                _sitelinks_ext_v289.append({"titulo": _titulo_ext_v289, "descricao": ""})
+                _titulos_existentes_v289.add(_titulo_ext_v289.casefold())
+        out["sitelinks"] = _sitelinks_ext_v289
 
     # V282 — aplica a recomposição do hífen também aos resultados que já
     # estavam salvos no banco. O detector antigo podia persistir:
@@ -31803,14 +31858,21 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     desc_safe  = _truncar(desc_clean, 120).replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
 
                     img_thumb_url = images[1] if len(images) > 1 else (images[0] if images else "")
-                    img_primary = images_b64[1] if len(images_b64) > 1 else (images_b64[0] if images_b64 else img_thumb_url)
-
+                    # V287 — ordem determinística de recuperação. A versão
+                    # permanente vem primeiro; depois entram todas as demais
+                    # variantes, sem pular o índice zero quando ocorre erro.
+                    # Isso é especialmente importante após trocar de empresa,
+                    # quando uma URL antiga pode estar expirada, mas outra
+                    # referência válida continua salva no mesmo anúncio.
                     img_fallbacks = []
-                    if img_thumb_url and img_thumb_url not in img_fallbacks:
-                        img_fallbacks.append(img_thumb_url)
-                    if images_b64 and images_b64[0] not in img_fallbacks:
-                        img_fallbacks.append(images_b64[0])
-                    img_fallbacks.extend([u for u in images if u not in img_fallbacks])
+                    for _img_candidata_v287 in [*images_b64, *images]:
+                        _img_candidata_v287 = str(_img_candidata_v287 or "").strip()
+                        if (
+                            _img_candidata_v287.startswith(("http://", "https://", "data:image/"))
+                            and _img_candidata_v287 not in img_fallbacks
+                        ):
+                            img_fallbacks.append(_img_candidata_v287)
+                    img_primary = img_fallbacks[0] if img_fallbacks else ""
                     srcs_js = _json.dumps(img_fallbacks)
 
                     if videos:
@@ -40289,7 +40351,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     </div>"""
                         media_block = f"""
 <div class="media-block img-block" id="mwrap_{uid}" style="position:relative;cursor:pointer">
-    <img id="mimg_{uid}" src="{img_primary}" loading="lazy" referrerpolicy="no-referrer"
+    <img id="mimg_{uid}" src="{img_primary}" loading="eager" fetchpriority="high" referrerpolicy="no-referrer"
         style="width:100%;height:100%;object-fit:cover;display:block;"
         onerror="imgFallback_{uid}(this)" />
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
@@ -40598,9 +40660,10 @@ function imgFallback_{uid}(img){{
                                     f'{_escapar_html_ocr(_cc_card_v267)}</div>'
                                 )
                             else:
-                                no_copy_html = (
-                                    '<div class="no-copy">Closed Caption do vídeo ainda não disponível.</div>'
-                                )
+                                # Sem CC pronto não reserva uma seção vazia no
+                                # card. Quando o texto for obtido, o bloco volta
+                                # a aparecer automaticamente.
+                                no_copy_html = ""
                         elif _ocr_pendente_ad:
                             # Em anúncio de VÍDEO, a imagem que está com OCR
                             # pendente é só um FRAME do vídeo (thumbnail),

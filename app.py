@@ -9691,6 +9691,26 @@ def _estruturar_anuncio_google_ads(img_bgr, reader, empresa: str = None):
                 idx += 1
                 continue
 
+            # V278 — uma faixa horizontal de extensões pode ter grandes
+            # espaços visuais ao redor do hífen e do ponto médio. O detector
+            # geométrico interpreta esses espaços como limites de botões e
+            # quebra ``BTS - World Tour Arirang · 5 Seconds of Summer`` em
+            # três itens: ``BTS``, ``World Tour Arirang`` e ``5 Seconds...``.
+            # Se a releitura da faixa inteira recuperou um hífen textual,
+            # preservamos a faixa para o parser textual logo abaixo. Ele já
+            # separa somente por ``·``/``•`` e mantém o hífen no primeiro item.
+            if re.search(r"\s[-–—]\s", _texto_pre_fileira or ""):
+                print(
+                    "[OCR-DEBUG] divisão geométrica cancelada: faixa contém "
+                    f"hífen textual que pertence à extensão: {_texto_pre_fileira!r}",
+                    flush=True,
+                )
+                _debug_bandas[idx]["decisao"] = (
+                    "faixa horizontal com hífen textual → divisão geométrica "
+                    "cancelada; separar somente por ponto médio"
+                )
+                _grupos_botoes = []
+
         if len(_grupos_botoes) >= 2:
             # Fileira de botões/pílulas lado a lado (ex: "Sobre o
             # isaac" / "Entre Em Contato" / "Saiba mais") — formato
@@ -23306,13 +23326,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 .dd-wrap-geral {{ position:relative; width:100%; }}
 .dd-trigger-geral {{
-    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    background:#fff; border:2px solid #0e2a47; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center;
     cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
-.dd-trigger-geral:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-trigger-geral:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
 .dd-icon-geral {{
-    width:36px; height:36px; border-radius:9px; background:#dbeafe;
+    width:36px; height:36px; border-radius:9px; background:#0e2a47;
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
     overflow:hidden;
 }}
@@ -23331,7 +23351,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-badge-minha-geral {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc-geral  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-.dd-arrow-geral {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
+.dd-arrow-geral {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow-geral.open {{ transform:rotate(180deg); }}
 
 .dd-list-geral {{
@@ -23349,10 +23369,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item-geral:last-child {{ margin-bottom:0; }}
-.dd-item-geral:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
-.dd-item-geral.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-item-geral .dd-icon-geral {{ background:#e9eef5; }}
-.dd-item-geral.selected .dd-icon-geral {{ background:#dbeafe; }}
+.dd-item-geral:hover {{ border-color:#0e2a47; background:#fff; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
+.dd-item-geral.selected {{ background:#fff; border:2px solid #0e2a47; }}
+.dd-item-geral .dd-icon-geral {{ background:#0e2a47; }}
+.dd-item-geral.selected .dd-icon-geral {{ background:#0e2a47; }}
 
 /* coluna 2: coletas */
 .col-coletas-geral {{
@@ -23427,10 +23447,10 @@ var EMPRESAS_DD_GERAL = {empresas_dd_str};
 var SELECTED_IDX_GERAL = {filtro_empresa_ativo};
 
 function iconSvgGeral() {{
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
          + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
          + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
-         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#3b82f6"/>'
+         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#ffffff"/>'
          + '</svg>';
 }}
 
@@ -23449,7 +23469,7 @@ function renderTriggerGeral() {{
 }}
 
 function iconSvgGeral(tipo) {{
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
          + '<rect x="3" y="3" width="18" height="18" rx="2"/>'
          + '<path d="M3 9h18"/>'
          + '<path d="M9 3v6"/>'
@@ -29197,9 +29217,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _av_h        = gerar_avatar(_emp_ativa_nome)
             _sub_h       = f"@{_ads_id_h}" if _ads_id_h and not _ads_id_h.isdigit() else (f"ID: {_ads_id_h}" if _ads_id_h else "Não configurado")
             _av_html_h = (
-                '<div style="width:34px;height:34px;border-radius:10px;background:#dbeafe;'
+                '<div style="width:34px;height:34px;border-radius:10px;background:#0e2a47;'
                 'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" '
                 'stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
                 '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
@@ -29239,7 +29259,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _sk_h2       = safe_key(_e_h["nome"])
             _ghost_lbl_d = f"hdemp_{_sk_h2}"
             _av_item_html = (
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" '
                 'stroke-linecap="round" stroke-linejoin="round" width="16" height="16">'
                 '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
@@ -29306,12 +29326,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
-    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    background:#fff; border:2px solid #0e2a47; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
-.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
-.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
+.dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
  
 .dd-list {{
@@ -29327,11 +29347,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
-.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item:hover {{ border-color:#0e2a47; background:#fff; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
 .dd-item:last-child:hover {{ background:#17406a; border-color:#17406a; box-shadow:none; }}
-.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #3b82f6; }}
-.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
+.dd-item.selected {{ background:#fff; border:2px solid #0e2a47; }}
+.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #0e2a47; }}
+.dd-icon {{ width:30px; height:30px; border-radius:9px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#0e2a47; }}
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
@@ -36591,9 +36611,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _av_h        = gerar_avatar(_emp_ativa_nome)
             _sub_h       = f"ID: {_gads_id_h}" if _gads_id_h and _gads_id_h.upper().startswith("AR") else (f"@{_gads_id_h}" if _gads_id_h else "Não configurado")
             _av_html_h = (
-                '<div style="width:34px;height:34px;border-radius:10px;background:#dbeafe;'
+                '<div style="width:34px;height:34px;border-radius:10px;background:#0e2a47;'
                 'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" '
                 'stroke-linecap="round" stroke-linejoin="round" width="18" height="18">'
                 '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
@@ -36644,7 +36664,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _sk_h2       = safe_key(_e_h["nome"])
             _ghost_lbl_d = f"hdemp_{_sk_h2}"
             _av_item_html = (
-                '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" '
+                '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.8" '
                 'stroke-linecap="round" stroke-linejoin="round" width="16" height="16">'
                 '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>'
                 '<path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>'
@@ -36713,17 +36733,17 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
-    background:#fff; border:2px solid #3b82f6; border-radius:12px;
+    background:#fff; border:2px solid #0e2a47; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
     cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
-.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
 .dd-trigger.disabled {{
     background:#f3f4f6; border-color:#d1d5db; cursor:not-allowed; opacity:0.7;
 }}
 .dd-trigger.disabled:hover {{ box-shadow:none; }}
 .dd-trigger.disabled .dd-arrow {{ color:#d1d5db; }}
-.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
+.dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
  
 .dd-list {{
@@ -36739,10 +36759,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
-.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
+.dd-item:hover {{ border-color:#0e2a47; background:#fff; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
 .dd-item:last-child:hover {{ background:#17406a; border-color:#17406a; box-shadow:none; }}
-.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #3b82f6; }}
+.dd-item.selected {{ background:#fff; border:2px solid #0e2a47; }}
+.dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #0e2a47; }}
 .dd-item.no-data {{
     cursor:not-allowed; opacity:0.5; background:#f3f4f6; border-color:#e5e7eb;
 }}
@@ -36750,7 +36770,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item.no-data .dd-icon {{ background:#e5e7eb; }}
 .dd-item.no-data .dd-icon svg {{ stroke:#9ca3af; }}
 .dd-item.no-data .dd-nome {{ color:#9ca3af; }}
-.dd-icon {{ width:30px; height:30px; border-radius:50%; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#dbeafe; }}
+.dd-icon {{ width:30px; height:30px; border-radius:9px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#0e2a47; }}
 .dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
@@ -43404,6 +43424,18 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     animation:btnColetarSpinRedes 0.8s linear infinite;
 }}
 @keyframes btnColetarSpinRedes {{ to {{ transform:rotate(360deg); }} }}
+/* Paleta unificada dos cabeçalhos: Dashboard, Redes, Meta e Google. */
+.dd-trigger {{ border-color:#0e2a47; }}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
+.dd-trigger > .dd-icon {{ background:#0e2a47; }}
+.dd-trigger > .dd-icon svg {{ stroke:#fff; }}
+.dd-trigger > .dd-icon svg circle:last-child {{ fill:#fff; }}
+.dd-arrow {{ color:#0e2a47; }}
+.dd-item:hover {{ border-color:#0e2a47; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
+.dd-item.selected {{ border-color:#0e2a47; }}
+.dd-item.selected .dd-icon {{ background:#0e2a47; }}
+.dd-item.selected .dd-icon svg {{ stroke:#fff; }}
+.dd-item.selected .dd-icon svg circle:last-child {{ fill:#fff; }}
 .btn-comparativo {{ background:#f0fdf4; color:#15803d; border:1.5px solid #bbf7d0; flex:1; }}
 .btn-comparativo:hover {{ background:#dcfce7; border-color:#86efac; }}
 

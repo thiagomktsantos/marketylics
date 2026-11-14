@@ -34618,6 +34618,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 _inicio_v239 = 0
                 _fim_v239 = min(_limite_v288, _total_filtrado_v239)
                 _tem_mais_v288 = _fim_v239 < _total_filtrado_v239
+                _restantes_v288 = max(0, _total_filtrado_v239 - _fim_v239)
+                _proximo_lote_v288 = min(
+                    _GADS_ITENS_POR_PAGINA,
+                    _restantes_v288,
+                )
+                _rotulo_anuncios_v288 = (
+                    "anúncio" if _proximo_lote_v288 == 1 else "anúncios"
+                )
                 gads_visiveis_v239 = gads_f[:_fim_v239]
 
                 _page_pic_fallback = next(
@@ -34846,11 +34854,11 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 .gads-load-wrap{{width:100%;padding:18px 0 4px;}}
                 .gads-load-btn{{width:100%;height:48px;border:none;border-radius:12px;background:#0e2a47;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;}}
                 .gads-load-btn:hover{{background:#1a3f6a;box-shadow:0 3px 12px rgba(14,42,71,.2);}}
-                .gads-load-info{{text-align:center;color:#64748b;font-size:11px;margin-top:7px;}}
+                .gads-load-info{{text-align:center;color:#64748b;font-size:11px;margin-bottom:7px;}}
                 </style>
                 <div class="gads-load-wrap">
-                    <button class="gads-load-btn" onclick="carregarMaisGads()">Carregar mais anúncios</button>
                     <div class="gads-load-info">Exibindo {_fim_v239} de {_total_filtrado_v239} anúncios</div>
+                    <button class="gads-load-btn" onclick="carregarMaisGads()">Carregar mais {_proximo_lote_v288} {_rotulo_anuncios_v288}</button>
                 </div>
                 """ if _tem_mais_v288 else f"""
                 <div style="width:100%;padding:16px 0 4px;text-align:center;color:#64748b;font-size:11px;">

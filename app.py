@@ -26268,44 +26268,6 @@ setHeight(false);
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
     _empresas_sem_dados  = [e for e in todas_empresas if empresa_tem_ads_id(e) and e["nome"] not in _ids_coletados]
 
-    _SVG_ROLDANA_ALERTA = (
-        '<span style="display:inline-flex;align-items:center;gap:3px;font-weight:700;">'
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
-        'style="vertical-align:-2px;flex-shrink:0">'
-        '<circle cx="12" cy="12" r="3"/>'
-        '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 '
-        '1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 '
-        '0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 '
-        '4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 '
-        '1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A'
-        '1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'
-        '</svg>Configuração</span>'
-    )
-
-    if _empresas_sem_config:
-        _nomes = ", ".join(e["nome"] for e in _empresas_sem_config)
-        st.markdown(f"""
-        <div style="display:flex;align-items:flex-start;gap:12px;
-                    background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);
-                    border:1px solid #fde68a;border-left:4px solid #f59e0b;
-                    border-radius:12px;padding:14px 18px;margin-bottom:24px;">
-            <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;
-                        background:#f59e0b;display:flex;align-items:center;
-                        justify-content:center;margin-top:1px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff"
-                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 9v4"/><path d="M12 17h.01"/>
-                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                </svg>
-            </div>
-            <div style="font-size:14px;color:#78350f;line-height:1.6;padding-top:2px;">
-                <strong>{_nomes}</strong>
-                {'precisa ser configurada' if len(_empresas_sem_config) == 1 else 'precisam ser configuradas'}.
-                Clique na {_SVG_ROLDANA_ALERTA} no topo para adicionar o ID da página.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
     if _empresas_sem_dados:
         _nomes = ", ".join(e["nome"] for e in _empresas_sem_dados)
         st.markdown(f"""
@@ -26399,6 +26361,12 @@ setHeight(false);
 
 
     _n_analises = len(st.session_state.get("ads_analises_salvas", []))
+    _nomes_pendentes_config = ", ".join(e["nome"] for e in empresas_sem_config)
+    _badge_pendencias_config = (
+        f'<div class="nav-right"><div class="count-badge pending" '
+        f'title="Configuração pendente: {_nomes_pendentes_config}">{n_sem_config}</div></div>'
+        if n_sem_config else ""
+    )
 
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -26446,6 +26414,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .count-badge.has {{ background:#3a9fd6; color:#fff; }}
 .nav-item.active .count-badge {{ background:rgba(255,255,255,0.18); color:#fff; }}
 .nav-item.active .count-badge.has {{ background:rgba(58,159,214,0.5); color:#fff; }}
+.count-badge.pending,
+.nav-item.active .count-badge.pending {{
+    background:#f59e0b; color:#ffffff;
+    box-shadow:0 0 0 3px rgba(245,158,11,0.14);
+}}
 </style>
 <div class="nav-bar">
     <div class="nav-item {'active' if main_tab == 'empresas' else ''}" onclick="triggerTab('tab_emp')">
@@ -26459,6 +26432,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <span class="nav-title">Empresas configuradas</span>
             <span class="nav-sub">Gerencie empresas cadastradas</span>
         </div>
+        {_badge_pendencias_config}
     </div>
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
         <div class="nav-icon">
@@ -27690,44 +27664,56 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     border-bottom:none; border-radius:12px 12px 0 0;
     overflow:hidden;
 }}
-.inner {{ display:flex; align-items:center; gap:16px; padding:16px 20px; }}
-.divider {{ width:1px; height:40px; background:#e5e7eb; }}
-.count-box {{ text-align:center; min-width:56px; }}
-.count-num {{ font-size:22px; font-weight:800; color:#111827; line-height:1; }}
-.count-lbl {{ font-size:12px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }}
-.btn-card {{
-    display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
-    background:#fff; color:#111827; border:1.5px solid #e5e7eb;
-    padding:10px 18px; border-radius:10px; text-decoration:none;
-    white-space:nowrap; transition:all 0.15s; font-family:'DM Sans',sans-serif;
-    min-width:180px; cursor:pointer;
+.inner {{
+    display:grid; grid-template-columns:minmax(260px,1.35fr) minmax(110px,.42fr) minmax(420px,1.45fr);
+    align-items:center; gap:24px; padding:20px 24px;
 }}
-.btn-card:hover {{ border-color:#3a9fd6; background:#f0f9ff; }}
+.company-info {{ display:flex; align-items:center; gap:14px; min-width:0; }}
+.company-copy {{ min-width:0; }}
+.company-name {{ font-size:18px; font-weight:700; color:#111827; line-height:1.2; }}
+.company-page {{ font-size:13px; color:#6b7280; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+.count-box {{
+    text-align:center; min-width:96px; padding:12px 18px;
+    background:#f7f8fa; border:1px solid #eef0f3; border-radius:12px;
+}}
+.count-num {{ font-size:25px; font-weight:800; color:#111827; line-height:1; }}
+.count-lbl {{ font-size:12px; color:#6b7280; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:3px; }}
+.actions {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; min-width:0; }}
+.btn-card {{
+    display:flex; align-items:center;
+    background:#fff; color:#111827; border:1.5px solid #e5e7eb;
+    padding:11px 14px; border-radius:11px; text-decoration:none;
+    transition:all 0.15s; font-family:'DM Sans',sans-serif;
+    min-width:0; min-height:66px; cursor:pointer;
+}}
+.btn-card:hover {{ border-color:#3a9fd6; background:#f8fcff; transform:translateY(-1px); }}
 .btn-icon {{
     display:flex; align-items:center; justify-content:center;
-    background-color:#f3f4f6; padding:8px; border-radius:5px; flex-shrink:0;
+    width:40px; height:40px; background-color:#f3f6fa; border-radius:8px; flex-shrink:0;
 }}
 .btn-label {{ font-size:13px; font-weight:700; color:#111827; line-height:1.3; }}
-.btn-sub {{ font-size:11px; font-weight:400; color:#747a87; }}
+.btn-sub {{ font-size:11px; font-weight:400; color:#747a87; line-height:1.25; white-space:normal; }}
+@media (max-width:1050px) {{
+    .inner {{ grid-template-columns:1fr auto; }}
+    .actions {{ grid-column:1 / -1; }}
+}}
 </style>
 <div class="header-box">
     <div class="inner">
-        <div style="flex-shrink:0">{avatar_empresa_html}</div>
-        <div style="flex:1;min-width:0">
-            <div style="font-size:17px;font-weight:700;color:#111827">{nome}</div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span style="font-size:13px;color:#6b7280">Página: {page_display}</span>
+        <div class="company-info">
+            <div style="flex-shrink:0">{avatar_empresa_html}</div>
+            <div class="company-copy">
+                <div class="company-name">{nome}</div>
+                <div class="company-page">Página: {page_display}</div>
             </div>
         </div>
-        <div class="divider" style="margin-right:20px"></div>
         <div class="count-box">
             <div class="count-num">{len(ads_list)}</div>
             <div class="count-lbl">anúncios</div>
         </div>
-        <div class="divider" style="margin:0 20px"></div>
-        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <div class="actions">
             <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_anuncios_{sk}')">
-                <span style="display:flex;align-items:center;gap:7px;">
+                <span style="display:flex;align-items:center;gap:10px;min-width:0;">
                     <span class="btn-icon">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 0 1 0 6"/><path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"/><path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"/></svg>
                     </span>
@@ -27738,7 +27724,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 </span>
             </a>
             <a class="btn-card" href="javascript:void(0)" onclick="triggerIA('btn_ia_geral_{sk}')">
-                <span style="display:flex;align-items:center;gap:7px;">
+                <span style="display:flex;align-items:center;gap:10px;min-width:0;">
                     <span class="btn-icon">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/><path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/></svg>
                     </span>
@@ -27777,7 +27763,7 @@ window.addEventListener('load', syncH);
 setTimeout(syncH, 100);
 setTimeout(syncH, 400);
 </script>
-""", height=120, scrolling=False)
+""", height=150, scrolling=False)
 
             for j, ad_ind in enumerate(ads_list):
                 if st.button(f"ia_ind_{sk}_{j}", key=f"btn_ia_ind_{sk}_{j}"):

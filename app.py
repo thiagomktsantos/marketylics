@@ -1025,6 +1025,259 @@ def _gads_manifest_key_v261(user_id: str) -> str:
     return f"manifests/google-ads/{user_id}/manifest.json"
 
 
+def _gads_r2_cleanup_key_v289(user_id: str) -> str:
+    return f"manifests/google-ads/{user_id}/r2-cleanup-candidates.json"
+
+
+_GADS_R2_CLEANUP_GRACE_SECONDS_V289 = 24 * 60 * 60
+_GADS_R2_CLEANUP_THROTTLE_SECONDS_V289 = 6 * 60 * 60
+_gads_r2_cleanup_ultimo_v289 = {}
+_gads_r2_cleanup_lock_v289 = threading.RLock()
+
+
+def _r2_storage_key_da_url_v289(_url: str, user_id: str = "") -> str:
+    """Converte somente URLs do nosso domínio público em chaves do bucket."""
+    _url = str(_url or "").strip()
+    _base = R2_PUBLIC_BASE.rstrip("/")
+    if not _base or not _url.startswith(_base + "/"):
+        return ""
+    try:
+        from urllib.parse import unquote as _url_unquote_v289
+        _key = _url_unquote_v289(_url[len(_base) + 1:].split("?", 1)[0])
+    except Exception:
+        _key = _url[len(_base) + 1:].split("?", 1)[0]
+    _prefix = f"{user_id}/" if user_id else ""
+    return _key if (not _prefix or _key.startswith(_prefix)) else ""
+
+
+def _coletar_chaves_r2_em_objeto_v289(_valor, user_id: str, _saida: set) -> None:
+    """Percorre caches sem depender do nome dos campos que guardam mídia."""
+    if isinstance(_valor, dict):
+        for _item in _valor.values():
+            _coletar_chaves_r2_em_objeto_v289(_item, user_id, _saida)
+    elif isinstance(_valor, (list, tuple, set)):
+        for _item in _valor:
+            _coletar_chaves_r2_em_objeto_v289(_item, user_id, _saida)
+    elif isinstance(_valor, str):
+        _key = _r2_storage_key_da_url_v289(_valor, user_id)
+        if _key:
+            _saida.add(_key)
+
+
+def _limpar_midias_r2_orfas_v289(user_id: str, manifesto: dict = None) -> dict:
+    """Remove mídias sem uso somente após duas varreduras separadas por 24h.
+
+    O manifesto do Google é a fonte principal. O cache do Meta também entra
+    na proteção porque as duas plataformas compartilham o mesmo prefixo no
+    bucket. Objetos recentes nunca são removidos na primeira passagem.
+    """
+    _stats = {
+        "objetos": 0, "referenciados": 0, "candidatos": 0,
+        "removidos": 0, "bytes_removidos": 0, "erros": [],
+    }
+    if not user_id or not r2_client or not R2_BUCKET or not R2_PUBLIC_BASE:
+        _stats["erros"].append("R2 não configurado")
+        return _stats
+
+    _agora_epoch = time.time()
+    _referencias = set()
+    _coletar_chaves_r2_em_objeto_v289(manifesto or {}, user_id, _referencias)
+
+    # Protege toda mídia ainda usada no Meta. Para Google, o manifesto recém-
+    # salvo é canônico; o fallback abaixo cobre execuções manuais sem manifesto.
+    try:
+        _ci = (
+            supabase.table("ci_dados")
+            .select("ads_cache,gads_cache")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        _row = _ci.data[0] if _ci.data else {}
+        _coletar_chaves_r2_em_objeto_v289(_row.get("ads_cache") or {}, user_id, _referencias)
+        if not manifesto:
+            _coletar_chaves_r2_em_objeto_v289(_row.get("gads_cache") or {}, user_id, _referencias)
+    except Exception as _exc_cache:
+        # Sem conseguir confirmar o cache do Meta, aborta. Excluir nesse estado
+        # poderia remover uma mídia válida que não aparece no manifesto Google.
+        _stats["erros"].append(f"cache indisponível: {_exc_cache}")
+        return _stats
+
+    # Thumbnails não aparecem necessariamente no cache. Quando o vídeo pai
+    # continua ativo, a capa registrada na mesma linha também deve ser mantida.
+    _linhas_midias = []
+    _pagina = 0
+    while True:
+        try:
+            _res_midias = (
+                supabase.table("midias")
+                .select("id,url_cdn,storage_key,thumbnail_url")
+                .eq("user_id", user_id)
+                .range(_pagina * 1000, ((_pagina + 1) * 1000) - 1)
+                .execute()
+            )
+            _lote = _res_midias.data or []
+            _linhas_midias.extend(_lote)
+            if len(_lote) < 1000:
+                break
+            _pagina += 1
+        except Exception as _exc_midias:
+            _stats["erros"].append(f"tabela de mídias indisponível: {_exc_midias}")
+            return _stats
+    for _linha in _linhas_midias:
+        _key_principal = str(_linha.get("storage_key") or "").strip()
+        if not _key_principal:
+            _key_principal = _r2_storage_key_da_url_v289(_linha.get("url_cdn"), user_id)
+        if _key_principal in _referencias:
+            _key_thumb = _r2_storage_key_da_url_v289(_linha.get("thumbnail_url"), user_id)
+            if _key_thumb:
+                _referencias.add(_key_thumb)
+
+    _objetos = []
+    _token = None
+    while True:
+        _kwargs = {"Bucket": R2_BUCKET, "Prefix": f"{user_id}/", "MaxKeys": 1000}
+        if _token:
+            _kwargs["ContinuationToken"] = _token
+        try:
+            _pagina_r2 = r2_client.list_objects_v2(**_kwargs)
+        except Exception as _exc_list:
+            _stats["erros"].append(f"falha listando R2: {_exc_list}")
+            return _stats
+        _objetos.extend(_pagina_r2.get("Contents") or [])
+        if not _pagina_r2.get("IsTruncated"):
+            break
+        _token = _pagina_r2.get("NextContinuationToken")
+
+    _stats["objetos"] = len(_objetos)
+    _stats["referenciados"] = sum(
+        1 for _obj in _objetos if str(_obj.get("Key") or "") in _referencias
+    )
+
+    _controle_anterior = {}
+    try:
+        _obj_controle = r2_client.get_object(
+            Bucket=R2_BUCKET, Key=_gads_r2_cleanup_key_v289(user_id)
+        )
+        _doc_controle = json.loads(_obj_controle["Body"].read().decode("utf-8"))
+        _controle_anterior = (_doc_controle or {}).get("candidatos") or {}
+    except Exception:
+        _controle_anterior = {}
+
+    _candidatos_atuais = {}
+    _remover = []
+    for _obj in _objetos:
+        _key = str(_obj.get("Key") or "")
+        if not _key or _key in _referencias:
+            continue
+        _last_modified = _obj.get("LastModified")
+        try:
+            _idade_objeto = _agora_epoch - _last_modified.timestamp()
+        except Exception:
+            _idade_objeto = 0
+        if _idade_objeto < _GADS_R2_CLEANUP_GRACE_SECONDS_V289:
+            continue
+        _anterior = _controle_anterior.get(_key) or {}
+        _primeira_vista = float(_anterior.get("primeira_vista_epoch") or _agora_epoch)
+        _candidatos_atuais[_key] = {
+            "primeira_vista_epoch": _primeira_vista,
+            "tamanho": int(_obj.get("Size") or 0),
+            "etag": str(_obj.get("ETag") or ""),
+        }
+        if (
+            _key in _controle_anterior
+            and (_agora_epoch - _primeira_vista) >= _GADS_R2_CLEANUP_GRACE_SECONDS_V289
+        ):
+            _remover.append(_obj)
+
+    _stats["candidatos"] = len(_candidatos_atuais)
+    _removidos_keys = []
+    for _inicio in range(0, len(_remover), 1000):
+        _lote_remocao = _remover[_inicio:_inicio + 1000]
+        try:
+            _res_delete = r2_client.delete_objects(
+                Bucket=R2_BUCKET,
+                Delete={
+                    "Objects": [{"Key": _obj["Key"]} for _obj in _lote_remocao],
+                    "Quiet": True,
+                },
+            )
+            _falhas_delete = {
+                str(_erro.get("Key") or "")
+                for _erro in (_res_delete.get("Errors") or [])
+            }
+            for _obj in _lote_remocao:
+                if _obj["Key"] in _falhas_delete:
+                    continue
+                _removidos_keys.append(_obj["Key"])
+                _stats["bytes_removidos"] += int(_obj.get("Size") or 0)
+            if _falhas_delete:
+                _stats["erros"].append(
+                    f"{len(_falhas_delete)} objeto(s) não foram removidos pelo R2"
+                )
+        except Exception as _exc_delete:
+            _stats["erros"].append(f"falha removendo lote: {_exc_delete}")
+
+    _stats["removidos"] = len(_removidos_keys)
+    for _key in _removidos_keys:
+        _candidatos_atuais.pop(_key, None)
+
+    # Só remove a linha de controle depois de o objeto ter sido apagado.
+    if _removidos_keys:
+        for _inicio in range(0, len(_removidos_keys), 100):
+            try:
+                (
+                    supabase.table("midias")
+                    .delete()
+                    .eq("user_id", user_id)
+                    .in_("storage_key", _removidos_keys[_inicio:_inicio + 100])
+                    .execute()
+                )
+            except Exception as _exc_db_delete:
+                _stats["erros"].append(f"falha limpando registros: {_exc_db_delete}")
+
+    _doc_novo = {
+        "versao": 289,
+        "user_id": str(user_id),
+        "verificado_em": _agora_iso(),
+        "grace_seconds": _GADS_R2_CLEANUP_GRACE_SECONDS_V289,
+        "candidatos": _candidatos_atuais,
+        "ultima_execucao": _stats,
+    }
+    try:
+        r2_client.put_object(
+            Bucket=R2_BUCKET,
+            Key=_gads_r2_cleanup_key_v289(user_id),
+            Body=json.dumps(
+                _doc_novo, ensure_ascii=False, default=str, separators=(",", ":")
+            ).encode("utf-8"),
+            ContentType="application/json; charset=utf-8",
+            CacheControl="no-cache",
+        )
+    except Exception as _exc_controle:
+        _stats["erros"].append(f"falha salvando controle: {_exc_controle}")
+    print(f"[GADS-R2-CLEANUP-V289] user={user_id} stats={_stats}", flush=True)
+    return _stats
+
+
+def _agendar_limpeza_midias_r2_orfas_v289(user_id: str, manifesto: dict) -> bool:
+    """Agenda no máximo uma verificação por usuário a cada seis horas."""
+    _agora = time.monotonic()
+    with _gads_r2_cleanup_lock_v289:
+        _ultima = float(_gads_r2_cleanup_ultimo_v289.get(str(user_id), 0) or 0)
+        if (_agora - _ultima) < _GADS_R2_CLEANUP_THROTTLE_SECONDS_V289:
+            return False
+        _gads_r2_cleanup_ultimo_v289[str(user_id)] = _agora
+    return _job_start_thread(
+        "limpeza_r2_orfaos_v289",
+        str(user_id),
+        "global",
+        _limpar_midias_r2_orfas_v289,
+        args=(str(user_id), copy.deepcopy(manifesto or {})),
+        daemon=True,
+        name=f"limpeza-r2-orfaos-{str(user_id)[:8]}",
+    )
+
+
 def _ler_manifesto_gads_json_v261(user_id: str) -> tuple[dict | None, str]:
     """Lê o controle operacional. Ausência é um estado normal no 1º login."""
     if not user_id or not r2_client or not R2_BUCKET:
@@ -1286,6 +1539,14 @@ def _salvar_manifesto_gads_json_v261(
             f"[GADS-MANIFEST-V261] salvo bytes={len(_body)} resumo={_resumo}",
             flush=True,
         )
+        try:
+            _agendar_limpeza_midias_r2_orfas_v289(user_id, _doc)
+        except Exception as _exc_cleanup:
+            # A limpeza é manutenção: nunca pode invalidar o manifesto salvo.
+            print(
+                f"[GADS-R2-CLEANUP-V289] falha ao agendar: {_exc_cleanup!r}",
+                flush=True,
+            )
         return True, _doc
     except Exception as _exc:
         print(f"[GADS-MANIFEST-V261] falha ao salvar: {_exc!r}", flush=True)

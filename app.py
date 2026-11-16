@@ -40152,13 +40152,6 @@ body{{padding-bottom:8px;}}
 .info {{ flex:1; min-width:0; }}
 .nome {{ font-size:20px; font-weight:700; color:#111827; letter-spacing:-0.3px; }}
 .handle {{ font-size:13px; font-weight:400; color:#6b7280; margin-top:3px; }}
-.badge {{
-    display:inline-block;
-    background:{badge_bg}; color:{badge_txt};
-    border:1px solid {badge_brd};
-    padding:2px 10px; border-radius:20px;
-    font-size:11px; font-weight:600; margin-top:4px;
-}}
 .divider-v {{ width:1px; height:44px; background:#e5e7eb; flex-shrink:0; margin:0 8px; }}
 .stat-wrap {{ display:flex; align-items:center; gap:24px; flex-shrink:0; }}
 .stat {{ text-align:center; }}

@@ -37423,20 +37423,19 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 .dd-wrap {{ position:relative; width:100%; }}
 .dd-trigger {{
-    background:#fff; border:2px solid #3b82f6; border-radius:12px;
-    padding:8px 12px; display:flex; align-items:center;
-    cursor:pointer; transition:box-shadow 0.15s;
-    width:100%;
+    background:#fff; border:2px solid #0e2a47; border-radius:12px;
+    padding:8px 12px; display:flex; align-items:center; gap:10px;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%;
 }}
-.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
+.dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
 .dd-icon {{
-    width:36px; height:36px; border-radius:9px; background:#dbeafe;
+    width:30px; height:30px; border-radius:9px; background:#0e2a47;
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .dd-icon svg {{ width:18px; height:18px; }}
-.dd-info {{ min-width:0; margin-left:10px; margin-right:10px; }}
+.dd-info {{ flex:1; min-width:0; }}
 .dd-nome {{
-    font-size:13px; font-weight:700; color:#1a2e4a;
+    font-size:13px; font-weight:700; color:#111827;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
 }}
 .dd-handle {{ font-size:12px; color:#9ca3af; }}
@@ -37445,7 +37444,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
     white-space:nowrap; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
 }}
-.dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
+.dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
 
 .dd-list {{
@@ -37463,17 +37462,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; }}
-.dd-item:hover {{ border-color:#3a9fd6; background:#fff; box-shadow:0 2px 10px rgba(58,159,214,0.1); }}
-.dd-item.selected {{ background:#fff; border:2px solid #3b82f6; }}
-.dd-item .dd-icon {{ background:#e9eef5; }}
-.dd-item.selected .dd-icon {{ background:#dbeafe; }}
+.dd-item:hover {{ border-color:#0e2a47; background:#fff; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
+.dd-item.selected {{ background:#fff; border:2px solid #0e2a47; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:6px; justify-content:center; flex-shrink:0; min-width:200px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-select {{
-    width:100%; height:26px; border-radius:8px; border:1.5px solid #c3cedd;
-    background:#fff; font-size:12px; font-weight:600; color:#374151;
-    font-family:'DM Sans',sans-serif; padding:0 8px; cursor:pointer;
-    outline:none;
+    width:auto; max-width:100%; height:18px; border:none;
+    background:transparent; font-size:11px; font-weight:500; color:#64748b;
+    font-family:'DM Sans',sans-serif; padding:0 18px 0 2px; cursor:pointer;
+    outline:none; align-self:center; text-align:center;
 }}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
@@ -37484,9 +37481,21 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .btn-gerar {{ background:#0e2a47; color:#fff; flex:1; padding:6px 0; min-width:200px; }}
 .btn-gerar:hover {{ background:#1a3f6a; }}
 .btn-gerar:disabled {{ opacity:0.6; cursor:not-allowed; }}
+.cfg-btn {{
+    width:44px; height:44px; border-radius:10px; border:none;
+    background:#0e2a47; color:#fff; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0; transition:all .15s;
+}}
+.cfg-btn:hover {{ background:#1a3f6a; box-shadow:0 2px 10px rgba(14,42,71,.18); }}
 </style>
 
 <div class="ctrl-box">
+    <button class="cfg-btn" onclick="triggerConfigInsights()" title="Configuração">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+    </button>
     <div class="col-select">
         <div class="dd-wrap" id="dd-wrap">
             <div class="dd-trigger" id="dd-trigger" onclick="toggleDropdown()">
@@ -37494,7 +37503,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <div class="dd-info">
                     <span class="dd-nome" id="dd-trigger-nome"></span>
                 </div>
-                <span class="dd-badge-conc">Concorrente</span>
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
@@ -37504,15 +37512,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
-        <select class="ctrl-select" id="ctrl-periodo" onchange="onPeriodoChange(this.value)">
-            {opts_html}
-        </select>
         <button class="ctrl-btn btn-gerar" id="btn-gerar" onclick="triggerGerar()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
             Gerar Insight
         </button>
+        <select class="ctrl-select" id="ctrl-periodo" title="Período da análise" onchange="onPeriodoChange(this.value)">
+            {opts_html}
+        </select>
     </div>
 </div>
 
@@ -37521,11 +37529,19 @@ var EMPRESAS_CTRL = {concorrentes_ctrl_json};
 var SELECTED_IDX = {st.session_state.insights_target_idx};
 
 function iconSvg() {{
-    return '<svg viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
          + '<rect x="2" y="2" width="20" height="20" rx="5"/>'
          + '<circle cx="12" cy="12" r="4.5" stroke-width="1.5" fill="none"/>'
-         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#3b82f6"/>'
+         + '<circle cx="17.5" cy="6.5" r="1.2" fill="#ffffff"/>'
          + '</svg>';
+}}
+
+function triggerConfigInsights() {{
+    var btns = window.parent.document.querySelectorAll('[data-testid="stSidebar"] button, button');
+    for (var b of btns) {{
+        var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+        if (txt === 'cad') {{ b.click(); return; }}
+    }}
 }}
 
 function renderTrigger() {{
@@ -39750,10 +39766,6 @@ setTimeout(syncHeightNav, 800);
 
         r = ok[aba_ativa]
         is_minha  = r.get("tipo") == "minha"
-        badge_bg  = "#eff6ff" if is_minha else "#f3f4f6"
-        badge_txt = "#1d4ed8" if is_minha else "#6b7280"
-        badge_brd = "#bfdbfe" if is_minha else "#e5e7eb"
-        badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
         cor = get_avatar_color(aba_ativa)
         bio_txt   = (r.get("bio") or "").replace("<", "&lt;").replace(">", "&gt;").replace("\n", " ").replace('"', "&quot;").replace("'", "&#39;")
         ext_url   = (r.get("external_url") or "").strip()
@@ -39776,6 +39788,7 @@ setTimeout(syncHeightNav, 800);
         seg_fmt   = fmt_num(r.get("seguidores", 0))
         posts_fmt = fmt_num(r.get("total_posts", 0))
         handle_clean = (r.get("handle") or "").lstrip("@")
+        handle_display = f"@{handle_clean}" if handle_clean else "Instagram não informado"
         ig_url = f"https://www.instagram.com/{handle_clean}/" if handle_clean else "#"
         avatar_letras = gerar_avatar(r["nome"])
         profile_pic_url = r.get("profile_pic", "")
@@ -40138,7 +40151,7 @@ body{{padding-bottom:8px;}}
 }}
 .info {{ flex:1; min-width:0; }}
 .nome {{ font-size:20px; font-weight:700; color:#111827; letter-spacing:-0.3px; }}
-.handle {{ font-size:14px; font-weight:400; color:#9ca3af; margin-left:6px; }}
+.handle {{ font-size:13px; font-weight:400; color:#6b7280; margin-top:3px; }}
 .badge {{
     display:inline-block;
     background:{badge_bg}; color:{badge_txt};
@@ -40155,27 +40168,27 @@ body{{padding-bottom:8px;}}
     display:flex; flex-direction:row; gap:10px; flex-shrink:0;
 }}
 .action-btn {{
-    display:flex; align-items:center; gap:10px;
-    background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
-    padding:10px 14px; cursor:pointer;
+    display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
+    background:#fff; color:#111827; border:1.5px solid #e5e7eb; border-radius:10px;
+    padding:10px 18px; cursor:pointer;
     font-family:'DM Sans',sans-serif;
-    transition:all 0.15s; min-width:180px;
-    text-align:left;
+    transition:all 0.15s; min-width:180px; white-space:nowrap;
+    text-align:left; text-decoration:none;
 }}
 .action-btn:hover {{
-    border-color:#c7d2fe;
-    box-shadow:0 4px 14px rgba(99,102,241,0.1);
+    border-color:#3a9fd6; background:#f0f9ff;
 }}
+.action-btn-inner {{ display:flex; align-items:center; gap:7px; }}
 .action-btn-icon {{
-    width:38px; height:38px; border-radius:10px;
+    border-radius:5px; padding:8px;
     display:flex; align-items:center; justify-content:center;
-    font-size:20px; flex-shrink:0;
+    flex-shrink:0;
 }}
 .action-btn-icon.blue   {{ background:#f3f4f6; }}
 .action-btn-icon.purple {{ background:#f3f4f6; }}
-.action-btn-text {{ display:flex; flex-direction:column; gap:2px; }}
-.action-btn-title {{ font-size:13px; font-weight:700; color:#111827; }}
-.action-btn-desc  {{ font-size:11px; color:#9ca3af; line-height:1.3; }}
+.action-btn-text {{ display:flex; flex-direction:column; gap:0; }}
+.action-btn-title {{ font-size:13px; font-weight:700; color:#111827; line-height:1.3; }}
+.action-btn-desc  {{ font-size:11px; font-weight:400; color:#747a87; }}
 
 .bio-section {{
     display:grid; grid-template-columns:15% 50% 35%;
@@ -40436,8 +40449,8 @@ body{{padding-bottom:8px;}}
     <div class="perfil-header">
         {avatar_html}
         <div class="info">
-            <div class="nome">{r["nome"]}<span class="handle">{r.get("handle","")}</span></div>
-            <div class="badge">{badge_lbl}</div>
+            <div class="nome">{r["nome"]}</div>
+            <div class="handle">{handle_display}</div>
         </div>
         <div class="stat-wrap">
         <div class="divider-v"></div>
@@ -40453,31 +40466,35 @@ body{{padding-bottom:8px;}}
         <div class="divider-v"></div>
         <div class="action-btns">
             <button class="action-btn" onclick="trigger('postagens_{aba_ativa}')">
-                <div class="action-btn-icon blue">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="3"/>
-                        <circle cx="8.5" cy="8.5" r="1.5" fill="#3b82f6" stroke="none"/>
-                        <path d="M21 15l-5-5L5 21"/>
-                    </svg>
-                </div>
-                <div class="action-btn-text">
-                    <span class="action-btn-title">Analisar postagens</span>
-                    <span class="action-btn-desc">Criativos, copy e gatilhos</span>
-                </div>
+                <span class="action-btn-inner">
+                    <span class="action-btn-icon blue">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="3"/>
+                            <circle cx="8.5" cy="8.5" r="1.5" fill="#3b82f6" stroke="none"/>
+                            <path d="M21 15l-5-5L5 21"/>
+                        </svg>
+                    </span>
+                    <span class="action-btn-text">
+                        <span class="action-btn-title">Analisar postagens</span>
+                        <span class="action-btn-desc">Criativos, copy e gatilhos</span>
+                    </span>
+                </span>
             </button>
             <button class="action-btn" onclick="trigger('geral_{aba_ativa}')">
-                <div class="action-btn-icon blue">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="12" width="4" height="9" rx="1"/>
-                        <rect x="10" y="7" width="4" height="14" rx="1"/>
-                        <rect x="17" y="3" width="4" height="18" rx="1"/>
-                        <path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/>
-                    </svg>
-                </div>
-                <div class="action-btn-text">
-                    <span class="action-btn-title">Analisar estratégia</span>
-                    <span class="action-btn-desc">Posicionamento e crescimento</span>
-                </div>
+                <span class="action-btn-inner">
+                    <span class="action-btn-icon blue">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="12" width="4" height="9" rx="1"/>
+                            <rect x="10" y="7" width="4" height="14" rx="1"/>
+                            <rect x="17" y="3" width="4" height="18" rx="1"/>
+                            <path d="M3 5l4-2 4 4 4-3 4-2" stroke-width="1.8"/>
+                        </svg>
+                    </span>
+                    <span class="action-btn-text">
+                        <span class="action-btn-title">Analisar estratégia</span>
+                        <span class="action-btn-desc">Posicionamento e crescimento</span>
+                    </span>
+                </span>
             </button>
         </div>
     </div>

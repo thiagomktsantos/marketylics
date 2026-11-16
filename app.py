@@ -22241,7 +22241,99 @@ elif st.session_state.pagina == "sites":
         if chave not in st.session_state:
             st.session_state[chave] = ""
 
-    h1, h2 = st.columns([7, 3])
+    def _ultima_atualizacao_seo_sites(_cache: dict, _sites: list) -> str:
+        _datas = []
+        for _site in (_sites or []):
+            _valor = str(((_cache or {}).get(_site.get("nome")) or {}).get("extraido_em") or "").strip()
+            if not _valor:
+                continue
+            try:
+                _datas.append((_dt.datetime.strptime(_valor, "%d/%m/%Y %H:%M"), _valor))
+            except Exception:
+                _datas.append((_dt.datetime.min, _valor))
+        return max(_datas, key=lambda _item: _item[0])[1] if _datas else "Nunca atualizado"
+
+    def _atualizar_seo_sites_background_v290(_user_id: str, _sites: list, _atividade_id: str):
+        try:
+            _res_atual = (
+                supabase.table("ci_dados")
+                .select("seo_cache")
+                .eq("user_id", _user_id)
+                .execute()
+            )
+            _cache_atual = (
+                (_res_atual.data[0].get("seo_cache") or {})
+                if _res_atual.data else {}
+            )
+            _atualizados = 0
+            _falhas = []
+            for _site in (_sites or []):
+                _nome = str(_site.get("nome") or "").strip()
+                _url = str(_site.get("url") or "").strip()
+                if not _nome or not _url:
+                    continue
+                try:
+                    _seo = extrair_seo_site(_url)
+                    _seo["sitemap"] = extrair_sitemap(_url)
+                    _cache_atual[_nome] = _seo
+                    _atualizados += 1
+                except Exception as _exc_site:
+                    _falhas.append({"empresa": _nome, "erro": str(_exc_site)})
+            supabase.table("ci_dados").update({
+                "seo_cache": _cache_atual,
+            }).eq("user_id", _user_id).execute()
+            atualizar_atividade(_atividade_id, "concluido", {
+                "sites_atualizados": _atualizados,
+                "falhas": _falhas,
+                "total_sites": len(_sites or []),
+            })
+        except Exception as _exc:
+            atualizar_atividade(_atividade_id, "erro", {"motivo": str(_exc)})
+
+    if "_sites_seo_em_andamento" not in st.session_state:
+        st.session_state._sites_seo_em_andamento = False
+
+    if st.session_state.get("_sites_seo_em_andamento"):
+        try:
+            _res_status_seo = (
+                supabase.table("atividades")
+                .select("status")
+                .eq("user_id", st.session_state.user.id)
+                .eq("tipo", "coleta_seo")
+                .order("criado_em", desc=True)
+                .limit(1)
+                .execute()
+            )
+            _status_seo = (
+                str(_res_status_seo.data[0].get("status") or "")
+                if _res_status_seo.data else ""
+            )
+            if _status_seo in ("concluido", "erro"):
+                _res_reload_seo = (
+                    supabase.table("ci_dados")
+                    .select("seo_cache")
+                    .eq("user_id", st.session_state.user.id)
+                    .execute()
+                )
+                if _res_reload_seo.data:
+                    st.session_state.seo_cache = _res_reload_seo.data[0].get("seo_cache") or {}
+                st.session_state._sites_seo_em_andamento = False
+        except Exception:
+            pass
+
+    _ultima_seo_sites = _ultima_atualizacao_seo_sites(
+        st.session_state.get("seo_cache", {}), sites_disponiveis
+    )
+    _ultimo_relatorio_sites = next(
+        (
+            str(_analise.get("data") or "")
+            for _analise in reversed(st.session_state.get("analises_salvas", []))
+            if _analise.get("tipo") == "geral" and _analise.get("data")
+        ),
+        "Nunca gerada",
+    )
+
+    h1, h2 = st.columns([5, 5])
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22288,76 +22380,125 @@ html, body { background: transparent; overflow: hidden; }
         if st.button("Gerar Análise Comparativa", key="btn_gerar_comparativa_ghost"):
             st.session_state._gerar_comparativa = True
 
+        _atualizar_seo_btn = st.button(
+            "sites_atualizar_seo",
+            key="btn_sites_atualizar_seo_ghost",
+            disabled=bool(st.session_state.get("_sites_seo_em_andamento")),
+        )
+        if _atualizar_seo_btn:
+            _atividade_seo = criar_atividade(
+                st.session_state.user.id,
+                "coleta_seo",
+                "Atualizando dados de SEO dos sites",
+                {"total_sites": len(sites_disponiveis)},
+            )
+            threading.Thread(
+                target=_atualizar_seo_sites_background_v290,
+                args=(
+                    st.session_state.user.id,
+                    copy.deepcopy(sites_disponiveis),
+                    _atividade_seo,
+                ),
+                daemon=True,
+                name=f"atualizar-seo-{str(st.session_state.user.id)[:8]}",
+            ).start()
+            st.session_state._sites_seo_em_andamento = True
+            st.rerun()
+
         st.markdown("""
 <style>
 .st-key-btn_gerar_comparativa_ghost,
-.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost) {
+.st-key-btn_sites_atualizar_seo_ghost,
+.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost),
+.stElementContainer:has(.st-key-btn_sites_atualizar_seo_ghost) {
     position: fixed !important; top: -9999px !important; left: -9999px !important;
     width: 1px !important; height: 1px !important; overflow: hidden !important;
     opacity: 0 !important; pointer-events: none !important; visibility: hidden !important;
     display: none !important;
 }
-.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost) {
+.stElementContainer:has(.st-key-btn_gerar_comparativa_ghost),
+.stElementContainer:has(.st-key-btn_sites_atualizar_seo_ghost) {
     display: none !important; height: 0 !important; min-height: 0 !important;
     max-height: 0 !important; padding: 0 !important; margin: 0 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-        components.html("""
+        _seo_rodando = bool(st.session_state.get("_sites_seo_em_andamento"))
+        _seo_btn_texto = "Atualizando SEO..." if _seo_rodando else "Atualizar dados de SEO"
+        _seo_btn_classe = " action-loading" if _seo_rodando else ""
+
+        components.html(f"""
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background: transparent; overflow: hidden; }
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',sans-serif; }}
+.sites-controls {{
+    background:#d2dde9; border-radius:14px; padding:12px 14px;
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; width:100%;
+}}
+.action-col {{ display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; }}
+.action-btn {{
+    width:100%; min-height:40px; padding:9px 12px; border:none; border-radius:9px;
+    background:#0e2a47; color:#fff; cursor:pointer; font-family:'DM Sans',sans-serif;
+    font-size:12px; font-weight:800; display:flex; align-items:center;
+    justify-content:center; gap:7px; white-space:nowrap; transition:all .15s;
+}}
+.action-btn:hover {{ background:#1a3f6a; box-shadow:0 2px 10px rgba(14,42,71,.18); }}
+.action-btn.action-loading {{ opacity:.72; cursor:wait; }}
+.action-meta {{
+    color:#64748b; font-size:10.5px; line-height:1; text-align:center;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;
+}}
+.spinner {{
+    width:13px; height:13px; border-radius:50%; border:2px solid rgba(255,255,255,.35);
+    border-top-color:#fff; animation:spin .8s linear infinite;
+}}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
 </style>
-<div style='padding-top:6px'>
-    <button id="btn_fake_gerar_comparativa" style='
-        width:100%; padding:10px 16px; background:#0e2a47; color:#fff;
-        border:none; border-radius:8px; font-size:14px; font-weight:700;
-        cursor:pointer; font-family:DM Sans,sans-serif;
-        display:flex; align-items:center; justify-content:center; gap:8px;
-        min-height:40px; box-sizing:border-box;
-    '>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2.2"
-             stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/>
-            <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/>
-            <path d="M6 3h12v7a6 6 0 0 1-12 0V3z"/>
-            <path d="M12 16v4"/>
-            <path d="M8 20h8"/>
-        </svg>
-        Gerar Análise Comparativa
-    </button>
+<div class="sites-controls">
+    <div class="action-col">
+        <button id="btn_fake_atualizar_seo" class="action-btn{_seo_btn_classe}" {'disabled' if _seo_rodando else ''}>
+            {'<span class="spinner"></span>' if _seo_rodando else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'}
+            {_seo_btn_texto}
+        </button>
+        <div class="action-meta">Últ. SEO: <b>{_ultima_seo_sites}</b></div>
+    </div>
+    <div class="action-col">
+        <button id="btn_fake_gerar_comparativa" class="action-btn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M6 3h12v7a6 6 0 0 1-12 0V3z"/><path d="M12 16v4"/><path d="M8 20h8"/>
+            </svg>
+            Gerar análise comparativa
+        </button>
+        <div class="action-meta">Últ. análise: <b>{_ultimo_relatorio_sites}</b></div>
+    </div>
 </div>
 <script>
-(function() {
-    function attachHandler() {
+(function() {{
+    function attachHandler() {{
         var btn = document.getElementById('btn_fake_gerar_comparativa');
-        if (!btn || btn.dataset.bound) return;
-        btn.dataset.bound = '1';
-        btn.addEventListener('click', function() {
+        if (btn && !btn.dataset.bound) {{
+          btn.dataset.bound = '1';
+          btn.addEventListener('click', function() {{
             var alvo = window.parent.document.querySelector('.st-key-btn_gerar_comparativa_ghost button');
-            if (alvo) { alvo.click(); return; }
-            var btns = window.parent.document.querySelectorAll('button');
-            for (var i = 0; i < btns.length; i++) {
-                var t = (btns[i].textContent || btns[i].innerText || '').replace(/\\s+/g, ' ').trim();
-                if (t === 'Gerar Análise Comparativa') { btns[i].click(); return; }
-            }
-        });
-    }
+            if (alvo) alvo.click();
+          }});
+        }}
+        var seo = document.getElementById('btn_fake_atualizar_seo');
+        if (seo && !seo.disabled && !seo.dataset.bound) {{
+          seo.dataset.bound = '1';
+          seo.addEventListener('click', function() {{
+            var alvoSeo = window.parent.document.querySelector('.st-key-btn_sites_atualizar_seo_ghost button');
+            if (alvoSeo) alvoSeo.click();
+          }});
+        }}
+    }}
     attachHandler();
     setTimeout(attachHandler, 200);
-})();
+}})();
 </script>
-""", height=60, scrolling=False)
-
-        ultimo_relatorio = st.session_state.get("sites_ultima_geracao", "")
-        if ultimo_relatorio:
-            st.markdown(
-                f"<div style='font-size:13px;color:#6b7280;text-align:center;margin-top:6px'>"
-                f"🕒 Última análise: <b>{ultimo_relatorio}</b></div>",
-                unsafe_allow_html=True,
-            )
+""", height=88, scrolling=False)
 
     gerar_btn = st.session_state.pop("_gerar_comparativa", False)
 

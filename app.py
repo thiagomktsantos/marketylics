@@ -27863,6 +27863,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
+                    box-shadow: inset 0 1px 0 #e5e7eb !important;
                     border-radius: 0 0 12px 12px !important;
                     padding: 20px 20px !important;
                     gap: 8px !important;
@@ -34552,6 +34553,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
+                    box-shadow: inset 0 1px 0 #e5e7eb !important;
                     border-radius: 0 0 12px 12px !important;
                     padding: 20px 20px !important;
                     gap: 8px !important;

@@ -27859,7 +27859,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -40px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -34549,7 +34549,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -40px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;

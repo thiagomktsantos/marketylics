@@ -22952,9 +22952,12 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             })
             res_update = (
                 supabase.table("ci_dados")
+                # `ci_dados` não possui a coluna `relatorio_sites` no schema
+                # atual. O conteúdo extraído já foi usado para gerar o relatório;
+                # persistimos somente a lista `analises_salvas`, que é o campo
+                # existente usado pela tela de Relatórios Gerais.
                 .update({
                     "analises_salvas": analises_atuais,
-                    "relatorio_sites": relatorio_sites,
                 })
                 .eq("user_id", user_id)
                 .execute()
@@ -23036,11 +23039,13 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     name="comparativa-sites-worker",
                 ).start()
 
-    # Recupera solicitações que ficaram pendentes se houve rerun/reinício do app.
+    # Recupera solicitações pendentes e mantém os registros para exibição
+    # diretamente na aba Relatórios Gerais (sem banner global no topo).
+    _atividades_comparativas_visiveis = []
     try:
         _pendentes_comp = (
             supabase.table("atividades")
-            .select("id,detalhes")
+            .select("id,status,detalhes,titulo,criado_em")
             .eq("user_id", st.session_state.user.id)
             .eq("tipo", "analise_comparativa_sites")
             .in_("status", ["pendente", "em_andamento"])
@@ -23048,7 +23053,8 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             .limit(20)
             .execute()
         )
-        for _atividade_pendente in (_pendentes_comp.data or []):
+        _atividades_comparativas_visiveis = _pendentes_comp.data or []
+        for _atividade_pendente in _atividades_comparativas_visiveis:
             _det_pendente = _atividade_pendente.get("detalhes") or {}
             _sites_pendentes = _det_pendente.get("sites_snapshot") or []
             _aid_pendente = _atividade_pendente.get("id")
@@ -23129,13 +23135,12 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             try:
                 _res_reload_comp = (
                     supabase.table("ci_dados")
-                    .select("analises_salvas,relatorio_sites")
+                    .select("analises_salvas")
                     .eq("user_id", st.session_state.user.id)
                     .execute()
                 )
                 if _res_reload_comp.data:
                     st.session_state.analises_salvas = _res_reload_comp.data[0].get("analises_salvas") or []
-                    st.session_state.relatorio_sites = _res_reload_comp.data[0].get("relatorio_sites") or {}
             except Exception as _erro_reload_comp:
                 print(f"[FILA-COMPARATIVA-SITES] recarga do relatório falhou: {_erro_reload_comp!r}", flush=True)
             st.session_state["_comparativa_em_andamento"] = False
@@ -23150,13 +23155,9 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                 + str(_det_comp_atual.get("motivo") or "erro não especificado")
             )
         else:
-            _status_visual_comp = _det_comp_atual.get("status_visual") or _status_comp_atual or "pendente"
-            if _status_visual_comp in ("na_fila", "pendente"):
-                st.info("🕒 Sua análise comparativa está pendente e aguardando a vez na fila.")
-            else:
-                st.info("🔵 Sua análise comparativa está em processamento. O relatório aparecerá em Relatórios Gerais quando terminar.")
-            if st.button("🔄 Atualizar status da análise", key="_btn_verificar_comparativa"):
-                st.rerun()
+            # O status é exibido no card da própria aba Relatórios Gerais.
+            # Não mostrar aviso global no topo da página.
+            pass
 
     # A contagem considera somente relatórios realmente disponíveis para
     # visualização. Registros vazios/incompletos e atividades pendentes não
@@ -23688,6 +23689,35 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 """, height=52, scrolling=False)
 
         lista_sites_ativa = [a for a in analises if a.get("tipo") == subtab_sites]
+        _comparativas_pendentes_ui = [
+            item for item in _atividades_comparativas_visiveis
+            if item.get("status") in ("pendente", "em_andamento")
+        ] if subtab_sites == "geral" else []
+
+        # Card provisório no mesmo local dos relatórios gerais. O card será
+        # substituído pelo relatório salvo quando a atividade for concluída.
+        for _atividade_ui in _comparativas_pendentes_ui:
+            _det_ui = _atividade_ui.get("detalhes") or {}
+            _status_ui = _det_ui.get("status_visual") or _atividade_ui.get("status") or "pendente"
+            _titulo_ui = str(_atividade_ui.get("titulo") or "Relatório comparativo de sites")
+            _titulo_ui = _titulo_ui.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _qtd_sites_ui = len(_det_ui.get("sites_snapshot") or [])
+            _rotulo_status_ui = "Em processamento" if _status_ui == "em_andamento" else "Aguardando na fila"
+            st.markdown(f"""
+            <div style="border:1px solid #dbe3ec;border-radius:12px;overflow:hidden;margin:8px 0 12px;background:#fff;">
+              <div style="background:#17406a;color:#fff;padding:14px 18px;font-weight:700;">
+                {_titulo_ui} · {_qtd_sites_ui} sites
+              </div>
+              <div style="padding:15px 18px;background:#f3f6fa;color:#334155;display:flex;align-items:center;gap:10px;">
+                <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#3a9fd6;"></span>
+                <strong>{_rotulo_status_ui}</strong>
+                <span style="color:#64748b;font-size:13px;">O relatório aparecerá aqui quando estiver pronto.</span>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("🔄 Atualizar status", key=f"_atualizar_comparativa_card_{_atividade_ui.get('id')}"):
+                st.rerun()
+
         icons_sites_map   = {"individual": ICON_SVG["building"], "geral": ICON_SVG["clipboard"]}
         labels_sites_map  = {"individual": "Individuais", "geral": "Relatórios Gerais"}
         icon_sites_ativo  = icons_sites_map.get(subtab_sites, ICON_SVG["clipboard"])
@@ -24581,21 +24611,22 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         """, height=100, scrolling=False)
 
         else:
-            empty_msg = {
-                "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
-                "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
-            }.get(subtab_sites, "Nenhuma análise ainda.")
+            if not _comparativas_pendentes_ui:
+                empty_msg = {
+                    "individual": "Vá em <b>Sites configurados</b> e clique em <b>Analisar este site com IA</b>.",
+                    "geral":      "Clique em <b>Gerar Relatório Geral</b> no topo da página.",
+                }.get(subtab_sites, "Nenhuma análise ainda.")
 
-            st.markdown(f"""
-            <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
-                        text-align:center;background:#fff;margin-top:8px;
-                        display:flex;flex-direction:column;align-items:center;gap:10px;">
-                <div style="width:40px;height:40px;color:#94a3b8;opacity:0.6;
-                    display:flex;align-items:center;justify-content:center;margin:0 auto;">{icon_sites_ativo}</div>
-                <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_sites_ativo.lower()} ainda.</div>
-                <div style="font-size:13px;color:#9ca3af;">{empty_msg}</div>
-            </div>
-            """, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="border:1px dashed #e5e7eb;border-radius:12px;padding:48px 24px;
+                            text-align:center;background:#fff;margin-top:8px;
+                            display:flex;flex-direction:column;align-items:center;gap:10px;">
+                    <div style="width:40px;height:40px;color:#94a3b8;opacity:0.6;
+                        display:flex;align-items:center;justify-content:center;margin:0 auto;">{icon_sites_ativo}</div>
+                    <div style="font-size:14px;color:#9ca3af;">Nenhuma análise de {label_sites_ativo.lower()} ainda.</div>
+                    <div style="font-size:13px;color:#9ca3af;">{empty_msg}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
 
 elif st.session_state.pagina == "ads":

@@ -11209,10 +11209,10 @@ def listar_atividades_recentes(user_id: str, limite: int = 15) -> list:
             .select("*")
             .eq("user_id", user_id)
             .order("criado_em", desc=True)
-            .limit(limite)
+            .limit(max(int(limite) * 3, int(limite)))
             .execute()
         )
-        return res.data or []
+        return [a for a in (res.data or []) if (a.get("tipo") or "") not in ("analise_ia", "uso_analise_ia")][:limite]
     except Exception:
         return []
 
@@ -11287,12 +11287,14 @@ def resumo_status_notificacoes(user_id: str) -> dict:
     try:
         res = (
             supabase.table("atividades")
-            .select("status, detalhes, lida")
+            .select("tipo, status, detalhes, lida")
             .eq("user_id", user_id)
             .limit(1000)
             .execute()
         )
         for a in (res.data or []):
+            if (a.get("tipo") or "") in ("analise_ia", "uso_analise_ia"):
+                continue
             cont["todos"] += 1
             st_a = _status_logico_atividade(a)
             if st_a == "em_andamento":
@@ -11339,6 +11341,8 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
             supabase.table("atividades")
             .select("*")
             .eq("user_id", user_id)
+            .neq("tipo", "analise_ia")
+            .neq("tipo", "uso_analise_ia")
             .in_("status", ["pendente", "na_fila", "em_andamento", "erro"])
             .order("criado_em", desc=True)
             .limit(300)
@@ -11376,12 +11380,12 @@ def resumo_sino_atividades(user_id: str) -> dict:
     try:
         res = (
             supabase.table("atividades")
-            .select("status, lida, detalhes")
+            .select("tipo, status, lida, detalhes")
             .eq("user_id", user_id)
             .in_("status", ["pendente", "na_fila", "em_andamento", "erro"])
             .execute()
         )
-        linhas = res.data or []
+        linhas = [r for r in (res.data or []) if (r.get("tipo") or "") not in ("analise_ia", "uso_analise_ia")]
         n_erro = sum(1 for r in linhas if _status_logico_atividade(r) == "erro" and not r.get("lida"))
         n_andamento = sum(1 for r in linhas if _status_logico_atividade(r) != "erro")
         return {"total": n_erro + n_andamento, "erro": n_erro, "andamento": n_andamento}
@@ -11464,6 +11468,10 @@ _TIPO_ATIVIDADE_LABELS = {
     "analise_ia": (
         "M12,2L14.5,9H22L16,13.5L18,21L12,17L6,21L8,13.5L2,9H9.5L12,2Z",
         "#8b5cf6", "Análises de IA",
+    ),
+    "analise_individual_site": (
+        "M12,2L14.5,9H22L16,13.5L18,21L12,17L6,21L8,13.5L2,9H9.5L12,2Z",
+        "#8b5cf6", "Análise individual de site",
     ),
     "reparo_links": (
         "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z",
@@ -11967,13 +11975,18 @@ PLANOS_COTA_MENSAL = {
     "analise_ia":   {"free": 5,  "starter": 40, "pro": 200, "agencia": None},
 }
 
+def _tipo_registro_uso_acao(tipo_acao: str) -> str:
+    """Tipo técnico usado para cooldown; não é uma atividade visível ao usuário."""
+    return "uso_analise_ia" if tipo_acao == "analise_ia" else tipo_acao
+
 def _ultima_execucao_acao(user_id: str, tipo_acao: str):
     try:
+        _tipo_registro = _tipo_registro_uso_acao(tipo_acao)
         res = (
             supabase.table("atividades")
             .select("criado_em,status,detalhes")
             .eq("user_id", user_id)
-            .eq("tipo", tipo_acao)
+            .eq("tipo", _tipo_registro)
             .eq("status", "concluido")
             .order("criado_em", desc=True)
             .limit(1)
@@ -12012,7 +12025,7 @@ def _contar_execucoes_mes(user_id: str, tipo_acao: str) -> int:
                 supabase.table("atividades")
                 .select("id", count="exact")
                 .eq("user_id", user_id)
-                .eq("tipo", tipo_acao)
+                .eq("tipo", _tipo_registro_uso_acao(tipo_acao))
                 .gte("criado_em", inicio_mes)
                 .execute()
             )
@@ -12048,17 +12061,20 @@ def verificar_pode_executar_acao(user_id: str, tipo_acao: str, plano_usuario: st
     return True, ""
 
 def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
-    """Grava a execução na tabela atividades (histórico/cooldown) E
-    incrementa o contador rápido em uso_organizacao (cota mensal)."""
+    """Registra consumo/cooldown sem criar um card genérico no histórico.
+
+    Para IA, o evento técnico usa um tipo interno (uso_analise_ia), filtrado
+    da central de notificações. O contador mensal continua em uso_organizacao.
+    """
     if not user_id:
         return
     try:
         supabase.table("atividades").insert({
             "user_id": user_id,
-            "tipo": tipo_acao,
-            "titulo": titulo or tipo_acao,
+            "tipo": _tipo_registro_uso_acao(tipo_acao),
+            "titulo": "Registro interno de consumo de IA" if tipo_acao == "analise_ia" else (titulo or tipo_acao),
             "status": "concluido",
-            "detalhes": {},
+            "detalhes": {"interno": True} if tipo_acao == "analise_ia" else {},
         }).execute()
     except Exception:
         pass
@@ -22620,6 +22636,20 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
                 st.session_state[f"sites_analise_{idx_s}"] = "⚠️ Configure GEMINI_API_KEY nos secrets."
             else:
                 modal_site_placeholder = st.empty()
+                _atividade_individual_id = criar_atividade(
+                    st.session_state.user.id,
+                    "analise_individual_site",
+                    f"Análise Individual — {s['nome']}",
+                    detalhes={
+                        "status_visual": "em_andamento",
+                        "etapa": "iniciando",
+                        "tipo_relatorio": "individual",
+                        "empresa": s["nome"],
+                        "url": s["url"],
+                        "mensagem": "Análise individual solicitada. Preparando conteúdo do site...",
+                    },
+                    status="em_andamento",
+                )
 
                 def _render_modal_site(fase: str, nome: str, pct: int, _ph=modal_site_placeholder):
                     fases = {
@@ -22685,7 +22715,19 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         components.html(html_modal, height=600, scrolling=False)
 
                 _render_modal_site("lendo", s["nome"], 15)
-                conteudo_site = extrair_conteudo_site(s["url"])
+                try:
+                    conteudo_site = extrair_conteudo_site(s["url"])
+                except Exception as e:
+                    atualizar_atividade(_atividade_individual_id, "erro", {
+                        "tipo_relatorio": "individual",
+                        "empresa": s["nome"],
+                        "url": s["url"],
+                        "motivo": str(e),
+                        "mensagem": "Não foi possível acessar o site para iniciar a análise individual.",
+                    })
+                    modal_site_placeholder.empty()
+                    st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
+                    st.rerun()
 
                 _render_modal_site("enviando", s["nome"], 50)
                 try:
@@ -22754,6 +22796,13 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     })
 
                     salvar_analises_padrao()
+                    atualizar_atividade(_atividade_individual_id, "concluido", {
+                        "tipo_relatorio": "individual",
+                        "empresa": s["nome"],
+                        "url": s["url"],
+                        "titulo_relatorio": titulo_auto,
+                        "mensagem": "Análise individual concluída e salva em Individuais.",
+                    })
 
                     _render_modal_site("concluido", s["nome"], 100)
                     import time as _time; _time.sleep(1.5)
@@ -22763,6 +22812,13 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     st.rerun()
 
                 except Exception as e:
+                    atualizar_atividade(_atividade_individual_id, "erro", {
+                        "tipo_relatorio": "individual",
+                        "empresa": s["nome"],
+                        "url": s["url"],
+                        "motivo": str(e),
+                        "mensagem": "Não foi possível concluir a análise individual.",
+                    })
                     modal_site_placeholder.empty()
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()

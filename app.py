@@ -23102,8 +23102,43 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             if st.button("🔄 Atualizar status da análise", key="_btn_verificar_comparativa"):
                 st.rerun()
 
-    main_tab = st.session_state.sites_main_tab
-    analises_nav = st.session_state.get("analises_salvas", [])
+    # A contagem considera somente relatórios realmente disponíveis para
+    # visualização. Registros vazios/incompletos e atividades pendentes não
+    # são relatórios e não devem inflar os badges.
+    def _filtrar_analises_sites_validas(_lista):
+        _validas = []
+        _vistos = set()
+        for _item in (_lista or []):
+            if not isinstance(_item, dict):
+                continue
+            _tipo = str(_item.get("tipo") or "").strip().lower()
+            if _tipo not in ("individual", "geral"):
+                continue
+            _relatorio = str(_item.get("relatorio") or "").strip()
+            if not _relatorio:
+                continue
+            _relatorio_baixo = _relatorio.lower()
+            if _relatorio_baixo.startswith(("erro:", "⏳", "🔵", "🕒")):
+                continue
+            _identidade = (
+                _tipo,
+                str(_item.get("titulo") or "").strip(),
+                str(_item.get("data") or "").strip(),
+                _relatorio,
+            )
+            if _identidade in _vistos:
+                continue
+            _vistos.add(_identidade)
+            _validas.append(_item)
+        return _validas
+
+    _analises_brutas_sites = st.session_state.get("analises_salvas", [])
+    analises_nav = _filtrar_analises_sites_validas(_analises_brutas_sites)
+    if analises_nav != _analises_brutas_sites:
+        # Remove do armazenamento somente entradas inválidas/duplicadas;
+        # preserva todos os relatórios válidos existentes.
+        st.session_state.analises_salvas = analises_nav
+        salvar_analises_padrao()
     qtd_total_analise = len(analises_nav)
 
     components.html(f"""
@@ -23484,7 +23519,9 @@ setTimeout(syncHeight, 3000);
 
         import json as _json_sites
 
-        analises = st.session_state.get("analises_salvas", [])
+        analises = _filtrar_analises_sites_validas(
+            st.session_state.get("analises_salvas", [])
+        )
         st.session_state.sites_analise_vistas = len(analises)
 
         ICON_SVG = {

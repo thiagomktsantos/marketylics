@@ -23197,6 +23197,9 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
         salvar_analises_padrao()
     qtd_total_analise = len(analises_nav)
 
+    # Mantém a aba principal sincronizada com o estado do Streamlit antes de renderizar o menu.
+    main_tab = st.session_state.sites_main_tab
+
     components.html(f"""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>

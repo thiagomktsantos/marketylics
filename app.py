@@ -462,6 +462,14 @@ def get_supabase() -> Client:
 
 supabase = get_supabase()
 
+# URL pública usada nos links de confirmação do Supabase Auth.
+# Configure APP_PUBLIC_URL nos secrets do Streamlit com a origem do app,
+# por exemplo: https://app.seudominio.com (sem barra final).
+APP_PUBLIC_URL = str(
+    st.secrets.get("APP_PUBLIC_URL", st.secrets.get("PUBLIC_APP_URL", "")) or ""
+).strip().rstrip("/")
+
+
 _SUPABASE_ERROS_TRANSITORIOS = (
     "timeout", "timed out", "read operation", "connection reset",
     "connection lost", "server disconnected", "521", "522", "502", "503", "504",
@@ -11966,6 +11974,7 @@ def _ultima_execucao_acao(user_id: str, tipo_acao: str):
             .select("criado_em,status,detalhes")
             .eq("user_id", user_id)
             .eq("tipo", tipo_acao)
+            .eq("status", "concluido")
             .order("criado_em", desc=True)
             .limit(1)
             .execute()
@@ -12011,12 +12020,12 @@ def _contar_execucoes_mes(user_id: str, tipo_acao: str) -> int:
         except Exception:
             return 0
 
-def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
+def verificar_pode_executar_acao(user_id: str, tipo_acao: str, plano_usuario: str = None):
     """Confere cooldown (anti-abuso) e cota mensal (custo) antes de deixar
     uma coleta/análise rodar. Devolve (permitido: bool, motivo: str)."""
     if not user_id:
         return True, ""
-    plano = obter_plano_usuario()
+    plano = plano_usuario or obter_plano_usuario()
 
     cooldown_seg = PLANOS_COOLDOWN_SEGUNDOS.get(plano, 300)
     if cooldown_seg > 0:
@@ -12070,7 +12079,7 @@ class _RespostaBloqueada:
     def __init__(self, texto):
         self.text = texto
 
-def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = None):
+def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = None, plano_usuario: str = None):
     """Substituto direto de `gemini_model.generate_content(...)` que
     aplica cooldown + cota mensal antes de gastar uma chamada de IA.
 
@@ -12081,9 +12090,10 @@ def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = 
     if user_id is None:
         user_id = st.session_state.user.id if st.session_state.get("user") else None
     if user_id:
-        permitido, motivo = verificar_pode_executar_acao(user_id, tipo_acao)
+        permitido, motivo = verificar_pode_executar_acao(user_id, tipo_acao, plano_usuario=plano_usuario)
         if not permitido:
-            st.toast(f"{motivo}", icon="⏳")
+            if threading.current_thread() is threading.main_thread():
+                st.toast(f"{motivo}", icon="⏳")
             return _RespostaBloqueada(f"⏳ {motivo}")
         registrar_execucao_acao(user_id, tipo_acao, "Análise de IA")
     return gemini_model.generate_content(prompt_ou_parts)
@@ -12301,9 +12311,18 @@ def login_supabase(email: str, senha: str):
 
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:
-        payload = {"email": email, "password": senha}
+        if not APP_PUBLIC_URL:
+            return None, (
+                "URL pública não configurada. Defina APP_PUBLIC_URL nos secrets "
+                "do Streamlit com o endereço HTTPS oficial da aplicação."
+            )
+        payload = {
+            "email": email,
+            "password": senha,
+            "options": {"email_redirect_to": APP_PUBLIC_URL + "/"},
+        }
         if nome.strip():
-            payload["options"] = {"data": {"full_name": nome.strip()}}
+            payload["options"]["data"] = {"full_name": nome.strip()}
         res = supabase.auth.sign_up(payload)
         if res.user and res.session:
             garantir_linha_usuario(res.user.id)
@@ -12371,6 +12390,37 @@ def garantir_linha_usuario(user_id: str):
             }).execute()
     except Exception as e:
         st.toast(f"Erro ao inicializar dados: {e}", icon="⚠️")
+
+# O Supabase pode retornar o usuário à aplicação com ?code=... após a
+# confirmação do e-mail. Troca o código por uma sessão antes da tela de login.
+try:
+    _auth_code_callback = str(st.query_params.get("code", "") or "").strip()
+    if _auth_code_callback and not st.session_state.get("_auth_code_processado"):
+        st.session_state["_auth_code_processado"] = True
+        try:
+            _auth_callback_res = supabase.auth.exchange_code_for_session(_auth_code_callback)
+            if getattr(_auth_callback_res, "user", None):
+                st.session_state.user = _auth_callback_res.user
+                garantir_linha_usuario(_auth_callback_res.user.id)
+                st.session_state["_auth_callback_sucesso"] = True
+            else:
+                st.session_state["_auth_callback_erro"] = (
+                    "O link foi aberto, mas não foi possível iniciar sua sessão. "
+                    "Solicite um novo link de confirmação."
+                )
+        except Exception as _auth_callback_exc:
+            print(f"[AUTH-CALLBACK] falha ao validar código: {_auth_callback_exc!r}", flush=True)
+            st.session_state["_auth_callback_erro"] = (
+                "Não foi possível validar este link. Ele pode ter expirado ou já ter sido utilizado. "
+                "Solicite um novo e-mail de confirmação."
+            )
+        finally:
+            # Remove o código da barra de endereço para evitar reprocessamento.
+            if "code" in st.query_params:
+                del st.query_params["code"]
+except Exception as _auth_callback_setup_exc:
+    print(f"[AUTH-CALLBACK] inicialização ignorada: {_auth_callback_setup_exc!r}", flush=True)
+
 
 def logout_supabase():
     try:
@@ -12951,9 +13001,9 @@ def salvar_seo_cache():
         st.toast(f"Erro ao salvar SEO: {e}", icon="⚠️")
 
 
-def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: list, user_id: str = None) -> str:
+def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: list, user_id: str = None, plano_usuario: str = None) -> str:
     if gemini_model is None:
-        return "Erro: Chave API Gemini não configurada."
+        raise RuntimeError("Chave API Gemini não configurada.")
 
     secoes = []
     if empresa_principal.get("conteudo"):
@@ -12970,7 +13020,7 @@ def gerar_relatorio_posicionamento(empresa_principal: dict, concorrentes_data: l
 """)
 
     if not secoes:
-        return "Nenhum conteúdo extraído dos sites para análise."
+        raise RuntimeError("Nenhum conteúdo foi extraído dos sites para análise. Verifique se os endereços estão acessíveis.")
 
     prompt = f"""
 Você é um especialista em marketing digital e inteligência competitiva.
@@ -13004,10 +13054,15 @@ Seja direto, objetivo e use dados do conteúdo real dos sites.
 """
 
     try:
-        resposta = gerar_com_ia(prompt, user_id=user_id)
-        return resposta.text
+        resposta = gerar_com_ia(prompt, user_id=user_id, plano_usuario=plano_usuario)
+        if isinstance(resposta, _RespostaBloqueada) or str(getattr(resposta, "text", "")).lstrip().startswith("⏳"):
+            raise RuntimeError(str(getattr(resposta, "text", "Ação bloqueada por limite de uso.")))
+        texto_relatorio = str(getattr(resposta, "text", "") or "").strip()
+        if not texto_relatorio:
+            raise RuntimeError("A IA retornou um relatório vazio.")
+        return texto_relatorio
     except Exception as e:
-        return f"Erro ao gerar relatório: {e}"
+        raise RuntimeError(f"Não foi possível gerar o relatório comparativo: {e}") from e
 
 
 st.markdown("""
@@ -22676,7 +22731,12 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
 """
                     _render_modal_site("gerando", s["nome"], 80)
                     resp = gerar_com_ia(prompt_individual)
-                    st.session_state[f"sites_analise_{idx_s}"] = resp.text
+                    if isinstance(resp, _RespostaBloqueada) or str(getattr(resp, "text", "")).lstrip().startswith("⏳"):
+                        raise RuntimeError(str(getattr(resp, "text", "Ação bloqueada por limite de uso.")))
+                    _texto_analise_individual = str(getattr(resp, "text", "") or "").strip()
+                    if not _texto_analise_individual:
+                        raise RuntimeError("A IA retornou uma análise vazia.")
+                    st.session_state[f"sites_analise_{idx_s}"] = _texto_analise_individual
 
                     st.session_state.analises_salvas = [
                         a for a in st.session_state.analises_salvas
@@ -22686,7 +22746,7 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     st.session_state.analises_salvas.append({
                         "titulo": titulo_auto,
                         "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                        "relatorio": resp.text,
+                        "relatorio": _texto_analise_individual,
                         "sites": [f"{s['nome']} ({s['url']})"],
                         "tipo": "individual",
                         "empresa": f"{s['nome']} ({s['url']})",
@@ -22707,38 +22767,126 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()
 
-    def _gerar_comparativa_background(user_id: str, sites_disponiveis: list, atividade_id: str):
-        """Roda a extração dos sites + geração do relatório numa thread —
-        sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
-        pra ler/gravar dados, já que threads não devem tocar nisso."""
+    # Fila FIFO de análises comparativas. A fila e o worker ficam em um
+    # módulo de runtime para sobreviver aos reruns do Streamlit no mesmo processo.
+    import sys as _sys_comp, types as _types_comp
+    _runtime_comp = _sys_comp.modules.get("_runtime_fila_comparativa_sites_v1")
+    if _runtime_comp is None:
+        _runtime_comp = _types_comp.ModuleType("_runtime_fila_comparativa_sites_v1")
+        _runtime_comp.fila = queue.Queue()
+        _runtime_comp.lock = threading.RLock()
+        _runtime_comp.worker_ativo = False
+        _runtime_comp.ids_enfileirados = set()
+        _sys_comp.modules["_runtime_fila_comparativa_sites_v1"] = _runtime_comp
+
+    def _executar_comparativa_sites_worker(user_id: str, sites_snapshot: list, atividade_id: str, plano_usuario: str = "pro"):
+        """Executa uma análise já retirada da fila; não acessa st.session_state."""
+        _ticket_pesado = None
         try:
+            # Enquanto aguarda a exclusividade global, a atividade continua pendente.
+            _ticket_pesado = _entrar_fila_acao_pesada("ANÁLISE COMPARATIVA", user_id)
+            atualizar_atividade(atividade_id, "em_andamento", {
+                "status_visual": "em_andamento",
+                "etapa": "extraindo_sites",
+                "mensagem": "Solicitação retirada da fila. Extraindo os sites...",
+                "sites": [f"{x.get('nome','')} ({x.get('url','')})" for x in sites_snapshot],
+                "sites_snapshot": sites_snapshot,
+                "tipo_relatorio": "geral",
+            })
+
             relatorio_sites = {}
-            for s in sites_disponiveis:
-                relatorio_sites[s["url"]] = extrair_conteudo_site(s["url"])
+            for site in sites_snapshot:
+                url_site = str(site.get("url") or "").strip()
+                if url_site:
+                    relatorio_sites[url_site] = extrair_conteudo_site(url_site)
 
             empresa_principal = None
             concorrentes_data = []
-            for s in sites_disponiveis:
-                item = {"nome": s["nome"], "url": s["url"], "conteudo": relatorio_sites.get(s["url"], "")}
-                if s["tipo"] == "minha":
+            for site in sites_snapshot:
+                item = {
+                    "nome": site.get("nome", "Site"),
+                    "url": site.get("url", ""),
+                    "conteudo": relatorio_sites.get(site.get("url"), ""),
+                }
+                if site.get("tipo") == "minha" and empresa_principal is None:
                     empresa_principal = item
                 else:
                     concorrentes_data.append(item)
 
-            if empresa_principal is None and sites_disponiveis:
+            if empresa_principal is None and sites_snapshot:
+                primeiro = sites_snapshot[0]
                 empresa_principal = {
-                    "nome": sites_disponiveis[0]["nome"],
-                    "url":  sites_disponiveis[0]["url"],
-                    "conteudo": relatorio_sites.get(sites_disponiveis[0]["url"], ""),
+                    "nome": primeiro.get("nome", "Empresa principal"),
+                    "url": primeiro.get("url", ""),
+                    "conteudo": relatorio_sites.get(primeiro.get("url"), ""),
                 }
+                concorrentes_data = [
+                    {
+                        "nome": x.get("nome", "Concorrente"),
+                        "url": x.get("url", ""),
+                        "conteudo": relatorio_sites.get(x.get("url"), ""),
+                    }
+                    for x in sites_snapshot[1:]
+                ]
 
-            relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data, user_id=user_id)
+            if not empresa_principal:
+                raise RuntimeError("Nenhum site válido foi enviado para a análise.")
 
-            nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
-            titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            # O cooldown é respeitado sem perder a solicitação: se a API de IA
+            # informar que ainda faltam alguns segundos, o worker aguarda e tenta de novo.
+            while True:
+                try:
+                    relatorio = gerar_relatorio_posicionamento(
+                        empresa_principal, concorrentes_data, user_id=user_id,
+                        plano_usuario=plano_usuario,
+                    )
+                    break
+                except Exception as erro_ia:
+                    import re as _re_comp
+                    _msg_erro = str(erro_ia or "")
+                    _m_cooldown = _re_comp.search(
+                        r"Aguarde\s+(\d+)s?\s+antes de repetir essa ação", _msg_erro,
+                        flags=_re_comp.IGNORECASE,
+                    )
+                    if _m_cooldown:
+                        _espera = max(1, int(_m_cooldown.group(1)) + 1)
+                        atualizar_atividade(atividade_id, "na_fila", {
+                            "status_visual": "na_fila",
+                            "etapa": "aguardando_cooldown",
+                            "mensagem": f"Aguardando { _espera }s para liberar a geração da IA.",
+                            "sites": [f"{x.get('nome','')} ({x.get('url','')})" for x in sites_snapshot],
+                            "sites_snapshot": sites_snapshot,
+                            "tipo_relatorio": "geral",
+                        })
+                        time.sleep(_espera)
+                        atualizar_atividade(atividade_id, "em_andamento", {
+                            "status_visual": "em_andamento",
+                            "etapa": "gerando_relatorio",
+                            "mensagem": "Limite liberado. Gerando relatório comparativo...",
+                            "sites_snapshot": sites_snapshot,
+                            "tipo_relatorio": "geral",
+                        })
+                        continue
+                    raise
 
-            res = supabase.table("ci_dados").select("analises_salvas").eq("user_id", user_id).execute()
-            analises_atuais = (res.data[0].get("analises_salvas") or []) if res.data else []
+            nomes_com_url = [
+                f"{x.get('nome','')} ({x.get('url','')})" for x in sites_snapshot
+            ]
+            titulo_auto = (
+                f"Relatório Geral — {' vs. '.join(nomes_com_url)} — "
+                f"{_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            )
+            # Persiste o relatório como tipo='geral'; não usa a lista individual.
+            res_dados = (
+                supabase.table("ci_dados")
+                .select("analises_salvas")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            analises_atuais = (
+                (res_dados.data[0].get("analises_salvas") or [])
+                if res_dados.data else []
+            )
             analises_atuais.append({
                 "titulo": titulo_auto,
                 "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -22746,69 +22894,212 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                 "sites": nomes_com_url,
                 "tipo": "geral",
             })
-            supabase.table("ci_dados").update({
-                "analises_salvas": analises_atuais,
-                "relatorio_sites": relatorio_sites,
-            }).eq("user_id", user_id).execute()
-
-            atualizar_atividade(atividade_id, "concluido", {"sites": nomes_com_url})
-        except Exception as e:
-            atualizar_atividade(atividade_id, "erro", {"motivo": str(e)})
-
-    if gerar_btn:
-        _id_ativ_comparativa = criar_atividade(
-            st.session_state.user.id, "analise_ia", "Gerando relatório comparativo de sites"
-        )
-        threading.Thread(
-            target=_gerar_comparativa_background,
-            args=(st.session_state.user.id, sites_disponiveis, _id_ativ_comparativa),
-            daemon=True,
-        ).start()
-
-        st.session_state["_comparativa_em_andamento"] = True
-        st.rerun()
-
-    if st.session_state.get("_comparativa_em_andamento"):
-        _ultima_comparativa_ativ = None
-        try:
-            _res_ativ_comp2 = (
-                supabase.table("atividades")
-                .select("status")
-                .eq("user_id", st.session_state.user.id)
-                .eq("tipo", "analise_ia")
-                .order("criado_em", desc=True)
-                .limit(1)
+            res_update = (
+                supabase.table("ci_dados")
+                .update({
+                    "analises_salvas": analises_atuais,
+                    "relatorio_sites": relatorio_sites,
+                })
+                .eq("user_id", user_id)
                 .execute()
             )
-            if _res_ativ_comp2.data:
-                _ultima_comparativa_ativ = _res_ativ_comp2.data[0]
-        except Exception:
-            pass
-
-        if _ultima_comparativa_ativ and _ultima_comparativa_ativ.get("status") in ("concluido", "erro"):
-            try:
-                res_reload = (
+            if not getattr(res_update, "data", None):
+                # Supabase pode retornar data vazio em algumas configurações;
+                # confirma que a gravação ocorreu antes de concluir a atividade.
+                _confirma = (
                     supabase.table("ci_dados")
-                    .select("analises_salvas, relatorio_sites")
+                    .select("analises_salvas")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                _lista_confirma = (_confirma.data[0].get("analises_salvas") or []) if _confirma.data else []
+                if not any(
+                    x.get("tipo") == "geral" and x.get("titulo") == titulo_auto
+                    for x in _lista_confirma
+                ):
+                    raise RuntimeError("O relatório foi gerado, mas não foi possível confirmar o salvamento no banco.")
+
+            atualizar_atividade(atividade_id, "concluido", {
+                "status_visual": "concluido",
+                "sites": nomes_com_url,
+                "relatorio_salvo": True,
+                "tipo_relatorio": "geral",
+            })
+        except Exception as erro:
+            print(
+                f"[FILA-COMPARATIVA-SITES] erro atividade={atividade_id}: {erro!r}",
+                flush=True,
+            )
+            atualizar_atividade(atividade_id, "erro", {
+                "status_visual": "erro",
+                "motivo": str(erro)[:1500],
+                "relatorio_salvo": False,
+            })
+        finally:
+            if _ticket_pesado is not None:
+                _sair_fila_acao_pesada(_ticket_pesado)
+            with _runtime_comp.lock:
+                _runtime_comp.ids_enfileirados.discard(str(atividade_id))
+
+    def _worker_fila_comparativa_sites():
+        while True:
+            try:
+                tarefa = _runtime_comp.fila.get()
+            except Exception:
+                break
+            try:
+                _uid, _sites, _aid, _plano = tarefa
+                _executar_comparativa_sites_worker(_uid, _sites, _aid, _plano)
+            finally:
+                _runtime_comp.fila.task_done()
+
+        with _runtime_comp.lock:
+            _runtime_comp.worker_ativo = False
+            if not _runtime_comp.fila.empty():
+                _runtime_comp.worker_ativo = True
+                threading.Thread(
+                    target=_worker_fila_comparativa_sites,
+                    daemon=True,
+                    name="comparativa-sites-worker",
+                ).start()
+
+    def _enfileirar_comparativa_sites(user_id: str, sites_snapshot: list, atividade_id: str, plano_usuario: str = "pro"):
+        if not atividade_id:
+            raise RuntimeError("Não foi possível registrar a solicitação na fila de atividades.")
+        with _runtime_comp.lock:
+            _aid_key = str(atividade_id)
+            if _aid_key in _runtime_comp.ids_enfileirados:
+                return
+            _runtime_comp.ids_enfileirados.add(_aid_key)
+            _runtime_comp.fila.put((user_id, copy.deepcopy(sites_snapshot), atividade_id, plano_usuario))
+            if not _runtime_comp.worker_ativo:
+                _runtime_comp.worker_ativo = True
+                threading.Thread(
+                    target=_worker_fila_comparativa_sites,
+                    daemon=True,
+                    name="comparativa-sites-worker",
+                ).start()
+
+    # Recupera solicitações que ficaram pendentes se houve rerun/reinício do app.
+    try:
+        _pendentes_comp = (
+            supabase.table("atividades")
+            .select("id,detalhes")
+            .eq("user_id", st.session_state.user.id)
+            .eq("tipo", "analise_comparativa_sites")
+            .in_("status", ["pendente", "em_andamento"])
+            .order("criado_em", desc=False)
+            .limit(20)
+            .execute()
+        )
+        for _atividade_pendente in (_pendentes_comp.data or []):
+            _det_pendente = _atividade_pendente.get("detalhes") or {}
+            _sites_pendentes = _det_pendente.get("sites_snapshot") or []
+            _aid_pendente = _atividade_pendente.get("id")
+            if _sites_pendentes and _aid_pendente:
+                # Um em_andamento sem worker local é órfão de um processo reiniciado.
+                with _runtime_comp.lock:
+                    _ja_esta_na_fila = str(_aid_pendente) in _runtime_comp.ids_enfileirados
+                if not _ja_esta_na_fila and _atividade_pendente.get("status") == "em_andamento":
+                    atualizar_atividade(_aid_pendente, "na_fila", {
+                        "status_visual": "na_fila",
+                        "etapa": "recuperada_apos_reinicio",
+                        "mensagem": "Solicitação recuperada após reinício. Aguardando processamento...",
+                        "sites_snapshot": _sites_pendentes,
+                        "tipo_relatorio": "geral",
+                    })
+                _enfileirar_comparativa_sites(
+                    st.session_state.user.id,
+                    _sites_pendentes,
+                    _aid_pendente,
+                    st.session_state.get("plano_usuario", "pro"),
+                )
+    except Exception as _erro_recupera_fila:
+        print(f"[FILA-COMPARATIVA-SITES] recuperação da fila falhou: {_erro_recupera_fila!r}", flush=True)
+
+    if gerar_btn:
+        if not sites_disponiveis:
+            st.toast("Cadastre pelo menos um site antes de gerar a análise comparativa.", icon="⚠️")
+        else:
+            _sites_snapshot = copy.deepcopy(sites_disponiveis)
+            _id_ativ_comparativa = criar_atividade(
+                st.session_state.user.id,
+                "analise_comparativa_sites",
+                "Relatório comparativo de sites aguardando processamento",
+                detalhes={
+                    "status_visual": "na_fila",
+                    "etapa": "na_fila",
+                    "mensagem": "Solicitação registrada. Aguardando processamento...",
+                    "sites_snapshot": _sites_snapshot,
+                    "tipo_relatorio": "geral",
+                },
+                status="na_fila",
+            )
+            if _id_ativ_comparativa:
+                _enfileirar_comparativa_sites(
+                    st.session_state.user.id, _sites_snapshot, _id_ativ_comparativa,
+                    st.session_state.get("plano_usuario", "pro"),
+                )
+                st.session_state["_comparativa_atividade_id"] = str(_id_ativ_comparativa)
+                st.session_state["_comparativa_em_andamento"] = True
+                st.session_state.sites_main_tab = "analise"
+                st.session_state.sites_analise_subtab = "geral"
+                st.toast("Análise comparativa adicionada à fila. Ela será processada na sua vez.", icon="🕒")
+                st.rerun()
+            else:
+                st.error("Não foi possível registrar a análise comparativa. Tente novamente.")
+
+    if st.session_state.get("_comparativa_em_andamento"):
+        _atividade_id_atual = st.session_state.get("_comparativa_atividade_id")
+        _atividade_comp_atual = None
+        if _atividade_id_atual:
+            try:
+                _res_ativ_comp2 = (
+                    supabase.table("atividades")
+                    .select("id,status,detalhes")
+                    .eq("id", _atividade_id_atual)
+                    .eq("user_id", st.session_state.user.id)
+                    .limit(1)
+                    .execute()
+                )
+                if _res_ativ_comp2.data:
+                    _atividade_comp_atual = _res_ativ_comp2.data[0]
+            except Exception as _erro_status_comp:
+                print(f"[FILA-COMPARATIVA-SITES] consulta status falhou: {_erro_status_comp!r}", flush=True)
+
+        _status_comp_atual = (_atividade_comp_atual or {}).get("status")
+        _det_comp_atual = (_atividade_comp_atual or {}).get("detalhes") or {}
+        if _status_comp_atual == "concluido":
+            try:
+                _res_reload_comp = (
+                    supabase.table("ci_dados")
+                    .select("analises_salvas,relatorio_sites")
                     .eq("user_id", st.session_state.user.id)
                     .execute()
                 )
-                if res_reload.data:
-                    st.session_state.analises_salvas = res_reload.data[0].get("analises_salvas") or []
-                    st.session_state.relatorio_sites = res_reload.data[0].get("relatorio_sites") or {}
-            except Exception:
-                pass
+                if _res_reload_comp.data:
+                    st.session_state.analises_salvas = _res_reload_comp.data[0].get("analises_salvas") or []
+                    st.session_state.relatorio_sites = _res_reload_comp.data[0].get("relatorio_sites") or {}
+            except Exception as _erro_reload_comp:
+                print(f"[FILA-COMPARATIVA-SITES] recarga do relatório falhou: {_erro_reload_comp!r}", flush=True)
             st.session_state["_comparativa_em_andamento"] = False
             st.session_state.sites_main_tab = "analise"
+            st.session_state.sites_analise_subtab = "geral"
+            st.success("Relatório comparativo concluído. Abra a seção Relatórios Gerais.")
             st.rerun()
-        else:
-            st.info(
-                "🔵 Relatório comparativo rodando em background — a página já pode ser usada "
-                "normalmente. Acompanhe no sino de notificações; quando terminar, clique em "
-                "atualizar abaixo pra ver o relatório novo.",
-                icon="🔵",
+        elif _status_comp_atual == "erro":
+            st.session_state["_comparativa_em_andamento"] = False
+            st.error(
+                "A análise comparativa não foi concluída: "
+                + str(_det_comp_atual.get("motivo") or "erro não especificado")
             )
-            if st.button("🔄 Verificar se o relatório terminou", key="_btn_verificar_comparativa"):
+        else:
+            _status_visual_comp = _det_comp_atual.get("status_visual") or _status_comp_atual or "pendente"
+            if _status_visual_comp in ("na_fila", "pendente"):
+                st.info("🕒 Sua análise comparativa está pendente e aguardando a vez na fila.")
+            else:
+                st.info("🔵 Sua análise comparativa está em processamento. O relatório aparecerá em Relatórios Gerais quando terminar.")
+            if st.button("🔄 Atualizar status da análise", key="_btn_verificar_comparativa"):
                 st.rerun()
 
     main_tab = st.session_state.sites_main_tab

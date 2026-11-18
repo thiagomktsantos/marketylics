@@ -22635,7 +22635,8 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
             if gemini_model is None:
                 st.session_state[f"sites_analise_{idx_s}"] = "⚠️ Configure GEMINI_API_KEY nos secrets."
             else:
-                modal_site_placeholder = st.empty()
+                # A análise individual usa o mesmo padrão visual das demais atividades:
+                # registra o card no histórico e atualiza seu status, sem abrir modal.
                 _atividade_individual_id = criar_atividade(
                     st.session_state.user.id,
                     "analise_individual_site",
@@ -22646,75 +22647,24 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
                         "tipo_relatorio": "individual",
                         "empresa": s["nome"],
                         "url": s["url"],
-                        "mensagem": "Análise individual solicitada. Preparando conteúdo do site...",
+                        "mensagem": "Análise individual iniciada.",
                     },
                     status="em_andamento",
                 )
 
-                def _render_modal_site(fase: str, nome: str, pct: int, _ph=modal_site_placeholder):
-                    fases = {
-                        "lendo":     ("Acessando o site…",       "Lendo conteúdo da página…"),
-                        "enviando":  ("Enviando para o Gemini…", "Processando com IA…"),
-                        "gerando":   ("Gerando relatório…",      "Finalizando análise…"),
-                        "concluido": ("Análise concluída!",      "Redirecionando…"),
-                    }
-                    sub1, sub2 = fases.get(fase, ("Processando…", "Aguarde…"))
-                    is_done  = fase == "concluido"
-                    cor_pct  = "#22c55e" if is_done else "#3a9fd6"
-                    icone    = "✅" if is_done else "⏳"
-                    rodape   = (
-                        '<div style="text-align:center;margin-top:18px;font-size:13px;color:#64748b;">'
-                        'Fechando automaticamente…</div>'
-                    ) if is_done else ""
-                    nome_safe = (nome or "").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("'", "&#39;").replace('"', "&quot;")
-                    html_modal = f"""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-.overlay {{ position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999; display:flex; align-items:center; justify-content:center; padding:24px; }}
-.card {{ background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,480px); box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f; }}
-.spin-wrap {{ width:44px; height:44px; border-radius:50%; border:3px solid #1e3a5f; border-top-color:#3a9fd6; flex-shrink:0; animation: spin 0.85s linear infinite; }}
-@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
-</style>
-<div class="overlay"><div class="card">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
-        {'<div style="width:44px;height:44px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">✅</div>' if is_done else '<div class="spin-wrap"></div>'}
-        <div style="flex:1;min-width:0;">
-            <div style="font-size:17px;font-weight:800;color:#f1f5f9;">{sub1}</div>
-            <div style="font-size:13px;color:#94a3b8;margin-top:3px;">{sub2}</div>
-        </div>
-        <div style="font-size:22px;font-weight:900;color:{cor_pct};flex-shrink:0;">{pct}%</div>
-    </div>
-    <div style="background:#1e3a5f;border-radius:8px;height:8px;margin-bottom:20px;overflow:hidden;">
-        <div style="background:linear-gradient(90deg,#3a9fd6,#22c55e);height:100%;width:{pct}%;border-radius:8px;"></div>
-    </div>
-    <div style="background:#071929;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #1a3a5a;margin-bottom:4px;">
-        <div>
-            <div style="font-size:14px;font-weight:700;color:#e2e8f0;">{nome_safe}</div>
-            <div style="font-size:12px;color:#4a7099;margin-top:3px;">Analisando site com IA…</div>
-        </div>
-        <div style="font-size:18px;">{icone}</div>
-    </div>
-    {rodape}
-</div></div>
-<script>
-(function() {{
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {{
-        try {{ if (iframes[i].contentWindow === window) {{
-            iframes[i].style.position = 'fixed'; iframes[i].style.inset = '0';
-            iframes[i].style.width = '100vw'; iframes[i].style.height = '100vh';
-            iframes[i].style.zIndex = '999998'; iframes[i].style.border = 'none';
-            break;
-        }} }} catch(e) {{}}
-    }}
-}})();
-</script>"""
-                    with _ph:
-                        components.html(html_modal, height=600, scrolling=False)
+                def _atualizar_progresso_individual(etapa, mensagem):
+                    atualizar_atividade(_atividade_individual_id, "em_andamento", {
+                        "status_visual": "em_andamento",
+                        "etapa": etapa,
+                        "tipo_relatorio": "individual",
+                        "empresa": s["nome"],
+                        "url": s["url"],
+                        "mensagem": mensagem,
+                    })
 
-                _render_modal_site("lendo", s["nome"], 15)
+                _atualizar_progresso_individual(
+                    "extraindo_site", "Acessando o site e lendo o conteúdo..."
+                )
                 try:
                     conteudo_site = extrair_conteudo_site(s["url"])
                 except Exception as e:
@@ -22725,11 +22675,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                         "motivo": str(e),
                         "mensagem": "Não foi possível acessar o site para iniciar a análise individual.",
                     })
-                    modal_site_placeholder.empty()
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()
 
-                _render_modal_site("enviando", s["nome"], 50)
+                _atualizar_progresso_individual(
+                    "enviando_ia", "Conteúdo extraído. Enviando para a inteligência artificial..."
+                )
                 try:
                     prompt_individual = f"""
 Você é um especialista em marketing digital e posicionamento de marca.
@@ -22771,7 +22722,9 @@ Liste os principais serviços ou produtos apresentados no site.
 
 Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
 """
-                    _render_modal_site("gerando", s["nome"], 80)
+                    _atualizar_progresso_individual(
+                        "gerando_relatorio", "A inteligência artificial está gerando o relatório..."
+                    )
                     resp = gerar_com_ia(prompt_individual)
                     if isinstance(resp, _RespostaBloqueada) or str(getattr(resp, "text", "")).lstrip().startswith("⏳"):
                         raise RuntimeError(str(getattr(resp, "text", "Ação bloqueada por limite de uso.")))
@@ -22804,10 +22757,6 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         "mensagem": "Análise individual concluída e salva em Individuais.",
                     })
 
-                    _render_modal_site("concluido", s["nome"], 100)
-                    import time as _time; _time.sleep(1.5)
-                    modal_site_placeholder.empty()
-
                     st.session_state.sites_main_tab = "analise"
                     st.rerun()
 
@@ -22819,7 +22768,6 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         "motivo": str(e),
                         "mensagem": "Não foi possível concluir a análise individual.",
                     })
-                    modal_site_placeholder.empty()
                     st.session_state[f"sites_analise_{idx_s}"] = f"Erro: {e}"
                     st.rerun()
 
@@ -23106,7 +23054,6 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                 st.session_state["_comparativa_em_andamento"] = True
                 st.session_state.sites_main_tab = "analise"
                 st.session_state.sites_analise_subtab = "geral"
-                st.toast("Análise comparativa adicionada à fila. Ela será processada na sua vez.", icon="🕒")
                 st.rerun()
             else:
                 st.error("Não foi possível registrar a análise comparativa. Tente novamente.")

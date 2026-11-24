@@ -29423,12 +29423,13 @@ setTimeout(syncHeightTabs, 800);
             reversed_first_ads = lista_rev_ads[0] if lista_rev_ads else None
             reversed_last_ads  = lista_rev_ads[-1] if lista_rev_ads else None
  
+            import re as _re_titulo_ads
             cards_ads_html = ""
             for a in lista_rev_ads:
                 idx_real = analises_ads.index(a)
                 icon_a   = icons_ads_map.get(a.get("tipo",""), ICON_SVG_ADS["clipboard"])
                 titulo_raw_a = str(a.get("titulo", "—"))
-                _meta_titulo_a = _re.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
+                _meta_titulo_a = _re_titulo_ads.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
                 titulo_principal_a = (_meta_titulo_a.group(1) if _meta_titulo_a else titulo_raw_a).strip()
                 data_analise_a = (_meta_titulo_a.group(2) if _meta_titulo_a else "").strip()
                 titulo_a = titulo_principal_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
@@ -36880,12 +36881,13 @@ setTimeout(syncHeightTabs, 800);
             reversed_first_ads = lista_rev_ads[0] if lista_rev_ads else None
             reversed_last_ads  = lista_rev_ads[-1] if lista_rev_ads else None
  
+            import re as _re_titulo_gads
             cards_gads_html = ""
             for a in lista_rev_ads:
                 idx_real = analises_ads.index(a)
                 icon_a   = icons_gads_map.get(a.get("tipo",""), ICON_SVG_ADS["clipboard"])
                 titulo_raw_a = str(a.get("titulo", "—"))
-                _meta_titulo_a = _re.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
+                _meta_titulo_a = _re_titulo_gads.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
                 titulo_principal_a = (_meta_titulo_a.group(1) if _meta_titulo_a else titulo_raw_a).strip()
                 data_analise_a = (_meta_titulo_a.group(2) if _meta_titulo_a else "").strip()
                 titulo_a = titulo_principal_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")

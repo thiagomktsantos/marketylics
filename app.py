@@ -13108,6 +13108,22 @@ section.main .block-container {
     background: #f0f4f8 !important;
 }
 
+/* Mantem os cabecalhos das paginas na mesma linha superior de Redes Sociais.
+   O recuo compensa os elementos tecnicos ocultos criados antes do titulo. */
+.st-key-page_header_cad,
+.st-key-page_header_geral,
+.st-key-page_header_sites {
+    margin-top: clamp(-80px, -5vw, -64px) !important;
+}
+
+@media (max-width: 768px) {
+    .st-key-page_header_cad,
+    .st-key-page_header_geral,
+    .st-key-page_header_sites {
+        margin-top: -48px !important;
+    }
+}
+
 [data-testid="stAppViewContainer"] { background: #f0f4f8 !important; }
 section.main { background: #f0f4f8 !important; }
 
@@ -19376,7 +19392,8 @@ elif st.session_state.pagina == "cad":
     </style>
     """, unsafe_allow_html=True)
  
-    top1, top2 = st.columns([7, 3])
+    _page_header_cad = st.container(key="page_header_cad")
+    top1, top2 = _page_header_cad.columns([7, 3])
     with top1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -20136,7 +20153,8 @@ elif st.session_state.pagina == "geral":
     )
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
-    h1, h2 = st.columns([5, 5])
+    _page_header_geral = st.container(key="page_header_geral")
+    h1, h2 = _page_header_geral.columns([5, 5])
 
     with h1:
         components.html("""
@@ -22564,7 +22582,8 @@ elif st.session_state.pagina == "sites":
         "Nunca gerada",
     )
 
-    h1, h2 = st.columns([5, 5])
+    _page_header_sites = st.container(key="page_header_sites")
+    h1, h2 = _page_header_sites.columns([5, 5])
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">

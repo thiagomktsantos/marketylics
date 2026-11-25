@@ -21257,7 +21257,7 @@ function setHeightGeral(isOpen) {{
                         f'<div class="tip">{_tip_crit_ring}</div></div>'
                     )
                     _area_rings_html += (
-                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;width:92px;flex-shrink:0;">'
+                        '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;width:76px;flex-shrink:0;">'
                         + _svg_com_tip +
                         '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
                         f'<div style="font-size:11px;font-weight:900;color:{_cor_render};line-height:1.15;letter-spacing:.15px;">{_AREA_LABELS_CURTOS.get(_lbl, _lbl.upper())}</div>'
@@ -21646,7 +21646,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-grid {{ display:grid; grid-template-columns:250px 300px minmax(300px,1fr); gap:18px; align-items:stretch; }}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-performance {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
-.executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:2px; justify-content:center; flex:1; align-items:flex-start; }}
+.executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:0; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
     .executive-grid {{ grid-template-columns:minmax(210px,230px) 290px minmax(280px,1fr); gap:14px; }}

@@ -20234,7 +20234,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 }}
 .dd-icon-geral svg {{ width:18px; height:18px; }}
 .dd-icon-geral img {{ width:100%; height:100%; object-fit:cover; border-radius:9px; }}
-.dd-info-geral {{ min-width:0; margin-left:10px; margin-right:10px; flex:1; }}
+.dd-info-geral {{ min-width:0; margin-left:6px; margin-right:6px; flex:1; }}
 .dd-nome-geral {{
     font-size:13px; font-weight:700; color:#1a2e4a;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;
@@ -20242,7 +20242,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle-geral {{ font-size:12px; color:#9ca3af; }}
 .dd-badge-minha-geral, .dd-badge-conc-geral {{
     flex-shrink:0; display:inline-flex; align-items:center;
-    gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
 .dd-badge-minha-geral {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
@@ -20261,7 +20261,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-list-geral.open {{ display:block; }}
 .dd-item-geral {{
     background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
-    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:6px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item-geral:last-child {{ margin-bottom:0; }}
@@ -21522,7 +21522,7 @@ function setHeightGeral(isOpen) {{
                         )
                         _titulo_op, _ganho_op, _como_op = _oport_textos_ativos.get(_falt_raw, _fallback_op)
                         _ganho_tip_html = (
-                            f'<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:6px;">'
+                            f'<div style="font-size:10px;color:#22c55e;font-weight:800;margin-bottom:7px;">'
                             f'Impacto estimado: {_ganho_op}</div>'
                             if _ganho_op else ""
                         )
@@ -21535,7 +21535,7 @@ function setHeightGeral(isOpen) {{
                             f'<div class="oport-tip-wrap oport-selo" style="width:{_selo_width_px}px;background:{_cor_op};">'
                             f'<div class="oport-selo-icone">{_lampada_selo_svg}</div>'
                             f'<div class="oport-selo-texto"><span>{_badge_txt}</span><strong>{_badge_pct}</strong></div>'
-                            f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}{_ganho_tip_html}</div>'
+                            f'<div class="tip">{_ganho_tip_html}<span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}</div>'
                             f'</div>'
                             f'<div class="oport-copy"><div class="oport-title">{_titulo_op}</div></div></div>'
                         )
@@ -22069,7 +22069,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=350, scrolling=False)
+                components.html(resumo_executivo_html, height=380, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 
@@ -22390,7 +22390,9 @@ function syncH() {{
             'display:none', 'position:absolute', 'background:#1a2e4a', 'color:#fff',
             'border-radius:8px', 'padding:10px 14px', 'font-size:11px', 'line-height:1.8',
             'max-width:230px', 'min-width:170px', 'text-align:left', 'z-index:999999',
-            'box-shadow:0 6px 20px rgba(0,0,0,0.28)', 'pointer-events:none',
+            'border:1px solid rgba(255,255,255,0.18)',
+            'box-shadow:0 12px 28px rgba(8,25,48,0.38),0 3px 8px rgba(8,25,48,0.22)',
+            'pointer-events:none',
             "font-family:'DM Sans',sans-serif"
         ].join(';');
         var seta = doc.createElement('div');
@@ -26167,12 +26169,12 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '</svg></div>'
             )
             _selected_html = f"""
-            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                 {_av_html_h}
                 <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
+                    <div style="font-size:12px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
                 </div>
-                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
+                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
             </div>"""
         elif _comp_active:
             _selected_html = """
@@ -26284,7 +26286,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-list.open {{ display:block; }}
 .dd-item {{
     background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
-    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:6px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
@@ -26294,10 +26296,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item:last-child.selected {{ background:#0e2a47; border:2px solid #0e2a47; }}
 .dd-icon {{ width:30px; height:30px; border-radius:9px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#0e2a47; }}
 .dd-info {{ flex:1; min-width:0; }}
-.dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
+.dd-nome {{ font-size:12px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
-.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }}
+.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
  
@@ -26722,7 +26724,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <span class="nav-title">Empresas configuradas</span>
             <span class="nav-sub">Gerencie empresas cadastradas</span>
         </div>
-        {_badge_pendencias_config}
     </div>
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
         <div class="nav-icon">
@@ -28151,7 +28152,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -41px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -33301,12 +33302,12 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '</svg></div>'
             )
             _selected_html = f"""
-            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
                 {_av_html_h}
                 <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
+                    <div style="font-size:12px;font-weight:700;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{_emp_ativa_nome}</div>
                 </div>
-                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
+                <span id="dd-trigger-badge" style="display:none;align-items:center;gap:4px;background:{_badge_bg_h};color:{_badge_col_h};border:1px solid {_badge_brd_h};padding:2px 8px;border-radius:20px;font-size:9px;font-weight:700;white-space:nowrap;flex-shrink:0">{_badge_txt_h}</span>
             </div>"""
         elif _comp_active:
             _selected_html = """
@@ -33427,7 +33428,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-list.open {{ display:block; }}
 .dd-item {{
     background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
-    padding:10px 12px; display:flex; align-items:center; gap:10px;
+    padding:10px 12px; display:flex; align-items:center; gap:6px;
     cursor:pointer; transition:all 0.15s; margin-bottom:6px;
 }}
 .dd-item:last-child {{ margin-bottom:0; background:#0e2a47; border-color:#0e2a47; }}
@@ -33444,10 +33445,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item.no-data .dd-nome {{ color:#9ca3af; }}
 .dd-icon {{ width:30px; height:30px; border-radius:9px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#0e2a47; }}
 .dd-info {{ flex:1; min-width:0; }}
-.dd-nome {{ font-size:13px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
+.dd-nome {{ font-size:12px; font-weight:700; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }}
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
-.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }}
+.dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
  
@@ -33930,7 +33931,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
             <span class="nav-title">Empresas configuradas</span>
             <span class="nav-sub">Gerencie empresas cadastradas</span>
         </div>
-        {_badge_pendencias_config}
     </div>
     <div class="nav-item {'active' if main_tab == 'analise' else ''}" onclick="triggerTab('tab_ia')">
         <div class="nav-icon">
@@ -35346,7 +35346,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -41px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;

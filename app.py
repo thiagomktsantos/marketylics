@@ -21643,13 +21643,13 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 .executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:20px; align-items:stretch; }}
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
-.executive-grid {{ display:grid; grid-template-columns:250px 300px minmax(300px,1fr); gap:18px; align-items:stretch; }}
+.executive-grid {{ display:grid; grid-template-columns:250px 260px minmax(340px,1fr); gap:18px; align-items:stretch; }}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-performance {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:0; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
-    .executive-grid {{ grid-template-columns:minmax(210px,230px) 290px minmax(280px,1fr); gap:14px; }}
+    .executive-grid {{ grid-template-columns:minmax(210px,230px) 260px minmax(310px,1fr); gap:14px; }}
 }}
 @media (max-width:1050px) {{
     .executive-layout {{ flex-direction:column; }}

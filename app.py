@@ -21646,7 +21646,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-grid {{ display:grid; grid-template-columns:250px minmax(330px,1fr) minmax(280px,.9fr); gap:18px; align-items:stretch; }}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-performance {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
-.executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:6px; justify-content:space-between; flex:1; align-items:flex-start; }}
+.executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:2px; justify-content:center; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
     .executive-grid {{ grid-template-columns:minmax(210px,230px) minmax(320px,1fr) minmax(260px,.9fr); gap:14px; }}
@@ -21666,7 +21666,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     .executive-score {{ border-right:0; border-bottom:1px solid #eef2f7; padding:0 0 16px; }}
     .executive-performance {{ border-bottom:1px solid #eef2f7; padding:0 0 16px; }}
     .executive-actions {{ grid-column:auto; border-top:0; padding-top:0; }}
-    .executive-rings {{ flex-wrap:wrap; justify-content:space-around; }}
+    .executive-rings {{ flex-wrap:wrap; gap:8px; justify-content:center; }}
 }}
 </style>
 </head><body>
@@ -21847,9 +21847,29 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
     }});
 }})();
 </script>
+<script>
+(function() {{
+    function ajustarAlturaResumo() {{
+        var bloco = document.querySelector('.executive-layout');
+        if (!bloco) return;
+        var altura = Math.ceil(bloco.getBoundingClientRect().bottom + 4);
+        window.parent.postMessage({{
+            isStreamlitMessage: true,
+            type: 'streamlit:setFrameHeight',
+            height: altura
+        }}, '*');
+    }}
+    window.addEventListener('load', ajustarAlturaResumo);
+    window.addEventListener('resize', ajustarAlturaResumo);
+    if (window.ResizeObserver) {{
+        new ResizeObserver(ajustarAlturaResumo).observe(document.querySelector('.executive-layout'));
+    }}
+    requestAnimationFrame(ajustarAlturaResumo);
+}})();
+</script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=620, scrolling=False)
+                components.html(resumo_executivo_html, height=420, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

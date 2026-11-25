@@ -29729,16 +29729,17 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    display:block;
-    min-height:148px; padding:18px 20px;
+    display:grid; grid-template-columns:minmax(155px,22%) minmax(0,1fr);
+    min-height:158px; padding:0;
 }
 .ebook-card-head {
-    display:flex; align-items:center; gap:14px; min-height:58px;
-    margin:-18px -20px 16px; background:#f3f7fb; border-bottom:1px solid #e5edf5;
-    border-radius:11px 11px 0 0;
+    display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    gap:12px; min-height:100%; margin:0; padding:22px 20px;
+    background:#f3f7fb; border-right:1px solid #e5edf5; border-bottom:0;
+    border-radius:11px 0 0 11px;
 }
-.ebook-card-icon { align-self:stretch; width:62px; height:auto; border-radius:11px 0 0 0; }
-.ebook-card-icon svg { width:27px; height:27px; stroke-width:2; }
+.ebook-card-icon { align-self:auto; width:54px; height:54px; border-radius:12px; }
+.ebook-card-icon svg { width:28px; height:28px; stroke-width:2; }
 .ebook-card-kicker {
     display:inline-flex; align-items:center; width:max-content;
     color:#2563eb; background:transparent; border-radius:0;
@@ -29749,6 +29750,7 @@ body { padding-bottom:8px; }
 .ebook-card.mix .ebook-card-kicker { color:#0e7490; background:transparent; }
 .ebook-card.value .ebook-card-kicker { color:#b45309; background:transparent; }
 .ebook-card.opportunity .ebook-card-kicker { color:#c2410c; background:transparent; }
+.ebook-card-copy { display:flex; flex-direction:column; justify-content:center; padding:22px 24px; min-width:0; }
 .ebook-card-title { font-size:clamp(13px,.7vw,18px); line-height:1.32; margin-bottom:8px; }
 .ebook-card-text { font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
 .analysis-kpi { min-height:74px; padding:15px 18px; gap:12px; }
@@ -29763,6 +29765,8 @@ body { padding-bottom:8px; }
     .sec-content ul { grid-template-columns:1fr; }
     .ebook-grid { grid-template-columns:1fr; }
     .ebook-card.opportunity { grid-column:auto; }
+    .ebook-card { grid-template-columns:1fr; }
+    .ebook-card-head { min-height:auto; border-right:0; border-bottom:1px solid #e5edf5; border-radius:11px 11px 0 0; }
     .ebook-grid { grid-template-columns:1fr; }
     .ebook-card.opportunity { grid-column:auto; }
     .card-status { display:none; }
@@ -29946,7 +29950,7 @@ function enhanceAdsReport(root) {{
             card.className = 'ebook-card ' + type;
             card.innerHTML = '<div class="ebook-card-head"><div class="ebook-card-icon">' + reportIcon(icon) + '</div>'
                 + '<div class="ebook-card-kicker">' + kicker + '</div></div>'
-                + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div>';
+                + '<div class="ebook-card-copy"><div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
             card.querySelector('.ebook-card-title').textContent = title;
             card.querySelector('.ebook-card-text').textContent = body;
             grid.appendChild(card);
@@ -37359,18 +37363,19 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    position:relative; display:block;
-    min-height:148px; padding:18px 20px; overflow:hidden;
+    position:relative; display:grid; grid-template-columns:minmax(155px,22%) minmax(0,1fr);
+    min-height:158px; padding:0; overflow:hidden;
     background:#fff; border:1px solid #dbe3ec; border-radius:12px;
 }
 .ebook-card::after { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#2f80ed; }
 .ebook-card-head {
-    display:flex; align-items:center; gap:14px; min-height:58px;
-    margin:-18px -20px 16px; background:#f3f7fb; border-bottom:1px solid #e5edf5;
-    border-radius:11px 11px 0 0;
+    display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    gap:12px; min-height:100%; margin:0; padding:22px 20px;
+    background:#f3f7fb; border-right:1px solid #e5edf5; border-bottom:0;
+    border-radius:11px 0 0 11px;
 }
-.ebook-card-icon { align-self:stretch; width:62px; height:auto; border-radius:11px 0 0 0; display:flex; align-items:center; justify-content:center; color:#2563eb; background:#dbeafe; }
-.ebook-card-icon svg { width:27px; height:27px; display:block; stroke-width:2; }
+.ebook-card-icon { align-self:auto; width:54px; height:54px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#2563eb; background:#dbeafe; }
+.ebook-card-icon svg { width:28px; height:28px; display:block; stroke-width:2; }
 .ebook-card-kicker {
     display:inline-flex; align-items:center; width:max-content;
     color:#2563eb; background:transparent; border-radius:0;
@@ -37382,6 +37387,7 @@ body { padding-bottom:8px; }
 .ebook-card.mix .ebook-card-kicker { color:#0e7490; background:transparent; }
 .ebook-card.value .ebook-card-kicker { color:#b45309; background:transparent; }
 .ebook-card.opportunity .ebook-card-kicker { color:#c2410c; background:transparent; }
+.ebook-card-copy { display:flex; flex-direction:column; justify-content:center; padding:22px 24px; min-width:0; }
 .ebook-card-title { color:#0f2742; font-size:clamp(13px,.7vw,18px); line-height:1.32; font-weight:800; margin-bottom:8px; }
 .ebook-card-text { color:#475569; font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
 .ebook-card.video::after { background:#8b5cf6; }
@@ -37414,6 +37420,8 @@ body { padding-bottom:8px; }
     .sec-content ul { grid-template-columns:1fr; }
     .ebook-grid { grid-template-columns:1fr; }
     .ebook-card.opportunity { grid-column:auto; }
+    .ebook-card { grid-template-columns:1fr; }
+    .ebook-card-head { min-height:auto; border-right:0; border-bottom:1px solid #e5edf5; border-radius:11px 11px 0 0; }
     .card-status { display:none; }
 }
  
@@ -37582,7 +37590,7 @@ function enhanceAdsReport(root) {{
             card.className = 'ebook-card ' + type;
             card.innerHTML = '<div class="ebook-card-head"><div class="ebook-card-icon">' + reportIcon(icon) + '</div>'
                 + '<div class="ebook-card-kicker">' + kicker + '</div></div>'
-                + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div>';
+                + '<div class="ebook-card-copy"><div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
             card.querySelector('.ebook-card-title').textContent = title;
             card.querySelector('.ebook-card-text').textContent = body;
             grid.appendChild(card);

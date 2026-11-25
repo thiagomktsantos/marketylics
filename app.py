@@ -21793,14 +21793,14 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }}
 .oport-tip-wrap {{ position:relative; display:inline-flex; align-items:center; cursor:default; }}
 .oport-tip-wrap .tip {{
-    display:none; position:absolute; bottom:24px; right:-6px; transform:none;
+    display:none; position:absolute; top:44px; right:-6px; transform:none;
     background:#1a2e4a; color:#fff; border-radius:8px; padding:10px 12px; font-size:11px;
     line-height:1.7; width:210px; z-index:9999; white-space:normal; text-align:left;
     box-shadow:0 4px 16px rgba(0,0,0,0.25); pointer-events:none; font-family:'DM Sans',sans-serif;
 }}
 .oport-tip-wrap .tip::after {{
-    content:''; position:absolute; top:100%; right:10px; transform:none;
-    border:5px solid transparent; border-top-color:#1a2e4a;
+    content:''; position:absolute; bottom:100%; right:10px; transform:none;
+    border:5px solid transparent; border-bottom-color:#1a2e4a;
 }}
 .oport-tip-wrap:hover .tip {{ display:block; }}
 .oport-selo {{
@@ -21828,7 +21828,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
-.executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:20px; align-items:stretch; }}
+.executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:8px; align-items:stretch; }}
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
 .executive-grid {{
     display:grid;

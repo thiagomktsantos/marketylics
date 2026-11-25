@@ -19714,26 +19714,23 @@ body {{ padding-bottom: 8px; }}
 """, height=est_height, scrolling=False)
 
         for i, c in enumerate(concorrentes):
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("Editar Concorrente", key=f"editar_{i}", width="stretch"):
-                    st.session_state.editando_concorrente = i
-                    st.session_state.mostrar_form_concorrente = False
-                    st.rerun()
-            with b2:
-                if st.button("Remover Concorrente", key=f"remove_{i}", width="stretch"):
-                    nome_removido = st.session_state.dados["concorrentes"][i].get("nome", "")
-                    st.session_state.dados["concorrentes"].pop(i)
-                    if nome_removido and nome_removido in st.session_state.get("ads_cache", {}):
-                        del st.session_state.ads_cache[nome_removido]
-                        salvar_cache_ads(st.session_state.ads_cache)
-                    salvar_empresa_e_concorrentes()
-                    st.rerun()
+            if st.button("Editar Concorrente", key=f"editar_{i}", width="stretch"):
+                st.session_state.editando_concorrente = i
+                st.session_state.mostrar_form_concorrente = False
+                st.rerun()
+            if st.button("Remover Concorrente", key=f"remove_{i}", width="stretch"):
+                nome_removido = st.session_state.dados["concorrentes"][i].get("nome", "")
+                st.session_state.dados["concorrentes"].pop(i)
+                if nome_removido and nome_removido in st.session_state.get("ads_cache", {}):
+                    del st.session_state.ads_cache[nome_removido]
+                    salvar_cache_ads(st.session_state.ads_cache)
+                salvar_empresa_e_concorrentes()
+                st.rerun()
 
         st.markdown("""
         <div style='background:#e7fbff;border:1px solid #6fd1f3;border-radius:12px;
                     padding:14px 20px;display:flex;align-items:center;gap:16px;
-                    margin-top:-38px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
+                    margin-top:12px;box-shadow:0 1px 3px rgba(0,0,0,0.04)'>
             <div style='width:42px;height:42px;border-radius:10px;background:#007dbb;
                         display:flex;align-items:center;justify-content:center;flex-shrink:0'>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -21512,7 +21509,7 @@ function setHeightGeral(isOpen) {{
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
-  <div style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
+  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
     <div>
       <div style="display:flex;align-items:center;gap:6px;background:#183f62;margin:0 -20px 17px;padding:14px 20px;">
         <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#ffffff;line-height:1.3;">Classificação do concorrente</div>
@@ -21530,7 +21527,7 @@ function setHeightGeral(isOpen) {{
 """
                 else:
                     _painel_direita_html = f"""
-  <div style="background:#102f4e;border:none;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);">
+  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);">
     <div>
       <div style="display:flex;align-items:center;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#ffffff;">
@@ -21620,16 +21617,41 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
+.executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:20px; align-items:stretch; }}
+.executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
+.executive-grid {{ display:grid; grid-template-columns:auto minmax(230px,1.1fr) 1.05fr; gap:18px; align-items:stretch; }}
+.executive-score {{ display:flex; flex-direction:column; width:270px; flex-shrink:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
+.executive-performance {{ display:flex; flex-direction:column; border-right:1px solid #f3f4f6; padding-right:12px; min-width:0; }}
+.executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:6px; justify-content:space-between; flex:1; align-items:flex-start; }}
+.executive-actions {{ min-width:0; }}
+@media (max-width:1450px) {{
+    .executive-grid {{ grid-template-columns:minmax(220px,250px) minmax(360px,1fr); }}
+    .executive-score {{ width:auto; }}
+    .executive-performance {{ border-right:0; padding-right:0; }}
+    .executive-actions {{ grid-column:1 / -1; border-top:1px solid #eef2f7; padding-top:14px; }}
+}}
+@media (max-width:1050px) {{
+    .executive-layout {{ flex-direction:column; }}
+    .executive-side {{ width:100% !important; min-height:210px !important; }}
+}}
+@media (max-width:760px) {{
+    .executive-layout {{ gap:12px; margin-top:10px; }}
+    .executive-grid {{ grid-template-columns:1fr; gap:16px; }}
+    .executive-score {{ border-right:0; border-bottom:1px solid #eef2f7; padding:0 0 16px; }}
+    .executive-performance {{ border-bottom:1px solid #eef2f7; padding:0 0 16px; }}
+    .executive-actions {{ grid-column:auto; border-top:0; padding-top:0; }}
+    .executive-rings {{ flex-wrap:wrap; justify-content:space-around; }}
+}}
 </style>
 </head><body>
-<div style="display:flex;gap:16px;margin-top:16px;margin-bottom:20px;align-items:stretch;">
-  <div style="background:#fff;border:3px solid #173653;border-radius:16px;overflow:hidden;flex:1;min-width:0;box-shadow:0 4px 14px rgba(23,54,83,.08);">
+<div class="executive-layout">
+  <div class="executive-main">
     <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;background:linear-gradient(180deg,#f5f8fc 0%,#e9eff6 100%);border-bottom:1px solid #d7e0ea;">
       <div style="display:flex;align-items:center;gap:6px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#173653;">RESUMO EXECUTIVO</div>
     </div>
     <div style="padding:17px 20px 18px;">
-    <div style="display:grid;grid-template-columns:auto minmax(230px,1.1fr) 1.05fr;gap:18px;align-items:stretch;">
-      <div style="display:flex;flex-direction:column;width:270px;flex-shrink:0;border-right:1px solid #f3f4f6;padding-right:18px;">
+    <div class="executive-grid">
+      <div class="executive-score">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
@@ -21644,18 +21666,18 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         {_comparacao_html}
       </div>
-      <div style="display:flex;flex-direction:column;border-right:1px solid #f3f4f6;padding-right:12px;">
+      <div class="executive-performance">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
             <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de cada área: Redes Sociais, Site e Anúncios.</div>
           </div>
         </div>
-        <div style="display:flex;flex-direction:row;flex-wrap:nowrap;gap:6px;justify-content:space-between;flex:1;align-items:flex-start;">
+        <div class="executive-rings">
           {_area_rings_html}
         </div>
       </div>
-      <div>
+      <div class="executive-actions">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">{_oport_titulo_secao}</div>
           {_oport_count_badge_html}
@@ -21801,7 +21823,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=420, scrolling=False)
+                components.html(resumo_executivo_html, height=620, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 
@@ -21846,7 +21868,8 @@ body {{ padding-bottom:8px; }}
 .termo-count {{ font-size:9px; font-weight:700; opacity:0.55; margin-left:2px; }}
 .score-chip-ok {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#15803d; padding:2px 4px; white-space:nowrap; }}
 .score-check {{ border:1px solid #22c45f; border-radius:5px; background:#22c45e; width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }}
-@media (max-width:760px) {{ .cols-wrap {{ grid-template-columns:1fr; }} }}
+@media (max-width:1100px) {{ .cols-wrap {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+@media (max-width:720px) {{ .cols-wrap {{ grid-template-columns:1fr; }} .empresa-card {{ padding:0 4px; }} }}
 </style>
 </head>
 <body>

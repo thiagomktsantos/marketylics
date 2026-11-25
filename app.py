@@ -29882,6 +29882,7 @@ body { padding-bottom:8px; }
 <script>
 var RELS     = {relatorios_ads_json};
 var RELS_RAW = {relatorios_raw_json};
+var ACTIVE_TYPE = { _json_analises.dumps(subtab_ads_ativa, ensure_ascii=False) };
 
 function enhanceAdsReport(root) {{
     if (!root || root.dataset.enhanced === '1') return;
@@ -29901,6 +29902,14 @@ function enhanceAdsReport(root) {{
             mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
             captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
             compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
+            funnel:'<path d="M3 4h18l-7 8v6l-4 2v-8L3 4Z"/>',
+            shield:'<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/>',
+            message:'<path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-5A7 7 0 0 1 3 13V8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v7Z"/>',
+            palette:'<path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="9" cy="6.5" r=".8"/><circle cx="14" cy="6.5" r=".8"/>',
+            dollar:'<circle cx="12" cy="12" r="9"/><path d="M16 8.5c-.8-1-2-1.5-4-1.5-2.2 0-3.5 1-3.5 2.5S10 12 12 12s3.5 1 3.5 2.5S14.2 17 12 17c-2 0-3.2-.5-4-1.5M12 5v14"/>',
+            reach:'<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>',
+            alert:'<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5M12 17h.01"/>',
+            automation:'<path d="M4 7h11M4 17h11M18 4l3 3-3 3M18 14l3 3-3 3"/><circle cx="7" cy="7" r="2"/><circle cx="12" cy="17" r="2"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29923,6 +29932,14 @@ function enhanceAdsReport(root) {{
             mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
             captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
             compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
+            funnel:'<path d="M3 4h18l-7 8v6l-4 2v-8L3 4Z"/>',
+            shield:'<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/>',
+            message:'<path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-5A7 7 0 0 1 3 13V8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v7Z"/>',
+            palette:'<path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="9" cy="6.5" r=".8"/><circle cx="14" cy="6.5" r=".8"/>',
+            dollar:'<circle cx="12" cy="12" r="9"/><path d="M16 8.5c-.8-1-2-1.5-4-1.5-2.2 0-3.5 1-3.5 2.5S10 12 12 12s3.5 1 3.5 2.5S14.2 17 12 17c-2 0-3.2-.5-4-1.5M12 5v14"/>',
+            reach:'<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>',
+            alert:'<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5M12 17h.01"/>',
+            automation:'<path d="M4 7h11M4 17h11M18 4l3 3-3 3M18 14l3 3-3 3"/><circle cx="7" cy="7" r="2"/><circle cx="12" cy="17" r="2"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29982,25 +29999,65 @@ function enhanceAdsReport(root) {{
     }}
     root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
     root.querySelectorAll('.sec-content').forEach(function(section) {{
-        var items = Array.from(section.querySelectorAll('li'));
+        var allItems = Array.from(section.querySelectorAll('li'));
+        var items = ACTIVE_TYPE === 'estrategia'
+            ? allItems.filter(function(li) {{ return !li.parentElement.closest('li'); }})
+            : allItems;
         if (!items.length) return;
         var grid = document.createElement('div');
         grid.className = 'ebook-grid';
         var seen = new Set();
         items.forEach(function(li, index) {{
             var clone = li.cloneNode(true);
+            var nestedDetails = [];
+            if (ACTIVE_TYPE === 'estrategia') {{
+                Array.from(clone.querySelectorAll('li')).forEach(function(child) {{
+                    var childClone = child.cloneNode(true);
+                    childClone.querySelectorAll('ul,ol').forEach(function(n) {{ n.remove(); }});
+                    var childStrong = childClone.querySelector('strong');
+                    var childTitle = childStrong ? (childStrong.textContent || '').replace(/:\s*$/, '').trim() : '';
+                    if (childStrong) childStrong.remove();
+                    var childBody = (childClone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+                    if (childTitle || childBody) nestedDetails.push((childTitle ? childTitle + ': ' : '') + childBody);
+                }});
+            }}
             clone.querySelectorAll('ul,ol').forEach(function(nested) {{ nested.remove(); }});
             var strong = clone.querySelector('strong');
             var title = strong ? (strong.textContent || '').replace(/:\s*$/, '').trim() : ('Destaque ' + (index + 1));
             if (strong) strong.remove();
             var body = (clone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+            if (nestedDetails.length) body += (body ? ' • ' : '') + nestedDetails.join(' • ');
             if (!body && !title) return;
             var signature = (title + '|' + body).toLowerCase();
             if (seen.has(signature)) return;
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
-            if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
+            if (/segmenta[cç][aã]o por evento|hyper-targeting/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação de audiência'; }}
+            else if (/^solu[cç][aã]o de problema|identifica[cç][aã]o da dor/.test(title.toLowerCase())) {{ type='opportunity'; icon='target'; kicker='Dor do público'; }}
+            else if (/conscientiza[cç][aã]o e explica[cç][aã]o|educar o p[úu]blico/.test(lowered)) {{ type='mix'; icon='book'; kicker='Educação de mercado'; }}
+            else if (/funil de vendas|topo de funil|meio.*fundo de funil/.test(lowered)) {{ type='event'; icon='funnel'; kicker='Jornada de conversão'; }}
+            else if (/^canais?$/.test(title.toLowerCase())) {{ type='visual'; icon='megaphone'; kicker='Canais de mídia'; }}
+            else if (/proposta de solu[cç][aã]o clara/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
+            else if (/simplicidade e facilidade|benef[íi]cio principal/.test(lowered)) {{ type='value'; icon='spark'; kicker='Benefício principal'; }}
+            else if (/constru[cç][aã]o de confian[cç]a|prova social expl[íi]cita/.test(lowered)) {{ type='event'; icon='shield'; kicker='Confiança e segurança'; }}
+            else if (/chamada para a[cç][aã]o/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Conversão'; }}
+            else if (/uso consistente de emojis/.test(lowered)) {{ type='visual'; icon='palette'; kicker='Linguagem visual'; }}
+            else if (/varia[cç][õo]es no tom/.test(lowered)) {{ type='mix'; icon='message'; kicker='Tom de voz'; }}
+            else if (/^v[íi]deos?\s*\(/.test(title.toLowerCase())) {{ type='video'; icon='play'; kicker='Conteúdo em vídeo'; }}
+            else if (/^imagens?\s*\(/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Criativos estáticos'; }}
+            else if (/^carross[ée]is?\s*\(/.test(title.toLowerCase())) {{ type='mix'; icon='layers'; kicker='Formato carrossel'; }}
+            else if (/^din[aâ]micos?\s*\(/.test(title.toLowerCase())) {{ type='event'; icon='automation'; kicker='Mídia dinâmica'; }}
+            else if (/^investimento/.test(title.toLowerCase())) {{ type='value'; icon='dollar'; kicker='Investimento de mídia'; }}
+            else if (/^alcance/.test(title.toLowerCase())) {{ type='visual'; icon='reach'; kicker='Potencial de alcance'; }}
+            else if (/depend[êe]ncia de eventos|baixa temporada/.test(lowered)) {{ type='opportunity'; icon='alert'; kicker='Risco sazonal'; }}
+            else if (/escalabilidade da cria[cç][aã]o/.test(lowered)) {{ type='video'; icon='layers'; kicker='Escala de produção'; }}
+            else if (/otimiza[cç][aã]o de t[íi]tulos/.test(lowered)) {{ type='mix'; icon='message'; kicker='Otimização de copy'; }}
+            else if (/foco em problema.*aspira[cç][aã]o/.test(lowered)) {{ type='event'; icon='compass'; kicker='Equilíbrio de mensagem'; }}
+            else if (/dynamic product ads|an[úu]ncios din[aâ]micos/.test(lowered)) {{ type='event'; icon='automation'; kicker='Automação de mídia'; }}
+            else if (/conte[úu]do em carrossel/.test(lowered)) {{ type='mix'; icon='layers'; kicker='Educação e prova social'; }}
+            else if (/refor[cç]o da proposta de valor/.test(lowered)) {{ type='event'; icon='shield'; kicker='Posicionamento seguro'; }}
+            else if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/entrevistas?.*depoimentos|depoimentos reais/.test(title.toLowerCase())) {{ type='event'; icon='mic'; kicker='Voz do cliente'; }}
             else if (/^testemunhos?$/.test(title.toLowerCase())) {{ type='value'; icon='quote'; kicker='Prova social'; }}
@@ -37608,6 +37665,7 @@ body { padding-bottom:8px; }
 <script>
 var RELS     = {relatorios_gads_json};
 var RELS_RAW = {relatorios_raw_json};
+var ACTIVE_TYPE = { _json_analises.dumps(subtab_ads_ativa, ensure_ascii=False) };
 
 function reportIcon(name) {{
     var paths = {{
@@ -37624,6 +37682,14 @@ function reportIcon(name) {{
         mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
         captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
         compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
+        funnel:'<path d="M3 4h18l-7 8v6l-4 2v-8L3 4Z"/>',
+        shield:'<path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6l8-3Z"/><path d="m9 12 2 2 4-4"/>',
+        message:'<path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-5A7 7 0 0 1 3 13V8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v7Z"/>',
+        palette:'<path d="M12 3a9 9 0 1 0 0 18h1.5a2 2 0 0 0 0-4H12a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4Z"/><circle cx="7.5" cy="10" r=".8"/><circle cx="9" cy="6.5" r=".8"/><circle cx="14" cy="6.5" r=".8"/>',
+        dollar:'<circle cx="12" cy="12" r="9"/><path d="M16 8.5c-.8-1-2-1.5-4-1.5-2.2 0-3.5 1-3.5 2.5S10 12 12 12s3.5 1 3.5 2.5S14.2 17 12 17c-2 0-3.2-.5-4-1.5M12 5v14"/>',
+        reach:'<circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 0 0 13M18.5 5.5a9 9 0 0 1 0 13"/>',
+        alert:'<path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5M12 17h.01"/>',
+        automation:'<path d="M4 7h11M4 17h11M18 4l3 3-3 3M18 14l3 3-3 3"/><circle cx="7" cy="7" r="2"/><circle cx="12" cy="17" r="2"/>',
         calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
         star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -37687,25 +37753,65 @@ function enhanceAdsReport(root) {{
     }}
     root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
     root.querySelectorAll('.sec-content').forEach(function(section) {{
-        var items = Array.from(section.querySelectorAll('li'));
+        var allItems = Array.from(section.querySelectorAll('li'));
+        var items = ACTIVE_TYPE === 'estrategia'
+            ? allItems.filter(function(li) {{ return !li.parentElement.closest('li'); }})
+            : allItems;
         if (!items.length) return;
         var grid = document.createElement('div');
         grid.className = 'ebook-grid';
         var seen = new Set();
         items.forEach(function(li, index) {{
             var clone = li.cloneNode(true);
+            var nestedDetails = [];
+            if (ACTIVE_TYPE === 'estrategia') {{
+                Array.from(clone.querySelectorAll('li')).forEach(function(child) {{
+                    var childClone = child.cloneNode(true);
+                    childClone.querySelectorAll('ul,ol').forEach(function(n) {{ n.remove(); }});
+                    var childStrong = childClone.querySelector('strong');
+                    var childTitle = childStrong ? (childStrong.textContent || '').replace(/:\s*$/, '').trim() : '';
+                    if (childStrong) childStrong.remove();
+                    var childBody = (childClone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+                    if (childTitle || childBody) nestedDetails.push((childTitle ? childTitle + ': ' : '') + childBody);
+                }});
+            }}
             clone.querySelectorAll('ul,ol').forEach(function(nested) {{ nested.remove(); }});
             var strong = clone.querySelector('strong');
             var title = strong ? (strong.textContent || '').replace(/:\s*$/, '').trim() : ('Destaque ' + (index + 1));
             if (strong) strong.remove();
             var body = (clone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+            if (nestedDetails.length) body += (body ? ' • ' : '') + nestedDetails.join(' • ');
             if (!body && !title) return;
             var signature = (title + '|' + body).toLowerCase();
             if (seen.has(signature)) return;
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
-            if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
+            if (/segmenta[cç][aã]o por evento|hyper-targeting/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação de audiência'; }}
+            else if (/^solu[cç][aã]o de problema|identifica[cç][aã]o da dor/.test(title.toLowerCase())) {{ type='opportunity'; icon='target'; kicker='Dor do público'; }}
+            else if (/conscientiza[cç][aã]o e explica[cç][aã]o|educar o p[úu]blico/.test(lowered)) {{ type='mix'; icon='book'; kicker='Educação de mercado'; }}
+            else if (/funil de vendas|topo de funil|meio.*fundo de funil/.test(lowered)) {{ type='event'; icon='funnel'; kicker='Jornada de conversão'; }}
+            else if (/^canais?$/.test(title.toLowerCase())) {{ type='visual'; icon='megaphone'; kicker='Canais de mídia'; }}
+            else if (/proposta de solu[cç][aã]o clara/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
+            else if (/simplicidade e facilidade|benef[íi]cio principal/.test(lowered)) {{ type='value'; icon='spark'; kicker='Benefício principal'; }}
+            else if (/constru[cç][aã]o de confian[cç]a|prova social expl[íi]cita/.test(lowered)) {{ type='event'; icon='shield'; kicker='Confiança e segurança'; }}
+            else if (/chamada para a[cç][aã]o/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Conversão'; }}
+            else if (/uso consistente de emojis/.test(lowered)) {{ type='visual'; icon='palette'; kicker='Linguagem visual'; }}
+            else if (/varia[cç][õo]es no tom/.test(lowered)) {{ type='mix'; icon='message'; kicker='Tom de voz'; }}
+            else if (/^v[íi]deos?\s*\(/.test(title.toLowerCase())) {{ type='video'; icon='play'; kicker='Conteúdo em vídeo'; }}
+            else if (/^imagens?\s*\(/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Criativos estáticos'; }}
+            else if (/^carross[ée]is?\s*\(/.test(title.toLowerCase())) {{ type='mix'; icon='layers'; kicker='Formato carrossel'; }}
+            else if (/^din[aâ]micos?\s*\(/.test(title.toLowerCase())) {{ type='event'; icon='automation'; kicker='Mídia dinâmica'; }}
+            else if (/^investimento/.test(title.toLowerCase())) {{ type='value'; icon='dollar'; kicker='Investimento de mídia'; }}
+            else if (/^alcance/.test(title.toLowerCase())) {{ type='visual'; icon='reach'; kicker='Potencial de alcance'; }}
+            else if (/depend[êe]ncia de eventos|baixa temporada/.test(lowered)) {{ type='opportunity'; icon='alert'; kicker='Risco sazonal'; }}
+            else if (/escalabilidade da cria[cç][aã]o/.test(lowered)) {{ type='video'; icon='layers'; kicker='Escala de produção'; }}
+            else if (/otimiza[cç][aã]o de t[íi]tulos/.test(lowered)) {{ type='mix'; icon='message'; kicker='Otimização de copy'; }}
+            else if (/foco em problema.*aspira[cç][aã]o/.test(lowered)) {{ type='event'; icon='compass'; kicker='Equilíbrio de mensagem'; }}
+            else if (/dynamic product ads|an[úu]ncios din[aâ]micos/.test(lowered)) {{ type='event'; icon='automation'; kicker='Automação de mídia'; }}
+            else if (/conte[úu]do em carrossel/.test(lowered)) {{ type='mix'; icon='layers'; kicker='Educação e prova social'; }}
+            else if (/refor[cç]o da proposta de valor/.test(lowered)) {{ type='event'; icon='shield'; kicker='Posicionamento seguro'; }}
+            else if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/entrevistas?.*depoimentos|depoimentos reais/.test(title.toLowerCase())) {{ type='event'; icon='mic'; kicker='Voz do cliente'; }}
             else if (/^testemunhos?$/.test(title.toLowerCase())) {{ type='value'; icon='quote'; kicker='Prova social'; }}

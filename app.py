@@ -27502,7 +27502,7 @@ Amostra dos anúncios:
                             if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
                         ]
                         st.session_state.ads_analises_salvas.append({
-                            "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "titulo": f"Análise Estratégica — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "estrategia",
@@ -29435,6 +29435,8 @@ setTimeout(syncHeightTabs, 800);
                 titulo_raw_a = str(a.get("titulo", "—"))
                 _meta_titulo_a = _re_titulo_ads.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
                 titulo_principal_a = (_meta_titulo_a.group(1) if _meta_titulo_a else titulo_raw_a).strip()
+                if a.get("tipo") == "estrategia":
+                    titulo_principal_a = _re_titulo_ads.sub(r"^Estratégia\b", "Análise Estratégica", titulo_principal_a, flags=_re_titulo_ads.IGNORECASE)
                 data_analise_a = (_meta_titulo_a.group(2) if _meta_titulo_a else "").strip()
                 titulo_a = titulo_principal_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 data_a = data_analise_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
@@ -29774,6 +29776,10 @@ body { padding-bottom:8px; }
     border-bottom:1px dotted var(--card-accent);
 }
 .ebook-card-text { font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
+.ebook-card-subitems { display:grid; gap:10px; margin-top:4px; }
+.ebook-card-subitem { padding:9px 12px; border-left:3px solid var(--card-accent); background:#f8fafc; border-radius:0 8px 8px 0; }
+.ebook-card-subitem-title { display:block; margin-bottom:3px; color:#123252; font-size:clamp(12px,.61vw,15px); font-weight:800; text-transform:uppercase; }
+.ebook-card-subitem-text { color:#475569; font-size:clamp(12px,.6vw,15px); line-height:1.55; }
 .analysis-kpi { min-height:74px; padding:15px 18px; gap:12px; }
 .analysis-kpi-icon { width:40px; height:40px; border-radius:10px; }
 .analysis-kpi-icon svg { width:22px; height:22px; }
@@ -29994,8 +30000,14 @@ function enhanceAdsReport(root) {{
     var firstParagraph = Array.from(root.children).find(function(el) {{ return el.tagName === 'P'; }});
     if (firstParagraph) {{
         var introText = (firstParagraph.textContent || '').trim();
-        if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
+        if (/^(?:ol[aá]|excelente)[!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
         else firstParagraph.classList.add('analysis-intro');
+    }}
+    if (ACTIVE_TYPE === 'estrategia') {{
+        root.querySelectorAll('.sec-card').forEach(function(sectionCard) {{
+            var sectionTitle = (sectionCard.querySelector('.sec-title') || {{textContent:''}}).textContent.trim();
+            if (/^relat[óo]rio estrat[ée]gico de m[íi]dia paga/i.test(sectionTitle)) sectionCard.remove();
+        }});
     }}
     root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
     root.querySelectorAll('.sec-content').forEach(function(section) {{
@@ -30086,6 +30098,43 @@ function enhanceAdsReport(root) {{
             card.querySelector('.ebook-card-text').textContent = body;
             grid.appendChild(card);
         }});
+        if (ACTIVE_TYPE === 'estrategia') {{
+            var strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
+            for (var cardIndex = 0; cardIndex < strategyCards.length; cardIndex++) {{
+                var leadCard = strategyCards[cardIndex];
+                if (!leadCard || !leadCard.parentNode) continue;
+                var leadKicker = (leadCard.querySelector('.ebook-card-kicker') || {{textContent:''}}).textContent.trim();
+                var group = [leadCard];
+                var nextIndex = cardIndex + 1;
+                while (nextIndex < strategyCards.length) {{
+                    var nextCard = strategyCards[nextIndex];
+                    var nextKicker = (nextCard.querySelector('.ebook-card-kicker') || {{textContent:''}}).textContent.trim();
+                    if (nextKicker !== leadKicker) break;
+                    group.push(nextCard);
+                    nextIndex++;
+                }}
+                if (group.length > 1) {{
+                    var leadText = (leadCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                    var detailCards = leadText ? group.slice(1) : group.slice(1);
+                    var details = document.createElement('div');
+                    details.className = 'ebook-card-subitems';
+                    detailCards.forEach(function(detailCard) {{
+                        var detailTitle = (detailCard.querySelector('.ebook-card-title') || {{textContent:''}}).textContent.trim();
+                        var detailText = (detailCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                        var detail = document.createElement('div');
+                        detail.className = 'ebook-card-subitem';
+                        detail.innerHTML = '<span class="ebook-card-subitem-title"></span><span class="ebook-card-subitem-text"></span>';
+                        detail.querySelector('.ebook-card-subitem-title').textContent = detailTitle;
+                        detail.querySelector('.ebook-card-subitem-text').textContent = detailText;
+                        details.appendChild(detail);
+                        detailCard.remove();
+                    }});
+                    if (!leadText) leadCard.querySelector('.ebook-card-text').remove();
+                    leadCard.querySelector('.ebook-card-copy').appendChild(details);
+                }}
+                cardIndex = nextIndex - 1;
+            }}
+        }}
         section.querySelectorAll('ul,ol').forEach(function(list) {{ list.remove(); }});
         if (grid.children.length) section.appendChild(grid);
     }});
@@ -34609,7 +34658,7 @@ Amostra dos anúncios:
                             if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
                         ]
                         st.session_state.gads_analises_salvas.append({
-                            "titulo": f"Estratégia — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
+                            "titulo": f"Análise Estratégica — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
                             "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "estrategia",
@@ -37298,6 +37347,8 @@ setTimeout(syncHeightTabs, 800);
                 titulo_raw_a = str(a.get("titulo", "—"))
                 _meta_titulo_a = _re_titulo_gads.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
                 titulo_principal_a = (_meta_titulo_a.group(1) if _meta_titulo_a else titulo_raw_a).strip()
+                if a.get("tipo") == "estrategia":
+                    titulo_principal_a = _re_titulo_ads.sub(r"^Estratégia\b", "Análise Estratégica", titulo_principal_a, flags=_re_titulo_ads.IGNORECASE)
                 data_analise_a = (_meta_titulo_a.group(2) if _meta_titulo_a else "").strip()
                 titulo_a = titulo_principal_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
                 data_a = data_analise_a.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
@@ -37541,6 +37592,10 @@ body { padding-bottom:8px; }
     border-bottom:1px dotted var(--card-accent);
 }
 .ebook-card-text { color:#475569; font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
+.ebook-card-subitems { display:grid; gap:10px; margin-top:4px; }
+.ebook-card-subitem { padding:9px 12px; border-left:3px solid var(--card-accent); background:#f8fafc; border-radius:0 8px 8px 0; }
+.ebook-card-subitem-title { display:block; margin-bottom:3px; color:#123252; font-size:clamp(12px,.61vw,15px); font-weight:800; text-transform:uppercase; }
+.ebook-card-subitem-text { color:#475569; font-size:clamp(12px,.6vw,15px); line-height:1.55; }
 .ebook-card.video::after { background:#8b5cf6; }
 .ebook-card.video .ebook-card-icon { color:#7c3aed; background:#ede9fe; }
 .ebook-card.event::after { background:#20c878; }
@@ -37748,8 +37803,14 @@ function enhanceAdsReport(root) {{
     var firstParagraph = Array.from(root.children).find(function(el) {{ return el.tagName === 'P'; }});
     if (firstParagraph) {{
         var introText = (firstParagraph.textContent || '').trim();
-        if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
+        if (/^(?:ol[aá]|excelente)[!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
         else firstParagraph.classList.add('analysis-intro');
+    }}
+    if (ACTIVE_TYPE === 'estrategia') {{
+        root.querySelectorAll('.sec-card').forEach(function(sectionCard) {{
+            var sectionTitle = (sectionCard.querySelector('.sec-title') || {{textContent:''}}).textContent.trim();
+            if (/^relat[óo]rio estrat[ée]gico de m[íi]dia paga/i.test(sectionTitle)) sectionCard.remove();
+        }});
     }}
     root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
     root.querySelectorAll('.sec-content').forEach(function(section) {{
@@ -37840,6 +37901,42 @@ function enhanceAdsReport(root) {{
             card.querySelector('.ebook-card-text').textContent = body;
             grid.appendChild(card);
         }});
+        if (ACTIVE_TYPE === 'estrategia') {{
+            var strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
+            for (var cardIndex = 0; cardIndex < strategyCards.length; cardIndex++) {{
+                var leadCard = strategyCards[cardIndex];
+                if (!leadCard || !leadCard.parentNode) continue;
+                var leadKicker = (leadCard.querySelector('.ebook-card-kicker') || {{textContent:''}}).textContent.trim();
+                var group = [leadCard];
+                var nextIndex = cardIndex + 1;
+                while (nextIndex < strategyCards.length) {{
+                    var nextCard = strategyCards[nextIndex];
+                    var nextKicker = (nextCard.querySelector('.ebook-card-kicker') || {{textContent:''}}).textContent.trim();
+                    if (nextKicker !== leadKicker) break;
+                    group.push(nextCard);
+                    nextIndex++;
+                }}
+                if (group.length > 1) {{
+                    var leadText = (leadCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                    var details = document.createElement('div');
+                    details.className = 'ebook-card-subitems';
+                    group.slice(1).forEach(function(detailCard) {{
+                        var detailTitle = (detailCard.querySelector('.ebook-card-title') || {{textContent:''}}).textContent.trim();
+                        var detailText = (detailCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                        var detail = document.createElement('div');
+                        detail.className = 'ebook-card-subitem';
+                        detail.innerHTML = '<span class="ebook-card-subitem-title"></span><span class="ebook-card-subitem-text"></span>';
+                        detail.querySelector('.ebook-card-subitem-title').textContent = detailTitle;
+                        detail.querySelector('.ebook-card-subitem-text').textContent = detailText;
+                        details.appendChild(detail);
+                        detailCard.remove();
+                    }});
+                    if (!leadText) leadCard.querySelector('.ebook-card-text').remove();
+                    leadCard.querySelector('.ebook-card-copy').appendChild(details);
+                }}
+                cardIndex = nextIndex - 1;
+            }}
+        }}
         section.querySelectorAll('ul,ol').forEach(function(list) {{ list.remove(); }});
         if (grid.children.length) section.appendChild(grid);
     }});

@@ -29729,14 +29729,14 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    display:grid; grid-template-columns:220px minmax(0,1fr);
+    display:grid; grid-template-columns:180px minmax(0,1fr);
     --card-accent:#2f80ed;
     min-height:132px; padding:0; border-color:var(--card-accent);
 }
 .ebook-card::after { display:none !important; }
 .ebook-card-head {
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:8px; min-height:100%; margin:0; padding:14px 18px;
+    gap:2px; min-height:100%; margin:0; padding:12px 14px;
     background:#2f80ed; border-right:0; border-bottom:0;
     border-radius:11px 0 0 11px;
 }
@@ -37381,7 +37381,7 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    position:relative; display:grid; grid-template-columns:220px minmax(0,1fr);
+    position:relative; display:grid; grid-template-columns:180px minmax(0,1fr);
     --card-accent:#2f80ed;
     min-height:132px; padding:0; overflow:hidden;
     background:#fff; border:1px solid var(--card-accent); border-radius:12px;
@@ -37389,7 +37389,7 @@ body { padding-bottom:8px; }
 .ebook-card::after { display:none !important; }
 .ebook-card-head {
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:8px; min-height:100%; margin:0; padding:14px 18px;
+    gap:2px; min-height:100%; margin:0; padding:12px 14px;
     background:#2f80ed; border-right:0; border-bottom:0;
     border-radius:11px 0 0 11px;
 }

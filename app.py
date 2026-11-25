@@ -29714,7 +29714,12 @@ body { padding-bottom:8px; }
 .sec-card { padding:20px 22px; gap:16px; }
 .sec-icon-wrap { width:44px; height:44px; border-radius:11px; }
 .sec-icon-wrap svg { width:22px; height:22px; }
-.sec-title { font-size:clamp(13px,.72vw,18px); line-height:1.25; }
+.sec-title {
+    color:#123252 !important; font-size:clamp(14px,.76vw,19px); line-height:1.25;
+    padding:11px 14px; margin:-2px 0 14px; border-left:4px solid #123252;
+    border-radius:8px; background:#edf4fa;
+}
+.sec-divider { display:none; }
 .sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }
 .sec-content > p { max-width:112ch; }
 .ebook-grid {
@@ -29914,7 +29919,9 @@ function enhanceAdsReport(root) {{
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
-            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
+            else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
+            else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
             else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
@@ -37359,7 +37366,12 @@ body { padding-bottom:8px; }
 .sec-card { padding:20px 22px; gap:16px; }
 .sec-icon-wrap { width:44px; height:44px; border-radius:11px; }
 .sec-icon-wrap svg { width:22px; height:22px; }
-.sec-title { font-size:clamp(13px,.72vw,18px); line-height:1.25; }
+.sec-title {
+    color:#123252 !important; font-size:clamp(14px,.76vw,19px); line-height:1.25;
+    padding:11px 14px; margin:-2px 0 14px; border-left:4px solid #123252;
+    border-radius:8px; background:#edf4fa;
+}
+.sec-divider { display:none; }
 .sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }
 .sec-content > p { max-width:112ch; }
 @media (max-width:800px) {
@@ -37526,7 +37538,9 @@ function enhanceAdsReport(root) {{
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
-            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
+            else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
+            else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
             else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}

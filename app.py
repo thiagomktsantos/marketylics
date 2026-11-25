@@ -19,6 +19,7 @@ import time
 import queue
 import gc
 import threading
+from zoneinfo import ZoneInfo
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
@@ -35,6 +36,33 @@ _PROCESSO_INICIO_MONOTONIC = time.monotonic()
 
 UI_POLL_INTERVAL_MS = int(st.secrets.get("UI_POLL_INTERVAL_MS", 8000))
 UI_POLL_INTERVAL_SEG = max(4.0, UI_POLL_INTERVAL_MS / 1000.0)
+
+def _fuso_usuario():
+    """Retorna o fuso IANA do navegador, com fallback configurável."""
+    nome_fuso = None
+    try:
+        nome_fuso = st.session_state.get("_timezone_navegador")
+    except Exception:
+        nome_fuso = None
+    if not nome_fuso:
+        try:
+            nome_fuso = st.query_params.get("_tz_browser")
+        except Exception:
+            nome_fuso = None
+    try:
+        nome_fuso = nome_fuso or getattr(st.context, "timezone", None)
+    except Exception:
+        pass
+    if not nome_fuso:
+        nome_fuso = st.secrets.get("USER_TIMEZONE_DEFAULT", "America/Sao_Paulo")
+    try:
+        return ZoneInfo(str(nome_fuso))
+    except Exception:
+        return ZoneInfo("America/Sao_Paulo")
+
+def _agora_usuario():
+    """Horário local usado em caches, coletas e análises visíveis ao usuário."""
+    return datetime.datetime.now(_fuso_usuario())
 
 def _limitar_threads_cpu_ocr_apos_import():
     try:
@@ -74,6 +102,40 @@ st.set_page_config(
     page_icon="https://raw.githubusercontent.com/thiagomktsantos/marketylics/231a39c102b672fbb803b0ecf335febdd119d3b1/images/favicon.jpg",
     layout="wide"
 )
+
+# O servidor pode estar em UTC ou em outra região. Captura uma única vez o
+# fuso IANA real do navegador e o mantém na sessão para todos os registros
+# visíveis de coleta, cache e análise.
+try:
+    _tz_query = st.query_params.get("_tz_browser")
+    if _tz_query:
+        try:
+            ZoneInfo(str(_tz_query))
+            st.session_state["_timezone_navegador"] = str(_tz_query)
+        except Exception:
+            pass
+        try:
+            del st.query_params["_tz_browser"]
+        except Exception:
+            pass
+except Exception:
+    _tz_query = None
+
+if not st.session_state.get("_timezone_navegador"):
+    components.html("""
+    <script>
+    (function () {
+        try {
+            var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (!tz) return;
+            var url = new URL(window.parent.location.href);
+            if (url.searchParams.get('_tz_browser') === tz) return;
+            url.searchParams.set('_tz_browser', tz);
+            window.parent.location.replace(url.toString());
+        } catch (e) {}
+    })();
+    </script>
+    """, height=0, scrolling=False)
 
 _MAX_CPU_PESADA = int(st.secrets.get("MAX_CPU_PESADA_CONCORRENTE", 1))
 _MAX_DOWNLOADS_MIDIA = int(st.secrets.get("MAX_DOWNLOADS_MIDIA_CONCORRENTES", 1))
@@ -12925,7 +12987,7 @@ def extrair_seo_site(url: str) -> dict:
 
         resultado["contato"] = ct
         resultado["status"] = "ok"
-        resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+        resultado["extraido_em"] = _agora_usuario().strftime("%d/%m/%Y %H:%M")
 
     except Exception as e:
         resultado["status"] = f"erro: {e}"
@@ -13009,7 +13071,7 @@ def extrair_sitemap(url: str) -> dict:
     else:
         resultado["status"] = "sem_sitemap"
 
-    resultado["extraido_em"] = _dt.datetime.now().strftime("%d/%m/%Y %H:%M")
+    resultado["extraido_em"] = _agora_usuario().strftime("%d/%m/%Y %H:%M")
     return resultado
 
 def salvar_seo_cache():
@@ -16555,7 +16617,7 @@ def _refazer_coleta_redes_background(user_id: str, dados_atuais: list, alvos: li
         resultados_lista = list(by_key.values())
         supabase.table("ci_dados").update({
             "metricas_redes": {
-                "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "ultima_coleta": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                 "dados": resultados_lista,
             },
         }).eq("user_id", user_id).execute()
@@ -20966,26 +21028,36 @@ function setHeightGeral(isOpen) {{
                     'stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>'
                 )
 
-                score_checklist_html = ""
-                for c in m["score_criterios"]:
-                    if c["ok"]:
-                        _icone = _icon_ok
-                        _sub = (
-                            '<div style="font-size:10px;color:#15803d;font-weight:700;margin-top:1px;">Ponto forte do concorrente</div>'
-                            if _is_concorrente_score else ""
+                _criterios_ok = [c for c in m["score_criterios"] if c["ok"]]
+                _criterios_nok = [c for c in m["score_criterios"] if not c["ok"]]
+
+                def _grupo_criterios_html(titulo, itens, icone, cor_titulo, exibir_titulo=True):
+                    if not itens:
+                        return ""
+                    _html = ""
+                    if exibir_titulo:
+                        _html += (
+                            f'<div style="font-size:10px;color:{cor_titulo};font-weight:800;'
+                            f'text-transform:uppercase;letter-spacing:.35px;margin:2px 0 1px 25px;">{titulo}</div>'
                         )
-                    else:
-                        _icone = _icon_nok
-                        _sub = (
-                            '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Oportunidade para sua empresa</div>'
-                            if _is_concorrente_score else
-                            '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>'
+                    for _criterio in itens:
+                        _html += (
+                            '<div style="display:flex;align-items:center;gap:7px;">'
+                            + icone +
+                            '<div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'
+                            + _criterio["label"] + '</div></div>'
                         )
-                    score_checklist_html += (
-                        '<div style="display:flex;align-items:center;gap:7px;">'
-                        + _icone +
-                        '<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'
-                        + c["label"] + '</div>' + _sub + '</div></div>'
+                    return _html
+
+                if _is_concorrente_score:
+                    score_checklist_html = (
+                        _grupo_criterios_html("Pontos fortes do concorrente", _criterios_ok, _icon_ok, "#15803d")
+                        + _grupo_criterios_html("Oportunidades para sua empresa", _criterios_nok, _icon_nok, "#b45309")
+                    )
+                else:
+                    score_checklist_html = (
+                        _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
+                        + _grupo_criterios_html("Melhorias sugeridas", _criterios_nok, _icon_nok, "#b45309")
                     )
 
                 score_ring_svg = make_score_ring_svg(m["score_val"], m["score_cor"], size=110, stroke=10)
@@ -22222,14 +22294,24 @@ function buildSeoColumn(d,colEl) {{
     var nok=SEO_ITEMS.filter(function(i){{return !i.ok;}}).length;
     var iconOk='<div style="width:18px;height:18px;border-radius:50%;background:#22c55e;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>';
     var iconNok='<div style="width:18px;height:18px;border-radius:50%;background:#f59e0b;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg></div>';
-    var checklistHtml='';
-    SEO_ITEMS.forEach(function(it){{
-        var icone=it.ok?iconOk:iconNok;
-        var sub=isCompetitor
-            ? (it.ok?'<div style="font-size:10px;color:#15803d;font-weight:700;margin-top:1px;">Ponto forte do concorrente</div>':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Oportunidade para sua empresa</div>')
-            : (it.ok?'':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>');
-        checklistHtml+='<div style="display:flex;align-items:center;gap:7px;">'+icone+'<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'+it.label+'</div>'+sub+'</div></div>';
-    }});
+    var itensOk=SEO_ITEMS.filter(function(it){{return it.ok;}});
+    var itensNok=SEO_ITEMS.filter(function(it){{return !it.ok;}});
+    function grupoSeoHtml(titulo,itens,icone,corTitulo,exibirTitulo){{
+        if(!itens.length)return '';
+        var html='';
+        if(exibirTitulo){{
+            html+='<div style="font-size:10px;color:'+corTitulo+';font-weight:800;text-transform:uppercase;letter-spacing:.35px;margin:2px 0 1px 25px;">'+titulo+'</div>';
+        }}
+        itens.forEach(function(it){{
+            html+='<div style="display:flex;align-items:center;gap:7px;">'+icone+'<div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'+it.label+'</div></div>';
+        }});
+        return html;
+    }}
+    var checklistHtml=isCompetitor
+        ? grupoSeoHtml('Pontos fortes do concorrente',itensOk,iconOk,'#15803d',true)
+          +grupoSeoHtml('Oportunidades para sua empresa',itensNok,iconNok,'#b45309',true)
+        : grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
+          +grupoSeoHtml('Melhorias sugeridas',itensNok,iconNok,'#b45309',true);
     var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
@@ -22959,10 +23041,10 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
                         a for a in st.session_state.analises_salvas
                         if not (a.get("tipo") == "individual" and s["nome"] in a.get("sites", []))
                     ]
-                    titulo_auto = f"Análise Individual — {s['nome']} ({s['url']}) — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    titulo_auto = f"Análise Individual — {s['nome']} ({s['url']}) — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}"
                     st.session_state.analises_salvas.append({
                         "titulo": titulo_auto,
-                        "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "sites": [f"{s['nome']} ({s['url']})"],
                         "tipo": "individual",
@@ -23012,13 +23094,13 @@ Seja direto e objetivo, baseando-se apenas no conteúdo real do site.
             relatorio = gerar_relatorio_posicionamento(empresa_principal, concorrentes_data, user_id=user_id)
 
             nomes_com_url = [f"{s['nome']} ({s['url']})" for s in sites_disponiveis]
-            titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_dt.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+            titulo_auto = f"Relatório Geral — {' vs. '.join(nomes_com_url)} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}"
 
             res = supabase.table("ci_dados").select("analises_salvas").eq("user_id", user_id).execute()
             analises_atuais = (res.data[0].get("analises_salvas") or []) if res.data else []
             analises_atuais.append({
                 "titulo": titulo_auto,
-                "data": _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                 "relatorio": relatorio,
                 "sites": nomes_com_url,
                 "tipo": "geral",
@@ -25247,7 +25329,7 @@ elif st.session_state.pagina == "ads":
                     else:
                         novos[ck] = {
                             "data":  ads,
-                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "ts":    _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "nome":  ck,
                             "query": query,
                             "_raw":  raw,
@@ -26111,8 +26193,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 """)
                     st.session_state.ads_analises_salvas = st.session_state.get("ads_analises_salvas", [])
                     st.session_state.ads_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_ads_h.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_ads_h.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Comparativo Geral — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp_h.text,
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.ads_cache.keys()),
@@ -26250,7 +26332,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
                 'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
                 '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
-                'Buscar / Atualizar Anúncios</button>'
+                'Baixar anúncios</button>'
             )
 
         components.html(f"""
@@ -26569,7 +26651,7 @@ setHeight(false);
             📡 <strong>{_nomes}</strong>
             {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'}
             mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados.
-            Clique em <strong>Buscar / Atualizar Anúncios</strong> para incluí-las.
+            Clique em <strong>Baixar anúncios</strong> para incluí-las.
         </div>
         """, unsafe_allow_html=True)
 
@@ -27738,8 +27820,8 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             if not (a.get("tipo") == "anuncio_completo" and a.get("empresa") == nome)
                         ]
                         st.session_state.ads_analises_salvas.append({
-                            "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "titulo": f"Anúncios — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": texto_relatorio,
                             "tipo": "anuncio_completo",
                             "empresa": nome,
@@ -27792,8 +27874,8 @@ Amostra dos anúncios:
                             if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
                         ]
                         st.session_state.ads_analises_salvas.append({
-                            "titulo": f"Análise Estratégica — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "titulo": f"Análise Estratégica — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "estrategia",
                             "empresa": nome,
@@ -28119,8 +28201,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
                             ]
                             st.session_state.ads_analises_salvas.append({
-                                "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "titulo": f"Anúncio {j+1} — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                                 "relatorio": texto_relatorio_ind,
                                 "tipo": "anuncio_ind",
                                 "empresa": nome,
@@ -28152,7 +28234,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -41px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -29361,8 +29443,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     import datetime as _dt_ads2
                     st.session_state.ads_analises_salvas = st.session_state.get("ads_analises_salvas", [])
                     st.session_state.ads_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_ads2.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_ads2.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Comparativo Geral — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.ads_cache.keys()),
@@ -32168,7 +32250,7 @@ elif st.session_state.pagina == "google_ads":
                         _ads_ck_acumulados.extend(chunk_normalizado)
                         _entry_parcial = {
                             "data":  list(_ads_ck_acumulados),
-                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "ts":    _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "nome":  _ck,
                             "query": _query,
                             "_checkpoint_finalizado": False,
@@ -32208,7 +32290,7 @@ elif st.session_state.pagina == "google_ads":
                     else:
                         entry_nova = {
                             "data":  ads,
-                            "ts":    _dt.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "ts":    _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "nome":  ck,
                             "query": query,
                             "_checkpoint_finalizado": True,
@@ -33163,7 +33245,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         _emp_dd_ghost_css_parts.append(f"""
         .st-key-{_k_comp_h},
         .st-key-gads_buscar_header_btn,
-        .st-key-gads_forcar_header_btn,
         .st-key-gads_limpar_cache_btn {{
             position:fixed !important; top:-9999px !important; left:-9999px !important;
             width:0 !important; height:0 !important; overflow:hidden !important;
@@ -33171,7 +33252,6 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
         }}
         .stElementContainer:has(.st-key-{_k_comp_h}),
         .stElementContainer:has(.st-key-gads_buscar_header_btn),
-        .stElementContainer:has(.st-key-gads_forcar_header_btn),
         .stElementContainer:has(.st-key-gads_limpar_cache_btn) {{
             display:none !important; height:0 !important; min-height:0 !important;
             max-height:0 !important; padding:0 !important; margin:0 !important; overflow:hidden !important;
@@ -33238,8 +33318,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
 """)
                     st.session_state.gads_analises_salvas = st.session_state.get("gads_analises_salvas", [])
                     st.session_state.gads_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_gads_h.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_gads_h.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Comparativo Geral — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp_h.text,
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.gads_cache.keys()),
@@ -33251,8 +33331,6 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             st.rerun()
  
         gerar_btn_gads_header = st.button("gads_buscar_header_trigger", key="gads_buscar_header_btn")
-
-        gerar_btn_gads_forcar = st.button("gads_forcar_header_trigger", key="gads_forcar_header_btn")
  
         if st.session_state.gads_cache:
             if st.button("gads_limpar_cache", key="gads_limpar_cache_btn"):
@@ -33387,7 +33465,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
                 'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
                 '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
-                'Buscar / Atualizar Anúncios</button>'
+                'Baixar anúncios</button>'
             )
 
         components.html(f"""
@@ -33508,8 +33586,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
             <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerForcar()" title="forçar atualização (ignora cache de 24h)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
-            <span class="sep">|</span>
             <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
@@ -33560,15 +33636,6 @@ function triggerGhost(label, tentativas){{
 }}
 function triggerBuscar(){{ triggerGhost('gads_buscar_header_trigger'); }}
 function triggerConfig(){{ triggerGhost('tab_cfg'); }}
-function triggerForcar() {{
-    abrirConfirmacao(
-        '🔄 Forçar atualização',
-        'Isso vai buscar os anúncios de novo pra todas as empresas configuradas, mesmo que o cache ainda esteja fresco (dentro de 24h). Pode demorar um pouco mais. Continuar?',
-        '#1a73e8',
-        'Sim, forçar',
-        function() {{ triggerGhost('gads_forcar_header_trigger'); }}
-    );
-}}
 function triggerLimpar() {{
     abrirConfirmacao(
         '🗑️ Limpar cache de anúncios',
@@ -33728,7 +33795,7 @@ setHeight(false);
             📡 <strong>{_nomes}</strong>
             {'foi adicionada' if len(_empresas_sem_dados) == 1 else 'foram adicionadas'}
             mas ainda não {'tem' if len(_empresas_sem_dados) == 1 else 'têm'} dados coletados.
-            Clique em <strong>Buscar / Atualizar Anúncios</strong> para incluí-las.
+            Clique em <strong>Baixar anúncios</strong> para incluí-las.
         </div>
         """, unsafe_allow_html=True)
 
@@ -33838,23 +33905,6 @@ setHeight(false);
             )
         else:
             st.warning("Selecione uma empresa configurada antes de buscar.")
-
-    if gerar_btn_gads_forcar:
-        query_values_header = {}
-        _empresas_header = (
-            [_emp_ativa_obj]
-            if _emp_ativa_obj and empresa_tem_gads_id(_emp_ativa_obj)
-            else []
-        )
-        for e in _empresas_header:
-            ck = e["nome"]
-            gads_id_salvo = emp.get("gads_id","") if e["tipo"]=="minha" else concs[e["idx"]].get("gads_id","")
-            query_values_header[ck] = gads_id_salvo
-        if query_values_header:
-            executar_busca(_empresas_header, query_values_header, forcar=True)
-        else:
-            st.warning("Selecione uma empresa configurada antes de buscar.")
-
 
     _n_analises = len(st.session_state.get("gads_analises_salvas", []))
     _nomes_pendentes_config = ", ".join(e["nome"] for e in empresas_sem_config)
@@ -34920,8 +34970,8 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                             if not (a.get("tipo") == "anuncio_completo" and a.get("empresa") == nome)
                         ]
                         st.session_state.gads_analises_salvas.append({
-                            "titulo": f"Anúncios — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "titulo": f"Anúncios — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": texto_relatorio,
                             "tipo": "anuncio_completo",
                             "empresa": nome,
@@ -34974,8 +35024,8 @@ Amostra dos anúncios:
                             if not (a.get("tipo") == "estrategia" and a.get("empresa") == nome)
                         ]
                         st.session_state.gads_analises_salvas.append({
-                            "titulo": f"Análise Estratégica — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                            "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "titulo": f"Análise Estratégica — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                            "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                             "relatorio": resp.text,
                             "tipo": "estrategia",
                             "empresa": nome,
@@ -35313,8 +35363,8 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                                 if not (a.get("tipo") == "anuncio_ind" and a.get("empresa") == nome and a.get("ad_idx") == j)
                             ]
                             st.session_state.gads_analises_salvas.append({
-                                "titulo": f"Anúncio {j+1} — {nome} — {_dt_ads.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                "data": _dt_ads.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "titulo": f"Anúncio {j+1} — {nome} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                                "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                                 "relatorio": texto_relatorio_ind,
                                 "tipo": "anuncio_ind",
                                 "empresa": nome,
@@ -35346,7 +35396,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -41px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -37299,8 +37349,8 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                     import datetime as _dt_ads2
                     st.session_state.gads_analises_salvas = st.session_state.get("gads_analises_salvas", [])
                     st.session_state.gads_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_ads2.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_ads2.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Comparativo Geral — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "tipo": "comparativo_ads",
                         "empresas": list(st.session_state.gads_cache.keys()),
@@ -39779,8 +39829,8 @@ html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:
         if not resposta.startswith("Erro:"):
             st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
             st.session_state.analises_salvas.append({
-                "titulo": f"Insight — {target_gerar} — {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "titulo": f"Insight — {target_gerar} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                 "relatorio": resposta,
                 "tipo": "insight_concorrente",
                 "empresa": target_gerar,
@@ -40386,7 +40436,7 @@ function setHeight(isOpen) {{
                 st.session_state.user.id,
                 "metricas_redes",
                 {
-                    "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "ultima_coleta": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                     "dados": dados,
                 },
             )
@@ -40667,7 +40717,7 @@ function setHeight(isOpen) {{
                 user_id,
                 "metricas_redes",
                 {
-                    "ultima_coleta": _dt_redes_bg.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "ultima_coleta": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                     "dados": resultados_lista,
                 },
             )
@@ -41186,8 +41236,8 @@ Escreva uma versão melhorada da bio (máx. 150 caracteres).
 
                     import datetime as _dt_redes
                     st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Análise de Perfil — {r['nome']} ({r.get('handle','')}) — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "tipo": "bio",
                         "perfil": r.get("handle", ""),
@@ -41318,8 +41368,8 @@ Como interpretar as métricas desta postagem?
                                     if not (a.get("tipo") == "postagem" and a.get("perfil") == r.get("handle") and a.get("post_idx") == jp)
                                 ]
                                 st.session_state.redes_analises_salvas.append({
-                                    "titulo": f"Postagem {jp+1} — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                                    "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "titulo": f"Postagem {jp+1} — {r['nome']} ({r.get('handle','')}) — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                                    "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                                     "relatorio": resp_post.text,
                                     "tipo": "postagem",
                                     "perfil": r.get("handle", ""),
@@ -42465,8 +42515,8 @@ Abaixo estão as imagens reais dos posts e as transcrições dos Reels (quando d
                     st.session_state[chave_criativo] = texto_relatorio_post
                     st.session_state[chave_copy] = texto_relatorio_post
                     st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Postagens — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Postagens — {r['nome']} ({r.get('handle','')}) — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": texto_relatorio_post,
                         "tipo": "postagem",
                         "perfil": r.get("handle", ""),
@@ -42505,8 +42555,8 @@ Seja direto e objetivo.
                     st.session_state[chave_geral] = resp.text
                     import datetime as _dt_redes
                     st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Análise Geral — {r['nome']} ({r.get('handle','')}) — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Análise Geral — {r['nome']} ({r.get('handle','')}) — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "tipo": "geral_perfil",
                         "perfil": r.get("handle", ""),
@@ -42580,8 +42630,8 @@ Para cada perfil, 1-2 pontos fortes.
 Seja direto, objetivo e baseado nos dados fornecidos.
 """)
                     st.session_state.redes_analises_salvas.append({
-                        "titulo": f"Comparativo Geral — {_dt_redes.datetime.now().strftime('%d/%m/%Y %H:%M')}",
-                        "data": _dt_redes.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "titulo": f"Comparativo Geral — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                        "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                         "relatorio": resp.text,
                         "tipo": "comparativo",
                         "perfis": [rr.get("handle","") for rr in ok],

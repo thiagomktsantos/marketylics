@@ -27424,10 +27424,13 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                         resp = gerar_com_ia(gemini_parts)
 
                         _total_ads_considerados = len(ads_list[:15])
+                        _rotulo_ads = "anúncio analisado" if _total_ads_considerados == 1 else "anúncios analisados"
+                        _rotulo_imgs = "imagem" if imgs_enviadas == 1 else "imagens"
+                        _rotulo_vids = "vídeo" if vids_transcritos == 1 else "vídeos"
                         _nota_escopo = (
-                            f"\n\n---\n_📊 Base da análise: {_total_ads_considerados} de {len(ads_list)} "
-                            f"anúncios (os primeiros da lista) · {imgs_enviadas} imagem(ns) analisada(s) "
-                            f"visualmente · {vids_transcritos} vídeo(s) transcrito(s) por áudio (Whisper)._"
+                            f"\n\n---\n📊 Base da análise: {_total_ads_considerados} {_rotulo_ads} "
+                            f"de um total de {len(ads_list)}, incluindo {imgs_enviadas} {_rotulo_imgs} "
+                            f"e {vids_transcritos} {_rotulo_vids} com transcrição de áudio."
                         )
                         if _migracao_em_andamento:
                             _nota_escopo += (
@@ -29917,6 +29920,30 @@ function enhanceAdsReport(root) {{
         }};
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[name] || paths.spark) + '</svg>';
     }}
+    function localizeCtaTerms(value) {{
+        var labels = {{
+            SEE_DETAILS:'VER DETALHES', LEARN_MORE:'SAIBA MAIS',
+            SHOP_NOW:'COMPRAR AGORA', BUY_NOW:'COMPRAR AGORA',
+            SIGN_UP:'CADASTRE-SE', CONTACT_US:'ENTRE EM CONTATO',
+            GET_OFFER:'VER OFERTA', APPLY_NOW:'INSCREVA-SE',
+            BOOK_NOW:'RESERVAR AGORA', DOWNLOAD:'BAIXAR', WATCH_MORE:'ASSISTIR MAIS'
+        }};
+        return String(value || '').replace(/[`'"]?\b(SEE_DETAILS|LEARN_MORE|SHOP_NOW|BUY_NOW|SIGN_UP|CONTACT_US|GET_OFFER|APPLY_NOW|BOOK_NOW|DOWNLOAD|WATCH_MORE)\b[`'"]?(?:\s*\([^)]*\))?/gi, function(_, key) {{
+            key = key.toUpperCase();
+            return labels[key] + ' (' + key + ')';
+        }});
+    }}
+    function normalizeScopeNote(value) {{
+        return String(value || '').replace(/_?📊\s*Base da análise:\s*(\d+)\s+de\s+(\d+)\s+anúncios\s*\([^)]*\)\s*·\s*(\d+)\s+imagem\(ns\)\s+analisada\(s\)\s+visualmente\s*·\s*(\d+)\s+vídeo\(s\)\s+transcrito\(s\)\s+por áudio\s*\(Whisper\)\.?_?/gi, function(_, used, total, images, videos) {{
+            return '📊 Base da análise: ' + used + ' ' + (used === '1' ? 'anúncio analisado' : 'anúncios analisados')
+                + ' de um total de ' + total + ', incluindo ' + images + ' ' + (images === '1' ? 'imagem' : 'imagens')
+                + ' e ' + videos + ' ' + (videos === '1' ? 'vídeo' : 'vídeos') + ' com transcrição de áudio.';
+        }});
+    }}
+    var ctaWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var ctaNodes = [];
+    while (ctaWalker.nextNode()) ctaNodes.push(ctaWalker.currentNode);
+    ctaNodes.forEach(function(node) {{ node.nodeValue = normalizeScopeNote(localizeCtaTerms(node.nodeValue)); }});
     var text = (root.textContent || '').replace(/\s+/g, ' ').trim();
     var formatMatch = text.match(/(\d+)\s+imagens[\s\S]{{0,80}}?(\d+)\s+v[íi]deos/i);
     var carouselMatch = text.match(/(\d+)\s+carross[ée]is/i);
@@ -29965,6 +29992,8 @@ function enhanceAdsReport(root) {{
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
             if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
+            else if (/falta de dados de desempenho|aus[êe]ncia de dados|impress[õo]es.*(?:ctr|convers)/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Mensuração'; }}
+            else if (/aproveitamento limitado|criativos incompletos/.test(lowered)) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/see_details|ver detalhes/.test(lowered)) {{ type='visual'; icon='eye'; kicker='CTA de detalhes'; }}
             else if (/learn_more|saiba mais/.test(lowered)) {{ type='mix'; icon='link'; kicker='CTA saiba mais'; }}
@@ -34426,10 +34455,13 @@ Abaixo estão as imagens reais dos criativos e as transcrições dos vídeos (qu
                         resp = gerar_com_ia(gemini_parts)
 
                         _total_gads_considerados = len(gads_list[:15])
+                        _rotulo_gads = "anúncio analisado" if _total_gads_considerados == 1 else "anúncios analisados"
+                        _rotulo_imgs = "imagem" if imgs_enviadas == 1 else "imagens"
+                        _rotulo_vids = "vídeo" if vids_transcritos == 1 else "vídeos"
                         _nota_escopo = (
-                            f"\n\n---\n_📊 Base da análise: {_total_gads_considerados} de {len(gads_list)} "
-                            f"anúncios (os primeiros da lista) · {imgs_enviadas} imagem(ns) analisada(s) "
-                            f"visualmente · {vids_transcritos} vídeo(s) transcrito(s) por áudio (Whisper)._"
+                            f"\n\n---\n📊 Base da análise: {_total_gads_considerados} {_rotulo_gads} "
+                            f"de um total de {len(gads_list)}, incluindo {imgs_enviadas} {_rotulo_imgs} "
+                            f"e {vids_transcritos} {_rotulo_vids} com transcrição de áudio."
                         )
                         if _migracao_em_andamento:
                             _nota_escopo += (
@@ -37579,6 +37611,30 @@ function reportIcon(name) {{
 function enhanceAdsReport(root) {{
     if (!root || root.dataset.enhanced === '1') return;
     root.dataset.enhanced = '1';
+    function localizeCtaTerms(value) {{
+        var labels = {{
+            SEE_DETAILS:'VER DETALHES', LEARN_MORE:'SAIBA MAIS',
+            SHOP_NOW:'COMPRAR AGORA', BUY_NOW:'COMPRAR AGORA',
+            SIGN_UP:'CADASTRE-SE', CONTACT_US:'ENTRE EM CONTATO',
+            GET_OFFER:'VER OFERTA', APPLY_NOW:'INSCREVA-SE',
+            BOOK_NOW:'RESERVAR AGORA', DOWNLOAD:'BAIXAR', WATCH_MORE:'ASSISTIR MAIS'
+        }};
+        return String(value || '').replace(/[`'"]?\b(SEE_DETAILS|LEARN_MORE|SHOP_NOW|BUY_NOW|SIGN_UP|CONTACT_US|GET_OFFER|APPLY_NOW|BOOK_NOW|DOWNLOAD|WATCH_MORE)\b[`'"]?(?:\s*\([^)]*\))?/gi, function(_, key) {{
+            key = key.toUpperCase();
+            return labels[key] + ' (' + key + ')';
+        }});
+    }}
+    function normalizeScopeNote(value) {{
+        return String(value || '').replace(/_?📊\s*Base da análise:\s*(\d+)\s+de\s+(\d+)\s+anúncios\s*\([^)]*\)\s*·\s*(\d+)\s+imagem\(ns\)\s+analisada\(s\)\s+visualmente\s*·\s*(\d+)\s+vídeo\(s\)\s+transcrito\(s\)\s+por áudio\s*\(Whisper\)\.?_?/gi, function(_, used, total, images, videos) {{
+            return '📊 Base da análise: ' + used + ' ' + (used === '1' ? 'anúncio analisado' : 'anúncios analisados')
+                + ' de um total de ' + total + ', incluindo ' + images + ' ' + (images === '1' ? 'imagem' : 'imagens')
+                + ' e ' + videos + ' ' + (videos === '1' ? 'vídeo' : 'vídeos') + ' com transcrição de áudio.';
+        }});
+    }}
+    var ctaWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var ctaNodes = [];
+    while (ctaWalker.nextNode()) ctaNodes.push(ctaWalker.currentNode);
+    ctaNodes.forEach(function(node) {{ node.nodeValue = normalizeScopeNote(localizeCtaTerms(node.nodeValue)); }});
     var text = (root.textContent || '').replace(/\s+/g, ' ').trim();
     var formatMatch = text.match(/(\d+)\s+imagens[\s\S]{{0,80}}?(\d+)\s+v[íi]deos/i);
     var carouselMatch = text.match(/(\d+)\s+carross[ée]is/i);
@@ -37627,6 +37683,8 @@ function enhanceAdsReport(root) {{
             var type = 'visual', icon = 'image', kicker = 'Destaque visual';
             if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
+            else if (/falta de dados de desempenho|aus[êe]ncia de dados|impress[õo]es.*(?:ctr|convers)/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Mensuração'; }}
+            else if (/aproveitamento limitado|criativos incompletos/.test(lowered)) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/see_details|ver detalhes/.test(lowered)) {{ type='visual'; icon='eye'; kicker='CTA de detalhes'; }}
             else if (/learn_more|saiba mais/.test(lowered)) {{ type='mix'; icon='link'; kicker='CTA saiba mais'; }}

@@ -29743,10 +29743,10 @@ body { padding-bottom:8px; }
 .ebook-card-icon { align-self:auto; width:64px; height:64px; border-radius:0; color:#fff !important; background:transparent !important; }
 .ebook-card-icon svg { width:44px; height:44px; stroke-width:1.8; }
 .ebook-card-kicker {
-    display:inline-flex; align-items:center; width:max-content;
+    display:flex; align-items:center; justify-content:center; width:100%; max-width:100%;
     color:#fff !important; background:transparent; border-radius:0;
     padding:0; font-size:clamp(12px,.62vw,15px); font-weight:800; letter-spacing:.45px; margin:0;
-    text-align:center;
+    line-height:1.25; text-align:center; white-space:normal; overflow-wrap:anywhere;
 }
 .ebook-card.video { --card-accent:#7c3aed; }
 .ebook-card.event { --card-accent:#16a34a; }
@@ -29890,6 +29890,7 @@ function enhanceAdsReport(root) {{
             play:'<path d="m8 5 11 7-11 7V5Z"/>',
             layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
             target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+            users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29904,6 +29905,7 @@ function enhanceAdsReport(root) {{
             play:'<path d="m8 5 11 7-11 7V5Z"/>',
             layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
             target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+            users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29961,7 +29963,7 @@ function enhanceAdsReport(root) {{
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
-            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
             else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
             var card = document.createElement('article');
@@ -37396,10 +37398,11 @@ body { padding-bottom:8px; }
 .ebook-card-icon { align-self:auto; width:64px; height:64px; border-radius:0; display:flex; align-items:center; justify-content:center; color:#fff !important; background:transparent !important; }
 .ebook-card-icon svg { width:44px; height:44px; display:block; stroke-width:1.8; }
 .ebook-card-kicker {
-    display:inline-flex; align-items:center; width:max-content;
+    display:flex; align-items:center; justify-content:center; width:100%; max-width:100%;
     color:#fff !important; background:transparent; border-radius:0;
     padding:0; font-size:clamp(12px,.62vw,15px); font-weight:800;
-    letter-spacing:.65px; text-transform:uppercase; margin:0; text-align:center;
+    letter-spacing:.65px; text-transform:uppercase; margin:0;
+    line-height:1.25; text-align:center; white-space:normal; overflow-wrap:anywhere;
 }
 .ebook-card.video { --card-accent:#7c3aed; }
 .ebook-card.event { --card-accent:#16a34a; }
@@ -37556,6 +37559,7 @@ function reportIcon(name) {{
         play:'<path d="m8 5 11 7-11 7V5Z"/>',
         layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
         target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+        users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
         calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
         star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -37617,7 +37621,7 @@ function enhanceAdsReport(root) {{
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
-            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
             else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
             var card = document.createElement('article');

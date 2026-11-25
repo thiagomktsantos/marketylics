@@ -29891,6 +29891,8 @@ function enhanceAdsReport(root) {{
             layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
             target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
             users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+            eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+            link:'<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29906,6 +29908,8 @@ function enhanceAdsReport(root) {{
             layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
             target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
             users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+            eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+            link:'<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29962,6 +29966,8 @@ function enhanceAdsReport(root) {{
             if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            else if (/see_details|ver detalhes/.test(lowered)) {{ type='visual'; icon='eye'; kicker='CTA de detalhes'; }}
+            else if (/learn_more|saiba mais/.test(lowered)) {{ type='mix'; icon='link'; kicker='CTA saiba mais'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
             else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
@@ -37560,6 +37566,8 @@ function reportIcon(name) {{
         layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
         target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
         users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+        eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+        link:'<path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/>',
         calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
         star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -37620,6 +37628,8 @@ function enhanceAdsReport(root) {{
             if (/problema\s*\/\s*solu[cç][aã]o/.test(lowered)) {{ type='visual'; icon='target'; kicker='Abordagem criativa'; }}
             else if (/^imagens?$/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Direção visual'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            else if (/see_details|ver detalhes/.test(lowered)) {{ type='visual'; icon='eye'; kicker='CTA de detalhes'; }}
+            else if (/learn_more|saiba mais/.test(lowered)) {{ type='mix'; icon='link'; kicker='CTA saiba mais'; }}
             else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
             else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='users'; kicker='Segmentação'; }}
             else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}

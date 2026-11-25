@@ -29899,6 +29899,8 @@ function enhanceAdsReport(root) {{
             quote:'<path d="M3 21c3 0 7-1 7-8V5H4v8h4c0 4-2 5-5 5v3Z"/><path d="M14 21c3 0 7-1 7-8V5h-6v8h4c0 4-2 5-5 5v3Z"/>',
             book:'<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2V4Z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7V4Z"/>',
             mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
+            captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
+            compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -29919,6 +29921,8 @@ function enhanceAdsReport(root) {{
             quote:'<path d="M3 21c3 0 7-1 7-8V5H4v8h4c0 4-2 5-5 5v3Z"/><path d="M14 21c3 0 7-1 7-8V5h-6v8h4c0 4-2 5-5 5v3Z"/>',
             book:'<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2V4Z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7V4Z"/>',
             mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
+            captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
+            compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
             calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
             chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
             star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -30003,6 +30007,10 @@ function enhanceAdsReport(root) {{
             else if (/expandir.*diversificar|diversificar.*criativos/.test(title.toLowerCase())) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/cen[aá]rios diversos|ambientação/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Ambientação'; }}
             else if (/tutoriais? r[aá]pidos|passo a passo/.test(title.toLowerCase())) {{ type='mix'; icon='book'; kicker='Conteúdo educativo'; }}
+            else if (/legendas? nos v[íi]deos|legendas? \(captions\)|acessibilidade/.test(lowered)) {{ type='mix'; icon='captions'; kicker='Acessibilidade'; }}
+            else if (/estrat[ée]gia de criativos.*(?:diversificada|segmentada)/.test(title.toLowerCase())) {{ type='event'; icon='compass'; kicker='Estratégia criativa'; }}
+            else if (/^v[íi]deos?$/.test(title.toLowerCase())) {{ type='video'; icon='play'; kicker='Linguagem audiovisual'; }}
+            else if (/^mix de formatos?$|equil[ií]brio de formatos/.test(title.toLowerCase())) {{ type='mix'; icon='chart'; kicker='Distribuição de formatos'; }}
             else if (/falta de dados de desempenho|aus[êe]ncia de dados|impress[õo]es.*(?:ctr|convers)/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Mensuração'; }}
             else if (/aproveitamento limitado|criativos incompletos/.test(lowered)) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
@@ -37614,6 +37622,8 @@ function reportIcon(name) {{
         quote:'<path d="M3 21c3 0 7-1 7-8V5H4v8h4c0 4-2 5-5 5v3Z"/><path d="M14 21c3 0 7-1 7-8V5h-6v8h4c0 4-2 5-5 5v3Z"/>',
         book:'<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2V4Z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7V4Z"/>',
         mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
+        captions:'<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M9 10H6a2 2 0 0 0 0 4h3M18 10h-3a2 2 0 0 0 0 4h3"/>',
+        compass:'<circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5L16 8Z"/>',
         calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
         chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
         star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
@@ -37702,6 +37712,10 @@ function enhanceAdsReport(root) {{
             else if (/expandir.*diversificar|diversificar.*criativos/.test(title.toLowerCase())) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/cen[aá]rios diversos|ambientação/.test(title.toLowerCase())) {{ type='visual'; icon='image'; kicker='Ambientação'; }}
             else if (/tutoriais? r[aá]pidos|passo a passo/.test(title.toLowerCase())) {{ type='mix'; icon='book'; kicker='Conteúdo educativo'; }}
+            else if (/legendas? nos v[íi]deos|legendas? \(captions\)|acessibilidade/.test(lowered)) {{ type='mix'; icon='captions'; kicker='Acessibilidade'; }}
+            else if (/estrat[ée]gia de criativos.*(?:diversificada|segmentada)/.test(title.toLowerCase())) {{ type='event'; icon='compass'; kicker='Estratégia criativa'; }}
+            else if (/^v[íi]deos?$/.test(title.toLowerCase())) {{ type='video'; icon='play'; kicker='Linguagem audiovisual'; }}
+            else if (/^mix de formatos?$|equil[ií]brio de formatos/.test(title.toLowerCase())) {{ type='mix'; icon='chart'; kicker='Distribuição de formatos'; }}
             else if (/falta de dados de desempenho|aus[êe]ncia de dados|impress[õo]es.*(?:ctr|convers)/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Mensuração'; }}
             else if (/aproveitamento limitado|criativos incompletos/.test(lowered)) {{ type='video'; icon='layers'; kicker='Diversificação criativa'; }}
             else if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}

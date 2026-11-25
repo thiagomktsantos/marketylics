@@ -21273,7 +21273,7 @@ function setHeightGeral(isOpen) {{
                     elif _score_geral >= 40:
                         _sg_lbl, _sg_cor, _sg_icon = "Intermediário", "#f59e0b", _SVG_ICONE_REGULAR
                     else:
-                        _sg_lbl, _sg_cor, _sg_icon = "Baixa presença", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
+                        _sg_lbl, _sg_cor, _sg_icon = "Baixa", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
 
                 def _score_geral_leve(_empresa_leve):
                     _nome_emp = _empresa_leve["nome"]
@@ -21412,7 +21412,7 @@ function setHeightGeral(isOpen) {{
                         elif _sc >= 40:
                             _area_txt, _cor_render, _score_render = "Intermediário", _cor_area, _sc
                         else:
-                            _area_txt, _cor_render, _score_render = "Baixa presença", _cor_area, _sc
+                            _area_txt, _cor_render, _score_render = "Baixa", _cor_area, _sc
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_render)
                     _svg_only = _svg_ring_area(_score_render, _cor_render, size=72, stroke=6, icon_svg=_icon_svg)
@@ -21521,8 +21521,9 @@ function setHeightGeral(isOpen) {{
                             _falt_raw, "", "Priorize esse item para elevar o score dessa área."
                         )
                         _titulo_op, _ganho_op, _como_op = _oport_textos_ativos.get(_falt_raw, _fallback_op)
-                        _ganho_html = (
-                            f'<div style="font-size:10px;color:#f59e0b;font-weight:700;margin-top:1px;">{_ganho_op}</div>'
+                        _ganho_tip_html = (
+                            f'<div style="font-size:10px;color:#fbbf24;font-weight:800;margin-top:6px;">'
+                            f'Impacto estimado: {_ganho_op}</div>'
                             if _ganho_op else ""
                         )
                         _badge_txt = _BADGE_LBL.get(_lbl, _lbl)
@@ -21534,10 +21535,9 @@ function setHeightGeral(isOpen) {{
                             f'<div class="oport-tip-wrap oport-selo" style="width:{_selo_width_px}px;background:{_cor_op};">'
                             f'<div class="oport-selo-icone">{_lampada_selo_svg}</div>'
                             f'<div class="oport-selo-texto"><span>{_badge_txt}</span><strong>{_badge_pct}</strong></div>'
-                            f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}</div>'
+                            f'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como fazer:</span><br>{_como_op}{_ganho_tip_html}</div>'
                             f'</div>'
-                            f'<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#1a2e4a;">{_titulo_op}</div>'
-                            f'{_ganho_html}</div></div>'
+                            f'<div class="oport-copy"><div class="oport-title">{_titulo_op}</div></div></div>'
                         )
                     _OPORT_POR_PAGINA = 2
                     _oport_paginas = []
@@ -21820,18 +21820,27 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 }}
 .oport-selo-texto span {{ font-size:9px; font-weight:800; }}
 .oport-selo-texto strong {{ font-size:10px; font-weight:900; margin-top:2px; }}
+.oport-copy {{ flex:1; min-width:0; overflow:visible; }}
+.oport-title {{
+    font-size:12px; font-weight:700; color:#1a2e4a; line-height:1.35;
+    white-space:normal; overflow-wrap:anywhere; word-break:normal;
+}}
 .ring-tip-wrap {{ position:relative; display:inline-flex; cursor:default; }}
 .ring-tip-wrap .tip {{ display:none; }}
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 .executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:20px; align-items:stretch; }}
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
-.executive-grid {{ display:grid; grid-template-columns:250px 260px minmax(340px,1fr); gap:18px; align-items:stretch; }}
+.executive-grid {{
+    display:grid;
+    grid-template-columns:minmax(190px,.9fr) minmax(240px,1fr) minmax(260px,1.15fr);
+    gap:14px; align-items:stretch;
+}}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-performance {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:0; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
-    .executive-grid {{ grid-template-columns:minmax(210px,230px) 260px minmax(310px,1fr); gap:14px; }}
+    .executive-grid {{ grid-template-columns:minmax(185px,.9fr) minmax(235px,1fr) minmax(250px,1.15fr); gap:12px; }}
 }}
 @media (max-width:1050px) {{
     .executive-layout {{ flex-direction:column; }}
@@ -21887,7 +21896,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
       </div>
       <div class="executive-actions">
         <div style="display:flex;align-items:center;margin-bottom:10px;">
-          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">{_oport_titulo_secao}</div>
+          <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;line-height:1.25;white-space:normal;overflow-wrap:anywhere;">{_oport_titulo_secao}</div>
           {_oport_count_badge_html}
         </div>
         {_oport_html}
@@ -22192,7 +22201,7 @@ function buildSeoColumn(d,colEl) {{
     var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
     var isCompetitor=d.badge_lbl!=='Minha Empresa';
     var scoreTxt2=isCompetitor
-        ? (scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Referência':scoreNum>=81?'{_SVG_ICONE_BOM} Muito forte':scoreNum>=60?'{_SVG_ICONE_BOM} Forte':scoreNum>=40?'{_SVG_ICONE_REGULAR} Intermediário':'{_SVG_ICONE_PRECISA_MELHORAR} Baixa presença')
+        ? (scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Referência':scoreNum>=81?'{_SVG_ICONE_BOM} Muito forte':scoreNum>=60?'{_SVG_ICONE_BOM} Forte':scoreNum>=40?'{_SVG_ICONE_REGULAR} Intermediário':'{_SVG_ICONE_PRECISA_MELHORAR} Baixa')
         : (scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Excelente':scoreNum>=81?'{_SVG_ICONE_BOM} Muito bom':scoreNum>=60?'{_SVG_ICONE_BOM} Bom':scoreNum>=40?'{_SVG_ICONE_REGULAR} Regular':'{_SVG_ICONE_PRECISA_MELHORAR} Precisa melhorar');
     var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
     var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);

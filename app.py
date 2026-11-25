@@ -29104,6 +29104,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
  
         ICON_SVG_ADS = {
             "megaphone": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',
+            "image":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg>',
             "search":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
             "chart":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
             "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
@@ -29336,7 +29337,7 @@ setTimeout(syncHeightTabs, 800);
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return ICON_SVG_ADS['chart'], '#e2e8f0'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
-                    return ICON_SVG_ADS['megaphone'], '#fce7f3'
+                    return ICON_SVG_ADS['image'], '#fce7f3'
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return ICON_SVG_ADS['target'], '#fee2e2'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -29711,14 +29712,14 @@ body { padding-bottom:8px; }
 .sec-content ul > li.analysis-opportunity::before { content:'!'; background:#ffedd5; color:#ea580c; }
 .sec-content ul > li strong { display:inline; color:#0f2742; }
 
-.sec-card { position:relative; display:block; padding:20px 22px; }
-.sec-icon-wrap { position:absolute; z-index:2; top:20px; left:22px; width:56px; height:44px; border-radius:9px 0 0 9px; }
+.sec-card { position:relative; display:block; padding:0 22px 20px; overflow:hidden; }
+.sec-icon-wrap { position:absolute; z-index:2; top:0; left:0; width:70px; height:64px; border-radius:10px 0 0 0; }
 .sec-icon-wrap svg { width:22px; height:22px; }
 .sec-title {
     color:#123252 !important; font-size:clamp(14px,.76vw,19px); line-height:1.25;
-    min-height:44px; display:flex; align-items:center;
-    padding:10px 14px 10px 74px; margin:0 0 18px; border-left:0;
-    border-radius:9px; background:#edf4fa;
+    min-height:64px; display:flex; align-items:center;
+    padding:12px 18px 12px 92px; margin:0 -22px 22px; border-left:0;
+    border-radius:10px 10px 0 0; background:#eef3f8;
 }
 .sec-divider { display:none; }
 .sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }
@@ -29754,7 +29755,7 @@ body { padding-bottom:8px; }
 .analysis-kpi-icon { width:40px; height:40px; border-radius:10px; }
 .analysis-kpi-icon svg { width:22px; height:22px; }
 .analysis-kpi-value { font-size:clamp(20px,1vw,26px); }
-.analysis-kpi-label { font-size:clamp(10px,.48vw,12px); }
+.analysis-kpi-label { font-size:clamp(10px,.48vw,12px); margin-top:1px; }
 @media (max-width:800px) {
     .analysis-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .analysis-kpi:nth-child(2) { border-right:0; }
@@ -36831,6 +36832,7 @@ Seja direto, objetivo e baseado nos dados fornecidos.
  
         ICON_SVG_ADS = {
             "megaphone": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',
+            "image":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></svg>',
             "search":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
             "chart":     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
             "trophy":    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
@@ -37063,7 +37065,7 @@ setTimeout(syncHeightTabs, 800);
                 if _match_palavra_ads(t, ['engajamento', 'métrica', 'metrica', 'métricas', 'metricas', 'desempenho', 'resultado', 'resultados', 'performance', 'ctr', 'cpc', 'roas', 'conversão', 'conversao', 'tráfego', 'trafego', 'tempo', 'veiculação', 'veiculacao', 'impressão', 'impressao', 'impressões', 'impressoes']):
                     return ICON_SVG_ADS['chart'], '#e2e8f0'
                 if _match_palavra_ads(t, ['criativo', 'criativos', 'visual', 'imagem', 'imagens', 'vídeo', 'video', 'formato', 'design', 'copy', 'legenda']):
-                    return ICON_SVG_ADS['megaphone'], '#fce7f3'
+                    return ICON_SVG_ADS['image'], '#fce7f3'
                 if _match_palavra_ads(t, ['cta', 'ctas', 'call to action', 'chamada para ação', 'chamada para acao']):
                     return ICON_SVG_ADS['target'], '#fee2e2'
                 if _match_palavra_ads(t, ['compara', 'comparativo', 'concorrente', 'concorrentes', 'mercado', 'benchmark']):
@@ -37350,7 +37352,7 @@ body { padding-bottom:8px; }
 .analysis-kpi:nth-child(3) .analysis-kpi-icon { color:#7c3aed; background:#ede9fe; }
 .analysis-kpi:nth-child(4) .analysis-kpi-icon { color:#ea580c; background:#ffedd5; }
 .analysis-kpi-value { color:#0f2742; font-size:clamp(20px,1vw,26px); line-height:1; font-weight:800; }
-.analysis-kpi-label { color:#64748b; font-size:clamp(10px,.48vw,12px); font-weight:800; text-transform:uppercase; letter-spacing:.45px; margin-top:3px; }
+.analysis-kpi-label { color:#64748b; font-size:clamp(10px,.48vw,12px); font-weight:800; text-transform:uppercase; letter-spacing:.45px; margin-top:1px; }
 .card-row hr, .sec-content > hr { display:none !important; }
 .ebook-grid {
     display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));
@@ -37393,14 +37395,14 @@ body { padding-bottom:8px; }
 .ebook-card.opportunity { grid-column:1 / -1; min-height:auto; background:#fff7ed; border-color:#fed7aa; }
 .ebook-card.opportunity::after { background:#f97316; }
 .ebook-card.opportunity .ebook-card-icon { color:#ea580c; background:#ffedd5; }
-.sec-card { position:relative; display:block; padding:20px 22px; }
-.sec-icon-wrap { position:absolute; z-index:2; top:20px; left:22px; width:56px; height:44px; border-radius:9px 0 0 9px; }
+.sec-card { position:relative; display:block; padding:0 22px 20px; overflow:hidden; }
+.sec-icon-wrap { position:absolute; z-index:2; top:0; left:0; width:70px; height:64px; border-radius:10px 0 0 0; }
 .sec-icon-wrap svg { width:22px; height:22px; }
 .sec-title {
     color:#123252 !important; font-size:clamp(14px,.76vw,19px); line-height:1.25;
-    min-height:44px; display:flex; align-items:center;
-    padding:10px 14px 10px 74px; margin:0 0 18px; border-left:0;
-    border-radius:9px; background:#edf4fa;
+    min-height:64px; display:flex; align-items:center;
+    padding:12px 18px 12px 92px; margin:0 -22px 22px; border-left:0;
+    border-radius:10px 10px 0 0; background:#eef3f8;
 }
 .sec-divider { display:none; }
 .sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }

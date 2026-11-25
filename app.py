@@ -511,15 +511,74 @@ def _supabase_resiliente(fn, *, operacao: str = "supabase", tentativas: int = 4,
             time.sleep(espera)
     raise ultimo
 
+
+@st.cache_resource(show_spinner=False)
+def _get_ci_blob_cache_v291() -> dict:
+    """Cache curto, isolado por usuário e coluna, para JSONs grandes.
+
+    O Streamlit executa o arquivo novamente a cada interação. Sem este cache,
+    páginas diferentes voltavam a baixar ``ads_cache`` e ``metricas_redes``
+    completos mesmo quando nada havia mudado. O conteúdo continua sendo salvo
+    no Supabase; aqui mantemos apenas uma cópia temporária em memória.
+    """
+    return {"lock": threading.RLock(), "dados": {}}
+
+
+_ci_blob_cache_v291 = _get_ci_blob_cache_v291()
+_CI_BLOB_TTL_SEG_V291 = 300
+
+
+def _cache_blob_ci_v291(user_id: str, coluna: str, valor) -> None:
+    chave = (str(user_id or ""), str(coluna or ""))
+    if not all(chave):
+        return
+    with _ci_blob_cache_v291["lock"]:
+        _ci_blob_cache_v291["dados"][chave] = {
+            "quando": time.monotonic(),
+            "valor": copy.deepcopy(valor),
+        }
+
+
+def _ler_blob_ci_dados_v291(user_id: str, coluna: str, *, forcar: bool = False,
+                            padrao=None):
+    """Lê uma coluna JSON grande no máximo uma vez a cada cinco minutos."""
+    chave = (str(user_id or ""), str(coluna or ""))
+    if not all(chave):
+        return copy.deepcopy(padrao)
+    if not forcar:
+        with _ci_blob_cache_v291["lock"]:
+            item = _ci_blob_cache_v291["dados"].get(chave)
+            if item and time.monotonic() - item["quando"] < _CI_BLOB_TTL_SEG_V291:
+                return copy.deepcopy(item["valor"])
+    res = _supabase_resiliente(
+        lambda: supabase.table("ci_dados").select(coluna)
+                .eq("user_id", user_id).limit(1).execute(),
+        operacao=f"ler_{coluna}", tentativas=2, backoff=(1, 2),
+    )
+    valor = ((res.data[0].get(coluna) if res.data else None))
+    if valor is None:
+        valor = copy.deepcopy(padrao)
+    _cache_blob_ci_v291(user_id, coluna, valor)
+    return copy.deepcopy(valor)
+
+
+def _salvar_blob_ci_dados_v291(user_id: str, coluna: str, valor,
+                               *, tentativas: int = 3):
+    """Salva um JSON e atualiza o cache local, evitando releitura imediata."""
+    resultado = _supabase_resiliente(
+        lambda: supabase.table("ci_dados").update({coluna: valor})
+                .eq("user_id", user_id).execute(),
+        operacao=f"salvar_{coluna}", tentativas=tentativas,
+        backoff=(2, 4, 8),
+    )
+    _cache_blob_ci_v291(user_id, coluna, valor)
+    return resultado
+
 def _persistir_cache_ads_db(user_id: str, coluna: str, payload: dict,
                             tentativas: int = 5):
     """Persistência comum a Meta Ads e Google Ads."""
-    return _supabase_resiliente(
-        lambda: supabase.table("ci_dados").update({coluna: payload})
-                .eq("user_id", user_id).execute(),
-        operacao=f"salvar_{coluna}",
-        tentativas=tentativas,
-        backoff=(2, 4, 8, 12, 20),
+    return _salvar_blob_ci_dados_v291(
+        user_id, coluna, payload, tentativas=tentativas
     )
 
 @st.cache_resource(show_spinner=False)
@@ -10886,8 +10945,8 @@ def _contar_reels_pendentes_transcricao(user_id: str) -> int:
     """Quantos Reels (posts de vídeo) já coletados nas Redes Sociais
     ainda não têm transcrição salva no cache."""
     try:
-        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
-        dados = ((res.data[0].get("metricas_redes") or {}) if res.data else {}).get("dados") or []
+        metricas = _ler_blob_ci_dados_v291(user_id, "metricas_redes", padrao={}) or {}
+        dados = metricas.get("dados") or []
         total = 0
         for perfil in dados:
             if perfil.get("erro"):
@@ -10909,8 +10968,7 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
     transcritas = 0
     total = 0
     try:
-        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
-        metricas = (res.data[0].get("metricas_redes") or {}) if res.data else {}
+        metricas = _ler_blob_ci_dados_v291(user_id, "metricas_redes", padrao={}) or {}
         dados = metricas.get("dados") or []
 
         pendentes_refs = []  # (indice_perfil, indice_post)
@@ -10947,11 +11005,14 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
                 _falhas_reel += 1
                 _falhas_por_empresa_reel[_nome_empresa_reel] = _falhas_por_empresa_reel.get(_nome_empresa_reel, 0) + 1
 
+            # Antes o JSON completo era regravado após CADA vídeo. Agora há
+            # checkpoints em lotes e uma gravação final, reduzindo drasticamente
+            # tráfego, WAL e risco de timeout sem perder todo o progresso.
             metricas["dados"] = dados
-            try:
-                supabase.table("ci_dados").update({"metricas_redes": metricas}).eq("user_id", user_id).execute()
-            except Exception:
-                pass
+            if transcritas % 8 == 0:
+                _salvar_blob_ci_dados_v291(
+                    user_id, "metricas_redes", metricas, tentativas=3
+                )
 
             atualizar_atividade(atividade_id, "em_andamento", {
                 "transcritas": transcritas,
@@ -10962,6 +11023,9 @@ def _transcrever_reels_pendentes_background(user_id: str, atividade_id: str):
                 "ultimo_heartbeat_em": _agora_iso(),
             })
 
+        _salvar_blob_ci_dados_v291(
+            user_id, "metricas_redes", metricas, tentativas=3
+        )
         atualizar_atividade(atividade_id, "concluido", {
             "transcritas": transcritas,
             "total": total,
@@ -12394,6 +12458,15 @@ def carregar_dados_usuario(user_id: str) -> dict:
         )
         if res.data:
             row = res.data[0]
+            for _col_blob_v291, _padrao_blob_v291 in (
+                ("metricas_redes", {}), ("ads_cache", {}),
+                ("analises_salvas", []), ("redes_analises_salvas", []),
+                ("ads_analises_salvas", []), ("seo_cache", {}),
+            ):
+                _cache_blob_ci_v291(
+                    user_id, _col_blob_v291,
+                    row.get(_col_blob_v291, _padrao_blob_v291),
+                )
             return {
                 "minha_empresa": row.get("minha_empresa", {}),
                 "concorrentes": row.get("concorrentes", []),
@@ -15398,8 +15471,7 @@ def verificar_e_migrar_pendentes(user_id: str) -> int:
     estiver com link original. Devolve quantos anúncios foram
     encontrados pendentes (0 = nada a fazer)."""
     try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        ads_cache = _ler_blob_ci_dados_v291(user_id, "ads_cache", padrao={}) or {}
         pendentes = encontrar_ads_com_link_original(ads_cache)
         total_ads_pendentes = sum(len(e.get("data", [])) for e in pendentes.values())
         print(f"[MIGR-DEBUG] verificar_e_migrar_pendentes: {total_ads_pendentes} anúncio(s) pendente(s) em {list(pendentes.keys())}", flush=True)
@@ -15811,8 +15883,7 @@ def _reparar_links_quebrados_background(user_id: str, atividade_id: str):
     e, pro que estiver quebrado, busca o link original em `midias.
     url_origem` pra tentar migrar de novo."""
     try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        ads_cache = (res.data[0].get("ads_cache") or {}) if res.data else {}
+        ads_cache = _ler_blob_ci_dados_v291(user_id, "ads_cache", padrao={}) or {}
 
         res_midias = supabase.table("midias").select("url_cdn, url_origem").eq("user_id", user_id).execute()
         mapa_origem = {m["url_cdn"]: m["url_origem"] for m in (res_midias.data or []) if m.get("url_cdn")}
@@ -16488,8 +16559,9 @@ def refazer_coleta_redes(user_id: str, atividade_id: str, empresas_com_erro: lis
     if not user_id or not empresas_com_erro:
         return False
     try:
-        res = supabase.table("ci_dados").select("metricas_redes").eq("user_id", user_id).execute()
-        cache_atual = (res.data[0].get("metricas_redes") or {}) if res.data else {}
+        cache_atual = _ler_blob_ci_dados_v291(
+            user_id, "metricas_redes", padrao={}
+        ) or {}
     except Exception:
         return False
     dados_atuais = cache_atual.get("dados") or []
@@ -16613,8 +16685,9 @@ def retentar_migracoes_travadas_automaticamente(user_id: str) -> bool:
         return False
 
     try:
-        res_cache = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        cache_atual = (res_cache.data[0].get("ads_cache") or {}) if res_cache.data else {}
+        cache_atual = _ler_blob_ci_dados_v291(
+            user_id, "ads_cache", padrao={}
+        ) or {}
         gcache_atual = _carregar_gads_cache_preferindo_r2_v249(user_id, "retry_migracao")
     except Exception:
         return False
@@ -16999,7 +17072,7 @@ body {{
     </a>
     <a class="nav-item {'active' if pagina_atual == 'insights' else ''}" onclick="nav('insights')">
         <span class="nav-icon"><i class="fa-solid fa-lightbulb"></i></span>
-        <span class="nav-label">Insights</span>
+        <span class="nav-label">Oportunidades</span>
         <span class="nav-arrow"><i class="fa-solid fa-chevron-right"></i></span>
     </a>
 </div>
@@ -17964,11 +18037,9 @@ def contar_midias_pendentes_retentativa(user_id: str) -> int:
 
 def _migrar_pendentes_geral_background(user_id: str, atividade_id: str = None):
     try:
-        res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-        if not res.data:
-            atualizar_atividade(atividade_id, "erro", {"motivo": "ci_dados não encontrado"})
-            return
-        ads_cache = res.data[0].get("ads_cache") or {}
+        ads_cache = _ler_blob_ci_dados_v291(
+            user_id, "ads_cache", padrao={}
+        ) or {}
 
         def _e_r2(u):
             return bool(u) and bool(R2_PUBLIC_BASE) and u.startswith(R2_PUBLIC_BASE)
@@ -19279,16 +19350,17 @@ elif st.session_state.pagina == "cad":
     }
     .st-key-btn_add_conc_ghost,
     .stElementContainer:has(.st-key-btn_add_conc_ghost) {
-        position: fixed !important;
-        top: -9999px !important;
-        left: -9999px !important;
-        width: 1px !important;
-        height: 1px !important;
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
         overflow: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
         visibility: hidden !important;
-        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     /* Aproxima o grid de concorrentes da barra acima dele. Antes isso era
        feito mutando "iframes[i].style.marginTop" direto por JS de dentro do
@@ -19501,8 +19573,10 @@ function triggerAdicionar() {
             })
         cards_json = _json_conc.dumps(cards_conc, ensure_ascii=True)
  
-        n_rows     = (len(concorrentes) + 1) // 2
-        est_height = 40 + n_rows * 320
+        # A grade usa 3 colunas no desktop, 2 no tablet e 1 no celular.
+        # A altura final e ajustada pelo JavaScript a partir do conteudo real.
+        n_rows     = max(1, (len(concorrentes) + 2) // 3)
+        est_height = 48 + n_rows * 320
  
         _wrap_conc_grid = st.container(key="conc_grid_wrap")
         with _wrap_conc_grid:
@@ -19639,12 +19713,14 @@ body {{ padding-bottom: 8px; }}
     }}
  
     function syncHeight() {{
-        var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+        var wrap = document.querySelector('.outer-wrap');
+        if (!wrap) return;
+        var h = Math.ceil(wrap.getBoundingClientRect().height + 12);
         var iframes = window.parent.document.querySelectorAll('iframe');
         for (var i = 0; i < iframes.length; i++) {{
             try {{
                 if (iframes[i].contentWindow === window) {{
-                    iframes[i].style.height = (h + 12) + 'px';
+                    iframes[i].style.height = h + 'px';
                     break;
                 }}
             }} catch(e) {{}}
@@ -19706,7 +19782,11 @@ body {{ padding-bottom: 8px; }}
     document.addEventListener('DOMContentLoaded', buildCards);
     if (document.readyState !== 'loading') buildCards();
     [200, 500, 1000].forEach(function(t) {{ setTimeout(syncHeight, t); }});
-    if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+    if (window.ResizeObserver) {{
+        var observedWrap = document.querySelector('.outer-wrap');
+        if (observedWrap) new ResizeObserver(syncHeight).observe(observedWrap);
+    }}
+    window.addEventListener('resize', syncHeight);
 }})();
 </script>
 </body>
@@ -20019,14 +20099,11 @@ elif st.session_state.pagina == "geral":
 
     if not st.session_state.metricas_redes.get("ultima_coleta"):
         try:
-            _res_redes = (
-                supabase.table("ci_dados")
-                .select("metricas_redes")
-                .eq("user_id", st.session_state.user.id)
-                .execute()
+            _metricas_redes_v291 = _ler_blob_ci_dados_v291(
+                st.session_state.user.id, "metricas_redes", padrao={}
             )
-            if _res_redes.data and _res_redes.data[0].get("metricas_redes"):
-                st.session_state.metricas_redes = _res_redes.data[0]["metricas_redes"]
+            if _metricas_redes_v291:
+                st.session_state.metricas_redes = _metricas_redes_v291
         except Exception:
             pass
 
@@ -20041,14 +20118,10 @@ elif st.session_state.pagina == "geral":
     _ads_cache_completo = st.session_state.get("ads_cache", {})
     if not _ads_cache_completo:
         try:
-            _res_ads = (
-                supabase.table("ci_dados")
-                .select("ads_cache")
-                .eq("user_id", st.session_state.user.id)
-                .execute()
-            )
-            if _res_ads.data and _res_ads.data[0].get("ads_cache"):
-                _ads_cache_completo = _res_ads.data[0]["ads_cache"]
+            _ads_cache_completo = _ler_blob_ci_dados_v291(
+                st.session_state.user.id, "ads_cache", padrao={}
+            ) or {}
+            if _ads_cache_completo:
                 st.session_state.ads_cache = _ads_cache_completo
         except Exception:
             pass
@@ -24386,14 +24459,10 @@ elif st.session_state.pagina == "ads":
         if not forcar and st.session_state.get("ads_cache"):
             return st.session_state.ads_cache
         try:
-            res = (
-                supabase.table("ci_dados")
-                .select("ads_cache")
-                .eq("user_id", st.session_state.user.id)
-                .execute()
-            )
-            if res.data and res.data[0].get("ads_cache"):
-                return res.data[0]["ads_cache"]
+            return _ler_blob_ci_dados_v291(
+                st.session_state.user.id, "ads_cache",
+                forcar=forcar, padrao={},
+            ) or {}
         except Exception:
             pass
         return {}
@@ -25067,8 +25136,9 @@ elif st.session_state.pagina == "ads":
         nem lê `st.session_state` pro cache atual — busca direto do
         Supabase, que é seguro de qualquer thread."""
         try:
-            res = supabase.table("ci_dados").select("ads_cache").eq("user_id", user_id).execute()
-            cache_atual = (res.data[0].get("ads_cache") or {}) if res.data else {}
+            cache_atual = _ler_blob_ci_dados_v291(
+                user_id, "ads_cache", padrao={}
+            ) or {}
 
             erros = {}
             novos = {}
@@ -38525,7 +38595,7 @@ elif st.session_state.pagina == "insights":
                     padding:48px 32px;text-align:center;margin-top:8px'>
             <div style='font-size:32px;margin-bottom:12px'>✨</div>
             <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum concorrente cadastrado</div>
-            <div style='font-size:14px;color:#9ca3af'>Adicione concorrentes para gerar insights estratégicos.</div>
+            <div style='font-size:14px;color:#9ca3af'>Adicione concorrentes para identificar oportunidades estratégicas.</div>
         </div>
         """, unsafe_allow_html=True)
         st.stop()
@@ -38575,8 +38645,8 @@ html, body { background: transparent; overflow: hidden; }
 }
 .sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
 </style>
-<div class="titulo">Insights</div>
-<div class="sub">Estratégias geradas por IA para vencer a concorrência.</div>
+<div class="titulo">Análise de Oportunidades</div>
+<div class="sub">Compare concorrentes e identifique oportunidades estratégicas para sua empresa.</div>
 """, height=65)
 
     with col2:
@@ -40250,25 +40320,22 @@ function setHeight(isOpen) {{
 
     def salvar_cache_redes(dados: list):
         try:
-            supabase.table("ci_dados").update({
-                "metricas_redes": {
+            _salvar_blob_ci_dados_v291(
+                st.session_state.user.id,
+                "metricas_redes",
+                {
                     "ultima_coleta": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "dados": dados,
                 },
-            }).eq("user_id", st.session_state.user.id).execute()
+            )
         except Exception as e:
             st.toast(f"Erro ao salvar cache: {e}", icon="⚠️")
 
     def carregar_cache_redes() -> dict:
         try:
-            res = (
-                supabase.table("ci_dados")
-                .select("metricas_redes")
-                .eq("user_id", st.session_state.user.id)
-                .execute()
-            )
-            if res.data and res.data[0].get("metricas_redes"):
-                return res.data[0]["metricas_redes"]
+            return _ler_blob_ci_dados_v291(
+                st.session_state.user.id, "metricas_redes", padrao={}
+            ) or {}
         except Exception:
             pass
         return {}
@@ -40534,12 +40601,14 @@ function setHeight(isOpen) {{
                     _status_por_empresa_redes[_nome_e] = {"status": "ok"}
                 _grava_progresso_redes()
 
-            supabase.table("ci_dados").update({
-                "metricas_redes": {
+            _salvar_blob_ci_dados_v291(
+                user_id,
+                "metricas_redes",
+                {
                     "ultima_coleta": _dt_redes_bg.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "dados": resultados_lista,
                 },
-            }).eq("user_id", user_id).execute()
+            )
 
             _nomes_ok_redes = [r["nome"] for r in resultados_lista if not r.get("erro")]
             _com_erro_redes = {r["nome"]: r["erro"] for r in resultados_lista if r.get("erro")}

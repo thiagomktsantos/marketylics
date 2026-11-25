@@ -21802,7 +21802,9 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
     content:''; position:absolute; bottom:100%; right:10px; transform:none;
     border:5px solid transparent; border-bottom-color:#1a2e4a;
 }}
-.oport-tip-wrap:hover .tip {{ display:block; }}
+/* O conteudo fica oculto no iframe e serve apenas como molde. O tooltip
+   visivel e criado no documento pai para poder ultrapassar todas as bordas. */
+.oport-tip-wrap:hover .tip {{ display:none; }}
 .oport-selo {{
     height:38px; padding:3px; border-radius:9px; color:#fff; flex-shrink:0; margin-top:1px;
     display:flex; align-items:center; gap:4px; transition:transform .16s ease, filter .16s ease, box-shadow .16s ease;
@@ -22015,7 +22017,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
         }}
         return null;
     }}
-    document.querySelectorAll('.ring-tip-wrap').forEach(function(w) {{
+    document.querySelectorAll('.ring-tip-wrap, .oport-tip-wrap').forEach(function(w) {{
         var tipEl = w.querySelector('.tip');
         if (!tipEl) return;
         w.addEventListener('mouseenter', function() {{
@@ -22027,8 +22029,15 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
             var scrollY = (doc.defaultView.scrollY || doc.documentElement.scrollTop || 0);
             var ft = getFloatTip();
             ft.querySelector('.conteudo').innerHTML = tipEl.innerHTML;
+            var isOportunidade = w.classList.contains('oport-tip-wrap');
+            ft.style.width = isOportunidade ? '240px' : '200px';
             ft.style.top = (ifrRect.top + wRect.bottom + scrollY + 6) + 'px';
-            ft.style.left = (ifrRect.left + wRect.left + wRect.width / 2 + scrollX) + 'px';
+            var centroX = ifrRect.left + wRect.left + wRect.width / 2 + scrollX;
+            var larguraTip = isOportunidade ? 240 : 200;
+            var limiteEsq = scrollX + 12 + larguraTip / 2;
+            var limiteDir = scrollX + doc.documentElement.clientWidth - 12 - larguraTip / 2;
+            centroX = Math.max(limiteEsq, Math.min(centroX, limiteDir));
+            ft.style.left = centroX + 'px';
             ft.style.transform = 'translateX(-50%)';
             ft.style.display = 'block';
         }});
@@ -22060,7 +22069,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 </script>
 </body></html>
 """
-                components.html(resumo_executivo_html, height=420, scrolling=False)
+                components.html(resumo_executivo_html, height=350, scrolling=False)
 
         empresas_cards_json = _json.dumps(empresas_cards_data, ensure_ascii=False)
 

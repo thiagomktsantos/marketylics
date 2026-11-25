@@ -29729,11 +29729,11 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    display:grid; grid-template-columns:minmax(155px,22%) minmax(0,1fr);
+    display:grid; grid-template-columns:180px minmax(0,1fr);
     min-height:158px; padding:0;
 }
 .ebook-card-head {
-    display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:12px; min-height:100%; margin:0; padding:22px 20px;
     background:#f3f7fb; border-right:1px solid #e5edf5; border-bottom:0;
     border-radius:11px 0 0 11px;
@@ -29744,6 +29744,7 @@ body { padding-bottom:8px; }
     display:inline-flex; align-items:center; width:max-content;
     color:#2563eb; background:transparent; border-radius:0;
     padding:0; font-size:clamp(10px,.52vw,13px); letter-spacing:.7px; margin:0;
+    text-align:center;
 }
 .ebook-card.video .ebook-card-kicker { color:#7c3aed; background:transparent; }
 .ebook-card.event .ebook-card-kicker { color:#15803d; background:transparent; }
@@ -37363,13 +37364,13 @@ body { padding-bottom:8px; }
     gap:14px; margin-top:18px;
 }
 .ebook-card {
-    position:relative; display:grid; grid-template-columns:minmax(155px,22%) minmax(0,1fr);
+    position:relative; display:grid; grid-template-columns:180px minmax(0,1fr);
     min-height:158px; padding:0; overflow:hidden;
     background:#fff; border:1px solid #dbe3ec; border-radius:12px;
 }
 .ebook-card::after { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#2f80ed; }
 .ebook-card-head {
-    display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
     gap:12px; min-height:100%; margin:0; padding:22px 20px;
     background:#f3f7fb; border-right:1px solid #e5edf5; border-bottom:0;
     border-radius:11px 0 0 11px;
@@ -37380,7 +37381,7 @@ body { padding-bottom:8px; }
     display:inline-flex; align-items:center; width:max-content;
     color:#2563eb; background:transparent; border-radius:0;
     padding:0; font-size:clamp(10px,.52vw,13px); font-weight:800;
-    letter-spacing:.65px; text-transform:uppercase; margin:0;
+    letter-spacing:.65px; text-transform:uppercase; margin:0; text-align:center;
 }
 .ebook-card.video .ebook-card-kicker { color:#7c3aed; background:transparent; }
 .ebook-card.event .ebook-card-kicker { color:#15803d; background:transparent; }

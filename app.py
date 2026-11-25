@@ -21213,15 +21213,34 @@ function setHeightGeral(isOpen) {{
                     "Site": "SITE",
                     "Anúncios": "ANÚNCIOS",
                 }
-                for _lbl, _sc, _falt, _cor_area, _crit_ring in _areas:
-                    if _sc >= 91:   _area_txt = "Excelente"
-                    elif _sc >= 81: _area_txt = "Muito bom"
-                    elif _sc >= 60: _area_txt = "Bom"
-                    elif _sc >= 40: _area_txt = "Regular"
-                    else:           _area_txt = "Precisa melhorar"
+                _areas_por_nome = {a[0]: a for a in _areas}
+                _areas_desempenho = []
+                for _lbl_padrao, _cor_padrao in [
+                    ("Redes Sociais", "#3b82f6"),
+                    ("Site", "#22c55e"),
+                    ("Anúncios", "#8b5cf6"),
+                ]:
+                    if _lbl_padrao in _areas_por_nome:
+                        _areas_desempenho.append((*_areas_por_nome[_lbl_padrao], True))
+                    else:
+                        _areas_desempenho.append((_lbl_padrao, None, [], _cor_padrao, [], False))
+
+                for _lbl, _sc, _falt, _cor_area, _crit_ring, _tem_dados_area in _areas_desempenho:
+                    if not _tem_dados_area:
+                        _area_txt, _cor_render, _score_render = "Sem dados", "#94a3b8", 0
+                    elif _sc >= 91:
+                        _area_txt, _cor_render, _score_render = "Excelente", _cor_area, _sc
+                    elif _sc >= 81:
+                        _area_txt, _cor_render, _score_render = "Muito bom", _cor_area, _sc
+                    elif _sc >= 60:
+                        _area_txt, _cor_render, _score_render = "Bom", _cor_area, _sc
+                    elif _sc >= 40:
+                        _area_txt, _cor_render, _score_render = "Regular", _cor_area, _sc
+                    else:
+                        _area_txt, _cor_render, _score_render = "Precisa melhorar", _cor_area, _sc
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
-                    _icon_svg = _icon_tpl.format(c=_cor_area)
-                    _svg_only = _svg_ring_area(_sc, _cor_area, size=72, stroke=6, icon_svg=_icon_svg)
+                    _icon_svg = _icon_tpl.format(c=_cor_render)
+                    _svg_only = _svg_ring_area(_score_render, _cor_render, size=72, stroke=6, icon_svg=_icon_svg)
                     _linhas_crit_ring = [
                         f'{_SVG_ICONE_CHECK_BOLA} {_cr.get("label","")} +{_cr.get("peso", _cr.get("pts", 0))}<br>'
                         for _cr in _crit_ring
@@ -21229,6 +21248,9 @@ function setHeightGeral(isOpen) {{
                     _tip_crit_ring = (
                         '<span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
                         + "".join(_linhas_crit_ring)
+                    ) if _tem_dados_area else (
+                        '<span style="font-size:11px;font-weight:700;color:#fff;">Sem dados coletados</span><br>'
+                        'Atualize essa área para incluí-la no desempenho e no Score Geral.'
                     )
                     _svg_com_tip = (
                         f'<div class="ring-tip-wrap">{_svg_only}'
@@ -21238,11 +21260,13 @@ function setHeightGeral(isOpen) {{
                         '<div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;width:92px;flex-shrink:0;">'
                         + _svg_com_tip +
                         '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
-                        f'<div style="font-size:11px;font-weight:900;color:{_cor_area};line-height:1.15;letter-spacing:.15px;">{_AREA_LABELS_CURTOS.get(_lbl, _lbl.upper())}</div>'
+                        f'<div style="font-size:11px;font-weight:900;color:{_cor_render};line-height:1.15;letter-spacing:.15px;">{_AREA_LABELS_CURTOS.get(_lbl, _lbl.upper())}</div>'
                         f'<div style="display:flex;align-items:baseline;justify-content:center;line-height:1;">'
-                        f'<span style="color:{_cor_area};font-size:18px;font-weight:900;letter-spacing:-.5px;">{_sc}</span>'
-                        f'<span style="color:#8b95a7;font-size:11px;font-weight:700;">/100</span></div>'
-                        f'<div style="display:inline-flex;align-items:center;justify-content:center;margin-top:3px;border:1px solid {_cor_area};border-radius:4px;padding:1px 5px;font-size:10px;line-height:1.2;font-weight:800;color:{_cor_area};background:#fff;white-space:nowrap;">{_area_txt}</div>'
+                        + (f'<span style="color:{_cor_render};font-size:18px;font-weight:900;letter-spacing:-.5px;">{_sc}</span>'
+                           f'<span style="color:#8b95a7;font-size:11px;font-weight:700;">/100</span>' if _tem_dados_area
+                           else f'<span style="color:{_cor_render};font-size:18px;font-weight:900;">—</span>')
+                        + '</div>'
+                        f'<div style="display:inline-flex;align-items:center;justify-content:center;margin-top:3px;border:1px solid {_cor_render};border-radius:4px;padding:1px 5px;font-size:10px;line-height:1.2;font-weight:800;color:{_cor_render};background:#fff;white-space:nowrap;">{_area_txt}</div>'
                         '</div></div>'
                     )
 
@@ -21619,22 +21643,24 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .insight-cta:hover {{ text-decoration:underline; text-underline-offset:2px; }}
 .executive-layout {{ display:flex; gap:16px; margin-top:16px; margin-bottom:20px; align-items:stretch; }}
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
-.executive-grid {{ display:grid; grid-template-columns:auto minmax(230px,1.1fr) 1.05fr; gap:18px; align-items:stretch; }}
-.executive-score {{ display:flex; flex-direction:column; width:270px; flex-shrink:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
-.executive-performance {{ display:flex; flex-direction:column; border-right:1px solid #f3f4f6; padding-right:12px; min-width:0; }}
+.executive-grid {{ display:grid; grid-template-columns:250px minmax(330px,1fr) minmax(280px,.9fr); gap:18px; align-items:stretch; }}
+.executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
+.executive-performance {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
 .executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:6px; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
-    .executive-grid {{ grid-template-columns:minmax(220px,250px) minmax(360px,1fr); }}
-    .executive-score {{ width:auto; }}
-    .executive-performance {{ border-right:0; padding-right:0; }}
-    .executive-actions {{ grid-column:1 / -1; border-top:1px solid #eef2f7; padding-top:14px; }}
+    .executive-grid {{ grid-template-columns:minmax(210px,230px) minmax(320px,1fr) minmax(260px,.9fr); gap:14px; }}
 }}
 @media (max-width:1050px) {{
     .executive-layout {{ flex-direction:column; }}
     .executive-side {{ width:100% !important; min-height:210px !important; }}
 }}
-@media (max-width:760px) {{
+@media (max-width:900px) {{
+    .executive-grid {{ grid-template-columns:minmax(210px,240px) minmax(330px,1fr); gap:16px; }}
+    .executive-performance {{ border-right:0; padding-right:0; }}
+    .executive-actions {{ grid-column:1 / -1; border-top:1px solid #eef2f7; padding-top:14px; }}
+}}
+@media (max-width:650px) {{
     .executive-layout {{ gap:12px; margin-top:10px; }}
     .executive-grid {{ grid-template-columns:1fr; gap:16px; }}
     .executive-score {{ border-right:0; border-bottom:1px solid #eef2f7; padding:0 0 16px; }}

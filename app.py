@@ -13921,7 +13921,7 @@ if not st.session_state.logado:
         st.markdown(f"""
         <div style="text-align:center;margin-top:-24px;margin-bottom:36px">
             {'<img src="' + logo_src + '" style="width:242px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
-            <div style="font-size:15px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
+            <div style="font-size:13px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -19010,14 +19010,15 @@ if st.session_state.pagina == "home":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Minha Empresa</div>
 <div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
-""", height=70)
+""", height=86)
 
         with h2:
             st.markdown("<div style='padding-top:6px;'/>", unsafe_allow_html=True)
@@ -19173,14 +19174,15 @@ html, body { background: transparent; overflow: hidden; }
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Minha Empresa</div>
 <div class="sub">Gerencie as informações e tenha uma visão geral da sua empresa.</div>
-""", height=70)
+""", height=86)
 
         with h2:
             st.markdown("<div style='padding-top:6px;'/>", unsafe_allow_html=True)
@@ -19478,10 +19480,11 @@ elif st.session_state.pagina == "cad":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div id="wrap">
     <div class="titulo">Concorrentes</div>
@@ -20239,14 +20242,15 @@ elif st.session_state.pagina == "geral":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Dashboard Geral</div>
 <div class="sub">Panorama competitivo da sua empresa e concorrentes.</div>
-""", height=65)
+""", height=86)
 
     with h2:
         empresas_dd_json = []
@@ -22707,10 +22711,11 @@ elif st.session_state.pagina == "sites":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div id="wrap">
     <div class="titulo">Confronto de Sites</div>
@@ -26088,16 +26093,17 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 }}
 .titulo {{
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }}
-.sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
+.sub {{ display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Meta Ads</div>
     <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
 </div>
-""", height=104 if _ultima_ts else 78)
+""", height=104 if _ultima_ts else 86)
  
     with h2_col:
         _emp_dd_ghost_css_parts = []
@@ -33215,16 +33221,17 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 }}
 .titulo {{
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }}
-.sub {{ font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }}
+.sub {{ display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Google Ads</div>
     <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
 </div>
-""", height=104 if _ultima_ts else 78)
+""", height=104 if _ultima_ts else 86)
  
     with h2_col:
         _emp_dd_ghost_css_parts = []
@@ -38753,14 +38760,15 @@ elif st.session_state.pagina == "insights":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Análise de Oportunidades</div>
 <div class="sub">Compare concorrentes e identifique oportunidades estratégicas para sua empresa.</div>
-""", height=65)
+""", height=86)
 
     with col2:
         components.html(f"""
@@ -39902,14 +39910,15 @@ elif st.session_state.pagina == "redes":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Redes Sociais</div>
 <div class="sub">Acompanhe e compare métricas do Instagram dos seus concorrentes em tempo real.</div>
-""", height=65)
+""", height=86)
 
     with col2:
         todas_empresas_ctrl = []
@@ -43559,10 +43568,11 @@ elif st.session_state.pagina == "perfil":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div id="wrap">
     <div class="titulo">Dados da conta</div>
@@ -45036,10 +45046,11 @@ elif st.session_state.pagina == "notificacoes":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 32px; font-weight: 700; color: #1a2e4a;
-    text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.5px;
+    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    text-transform: uppercase; margin: 0 0 10px 0; letter-spacing: 0.35px;
+    white-space: nowrap;
 }
-.sub { font-family: 'DM Sans', sans-serif; font-size: 14px; color: #6b7280; }
+.sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div id="wrap">
     <div class="titulo">Notificações</div>

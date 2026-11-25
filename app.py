@@ -29533,6 +29533,64 @@ body { padding-bottom:8px; }
     border-radius:10px; padding:12px 14px; margin:0 0 12px !important;
     color:#334155; font-size:13px; line-height:1.55 !important;
 }
+.card-row hr, .sec-content > hr, #rr_0 > hr { display:none !important; }
+.ebook-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+.ebook-card {
+    position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); gap:12px;
+    min-height:126px; padding:16px; overflow:hidden;
+    background:#ffffff; border:1px solid #dbe3ec; border-radius:12px;
+}
+.ebook-card::after { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#2f80ed; }
+.ebook-card-icon {
+    width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+    color:#2563eb; background:#dbeafe; font-size:19px; font-weight:900;
+}
+.ebook-card-kicker { color:#64748b; font-size:9px; font-weight:800; letter-spacing:.75px; text-transform:uppercase; margin-bottom:4px; }
+.ebook-card-title { color:#0f2742; font-size:13px; line-height:1.3; font-weight:800; margin-bottom:6px; }
+.ebook-card-text { color:#475569; font-size:12px; line-height:1.55; }
+.ebook-card.visual::after { background:#2f80ed; }
+.ebook-card.video::after { background:#8b5cf6; }
+.ebook-card.video .ebook-card-icon { color:#7c3aed; background:#ede9fe; }
+.ebook-card.event::after { background:#20c878; }
+.ebook-card.event .ebook-card-icon { color:#16a34a; background:#dcfce7; }
+.ebook-card.mix::after { background:#06b6d4; }
+.ebook-card.mix .ebook-card-icon { color:#0891b2; background:#cffafe; }
+.ebook-card.value::after { background:#f59e0b; }
+.ebook-card.value .ebook-card-icon { color:#d97706; background:#fef3c7; }
+.ebook-card.opportunity { grid-column:1 / -1; min-height:auto; background:#fff7ed; border-color:#fed7aa; }
+.ebook-card.opportunity::after { background:#f97316; }
+.ebook-card.opportunity .ebook-card-icon { color:#ea580c; background:#ffedd5; }
+.sec-title { color:#123252 !important; }
+.sec-divider { height:3px; background:linear-gradient(90deg,#2f80ed,#20c878 55%,transparent) !important; opacity:.75; }
+.card-row hr, .sec-content > hr, #rr_0 > hr { display:none !important; }
+.ebook-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+.ebook-card {
+    position:relative; display:grid; grid-template-columns:42px minmax(0,1fr); gap:12px;
+    min-height:126px; padding:16px; overflow:hidden;
+    background:#ffffff; border:1px solid #dbe3ec; border-radius:12px;
+}
+.ebook-card::after { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#2f80ed; }
+.ebook-card-icon {
+    width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+    color:#2563eb; background:#dbeafe; font-size:19px; font-weight:900;
+}
+.ebook-card-kicker { color:#64748b; font-size:9px; font-weight:800; letter-spacing:.75px; text-transform:uppercase; margin-bottom:4px; }
+.ebook-card-title { color:#0f2742; font-size:13px; line-height:1.3; font-weight:800; margin-bottom:6px; }
+.ebook-card-text { color:#475569; font-size:12px; line-height:1.55; }
+.ebook-card.visual::after { background:#2f80ed; }
+.ebook-card.video::after { background:#8b5cf6; }
+.ebook-card.video .ebook-card-icon { color:#7c3aed; background:#ede9fe; }
+.ebook-card.event::after { background:#20c878; }
+.ebook-card.event .ebook-card-icon { color:#16a34a; background:#dcfce7; }
+.ebook-card.mix::after { background:#06b6d4; }
+.ebook-card.mix .ebook-card-icon { color:#0891b2; background:#cffafe; }
+.ebook-card.value::after { background:#f59e0b; }
+.ebook-card.value .ebook-card-icon { color:#d97706; background:#fef3c7; }
+.ebook-card.opportunity { grid-column:1 / -1; min-height:auto; background:#fff7ed; border-color:#fed7aa; }
+.ebook-card.opportunity::after { background:#f97316; }
+.ebook-card.opportunity .ebook-card-icon { color:#ea580c; background:#ffedd5; }
+.sec-title { color:#123252 !important; }
+.sec-divider { height:3px; background:linear-gradient(90deg,#2f80ed,#20c878 55%,transparent) !important; opacity:.75; }
 
 .analysis-kpis {
     display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
@@ -29653,6 +29711,10 @@ body { padding-bottom:8px; }
     .analysis-kpi:nth-child(2) { border-right:0; }
     .analysis-kpi:nth-child(-n+2) { border-bottom:1px solid #e5e7eb; }
     .sec-content ul { grid-template-columns:1fr; }
+    .ebook-grid { grid-template-columns:1fr; }
+    .ebook-card.opportunity { grid-column:auto; }
+    .ebook-grid { grid-template-columns:1fr; }
+    .ebook-card.opportunity { grid-column:auto; }
     .card-status { display:none; }
 }
  
@@ -29775,11 +29837,42 @@ function enhanceAdsReport(root) {{
         if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
         else firstParagraph.classList.add('analysis-intro');
     }}
-    root.querySelectorAll('.sec-content li').forEach(function(li) {{
-        var value = (li.textContent || '').toLowerCase();
-        if (value.includes('ausência de carross') || value.includes('ausencia de carross') || value.includes('oportunidade')) {{
-            li.classList.add('analysis-opportunity');
-        }}
+    root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
+    root.querySelectorAll('.sec-content').forEach(function(section) {{
+        var items = Array.from(section.querySelectorAll('li'));
+        if (!items.length) return;
+        var grid = document.createElement('div');
+        grid.className = 'ebook-grid';
+        var seen = new Set();
+        items.forEach(function(li, index) {{
+            var clone = li.cloneNode(true);
+            clone.querySelectorAll('ul,ol').forEach(function(nested) {{ nested.remove(); }});
+            var strong = clone.querySelector('strong');
+            var title = strong ? (strong.textContent || '').replace(/:\s*$/, '').trim() : ('Destaque ' + (index + 1));
+            if (strong) strong.remove();
+            var body = (clone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+            if (!body && !title) return;
+            var signature = (title + '|' + body).toLowerCase();
+            if (seen.has(signature)) return;
+            seen.add(signature);
+            var lowered = (title + ' ' + body).toLowerCase();
+            var type = 'visual', icon = '◫', kicker = 'Destaque visual';
+            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='!'; kicker='Oportunidade'; }}
+            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='▶'; kicker='Formato e autenticidade'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='⌁'; kicker='Segmentação'; }}
+            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='▥'; kicker='Distribuição'; }}
+            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='★'; kicker='Proposta de valor'; }}
+            var card = document.createElement('article');
+            card.className = 'ebook-card ' + type;
+            card.innerHTML = '<div class="ebook-card-icon">' + icon + '</div><div>'
+                + '<div class="ebook-card-kicker">' + kicker + '</div>'
+                + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
+            card.querySelector('.ebook-card-title').textContent = title;
+            card.querySelector('.ebook-card-text').textContent = body;
+            grid.appendChild(card);
+        }});
+        section.querySelectorAll('ul,ol').forEach(function(list) {{ list.remove(); }});
+        if (grid.children.length) section.appendChild(grid);
     }});
 }}
  
@@ -37290,11 +37383,42 @@ function enhanceAdsReport(root) {{
         if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
         else firstParagraph.classList.add('analysis-intro');
     }}
-    root.querySelectorAll('.sec-content li').forEach(function(li) {{
-        var value = (li.textContent || '').toLowerCase();
-        if (value.includes('ausência de carross') || value.includes('ausencia de carross') || value.includes('oportunidade')) {{
-            li.classList.add('analysis-opportunity');
-        }}
+    root.querySelectorAll('hr').forEach(function(hr) {{ hr.remove(); }});
+    root.querySelectorAll('.sec-content').forEach(function(section) {{
+        var items = Array.from(section.querySelectorAll('li'));
+        if (!items.length) return;
+        var grid = document.createElement('div');
+        grid.className = 'ebook-grid';
+        var seen = new Set();
+        items.forEach(function(li, index) {{
+            var clone = li.cloneNode(true);
+            clone.querySelectorAll('ul,ol').forEach(function(nested) {{ nested.remove(); }});
+            var strong = clone.querySelector('strong');
+            var title = strong ? (strong.textContent || '').replace(/:\s*$/, '').trim() : ('Destaque ' + (index + 1));
+            if (strong) strong.remove();
+            var body = (clone.textContent || '').replace(/^\s*:\s*/, '').replace(/\s+/g, ' ').trim();
+            if (!body && !title) return;
+            var signature = (title + '|' + body).toLowerCase();
+            if (seen.has(signature)) return;
+            seen.add(signature);
+            var lowered = (title + ' ' + body).toLowerCase();
+            var type = 'visual', icon = '◫', kicker = 'Destaque visual';
+            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='!'; kicker='Oportunidade'; }}
+            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='▶'; kicker='Formato e autenticidade'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='⌁'; kicker='Segmentação'; }}
+            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='▥'; kicker='Distribuição'; }}
+            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='★'; kicker='Proposta de valor'; }}
+            var card = document.createElement('article');
+            card.className = 'ebook-card ' + type;
+            card.innerHTML = '<div class="ebook-card-icon">' + icon + '</div><div>'
+                + '<div class="ebook-card-kicker">' + kicker + '</div>'
+                + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
+            card.querySelector('.ebook-card-title').textContent = title;
+            card.querySelector('.ebook-card-text').textContent = body;
+            grid.appendChild(card);
+        }});
+        section.querySelectorAll('ul,ol').forEach(function(list) {{ list.remove(); }});
+        if (grid.children.length) section.appendChild(grid);
     }});
 }}
  

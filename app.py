@@ -19926,15 +19926,15 @@ elif st.session_state.pagina == "geral":
     todas_empresas_geral = []
     if emp.get("nome"):
         todas_empresas_geral.append({
-            "nome": emp["nome"], "tipo": "minha",
+            "key": "__minha__", "nome": emp["nome"], "tipo": "minha",
             "instagram": emp.get("instagram", ""), "site": emp.get("site", ""),
             "setor": emp.get("setor", ""), "tipo_nicho": emp.get("tipo", ""),
             "cidade": emp.get("cidade", ""), "estado": emp.get("estado", ""),
         })
-    for c in concorrentes:
+    for _idx_conc_geral, c in enumerate(concorrentes):
         if c.get("nome"):
             todas_empresas_geral.append({
-                "nome": c["nome"], "tipo": "concorrente",
+                "key": f"conc_{_idx_conc_geral}", "nome": c["nome"], "tipo": "concorrente",
                 "instagram": c.get("instagram", ""), "site": c.get("url", ""),
                 "setor": "", "tipo_nicho": "", "cidade": "", "estado": "",
             })
@@ -19970,9 +19970,34 @@ elif st.session_state.pagina == "geral":
 
     cache_redes = st.session_state.metricas_redes.get("dados", [])
     dados_redes_map = {}
+    dados_redes_key_map = {}
+    dados_redes_handle_map = {}
     for r in cache_redes:
         if not r.get("erro") and r.get("nome"):
             dados_redes_map[r["nome"]] = r
+        if not r.get("erro") and r.get("key"):
+            dados_redes_key_map[str(r["key"])] = r
+        if not r.get("erro"):
+            _handle_cache = str(r.get("instagram") or r.get("handle") or "").lstrip("@").strip().lower()
+            if _handle_cache:
+                dados_redes_handle_map[_handle_cache] = r
+
+    def _dados_redes_empresa_geral(_empresa: dict) -> dict:
+        """Resolve as métricas do cadastro selecionado sem misturar empresas.
+
+        A chave estável do cadastro é prioritária. O handle do Instagram é a
+        segunda identidade para caches antigos; o nome fica apenas como
+        compatibilidade final.
+        """
+        _por_key = dados_redes_key_map.get(str(_empresa.get("key") or ""))
+        if _por_key:
+            return _por_key
+        _handle = str(_empresa.get("instagram") or "").lstrip("@").strip().lower()
+        if _handle:
+            # Se o perfil mudou ou ainda não foi coletado, não reutiliza por
+            # engano um registro de outra empresa com nome semelhante.
+            return dados_redes_handle_map.get(_handle, {})
+        return dados_redes_map.get(_empresa.get("nome"), {}) or {}
 
     ads_cache = st.session_state.get("ads_cache", {})
 
@@ -19985,7 +20010,7 @@ elif st.session_state.pagina == "geral":
     empresa_sel_geral = todas_empresas_geral[filtro_empresa_ativo] if todas_empresas_geral else None
     nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
 
-    r_sel_geral   = dados_redes_map.get(nome_sel_geral, {}) or {}
+    r_sel_geral   = _dados_redes_empresa_geral(empresa_sel_geral) if empresa_sel_geral else {}
     ads_sel_geral = ads_cache.get(nome_sel_geral, {}) or {}
     seo_sel_geral = st.session_state.get("seo_cache", {}).get(nome_sel_geral, {}) or {}
 
@@ -20065,7 +20090,7 @@ html, body { background: transparent; overflow: hidden; }
         empresas_dd_json = []
         for i, e in enumerate(todas_empresas_geral):
             is_minha = e["tipo"] == "minha"
-            r_dd = dados_redes_map.get(e["nome"], {})
+            r_dd = _dados_redes_empresa_geral(e)
             handle_dd = e.get("instagram", "") or (r_dd.get("handle", "") if r_dd else "")
             empresas_dd_json.append({
                 "i": i, "nome": e["nome"], "handle": handle_dd,
@@ -20588,7 +20613,7 @@ function setHeightGeral(isOpen) {{
             badge_col = "#15803d" if is_minha else "#1d4ed8"
             badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
 
-            r = dados_redes_map.get(e["nome"])
+            r = _dados_redes_empresa_geral(e)
             tem_redes = bool(r)
             redes_info = None
 
@@ -20824,6 +20849,7 @@ function setHeightGeral(isOpen) {{
                 )
 
                 score_nok = m["score_oportunidades"]
+                _is_concorrente_score = d["badge_lbl"] != "Minha Empresa"
 
                 _total_criterios = len(m["score_criterios"])
                 _ok_criterios = _total_criterios - m["score_oportunidades"]
@@ -20845,10 +20871,17 @@ function setHeightGeral(isOpen) {{
                 for c in m["score_criterios"]:
                     if c["ok"]:
                         _icone = _icon_ok
-                        _sub = ""
+                        _sub = (
+                            '<div style="font-size:10px;color:#15803d;font-weight:700;margin-top:1px;">Ponto forte do concorrente</div>'
+                            if _is_concorrente_score else ""
+                        )
                     else:
                         _icone = _icon_nok
-                        _sub = '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>'
+                        _sub = (
+                            '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Oportunidade para sua empresa</div>'
+                            if _is_concorrente_score else
+                            '<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>'
+                        )
                     score_checklist_html += (
                         '<div style="display:flex;align-items:center;gap:7px;">'
                         + _icone +
@@ -20858,13 +20891,31 @@ function setHeightGeral(isOpen) {{
 
                 score_ring_svg = make_score_ring_svg(m["score_val"], m["score_cor"], size=110, stroke=10)
 
+                if _is_concorrente_score:
+                    if m["score_val"] >= 91:
+                        _score_lbl_exibicao = "Perfil de referência"
+                    elif m["score_val"] >= 81:
+                        _score_lbl_exibicao = "Perfil muito forte"
+                    elif m["score_val"] >= 60:
+                        _score_lbl_exibicao = "Perfil forte"
+                    elif m["score_val"] >= 40:
+                        _score_lbl_exibicao = "Perfil intermediário"
+                    else:
+                        _score_lbl_exibicao = "Perfil pouco desenvolvido"
+                    _score_rodape = f'{_ok_criterios} de {_total_criterios} pontos fortes identificados'
+                    _score_titulo = "Leitura do Perfil Concorrente"
+                else:
+                    _score_lbl_exibicao = m["score_lbl"]
+                    _score_rodape = f'{_ok_criterios} de {_total_criterios} itens otimizados'
+                    _score_titulo = "Score de Perfil"
+
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
                     '<div style="display:flex;align-items:center;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de Perfil</div>'
+                    f'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">{_score_titulo}</div>'
                     '<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
                     '<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
                     f'{_SVG_ICONE_CHECK_BOLA} Tem bio +20<br>{_SVG_ICONE_CHECK_BOLA} Proposta de valor +20<br>{_SVG_ICONE_CHECK_BOLA} Posicionamento +20<br>'
@@ -20877,7 +20928,7 @@ function setHeightGeral(isOpen) {{
                     + score_ring_svg +
                     f'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;'
                     f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
-                    f'{m["score_icon"]} {m["score_lbl"]}</div>'
+                    f'{m["score_icon"]} {_score_lbl_exibicao}</div>'
                     '</div>'
                     '<div style="flex:1;display:flex;justify-content:center;">'
                     f'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
@@ -20885,7 +20936,7 @@ function setHeightGeral(isOpen) {{
                     '</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
                     f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{_perfil_bar_cor});"></div></div>'
-                    f'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">{_ok_criterios} de {_total_criterios} itens otimizados</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">{_score_rodape}</div>'
                     '</div>'
                 )
 
@@ -21085,6 +21136,7 @@ function setHeightGeral(isOpen) {{
 
         if empresas_cards_data:
             _d0 = empresas_cards_data[0]
+            _is_minha_d0 = _d0["badge_lbl"] == "Minha Empresa"
 
             _areas = []  # (label, score, disponivel, criterios_faltando, cor_icone_svg, criterios_com_pts)
             if _d0["tem_redes"]:
@@ -21101,20 +21153,33 @@ function setHeightGeral(isOpen) {{
             if _areas:
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
 
-                if _score_geral >= 91:
-                    _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", _SVG_ICONE_EXCELENTE
-                elif _score_geral >= 81:
-                    _sg_lbl, _sg_cor, _sg_icon = "Muito bom", "#3b82f6", _SVG_ICONE_BOM
-                elif _score_geral >= 60:
-                    _sg_lbl, _sg_cor, _sg_icon = "Bom", "#60a5fa", _SVG_ICONE_BOM
-                elif _score_geral >= 40:
-                    _sg_lbl, _sg_cor, _sg_icon = "Regular", "#f59e0b", _SVG_ICONE_REGULAR
+                if _is_minha_d0:
+                    if _score_geral >= 91:
+                        _sg_lbl, _sg_cor, _sg_icon = "Excelente", "#22c55e", _SVG_ICONE_EXCELENTE
+                    elif _score_geral >= 81:
+                        _sg_lbl, _sg_cor, _sg_icon = "Muito bom", "#3b82f6", _SVG_ICONE_BOM
+                    elif _score_geral >= 60:
+                        _sg_lbl, _sg_cor, _sg_icon = "Bom", "#60a5fa", _SVG_ICONE_BOM
+                    elif _score_geral >= 40:
+                        _sg_lbl, _sg_cor, _sg_icon = "Regular", "#f59e0b", _SVG_ICONE_REGULAR
+                    else:
+                        _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
                 else:
-                    _sg_lbl, _sg_cor, _sg_icon = "Precisa melhorar", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
+                    if _score_geral >= 91:
+                        _sg_lbl, _sg_cor, _sg_icon = "Referência", "#22c55e", _SVG_ICONE_EXCELENTE
+                    elif _score_geral >= 81:
+                        _sg_lbl, _sg_cor, _sg_icon = "Muito forte", "#3b82f6", _SVG_ICONE_BOM
+                    elif _score_geral >= 60:
+                        _sg_lbl, _sg_cor, _sg_icon = "Forte", "#60a5fa", _SVG_ICONE_BOM
+                    elif _score_geral >= 40:
+                        _sg_lbl, _sg_cor, _sg_icon = "Intermediário", "#f59e0b", _SVG_ICONE_REGULAR
+                    else:
+                        _sg_lbl, _sg_cor, _sg_icon = "Baixa presença", "#ef4444", _SVG_ICONE_PRECISA_MELHORAR
 
-                def _score_geral_leve(_nome_emp):
+                def _score_geral_leve(_empresa_leve):
+                    _nome_emp = _empresa_leve["nome"]
                     _areas_leve = []
-                    _r_leve = dados_redes_map.get(_nome_emp)
+                    _r_leve = _dados_redes_empresa_geral(_empresa_leve)
                     if _r_leve:
                         _sc_redes_leve = calcular_score_bio(
                             (_r_leve.get("bio") or ""),
@@ -21145,7 +21210,7 @@ function setHeightGeral(isOpen) {{
                 for _e_outra in todas_empresas_geral:
                     if _e_outra["nome"] == _d0["nome"]:
                         continue
-                    _sc_outra = _score_geral_leve(_e_outra["nome"])
+                    _sc_outra = _score_geral_leve(_e_outra)
                     if _sc_outra is not None:
                         _scores_concorrentes.append(_sc_outra)
 
@@ -21153,7 +21218,6 @@ function setHeightGeral(isOpen) {{
                     _n_atras_concorrentes = sum(1 for _s in _scores_concorrentes if _s < _score_geral)
                     _pct_a_frente = round(_n_atras_concorrentes / len(_scores_concorrentes) * 100)
                     _sg_bar_cor = "#22c55e" if _score_geral >= 80 else ("#f59e0b" if _score_geral >= 40 else "#ef4444")
-                    _is_minha_d0 = _d0["badge_lbl"] == "Minha Empresa"
                     _sujeito_frente = "Você está" if _is_minha_d0 else f'<b style="color:#1a2e4a;">{_d0["nome"]}</b> está'
                     _universo_frente = "dos concorrentes" if _is_minha_d0 else "das demais empresas monitoradas"
                     _comparacao_html = (
@@ -21228,16 +21292,28 @@ function setHeightGeral(isOpen) {{
                 for _lbl, _sc, _falt, _cor_area, _crit_ring, _tem_dados_area in _areas_desempenho:
                     if not _tem_dados_area:
                         _area_txt, _cor_render, _score_render = "Sem dados", "#94a3b8", 0
-                    elif _sc >= 91:
-                        _area_txt, _cor_render, _score_render = "Excelente", _cor_area, _sc
-                    elif _sc >= 81:
-                        _area_txt, _cor_render, _score_render = "Muito bom", _cor_area, _sc
-                    elif _sc >= 60:
-                        _area_txt, _cor_render, _score_render = "Bom", _cor_area, _sc
-                    elif _sc >= 40:
-                        _area_txt, _cor_render, _score_render = "Regular", _cor_area, _sc
+                    elif _is_minha_d0:
+                        if _sc >= 91:
+                            _area_txt, _cor_render, _score_render = "Excelente", _cor_area, _sc
+                        elif _sc >= 81:
+                            _area_txt, _cor_render, _score_render = "Muito bom", _cor_area, _sc
+                        elif _sc >= 60:
+                            _area_txt, _cor_render, _score_render = "Bom", _cor_area, _sc
+                        elif _sc >= 40:
+                            _area_txt, _cor_render, _score_render = "Regular", _cor_area, _sc
+                        else:
+                            _area_txt, _cor_render, _score_render = "Precisa melhorar", _cor_area, _sc
                     else:
-                        _area_txt, _cor_render, _score_render = "Precisa melhorar", _cor_area, _sc
+                        if _sc >= 91:
+                            _area_txt, _cor_render, _score_render = "Referência", _cor_area, _sc
+                        elif _sc >= 81:
+                            _area_txt, _cor_render, _score_render = "Muito forte", _cor_area, _sc
+                        elif _sc >= 60:
+                            _area_txt, _cor_render, _score_render = "Forte", _cor_area, _sc
+                        elif _sc >= 40:
+                            _area_txt, _cor_render, _score_render = "Intermediário", _cor_area, _sc
+                        else:
+                            _area_txt, _cor_render, _score_render = "Baixa presença", _cor_area, _sc
                     _icon_tpl = _AREA_ICONS.get(_lbl, _AREA_ICONS["Site"])
                     _icon_svg = _icon_tpl.format(c=_cor_render)
                     _svg_only = _svg_ring_area(_score_render, _cor_render, size=72, stroke=6, icon_svg=_icon_svg)
@@ -21418,9 +21494,16 @@ function setHeightGeral(isOpen) {{
 
                 _melhor = max(_areas, key=lambda a: a[1])
                 _pior = min(_areas, key=lambda a: a[1])
-                _is_minha_d0_insight = _d0["badge_lbl"] == "Minha Empresa"
+                _is_minha_d0_insight = _is_minha_d0
                 _presenca_txt = "Sua presença" if _is_minha_d0_insight else f'A presença de {_d0["nome"]}'
-                if _melhor[0] == _pior[0]:
+                if not _is_minha_d0_insight:
+                    _insight_txt = (
+                        f'<b style="color:#55c7ff;">{_d0["nome"]}</b> tem maior presença em '
+                        f'<b style="color:#55c7ff;">{_melhor[0]} ({_melhor[1]}/100)</b>. '
+                        f'As lacunas encontradas em <b style="color:#55c7ff;">{_pior[0]} ({_pior[1]}/100)</b> '
+                        f'indicam oportunidades para sua empresa se diferenciar e ganhar vantagem competitiva.'
+                    )
+                elif _melhor[0] == _pior[0]:
                     _insight_txt = (
                         f"{_presenca_txt} em <b style=\"color:#55c7ff;\">{_melhor[0]} ({_melhor[1]}/100)</b> está sólida. "
                         f"Foque nos itens listados em oportunidades para evoluir."
@@ -22008,7 +22091,10 @@ function buildSeoColumn(d,colEl) {{
     var scoreNum=d.seo_score_val;
     var scoreTextColor=scoreNum>=80?'#15803d':scoreNum>=40?'#92400e':'#b91c1c';
     var scoreBg=scoreNum>=80?'#f0fdf4':scoreNum>=40?'#fffbeb':'#fef2f2';
-    var scoreTxt2=scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Excelente':scoreNum>=81?'{_SVG_ICONE_BOM} Muito bom':scoreNum>=60?'{_SVG_ICONE_BOM} Bom':scoreNum>=40?'{_SVG_ICONE_REGULAR} Regular':'{_SVG_ICONE_PRECISA_MELHORAR} Precisa melhorar';
+    var isCompetitor=d.badge_lbl!=='Minha Empresa';
+    var scoreTxt2=isCompetitor
+        ? (scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Referência':scoreNum>=81?'{_SVG_ICONE_BOM} Muito forte':scoreNum>=60?'{_SVG_ICONE_BOM} Forte':scoreNum>=40?'{_SVG_ICONE_REGULAR} Intermediário':'{_SVG_ICONE_PRECISA_MELHORAR} Baixa presença')
+        : (scoreNum>=91?'{_SVG_ICONE_EXCELENTE} Excelente':scoreNum>=81?'{_SVG_ICONE_BOM} Muito bom':scoreNum>=60?'{_SVG_ICONE_BOM} Bom':scoreNum>=40?'{_SVG_ICONE_REGULAR} Regular':'{_SVG_ICONE_PRECISA_MELHORAR} Precisa melhorar');
     var scoreBarColor=scoreNum>=80?'#22c55e':scoreNum>=40?'#f59e0b':'#ef4444';
     var scoreBarId='seo_dash_bar_'+Math.random().toString(36).slice(2);
     var SEO_ITEMS=[
@@ -22022,7 +22108,9 @@ function buildSeoColumn(d,colEl) {{
     var checklistHtml='';
     SEO_ITEMS.forEach(function(it){{
         var icone=it.ok?iconOk:iconNok;
-        var sub=it.ok?'':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>';
+        var sub=isCompetitor
+            ? (it.ok?'<div style="font-size:10px;color:#15803d;font-weight:700;margin-top:1px;">Ponto forte do concorrente</div>':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Oportunidade para sua empresa</div>')
+            : (it.ok?'':'<div style="font-size:10px;color:#b45309;font-weight:700;margin-top:1px;">Melhoria sugerida</div>');
         checklistHtml+='<div style="display:flex;align-items:center;gap:7px;">'+icone+'<div><div style="font-size:12px;font-weight:700;color:#1a2e4a;line-height:1.15;">'+it.label+'</div>'+sub+'</div></div>';
     }});
     var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
@@ -22031,7 +22119,7 @@ function buildSeoColumn(d,colEl) {{
     scoreBlock.innerHTML=
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
         +'<div style="display:flex;align-items:center;">'
-        +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">Score de SEO</div>'
+        +'<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;">'+(isCompetitor?'Leitura do Site Concorrente':'Score de SEO')+'</div>'
         +'<div class="score-tooltip-wrap"><div class="q-badge">?</div>'
         +'<div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>'
         +'{_SVG_ICONE_CHECK_BOLA} Title +20<br>{_SVG_ICONE_CHECK_BOLA} H1 +20<br>{_SVG_ICONE_CHECK_BOLA} Meta Desc. +20<br>{_SVG_ICONE_CHECK_BOLA} Seções (H2) +20<br>{_SVG_ICONE_CHECK_BOLA} Sitemap +20'
@@ -22049,7 +22137,7 @@ function buildSeoColumn(d,colEl) {{
         +'</div>'
         +'</div>'
         +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
-        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados</div>';
+        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' '+(isCompetitor?'pontos fortes identificados':'itens otimizados')+'</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
     var ct=d.seo_contato||{{}};

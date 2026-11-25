@@ -29522,6 +29522,8 @@ body { padding-bottom:8px; }
 .analysis-kpi { display:flex; align-items:center; gap:10px; padding:14px 16px; border-right:1px solid #e5e7eb; }
 .analysis-kpi:last-child { border-right:0; }
 .analysis-kpi-icon { width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; }
+.analysis-kpi-icon svg { width:20px; height:20px; display:block; }
+.analysis-kpi-icon svg { width:20px; height:20px; display:block; }
 .analysis-kpi:nth-child(1) .analysis-kpi-icon { color:#2563eb; background:#dbeafe; }
 .analysis-kpi:nth-child(2) .analysis-kpi-icon { color:#16a34a; background:#dcfce7; }
 .analysis-kpi:nth-child(3) .analysis-kpi-icon { color:#7c3aed; background:#ede9fe; }
@@ -29545,6 +29547,8 @@ body { padding-bottom:8px; }
     width:42px; height:42px; border-radius:11px; display:flex; align-items:center; justify-content:center;
     color:#2563eb; background:#dbeafe; font-size:19px; font-weight:900;
 }
+.ebook-card-icon svg { width:21px; height:21px; display:block; }
+.ebook-card-icon svg { width:21px; height:21px; display:block; }
 .ebook-card-kicker { color:#64748b; font-size:9px; font-weight:800; letter-spacing:.75px; text-transform:uppercase; margin-bottom:4px; }
 .ebook-card-title { color:#0f2742; font-size:13px; line-height:1.3; font-weight:800; margin-bottom:6px; }
 .ebook-card-text { color:#475569; font-size:12px; line-height:1.55; }
@@ -29811,6 +29815,34 @@ var RELS_RAW = {relatorios_raw_json};
 function enhanceAdsReport(root) {{
     if (!root || root.dataset.enhanced === '1') return;
     root.dataset.enhanced = '1';
+    function reportIcon(name) {{
+        var paths = {{
+            megaphone:'<path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.1 13 21H8l-1.2-6"/>',
+            image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+            play:'<path d="m8 5 11 7-11 7V5Z"/>',
+            layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+            target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+            calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+            chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+            star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
+            spark:'<path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Z"/><path d="m19 15 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z"/>'
+        }};
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[name] || paths.spark) + '</svg>';
+    }}
+    function reportIcon(name) {{
+        var paths = {{
+            megaphone:'<path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.1 13 21H8l-1.2-6"/>',
+            image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+            play:'<path d="m8 5 11 7-11 7V5Z"/>',
+            layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+            target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+            calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+            chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+            star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
+            spark:'<path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Z"/><path d="m19 15 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z"/>'
+        }};
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[name] || paths.spark) + '</svg>';
+    }}
     var text = (root.textContent || '').replace(/\s+/g, ' ').trim();
     var formatMatch = text.match(/(\d+)\s+imagens[\s\S]{{0,80}}?(\d+)\s+v[íi]deos/i);
     var carouselMatch = text.match(/(\d+)\s+carross[ée]is/i);
@@ -29821,12 +29853,12 @@ function enhanceAdsReport(root) {{
         var carousels = carouselMatch ? (parseInt(carouselMatch[1], 10) || 0) : (noCarousel ? 0 : null);
         var total = images + videos + (carousels || 0);
         var metrics = [
-            ['◉', total, 'Anúncios'], ['▧', images, 'Imagens'], ['▷', videos, 'Vídeos'], ['▱', carousels === null ? '—' : carousels, 'Carrosséis']
+            ['megaphone', total, 'Anúncios'], ['image', images, 'Imagens'], ['play', videos, 'Vídeos'], ['layers', carousels === null ? '—' : carousels, 'Carrosséis']
         ];
         var kpis = document.createElement('div');
         kpis.className = 'analysis-kpis';
         kpis.innerHTML = metrics.map(function(m) {{
-            return '<div class="analysis-kpi"><div class="analysis-kpi-icon">' + m[0] + '</div>'
+            return '<div class="analysis-kpi"><div class="analysis-kpi-icon">' + reportIcon(m[0]) + '</div>'
                 + '<div><div class="analysis-kpi-value">' + m[1] + '</div><div class="analysis-kpi-label">' + m[2] + '</div></div></div>';
         }}).join('');
         root.insertBefore(kpis, root.firstChild);
@@ -29856,15 +29888,15 @@ function enhanceAdsReport(root) {{
             if (seen.has(signature)) return;
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
-            var type = 'visual', icon = '◫', kicker = 'Destaque visual';
-            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='!'; kicker='Oportunidade'; }}
-            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='▶'; kicker='Formato e autenticidade'; }}
-            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='⌁'; kicker='Segmentação'; }}
-            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='▥'; kicker='Distribuição'; }}
-            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='★'; kicker='Proposta de valor'; }}
+            var type = 'visual', icon = 'image', kicker = 'Destaque visual';
+            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
+            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
+            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
             var card = document.createElement('article');
             card.className = 'ebook-card ' + type;
-            card.innerHTML = '<div class="ebook-card-icon">' + icon + '</div><div>'
+            card.innerHTML = '<div class="ebook-card-icon">' + reportIcon(icon) + '</div><div>'
                 + '<div class="ebook-card-kicker">' + kicker + '</div>'
                 + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
             card.querySelector('.ebook-card-title').textContent = title;
@@ -37367,12 +37399,12 @@ function enhanceAdsReport(root) {{
         var carousels = carouselMatch ? (parseInt(carouselMatch[1], 10) || 0) : (noCarousel ? 0 : null);
         var total = images + videos + (carousels || 0);
         var metrics = [
-            ['◉', total, 'Anúncios'], ['▧', images, 'Imagens'], ['▷', videos, 'Vídeos'], ['▱', carousels === null ? '—' : carousels, 'Carrosséis']
+            ['megaphone', total, 'Anúncios'], ['image', images, 'Imagens'], ['play', videos, 'Vídeos'], ['layers', carousels === null ? '—' : carousels, 'Carrosséis']
         ];
         var kpis = document.createElement('div');
         kpis.className = 'analysis-kpis';
         kpis.innerHTML = metrics.map(function(m) {{
-            return '<div class="analysis-kpi"><div class="analysis-kpi-icon">' + m[0] + '</div>'
+            return '<div class="analysis-kpi"><div class="analysis-kpi-icon">' + reportIcon(m[0]) + '</div>'
                 + '<div><div class="analysis-kpi-value">' + m[1] + '</div><div class="analysis-kpi-label">' + m[2] + '</div></div></div>';
         }}).join('');
         root.insertBefore(kpis, root.firstChild);
@@ -37402,15 +37434,15 @@ function enhanceAdsReport(root) {{
             if (seen.has(signature)) return;
             seen.add(signature);
             var lowered = (title + ' ' + body).toLowerCase();
-            var type = 'visual', icon = '◫', kicker = 'Destaque visual';
-            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='!'; kicker='Oportunidade'; }}
-            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='▶'; kicker='Formato e autenticidade'; }}
-            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='⌁'; kicker='Segmentação'; }}
-            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='▥'; kicker='Distribuição'; }}
-            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='★'; kicker='Proposta de valor'; }}
+            var type = 'visual', icon = 'image', kicker = 'Destaque visual';
+            if (/carross|oportunidade|aus[êe]ncia/.test(lowered)) {{ type='opportunity'; icon='target'; kicker='Oportunidade'; }}
+            else if (/v[íi]deo|ugc|c[aâ]mera/.test(lowered)) {{ type='video'; icon='play'; kicker='Formato e autenticidade'; }}
+            else if (/evento|segmenta/.test(lowered)) {{ type='event'; icon='calendar'; kicker='Segmentação'; }}
+            else if (/mix|formatos|equilibrad/.test(lowered)) {{ type='mix'; icon='chart'; kicker='Distribuição'; }}
+            else if (/valor|confian|benef[íi]cio/.test(lowered)) {{ type='value'; icon='star'; kicker='Proposta de valor'; }}
             var card = document.createElement('article');
             card.className = 'ebook-card ' + type;
-            card.innerHTML = '<div class="ebook-card-icon">' + icon + '</div><div>'
+            card.innerHTML = '<div class="ebook-card-icon">' + reportIcon(icon) + '</div><div>'
                 + '<div class="ebook-card-kicker">' + kicker + '</div>'
                 + '<div class="ebook-card-title"></div><div class="ebook-card-text"></div></div>';
             card.querySelector('.ebook-card-title').textContent = title;

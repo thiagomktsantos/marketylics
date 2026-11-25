@@ -13116,11 +13116,20 @@ section.main .block-container {
     margin-top: clamp(-80px, -5vw, -64px) !important;
 }
 
+/* No Confronto de Sites o bloco de acoes e mais alto. Centraliza o conjunto
+   titulo/subtitulo em relacao a ele, como ocorre em Redes Sociais. */
+.st-key-page_header_sites [data-testid="stColumn"]:first-child {
+    padding-top: 15px !important;
+}
+
 @media (max-width: 768px) {
     .st-key-page_header_cad,
     .st-key-page_header_geral,
     .st-key-page_header_sites {
         margin-top: -48px !important;
+    }
+    .st-key-page_header_sites [data-testid="stColumn"]:first-child {
+        padding-top: 8px !important;
     }
 }
 
@@ -18925,7 +18934,7 @@ if st.session_state.pagina == "home":
 
     if st.session_state.editar_empresa or not tem_dados:
 
-        h1, h2 = st.columns([7, 3])
+        h1, h2 = st.columns([6.5, 3.5])
         with h1:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19088,7 +19097,7 @@ html, body { background: transparent; overflow: hidden; }
             st.session_state.editar_empresa = True
             st.rerun()
 
-        h1, h2 = st.columns([7, 3])
+        h1, h2 = st.columns([6.5, 3.5])
         with h1:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19393,7 +19402,7 @@ elif st.session_state.pagina == "cad":
     """, unsafe_allow_html=True)
  
     _page_header_cad = st.container(key="page_header_cad")
-    top1, top2 = _page_header_cad.columns([7, 3])
+    top1, top2 = _page_header_cad.columns([6.5, 3.5])
     with top1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19759,7 +19768,6 @@ body {{ padding-bottom: 8px; }}
                 '<div class="avatar" style="background:' + c.cor + '">' + c.avatar + '</div>'
                 + '<div style="flex:1;min-width:0">'
                 + '<div class="name">' + c.nome + '</div>'
-                + '<span class="badge">Concorrente</span>'
                 + '</div>';
             card.appendChild(hdr);
  
@@ -20154,7 +20162,7 @@ elif st.session_state.pagina == "geral":
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
     _page_header_geral = st.container(key="page_header_geral")
-    h1, h2 = _page_header_geral.columns([5, 5])
+    h1, h2 = _page_header_geral.columns([4.5, 5.5])
 
     with h1:
         components.html("""
@@ -22583,7 +22591,7 @@ elif st.session_state.pagina == "sites":
     )
 
     _page_header_sites = st.container(key="page_header_sites")
-    h1, h2 = _page_header_sites.columns([5, 5])
+    h1, h2 = _page_header_sites.columns([4.5, 5.5])
     with h1:
         components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -23213,7 +23221,18 @@ html, body {{
 }}
 body {{ padding-bottom:8px; }}
 .outer-wrap {{ background:#d2dde9; border-radius:16px; padding:20px; }}
-.cards-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:20px; }}
+.cards-grid {{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:18px;
+}}
+@media (max-width:900px) {{
+    .cards-grid {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+}}
+@media (max-width:620px) {{
+    .outer-wrap {{ padding:14px; }}
+    .cards-grid {{ grid-template-columns:1fr; gap:14px; }}
+}}
 .site-card {{
     background:#fff; border:1px solid #fff; border-radius:14px;
     overflow:hidden; display:flex; flex-direction:column;
@@ -23405,12 +23424,14 @@ function triggerSiteIA(idx) {{
 }}
 
 function syncHeight() {{
-    var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    var wrap = document.querySelector('.outer-wrap');
+    if (!wrap) return;
+    var h = Math.ceil(wrap.getBoundingClientRect().height + 12);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{
             if (iframes[i].contentWindow === window) {{
-                iframes[i].style.height = (h + 12) + 'px';
+                iframes[i].style.height = h + 'px';
                 iframes[i].style.marginTop = '-30px';
                 break;
             }}
@@ -23426,7 +23447,11 @@ try {{
 }}
 
 syncHeight();
-if (window.ResizeObserver) new ResizeObserver(syncHeight).observe(document.body);
+if (window.ResizeObserver) {{
+    var observedWrap = document.querySelector('.outer-wrap');
+    if (observedWrap) new ResizeObserver(syncHeight).observe(observedWrap);
+}}
+window.addEventListener('resize', syncHeight);
 window.addEventListener('load', syncHeight);
 setTimeout(syncHeight, 100);
 setTimeout(syncHeight, 300);
@@ -25942,7 +25967,7 @@ elif st.session_state.pagina == "ads":
             if _tss:
                 _ultima_ts = max(_tss, key=_parse_ts_ads)
 
-    h1_col, h2_col = st.columns([5, 5])
+    h1_col, h2_col = st.columns([4.5, 5.5])
 
     with h1_col:
         components.html(f"""
@@ -33070,7 +33095,7 @@ elif st.session_state.pagina == "google_ads":
             if _tss:
                 _ultima_ts = max(_tss, key=_parse_ts_ads)
 
-    h1_col, h2_col = st.columns([5, 5])
+    h1_col, h2_col = st.columns([4.5, 5.5])
 
     with h1_col:
         components.html(f"""
@@ -38645,7 +38670,7 @@ elif st.session_state.pagina == "insights":
         for o in PERIODOS_OPTS
     )
 
-    col1, col2 = st.columns([5, 5])
+    col1, col2 = st.columns([4.5, 5.5])
 
     with col1:
         components.html("""
@@ -39794,7 +39819,7 @@ elif st.session_state.pagina == "redes":
     _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
     fn = f'dados_redes_{ultima_coleta.replace("/","_").replace(" ","_").replace(":","")}.json' if ultima_coleta else ""
 
-    col1, col2 = st.columns([5, 5])
+    col1, col2 = st.columns([4.5, 5.5])
 
     with col1:
         components.html("""

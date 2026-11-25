@@ -29770,7 +29770,11 @@ function enhanceAdsReport(root) {{
         root.insertBefore(kpis, root.firstChild);
     }}
     var firstParagraph = Array.from(root.children).find(function(el) {{ return el.tagName === 'P'; }});
-    if (firstParagraph) firstParagraph.classList.add('analysis-intro');
+    if (firstParagraph) {{
+        var introText = (firstParagraph.textContent || '').trim();
+        if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
+        else firstParagraph.classList.add('analysis-intro');
+    }}
     root.querySelectorAll('.sec-content li').forEach(function(li) {{
         var value = (li.textContent || '').toLowerCase();
         if (value.includes('ausência de carross') || value.includes('ausencia de carross') || value.includes('oportunidade')) {{
@@ -37281,7 +37285,11 @@ function enhanceAdsReport(root) {{
         root.insertBefore(kpis, root.firstChild);
     }}
     var firstParagraph = Array.from(root.children).find(function(el) {{ return el.tagName === 'P'; }});
-    if (firstParagraph) firstParagraph.classList.add('analysis-intro');
+    if (firstParagraph) {{
+        var introText = (firstParagraph.textContent || '').trim();
+        if (/^ol[aá][!,.]?\s+como\s+especialista/i.test(introText)) firstParagraph.remove();
+        else firstParagraph.classList.add('analysis-intro');
+    }}
     root.querySelectorAll('.sec-content li').forEach(function(li) {{
         var value = (li.textContent || '').toLowerCase();
         if (value.includes('ausência de carross') || value.includes('ausencia de carross') || value.includes('oportunidade')) {{

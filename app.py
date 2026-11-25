@@ -30100,6 +30100,33 @@ function enhanceAdsReport(root) {{
         }});
         if (ACTIVE_TYPE === 'estrategia') {{
             var strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
+            var formatTopicCard = null;
+            strategyCards.forEach(function(topicCard) {{
+                if (!topicCard.parentNode) return;
+                var topicTitle = (topicCard.querySelector('.ebook-card-title') || {{textContent:''}}).textContent.trim();
+                if (/^(?:v[íi]deos?|imagens?|carross[ée]is?|din[aâ]micos?)\s*(?:\(|$)/i.test(topicTitle)) {{
+                    formatTopicCard = topicCard;
+                    return;
+                }}
+                if (formatTopicCard && /^(?:pontos? fortes?|oportunidade|observa[cç][aã]o|ponto de aten[cç][aã]o)$/i.test(topicTitle)) {{
+                    var topicDetails = formatTopicCard.querySelector('.ebook-card-subitems');
+                    if (!topicDetails) {{
+                        topicDetails = document.createElement('div');
+                        topicDetails.className = 'ebook-card-subitems';
+                        formatTopicCard.querySelector('.ebook-card-copy').appendChild(topicDetails);
+                    }}
+                    var topicDetail = document.createElement('div');
+                    topicDetail.className = 'ebook-card-subitem';
+                    topicDetail.innerHTML = '<span class="ebook-card-subitem-title"></span><span class="ebook-card-subitem-text"></span>';
+                    topicDetail.querySelector('.ebook-card-subitem-title').textContent = topicTitle;
+                    topicDetail.querySelector('.ebook-card-subitem-text').textContent = (topicCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                    topicDetails.appendChild(topicDetail);
+                    topicCard.remove();
+                    return;
+                }}
+                formatTopicCard = null;
+            }});
+            strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
             for (var cardIndex = 0; cardIndex < strategyCards.length; cardIndex++) {{
                 var leadCard = strategyCards[cardIndex];
                 if (!leadCard || !leadCard.parentNode) continue;
@@ -37903,6 +37930,33 @@ function enhanceAdsReport(root) {{
         }});
         if (ACTIVE_TYPE === 'estrategia') {{
             var strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
+            var formatTopicCard = null;
+            strategyCards.forEach(function(topicCard) {{
+                if (!topicCard.parentNode) return;
+                var topicTitle = (topicCard.querySelector('.ebook-card-title') || {{textContent:''}}).textContent.trim();
+                if (/^(?:v[íi]deos?|imagens?|carross[ée]is?|din[aâ]micos?)\s*(?:\(|$)/i.test(topicTitle)) {{
+                    formatTopicCard = topicCard;
+                    return;
+                }}
+                if (formatTopicCard && /^(?:pontos? fortes?|oportunidade|observa[cç][aã]o|ponto de aten[cç][aã]o)$/i.test(topicTitle)) {{
+                    var topicDetails = formatTopicCard.querySelector('.ebook-card-subitems');
+                    if (!topicDetails) {{
+                        topicDetails = document.createElement('div');
+                        topicDetails.className = 'ebook-card-subitems';
+                        formatTopicCard.querySelector('.ebook-card-copy').appendChild(topicDetails);
+                    }}
+                    var topicDetail = document.createElement('div');
+                    topicDetail.className = 'ebook-card-subitem';
+                    topicDetail.innerHTML = '<span class="ebook-card-subitem-title"></span><span class="ebook-card-subitem-text"></span>';
+                    topicDetail.querySelector('.ebook-card-subitem-title').textContent = topicTitle;
+                    topicDetail.querySelector('.ebook-card-subitem-text').textContent = (topicCard.querySelector('.ebook-card-text') || {{textContent:''}}).textContent.trim();
+                    topicDetails.appendChild(topicDetail);
+                    topicCard.remove();
+                    return;
+                }}
+                formatTopicCard = null;
+            }});
+            strategyCards = Array.from(grid.querySelectorAll('.ebook-card'));
             for (var cardIndex = 0; cardIndex < strategyCards.length; cardIndex++) {{
                 var leadCard = strategyCards[cardIndex];
                 if (!leadCard || !leadCard.parentNode) continue;

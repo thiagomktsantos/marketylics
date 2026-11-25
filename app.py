@@ -29710,6 +29710,31 @@ body { padding-bottom:8px; }
 .sec-content ul > li.analysis-opportunity { background:#fff7ed; border-color:#fed7aa; }
 .sec-content ul > li.analysis-opportunity::before { content:'!'; background:#ffedd5; color:#ea580c; }
 .sec-content ul > li strong { display:inline; color:#0f2742; }
+
+.sec-card { padding:20px 22px; gap:16px; }
+.sec-icon-wrap { width:44px; height:44px; border-radius:11px; }
+.sec-icon-wrap svg { width:22px; height:22px; }
+.sec-title { font-size:clamp(13px,.72vw,18px); line-height:1.25; }
+.sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }
+.sec-content > p { max-width:112ch; }
+.ebook-grid {
+    grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));
+    gap:14px; margin-top:18px;
+}
+.ebook-card {
+    grid-template-columns:48px minmax(0,1fr); gap:14px;
+    min-height:148px; padding:18px 20px;
+}
+.ebook-card-icon { width:48px; height:48px; border-radius:12px; }
+.ebook-card-icon svg { width:24px; height:24px; stroke-width:2; }
+.ebook-card-kicker { font-size:clamp(9px,.48vw,12px); letter-spacing:.85px; margin-bottom:5px; }
+.ebook-card-title { font-size:clamp(13px,.7vw,18px); line-height:1.32; margin-bottom:8px; }
+.ebook-card-text { font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
+.analysis-kpi { min-height:74px; padding:15px 18px; gap:12px; }
+.analysis-kpi-icon { width:40px; height:40px; border-radius:10px; }
+.analysis-kpi-icon svg { width:22px; height:22px; }
+.analysis-kpi-value { font-size:clamp(20px,1vw,26px); }
+.analysis-kpi-label { font-size:clamp(10px,.48vw,12px); }
 @media (max-width:800px) {
     .analysis-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .analysis-kpi:nth-child(2) { border-right:0; }
@@ -37288,11 +37313,62 @@ body { padding-bottom:8px; }
 .sec-content ul > li.analysis-opportunity { background:#fff7ed; border-color:#fed7aa; }
 .sec-content ul > li.analysis-opportunity::before { content:'!'; background:#ffedd5; color:#ea580c; }
 .sec-content ul > li strong { display:inline; color:#0f2742; }
+
+.analysis-kpis {
+    display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+    background:#fff; border:1px solid #dbe3ec; border-radius:12px;
+    margin-bottom:12px; overflow:hidden;
+}
+.analysis-kpi { display:flex; align-items:center; gap:12px; min-height:74px; padding:15px 18px; border-right:1px solid #e5e7eb; }
+.analysis-kpi:last-child { border-right:0; }
+.analysis-kpi-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+.analysis-kpi-icon svg { width:22px; height:22px; display:block; }
+.analysis-kpi:nth-child(1) .analysis-kpi-icon { color:#2563eb; background:#dbeafe; }
+.analysis-kpi:nth-child(2) .analysis-kpi-icon { color:#16a34a; background:#dcfce7; }
+.analysis-kpi:nth-child(3) .analysis-kpi-icon { color:#7c3aed; background:#ede9fe; }
+.analysis-kpi:nth-child(4) .analysis-kpi-icon { color:#ea580c; background:#ffedd5; }
+.analysis-kpi-value { color:#0f2742; font-size:clamp(20px,1vw,26px); line-height:1; font-weight:800; }
+.analysis-kpi-label { color:#64748b; font-size:clamp(10px,.48vw,12px); font-weight:800; text-transform:uppercase; letter-spacing:.45px; margin-top:3px; }
+.card-row hr, .sec-content > hr { display:none !important; }
+.ebook-grid {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));
+    gap:14px; margin-top:18px;
+}
+.ebook-card {
+    position:relative; display:grid; grid-template-columns:48px minmax(0,1fr); gap:14px;
+    min-height:148px; padding:18px 20px; overflow:hidden;
+    background:#fff; border:1px solid #dbe3ec; border-radius:12px;
+}
+.ebook-card::after { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#2f80ed; }
+.ebook-card-icon { width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#2563eb; background:#dbeafe; }
+.ebook-card-icon svg { width:24px; height:24px; display:block; stroke-width:2; }
+.ebook-card-kicker { color:#64748b; font-size:clamp(9px,.48vw,12px); font-weight:800; letter-spacing:.85px; text-transform:uppercase; margin-bottom:5px; }
+.ebook-card-title { color:#0f2742; font-size:clamp(13px,.7vw,18px); line-height:1.32; font-weight:800; margin-bottom:8px; }
+.ebook-card-text { color:#475569; font-size:clamp(12.5px,.62vw,16px); line-height:1.62; max-width:88ch; }
+.ebook-card.video::after { background:#8b5cf6; }
+.ebook-card.video .ebook-card-icon { color:#7c3aed; background:#ede9fe; }
+.ebook-card.event::after { background:#20c878; }
+.ebook-card.event .ebook-card-icon { color:#16a34a; background:#dcfce7; }
+.ebook-card.mix::after { background:#06b6d4; }
+.ebook-card.mix .ebook-card-icon { color:#0891b2; background:#cffafe; }
+.ebook-card.value::after { background:#f59e0b; }
+.ebook-card.value .ebook-card-icon { color:#d97706; background:#fef3c7; }
+.ebook-card.opportunity { grid-column:1 / -1; min-height:auto; background:#fff7ed; border-color:#fed7aa; }
+.ebook-card.opportunity::after { background:#f97316; }
+.ebook-card.opportunity .ebook-card-icon { color:#ea580c; background:#ffedd5; }
+.sec-card { padding:20px 22px; gap:16px; }
+.sec-icon-wrap { width:44px; height:44px; border-radius:11px; }
+.sec-icon-wrap svg { width:22px; height:22px; }
+.sec-title { font-size:clamp(13px,.72vw,18px); line-height:1.25; }
+.sec-content { font-size:clamp(13px,.66vw,17px); line-height:1.68; }
+.sec-content > p { max-width:112ch; }
 @media (max-width:800px) {
     .analysis-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .analysis-kpi:nth-child(2) { border-right:0; }
     .analysis-kpi:nth-child(-n+2) { border-bottom:1px solid #e5e7eb; }
     .sec-content ul { grid-template-columns:1fr; }
+    .ebook-grid { grid-template-columns:1fr; }
+    .ebook-card.opportunity { grid-column:auto; }
     .card-status { display:none; }
 }
  
@@ -37385,6 +37461,21 @@ body { padding-bottom:8px; }
 <script>
 var RELS     = {relatorios_gads_json};
 var RELS_RAW = {relatorios_raw_json};
+
+function reportIcon(name) {{
+    var paths = {{
+        megaphone:'<path d="m3 11 18-5v12L3 14v-3Z"/><path d="M11.6 16.1 13 21H8l-1.2-6"/>',
+        image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/>',
+        play:'<path d="m8 5 11 7-11 7V5Z"/>',
+        layers:'<path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+        target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+        calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
+        chart:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+        star:'<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>',
+        spark:'<path d="m12 3 1.2 4.8L18 9l-4.8 1.2L12 15l-1.2-4.8L6 9l4.8-1.2L12 3Z"/><path d="m19 15 .6 2.4L22 18l-2.4.6L19 21l-.6-2.4L16 18l2.4-.6L19 15Z"/>'
+    }};
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (paths[name] || paths.spark) + '</svg>';
+}}
 
 function enhanceAdsReport(root) {{
     if (!root || root.dataset.enhanced === '1') return;

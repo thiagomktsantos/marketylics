@@ -14028,7 +14028,7 @@ if not st.session_state.logado:
     [data-testid="stVerticalBlockBorderWrapper"] {
         border: none !important;
         background: #ffffff !important;
-        width: 470px !important;
+        width: 450px !important;
         max-width: calc(100vw - 12px) !important;
         margin: 0 auto !important;
         border-radius: 21px !important;
@@ -14093,7 +14093,7 @@ if not st.session_state.logado:
     }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
-        max-width: 470px !important;
+        max-width: 450px !important;
         margin: 0 auto !important;
     }
     div[class*="st-emotion-cache"] {
@@ -14439,6 +14439,7 @@ if not st.session_state.logado:
                     key="_login_manter_conectado",
                     disabled=st.session_state["_login_autenticando"],
                 )
+                _alerta_campos_login = st.empty()
                 submit_login = st.form_submit_button(
                     "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar",
                     width="stretch",
@@ -14592,7 +14593,7 @@ if not st.session_state.logado:
                     st.session_state.pop("_login_erro", None)
                     st.rerun()
                 else:
-                    st.warning("Preencha e-mail e senha.")
+                    _alerta_campos_login.warning("Preencha e-mail e senha.")
 
             if st.session_state["_login_autenticando"]:
                 _email_pendente = st.session_state.get("_login_email_pendente", "")

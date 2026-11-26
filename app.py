@@ -26956,8 +26956,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '<button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">'
                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
-                'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
-                '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
+                'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
+                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>'
+                '<line x1="12" y1="15" x2="12" y2="3"/></svg> '
                 'Baixar anúncios</button>'
             )
 
@@ -34103,8 +34104,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
                 '<button class="ctrl-btn btn-coletar" onclick="triggerBuscar()">'
                 '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
-                'style="display:inline-block;vertical-align:middle;margin-top:-2px;">'
-                '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> '
+                'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
+                '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>'
+                '<line x1="12" y1="15" x2="12" y2="3"/></svg> '
                 'Baixar anúncios</button>'
             )
 
@@ -39711,12 +39713,6 @@ setHeight(false);
         if a.get("tipo") == "insight_concorrente"
     ]
 
-    st.markdown("""
-    <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:10px;">
-        Histórico de insights
-    </div>
-    """, unsafe_allow_html=True)
-
     ICON_RAIO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>'
 
     if not historico:
@@ -40571,7 +40567,7 @@ html, body { background: transparent; overflow: hidden; }
                 'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
                 'style="display:inline-block;vertical-align:middle;margin-right:6px;margin-top:-2px;">'
                 '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/>'
-                '<line x1="12" y1="15" x2="12" y2="3"/></svg> Coletar dados</button>'
+                '<line x1="12" y1="15" x2="12" y2="3"/></svg> Baixar postagens</button>'
             )
 
         components.html(f"""
@@ -41474,7 +41470,7 @@ function setHeight(isOpen) {{
             st.info(
                 f"📡 **{nomes}** {'foi adicionada' if len(novas_empresas) == 1 else 'foram adicionadas'} "
                 f"mas ainda não {'tem' if len(novas_empresas) == 1 else 'têm'} dados coletados. "
-                f"Clique em **Coletar dados** para incluí-las."
+                f"Clique em **Baixar postagens** para incluí-las."
             )
 
     if "redes_main_tab" not in st.session_state:
@@ -41729,7 +41725,7 @@ setTimeout(syncHeightNav, 800);
                             padding:48px 32px;text-align:center;margin-top:8px'>
                     <div style='font-size:32px;margin-bottom:12px'>📱</div>
                     <div style='font-size:16px;font-weight:600;color:#374151;margin-bottom:6px'>Nenhum dado carregado ainda</div>
-                    <div style='font-size:14px;color:#9ca3af'>Clique em <b>Coletar dados</b> para buscar os dados do Instagram.</div>
+                    <div style='font-size:14px;color:#9ca3af'>Clique em <b>Baixar postagens</b> para buscar os dados do Instagram.</div>
                 </div>
                 """, unsafe_allow_html=True)
             st.stop()

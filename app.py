@@ -12442,6 +12442,19 @@ def enviar_recuperacao_senha(email: str):
             )
         return False, "Não foi possível enviar o e-mail de recuperação agora. Tente novamente."
 
+def reenviar_confirmacao_email(email: str):
+    """Reenvia o e-mail de confirmação de cadastro pelo Supabase."""
+    try:
+        supabase.auth.resend({"type": "signup", "email": email.strip()})
+        return True, None
+    except Exception as e:
+        if _erro_supabase_transitorio(e):
+            return False, (
+                "O serviço de confirmação está temporariamente indisponível. "
+                "Tente novamente em alguns instantes."
+            )
+        return False, "Não foi possível reenviar a confirmação agora. Tente novamente."
+
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:
         payload = {"email": email, "password": senha}
@@ -12520,6 +12533,7 @@ def logout_supabase():
         supabase.auth.sign_out()
     except Exception:
         pass
+    st.session_state["_auth_cookie_action"] = {"acao": "remover"}
 
 
 def carregar_dados_usuario(user_id: str) -> dict:
@@ -12626,6 +12640,70 @@ if "logado" not in st.session_state:
     st.session_state.logado = False
 if "user" not in st.session_state:
     st.session_state.user = None
+
+# Mantém o acesso entre visitas somente quando o usuário escolheu essa opção.
+# O cookie guarda apenas o refresh token do Supabase e é removido no logout.
+if not st.session_state.get("_auth_cookie_verificado"):
+    st.session_state["_auth_cookie_verificado"] = True
+    try:
+        _refresh_persistido = st.context.cookies.get("marketylics_refresh")
+    except Exception:
+        _refresh_persistido = None
+    if _refresh_persistido and not st.session_state.logado:
+        try:
+            _sessao_restaurada = supabase.auth.refresh_session(_refresh_persistido)
+            _usuario_restaurado = getattr(_sessao_restaurada, "user", None)
+            if _usuario_restaurado:
+                garantir_linha_usuario(_usuario_restaurado.id)
+                st.session_state.logado = True
+                st.session_state.user = _usuario_restaurado
+                st.session_state["_auth_persistir"] = True
+                _novo_refresh = getattr(
+                    getattr(_sessao_restaurada, "session", None), "refresh_token", None
+                ) or getattr(_sessao_restaurada, "refresh_token", None)
+                if _novo_refresh:
+                    st.session_state["_auth_cookie_action"] = {
+                        "acao": "salvar", "token": _novo_refresh
+                    }
+                _dados_restaurados = carregar_dados_usuario(_usuario_restaurado.id)
+                _empresa_restaurada = _dados_restaurados.get("minha_empresa") or {
+                    "nome": "", "setor": "Marketing", "tipo": "",
+                    "estado": "", "cidade": "", "instagram": "@",
+                    "fb_page": "", "site": "", "servicos": [],
+                    "ads_id": "", "ads_page_pic": ""
+                }
+                _empresa_restaurada.setdefault("ads_id", "")
+                _empresa_restaurada.setdefault("ads_page_pic", "")
+                st.session_state.dados = {
+                    "minha_empresa": _empresa_restaurada,
+                    "concorrentes": _dados_restaurados.get("concorrentes", []),
+                }
+                st.session_state.metricas_redes = _dados_restaurados.get("metricas_redes", {})
+                st.session_state.ads_cache = _dados_restaurados.get("ads_cache", {})
+                st.session_state.analises_salvas = _dados_restaurados.get("analises_salvas", [])
+                st.session_state.redes_analises_salvas = _dados_restaurados.get("redes_analises_salvas", [])
+                st.session_state.ads_analises_salvas = _dados_restaurados.get("ads_analises_salvas", [])
+                st.session_state.seo_cache = _dados_restaurados.get("seo_cache", {})
+        except Exception:
+            st.session_state["_auth_cookie_action"] = {"acao": "remover"}
+
+_auth_cookie_action = st.session_state.pop("_auth_cookie_action", None)
+if _auth_cookie_action:
+    _acao_cookie = _auth_cookie_action.get("acao")
+    _token_cookie = json.dumps(_auth_cookie_action.get("token", ""))
+    if _acao_cookie == "salvar":
+        components.html(f"""
+        <script>
+        document.cookie = 'marketylics_refresh=' + encodeURIComponent({_token_cookie}) +
+            '; Max-Age=2592000; Path=/; SameSite=Lax; Secure';
+        </script>
+        """, height=0, scrolling=False)
+    elif _acao_cookie == "remover":
+        components.html("""
+        <script>
+        document.cookie = 'marketylics_refresh=; Max-Age=0; Path=/; SameSite=Lax; Secure';
+        </script>
+        """, height=0, scrolling=False)
 if "auth_tab" not in st.session_state:
     st.session_state.auth_tab = "login"
 if "dados" not in st.session_state:
@@ -13771,9 +13849,9 @@ if not st.session_state.logado:
 
     [data-testid="stAppViewContainer"] {
         background:
-            radial-gradient(circle at 12% 18%, rgba(58,159,214,.28) 0, rgba(58,159,214,0) 34%),
-            radial-gradient(circle at 88% 82%, rgba(46,204,113,.24) 0, rgba(46,204,113,0) 36%),
-            linear-gradient(135deg, #e8f4fb 0%, #f4f8fb 48%, #eaf8f0 100%) !important;
+            radial-gradient(circle at 14% 16%, rgba(0,166,214,.20) 0, rgba(0,166,214,0) 34%),
+            radial-gradient(circle at 86% 84%, rgba(0,218,92,.13) 0, rgba(0,218,92,0) 38%),
+            linear-gradient(135deg, #080d14 0%, #101a27 50%, #0a121b 100%) !important;
         min-height: 100vh !important;
     }
 
@@ -14009,6 +14087,18 @@ if not st.session_state.logado:
                 font-size: 13px !important;
                 font-weight: 600 !important;
                 text-decoration: none !important;
+                border-radius: 0 !important;
+                outline: none !important;
+            }
+            .st-key-_login_esqueci_senha button p,
+            .st-key-_login_esqueci_senha button span,
+            .st-key-_login_esqueci_senha button div {
+                background: transparent !important;
+                color: inherit !important;
+                font-size: inherit !important;
+                font-weight: inherit !important;
+                padding: 0 !important;
+                margin: 0 !important;
             }
             .st-key-_login_esqueci_senha button:hover {
                 color: #0e6f9f !important;
@@ -14017,6 +14107,109 @@ if not st.session_state.logado:
             .st-key-_login_esqueci_senha {
                 display: flex !important;
                 justify-content: flex-end !important;
+                width: 100% !important;
+                background: transparent !important;
+            }
+            .st-key-_login_manter_conectado {
+                margin: 3px 0 5px 0 !important;
+            }
+            .st-key-_login_manter_conectado label,
+            .st-key-_login_manter_conectado p {
+                color: #7a7a7a !important;
+                font-size: 13.5px !important;
+            }
+            .st-key-_login_manter_conectado label {
+                position: relative !important;
+                overflow: visible !important;
+            }
+            .st-key-_login_manter_conectado p {
+                position: relative !important;
+                overflow: visible !important;
+                padding-right: 22px !important;
+            }
+            .st-key-_login_manter_conectado p::after {
+                content: "i";
+                position: absolute;
+                right: 2px;
+                top: 50%;
+                transform: translateY(-50%);
+                width: 15px;
+                height: 15px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                background: #858585;
+                color: #ffffff;
+                font-family: Arial, sans-serif;
+                font-size: 10px;
+                font-weight: 700;
+                font-style: normal;
+                line-height: 15px;
+            }
+            .st-key-_login_manter_conectado label::before {
+                content: "Mantenha-se conectado para que você não precise entrar novamente da próxima vez nesse navegador";
+                position: absolute;
+                left: 88px;
+                bottom: calc(100% + 12px);
+                width: 300px;
+                padding: 11px 14px;
+                border-radius: 10px;
+                background: #050505;
+                color: #ffffff;
+                box-shadow: 0 5px 16px rgba(0,0,0,.28);
+                font-size: 12.5px;
+                font-weight: 700;
+                line-height: 1.25;
+                text-align: center;
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(4px);
+                transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+                pointer-events: none;
+                z-index: 9999;
+            }
+            .st-key-_login_manter_conectado label:hover::before {
+                opacity: 1;
+                visibility: visible;
+                transform: translateY(0);
+            }
+            .st-key-_login_reenviar_confirmacao button,
+            .st-key-_login_reenviar_confirmacao button:hover,
+            .st-key-_login_reenviar_confirmacao button:focus {
+                background: transparent !important;
+                background-color: transparent !important;
+                color: #344054 !important;
+                border: none !important;
+                box-shadow: none !important;
+                min-height: 24px !important;
+                padding: 0 !important;
+                margin: 7px auto 0 auto !important;
+                width: auto !important;
+                font-size: 12.5px !important;
+                font-weight: 400 !important;
+                border-radius: 0 !important;
+                outline: none !important;
+            }
+            .st-key-_login_reenviar_confirmacao button p,
+            .st-key-_login_reenviar_confirmacao button span,
+            .st-key-_login_reenviar_confirmacao button div {
+                background: transparent !important;
+                color: inherit !important;
+                font-size: inherit !important;
+                font-weight: inherit !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .st-key-_login_reenviar_confirmacao button:hover {
+                color: #1683bd !important;
+                text-decoration: underline !important;
+            }
+            .st-key-_login_reenviar_confirmacao {
+                display: flex !important;
+                justify-content: center !important;
+                width: 100% !important;
+                background: transparent !important;
             }
             </style>
             """, unsafe_allow_html=True)
@@ -14035,6 +14228,12 @@ if not st.session_state.logado:
                     key="_login_senha_input",
                     disabled=st.session_state["_login_autenticando"],
                 )
+                manter_conectado = st.checkbox(
+                    "Continuar conectado neste navegador",
+                    value=True,
+                    key="_login_manter_conectado",
+                    disabled=st.session_state["_login_autenticando"],
+                )
                 submit_recuperacao = st.form_submit_button(
                     "Esqueci minha senha",
                     disabled=st.session_state["_login_autenticando"],
@@ -14045,6 +14244,11 @@ if not st.session_state.logado:
                     width="stretch",
                     disabled=st.session_state["_login_autenticando"],
                     key="_login_submit_button_",
+                )
+                submit_confirmacao = st.form_submit_button(
+                    "Não recebeu o e-mail de confirmação? Clique aqui",
+                    disabled=st.session_state["_login_autenticando"],
+                    key="_login_reenviar_confirmacao",
                 )
 
             if submit_recuperacao:
@@ -14062,6 +14266,21 @@ if not st.session_state.logado:
                     else:
                         st.error(_erro_recuperacao)
 
+            if submit_confirmacao:
+                _email_confirmacao = (email_login or "").strip()
+                if not _email_confirmacao:
+                    st.warning("Digite seu e-mail para reenviar a confirmação.")
+                elif "@" not in _email_confirmacao:
+                    st.warning("Digite um endereço de e-mail válido.")
+                else:
+                    _ok_confirmacao, _erro_confirmacao = reenviar_confirmacao_email(_email_confirmacao)
+                    if _ok_confirmacao:
+                        st.success(
+                            "Se o cadastro estiver pendente, um novo e-mail de confirmação será enviado."
+                        )
+                    else:
+                        st.error(_erro_confirmacao)
+
             if (not st.session_state["_login_autenticando"]) and st.session_state.get("_login_erro"):
                 st.error(st.session_state.pop("_login_erro"))
 
@@ -14069,6 +14288,7 @@ if not st.session_state.logado:
                 if email_login and senha_login:
                     st.session_state["_login_email_pendente"] = email_login
                     st.session_state["_login_senha_pendente"] = senha_login
+                    st.session_state["_login_manter_pendente"] = bool(manter_conectado)
                     st.session_state["_login_autenticando"] = True
                     st.session_state.pop("_login_erro", None)
                     st.rerun()
@@ -14087,6 +14307,21 @@ if not st.session_state.logado:
                     st.session_state.pop("_login_email_pendente", None)
                     st.session_state.logado = True
                     st.session_state.user = user
+                    _manter_sessao = bool(st.session_state.pop("_login_manter_pendente", False))
+                    if _manter_sessao:
+                        st.session_state["_auth_persistir"] = True
+                        try:
+                            _sessao_atual = supabase.auth.get_session()
+                            _refresh_atual = getattr(_sessao_atual, "refresh_token", None)
+                            if _refresh_atual:
+                                st.session_state["_auth_cookie_action"] = {
+                                    "acao": "salvar", "token": _refresh_atual
+                                }
+                        except Exception:
+                            pass
+                    else:
+                        st.session_state["_auth_persistir"] = False
+                        st.session_state["_auth_cookie_action"] = {"acao": "remover"}
                     dados_db = carregar_dados_usuario(user.id)
                     minha_emp = dados_db["minha_empresa"] or {
                         "nome": "", "setor": "Marketing", "tipo": "",
@@ -14112,6 +14347,7 @@ if not st.session_state.logado:
                 else:
                     st.session_state["_login_autenticando"] = False
                     st.session_state.pop("_login_email_pendente", None)
+                    st.session_state.pop("_login_manter_pendente", None)
                     st.session_state["_login_erro"] = err or "Não foi possível entrar agora. Tente novamente."
                     st.rerun()
 

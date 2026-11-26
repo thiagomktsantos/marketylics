@@ -13179,10 +13179,17 @@ section.main .block-container {
     margin-top: clamp(-80px, -5vw, -64px) !important;
 }
 
-/* No Confronto de Sites o bloco de acoes e mais alto. Centraliza o conjunto
-   titulo/subtitulo em relacao a ele, como ocorre em Redes Sociais. */
-.st-key-page_header_sites [data-testid="stColumn"]:first-child {
-    padding-top: 15px !important;
+/* Centraliza verticalmente titulo/subtitulo em relacao aos controles do
+   cabecalho. Todas as paginas com duas colunas seguem o mesmo eixo usado
+   nas bibliotecas de anuncios. */
+.st-key-page_header_cad [data-testid="stHorizontalBlock"],
+.st-key-page_header_geral [data-testid="stHorizontalBlock"],
+.st-key-page_header_sites [data-testid="stHorizontalBlock"],
+.st-key-page_header_meta [data-testid="stHorizontalBlock"],
+.st-key-page_header_google [data-testid="stHorizontalBlock"],
+.st-key-page_header_insights [data-testid="stHorizontalBlock"],
+.st-key-page_header_redes [data-testid="stHorizontalBlock"] {
+    align-items: center !important;
 }
 
 @media (max-width: 768px) {
@@ -13191,9 +13198,6 @@ section.main .block-container {
     .st-key-page_header_sites,
     .st-key-page_header_notificacoes {
         margin-top: -48px !important;
-    }
-    .st-key-page_header_sites [data-testid="stColumn"]:first-child {
-        padding-top: 8px !important;
     }
 }
 
@@ -19017,7 +19021,7 @@ if st.session_state.pagina == "home":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -19181,7 +19185,7 @@ html, body { background: transparent; overflow: hidden; }
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -19487,7 +19491,7 @@ elif st.session_state.pagina == "cad":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -19495,7 +19499,7 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div id="wrap">
     <div class="titulo">Concorrentes</div>
-    <div class="sub">Acompanhe e gerencie seus concorrentes para uma análise mais estratégica.</div>
+    <div class="sub">Cadastre e gerencie os concorrentes analisados na plataforma.</div>
 </div>
 <script>
 (function() {
@@ -20249,14 +20253,14 @@ elif st.session_state.pagina == "geral":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
 .sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Dashboard Geral</div>
-<div class="sub">Panorama competitivo da sua empresa e concorrentes.</div>
+<div class="sub">Acompanhe o panorama competitivo da sua empresa e dos seus concorrentes.</div>
 """, height=86)
 
     with h2:
@@ -22718,7 +22722,7 @@ elif st.session_state.pagina == "sites":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -22726,7 +22730,7 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div id="wrap">
     <div class="titulo">Confronto de Sites</div>
-    <div class="sub">Análise comparativa de posicionamento via IA.</div>
+    <div class="sub">Compare o posicionamento digital dos sites com o apoio da IA.</div>
 </div>
 <script>
 (function() {
@@ -26082,7 +26086,8 @@ elif st.session_state.pagina == "ads":
             if _tss:
                 _ultima_ts = max(_tss, key=_parse_ts_ads)
 
-    h1_col, h2_col = st.columns([4.5, 5.5])
+    _page_header_meta = st.container(key="page_header_meta")
+    h1_col, h2_col = _page_header_meta.columns([4.5, 5.5])
 
     with h1_col:
         components.html(f"""
@@ -26100,7 +26105,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 }}
 .titulo {{
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }}
@@ -26108,7 +26113,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Meta Ads</div>
-    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes.</div>
+    <div class="sub">Consulte criativos, textos e formatos dos anúncios dos seus concorrentes.</div>
 </div>
 """, height=104 if _ultima_ts else 86)
  
@@ -29197,7 +29202,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
 .copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
-.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
+.page-avatar{{width:26px;height:26px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
 .page-name{{font-size:11px;font-weight:700;color:#050505;}}
 .page-sponsored{{font-size:9px;color:#65676b;}}
 .copy-body{{font-size:12px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
@@ -33211,7 +33216,8 @@ elif st.session_state.pagina == "google_ads":
             if _tss:
                 _ultima_ts = max(_tss, key=_parse_ts_ads)
 
-    h1_col, h2_col = st.columns([4.5, 5.5])
+    _page_header_google = st.container(key="page_header_google")
+    h1_col, h2_col = _page_header_google.columns([4.5, 5.5])
 
     with h1_col:
         components.html(f"""
@@ -33229,7 +33235,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 }}
 .titulo {{
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }}
@@ -33237,7 +33243,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Google Ads</div>
-    <div class="sub">Criativos, copies e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
+    <div class="sub">Consulte criativos, textos e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
 </div>
 """, height=104 if _ultima_ts else 86)
  
@@ -38755,7 +38761,8 @@ elif st.session_state.pagina == "insights":
         for o in PERIODOS_OPTS
     )
 
-    col1, col2 = st.columns([4.5, 5.5])
+    _page_header_insights = st.container(key="page_header_insights")
+    col1, col2 = _page_header_insights.columns([4.5, 5.5])
 
     with col1:
         components.html("""
@@ -38769,14 +38776,14 @@ elif st.session_state.pagina == "insights":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
 .sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Análise de Oportunidades</div>
-<div class="sub">Compare concorrentes e identifique oportunidades estratégicas para sua empresa.</div>
+<div class="sub">Compare seus concorrentes e identifique oportunidades estratégicas para sua empresa.</div>
 """, height=86)
 
     with col2:
@@ -39905,7 +39912,8 @@ elif st.session_state.pagina == "redes":
     _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
     fn = f'dados_redes_{ultima_coleta.replace("/","_").replace(" ","_").replace(":","")}.json' if ultima_coleta else ""
 
-    col1, col2 = st.columns([4.5, 5.5])
+    _page_header_redes = st.container(key="page_header_redes")
+    col1, col2 = _page_header_redes.columns([4.5, 5.5])
 
     with col1:
         components.html("""
@@ -39919,14 +39927,14 @@ elif st.session_state.pagina == "redes":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
 .sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
 <div class="titulo">Redes Sociais</div>
-<div class="sub">Acompanhe e compare métricas do Instagram dos seus concorrentes em tempo real.</div>
+<div class="sub">Acompanhe e compare as métricas do Instagram da sua empresa e dos seus concorrentes.</div>
 """, height=86)
 
     with col2:
@@ -43577,7 +43585,7 @@ elif st.session_state.pagina == "perfil":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -43585,7 +43593,7 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div id="wrap">
     <div class="titulo">Dados da conta</div>
-    <div class="sub">Suas informações pessoais e o plano da sua conta.</div>
+    <div class="sub">Gerencie suas informações pessoais e consulte os dados do seu plano.</div>
 </div>
 <script>
 (function() {
@@ -45049,7 +45057,7 @@ elif st.session_state.pagina == "notificacoes":
 html, body { background: transparent; overflow: hidden; }
 .titulo {
     font-family: 'NexaText Black', 'DM Sans', sans-serif;
-    font-size: 28px; line-height: 1.08; font-weight: 700; color: #1a2e4a;
+    font-size: 28px; line-height: 1.2; font-weight: 700; color: #1a2e4a; padding-top: 3px;
     text-transform: uppercase; margin: 0 0 5px 0; letter-spacing: 0.35px;
     white-space: nowrap;
 }
@@ -45057,7 +45065,7 @@ html, body { background: transparent; overflow: hidden; }
 </style>
 <div id="wrap">
     <div class="titulo">Notificações</div>
-    <div class="sub">Acompanhe o andamento das suas coletas e atualizações.</div>
+    <div class="sub">Acompanhe o andamento de suas coletas e atualizações.</div>
 </div>
 <script>
 (function() {

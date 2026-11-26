@@ -13982,12 +13982,17 @@ if not st.session_state.logado:
        o height: 100dvh / overflow: auto do CSS interno. */
     main#stMain,
     main#stMain[data-testid="stMain"] {
-        position: relative !important;
+        position: fixed !important;
+        inset: 0 !important;
         width: 100% !important;
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
-        flex: 0 1 auto !important;
+        flex: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
         box-sizing: border-box !important;
@@ -13997,11 +14002,13 @@ if not st.session_state.logado:
     main#stMain::-webkit-scrollbar { display: none !important; }
 
     main#stMain .block-container {
+        width: 100% !important;
         max-width: 440px !important;
         padding: 0 24px !important;
-        margin: 0 auto !important;
+        margin: auto !important;
         background: transparent !important;
         box-sizing: border-box !important;
+        flex: 0 0 auto !important;
     }
 
     [data-testid="stVerticalBlockBorderWrapper"] {

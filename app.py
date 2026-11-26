@@ -14028,7 +14028,7 @@ if not st.session_state.logado:
     [data-testid="stVerticalBlockBorderWrapper"] {
         border: none !important;
         background: #ffffff !important;
-        width: 450px !important;
+        width: 420px !important;
         max-width: calc(100vw - 12px) !important;
         margin: 0 auto !important;
         border-radius: 21px !important;
@@ -14093,7 +14093,7 @@ if not st.session_state.logado:
     }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
-        max-width: 450px !important;
+        max-width: 420px !important;
         margin: 0 auto !important;
     }
     div[class*="st-emotion-cache"] {
@@ -45847,7 +45847,7 @@ html, body { background: transparent; overflow: hidden; }
         """, unsafe_allow_html=True)
 
         _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
-            [2.25, 1.45, 1.05, 0.95]
+            [1.95, 1.75, 1.05, 0.95]
         )
         with _col_busca:
             st.text_input(

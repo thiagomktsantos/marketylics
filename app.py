@@ -39705,8 +39705,8 @@ setHeight(false);
                 st.rerun()
 
     st.markdown("""
-        <div style="margin-top: 5px;">
-            <hr style='border:none;border-top:1px solid #e5e7eb;margin:16px 0 24px 0'/>
+        <div style="margin-top: 0;">
+            <hr style='border:none;border-top:1px solid #e5e7eb;margin:6px 0 12px 0'/>
         </div>
     """, unsafe_allow_html=True)
 
@@ -39901,7 +39901,7 @@ setHeight(false);
         <span class="card-status"><span class="status-dot">✓</span> Concluída</span>
         <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
             style="flex-shrink:0;background:#ffffff;border:1px solid #cbd5e1;
-                   border-radius:8px;width:38px;height:38px;display:flex;align-items:center;
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
                    justify-content:center;cursor:pointer;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#123252" stroke-width="2.5"
                  stroke-linecap="round" stroke-linejoin="round">
@@ -39910,7 +39910,7 @@ setHeight(false);
         </button>
         <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
             style="flex-shrink:0;background:#ffffff;border:1px solid #cbd5e1;
-                   border-radius:8px;width:38px;height:38px;display:flex;align-items:center;
+                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
                    justify-content:center;cursor:pointer;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#123252" stroke-width="2.5"
                  stroke-linecap="round" stroke-linejoin="round">
@@ -39996,17 +39996,17 @@ body { padding-bottom:8px; }
 
 .card-row { background:#e4edf5; border:1.5px solid #123252; border-radius:14px; margin:0 0 12px; overflow:hidden; }
 .card-hdr {
-    display:flex; align-items:center; gap:14px; padding:14px 20px; cursor:pointer;
-    background:#e4edf5; transition:background .15s; min-height:84px;
+    display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer;
+    background:#e4edf5; transition:background .15s;
 }
 .card-hdr:hover { background:#dce8f2; }
-.card-hdr-icon { width:52px; height:52px; border-radius:12px; background:#123252; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.card-hdr-icon svg { width:24px; height:24px; }
+.card-hdr-icon { width:42px; height:42px; border-radius:10px; background:#123252; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.card-hdr-icon svg { width:21px; height:21px; }
 .card-title-wrap { flex:1; min-width:0; }
-.card-title { color:#123252; font-size:18px; font-weight:700; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.card-meta { color:#6b83a0; font-size:13px; margin-top:5px; }
-.card-status { display:inline-flex; align-items:center; gap:7px; padding:8px 12px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:12px; font-weight:800; white-space:nowrap; margin-left:auto; }
-.status-dot { width:19px; height:19px; border:1px solid #22c55e; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; line-height:1; }
+.card-title { color:#123252; font-size:15px; font-weight:800; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-meta { color:#64748b; font-size:11px; font-weight:500; margin-top:3px; }
+.card-status { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:11px; font-weight:800; white-space:nowrap; margin-left:auto; }
+.status-dot { width:16px; height:16px; border:1.5px solid #22c55e; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; line-height:1; }
 
 .card-footer {
     display: flex; gap: 10px; padding: 12px 18px; background: #91a49b;
@@ -40045,7 +40045,7 @@ body { padding-bottom:8px; }
 {CSS_INS}
 </style>
 
-<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:8px;">
+<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:0;">
     {cards_ins_html}
 </div>
 

@@ -12425,6 +12425,23 @@ def login_supabase(email: str, senha: str):
     )
     return None, _mensagem_login(_ultimo_erro)
 
+def enviar_recuperacao_senha(email: str):
+    """Solicita ao Supabase o e-mail de redefinição de senha.
+
+    A mensagem exibida ao usuário é sempre neutra para não revelar se um
+    endereço está ou não cadastrado na plataforma.
+    """
+    try:
+        supabase.auth.reset_password_for_email(email.strip())
+        return True, None
+    except Exception as e:
+        if _erro_supabase_transitorio(e):
+            return False, (
+                "O serviço de recuperação está temporariamente indisponível. "
+                "Tente novamente em alguns instantes."
+            )
+        return False, "Não foi possível enviar o e-mail de recuperação agora. Tente novamente."
+
 def cadastro_supabase(email: str, senha: str, nome: str = ""):
     try:
         payload = {"email": email, "password": senha}
@@ -13752,7 +13769,13 @@ if not st.session_state.logado:
 
     header, #MainMenu, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
 
-    [data-testid="stAppViewContainer"] { background: #f0f2f5 !important; }
+    [data-testid="stAppViewContainer"] {
+        background:
+            radial-gradient(circle at 12% 18%, rgba(58,159,214,.28) 0, rgba(58,159,214,0) 34%),
+            radial-gradient(circle at 88% 82%, rgba(46,204,113,.24) 0, rgba(46,204,113,0) 36%),
+            linear-gradient(135deg, #e8f4fb 0%, #f4f8fb 48%, #eaf8f0 100%) !important;
+        min-height: 100vh !important;
+    }
 
     section.main .block-container {
         max-width: 440px !important;
@@ -13971,6 +13994,30 @@ if not st.session_state.logado:
                 animation: login-spinner-v221 .72s linear infinite;
                 box-sizing: border-box;
             }
+            .st-key-_login_esqueci_senha button,
+            .st-key-_login_esqueci_senha button:hover,
+            .st-key-_login_esqueci_senha button:focus {
+                background: transparent !important;
+                background-color: transparent !important;
+                color: #1683bd !important;
+                border: none !important;
+                box-shadow: none !important;
+                min-height: 24px !important;
+                padding: 0 !important;
+                margin: -2px 0 2px auto !important;
+                width: auto !important;
+                font-size: 13px !important;
+                font-weight: 600 !important;
+                text-decoration: none !important;
+            }
+            .st-key-_login_esqueci_senha button:hover {
+                color: #0e6f9f !important;
+                text-decoration: underline !important;
+            }
+            .st-key-_login_esqueci_senha {
+                display: flex !important;
+                justify-content: flex-end !important;
+            }
             </style>
             """, unsafe_allow_html=True)
 
@@ -13988,12 +14035,32 @@ if not st.session_state.logado:
                     key="_login_senha_input",
                     disabled=st.session_state["_login_autenticando"],
                 )
+                submit_recuperacao = st.form_submit_button(
+                    "Esqueci minha senha",
+                    disabled=st.session_state["_login_autenticando"],
+                    key="_login_esqueci_senha",
+                )
                 submit_login = st.form_submit_button(
                     "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar na plataforma →",
                     width="stretch",
                     disabled=st.session_state["_login_autenticando"],
                     key="_login_submit_button_",
                 )
+
+            if submit_recuperacao:
+                _email_recuperacao = (email_login or "").strip()
+                if not _email_recuperacao:
+                    st.warning("Digite seu e-mail para recuperar a senha.")
+                elif "@" not in _email_recuperacao:
+                    st.warning("Digite um endereço de e-mail válido.")
+                else:
+                    _ok_recuperacao, _erro_recuperacao = enviar_recuperacao_senha(_email_recuperacao)
+                    if _ok_recuperacao:
+                        st.success(
+                            "Se o e-mail estiver cadastrado, você receberá as instruções para redefinir sua senha."
+                        )
+                    else:
+                        st.error(_erro_recuperacao)
 
             if (not st.session_state["_login_autenticando"]) and st.session_state.get("_login_erro"):
                 st.error(st.session_state.pop("_login_erro"))
@@ -29177,12 +29244,9 @@ function esconderTranscricaoTip() {
 <!DOCTYPE html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Light.ttf') format('truetype');font-style:normal;font-weight:300;font-display:swap;}}
-@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:swap;}}
-@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Semibold.ttf') format('truetype');font-style:normal;font-weight:600;font-display:swap;}}
-@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Black.ttf') format('truetype');font-style:normal;font-weight:800;font-display:swap;}}
+@font-face{{font-family:'Segoe UI Historic';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/segoe-ui-historic.ttf') format('truetype');font-style:normal;font-weight:400;font-display:swap;}}
 *{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;font-family:'Proxima Nova',Arial,sans-serif;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;text-rendering:optimizeLegibility;font-kerning:normal;overflow:visible;}}
+html,body{{background:transparent;font-family:'Segoe UI Historic','Segoe UI',Arial,sans-serif;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;text-rendering:optimizeLegibility;font-kerning:normal;overflow:visible;}}
 body{{padding-bottom:4px;min-height:0;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
@@ -29223,7 +29287,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
 .card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
-.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'Proxima Nova',Arial,sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'Segoe UI Historic','Segoe UI',Arial,sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
 .footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
 .footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
 .footer-btn.ia-btn{{border-radius:0 0 10px 0;}}

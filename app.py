@@ -13149,7 +13149,7 @@ st.markdown("""
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
 }
@@ -13174,7 +13174,8 @@ section.main .block-container {
    O recuo compensa os elementos tecnicos ocultos criados antes do titulo. */
 .st-key-page_header_cad,
 .st-key-page_header_geral,
-.st-key-page_header_sites {
+.st-key-page_header_sites,
+.st-key-page_header_notificacoes {
     margin-top: clamp(-80px, -5vw, -64px) !important;
 }
 
@@ -13187,7 +13188,8 @@ section.main .block-container {
 @media (max-width: 768px) {
     .st-key-page_header_cad,
     .st-key-page_header_geral,
-    .st-key-page_header_sites {
+    .st-key-page_header_sites,
+    .st-key-page_header_notificacoes {
         margin-top: -48px !important;
     }
     .st-key-page_header_sites [data-testid="stColumn"]:first-child {
@@ -19009,7 +19011,7 @@ if st.session_state.pagina == "home":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -19173,7 +19175,7 @@ html, body { background: transparent; overflow: hidden; }
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -19479,7 +19481,7 @@ elif st.session_state.pagina == "cad":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -20241,7 +20243,7 @@ elif st.session_state.pagina == "geral":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -22710,7 +22712,7 @@ elif st.session_state.pagina == "sites":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -26088,7 +26090,7 @@ elif st.session_state.pagina == "ads":
 <style>
 @font-face {{
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html, body {{ background: transparent; overflow: hidden; height: 100%; }}
@@ -33217,7 +33219,7 @@ elif st.session_state.pagina == "google_ads":
 <style>
 @font-face {{
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }}
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
 html, body {{ background: transparent; overflow: hidden; height: 100%; }}
@@ -38761,7 +38763,7 @@ elif st.session_state.pagina == "insights":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -39911,7 +39913,7 @@ elif st.session_state.pagina == "redes":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -43569,7 +43571,7 @@ elif st.session_state.pagina == "perfil":
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }
@@ -45035,19 +45037,13 @@ elif st.session_state.pagina == "notificacoes":
         unsafe_allow_html=True,
     )
 
-    components.html("""
+    with st.container(key="page_header_notificacoes"):
+        components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 @font-face {
     font-family: 'NexaText Black';
-    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/nexatext-black.ttf') format('truetype');
-    /* unicode-range restrito ao ASCII basico: essa fonte nao tem os
-       glifos acentuados (C-cedilha, O-til, A-til, E-agudo...), entao sem
-       isso o navegador tenta usa-la mesmo assim pra essas letras e mostra
-       um quadradinho (tofu) em vez de cair pro fallback 'DM Sans'.
-       Limitando o range, qualquer caractere fora do ASCII basico ja cai
-       automaticamente pra DM Sans. */
-    unicode-range: U+0020-007E;
+    src: url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Nexa%20Black%20Regular.ttf') format('truetype');
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: transparent; overflow: hidden; }

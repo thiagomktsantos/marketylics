@@ -13920,6 +13920,15 @@ if not st.session_state.logado:
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
 
+    /* A tela de autenticação ocupa exatamente a viewport. O Streamlit adiciona
+       alturas e espaçamentos próprios que, somados a 100vh, criavam uma barra
+       de rolagem mesmo quando todo o cartão já cabia na tela. */
+    html, body, #root, .stApp {
+        height: 100% !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+    }
+
     header, #MainMenu, [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
 
     [data-testid="stAppViewContainer"] {
@@ -13927,14 +13936,34 @@ if not st.session_state.logado:
             radial-gradient(circle at 14% 16%, rgba(0,166,214,.20) 0, rgba(0,166,214,0) 34%),
             radial-gradient(circle at 86% 84%, rgba(0,218,92,.13) 0, rgba(0,218,92,0) 38%),
             linear-gradient(135deg, #080d14 0%, #101a27 50%, #0a121b 100%) !important;
-        min-height: 100vh !important;
+        height: 100dvh !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+    }
+
+    section.main {
+        height: 100dvh !important;
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
     }
 
     section.main .block-container {
         max-width: 440px !important;
-        padding: 0px 24px 48px 24px !important;
+        padding: 0 24px !important;
         margin: 0 auto !important;
         background: transparent !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Mantém a rolagem disponível somente quando a altura realmente não for
+       suficiente, como em celulares na horizontal ou com teclado aberto. */
+    @media (max-height: 720px) {
+        section.main .block-container {
+            padding-bottom: 16px !important;
+        }
     }
 
     [data-testid="stVerticalBlockBorderWrapper"] {

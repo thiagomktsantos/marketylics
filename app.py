@@ -39705,8 +39705,8 @@ setHeight(false);
                 st.rerun()
 
     st.markdown("""
-        <div style="margin-top: 0;">
-            <hr style='border:none;border-top:1px solid #e5e7eb;margin:6px 0 12px 0'/>
+        <div style="margin-top:-76px; position:relative;">
+            <hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0'/>
         </div>
     """, unsafe_allow_html=True)
 

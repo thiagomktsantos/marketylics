@@ -14003,20 +14003,30 @@ if not st.session_state.logado:
 
     main#stMain .block-container {
         width: 100% !important;
-        max-width: 440px !important;
-        padding: 0 24px !important;
-        margin: auto !important;
+        max-width: 540px !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 8px 24px !important;
+        margin: 0 !important;
         background: transparent !important;
         box-sizing: border-box !important;
         flex: 0 0 auto !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
     }
 
     [data-testid="stVerticalBlockBorderWrapper"] {
         border: none !important;
         background: #ffffff !important;
-        border-radius: 16px !important;
+        width: 492px !important;
+        max-width: calc(100vw - 12px) !important;
+        margin: 0 auto !important;
+        border-radius: 21px !important;
         box-shadow: 0 2px 20px rgba(0,0,0,0.08) !important;
         padding-top: 0 !important;
+        overflow: hidden !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"] > div:first-child,
     [data-testid="stVerticalBlockBorderWrapper"] > div > div:first-child,
@@ -14072,7 +14082,7 @@ if not st.session_state.logado:
     }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
-        max-width: 440px !important;
+        max-width: 492px !important;
         margin: 0 auto !important;
     }
     div[class*="st-emotion-cache"] {
@@ -14129,6 +14139,8 @@ if not st.session_state.logado:
     div[data-testid="stForm"] label[data-testid="stWidgetLabel"] p {
         margin: 0 0 6px 0 !important;
         line-height: 1.2 !important;
+        color: #12394b !important;
+        font-weight: 700 !important;
     }
     div[data-testid="stForm"] div.stFormSubmitButton {
         margin: 0 !important;
@@ -14649,7 +14661,7 @@ if not st.session_state.logado:
                         st.error(f"Erro: {err}")
 
         st.markdown("""
-        <div class="login-footer" style="text-align:center;font-size:11px;color:#696969;margin-top:10px;margin-bottom:6px">
+        <div class="login-footer" style="text-align:center;font-size:11px;color:#696969;margin-top:10px;margin-bottom:0;padding:8px 0 7px;border-top:1px solid #d7dce2">
             🔒 Conexão segura com criptografia SSL &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Termos de Uso</a> &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Privacidade</a>

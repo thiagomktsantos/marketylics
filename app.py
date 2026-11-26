@@ -39880,35 +39880,40 @@ setHeight(false);
         for a in historico_rev:
             idx_real = historico.index(a)
             titulo_a = a.get("titulo", "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            data_a = str(a.get("data", "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             nome_arq = titulo_a.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "").replace(".", "")
+            icon_ins = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>'
 
             cards_ins_html += f"""
-<div class="card-row" style="border-radius:{'14px 14px 0 0' if a == first_item else ('0 0 14px 14px' if a == last_item else '0')};overflow:hidden;">
+<div class="card-row" style="border-radius:{'14px' if a == first_item and a == last_item else ('14px 14px 0 0' if a == first_item else ('0 0 14px 14px' if a == last_item else '0'))};overflow:hidden;">
     <div class="card-hdr" data-idx="{idx_real}">
-        <span class="card-hdr-icon">{ICON_RAIO}</span>
-        <div style="flex:1;min-width:0;font-size:14px;font-weight:600;color:#ffffff;
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{titulo_a}</div>
+        <span class="card-hdr-icon">{icon_ins}</span>
+        <div class="card-title-wrap">
+            <div class="card-title">{titulo_a}</div>
+            <div class="card-meta">{'Gerado em ' + data_a if data_a else 'Análise salva'}</div>
+        </div>
+        <span class="card-status"><span class="status-dot">✓</span> Concluída</span>
         <button class="btn-fullscreen" data-idx="{idx_real}" title="Abrir em tela cheia"
-            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+            style="flex-shrink:0;background:#ffffff;border:1px solid #cbd5e1;
+                   border-radius:8px;width:38px;height:38px;display:flex;align-items:center;
                    justify-content:center;cursor:pointer;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#123252" stroke-width="2.5"
                  stroke-linecap="round" stroke-linejoin="round">
                 <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
             </svg>
         </button>
         <button class="btn-raw" data-idx="{idx_real}" title="Ver texto original"
-            style="flex-shrink:0;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);
-                   border-radius:6px;width:30px;height:30px;display:flex;align-items:center;
+            style="flex-shrink:0;background:#ffffff;border:1px solid #cbd5e1;
+                   border-radius:8px;width:38px;height:38px;display:flex;align-items:center;
                    justify-content:center;cursor:pointer;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#123252" stroke-width="2.5"
                  stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="16 18 22 12 16 6"/>
                 <polyline points="8 6 2 12 8 18"/>
             </svg>
         </button>
         <span class="btn-chevron" data-idx="{idx_real}"
-              style="color:#d1d5db;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
+              style="color:#123252;transition:transform 0.2s;display:flex;align-items:center;flex-shrink:0;cursor:pointer;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"/>
@@ -39983,12 +39988,19 @@ body { padding-bottom:8px; }
     width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
 }
 
-.card-row { border-bottom: 1px solid #f3f4f6; background: #dde5ed; }
+.card-row { background:#e4edf5; border:1.5px solid #123252; border-radius:14px; margin:0 0 12px; overflow:hidden; }
 .card-hdr {
-    display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer;
-    background-color: #17406a; transition: background 0.15s;
+    display:flex; align-items:center; gap:14px; padding:14px 20px; cursor:pointer;
+    background:#e4edf5; transition:background .15s; min-height:84px;
 }
-.card-hdr:hover { background-color: #21719c; }
+.card-hdr:hover { background:#dce8f2; }
+.card-hdr-icon { width:52px; height:52px; border-radius:12px; background:#123252; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.card-hdr-icon svg { width:24px; height:24px; }
+.card-title-wrap { flex:1; min-width:0; }
+.card-title { color:#123252; font-size:18px; font-weight:700; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-meta { color:#6b83a0; font-size:13px; margin-top:5px; }
+.card-status { display:inline-flex; align-items:center; gap:7px; padding:8px 12px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:12px; font-weight:800; white-space:nowrap; margin-left:auto; }
+.status-dot { width:19px; height:19px; border:1px solid #22c55e; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; line-height:1; }
 
 .card-footer {
     display: flex; gap: 10px; padding: 12px 18px; background: #91a49b;

@@ -14285,6 +14285,11 @@ if not st.session_state.logado:
                     botao.style.setProperty(
                         'margin', alinhamento === 'center' ? '0 auto' : '0', 'important'
                     );
+                    if (alinhamento === 'center') {
+                        botao.style.setProperty('position', 'relative', 'important');
+                        botao.style.setProperty('left', '50%', 'important');
+                        botao.style.setProperty('transform', 'translateX(-50%)', 'important');
+                    }
                     botao.style.setProperty('font-size', '13px', 'important');
                     botao.style.setProperty('font-weight', peso, 'important');
 
@@ -14313,6 +14318,17 @@ if not st.session_state.logado:
                         'center',
                         '400'
                     );
+
+                    var botaoEntrar = Array.from(doc.querySelectorAll('form button')).find(
+                        function (item) {
+                            var texto = (item.innerText || item.textContent || '').trim();
+                            return texto === 'Entrar' || texto === 'Autenticando...';
+                        }
+                    );
+                    var formulario = botaoEntrar ? botaoEntrar.closest('form') : null;
+                    if (formulario) {
+                        formulario.style.setProperty('margin-top', '-22px', 'important');
+                    }
                 }
 
                 aplicar();

@@ -13308,6 +13308,7 @@ section.main .block-container {
 .st-key-page_header_cad,
 .st-key-page_header_geral,
 .st-key-page_header_sites,
+.st-key-page_header_insights,
 .st-key-page_header_notificacoes {
     margin-top: clamp(-80px, -5vw, -64px) !important;
 }
@@ -13330,6 +13331,7 @@ section.main .block-container {
     .st-key-page_header_cad,
     .st-key-page_header_geral,
     .st-key-page_header_sites,
+    .st-key-page_header_insights,
     .st-key-page_header_notificacoes {
         margin-top: -48px !important;
     }
@@ -39879,7 +39881,11 @@ setHeight(false);
         last_item = historico_rev[-1] if historico_rev else None
         for a in historico_rev:
             idx_real = historico.index(a)
-            titulo_a = a.get("titulo", "—").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            titulo_raw_a = str(a.get("titulo", "—"))
+            # A data já aparece na linha de metadados; remova a data duplicada do título.
+            _titulo_data_match = _re_ins.match(r"^(.*?)(?:\s+[—–-]\s+(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}))$", titulo_raw_a)
+            titulo_a = (_titulo_data_match.group(1) if _titulo_data_match else titulo_raw_a).strip()
+            titulo_a = titulo_a.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             data_a = str(a.get("data", "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             nome_arq = titulo_a.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "").replace(".", "")
             icon_ins = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>'

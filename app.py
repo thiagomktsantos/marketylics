@@ -26113,7 +26113,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Meta Ads</div>
-    <div class="sub">Consulte criativos, textos e formatos dos anúncios dos seus concorrentes.</div>
+    <div class="sub">Consulte criativos, textos e formatos dos concorrentes.</div>
 </div>
 """, height=104 if _ultima_ts else 86)
  
@@ -29178,7 +29178,7 @@ function esconderTranscricaoTip() {
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:antialiased;overflow:visible;}}
+html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;text-rendering:optimizeLegibility;font-kerning:normal;overflow:visible;}}
 body{{padding-bottom:4px;min-height:0;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
@@ -29195,7 +29195,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .ad-id{{font-size:8px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
 .badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:8px;font-weight:600;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
-.meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
+.meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:500;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
 .meta-label{{font-size:10px;color:#65676b;font-weight:700;flex-shrink:0;}}
 .plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
@@ -29204,8 +29204,8 @@ body{{padding-bottom:4px;min-height:0;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
 .page-avatar{{width:26px;height:26px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
 .page-name{{font-size:11px;font-weight:700;color:#050505;}}
-.page-sponsored{{font-size:9px;color:#65676b;}}
-.copy-body{{font-size:12px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.page-sponsored{{font-size:9px;font-weight:500;color:#65676b;}}
+.copy-body{{font-size:12px;font-weight:500;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
 .no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
@@ -29215,7 +29215,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}
 .cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}
-.cta-domain{{font-size:9px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.cta-domain{{font-size:9px;font-weight:500;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
 .cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
 .card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
@@ -33243,7 +33243,7 @@ html, body {{ background: transparent; overflow: hidden; height: 100%; }}
 </style>
 <div class="wrap">
     <div class="titulo">Biblioteca de Google Ads</div>
-    <div class="sub">Consulte criativos, textos e formatos dos anúncios dos seus concorrentes no Google Ads.</div>
+    <div class="sub">Consulte criativos e formatos dos concorrentes no Google Ads.</div>
 </div>
 """, height=104 if _ultima_ts else 86)
  
@@ -45088,6 +45088,11 @@ html, body { background: transparent; overflow: hidden; }
 })();
 </script>
 """, height=70)
+
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #e5e7eb;margin:10px 0 20px 0;padding:0;' />",
+        unsafe_allow_html=True,
+    )
 
     components.html("""
     <script>

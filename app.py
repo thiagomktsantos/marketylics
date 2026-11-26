@@ -29753,7 +29753,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
 .ad-id{{font-size:8px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
 .badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:8px;font-weight:600;}}
-.meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
+.meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#e4e6eb;}}
 .meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:500;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
 .meta-main-row{{justify-content:space-between;flex-wrap:nowrap;width:100%;}}

@@ -13951,10 +13951,9 @@ if not st.session_state.logado:
     }
 
     section.main {
-        position: fixed !important;
-        inset: 0 !important;
+        position: relative !important;
         width: 100% !important;
-        height: 100dvh !important;
+        height: auto !important;
         min-height: 0 !important;
         overflow-y: hidden !important;
         overflow-x: hidden !important;
@@ -13967,21 +13966,6 @@ if not st.session_state.logado:
         margin: 0 auto !important;
         background: transparent !important;
         box-sizing: border-box !important;
-    }
-
-    /* Mantém a rolagem disponível somente quando a altura realmente não for
-       suficiente, como em celulares na horizontal ou com teclado aberto. */
-    @media (max-height: 850px), (max-width: 720px) {
-        section.main {
-            overflow-y: auto !important;
-            scrollbar-width: none !important;
-        }
-        section.main::-webkit-scrollbar {
-            display: none !important;
-        }
-        section.main .block-container {
-            padding-bottom: 16px !important;
-        }
     }
 
     [data-testid="stVerticalBlockBorderWrapper"] {

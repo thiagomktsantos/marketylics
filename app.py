@@ -28913,9 +28913,14 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                         plats_todas = sorted(set(p for a in ads_list for p in (a["plataformas"] or [])))
                         filtro_plat = st.selectbox(
                             "Plataforma",
-                            ["Plataforma (todas)"] + [p.capitalize() for p in plats_todas],
+                            ["Plataforma (todas)"] + plats_todas,
                             key=f"ads_plat_{sk}",
                             label_visibility="collapsed",
+                            format_func=lambda p: (
+                                "Plataforma (todas)"
+                                if p == "Plataforma (todas)"
+                                else str(p).replace("_", " ").title()
+                            ),
                         )
                     if mostrar_filtro_regiao_ads:
                         with fcol7:
@@ -29424,7 +29429,12 @@ function imgFallback_{uid}(img){{
                     ) if page_pic and page_pic.startswith("http") else f'<div class="page-avatar">{avatar}</div>'
 
                     data_inicio_html = (
-                        f'<div class="meta-row"><span class="meta-label">Veic. iniciada:</span><span>{data_inicio}</span></div>'
+                        '<span class="meta-date">'
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '
+                        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                        '<rect x="3" y="5" width="18" height="16" rx="2"/>'
+                        '<path d="M16 3v4M8 3v4M3 10h18"/>'
+                        f'</svg><span>{data_inicio}</span></span>'
                     ) if data_inicio else ""
 
                     if body_safe and len(body_clean) > 80:
@@ -29448,8 +29458,7 @@ function imgFallback_{uid}(img){{
         <div style="display:flex;align-items:center;gap:6px">{'<span class="ad-id">ID: ' + ad_id_short + '</span>' if ad_id_short else ''}</div>
     </div>
     <div class="meta-info">
-        {data_inicio_html}
-        <div class="meta-row"><span class="meta-label">Plataformas:</span><span id="plat_icons_{uid}" class="plat-icons"></span></div>
+        <div class="meta-row meta-main-row">{data_inicio_html}<span id="plat_icons_{uid}" class="plat-icons"></span></div>
         {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
     </div>
     <div class="copy-section" style="position:relative">
@@ -29747,15 +29756,17 @@ body{{padding-bottom:4px;min-height:0;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
 .meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:500;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
+.meta-main-row{{justify-content:space-between;flex-wrap:nowrap;width:100%;}}
+.meta-date{{display:inline-flex;align-items:center;gap:5px;min-width:0;}}
 .meta-label{{font-size:10px;color:#65676b;font-weight:700;flex-shrink:0;}}
-.plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
+.plat-icons{{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex-wrap:nowrap;margin-left:auto;}}
 .plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
 .copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
 .page-avatar{{width:26px;height:26px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
 .page-name{{font-size:11px;font-weight:700;color:#050505;}}
 .page-sponsored{{font-size:9px;font-weight:500;color:#65676b;}}
-.copy-body{{font-size:12px;font-weight:500;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-body{{font-size:11px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
 .no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}

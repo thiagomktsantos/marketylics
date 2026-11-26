@@ -28479,6 +28479,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "SUBSCRIBE":"Assinar","CALL_NOW":"Ligar Agora","SEND_MESSAGE":"Enviar Mensagem",
                     "GET_DIRECTIONS":"Como Chegar","BUY_NOW":"Comprar","DONATE":"Doar",
                     "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
+                    "VIEW_INSTAGRAM_PROFILE":"Ver perfil no Instagram",
                 }
 
                 _urls_video_cards = list({
@@ -28607,7 +28608,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div id="imgsbadge_{uid}"
          title="Este anúncio dinâmico também tem {len(_imgs_dyn_alt)} imagem(ns) alternativa(s) — clique pra ver"
          style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:pointer;display:flex;align-items:center;gap:4px">
         {_SVG_ICONE_IMAGENS_ALT} +{len(_imgs_dyn_alt)}
     </div>"""
@@ -28649,7 +28650,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
          style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
-                font-size:10px;font-weight:700;line-height:1;padding:4px 8px;
+                font-size:9px;font-weight:700;line-height:1;padding:4px 8px;
                 border:1px solid #d1d5db;border-radius:8px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;
                 white-space:nowrap;box-shadow:none">
@@ -28660,7 +28661,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div title="Vídeo já salvo — a transcrição ainda está sendo processada e aparece em breve"
          onclick="event.stopPropagation()"
          style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px">
         {_SVG_ICONE_TRANSCRICAO_PENDENTE} Transcrevendo…
     </div>"""
@@ -28715,7 +28716,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 + 'display:flex;align-items:center;justify-content:center;border: 2px solid #ffffff !important;">'
                 + '<svg width="22" height="22" viewBox="0 0 54 54" fill="none">'
                 + '<polygon points="18,12 44,27 18,42" fill="white"/></svg></div>'
-                + '<span style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:600">▶ Ver no Ad Library</span>'
+                + '<span style="font-size:10px;color:rgba(255,255,255,0.7);font-weight:600">▶ Ver no Ad Library</span>'
                 + '</div>';
         }}
     }}
@@ -28800,9 +28801,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         style="width:100%;height:100%;object-fit:cover;display:block;"
         onerror="imgFallback_{uid}(this)" />
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
-        <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
+        <span style="font-size:11px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
-    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:10px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
     {origem_badge_img_html}
 </div>
 <script>
@@ -28836,7 +28837,7 @@ function imgFallback_{uid}(img){{
                             f'<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.2">'
                             f'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'
                             f'<polyline points="21 15 16 10 5 21"/></svg>'
-                            f'<span style="font-size:12px;color:{_nm_color};font-weight:600;margin-top:8px;">{_nm_label}</span>'
+                            f'<span style="font-size:11px;color:{_nm_color};font-weight:600;margin-top:8px;">{_nm_label}</span>'
                             f'</div>'
                         )
 
@@ -28874,9 +28875,9 @@ function imgFallback_{uid}(img){{
                         rest_b  = body_safe[80:]
                         body_display = (
                             f'<div class="copy-body">{short_b}'
-                            f'<span style="color:#9ca3af;font-size:13px" id="ell_{uid}">... </span>'
+                            f'<span style="color:#9ca3af;font-size:12px" id="ell_{uid}">... </span>'
                             f'<span id="cm_{uid}" style="display:none">{rest_b}</span>'
-                            f'<button id="cb_{uid}" onclick="var m=document.getElementById(\'cm_{uid}\');var b=document.getElementById(\'cb_{uid}\');var e=document.getElementById(\'ell_{uid}\');if(m.style.display===\'none\'){{m.style.display=\'inline\';b.textContent=\'ver menos\';if(e)e.style.display=\'none\'}}else{{m.style.display=\'none\';b.textContent=\'ver mais\';if(e)e.style.display=\'inline\'}}" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-left:3px;">ver mais</button></div>'
+                            f'<button id="cb_{uid}" onclick="var m=document.getElementById(\'cm_{uid}\');var b=document.getElementById(\'cb_{uid}\');var e=document.getElementById(\'ell_{uid}\');if(m.style.display===\'none\'){{m.style.display=\'inline\';b.textContent=\'ver menos\';if(e)e.style.display=\'none\'}}else{{m.style.display=\'none\';b.textContent=\'ver mais\';if(e)e.style.display=\'inline\'}}" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:3px;">ver mais</button></div>'
                         )
                     elif body_safe:
                         body_display = f'<div class="copy-body">{body_safe}</div>'
@@ -29182,45 +29183,45 @@ body{{padding-bottom:4px;min-height:0;}}
 .status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 7px;border-bottom:1px solid transparent;flex-wrap:wrap;gap:4px;}}
 .status-bar-active{{background:#79dc99;border-bottom-color:#65cf87;}}
 .status-bar-inactive{{background:#829ca9;border-bottom-color:#718c99;}}
-.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;}}
+.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#fff;}}
 .status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
-.ad-id{{font-size:9px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
-.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
+.ad-id{{font-size:8px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
+.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:8px;font-weight:600;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
-.meta-row{{display:flex;align-items:center;gap:5px;font-size:11px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
+.meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
-.meta-label{{font-size:11px;color:#65676b;font-weight:700;flex-shrink:0;}}
+.meta-label{{font-size:10px;color:#65676b;font-weight:700;flex-shrink:0;}}
 .plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
 .plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
 .copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
-.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}}
-.page-name{{font-size:12px;font-weight:700;color:#050505;}}
-.page-sponsored{{font-size:10px;color:#65676b;}}
-.copy-body{{font-size:13px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
-.copy-title{{font-size:13px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
-.copy-desc{{font-size:11px;color:#65676b;margin-top:2px;}}
-.no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
-.dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
+.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
+.page-name{{font-size:11px;font-weight:700;color:#050505;}}
+.page-sponsored{{font-size:9px;color:#65676b;}}
+.copy-body{{font-size:12px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
+.no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;}}
 .img-block{{height:230px;background:#f0f2f5;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}
 .cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}
-.cta-domain{{font-size:10px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
-.cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
+.cta-domain{{font-size:9px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
 .card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
-.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
 .footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
 .footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
 .footer-btn.ia-btn{{border-radius:0 0 10px 0;}}
-.lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;}}
-.debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:11px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
+.lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:600;}}
+.debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:10px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
 .debug-btn:hover{{background:#fef3c7;}}
 .debug-block{{border-top:1px solid #fde68a;background:#fffbeb;}}
-.debug-header{{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;font-size:11px;font-weight:700;color:#92400e;cursor:pointer;}}
-.debug-pre{{font-family:monospace;font-size:10px;color:#374151;padding:8px 12px;overflow-x:auto;white-space:pre;background:#fffbeb;max-height:180px;overflow-y:auto;border-top:1px solid #fde68a;}}
+.debug-header{{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;font-size:10px;font-weight:700;color:#92400e;cursor:pointer;}}
+.debug-pre{{font-family:monospace;font-size:9px;color:#374151;padding:8px 12px;overflow-x:auto;white-space:pre;background:#fffbeb;max-height:180px;overflow-y:auto;border-top:1px solid #fde68a;}}
 </style>
 </head>
 <body>
@@ -35897,6 +35898,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                     "SUBSCRIBE":"Assinar","CALL_NOW":"Ligar Agora","SEND_MESSAGE":"Enviar Mensagem",
                     "GET_DIRECTIONS":"Como Chegar","BUY_NOW":"Comprar","DONATE":"Doar",
                     "OPEN_LINK":"Abrir Link","SEE_DETAILS":"Ver Detalhes","NO_BUTTON":"",
+                    "VIEW_INSTAGRAM_PROFILE":"Ver perfil no Instagram",
                 }
 
                 _urls_video_cards = list({
@@ -36211,7 +36213,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div id="imgsbadge_{uid}"
          title="Este anúncio dinâmico também tem {len(_imgs_dyn_alt)} imagem(ns) alternativa(s) — clique pra ver"
          style="position:absolute;top:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:pointer;display:flex;align-items:center;gap:4px">
         {_SVG_ICONE_IMAGENS_ALT} +{len(_imgs_dyn_alt)}
     </div>"""
@@ -36254,7 +36256,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
          onmouseleave="esconderTranscricaoTip()"
          onclick="event.stopPropagation()"
          style="position:absolute;top:7px;right:7px;background:#fff;color:#111827;
-                font-size:10px;font-weight:700;line-height:1;padding:4px 8px;
+                font-size:9px;font-weight:700;line-height:1;padding:4px 8px;
                 border:1px solid #d1d5db;border-radius:8px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px;
                 white-space:nowrap;box-shadow:none">
@@ -36265,7 +36267,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     <div title="Vídeo já salvo — a transcrição ainda está sendo processada e aparece em breve"
          onclick="event.stopPropagation()"
          style="position:absolute;top:7px;right:7px;background:rgba(0,0,0,0.55);color:#fbbf24;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 cursor:help;display:flex;align-items:center;gap:4px">
         {_SVG_ICONE_TRANSCRICAO_PENDENTE} Transcrevendo…
     </div>"""
@@ -36294,7 +36296,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
     </div>
     <div title="Vídeo do YouTube" onclick="event.stopPropagation()"
          style="position:absolute;bottom:7px;left:7px;background:rgba(0,0,0,0.65);color:#fff;
-                font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
+                font-size:9px;font-weight:700;padding:3px 8px;border-radius:20px;z-index:3;
                 display:flex;align-items:center;gap:4px">
         ▶ YouTube
     </div>
@@ -36362,7 +36364,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 + 'display:flex;align-items:center;justify-content:center;border: 2px solid #ffffff !important;">'
                 + '<svg width="22" height="22" viewBox="0 0 54 54" fill="none">'
                 + '<polygon points="18,12 44,27 18,42" fill="white"/></svg></div>'
-                + '<span style="font-size:11px;color:rgba(255,255,255,0.7);font-weight:600">▶ Ver no Ad Library</span>'
+                + '<span style="font-size:10px;color:rgba(255,255,255,0.7);font-weight:600">▶ Ver no Ad Library</span>'
                 + '</div>';
         }}
     }}
@@ -36447,9 +36449,9 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
         style="width:100%;height:100%;object-fit:cover;display:block;"
         onerror="imgFallback_{uid}(this)" />
     <div id="merr_{uid}" style="display:none;width:100%;height:100%;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:#f9fafb;position:absolute;top:0;left:0;">
-        <span style="font-size:12px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
+        <span style="font-size:11px;color:#3a9fd6;font-weight:600;">{'Ver criativo →' if snap_url else 'Sem imagem'}</span>
     </div>
-    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:11px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
+    <div style="position:absolute;top:8px;right:8px;background:#ffffff;border-radius:6px;padding:3px 7px;font-size:10px;color:#000000;font-weight:600;pointer-events:none;display:inline-flex;align-items:center;gap:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> {'VER CRIATIVOS' if 'Carrossel' in (ad.get('formato') or '') else 'VER CRIATIVO'}</div>
     {origem_badge_img_html}
 </div>
 <script>
@@ -36483,7 +36485,7 @@ function imgFallback_{uid}(img){{
                             f'<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.2">'
                             f'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/>'
                             f'<polyline points="21 15 16 10 5 21"/></svg>'
-                            f'<span style="font-size:12px;color:{_nm_color};font-weight:600;margin-top:8px;">{_nm_label}</span>'
+                            f'<span style="font-size:11px;color:{_nm_color};font-weight:600;margin-top:8px;">{_nm_label}</span>'
                             f'</div>'
                         )
 
@@ -36511,9 +36513,9 @@ function imgFallback_{uid}(img){{
                         rest_b  = body_safe[80:]
                         body_display = (
                             f'<div class="copy-body">{short_b}'
-                            f'<span style="color:#9ca3af;font-size:13px" id="ell_{uid}">... </span>'
+                            f'<span style="color:#9ca3af;font-size:12px" id="ell_{uid}">... </span>'
                             f'<span id="cm_{uid}" style="display:none">{rest_b}</span>'
-                            f'<button id="cb_{uid}" onclick="var m=document.getElementById(\'cm_{uid}\');var b=document.getElementById(\'cb_{uid}\');var e=document.getElementById(\'ell_{uid}\');if(m.style.display===\'none\'){{m.style.display=\'inline\';b.textContent=\'ver menos\';if(e)e.style.display=\'none\'}}else{{m.style.display=\'none\';b.textContent=\'ver mais\';if(e)e.style.display=\'inline\'}}" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:13px;cursor:pointer;padding:0;margin-left:3px;">ver mais</button></div>'
+                            f'<button id="cb_{uid}" onclick="var m=document.getElementById(\'cm_{uid}\');var b=document.getElementById(\'cb_{uid}\');var e=document.getElementById(\'ell_{uid}\');if(m.style.display===\'none\'){{m.style.display=\'inline\';b.textContent=\'ver menos\';if(e)e.style.display=\'none\'}}else{{m.style.display=\'none\';b.textContent=\'ver mais\';if(e)e.style.display=\'inline\'}}" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:12px;cursor:pointer;padding:0;margin-left:3px;">ver mais</button></div>'
                         )
                     elif body_safe:
                         body_display = f'<div class="copy-body">{body_safe}</div>'
@@ -36556,8 +36558,8 @@ function imgFallback_{uid}(img){{
                                     _nome_pagina_ad = ""
                                     _resto_url_ad = _linhas_url_ad[0] if _linhas_url_ad else ""
                                 _coluna_texto_ad_html = (
-                                    (f'<div style="font-size:12.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
-                                    + (f'<div style="font-size:11px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
+                                    (f'<div style="font-size:11.5px;font-weight:700;color:#4b5563">{_escapar_html_ocr(_nome_pagina_ad)}</div>' if _nome_pagina_ad else '')
+                                    + (f'<div style="font-size:10px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
                                 )
                                 _campos_ocr_html.append(
                                     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
@@ -36581,7 +36583,7 @@ function imgFallback_{uid}(img){{
                                         continue
                                     _blocos_chamadas_card_v165.append(
                                         (
-                                            '<div style="font-size:13px;font-weight:700;color:#3a9fd6;'
+                                            '<div style="font-size:12px;font-weight:700;color:#3a9fd6;'
                                             + (
                                                 'margin-top:7px;padding-top:7px;border-top:1px solid #d9dee7;'
                                                 if _idx_ch_card_v165 > 0
@@ -36596,15 +36598,15 @@ function imgFallback_{uid}(img){{
                                     _campos_ocr_html.append("".join(_blocos_chamadas_card_v165))
                             elif _ocr_estr_ad.get("titulo"):
                                 _campos_ocr_html.append(
-                                    f'<div style="font-size:13px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
+                                    f'<div style="font-size:12px;font-weight:700;color:#3a9fd6;margin-bottom:4px">{_escapar_html_ocr(_ocr_estr_ad["titulo"])}</div>'
                                 )
                             if _ocr_estr_ad.get("descricao"):
                                 _campos_ocr_html.append(
-                                    f'<div style="font-size:11.5px;color:#6b7280;margin-bottom:8px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
+                                    f'<div style="font-size:10.5px;color:#6b7280;margin-bottom:8px">{_escapar_html_ocr(_ocr_estr_ad["descricao"])}</div>'
                                 )
                             if _ocr_estr_ad.get("url_final") and _ocr_estr_ad.get("url_final") != _ocr_estr_ad.get("url_exibida"):
                                 _campos_ocr_html.append(
-                                    f'<div style="font-size:10.5px;color:#9ca3af;margin-bottom:4px">Destino: {_escapar_html_ocr(_ocr_estr_ad["url_final"])}</div>'
+                                    f'<div style="font-size:9.5px;color:#9ca3af;margin-bottom:4px">Destino: {_escapar_html_ocr(_ocr_estr_ad["url_final"])}</div>'
                                 )
                             if _ocr_estr_ad.get("sitelinks"):
                                 _blocos_sitelinks = []
@@ -36620,8 +36622,8 @@ function imgFallback_{uid}(img){{
                                         continue
                                     _blocos_sitelinks.append(
                                         '<div style="margin-top:6px;padding-top:6px;border-top:1px solid #eef0f2">'
-                                        f'<div style="font-size:12px;font-weight:700;color:#3a9fd6">{_escapar_html_ocr(_sl_titulo)}</div>'
-                                        + (f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_sl_desc)}</div>' if _sl_desc else '')
+                                        f'<div style="font-size:11px;font-weight:700;color:#3a9fd6">{_escapar_html_ocr(_sl_titulo)}</div>'
+                                        + (f'<div style="font-size:10.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_sl_desc)}</div>' if _sl_desc else '')
                                         + '</div>'
                                     )
                                 _campos_ocr_html.append("".join(_blocos_sitelinks))
@@ -36634,9 +36636,9 @@ function imgFallback_{uid}(img){{
                                     'display:flex;align-items:flex-start">'
                                     + _cta_icone_html
                                     + '<div>'
-                                    f'<div style="font-size:12px;font-weight:700;color:#111827">{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
+                                    f'<div style="font-size:11px;font-weight:700;color:#111827">{_escapar_html_ocr(_ocr_estr_ad["cta"])}</div>'
                                     + (
-                                        f'<div style="font-size:11.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_ocr_estr_ad["cta_subtitulo"])}</div>'
+                                        f'<div style="font-size:10.5px;color:#6b7280;margin-top:1px">{_escapar_html_ocr(_ocr_estr_ad["cta_subtitulo"])}</div>'
                                         if _ocr_estr_ad.get("cta_subtitulo") else ''
                                     )
                                     + '</div></div>'
@@ -36648,7 +36650,7 @@ function imgFallback_{uid}(img){{
                             )
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
-                                '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                '<div style="font-size:9px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
                                 f'{_rotulo_origem_texto}</div>'
                                 + "".join(_campos_ocr_html)
@@ -36658,7 +36660,7 @@ function imgFallback_{uid}(img){{
                         elif _ocr_txt_ad:
                             no_copy_html = (
                                 '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
-                                '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                '<div style="font-size:9px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">'
                                 'Texto extraído da imagem (OCR)</div>'
                                 f'{_escapar_html_ocr(_ocr_txt_ad)}</div>'
@@ -36670,7 +36672,7 @@ function imgFallback_{uid}(img){{
                                     _cc_card_v267 += "…"
                                 no_copy_html = (
                                     '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
-                                    '<div style="font-size:10px;font-weight:700;color:#9ca3af;'
+                                    '<div style="font-size:9px;font-weight:700;color:#9ca3af;'
                                     'text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">'
                                     'Closed Caption do vídeo</div>'
                                     f'{_escapar_html_ocr(_cc_card_v267)}</div>'
@@ -36973,45 +36975,45 @@ body{{padding-bottom:4px;min-height:0;}}
 .status-bar{{display:flex;align-items:center;justify-content:space-between;padding:8px 12px 7px;border-bottom:1px solid transparent;flex-wrap:wrap;gap:4px;}}
 .status-bar-active{{background:#79dc99;border-bottom-color:#65cf87;}}
 .status-bar-inactive{{background:#829ca9;border-bottom-color:#718c99;}}
-.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#fff;}}
+.status-dot,.status-dot-inactive{{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;color:#fff;}}
 .status-dot::before,.status-dot-inactive::before{{content:'';width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0;}}
-.ad-id{{font-size:9px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
-.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:9px;font-weight:600;}}
+.ad-id{{font-size:8px;color:rgba(255,255,255,.96);font-family:monospace;font-weight:600;}}
+.badge-small{{background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.55);padding:1px 6px;border-radius:20px;font-size:8px;font-weight:600;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
-.meta-row{{display:flex;align-items:center;gap:5px;font-size:11px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
+.meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
-.meta-label{{font-size:11px;color:#65676b;font-weight:700;flex-shrink:0;}}
+.meta-label{{font-size:10px;color:#65676b;font-weight:700;flex-shrink:0;}}
 .plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
 .plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
 .copy-section{{padding:10px 12px 8px;border-bottom:1px solid #f0f2f5;}}
 .page-header{{display:flex;align-items:center;gap:8px;margin-bottom:8px;}}
-.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;}}
-.page-name{{font-size:12px;font-weight:700;color:#050505;}}
-.page-sponsored{{font-size:10px;color:#65676b;}}
-.copy-body{{font-size:13px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
-.copy-title{{font-size:13px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
-.copy-desc{{font-size:11px;color:#65676b;margin-top:2px;}}
-.no-copy{{font-size:12px;color:#bcc0c4;font-style:italic;min-height:72px;}}
-.dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;}}
+.page-avatar{{width:30px;height:30px;border-radius:50%;background:{cor_av};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}}
+.page-name{{font-size:11px;font-weight:700;color:#050505;}}
+.page-sponsored{{font-size:9px;color:#65676b;}}
+.copy-body{{font-size:12px;color:#050505;line-height:1.55;white-space:pre-line;word-break:break-word;min-height:72px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
+.copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
+.no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;}}
+.dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
 .img-block{{height:230px;background:#0d1117;}}
 .img-block img{{opacity:.85;}}
 .video-thumb-block{{height:230px;}}
 .no-media-block{{height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#7592cc;gap:6px;}}
 .cta-footer{{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#ffffff;border-top:1px solid #e4e6ea;gap:8px;min-height:44px;}}
-.cta-domain{{font-size:10px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
-.cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
+.cta-domain{{font-size:9px;color:#65676b;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
 .card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
-.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
 .footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
 .footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
 .footer-btn.ia-btn{{border-radius:0 0 10px 0;}}
-.lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:11px;font-weight:600;}}
-.debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:11px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
+.lib-btn-disabled{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#f3f4f6;color:#9ca3af;font-size:10px;font-weight:600;}}
+.debug-btn{{display:flex;align-items:center;justify-content:center;padding:9px 6px;background:#fffbeb;color:#92400e;border:none;border-radius:0 0 10px 0;font-size:10px;font-weight:700;cursor:pointer;border-left:1px solid #e4e6ea;}}
 .debug-btn:hover{{background:#fef3c7;}}
 .debug-block{{border-top:1px solid #fde68a;background:#fffbeb;}}
-.debug-header{{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;font-size:11px;font-weight:700;color:#92400e;cursor:pointer;}}
+.debug-header{{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;font-size:10px;font-weight:700;color:#92400e;cursor:pointer;}}
 .debug-pre{{font-family:monospace;font-size:10px;color:#374151;padding:8px 12px;overflow-x:auto;white-space:pre;background:#fffbeb;max-height:180px;overflow-y:auto;border-top:1px solid #fde68a;}}
 </style>
 </head>

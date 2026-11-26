@@ -13889,7 +13889,7 @@ if not st.session_state.logado:
         border-radius: 16px !important;
     }
     div[data-baseweb="tab-panel"] {
-        padding-top: 8px !important;
+        padding-top: 0 !important;
         padding-bottom: 0 !important;
     }
     [data-testid="stVerticalBlock"] {
@@ -13935,10 +13935,10 @@ if not st.session_state.logado:
 
     /* Espaçamento do form (topo mantido, resto equilibrado) */
     div[data-testid="stForm"] {
-        padding-top: 4px !important;
+        padding-top: 0 !important;
     }
     div[data-testid="stForm"] [data-testid="stVerticalBlock"] {
-        gap: 0.6rem !important;
+        gap: 0.48rem !important;
     }
     div[data-testid="stForm"] [data-testid="stElementContainer"] {
         margin: 0 !important;
@@ -13974,7 +13974,7 @@ if not st.session_state.logado:
         justify-content: center !important;
         border-bottom: 2px solid #e5e7eb !important;
         gap: 0 !important;
-        margin-bottom: 8px !important;
+        margin-bottom: 0 !important;
     }
     div[data-testid="stTabs"] div[data-testid="stTab"][role="tab"] {
         font-size: 14px !important;
@@ -14031,7 +14031,7 @@ if not st.session_state.logado:
 
     with st.container(border=True):
         st.markdown(f"""
-        <div style="text-align:center;margin-top:-42px;margin-bottom:30px">
+        <div style="text-align:center;margin-top:-64px;margin-bottom:18px">
             {'<img src="' + logo_src + '" style="width:242px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
             <div style="font-size:15px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>
@@ -14106,7 +14106,7 @@ if not st.session_state.logado:
             }
             section.main .st-key-login_esqueci_senha {
                 display: flex !important;
-                justify-content: flex-end !important;
+                justify-content: flex-start !important;
                 width: 100% !important;
                 background: transparent !important;
             }
@@ -14234,16 +14234,16 @@ if not st.session_state.logado:
                     key="_login_manter_conectado",
                     disabled=st.session_state["_login_autenticando"],
                 )
+                submit_login = st.form_submit_button(
+                    "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar",
+                    width="stretch",
+                    disabled=st.session_state["_login_autenticando"],
+                    key="_login_submit_button_",
+                )
                 submit_recuperacao = st.form_submit_button(
                     "Esqueci minha senha",
                     disabled=st.session_state["_login_autenticando"],
                     key="_login_esqueci_senha",
-                )
-                submit_login = st.form_submit_button(
-                    "Autenticando..." if st.session_state["_login_autenticando"] else "Entrar na plataforma →",
-                    width="stretch",
-                    disabled=st.session_state["_login_autenticando"],
-                    key="_login_submit_button_",
                 )
                 submit_confirmacao = st.form_submit_button(
                     "Não recebeu o e-mail de confirmação? Clique aqui",
@@ -14302,7 +14302,7 @@ if not st.session_state.logado:
                 }
 
                 function aplicar() {
-                    estilizarLinkLogin('Esqueci minha senha', 'flex-end', '600');
+                    estilizarLinkLogin('Esqueci minha senha', 'flex-start', '600');
                     estilizarLinkLogin(
                         'Não recebeu o e-mail de confirmação? Clique aqui',
                         'center',

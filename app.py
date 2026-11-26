@@ -14031,7 +14031,7 @@ if not st.session_state.logado:
 
     with st.container(border=True):
         st.markdown(f"""
-        <div style="text-align:center;margin-top:-24px;margin-bottom:36px">
+        <div style="text-align:center;margin-top:-42px;margin-bottom:30px">
             {'<img src="' + logo_src + '" style="width:242px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
             <div style="font-size:15px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>
@@ -14072,9 +14072,9 @@ if not st.session_state.logado:
                 animation: login-spinner-v221 .72s linear infinite;
                 box-sizing: border-box;
             }
-            .st-key-_login_esqueci_senha button,
-            .st-key-_login_esqueci_senha button:hover,
-            .st-key-_login_esqueci_senha button:focus {
+            section.main .st-key-login_esqueci_senha button,
+            section.main .st-key-login_esqueci_senha button:hover,
+            section.main .st-key-login_esqueci_senha button:focus {
                 background: transparent !important;
                 background-color: transparent !important;
                 color: #1683bd !important;
@@ -14090,9 +14090,9 @@ if not st.session_state.logado:
                 border-radius: 0 !important;
                 outline: none !important;
             }
-            .st-key-_login_esqueci_senha button p,
-            .st-key-_login_esqueci_senha button span,
-            .st-key-_login_esqueci_senha button div {
+            section.main .st-key-login_esqueci_senha button p,
+            section.main .st-key-login_esqueci_senha button span,
+            section.main .st-key-login_esqueci_senha button div {
                 background: transparent !important;
                 color: inherit !important;
                 font-size: inherit !important;
@@ -14100,34 +14100,34 @@ if not st.session_state.logado:
                 padding: 0 !important;
                 margin: 0 !important;
             }
-            .st-key-_login_esqueci_senha button:hover {
+            section.main .st-key-login_esqueci_senha button:hover {
                 color: #0e6f9f !important;
                 text-decoration: underline !important;
             }
-            .st-key-_login_esqueci_senha {
+            section.main .st-key-login_esqueci_senha {
                 display: flex !important;
                 justify-content: flex-end !important;
                 width: 100% !important;
                 background: transparent !important;
             }
-            .st-key-_login_manter_conectado {
+            section.main .st-key-login_manter_conectado {
                 margin: 3px 0 5px 0 !important;
             }
-            .st-key-_login_manter_conectado label,
-            .st-key-_login_manter_conectado p {
+            section.main .st-key-login_manter_conectado label,
+            section.main .st-key-login_manter_conectado p {
                 color: #7a7a7a !important;
                 font-size: 13.5px !important;
             }
-            .st-key-_login_manter_conectado label {
+            section.main .st-key-login_manter_conectado label {
                 position: relative !important;
                 overflow: visible !important;
             }
-            .st-key-_login_manter_conectado p {
+            section.main .st-key-login_manter_conectado p {
                 position: relative !important;
                 overflow: visible !important;
                 padding-right: 22px !important;
             }
-            .st-key-_login_manter_conectado p::after {
+            section.main .st-key-login_manter_conectado p::after {
                 content: "i";
                 position: absolute;
                 right: 2px;
@@ -14147,7 +14147,7 @@ if not st.session_state.logado:
                 font-style: normal;
                 line-height: 15px;
             }
-            .st-key-_login_manter_conectado label::before {
+            section.main .st-key-login_manter_conectado label::before {
                 content: "Mantenha-se conectado para que você não precise entrar novamente da próxima vez nesse navegador";
                 position: absolute;
                 left: 88px;
@@ -14169,14 +14169,14 @@ if not st.session_state.logado:
                 pointer-events: none;
                 z-index: 9999;
             }
-            .st-key-_login_manter_conectado label:hover::before {
+            section.main .st-key-login_manter_conectado label:hover::before {
                 opacity: 1;
                 visibility: visible;
                 transform: translateY(0);
             }
-            .st-key-_login_reenviar_confirmacao button,
-            .st-key-_login_reenviar_confirmacao button:hover,
-            .st-key-_login_reenviar_confirmacao button:focus {
+            section.main .st-key-login_reenviar_confirmacao button,
+            section.main .st-key-login_reenviar_confirmacao button:hover,
+            section.main .st-key-login_reenviar_confirmacao button:focus {
                 background: transparent !important;
                 background-color: transparent !important;
                 color: #344054 !important;
@@ -14191,9 +14191,9 @@ if not st.session_state.logado:
                 border-radius: 0 !important;
                 outline: none !important;
             }
-            .st-key-_login_reenviar_confirmacao button p,
-            .st-key-_login_reenviar_confirmacao button span,
-            .st-key-_login_reenviar_confirmacao button div {
+            section.main .st-key-login_reenviar_confirmacao button p,
+            section.main .st-key-login_reenviar_confirmacao button span,
+            section.main .st-key-login_reenviar_confirmacao button div {
                 background: transparent !important;
                 color: inherit !important;
                 font-size: inherit !important;
@@ -14201,11 +14201,11 @@ if not st.session_state.logado:
                 padding: 0 !important;
                 margin: 0 !important;
             }
-            .st-key-_login_reenviar_confirmacao button:hover {
+            section.main .st-key-login_reenviar_confirmacao button:hover {
                 color: #1683bd !important;
                 text-decoration: underline !important;
             }
-            .st-key-_login_reenviar_confirmacao {
+            section.main .st-key-login_reenviar_confirmacao {
                 display: flex !important;
                 justify-content: center !important;
                 width: 100% !important;

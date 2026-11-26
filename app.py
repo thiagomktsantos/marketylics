@@ -14020,7 +14020,7 @@ if not st.session_state.logado:
     [data-testid="stVerticalBlockBorderWrapper"] {
         border: none !important;
         background: #ffffff !important;
-        width: 492px !important;
+        width: 470px !important;
         max-width: calc(100vw - 12px) !important;
         margin: 0 auto !important;
         border-radius: 21px !important;
@@ -14076,13 +14076,16 @@ if not st.session_state.logado:
         font-weight: 600 !important;
         margin-bottom: 7px !important;
     }
+    .login-links-reais a strong {
+        font-weight: 700 !important;
+    }
     .login-links-reais a:hover {
         color: #0e6f9f !important;
         text-decoration: underline !important;
     }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
-        max-width: 492px !important;
+        max-width: 470px !important;
         margin: 0 auto !important;
     }
     div[class*="st-emotion-cache"] {
@@ -14240,6 +14243,8 @@ if not st.session_state.logado:
             }
             .st-key-_login_submit_button_ button,
             .st-key-_login_submit_button_ button p,
+            .st-key-_cadastro_submit_button_ button,
+            .st-key-_cadastro_submit_button_ button p,
             .st-key-login_submit_button button,
             .st-key-login_submit_button button p {
                 font-size: 17px !important;
@@ -14526,7 +14531,7 @@ if not st.session_state.logado:
             st.markdown("""
             <div class="login-links-reais">
                 <a class="login-esqueceu" href="?auth_action=recuperar">Esqueci minha senha</a><br>
-                <a href="?auth_action=confirmar">Não recebeu o e-mail de confirmação? Clique aqui</a>
+                <a href="?auth_action=confirmar">Não recebeu o e-mail de confirmação? <strong>Clique aqui</strong></a>
             </div>
             """, unsafe_allow_html=True)
 
@@ -14643,7 +14648,11 @@ if not st.session_state.logado:
                 email_cad  = st.text_input("E-mail", placeholder="seu@email.com", key="cad_email")
                 senha_cad  = st.text_input("Senha", type="password", placeholder="Mínimo 6 caracteres", key="cad_senha")
                 senha_cad2 = st.text_input("Confirmar senha", type="password", placeholder="Repita a senha", key="cad_senha2")
-                submit_cad = st.form_submit_button("Criar conta", width="stretch")
+                submit_cad = st.form_submit_button(
+                    "Criar conta",
+                    width="stretch",
+                    key="_cadastro_submit_button_",
+                )
 
             if submit_cad:
                 if not nome_cad or not email_cad or not senha_cad:

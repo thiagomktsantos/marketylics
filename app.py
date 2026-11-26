@@ -98,11 +98,11 @@ print(
 
 try:
     from PIL import Image as _PILImage
-    _page_icon = _PILImage.open("images/marketylics-favicon.png")
+    _page_icon = _PILImage.open("images/favicon.jpg")
 except Exception:
     # Fallback para ambientes em que os arquivos estáticos ainda não foram
     # sincronizados. No projeto publicado, o favicon é lido da pasta images.
-    _page_icon = "https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/images/marketylics-favicon.png"
+    _page_icon = "https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/images/favicon.jpg"
 
 st.set_page_config(
     page_title="Marketylics · Competitive Intelligence",
@@ -13950,17 +13950,23 @@ if not st.session_state.logado:
         box-sizing: border-box !important;
     }
 
-    section.main {
+    /* O Streamlit atual renderiza a área principal como <main id="stMain">.
+       O seletor section.main não alcançava esse elemento e deixava ativo
+       o height: 100dvh / overflow: auto do CSS interno. */
+    main#stMain,
+    main#stMain[data-testid="stMain"] {
         position: relative !important;
         width: 100% !important;
         height: auto !important;
         min-height: 0 !important;
+        max-height: none !important;
+        flex: 1 1 auto !important;
         overflow-y: hidden !important;
         overflow-x: hidden !important;
         box-sizing: border-box !important;
     }
 
-    section.main .block-container {
+    main#stMain .block-container {
         max-width: 440px !important;
         padding: 0 24px !important;
         margin: 0 auto !important;

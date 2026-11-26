@@ -45622,9 +45622,7 @@ elif st.session_state.pagina == "notificacoes":
     )
 
     with st.container(key="page_header_notificacoes"):
-        # A barra possui quatro controles; ela precisa de mais largura que o
-        # bloco de título para não truncar busca, status e ações.
-        _col_titulo_notif, _col_controles_notif = st.columns([3.0, 7.0])
+        _col_titulo_notif, _col_controles_notif = st.columns([4.0, 6.0])
         with _col_titulo_notif:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -45682,7 +45680,7 @@ html, body { background: transparent; overflow: hidden; }
         var ICON = "url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOWNhM2FmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+PGNpcmNsZSBjeD0iMTAuNSIgY3k9IjEwLjUiIHI9IjYuNSIvPjxsaW5lIHgxPSIxNS41IiB5MT0iMTUuNSIgeDI9IjIwIiB5Mj0iMjAiLz48L3N2Zz4=')";
         function estilizar() {
             var doc = window.parent.document;
-            var inp = doc.querySelector('input[placeholder="Buscar por empresa ou tipo de atividade..."]');
+            var inp = doc.querySelector('input[placeholder="Buscar empresa ou atividade..."]');
             if (!inp) return false;
             var wrap = inp.parentElement;
             if (wrap) {
@@ -45698,7 +45696,7 @@ html, body { background: transparent; overflow: hidden; }
             }
             inp.style.setProperty('border', 'none', 'important');
             inp.style.setProperty('min-height', '38px', 'important');
-            inp.style.setProperty('font-size', '14px', 'important');
+                inp.style.setProperty('font-size', '12.5px', 'important');
             inp.style.setProperty('box-shadow', 'none', 'important');
             inp.style.setProperty('padding-left', '34px', 'important');
             inp.style.setProperty('background', 'transparent', 'important');
@@ -45740,7 +45738,7 @@ html, body { background: transparent; overflow: hidden; }
 
             combo.style.setProperty('height', '100%', 'important');
             combo.style.setProperty('min-height', '38px', 'important');
-            combo.style.setProperty('font-size', '14px', 'important');
+            combo.style.setProperty('font-size', '12.5px', 'important');
             combo.style.setProperty('color', '#374151', 'important');
             combo.style.setProperty('background', 'transparent', 'important');
 
@@ -45809,8 +45807,8 @@ html, body { background: transparent; overflow: hidden; }
             background: #ffffff !important;
             border: 1px solid #e5e7eb !important;
             border-radius: 12px !important;
-            padding: 10px 12px !important;
-            gap: 10px !important;
+            padding: 9px 10px !important;
+            gap: 6px !important;
             align-items: center !important;
             box-shadow: 0 2px 8px rgba(15, 42, 71, 0.04) !important;
         }
@@ -45825,7 +45823,7 @@ html, body { background: transparent; overflow: hidden; }
             height: 40px !important;
             padding: 0 14px 0 36px !important;
             font-family: 'DM Sans', sans-serif !important;
-            font-size: 14px !important;
+            font-size: 12.5px !important;
             color: #374151 !important;
             box-shadow: none !important;
         }
@@ -45841,18 +45839,21 @@ html, body { background: transparent; overflow: hidden; }
         .st-key-filtros_notificacoes button {
             height: 40px !important;
             border-radius: 8px !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            font-size: 12px !important;
         }
         </style>
         """, unsafe_allow_html=True)
 
         _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
-            [2.75, 1.35, 1.25, 1.45]
+            [2.45, 1.25, 1.05, 0.95]
         )
         with _col_busca:
             st.text_input(
                 "Buscar notificações",
                 key="_busca_notif",
-                placeholder="Buscar por empresa ou tipo de atividade...",
+                placeholder="Buscar empresa ou atividade...",
                 label_visibility="collapsed",
             )
         with _col_status:
@@ -45960,7 +45961,7 @@ html, body { background: transparent; overflow: hidden; }
             """, height=44)
 
         with _col_excluir:
-            _rotulo_excluir = f"Excluir ({_n_sel})" if _n_sel else "Excluir selecionadas"
+            _rotulo_excluir = f"Excluir ({_n_sel})" if _n_sel else "Excluir"
             components.html(f"""
             {_TOOLBAR_BTN_CSS}
             <button class="tb-btn{' disabled' if _n_sel == 0 else ''}" id="tb_btn_excluir_sel">
@@ -46211,6 +46212,19 @@ html, body { background: transparent; overflow: hidden; }
             border-color: #0e2a47 !important;
             background: #0e2a47 !important;
             color: #ffffff !important;
+        }
+        /* O botão de ajuda do checkbox não faz parte da paginação. */
+        .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards button {
+            width: 18px !important;
+            min-width: 18px !important;
+            height: 18px !important;
+            min-height: 18px !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 50% !important;
+            background: transparent !important;
+            color: #7b8794 !important;
+            box-shadow: none !important;
         }
         .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards,
         .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards label {

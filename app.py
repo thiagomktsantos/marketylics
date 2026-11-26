@@ -12171,7 +12171,12 @@ def verificar_pode_executar_acao(user_id: str, tipo_acao: str):
 
     return True, ""
 
-def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
+def registrar_execucao_acao(
+    user_id: str,
+    tipo_acao: str,
+    titulo: str = None,
+    detalhes: dict = None,
+):
     """Grava a execução na tabela atividades (histórico/cooldown) E
     incrementa o contador rápido em uso_organizacao (cota mensal)."""
     if not user_id:
@@ -12182,7 +12187,7 @@ def registrar_execucao_acao(user_id: str, tipo_acao: str, titulo: str = None):
             "tipo": tipo_acao,
             "titulo": titulo or tipo_acao,
             "status": "concluido",
-            "detalhes": {},
+            "detalhes": detalhes or {},
         }).execute()
     except Exception:
         pass
@@ -12203,7 +12208,13 @@ class _RespostaBloqueada:
     def __init__(self, texto):
         self.text = texto
 
-def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = None):
+def gerar_com_ia(
+    prompt_ou_parts,
+    tipo_acao: str = "analise_ia",
+    user_id: str = None,
+    titulo_atividade: str = None,
+    detalhes_atividade: dict = None,
+):
     """Substituto direto de `gemini_model.generate_content(...)` que
     aplica cooldown + cota mensal antes de gastar uma chamada de IA.
 
@@ -12218,7 +12229,12 @@ def gerar_com_ia(prompt_ou_parts, tipo_acao: str = "analise_ia", user_id: str = 
         if not permitido:
             st.toast(f"{motivo}", icon="⏳")
             return _RespostaBloqueada(f"⏳ {motivo}")
-        registrar_execucao_acao(user_id, tipo_acao, "Análise de IA")
+        registrar_execucao_acao(
+            user_id,
+            tipo_acao,
+            titulo_atividade or "Análise de IA",
+            detalhes_atividade,
+        )
     return gemini_model.generate_content(prompt_ou_parts)
 
 
@@ -12851,7 +12867,15 @@ Estruture a resposta em: (1) Onde o concorrente está mais forte agora,
 práticas recomendadas para esse período. Se algum dado não foi coletado,
 diga isso explicitamente em vez de supor um valor.
 """
-        resposta = gerar_com_ia(prompt)
+        resposta = gerar_com_ia(
+            prompt,
+            titulo_atividade=f"Análise de oportunidades — {nome_concorrente}",
+            detalhes_atividade={
+                "empresa": nome_concorrente,
+                "periodo": periodo,
+                "origem": "oportunidades",
+            },
+        )
         return resposta.text
     except Exception as e:
         return f"Erro: {str(e)}"
@@ -13948,6 +13972,9 @@ if not st.session_state.logado:
         min-height: 0 !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
     }
 
     /* O Streamlit atual renderiza a área principal como <main id="stMain">.
@@ -13960,11 +13987,14 @@ if not st.session_state.logado:
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
-        flex: 1 1 auto !important;
-        overflow-y: hidden !important;
+        flex: 0 1 auto !important;
+        overflow-y: auto !important;
         overflow-x: hidden !important;
         box-sizing: border-box !important;
+        scrollbar-width: none !important;
     }
+
+    main#stMain::-webkit-scrollbar { display: none !important; }
 
     main#stMain .block-container {
         max-width: 440px !important;
@@ -28793,7 +28823,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -40px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -35969,7 +35999,7 @@ Transcrição do áudio do vídeo (quando o anúncio é em vídeo): {_truncar(_t
                 st.markdown(f"""
                 <style>
                 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-                .st-key-{filtros_key} {{ margin-top: -42px !important; }}
+                .st-key-{filtros_key} {{ margin-top: -40px !important; }}
                 .st-key-{filtros_key} > div > div[data-testid="stHorizontalBlock"] {{
                     background: #ffffff !important;
                     border: 1px solid #e5e7eb !important;
@@ -40354,53 +40384,11 @@ setTimeout(syncH, 600);
     if gerar:
         target_gerar = concorrentes[st.session_state.insights_target_idx]["nome"]
         periodo_gerar = st.session_state.get("insights_periodo", "30")
-        _ph = st.empty()
-        with _ph.container():
-            components.html("""
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }
-.overlay {
-    position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:999999;
-    display:flex; align-items:center; justify-content:center; padding:24px;
-}
-.card {
-    background:#0e2a47; border-radius:20px; padding:32px; width:min(95vw,460px);
-    box-shadow:0 20px 60px rgba(0,0,0,0.5); border:1px solid #1e3a5f;
-    display:flex; flex-direction:column; align-items:center; gap:16px;
-}
-.spin {
-    width:40px; height:40px; border:3px solid rgba(255,255,255,0.15);
-    border-top-color:#3a9fd6; border-radius:50%; animation:spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.txt { font-size:15px; font-weight:700; color:#f1f5f9; text-align:center; }
-.sub { font-size:13px; color:#94a3b8; text-align:center; }
-</style>
-<div class="overlay"><div class="card">
-    <div class="spin"></div>
-    <div class="txt">Gerando insight estratégico...</div>
-    <div class="sub">Analisando dados coletados do concorrente</div>
-</div></div>
-<script>
-(function() {
-    var iframes = window.parent.document.querySelectorAll('iframe');
-    for (var i = 0; i < iframes.length; i++) {
-        try { if (iframes[i].contentWindow === window) {
-            iframes[i].style.position='fixed'; iframes[i].style.inset='0';
-            iframes[i].style.width='100vw'; iframes[i].style.height='100vh';
-            iframes[i].style.zIndex='999998'; iframes[i].style.border='none';
-            break;
-        } } catch(e) {}
-    }
-})();
-</script>
-""", height=10, scrolling=False)
-
-            resposta = gerar_insight_concorrente(target_gerar, periodo_gerar)
-
-        _ph.empty()
+        st.toast(
+            f"Gerando análise de oportunidades para {target_gerar}...",
+            icon="✨",
+        )
+        resposta = gerar_insight_concorrente(target_gerar, periodo_gerar)
 
         if not resposta.startswith("Erro:"):
             st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
@@ -45771,7 +45759,46 @@ html, body { background: transparent; overflow: hidden; }
         elif _valor_status_antigo not in _STATUS_NOTIF_LABELS:
             st.session_state["_filtro_status_notif"] = "todos"
 
-        _col_busca, _col_status, _col_lidas, _col_excluir = st.columns(
+        st.markdown("""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+        .st-key-filtros_notificacoes > div > div[data-testid="stHorizontalBlock"] {
+            background: #ffffff !important;
+            border: 1px solid #e5e7eb !important;
+            border-radius: 12px !important;
+            padding: 20px !important;
+            gap: 8px !important;
+            align-items: center !important;
+        }
+        .st-key-filtros_notificacoes div[data-testid="stTextInput"] input {
+            background-color: #fafafa !important;
+            border: 1px solid #f0f4f8 !important;
+            border-radius: 8px !important;
+            height: 40px !important;
+            padding: 0 14px 0 36px !important;
+            font-family: 'DM Sans', sans-serif !important;
+            font-size: 14px !important;
+            color: #374151 !important;
+            box-shadow: none !important;
+        }
+        .st-key-filtros_notificacoes div[data-baseweb="select"],
+        .st-key-filtros_notificacoes div[data-baseweb="select"] > div:first-child {
+            background-color: #fafafa !important;
+            border: 1px solid #e5e7eb !important;
+            border-radius: 8px !important;
+            height: 40px !important;
+            min-height: 40px !important;
+            box-shadow: none !important;
+        }
+        .st-key-filtros_notificacoes button {
+            height: 40px !important;
+            border-radius: 8px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        _toolbar_notificacoes = st.container(key="filtros_notificacoes")
+        _col_busca, _col_status, _col_lidas, _col_excluir = _toolbar_notificacoes.columns(
             [2.55, 1.2, 1.15, 1.15]
         )
         with _col_busca:

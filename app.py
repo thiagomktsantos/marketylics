@@ -45622,7 +45622,9 @@ elif st.session_state.pagina == "notificacoes":
     )
 
     with st.container(key="page_header_notificacoes"):
-        _col_titulo_notif, _col_controles_notif = st.columns([4.0, 6.0])
+        # A barra possui quatro controles; ela precisa de mais largura que o
+        # bloco de título para não truncar busca, status e ações.
+        _col_titulo_notif, _col_controles_notif = st.columns([3.0, 7.0])
         with _col_titulo_notif:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -45670,7 +45672,7 @@ html, body { background: transparent; overflow: hidden; }
             _slot_controles_notif = st.container(key="filtros_notificacoes")
 
     st.markdown(
-        "<hr style='border:none;border-top:1px solid #e5e7eb;margin:10px 0 20px 0;padding:0;' />",
+        "<hr class='notif-header-divider' style='border:none;border-top:1px solid #dde3ea;margin:8px 0 4px 0;padding:0;' />",
         unsafe_allow_html=True,
     )
 
@@ -45807,9 +45809,10 @@ html, body { background: transparent; overflow: hidden; }
             background: #ffffff !important;
             border: 1px solid #e5e7eb !important;
             border-radius: 12px !important;
-            padding: 14px 16px !important;
-            gap: 8px !important;
+            padding: 10px 12px !important;
+            gap: 10px !important;
             align-items: center !important;
+            box-shadow: 0 2px 8px rgba(15, 42, 71, 0.04) !important;
         }
         .st-key-filtros_notificacoes {
             width: 100% !important;
@@ -45843,7 +45846,7 @@ html, body { background: transparent; overflow: hidden; }
         """, unsafe_allow_html=True)
 
         _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
-            [2.55, 1.2, 1.15, 1.15]
+            [2.75, 1.35, 1.25, 1.45]
         )
         with _col_busca:
             st.text_input(
@@ -46153,15 +46156,15 @@ html, body { background: transparent; overflow: hidden; }
                     _tokens_top = _notif_paginas_visiveis_v144(_notif_pag_toolbar, _notif_total_pag_toolbar)
                     _spec_top = []
                     if _notif_pag_toolbar > 1:
-                        _spec_top.append(("‹ Prev", _notif_pag_toolbar - 1, "prev"))
+                        _spec_top.append(("‹ Anterior", _notif_pag_toolbar - 1, "prev"))
                     for _tok in _tokens_top:
                         if _tok == "…":
                             _spec_top.append(("…", None, f"dots{len(_spec_top)}"))
                         else:
                             _spec_top.append((str(_tok), int(_tok), f"p{_tok}"))
                     if _notif_pag_toolbar < _notif_total_pag_toolbar:
-                        _spec_top.append(("Next ›", _notif_pag_toolbar + 1, "next"))
-                    _cols_top = st.columns([1.35 if ("Prev" in x[0] or "Next" in x[0]) else 0.64 for x in _spec_top], gap=None)
+                        _spec_top.append(("Próxima ›", _notif_pag_toolbar + 1, "next"))
+                    _cols_top = st.columns([1.75 if ("Anterior" in x[0] or "Próxima" in x[0]) else 0.72 for x in _spec_top], gap=None)
                     for _cc, (_lbl, _dest, _suf) in zip(_cols_top, _spec_top):
                         with _cc:
                             if _dest is None:
@@ -46177,24 +46180,41 @@ html, body { background: transparent; overflow: hidden; }
 
         st.markdown("""
         <style>
-        /* V145 — paginação compacta e alinhada ao checkbox. */
+        /* Paginação compacta, legível e alinhada ao checkbox. */
         .notif-pag-dots {
-            height: 30px; display:flex; align-items:center; justify-content:center;
-            font-size:11px; font-weight:700; color:#9ca3af; white-space:nowrap;
-            line-height:30px;
+            height: 34px; display:flex; align-items:center; justify-content:center;
+            font-size:13px; font-weight:700; color:#94a3b8; white-space:nowrap;
+            line-height:34px;
         }
         .st-key-_bloco_todas_topo button {
-            min-height: 30px !important;
-            height: 30px !important;
-            border-radius: 6px !important;
-            padding: 0 3px !important;
-            font-size: 11px !important;
+            min-height: 34px !important;
+            height: 34px !important;
+            border: 1px solid #d6dee8 !important;
+            border-radius: 8px !important;
+            padding: 0 8px !important;
+            background: #ffffff !important;
+            color: #1f2937 !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
             line-height: 1 !important;
             white-space: nowrap !important;
+            box-shadow: 0 1px 2px rgba(15, 42, 71, 0.04) !important;
+            transition: border-color .15s ease, background .15s ease, color .15s ease !important;
+        }
+        .st-key-_bloco_todas_topo button:hover:not(:disabled) {
+            border-color: #1596cf !important;
+            background: #f0f9ff !important;
+            color: #0b75ad !important;
+        }
+        .st-key-_bloco_todas_topo button:disabled {
+            opacity: 1 !important;
+            border-color: #0e2a47 !important;
+            background: #0e2a47 !important;
+            color: #ffffff !important;
         }
         .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards,
         .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards label {
-            min-height: 30px !important;
+            min-height: 34px !important;
             display: flex !important;
             align-items: center !important;
         }
@@ -46222,8 +46242,8 @@ html, body { background: transparent; overflow: hidden; }
            margin-bottom negativo devolve o espaço ocupado no fluxo para que o
            primeiro card também suba junto, sem deixar um buraco abaixo. */
         .st-key-_bloco_todas_topo {
-            transform: translateY(-30px) !important;
-            margin-bottom: -30px !important;
+            transform: translateY(-54px) !important;
+            margin-bottom: -54px !important;
             padding-top: 0 !important;
             padding-bottom: 0 !important;
         }
@@ -46242,8 +46262,8 @@ html, body { background: transparent; overflow: hidden; }
            negativo no bloco do checkbox não consegue puxá-lo. Esta key envolve
            o fragment e permite reduzir o espaço real até o primeiro card. */
         .st-key-_lista_notificacoes_wrap {
-            transform: translateY(-28px) !important;
-            margin-bottom: -28px !important;
+            transform: translateY(-50px) !important;
+            margin-bottom: -50px !important;
             padding-top: 0 !important;
         }
         .st-key-_lista_notificacoes_wrap > div,

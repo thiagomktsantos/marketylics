@@ -24,6 +24,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from supabase import create_client, Client
 import httpx
 
+# A interface não usa avisos flutuantes. Mantemos as chamadas existentes para
+# não alterar os fluxos das ações, mas elas não criam componentes visuais.
+def _toast_desativado(*args, **kwargs):
+    return None
+
+st.toast = _toast_desativado
+
 for _var_threads in (
     "OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
     "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
@@ -13314,7 +13321,8 @@ section.main .block-container {
 .st-key-page_header_meta [data-testid="stHorizontalBlock"],
 .st-key-page_header_google [data-testid="stHorizontalBlock"],
 .st-key-page_header_insights [data-testid="stHorizontalBlock"],
-.st-key-page_header_redes [data-testid="stHorizontalBlock"] {
+.st-key-page_header_redes [data-testid="stHorizontalBlock"],
+.st-key-page_header_notificacoes [data-testid="stHorizontalBlock"] {
     align-items: center !important;
 }
 
@@ -45613,7 +45621,9 @@ elif st.session_state.pagina == "notificacoes":
     )
 
     with st.container(key="page_header_notificacoes"):
-        components.html("""
+        _col_titulo_notif, _col_controles_notif = st.columns([4.0, 6.0])
+        with _col_titulo_notif:
+            components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 @font-face {
@@ -45655,6 +45665,8 @@ html, body { background: transparent; overflow: hidden; }
 })();
 </script>
 """, height=70)
+        with _col_controles_notif:
+            _slot_controles_notif = st.container(key="filtros_notificacoes")
 
     st.markdown(
         "<hr style='border:none;border-top:1px solid #e5e7eb;margin:10px 0 20px 0;padding:0;' />",
@@ -45794,9 +45806,13 @@ html, body { background: transparent; overflow: hidden; }
             background: #ffffff !important;
             border: 1px solid #e5e7eb !important;
             border-radius: 12px !important;
-            padding: 20px !important;
+            padding: 14px 16px !important;
             gap: 8px !important;
             align-items: center !important;
+        }
+        .st-key-filtros_notificacoes {
+            width: 100% !important;
+            margin: 0 !important;
         }
         .st-key-filtros_notificacoes div[data-testid="stTextInput"] input {
             background-color: #fafafa !important;
@@ -45825,8 +45841,7 @@ html, body { background: transparent; overflow: hidden; }
         </style>
         """, unsafe_allow_html=True)
 
-        _toolbar_notificacoes = st.container(key="filtros_notificacoes")
-        _col_busca, _col_status, _col_lidas, _col_excluir = _toolbar_notificacoes.columns(
+        _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
             [2.55, 1.2, 1.15, 1.15]
         )
         with _col_busca:
@@ -46044,8 +46059,7 @@ html, body { background: transparent; overflow: hidden; }
         with st.container(key="_ghost_wrap_toolbar_notif"):
             if st.button("_marcar_lidas_sel_", key="_btn_marcar_lidas_sel"):
                 _ids_ler = [str(a.get("id")) for a in _erros_nao_lidos_sel if a.get("id")]
-                _n_marcadas = marcar_atividades_como_lidas_por_ids(st.session_state.user.id, _ids_ler)
-                st.toast(f"{_n_marcadas} notificação(ões) selecionada(s) marcada(s) como lida(s).", icon="✅")
+                marcar_atividades_como_lidas_por_ids(st.session_state.user.id, _ids_ler)
                 st.rerun()
 
             if st.button(
@@ -46054,14 +46068,11 @@ html, body { background: transparent; overflow: hidden; }
             ):
                 _ids_excluir = [str(x) for x in (_sel_cards or []) if x]
                 if _ids_excluir:
-                    _n_removidas = excluir_atividades_por_ids(
+                    excluir_atividades_por_ids(
                         st.session_state.user.id, _ids_excluir
                     )
                     st.session_state["_notificacoes_selecionadas_cards"] = []
                     st.session_state["_selecionar_todas_notif_cards"] = False
-                    st.toast(
-                        f"{_n_removidas} notificação(ões) removida(s).", icon="🗑️"
-                    )
                     st.rerun()
 
         st.markdown("""

@@ -12876,7 +12876,7 @@ diga isso explicitamente em vez de supor um valor.
 """
         resposta = gerar_com_ia(
             prompt,
-            titulo_atividade=f"Análise de oportunidades — {nome_concorrente}",
+            titulo_atividade=f"Análise de Oportunidades - {nome_concorrente}",
             detalhes_atividade={
                 "empresa": nome_concorrente,
                 "periodo": periodo,
@@ -39400,7 +39400,7 @@ html, body { background: transparent; overflow: hidden; }
 }
 .sub { display: block; width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; line-height: 1.35; color: #6b7280; white-space: normal; overflow-wrap: break-word; }
 </style>
-<div class="titulo">Análise de Oportunidades</div>
+<div class="titulo">Oportunidades</div>
 <div class="sub">Compare seus concorrentes e identifique oportunidades estratégicas para sua empresa.</div>
 """, height=86)
 
@@ -39570,6 +39570,16 @@ function selectItem(i) {{
     SELECTED_IDX = i;
     renderTrigger();
     closeDropdown();
+    // Usa um botão Streamlit exclusivo para cada empresa. Isso evita a
+    // condição de corrida do antigo campo oculto e garante que o backend
+    // receba exatamente o índice selecionado antes de gerar a análise.
+    var directBtn = window.parent.document.querySelector(
+        '.st-key-_ins_target_direct_' + i + ' button'
+    );
+    if (directBtn) {{
+        directBtn.click();
+        return;
+    }}
     var hiddenInputs = window.parent.document.querySelectorAll('.st-key-_ins_sel_hidden_input input');
     if (hiddenInputs.length) {{
         var inp = hiddenInputs[0];
@@ -39667,6 +39677,28 @@ renderTrigger();
 setHeight(false);
 </script>
 """, height=104, scrolling=False)
+
+    # Seleção direta e confiável da empresa escolhida no controle acima.
+    # O container inteiro fica fora do fluxo visual da página.
+    st.markdown("""
+    <style>
+    .st-key-_ins_target_direct_wrap,
+    .stElementContainer:has(.st-key-_ins_target_direct_wrap) {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; min-height:0 !important;
+        overflow:hidden !important; opacity:0 !important; pointer-events:none !important;
+        padding:0 !important; margin:0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.container(key="_ins_target_direct_wrap"):
+        for _ins_idx_direto in range(len(concorrentes)):
+            if st.button(
+                f"_ins_target_direct_{_ins_idx_direto}",
+                key=f"_ins_target_direct_{_ins_idx_direto}",
+            ):
+                st.session_state.insights_target_idx = _ins_idx_direto
+                st.rerun()
 
     st.markdown("""
         <div style="margin-top: 5px;">
@@ -40430,7 +40462,7 @@ setTimeout(syncH, 600);
         if not resposta.startswith("Erro:"):
             st.session_state.analises_salvas = st.session_state.get("analises_salvas", [])
             st.session_state.analises_salvas.append({
-                "titulo": f"Insight — {target_gerar} — {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
+                "titulo": f"Análise de Oportunidades - {target_gerar} - {_agora_usuario().strftime('%d/%m/%Y %H:%M')}",
                 "data": _agora_usuario().strftime("%d/%m/%Y %H:%M"),
                 "relatorio": resposta,
                 "tipo": "insight_concorrente",
@@ -45847,7 +45879,7 @@ html, body { background: transparent; overflow: hidden; }
         """, unsafe_allow_html=True)
 
         _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
-            [1.95, 1.75, 1.05, 0.95]
+            [1.95, 1.82, 1.05, 0.78]
         )
         with _col_busca:
             st.text_input(

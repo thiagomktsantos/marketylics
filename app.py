@@ -29177,8 +29177,12 @@ function esconderTranscricaoTip() {
 <!DOCTYPE html><html><head>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Light.ttf') format('truetype');font-style:normal;font-weight:300;font-display:swap;}}
+@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:swap;}}
+@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Semibold.ttf') format('truetype');font-style:normal;font-weight:600;font-display:swap;}}
+@font-face{{font-family:'Proxima Nova';src:url('https://raw.githubusercontent.com/thiagomktsantos/marketylics/main/utils/Proxima%20Nova%20Black.ttf') format('truetype');font-style:normal;font-weight:800;font-display:swap;}}
 *{{margin:0;padding:0;box-sizing:border-box;}}
-html,body{{background:transparent;font-family:'DM Sans',sans-serif;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;text-rendering:optimizeLegibility;font-kerning:normal;overflow:visible;}}
+html,body{{background:transparent;font-family:'Proxima Nova',Arial,sans-serif;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;text-rendering:optimizeLegibility;font-kerning:normal;overflow:visible;}}
 body{{padding-bottom:4px;min-height:0;}}
 .stats-row{{display:flex;gap:12px;flex-wrap:wrap;padding:25px 0 25px 0;width:98%;margin:auto;}}
 .stat-card{{flex:1;min-width:90px;background:#ffffff;border-radius:12px;padding:14px 10px;text-align:center;}}
@@ -29219,7 +29223,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .cta-btn{{background:#e4e6eb;color:#050505;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;flex-shrink:0;}}
 .card-btns{{display:grid;grid-template-columns:1fr;border-top:1px solid #e4e6ea;}}
 .card-footer-btns{{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #f3f4f6;margin-top:auto;}}
-.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
+.footer-btn{{padding:10px 6px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:700;border:none;background:#eff6ff;cursor:pointer;font-family:'Proxima Nova',Arial,sans-serif;transition:background 0.12s;text-decoration:none;color:#275f8d;}}
 .footer-btn:hover{{background:#13649a;color:#ffffff !important;}}
 .footer-btn.lib{{border-right:1px solid #ffffff;border-radius:0 0 0 10px;}}
 .footer-btn.ia-btn{{border-radius:0 0 10px 0;}}

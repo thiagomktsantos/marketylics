@@ -14251,6 +14251,78 @@ if not st.session_state.logado:
                     key="_login_reenviar_confirmacao",
                 )
 
+            # O tema global do app reaplica o gradiente em todo botão do Streamlit.
+            # Ajuste direto no DOM garante que estas duas ações mantenham apenas
+            # aparência de link, sem interferir no submit do formulário.
+            components.html("""
+            <script>
+            (function () {
+                var doc = window.parent.document;
+
+                function estilizarLinkLogin(texto, alinhamento, peso) {
+                    var botoes = Array.from(doc.querySelectorAll(
+                        'div[data-testid="stFormSubmitButton"] button, form button'
+                    ));
+                    var botao = botoes.find(function (item) {
+                        return (item.innerText || item.textContent || '').trim() === texto;
+                    });
+                    if (!botao) return;
+
+                    botao.style.setProperty('background', 'transparent', 'important');
+                    botao.style.setProperty('background-color', 'transparent', 'important');
+                    botao.style.setProperty('background-image', 'none', 'important');
+                    botao.style.setProperty('color', '#1683bd', 'important');
+                    botao.style.setProperty('border', '0', 'important');
+                    botao.style.setProperty('box-shadow', 'none', 'important');
+                    botao.style.setProperty('border-radius', '0', 'important');
+                    botao.style.setProperty('width', 'auto', 'important');
+                    botao.style.setProperty('min-height', '24px', 'important');
+                    botao.style.setProperty('height', 'auto', 'important');
+                    botao.style.setProperty('padding', '0', 'important');
+                    botao.style.setProperty('margin', '0', 'important');
+                    botao.style.setProperty('font-size', '13px', 'important');
+                    botao.style.setProperty('font-weight', peso, 'important');
+
+                    botao.querySelectorAll('*').forEach(function (interno) {
+                        interno.style.setProperty('background', 'transparent', 'important');
+                        interno.style.setProperty('background-color', 'transparent', 'important');
+                        interno.style.setProperty('color', 'inherit', 'important');
+                        interno.style.setProperty('font-size', 'inherit', 'important');
+                        interno.style.setProperty('font-weight', 'inherit', 'important');
+                        interno.style.setProperty('padding', '0', 'important');
+                        interno.style.setProperty('margin', '0', 'important');
+                    });
+
+                    var caixa = botao.closest('div[data-testid="stFormSubmitButton"]');
+                    if (caixa) {
+                        caixa.style.setProperty('display', 'flex', 'important');
+                        caixa.style.setProperty('justify-content', alinhamento, 'important');
+                        caixa.style.setProperty('background', 'transparent', 'important');
+                    }
+                }
+
+                function aplicar() {
+                    estilizarLinkLogin('Esqueci minha senha', 'flex-end', '600');
+                    estilizarLinkLogin(
+                        'Não recebeu o e-mail de confirmação? Clique aqui',
+                        'center',
+                        '400'
+                    );
+                }
+
+                aplicar();
+                setTimeout(aplicar, 100);
+                setTimeout(aplicar, 350);
+                setTimeout(aplicar, 800);
+                setTimeout(aplicar, 1600);
+                new MutationObserver(aplicar).observe(doc.body, {
+                    childList: true,
+                    subtree: true
+                });
+            })();
+            </script>
+            """, height=0, scrolling=False)
+
             if submit_recuperacao:
                 _email_recuperacao = (email_login or "").strip()
                 if not _email_recuperacao:

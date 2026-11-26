@@ -45847,7 +45847,7 @@ html, body { background: transparent; overflow: hidden; }
         """, unsafe_allow_html=True)
 
         _col_busca, _col_status, _col_lidas, _col_excluir = _slot_controles_notif.columns(
-            [2.45, 1.25, 1.05, 0.95]
+            [2.25, 1.45, 1.05, 0.95]
         )
         with _col_busca:
             st.text_input(
@@ -45935,8 +45935,8 @@ html, body { background: transparent; overflow: hidden; }
         body { margin: 0; font-family: 'DM Sans', sans-serif; }
         .tb-btn {
             width: 100%; height: 40px; display: flex; align-items: center; justify-content: center;
-            gap: 7px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
-            color: #374151; font-size: 14px; font-weight: 600; cursor: pointer;
+            gap: 3px; border-radius: 8px; border: 1px solid #d1d5db; background: #fff;
+            color: #374151; font-size: 12px; font-weight: 400; cursor: pointer;
             transition: all 0.12s ease; white-space: nowrap;
         }
         .tb-btn:hover { background: #f9fafb; border-color: #9ca3af; color: #111827; }

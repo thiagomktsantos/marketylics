@@ -14221,7 +14221,7 @@ if not st.session_state.logado:
 
     with st.container(border=True):
         st.markdown(f"""
-        <div style="text-align:center;margin-top:-64px;margin-bottom:18px">
+        <div style="text-align:center;margin-top:-74px;margin-bottom:25px">
             {'<img src="' + logo_src + '" style="width:242px;" />' if logo_src else '<div style="font-size:24px;font-weight:700;color:#1a2234">Marketylics</div>'}
             <div style="font-size:15px;color:#3a9fd6;font-weight:600;letter-spacing:2px;text-transform:uppercase">Competitive Intelligence</div>
         </div>

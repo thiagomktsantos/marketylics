@@ -13892,6 +13892,9 @@ if not st.session_state.logado:
         padding-top: 0 !important;
         padding-bottom: 0 !important;
     }
+    div[data-baseweb="tab-panel"] div[data-testid="stForm"] {
+        margin-top: -22px !important;
+    }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
         max-width: 440px !important;
@@ -14106,7 +14109,7 @@ if not st.session_state.logado:
             }
             section.main .st-key-login_esqueci_senha {
                 display: flex !important;
-                justify-content: flex-start !important;
+                justify-content: center !important;
                 width: 100% !important;
                 background: transparent !important;
             }
@@ -14279,7 +14282,9 @@ if not st.session_state.logado:
                     botao.style.setProperty('min-height', '24px', 'important');
                     botao.style.setProperty('height', 'auto', 'important');
                     botao.style.setProperty('padding', '0', 'important');
-                    botao.style.setProperty('margin', '0', 'important');
+                    botao.style.setProperty(
+                        'margin', alinhamento === 'center' ? '0 auto' : '0', 'important'
+                    );
                     botao.style.setProperty('font-size', '13px', 'important');
                     botao.style.setProperty('font-weight', peso, 'important');
 
@@ -14302,7 +14307,7 @@ if not st.session_state.logado:
                 }
 
                 function aplicar() {
-                    estilizarLinkLogin('Esqueci minha senha', 'flex-start', '600');
+                    estilizarLinkLogin('Esqueci minha senha', 'center', '600');
                     estilizarLinkLogin(
                         'Não recebeu o e-mail de confirmação? Clique aqui',
                         'center',
@@ -14447,7 +14452,7 @@ if not st.session_state.logado:
                         st.error(f"Erro: {err}")
 
         st.markdown("""
-        <div style="text-align:center;font-size:11px;color:#696969;margin-bottom:16px">
+        <div class="login-footer" style="text-align:center;font-size:11px;color:#696969;margin-top:-38px;margin-bottom:6px">
             🔒 Conexão segura com criptografia SSL &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Termos de Uso</a> &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Privacidade</a>

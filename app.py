@@ -13904,7 +13904,7 @@ if not st.session_state.logado:
     }
     .login-links-reais {
         text-align: center !important;
-        margin: 1px 0 0 0 !important;
+        margin: -28px 0 0 0 !important;
         line-height: 1.35 !important;
     }
     .login-links-reais a {
@@ -14500,7 +14500,7 @@ if not st.session_state.logado:
                         st.error(f"Erro: {err}")
 
         st.markdown("""
-        <div class="login-footer" style="text-align:center;font-size:11px;color:#696969;margin-top:-38px;margin-bottom:6px">
+        <div class="login-footer" style="text-align:center;font-size:11px;color:#696969;margin-top:10px;margin-bottom:6px">
             🔒 Conexão segura com criptografia SSL &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Termos de Uso</a> &nbsp;·&nbsp;
             <a href="#" style="color:#3a9fd6;text-decoration:none">Privacidade</a>

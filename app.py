@@ -13895,6 +13895,32 @@ if not st.session_state.logado:
     div[data-baseweb="tab-panel"] div[data-testid="stForm"] {
         margin-top: -22px !important;
     }
+    [data-testid="stElementContainer"]:has(.login-form-anchor) {
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 0 -28px 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+    .login-links-reais {
+        text-align: center !important;
+        margin: 1px 0 0 0 !important;
+        line-height: 1.35 !important;
+    }
+    .login-links-reais a {
+        display: inline-block !important;
+        color: #1683bd !important;
+        font-size: 13px !important;
+        text-decoration: none !important;
+    }
+    .login-links-reais a.login-esqueceu {
+        font-weight: 600 !important;
+        margin-bottom: 7px !important;
+    }
+    .login-links-reais a:hover {
+        color: #0e6f9f !important;
+        text-decoration: underline !important;
+    }
     [data-testid="stVerticalBlock"] {
         width: 100% !important;
         max-width: 440px !important;
@@ -14217,6 +14243,8 @@ if not st.session_state.logado:
             </style>
             """, unsafe_allow_html=True)
 
+            st.markdown('<div class="login-form-anchor"></div>', unsafe_allow_html=True)
+
             with st.form("form_login"):
                 email_login = st.text_input(
                     "E-mail",
@@ -14242,16 +14270,6 @@ if not st.session_state.logado:
                     width="stretch",
                     disabled=st.session_state["_login_autenticando"],
                     key="_login_submit_button_",
-                )
-                submit_recuperacao = st.form_submit_button(
-                    "Esqueci minha senha",
-                    disabled=st.session_state["_login_autenticando"],
-                    key="_login_esqueci_senha",
-                )
-                submit_confirmacao = st.form_submit_button(
-                    "Não recebeu o e-mail de confirmação? Clique aqui",
-                    disabled=st.session_state["_login_autenticando"],
-                    key="_login_reenviar_confirmacao",
                 )
 
             # O tema global do app reaplica o gradiente em todo botão do Streamlit.
@@ -14344,7 +14362,21 @@ if not st.session_state.logado:
             </script>
             """, height=0, scrolling=False)
 
-            if submit_recuperacao:
+            st.markdown("""
+            <div class="login-links-reais">
+                <a class="login-esqueceu" href="?auth_action=recuperar">Esqueci minha senha</a><br>
+                <a href="?auth_action=confirmar">Não recebeu o e-mail de confirmação? Clique aqui</a>
+            </div>
+            """, unsafe_allow_html=True)
+
+            _acao_auth_login = st.query_params.get("auth_action")
+            if _acao_auth_login:
+                try:
+                    del st.query_params["auth_action"]
+                except Exception:
+                    pass
+
+            if _acao_auth_login == "recuperar":
                 _email_recuperacao = (email_login or "").strip()
                 if not _email_recuperacao:
                     st.warning("Digite seu e-mail para recuperar a senha.")
@@ -14359,7 +14391,7 @@ if not st.session_state.logado:
                     else:
                         st.error(_erro_recuperacao)
 
-            if submit_confirmacao:
+            if _acao_auth_login == "confirmar":
                 _email_confirmacao = (email_login or "").strip()
                 if not _email_confirmacao:
                     st.warning("Digite seu e-mail para reenviar a confirmação.")

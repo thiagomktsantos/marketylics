@@ -22514,33 +22514,29 @@ function setHeightGeral(isOpen) {{
                     f"this.style.color='#1a2e4a';this.style.borderBottomColor='#4285f4';"
                     f"var o=document.getElementById('{_g_tabs_uid}_tab_expr');o.style.color='#9ca3af';o.style.borderBottomColor='transparent';"
                     '" style="background:none;border:none;border-bottom:2px solid #4285f4;padding:0 0 9px;'
-                    'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#1a2e4a;cursor:pointer;">Palavras mais usadas</button>'
+                    "font-family:'DM Sans',sans-serif;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;"
+                    'color:#1a2e4a;cursor:pointer;outline:none;box-shadow:none;appearance:none;">Palavras mais usadas</button>'
                     f'<button id="{_g_tabs_uid}_tab_expr" onclick="'
                     f"document.getElementById('{_g_tabs_uid}_pal').style.display='none';"
                     f"document.getElementById('{_g_tabs_uid}_expr').style.display='flex';"
                     f"this.style.color='#1a2e4a';this.style.borderBottomColor='#8b5cf6';"
                     f"var o=document.getElementById('{_g_tabs_uid}_tab_pal');o.style.color='#9ca3af';o.style.borderBottomColor='transparent';"
                     '" style="background:none;border:none;border-bottom:2px solid transparent;padding:0 0 9px;'
-                    'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#9ca3af;cursor:pointer;">Expressões-chave</button>'
+                    "font-family:'DM Sans',sans-serif;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;"
+                    'color:#9ca3af;cursor:pointer;outline:none;box-shadow:none;appearance:none;">Expressões-chave</button>'
                     '</div>'
                     f'<div id="{_g_tabs_uid}_pal" style="display:flex;flex-wrap:wrap;gap:6px;">{_g_palavras_html}</div>'
                     f'<div id="{_g_tabs_uid}_expr" style="display:none;flex-wrap:wrap;gap:6px;">{_g_expressoes_html}</div>'
                 )
                 _g_ext_pct = round(_g["ads_com_extensao"] / _g_total * 100) if _g_total else 0
-                _g_sem_extensao = max(0, _g["total"] - _g["ads_com_extensao"])
-                _g_sem_ext_pct = max(0, 100 - _g_ext_pct)
                 _g_extensoes_html = _g_lista_barras(
                     _g.get("extensoes", []), "g_extensoes", "#4285f4", _SVG_ICONE_EXTENSAO,
                     "Nenhuma extensão identificada",
                 )
                 _g_extensoes_donuts = (
-                    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start;">'
+                    '<div style="display:flex;align-items:center;justify-content:center;">'
                     + make_donut_svg(
                         _g_ext_pct, "#4285f4", "Com extensões", _g["ads_com_extensao"],
-                        size=52, stroke=5, font_size=10,
-                    )
-                    + make_donut_svg(
-                        _g_sem_ext_pct, "#94a3b8", "Sem extensões", _g_sem_extensao,
                         size=52, stroke=5, font_size=10,
                     )
                     + '</div>'
@@ -23284,9 +23280,9 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
           <div style="display:flex;align-items:baseline;gap:2px;">
-            <span style="font-size:32px;font-weight:900;letter-spacing:-1.5px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:13px;font-weight:800;color:#9ca3af;">/100</span>
+            <span style="font-size:29px;font-weight:900;letter-spacing:-1.3px;color:{_sg_cor};line-height:1;">{_score_geral}</span><span style="font-size:12px;font-weight:800;color:#9ca3af;">/100</span>
           </div>
-          <div style="display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:10px;font-size:12px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
+          <div style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9px;font-size:11px;font-weight:800;background:{_sg_cor}1a;color:{_sg_cor};width:fit-content;flex-shrink:0;white-space:nowrap;">{_sg_icon} {_sg_lbl}</div>
         </div>
         {_comparacao_html}
       </div>
@@ -23375,7 +23371,15 @@ function syncH() {{
     var h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i=0;i<iframes.length;i++) {{
-        try {{ if (iframes[i].contentWindow===window) {{ iframes[i].style.height=(h+8)+'px'; iframes[i].style.marginTop='0px'; break; }} }} catch(e) {{}}
+        try {{ if (iframes[i].contentWindow===window) {{
+            // Mantém um respiro real entre o resumo e as seções seguintes.
+            // Este ajuste também roda após mudanças internas, portanto precisa
+            // preservar a mesma folga definida pelo setFrameHeight abaixo.
+            iframes[i].style.height=(h+28)+'px';
+            iframes[i].style.marginTop='0px';
+            iframes[i].style.marginBottom='4px';
+            break;
+        }} }} catch(e) {{}}
     }}
 }}
 if (window.ResizeObserver) new ResizeObserver(syncH).observe(document.body);
@@ -23460,7 +23464,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
         // Reserva o respiro visual após o Resumo Executivo. A margem CSS do
         // bloco não entra no getBoundingClientRect e, nos concorrentes, o
         // iframe seguinte acabava começando colado à borda inferior.
-        var altura = Math.ceil(bloco.getBoundingClientRect().bottom + 20);
+        var altura = Math.ceil(bloco.getBoundingClientRect().bottom + 32);
         window.parent.postMessage({{
             isStreamlitMessage: true,
             type: 'streamlit:setFrameHeight',

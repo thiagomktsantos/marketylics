@@ -40729,7 +40729,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center;
     cursor:pointer; transition:box-shadow 0.15s;
-    width:100%; min-height:75px;
+    width:100%;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
 .dd-icon {{
@@ -40775,10 +40775,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item .dd-icon {{ background:#e9eef5; }}
 .dd-item.selected .dd-icon {{ background:#dbeafe; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:160px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:4px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-periodo {{
-    width:100%; height:26px; border:1px solid #c5d0dc; background:#eef2f6;
-    color:#536579; font-size:10.5px; font-weight:500; text-align:center;
+    width:100%; height:22px; border:1px solid #c5d0dc; background:#eef2f6;
+    color:#536579; font-size:10px; font-weight:500; text-align:center;
     font-family:'DM Sans',sans-serif; padding:0 22px 0 8px;
     outline:none; cursor:pointer; border-radius:8px;
     transition:border-color .15s ease, background .15s ease;
@@ -40786,8 +40786,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .ctrl-periodo:hover {{ background:#ffffff; border-color:#aab9c9; }}
 .ctrl-periodo:focus {{ background:#ffffff; border-color:#0e2a47; }}
 .ctrl-btn {{
-    width:100%; height:44px; border-radius:10px; border:none;
-    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    width:100%; height:38px; border-radius:10px; border:none;
+    font-size:12px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
@@ -41139,7 +41139,7 @@ function abrirModal() {{
 
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 64) + 70 + 28, 330) : 0;
-    var h = 106 + (isOpen ? listH + 10 : 0);
+    var h = 92 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -41170,7 +41170,7 @@ function setHeight(isOpen) {{
     setHeight(false);
 }})();
 </script>
-""", height=108, scrolling=False)
+""", height=94, scrolling=False)
 
     ghost_coletar_key = "btn_coletar_dados_redes"
     st.markdown(f"""

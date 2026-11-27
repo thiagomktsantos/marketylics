@@ -41970,7 +41970,9 @@ setTimeout(syncHeightNav, 800);
         score_crit_json = _json_score.dumps(score_crit, ensure_ascii=False)
 
         seg_fmt   = fmt_num(r.get("seguidores", 0))
-        posts_fmt = fmt_num(r.get("total_posts", 0))
+        # Exibe o total do recorte baixado (7, 15, 30 ou 90 dias),
+        # mantendo a contagem alinhada com as postagens mostradas na página.
+        posts_fmt = fmt_num(len(posts_list))
         handle_clean = (r.get("handle") or "").lstrip("@")
         handle_display = f"@{handle_clean}" if handle_clean else "Instagram não informado"
         ig_url = f"https://www.instagram.com/{handle_clean}/" if handle_clean else "#"

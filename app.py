@@ -21950,10 +21950,10 @@ function setHeightGeral(isOpen) {{
                     )
 
                 formato_donuts = (
-                    '<div style="display:flex;align-items:center;">'
-                    + make_donut_svg(round(a["video"]     / total_ads * 100), "#8b5cf6", "Vídeo",     a["video"])
-                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), "#8b5cf6", "Imagem",    a["imagem"])
-                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), "#8b5cf6", "Carrossel", a["carrossel"])
+                    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;align-items:start;">'
+                    + make_donut_svg(round(a["video"]     / total_ads * 100), "#8b5cf6", "Vídeo",     a["video"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(a["imagem"]    / total_ads * 100), "#8b5cf6", "Imagem",    a["imagem"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(a["carrossel"] / total_ads * 100), "#8b5cf6", "Carrossel", a["carrossel"], size=42, stroke=4, font_size=10)
                     + '</div>'
                 )
                 ads_formato_block = (
@@ -21987,7 +21987,7 @@ function setHeightGeral(isOpen) {{
                 plat_total = sum(plat_dict.values()) or 1
                 plat_items = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]
 
-                plat_donuts = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;">'
+                plat_donuts = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 5px;align-items:start;">'
                 for plat_key, plat_val in plat_items:
                     cor_plat, label_plat, _ = PLAT_ICONS_SVG.get(plat_key, ("#64748b", plat_key.capitalize(), ""))
                     pct_plat = round(plat_val / plat_total * 100)
@@ -22099,10 +22099,10 @@ function setHeightGeral(isOpen) {{
                 _g_total = _g["total"] or 1
                 _g_score = calcular_score_google_ads(_g)
                 _g_formatos = (
-                    '<div style="display:flex;align-items:center;">'
-                    + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"])
-                    + make_donut_svg(round(_g["imagem"] / _g_total * 100), "#4285f4", "Imagem", _g["imagem"])
-                    + make_donut_svg(round(_g["carrossel"] / _g_total * 100), "#4285f4", "Carrossel", _g["carrossel"])
+                    '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;align-items:start;">'
+                    + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(_g["imagem"] / _g_total * 100), "#4285f4", "Imagem", _g["imagem"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(_g["carrossel"] / _g_total * 100), "#4285f4", "Carrossel", _g["carrossel"], size=42, stroke=4, font_size=10)
                     + '</div>'
                 )
                 _g_sinais = [
@@ -23058,7 +23058,8 @@ body {{ padding-bottom:8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
 .col-ads    {{ border-left:2px solid #9a71f720; padding-left:8px; margin-left:-8px; }}
 .ads-canais-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }}
-.ads-canal-col {{ min-width:0; }}
+.ads-canal-col {{ min-width:0; overflow:hidden; }}
+.ads-canal-col > div {{ max-width:100%; }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;

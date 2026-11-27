@@ -23516,7 +23516,6 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
             {'<span class="spinner"></span>' if _seo_rodando else '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'}
             {_seo_btn_texto}
         </button>
-        <div class="action-meta">Últ. SEO: <b>{_ultima_seo_sites}</b></div>
     </div>
     <div class="action-col">
         <button id="btn_fake_gerar_comparativa" class="action-btn">
@@ -23525,7 +23524,6 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
             </svg>
             Gerar análise comparativa
         </button>
-        <div class="action-meta">Últ. análise: <b>{_ultimo_relatorio_sites}</b></div>
     </div>
 </div>
 <script>
@@ -23552,11 +23550,20 @@ html, body {{ background:transparent; overflow:hidden; font-family:'DM Sans',san
     setTimeout(attachHandler, 200);
 }})();
 </script>
-""", height=88, scrolling=False)
+""", height=72, scrolling=False)
 
     gerar_btn = st.session_state.pop("_gerar_comparativa", False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:8px 0 8px 0'/>", unsafe_allow_html=True)
+    _ultimo_seo_sites_safe = html.escape(_ultima_seo_sites) if _ultima_seo_sites else "Nenhuma atualização realizada"
+    st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:12px;margin:2px 0 34px 0;">
+            <div style="height:1px;background:#dfe5ec;flex:1"></div>
+            <div style="display:flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif;font-size:9.5px;color:#8a97a6;white-space:nowrap">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8a97a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Último SEO: <strong style="font-size:9.5px;font-weight:600;color:#718096">{_ultimo_seo_sites_safe}</strong>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("""
     <style>
@@ -27084,7 +27091,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:44px; border-radius:10px; border:none;
+    width:100%; height:50px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
@@ -27110,7 +27117,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 .cfg-btn {{
-    width:44px; height:44px; border-radius:10px; border:none;
+    width:50px; height:50px; border-radius:10px; border:none;
     background:#0e2a47; color:#fff; display:flex; align-items:center; justify-content:center;
     cursor:pointer; flex-shrink:0; transition:all .15s;
 }}
@@ -27139,9 +27146,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     </div>
     <div class="col-btns">
         {_btn_coletar_html}
-        {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
-        </div>''' if _ultima_ts else ''}
     </div>
 </div>
  
@@ -27302,8 +27306,7 @@ function abrirModal() {{
  
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min(({_n_dd_items} * 64) + 70 + 28, 330) : 0;
-    var extra = ULTIMA ? 26 : 0;
-    var h = 86 + extra + (isOpen ? listH + 10 : 0);
+    var h = 94 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -27329,9 +27332,18 @@ function setHeight(isOpen) {{
  
 setHeight(false);
 </script>
-""", height=104 if _ultima_ts else 78, scrolling=False)
+""", height=94, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin-top:10px;padding:5px 0;'/>", unsafe_allow_html=True)
+    _ultimo_cache_meta_safe = html.escape(_ultima_ts) if _ultima_ts else "Nenhum cache disponível"
+    st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:12px;margin:2px 0 34px 0;">
+            <div style="height:1px;background:#dfe5ec;flex:1"></div>
+            <div style="display:flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif;font-size:9.5px;color:#8a97a6;white-space:nowrap">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8a97a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Último cache: <strong style="font-size:9.5px;font-weight:600;color:#718096">{_ultimo_cache_meta_safe}</strong>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     _ids_coletados       = set(st.session_state.ads_cache.keys())
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_ads_id(e)]
@@ -34242,7 +34254,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:44px; border-radius:10px; border:none;
+    width:100%; height:50px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
@@ -34268,7 +34280,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .clear-btn {{ font-size:11px; color:#6b7280; cursor:pointer; background:none; border:none; padding:0; font-family:'DM Sans',sans-serif; text-underline-offset:3px; }}
 .clear-btn:hover {{ text-decoration:underline; color:#374151; }}
 .cfg-btn {{
-    width:44px; height:44px; border-radius:10px; border:none;
+    width:50px; height:50px; border-radius:10px; border:none;
     background:#0e2a47; color:#fff; display:flex; align-items:center; justify-content:center;
     cursor:pointer; flex-shrink:0; transition:all .15s;
 }}
@@ -34293,9 +34305,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     </div>
     <div class="col-btns">
         {_btn_coletar_html}
-        {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
-        </div>''' if _ultima_ts else ''}
     </div>
 </div>
  
@@ -34459,8 +34468,7 @@ function abrirModal() {{
  
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min(({_n_dd_items} * 64) + 70 + 28, 330) : 0;
-    var extra = ULTIMA ? 26 : 0;
-    var h = 86 + extra + (isOpen ? listH + 10 : 0);
+    var h = 94 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -34486,9 +34494,18 @@ function setHeight(isOpen) {{
  
 setHeight(false);
 </script>
-""", height=104 if _ultima_ts else 78, scrolling=False)
+""", height=94, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin-top:10px;padding:5px 0;'/>", unsafe_allow_html=True)
+    _ultimo_cache_google_safe = html.escape(_ultima_ts) if _ultima_ts else "Nenhum cache disponível"
+    st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:12px;margin:2px 0 34px 0;">
+            <div style="height:1px;background:#dfe5ec;flex:1"></div>
+            <div style="display:flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif;font-size:9.5px;color:#8a97a6;white-space:nowrap">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8a97a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Último cache: <strong style="font-size:9.5px;font-weight:600;color:#718096">{_ultimo_cache_google_safe}</strong>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     _ids_coletados       = set(st.session_state.gads_cache.keys())
     _empresas_sem_config = [e for e in todas_empresas if not empresa_tem_gads_id(e)]

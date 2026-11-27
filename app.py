@@ -46288,7 +46288,7 @@ html, body { background: transparent; overflow: hidden; }
                     on_change=_ao_alterar_selecionar_todas_notif_cards,
                 )
             with _col_pag_topo:
-                if _notif_total_pag_toolbar > 1:
+                if _atividades_selecao:
                     _tokens_top = _notif_paginas_visiveis_v144(_notif_pag_toolbar, _notif_total_pag_toolbar)
                     _spec_top = []
                     if _notif_pag_toolbar > 1:
@@ -46514,7 +46514,7 @@ html, body { background: transparent; overflow: hidden; }
             st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_paginas))
 
         def _render_paginacao_notif(_posicao: str):
-            if _notif_total_itens <= _notif_page_size or _posicao == "topo":
+            if _notif_total_itens == 0 or _posicao == "topo":
                 return
 
             def _tokens(_atual, _total):

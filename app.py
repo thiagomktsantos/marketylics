@@ -20809,10 +20809,13 @@ elif st.session_state.pagina == "geral":
         total = ads_info.get("total", 0) or 0
         criterios = [
             {"label": "Volume de anúncios ativos", "ok": total >= 5},
-            {"label": "Usa prova social", "ok": ads_info.get("prova_social", 0) > 0},
-            {"label": "Usa gatilho de urgência", "ok": ads_info.get("urgencia", 0) > 0},
-            {"label": "CTA direto consistente", "ok": bool(total and (ads_info.get("cta_direto", 0) / total) >= 0.15)},
-            {"label": "Comunica benefícios claros", "ok": bool(total and (ads_info.get("beneficio", 0) / total) >= 0.2)},
+            {"label": "Objetivo de conversão identificado", "ok": ads_info.get("conversao", 0) > 0},
+            {"label": "Objetivos diversificados", "ok": len([
+                _obj for _obj in ("conversao", "captacao", "trafego", "reconhecimento")
+                if ads_info.get(_obj, 0) > 0
+            ]) >= 2},
+            {"label": "Destino identificado", "ok": bool(ads_info.get("destinos"))},
+            {"label": "Usa extensões", "ok": ads_info.get("ads_com_extensao", 0) > 0},
             {"label": "Diversifica formatos", "ok": len([
                 _tipo for _tipo in ("grafico", "video", "texto") if ads_info.get(_tipo, 0) > 0
             ]) >= 2},
@@ -21617,7 +21620,7 @@ function setHeightGeral(isOpen) {{
             "nao", "the", "and", "from", "your", "www", "http", "https", "com", "br",
         }
         _formatos = {"grafico": 0, "video": 0, "texto": 0}
-        _contagens = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
+        _objetivos = {"conversao": 0, "captacao": 0, "trafego": 0, "reconhecimento": 0}
         _destinos, _palavras = _Counter(), _Counter()
         _ads_com_extensao = 0
         _total_extensoes = 0
@@ -21660,6 +21663,10 @@ function setHeightGeral(isOpen) {{
 
                 _limpa = _ascii_dashboard(_url)
                 _limpa = re.sub(r"^https?\s*[:;/l|.-]+", "", _limpa, flags=re.I)
+                # Quando o OCR cola o nome ao endereço, preserve a parte a
+                # partir do último WWW, que é o início inequívoco do domínio.
+                if "www." in _limpa and not _limpa.startswith("www."):
+                    _limpa = "www." + _limpa.rsplit("www.", 1)[-1]
                 _limpa = re.sub(r"^www\.", "", _limpa, flags=re.I)
                 _limpa = re.sub(r"\s+", "", _limpa)
 
@@ -21701,24 +21708,27 @@ function setHeightGeral(isOpen) {{
                 _formatos["grafico"] += 1
 
             _txt = _texto(_ad)
-            if any(_p in _txt for _p in ("economiz", "resultado", "garanta", "ganhe", "melhor", "benefício", "beneficio")):
-                _contagens["beneficio"] += 1
-            if any(_p in _txt for _p in ("cliente", "avaliaç", "depoimento", "estrelas", "comprovado", "milhares")):
-                _contagens["prova_social"] += 1
-            if any(_p in _txt for _p in ("agora", "hoje", "últim", "ultim", "limitad", "não perca", "nao perca", "restam")):
-                _contagens["urgencia"] += 1
-            # CTA direto só existe quando o anúncio traz um CTA explícito.
-            # Verbos presentes no título, descrição ou sitelinks não devem ser
-            # classificados como botão/chamada direta.
             _e = _estruturado(_ad)
-            _cta_explicito = str(
-                _e.get("cta")
-                or _ad.get("cta")
-                or _ad.get("call_to_action")
-                or ""
-            ).strip()
-            if _cta_explicito:
-                _contagens["cta_direto"] += 1
+
+            # Classifica um objetivo principal por anúncio. A ordem evita que
+            # uma frase comercial seja confundida com simples tráfego.
+            if any(_p in _txt for _p in (
+                "compre", "comprar", "compra", "venda", "vender", "revenda",
+                "reserve", "reservar", "garanta seu", "peça", "peca",
+            )):
+                _objetivos["conversao"] += 1
+            elif any(_p in _txt for _p in (
+                "cadastre", "cadastro", "inscreva", "fale conosco", "contato",
+                "solicite", "orçamento", "orcamento", "whatsapp",
+            )):
+                _objetivos["captacao"] += 1
+            elif any(_p in _txt for _p in (
+                "acesse", "saiba mais", "conheça", "conheca", "veja mais",
+                "descubra", "visite",
+            )):
+                _objetivos["trafego"] += 1
+            else:
+                _objetivos["reconhecimento"] += 1
 
             for _palavra in re.findall(r"[a-záéíóúàâêôãõç]{4,}", _txt, flags=re.I):
                 _palavra = _palavra.lower()
@@ -21739,7 +21749,7 @@ function setHeightGeral(isOpen) {{
                 _total_extensoes += len(_extensoes) if isinstance(_extensoes, (list, tuple)) else 1
 
         return {
-            "total": len(ads_lista), **_formatos, **_contagens,
+            "total": len(ads_lista), **_formatos, **_objetivos,
             "destinos": _destinos.most_common(8),
             "palavras": _palavras.most_common(12),
             "ads_com_extensao": _ads_com_extensao,
@@ -22346,10 +22356,10 @@ function setHeightGeral(isOpen) {{
                     + '</div>'
                 )
                 _g_sinais = [
-                    (_SVG_ICONE_CTA, "CTA direto", _g["cta_direto"], "#1a2e4a"),
-                    (_SVG_ICONE_RELOGIO, "Com urgência", _g["urgencia"], "#e1306c"),
-                    (_SVG_ICONE_DINHEIRO, "Com benefício", _g["beneficio"], "#3a9fd6"),
-                    (_SVG_ICONE_PESSOAS, "Com prova social", _g["prova_social"], "#22c55e"),
+                    (_SVG_ICONE_DINHEIRO, "Venda / conversão", _g["conversao"], "#1a2e4a"),
+                    (_SVG_ICONE_PESSOAS, "Captação de clientes", _g["captacao"], "#22c55e"),
+                    (_SVG_ICONE_CTA, "Tráfego para o site", _g["trafego"], "#3a9fd6"),
+                    (_SVG_ICONE_MEGAFONE, "Reconhecimento de marca", _g["reconhecimento"], "#8b5cf6"),
                 ]
 
                 def _g_barra_leitura(_icone, _rotulo, _valor, _cor):
@@ -22392,7 +22402,7 @@ function setHeightGeral(isOpen) {{
                     + _g_formatos + '</div>'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Leitura dos anúncios</div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Objetivos dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:800;color:#4285f4;">Score {_g_score["score"]}/100</div>'
                     '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px;"/>'
                     + _g_sinais_html + '</div>'
@@ -23293,7 +23303,10 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
     function ajustarAlturaResumo() {{
         var bloco = document.querySelector('.executive-layout');
         if (!bloco) return;
-        var altura = Math.ceil(bloco.getBoundingClientRect().bottom + 4);
+        // Reserva o respiro visual após o Resumo Executivo. A margem CSS do
+        // bloco não entra no getBoundingClientRect e, nos concorrentes, o
+        // iframe seguinte acabava começando colado à borda inferior.
+        var altura = Math.ceil(bloco.getBoundingClientRect().bottom + 20);
         window.parent.postMessage({{
             isStreamlitMessage: true,
             type: 'streamlit:setFrameHeight',

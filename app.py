@@ -21448,20 +21448,20 @@ function setHeightGeral(isOpen) {{
         gap = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            '<div style="display:flex;align-items:center;justify-content:center;gap:12px;min-width:0;">'
+            '<div style="display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}" '
             f'stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
-            f'<text x="{cx - 1}" y="{cy}" text-anchor="end" dominant-baseline="central" '
-            f'font-size="12" font-weight="900" fill="{color}" font-family="DM Sans,sans-serif">{current}</text>'
-            f'<text x="{cx}" y="{cy + 1}" text-anchor="start" dominant-baseline="central" '
-            f'font-size="6.5" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">/{total}</text>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" dominant-baseline="central" '
+            f'font-size="11" font-weight="900" fill="{color}" font-family="DM Sans,sans-serif">{pct}%</text>'
             '</svg>'
             '<div style="display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0;">'
-            f'<span style="font-size:16px;font-weight:800;color:{color};line-height:1;">{pct}%</span>'
+            '<div style="display:flex;align-items:baseline;line-height:1;">'
+            f'<span style="font-size:17px;font-weight:900;color:{color};">{current}</span>'
+            '</div>'
             f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'
-            f'margin-top:5px;line-height:1.2;max-width:105px;">{label}</span>'
+            f'margin-top:5px;line-height:1.2;white-space:nowrap;">{label}</span>'
             '</div>'
             '</div>'
         )
@@ -22562,7 +22562,7 @@ function setHeightGeral(isOpen) {{
                 _g_extensoes_donuts = (
                     '<div style="display:flex;align-items:center;justify-content:center;">'
                     + make_ratio_donut_svg(
-                        _g_ext_pct, "#4285f4", "Anúncios com extensões",
+                        _g_ext_pct, "#4285f4", "Anúncios com<br>extensões",
                         _g["ads_com_extensao"], _g_total,
                         size=64, stroke=6,
                     )

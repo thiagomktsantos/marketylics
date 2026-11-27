@@ -39553,7 +39553,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:12px; color:#9ca3af; }}
 .dd-badge-conc {{
     margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
-    gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
 }}
 .dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
@@ -39621,6 +39621,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                 <div class="dd-info">
                     <span class="dd-nome" id="dd-trigger-nome"></span>
                 </div>
+                <span class="dd-badge-conc">Concorrente</span>
                 <svg class="dd-arrow" id="dd-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="6 9 12 15 18 9"/>
@@ -40797,12 +40798,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:12px; color:#9ca3af; }}
 .dd-badge-minha, .dd-badge-conc {{
     flex-shrink:0; display:inline-flex; align-items:center;
-    gap:5px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;
+    gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
 .dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
 .dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
-#dd-trigger-badge {{ flex-shrink:0; display:none; }}
+#dd-trigger-badge {{ flex-shrink:0; display:inline-flex !important; }}
 .dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
 

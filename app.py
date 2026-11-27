@@ -20804,6 +20804,30 @@ elif st.session_state.pagina == "geral":
             "faltando": [c["label"] for c in criterios if not c["ok"]],
         }
 
+    def calcular_score_google_ads(ads_info: dict) -> dict:
+        """Score específico do Google Ads, sem exigir diversidade de redes."""
+        total = ads_info.get("total", 0) or 0
+        criterios = [
+            {"label": "Volume de anúncios ativos", "ok": total >= 5},
+            {"label": "Usa prova social", "ok": ads_info.get("prova_social", 0) > 0},
+            {"label": "Usa gatilho de urgência", "ok": ads_info.get("urgencia", 0) > 0},
+            {"label": "CTA direto consistente", "ok": bool(total and (ads_info.get("cta_direto", 0) / total) >= 0.15)},
+            {"label": "Comunica benefícios claros", "ok": bool(total and (ads_info.get("beneficio", 0) / total) >= 0.2)},
+            {"label": "Diversifica formatos", "ok": len([
+                _tipo for _tipo in ("video", "imagem", "carrossel") if ads_info.get(_tipo, 0) > 0
+            ]) >= 2},
+        ]
+        pesos = [20, 20, 15, 15, 15, 15]
+        score = sum(p for p, c in zip(pesos, criterios) if c["ok"])
+        for _peso, _criterio in zip(pesos, criterios):
+            _criterio["pts"] = _peso if _criterio["ok"] else 0
+            _criterio["peso"] = _peso
+        return {
+            "score": score,
+            "criterios": criterios,
+            "faltando": [c["label"] for c in criterios if not c["ok"]],
+        }
+
     emp = st.session_state.dados["minha_empresa"]
     concorrentes = st.session_state.dados["concorrentes"]
 
@@ -21636,6 +21660,11 @@ function setHeightGeral(isOpen) {{
             tem_ads   = len(ads_lista) > 0
             ads_info  = calcular_categorias_ads(ads_lista) if tem_ads else None
 
+            gads_entry = _gads_cache_completo.get(e["nome"], {}) or {}
+            gads_lista = gads_entry.get("data", []) if gads_entry else []
+            tem_gads = len(gads_lista) > 0
+            gads_info = calcular_categorias_ads(gads_lista) if tem_gads else None
+
             empresas_cards_data.append({
                 "nome": e["nome"], "cor": cor, "av_html": av_html_fallback,
                 "badge_lbl": badge_lbl, "badge_bg": badge_bg, "badge_col": badge_col, "badge_brd": badge_brd,
@@ -21650,6 +21679,7 @@ function setHeightGeral(isOpen) {{
                 "sitemap_urls": sitemap.get("urls",[]), "sitemap_total": sitemap.get("total",0),
                 "sitemap_status": sitemap.get("status",""),
                 "tem_ads": tem_ads, "ads": ads_info,
+                "tem_gads": tem_gads, "gads": gads_info,
             })
 
         for d in empresas_cards_data:
@@ -22076,9 +22106,14 @@ function setHeightGeral(isOpen) {{
                 _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e", _d0["seo_criterios"]))
             if _d0["tem_ads"]:
                 _ads_score_info = calcular_score_ads(_d0["ads"])
-                _areas.append(("Anúncios", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _ads_score_info["criterios"]))
+                _areas.append(("Meta Ads", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _ads_score_info["criterios"]))
             else:
                 _ads_score_info = None
+            if _d0["tem_gads"]:
+                _gads_score_info = calcular_score_google_ads(_d0["gads"])
+                _areas.append(("Google Ads", _gads_score_info["score"], _gads_score_info["faltando"], "#4285f4", _gads_score_info["criterios"]))
+            else:
+                _gads_score_info = None
 
             if _areas:
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
@@ -22132,6 +22167,11 @@ function setHeightGeral(isOpen) {{
                     if _ads_lista_leve:
                         _ads_info_leve = calcular_categorias_ads(_ads_lista_leve)
                         _areas_leve.append(calcular_score_ads(_ads_info_leve)["score"])
+                    _gads_entry_leve = _gads_cache_completo.get(_nome_emp, {}) or {}
+                    _gads_lista_leve = _gads_entry_leve.get("data", []) if _gads_entry_leve else []
+                    if _gads_lista_leve:
+                        _gads_info_leve = calcular_categorias_ads(_gads_lista_leve)
+                        _areas_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])
                     if not _areas_leve:
                         return None
                     return round(sum(_areas_leve) / len(_areas_leve))
@@ -22194,10 +22234,14 @@ function setHeightGeral(isOpen) {{
                         '<ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>'
                         '<line x1="3" y1="12" x2="21" y2="12"></line>'
                     ),
-                    "Anúncios": (
+                    "Meta Ads": (
                         '<path d="M18 8a3 3 0 0 1 0 6"></path>'
                         '<path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"></path>'
                         '<path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"></path>'
+                    ),
+                    "Google Ads": (
+                        '<path d="M12 3l8.2 14.2a2 2 0 0 1-1.73 3H5.53a2 2 0 0 1-1.73-3L12 3z"></path>'
+                        '<circle cx="12" cy="15" r="2.2"></circle>'
                     ),
                 }
 
@@ -22205,14 +22249,16 @@ function setHeightGeral(isOpen) {{
                 _AREA_LABELS_CURTOS = {
                     "Redes Sociais": "REDES",
                     "Site": "SITE",
-                    "Anúncios": "ANÚNCIOS",
+                    "Meta Ads": "META",
+                    "Google Ads": "GOOGLE",
                 }
                 _areas_por_nome = {a[0]: a for a in _areas}
                 _areas_desempenho = []
                 for _lbl_padrao, _cor_padrao in [
                     ("Redes Sociais", "#3b82f6"),
                     ("Site", "#22c55e"),
-                    ("Anúncios", "#8b5cf6"),
+                    ("Meta Ads", "#8b5cf6"),
+                    ("Google Ads", "#4285f4"),
                 ]:
                     if _lbl_padrao in _areas_por_nome:
                         _areas_desempenho.append((*_areas_por_nome[_lbl_padrao], True))
@@ -22333,7 +22379,10 @@ function setHeightGeral(isOpen) {{
                         break
 
                 if _oportunidades_top:
-                    _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
+                    _BADGE_LBL = {
+                        "Redes Sociais": "Redes", "Site": "Site",
+                        "Meta Ads": "Meta", "Google Ads": "Google",
+                    }
                     _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
                     _selo_width_px = 40 + (_maior_badge_chars * 6)
                     _lampada_selo_svg = (
@@ -22448,7 +22497,8 @@ function setHeightGeral(isOpen) {{
                 _MAPA_AREA_PAGINA_CTA = {
                     "Redes Sociais": ("redes", "Redes"),
                     "Site":          ("sites", "Site"),
-                    "Anúncios":      ("ads",   "Anúncios"),
+                    "Meta Ads":      ("ads", "Meta Ads"),
+                    "Google Ads":    ("google_ads", "Google Ads"),
                 }
                 _pagina_prioritaria_cta, _label_prioritaria_cta = _MAPA_AREA_PAGINA_CTA.get(
                     _pior[0], ("geral", _pior[0])
@@ -22462,7 +22512,7 @@ function setHeightGeral(isOpen) {{
                                 return _a
                         return None
 
-                    _area_ads_conc   = _area_por_label("Anúncios")
+                    _area_ads_conc   = _area_por_label("Meta Ads") or _area_por_label("Google Ads")
                     _area_redes_conc = _area_por_label("Redes Sociais")
 
                     _data_estrategia = bool(_area_ads_conc)
@@ -22546,7 +22596,7 @@ function setHeightGeral(isOpen) {{
                     st.session_state.insights_target_idx = max(0, filtro_empresa_ativo - 1)
 
                     _painel_direita_html = f"""
-  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
+  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:290px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
     <div>
       <div style="display:flex;align-items:center;gap:6px;background:#183f62;margin:0 -20px 17px;padding:14px 20px;">
         <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:0.6px;color:#ffffff;line-height:1.3;">Classificação do concorrente</div>
@@ -22564,7 +22614,7 @@ function setHeightGeral(isOpen) {{
 """
                 else:
                     _painel_direita_html = f"""
-  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:20px 24px;width:300px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);">
+  <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:20px 24px;width:290px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);">
     <div>
       <div style="display:flex;align-items:center;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:9px;font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:0.8px;color:#ffffff;">
@@ -22665,7 +22715,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
 .executive-grid {{
     display:grid;
-    grid-template-columns:minmax(190px,.9fr) minmax(240px,1fr) minmax(260px,1.15fr);
+    grid-template-columns:minmax(190px,.85fr) minmax(310px,1.2fr) minmax(260px,1.15fr);
     gap:14px; align-items:stretch;
 }}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
@@ -22673,7 +22723,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:0; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
-    .executive-grid {{ grid-template-columns:minmax(185px,.9fr) minmax(235px,1fr) minmax(250px,1.15fr); gap:12px; }}
+    .executive-grid {{ grid-template-columns:minmax(180px,.85fr) minmax(300px,1.2fr) minmax(245px,1.1fr); gap:12px; }}
 }}
 @media (max-width:1050px) {{
     .executive-layout {{ flex-direction:column; }}
@@ -22705,7 +22755,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
-            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios.</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores disponíveis de Redes Sociais, Site, Meta Ads e Google Ads.</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -22720,7 +22770,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
-            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de cada área: Redes Sociais, Site e Anúncios.</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de Redes Sociais, Site, Meta Ads e Google Ads.</div>
           </div>
         </div>
         <div class="executive-rings">

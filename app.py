@@ -20961,7 +20961,9 @@ elif st.session_state.pagina == "geral":
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
     _page_header_geral = st.container(key="page_header_geral")
-    h1, h2 = _page_header_geral.columns([4.5, 5.5])
+    # O controle do Dashboard possui apenas o seletor de empresa; por isso,
+    # ocupa uma área menor do cabeçalho do que os controles das demais páginas.
+    h1, h2 = _page_header_geral.columns([6, 4])
 
     with h1:
         components.html("""

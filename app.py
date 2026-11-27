@@ -21609,7 +21609,7 @@ function setHeightGeral(isOpen) {{
             "destinos": sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:10],
         }
 
-    def calcular_categorias_google_ads(ads_lista: list) -> dict:
+    def calcular_categorias_google_ads(ads_lista: list, dominio_busca: str = "") -> dict:
         """Consolida os campos próprios do Google Ads para o Dashboard."""
         from collections import Counter as _Counter
         from urllib.parse import urlparse as _urlparse
@@ -21621,7 +21621,7 @@ function setHeightGeral(isOpen) {{
         }
         _formatos = {"grafico": 0, "video": 0, "texto": 0}
         _objetivos = {"conversao": 0, "captacao": 0, "trafego": 0, "reconhecimento": 0}
-        _destinos, _palavras = _Counter(), _Counter()
+        _destinos, _palavras, _extensoes_contagem = _Counter(), _Counter(), _Counter()
         _ads_com_extensao = 0
         _total_extensoes = 0
 
@@ -21698,6 +21698,17 @@ function setHeightGeral(isOpen) {{
             except Exception:
                 return ""
 
+        # A fonte confiável do destino é o domínio usado no filtro da coleta
+        # (salvo no campo `query`) ou o site cadastrado da empresa. O OCR serve
+        # para analisar a mensagem do anúncio, não para inventar landing pages.
+        _candidatos_dominio_filtro = (
+            dominio_busca if isinstance(dominio_busca, (list, tuple)) else [dominio_busca]
+        )
+        _dominio_filtro = next(
+            (_dominio(_candidato) for _candidato in _candidatos_dominio_filtro if _dominio(_candidato)),
+            "",
+        )
+
         for _ad in ads_lista:
             _fmt = str(_ad.get("formato") or _ad.get("media_type") or "").lower()
             if "vídeo" in _fmt or "video" in _fmt or _ad.get("is_video"):
@@ -21735,11 +21746,22 @@ function setHeightGeral(isOpen) {{
                 if _palavra not in _stop:
                     _palavras[_palavra] += 1
 
-            _urls = [
-                _ad.get("destination_url"), _ad.get("final_url"), _ad.get("website_url"),
-                _ad.get("display_url"), _e.get("url_final"), _e.get("url_exibida"),
-            ]
-            _dest = next((_dominio(_u, _ad) for _u in _urls if _dominio(_u, _ad)), "")
+            if _dominio_filtro:
+                # Todos os resultados desta entrada foram coletados com esse
+                # filtro. Consolida no domínio real e ignora falsos positivos
+                # reconhecidos dentro da arte.
+                _dest = _dominio_filtro
+            else:
+                # Sem filtro em formato de domínio, aceite somente URLs nativas
+                # do anúncio. `url_exibida` do OCR não é uma fonte confiável.
+                _urls_nativas = [
+                    _ad.get("destination_url"), _ad.get("final_url"),
+                    _ad.get("website_url"), _ad.get("display_url"),
+                ]
+                _dest = next(
+                    (_dominio(_u, _ad) for _u in _urls_nativas if _dominio(_u, _ad)),
+                    "",
+                )
             if _dest:
                 _destinos[_dest] += 1
 
@@ -21747,6 +21769,21 @@ function setHeightGeral(isOpen) {{
             if _extensoes:
                 _ads_com_extensao += 1
                 _total_extensoes += len(_extensoes) if isinstance(_extensoes, (list, tuple)) else 1
+                _titulos_extensao_ad = set()
+                _lista_extensoes = _extensoes if isinstance(_extensoes, (list, tuple)) else [_extensoes]
+                for _extensao in _lista_extensoes:
+                    if isinstance(_extensao, dict):
+                        _titulo_extensao = (
+                            _extensao.get("titulo") or _extensao.get("title")
+                            or _extensao.get("texto") or _extensao.get("text") or ""
+                        )
+                    else:
+                        _titulo_extensao = str(_extensao or "").split(" — ", 1)[0]
+                    _titulo_extensao = re.sub(r"\s+", " ", str(_titulo_extensao or "")).strip()
+                    if _titulo_extensao:
+                        _titulos_extensao_ad.add(_titulo_extensao)
+                for _titulo_extensao in _titulos_extensao_ad:
+                    _extensoes_contagem[_titulo_extensao] += 1
 
         return {
             "total": len(ads_lista), **_formatos, **_objetivos,
@@ -21754,6 +21791,7 @@ function setHeightGeral(isOpen) {{
             "palavras": _palavras.most_common(12),
             "ads_com_extensao": _ads_com_extensao,
             "total_extensoes": _total_extensoes,
+            "extensoes": _extensoes_contagem.most_common(12),
         }
 
     seo_cache = st.session_state.get("seo_cache", {})
@@ -21913,7 +21951,10 @@ function setHeightGeral(isOpen) {{
                 gads_entry.get("data", []) if gads_entry else []
             )
             tem_gads = len(gads_lista) > 0
-            gads_info = calcular_categorias_google_ads(gads_lista) if tem_gads else None
+            gads_info = calcular_categorias_google_ads(
+                gads_lista,
+                [gads_entry.get("query") or "", e.get("site") or ""],
+            ) if tem_gads else None
 
             empresas_cards_data.append({
                 "nome": e["nome"], "cor": cor, "av_html": av_html_fallback,
@@ -22378,13 +22419,50 @@ function setHeightGeral(isOpen) {{
                     )
 
                 _g_sinais_html = "".join(_g_barra_leitura(*_item) for _item in _g_sinais)
-                _g_destinos_html = "".join(
-                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;'
-                    'padding:7px 0;border-bottom:1px solid #eef2f7;">'
-                    f'<span style="font-size:11px;color:#405068;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{html.escape(_dom)}</span>'
-                    f'<strong style="font-size:11px;color:#4285f4;">{_qtd}</strong></div>'
-                    for _dom, _qtd in _g.get("destinos", [])
-                ) or '<div style="font-size:11px;color:#9ca3af;font-style:italic;">Sem destino identificado</div>'
+                def _g_lista_barras(_itens, _prefixo, _cor, _icone, _vazio):
+                    if not _itens:
+                        return f'<div style="font-size:11px;color:#9ca3af;font-style:italic;">{_vazio}</div>'
+                    _maximo = max((_qtd for _, _qtd in _itens), default=1) or 1
+
+                    def _g_linha_barra(_rotulo, _qtd):
+                        _pct = round((_qtd / _maximo) * 100)
+                        return (
+                            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+                            f'<div style="width:22px;height:22px;border-radius:50%;background:{_cor};color:#fff;'
+                            f'display:flex;align-items:center;justify-content:center;flex-shrink:0;">{_icone}</div>'
+                            '<div style="flex:1;min-width:0;">'
+                            '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">'
+                            f'<span style="font-size:11px;color:#374151;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78%;">{html.escape(str(_rotulo))}</span>'
+                            f'<span style="font-size:11px;font-weight:800;color:#1a2e4a;">{_qtd}</span></div>'
+                            '<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{_pct}%;background:{_cor};border-radius:3px;"></div></div>'
+                            '</div></div>'
+                        )
+
+                    _visiveis, _extras = _itens[:3], _itens[3:]
+                    _html_lista = "".join(_g_linha_barra(_rotulo, _qtd) for _rotulo, _qtd in _visiveis)
+                    if _extras:
+                        _uid_lista = re.sub(
+                            r'[^a-z0-9]+', '_', f'{_prefixo}_{d["nome"]}'.lower()
+                        ).strip('_')
+                        _html_lista += (
+                            f'<div id="{_uid_lista}_extra" style="display:none;">'
+                            + "".join(_g_linha_barra(_rotulo, _qtd) for _rotulo, _qtd in _extras)
+                            + '</div>'
+                            f'<button id="{_uid_lista}_btn" onclick="'
+                            f"var m=document.getElementById('{_uid_lista}_extra');"
+                            f"var b=document.getElementById('{_uid_lista}_btn');"
+                            "if(m.style.display==='none'){m.style.display='block';b.textContent='Ver menos';}"
+                            "else{m.style.display='none';b.textContent='Ver mais';}"
+                            '" style="background:none;border:none;color:#3a9fd6;font-weight:700;font-size:11px;'
+                            'cursor:pointer;padding:0;margin-top:2px;">Ver mais</button>'
+                        )
+                    return _html_lista
+
+                _g_destinos_html = _g_lista_barras(
+                    _g.get("destinos", []), "g_destinos", "#6366f1", _SVG_ICONE_LINK,
+                    "Sem destino identificado",
+                )
                 _g_palavras_html = "".join(
                     f'<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:16px;'
                     f'background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;">{html.escape(_pal)} '
@@ -22392,6 +22470,10 @@ function setHeightGeral(isOpen) {{
                     for _pal, _qtd in _g.get("palavras", [])
                 ) or '<span style="font-size:11px;color:#9ca3af;">Sem texto suficiente para análise</span>'
                 _g_ext_pct = round(_g["ads_com_extensao"] / _g_total * 100) if _g_total else 0
+                _g_extensoes_html = _g_lista_barras(
+                    _g.get("extensoes", []), "g_extensoes", "#4285f4", _SVG_ICONE_LINK,
+                    "Nenhuma extensão identificada",
+                )
                 _google_ads_content = (
                     '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
@@ -22421,7 +22503,8 @@ function setHeightGeral(isOpen) {{
                     f'<div style="font-size:11px;color:#405068;line-height:1.6;"><strong>{_g["ads_com_extensao"]}</strong> de {_g["total"]} anúncios usam extensões. '
                     f'Total identificado: <strong>{_g["total_extensoes"]}</strong>.</div>'
                     '<div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:10px;">'
-                    f'<div style="height:100%;width:{_g_ext_pct}%;background:#4285f4;border-radius:4px;"></div></div></div>'
+                    f'<div style="height:100%;width:{_g_ext_pct}%;background:#4285f4;border-radius:4px;"></div></div>'
+                    '<div style="margin-top:14px;">' + _g_extensoes_html + '</div></div>'
                     '</div>'
                 )
             else:
@@ -22546,7 +22629,10 @@ function setHeightGeral(isOpen) {{
                         _gads_entry_leve.get("data", []) if _gads_entry_leve else []
                     )
                     if _gads_lista_leve:
-                        _gads_info_leve = calcular_categorias_google_ads(_gads_lista_leve)
+                        _gads_info_leve = calcular_categorias_google_ads(
+                            _gads_lista_leve,
+                            _gads_entry_leve.get("query") or "",
+                        )
                         _scores_ads_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])
                     if _scores_ads_leve:
                         _areas_leve.append(round(sum(_scores_ads_leve) / len(_scores_ads_leve)))

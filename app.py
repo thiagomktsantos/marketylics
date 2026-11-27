@@ -376,6 +376,15 @@ _SVG_ICONE_LINK = (
     '</svg>'
 )
 
+_SVG_ICONE_EXTENSAO = (
+    '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-1px;flex-shrink:0">'
+    '<rect x="4" y="4" width="16" height="16" rx="3"/>'
+    '<path d="M12 8v8M8 12h8"/>'
+    '</svg>'
+)
+
 _SVG_ICONE_PONTO = (
     '<svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" '
     'style="vertical-align:1px;flex-shrink:0"><circle cx="12" cy="12" r="10"/></svg>'
@@ -21621,7 +21630,8 @@ function setHeightGeral(isOpen) {{
         }
         _formatos = {"grafico": 0, "video": 0, "texto": 0}
         _objetivos = {"conversao": 0, "captacao": 0, "trafego": 0, "reconhecimento": 0}
-        _destinos, _palavras, _extensoes_contagem = _Counter(), _Counter(), _Counter()
+        _destinos, _palavras, _expressoes = _Counter(), _Counter(), _Counter()
+        _extensoes_contagem = _Counter()
         _ads_com_extensao = 0
         _total_extensoes = 0
 
@@ -21746,6 +21756,25 @@ function setHeightGeral(isOpen) {{
                 if _palavra not in _stop:
                     _palavras[_palavra] += 1
 
+            # Expressões recorrentes preservam a ordem original do texto e
+            # são contadas uma vez por anúncio, evitando que duplicações do
+            # OCR aumentem artificialmente o resultado.
+            _tokens_expr = [
+                _token.lower()
+                for _token in re.findall(r"[a-záéíóúàâêôãõç]{3,}", _txt, flags=re.I)
+            ]
+            _expressoes_ad = set()
+            for _tam_expr in (3, 2):
+                for _idx_expr in range(0, len(_tokens_expr) - _tam_expr + 1):
+                    _janela_expr = _tokens_expr[_idx_expr:_idx_expr + _tam_expr]
+                    if any(_token in _stop for _token in _janela_expr):
+                        continue
+                    if len(set(_janela_expr)) < 2:
+                        continue
+                    _expressoes_ad.add(" ".join(_janela_expr))
+            for _expressao in _expressoes_ad:
+                _expressoes[_expressao] += 1
+
             if _dominio_filtro:
                 # Todos os resultados desta entrada foram coletados com esse
                 # filtro. Consolida no domínio real e ignora falsos positivos
@@ -21789,6 +21818,7 @@ function setHeightGeral(isOpen) {{
             "total": len(ads_lista), **_formatos, **_objetivos,
             "destinos": _destinos.most_common(8),
             "palavras": _palavras.most_common(12),
+            "expressoes": _expressoes.most_common(12),
             "ads_com_extensao": _ads_com_extensao,
             "total_extensoes": _total_extensoes,
             "extensoes": _extensoes_contagem.most_common(12),
@@ -22469,10 +22499,53 @@ function setHeightGeral(isOpen) {{
                     f'<small style="opacity:.65;">{_qtd}</small></span>'
                     for _pal, _qtd in _g.get("palavras", [])
                 ) or '<span style="font-size:11px;color:#9ca3af;">Sem texto suficiente para análise</span>'
+                _g_expressoes_html = "".join(
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:16px;'
+                    f'background:#f5f3ff;color:#6d28d9;font-size:10px;font-weight:700;">{html.escape(_expr)} '
+                    f'<small style="opacity:.65;">{_qtd}</small></span>'
+                    for _expr, _qtd in _g.get("expressoes", [])
+                ) or '<span style="font-size:11px;color:#9ca3af;">Sem expressões suficientes para análise</span>'
+                _g_tabs_uid = re.sub(r'[^a-z0-9]+', '_', f'g_texto_{d["nome"]}'.lower()).strip('_')
+                _g_texto_tabs_html = (
+                    '<div style="display:flex;align-items:center;gap:18px;border-bottom:1px solid #e5e7eb;margin-bottom:12px;">'
+                    f'<button id="{_g_tabs_uid}_tab_pal" onclick="'
+                    f"document.getElementById('{_g_tabs_uid}_pal').style.display='flex';"
+                    f"document.getElementById('{_g_tabs_uid}_expr').style.display='none';"
+                    f"this.style.color='#1a2e4a';this.style.borderBottomColor='#4285f4';"
+                    f"var o=document.getElementById('{_g_tabs_uid}_tab_expr');o.style.color='#9ca3af';o.style.borderBottomColor='transparent';"
+                    '" style="background:none;border:none;border-bottom:2px solid #4285f4;padding:0 0 9px;'
+                    'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#1a2e4a;cursor:pointer;">Palavras mais usadas</button>'
+                    f'<button id="{_g_tabs_uid}_tab_expr" onclick="'
+                    f"document.getElementById('{_g_tabs_uid}_pal').style.display='none';"
+                    f"document.getElementById('{_g_tabs_uid}_expr').style.display='flex';"
+                    f"this.style.color='#1a2e4a';this.style.borderBottomColor='#8b5cf6';"
+                    f"var o=document.getElementById('{_g_tabs_uid}_tab_pal');o.style.color='#9ca3af';o.style.borderBottomColor='transparent';"
+                    '" style="background:none;border:none;border-bottom:2px solid transparent;padding:0 0 9px;'
+                    'font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#9ca3af;cursor:pointer;">Expressões-chave</button>'
+                    '</div>'
+                    f'<div id="{_g_tabs_uid}_pal" style="display:flex;flex-wrap:wrap;gap:6px;">{_g_palavras_html}</div>'
+                    f'<div id="{_g_tabs_uid}_expr" style="display:none;flex-wrap:wrap;gap:6px;">{_g_expressoes_html}</div>'
+                )
                 _g_ext_pct = round(_g["ads_com_extensao"] / _g_total * 100) if _g_total else 0
+                _g_sem_extensao = max(0, _g["total"] - _g["ads_com_extensao"])
+                _g_sem_ext_pct = max(0, 100 - _g_ext_pct)
                 _g_extensoes_html = _g_lista_barras(
-                    _g.get("extensoes", []), "g_extensoes", "#4285f4", _SVG_ICONE_LINK,
+                    _g.get("extensoes", []), "g_extensoes", "#4285f4", _SVG_ICONE_EXTENSAO,
                     "Nenhuma extensão identificada",
+                )
+                _g_extensoes_donuts = (
+                    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start;">'
+                    + make_donut_svg(
+                        _g_ext_pct, "#4285f4", "Com extensões", _g["ads_com_extensao"],
+                        size=52, stroke=5, font_size=10,
+                    )
+                    + make_donut_svg(
+                        _g_sem_ext_pct, "#94a3b8", "Sem extensões", _g_sem_extensao,
+                        size=52, stroke=5, font_size=10,
+                    )
+                    + '</div>'
+                    f'<div style="font-size:10px;color:#6b7280;text-align:center;margin-top:10px;">'
+                    f'Total identificado: <strong style="color:#1a2e4a;">{_g["total_extensoes"]}</strong></div>'
                 )
                 _google_ads_content = (
                     '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
@@ -22492,19 +22565,14 @@ function setHeightGeral(isOpen) {{
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Destinos dos anúncios</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>' + _g_destinos_html + '</div>'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Palavras mais usadas</div>'
-                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
-                    '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + _g_palavras_html + '</div></div>'
+                    + _g_texto_tabs_html + '</div>'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
-                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Extensões</div>'
-                    f'<strong style="font-size:12px;color:#4285f4;">{_g_ext_pct}%</strong></div>'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Extensões</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
-                    f'<div style="font-size:11px;color:#405068;line-height:1.6;"><strong>{_g["ads_com_extensao"]}</strong> de {_g["total"]} anúncios usam extensões. '
-                    f'Total identificado: <strong>{_g["total_extensoes"]}</strong>.</div>'
-                    '<div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:10px;">'
-                    f'<div style="height:100%;width:{_g_ext_pct}%;background:#4285f4;border-radius:4px;"></div></div>'
-                    '<div style="margin-top:14px;">' + _g_extensoes_html + '</div></div>'
+                    '<div style="display:grid;grid-template-columns:minmax(190px,.72fr) minmax(0,1.28fr);gap:18px;align-items:start;">'
+                    '<div style="padding-right:16px;border-right:1px solid #eef2f7;">'
+                    + _g_extensoes_donuts + '</div>'
+                    '<div style="min-width:0;">' + _g_extensoes_html + '</div></div></div>'
                     '</div>'
                 )
             else:

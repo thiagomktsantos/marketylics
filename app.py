@@ -40729,7 +40729,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     background:#fff; border:2px solid #3b82f6; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center;
     cursor:pointer; transition:box-shadow 0.15s;
-    width:100%;
+    width:100%; min-height:75px;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(58,159,214,0.12); }}
 .dd-icon {{

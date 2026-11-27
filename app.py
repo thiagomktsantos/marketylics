@@ -22090,8 +22090,69 @@ function setHeightGeral(isOpen) {{
                 ads_block_html = (
                     '<div style="text-align:center;padding:20px 10px;background:#f9fafb;border:1px dashed #e5e7eb;border-radius:10px;">'
                     f'<div style="margin-bottom:6px;display:flex;justify-content:center;">{_SVG_ICONE_MEGAFONE}</div>'
-                    '<div style="font-size:11px;color:#9ca3af;">Sem dados de anúncios coletados</div></div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados do Meta Ads coletados</div></div>'
                 )
+
+            _meta_ads_content = ads_block_html
+            if d["tem_gads"]:
+                _g = d["gads"]
+                _g_total = _g["total"] or 1
+                _g_score = calcular_score_google_ads(_g)
+                _g_formatos = (
+                    '<div style="display:flex;align-items:center;">'
+                    + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"])
+                    + make_donut_svg(round(_g["imagem"] / _g_total * 100), "#4285f4", "Imagem", _g["imagem"])
+                    + make_donut_svg(round(_g["carrossel"] / _g_total * 100), "#4285f4", "Carrossel", _g["carrossel"])
+                    + '</div>'
+                )
+                _g_sinais = [
+                    ("Com benefício", _g["beneficio"]),
+                    ("Com prova social", _g["prova_social"]),
+                    ("Com urgência", _g["urgencia"]),
+                    ("CTA direto", _g["cta_direto"]),
+                ]
+                _g_sinais_html = "".join(
+                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;'
+                    'padding:8px 0;border-bottom:1px solid #eef2f7;">'
+                    f'<span style="font-size:11px;color:#405068;font-weight:600;">{_rotulo}</span>'
+                    f'<strong style="font-size:12px;color:#4285f4;">{_valor}</strong></div>'
+                    for _rotulo, _valor in _g_sinais
+                )
+                _google_ads_content = (
+                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Formatos</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;">Total: {_g["total"]}</div>'
+                    '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>'
+                    + _g_formatos + '</div>'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Leitura dos anúncios</div>'
+                    f'<div style="font-size:11px;font-weight:800;color:#4285f4;">Score {_g_score["score"]}/100</div>'
+                    '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"/>'
+                    + _g_sinais_html + '</div></div>'
+                )
+            else:
+                _google_ads_content = (
+                    '<div style="text-align:center;padding:20px 10px;background:#f9fafb;'
+                    'border:1px dashed #e5e7eb;border-radius:10px;">'
+                    f'<div style="margin-bottom:6px;display:flex;justify-content:center;">{_SVG_ICONE_MEGAFONE}</div>'
+                    '<div style="font-size:11px;color:#9ca3af;">Sem dados do Google Ads coletados</div></div>'
+                )
+
+            def _cabecalho_canal_ads(_nome, _cor):
+                return (
+                    '<div style="display:flex;align-items:center;gap:9px;margin:14px 0 9px;">'
+                    f'<div style="width:7px;height:24px;border-radius:5px;background:{_cor};"></div>'
+                    f'<div style="font-size:14px;font-weight:800;color:#1a2e4a;">{_nome}</div>'
+                    '<div style="height:1px;background:#dfe5ec;flex:1;"></div></div>'
+                )
+
+            ads_block_html = (
+                _cabecalho_canal_ads("Meta Ads", "#8b5cf6") + _meta_ads_content
+                + _cabecalho_canal_ads("Google Ads", "#4285f4") + _google_ads_content
+            )
             d["ads_block_html"] = ads_block_html
 
         if empresas_cards_data:
@@ -22104,16 +22165,33 @@ function setHeightGeral(isOpen) {{
                                 _d0["redes"]["score_faltando"], "#3b82f6", _d0["redes"]["score_criterios"]))
             if _d0["seo_status_ok"]:
                 _areas.append(("Site", _d0["seo_score_val"], _d0["seo_faltando"], "#22c55e", _d0["seo_criterios"]))
-            if _d0["tem_ads"]:
-                _ads_score_info = calcular_score_ads(_d0["ads"])
-                _areas.append(("Meta Ads", _ads_score_info["score"], _ads_score_info["faltando"], "#8b5cf6", _ads_score_info["criterios"]))
-            else:
-                _ads_score_info = None
-            if _d0["tem_gads"]:
-                _gads_score_info = calcular_score_google_ads(_d0["gads"])
-                _areas.append(("Google Ads", _gads_score_info["score"], _gads_score_info["faltando"], "#4285f4", _gads_score_info["criterios"]))
-            else:
-                _gads_score_info = None
+            _ads_score_info = calcular_score_ads(_d0["ads"]) if _d0["tem_ads"] else None
+            _gads_score_info = calcular_score_google_ads(_d0["gads"]) if _d0["tem_gads"] else None
+            _scores_canais_ads = [
+                _info["score"] for _info in (_ads_score_info, _gads_score_info) if _info
+            ]
+            if _scores_canais_ads:
+                _score_anuncios_unificado = round(sum(_scores_canais_ads) / len(_scores_canais_ads))
+                _faltando_anuncios_unificado = []
+                _criterios_anuncios_unificado = []
+                for _nome_canal, _info_canal in (
+                    ("Meta Ads", _ads_score_info), ("Google Ads", _gads_score_info)
+                ):
+                    if not _info_canal:
+                        continue
+                    for _item in _info_canal["faltando"]:
+                        if _item not in _faltando_anuncios_unificado:
+                            _faltando_anuncios_unificado.append(_item)
+                    _criterios_anuncios_unificado.append({
+                        "label": _nome_canal,
+                        "ok": _info_canal["score"] >= 60,
+                        "pts": _info_canal["score"],
+                        "peso": _info_canal["score"],
+                    })
+                _areas.append((
+                    "Anúncios", _score_anuncios_unificado,
+                    _faltando_anuncios_unificado, "#8b5cf6", _criterios_anuncios_unificado,
+                ))
 
             if _areas:
                 _score_geral = round(sum(a[1] for a in _areas) / len(_areas))
@@ -22164,14 +22242,17 @@ function setHeightGeral(isOpen) {{
                         _areas_leve.append(round((_pontos_leve / 5) * 100))
                     _ads_entry_leve = ads_cache.get(_nome_emp, {})
                     _ads_lista_leve = _ads_entry_leve.get("data", []) if _ads_entry_leve else []
+                    _scores_ads_leve = []
                     if _ads_lista_leve:
                         _ads_info_leve = calcular_categorias_ads(_ads_lista_leve)
-                        _areas_leve.append(calcular_score_ads(_ads_info_leve)["score"])
+                        _scores_ads_leve.append(calcular_score_ads(_ads_info_leve)["score"])
                     _gads_entry_leve = _gads_cache_completo.get(_nome_emp, {}) or {}
                     _gads_lista_leve = _gads_entry_leve.get("data", []) if _gads_entry_leve else []
                     if _gads_lista_leve:
                         _gads_info_leve = calcular_categorias_ads(_gads_lista_leve)
-                        _areas_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])
+                        _scores_ads_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])
+                    if _scores_ads_leve:
+                        _areas_leve.append(round(sum(_scores_ads_leve) / len(_scores_ads_leve)))
                     if not _areas_leve:
                         return None
                     return round(sum(_areas_leve) / len(_areas_leve))
@@ -22234,14 +22315,10 @@ function setHeightGeral(isOpen) {{
                         '<ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>'
                         '<line x1="3" y1="12" x2="21" y2="12"></line>'
                     ),
-                    "Meta Ads": (
+                    "Anúncios": (
                         '<path d="M18 8a3 3 0 0 1 0 6"></path>'
                         '<path d="M10 8v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-5"></path>'
                         '<path d="M12 8h0l4.524-3.77A.9.9 0 0 1 18 5v14a.9.9 0 0 1-1.476.692L12 16H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h8z"></path>'
-                    ),
-                    "Google Ads": (
-                        '<path d="M12 3l8.2 14.2a2 2 0 0 1-1.73 3H5.53a2 2 0 0 1-1.73-3L12 3z"></path>'
-                        '<circle cx="12" cy="15" r="2.2"></circle>'
                     ),
                 }
 
@@ -22249,16 +22326,14 @@ function setHeightGeral(isOpen) {{
                 _AREA_LABELS_CURTOS = {
                     "Redes Sociais": "REDES",
                     "Site": "SITE",
-                    "Meta Ads": "META",
-                    "Google Ads": "GOOGLE",
+                    "Anúncios": "ANÚNCIOS",
                 }
                 _areas_por_nome = {a[0]: a for a in _areas}
                 _areas_desempenho = []
                 for _lbl_padrao, _cor_padrao in [
                     ("Redes Sociais", "#3b82f6"),
                     ("Site", "#22c55e"),
-                    ("Meta Ads", "#8b5cf6"),
-                    ("Google Ads", "#4285f4"),
+                    ("Anúncios", "#8b5cf6"),
                 ]:
                     if _lbl_padrao in _areas_por_nome:
                         _areas_desempenho.append((*_areas_por_nome[_lbl_padrao], True))
@@ -22340,6 +22415,7 @@ function setHeightGeral(isOpen) {{
                     "CTA direto consistente":   ("Padronizar o CTA direto nos anúncios", "+12% de cliques", "Padronize um CTA claro, como 'Compre agora', em todos os anúncios."),
                     "Comunica benefícios claros":("Comunicar os benefícios de forma mais clara", "+9% de CTR", "Destaque os benefícios do produto ou serviço de forma direta no anúncio."),
                     "Diversifica plataformas":  ("Diversificar as plataformas de anúncio", "+15% de alcance", "Rode anúncios em mais de uma plataforma (Meta, Google, TikTok) simultaneamente."),
+                    "Diversifica formatos":     ("Diversificar os formatos no Google Ads", "+15% de cobertura criativa", "Combine anúncios em imagem e vídeo para ampliar os testes e a cobertura das campanhas."),
                 }
 
                 _OPORT_TEXTOS_CONCORRENTE = {
@@ -22360,6 +22436,7 @@ function setHeightGeral(isOpen) {{
                     "CTA direto consistente":   ("Conquistar mais cliques com chamadas consistentes", "+12% de cliques", "Padronize CTAs claros nos anúncios da sua empresa para facilitar a decisão do público."),
                     "Comunica benefícios claros":("Evidenciar benefícios que o concorrente não destaca", "+9% de CTR", "Mostre nos anúncios da sua empresa benefícios concretos e fáceis de comparar."),
                     "Diversifica plataformas":  ("Ampliar presença onde o concorrente ainda não atua", "+15% de alcance", "Distribua os anúncios da sua empresa entre os canais mais relevantes ainda pouco explorados."),
+                    "Diversifica formatos":     ("Explorar mais formatos que o concorrente", "+15% de cobertura criativa", "Na sua empresa, combine imagens e vídeos para ocupar formatos ainda pouco usados pelo concorrente."),
                 }
 
                 _is_aba_concorrente = _d0["badge_lbl"] != "Minha Empresa"
@@ -22379,10 +22456,7 @@ function setHeightGeral(isOpen) {{
                         break
 
                 if _oportunidades_top:
-                    _BADGE_LBL = {
-                        "Redes Sociais": "Redes", "Site": "Site",
-                        "Meta Ads": "Meta", "Google Ads": "Google",
-                    }
+                    _BADGE_LBL = {"Redes Sociais": "Redes", "Site": "Site", "Anúncios": "Anúncios"}
                     _maior_badge_chars = max(len(v) for v in _BADGE_LBL.values())
                     _selo_width_px = 40 + (_maior_badge_chars * 6)
                     _lampada_selo_svg = (
@@ -22497,8 +22571,7 @@ function setHeightGeral(isOpen) {{
                 _MAPA_AREA_PAGINA_CTA = {
                     "Redes Sociais": ("redes", "Redes"),
                     "Site":          ("sites", "Site"),
-                    "Meta Ads":      ("ads", "Meta Ads"),
-                    "Google Ads":    ("google_ads", "Google Ads"),
+                    "Anúncios":      ("ads", "Anúncios"),
                 }
                 _pagina_prioritaria_cta, _label_prioritaria_cta = _MAPA_AREA_PAGINA_CTA.get(
                     _pior[0], ("geral", _pior[0])
@@ -22512,7 +22585,7 @@ function setHeightGeral(isOpen) {{
                                 return _a
                         return None
 
-                    _area_ads_conc   = _area_por_label("Meta Ads") or _area_por_label("Google Ads")
+                    _area_ads_conc   = _area_por_label("Anúncios")
                     _area_redes_conc = _area_por_label("Redes Sociais")
 
                     _data_estrategia = bool(_area_ads_conc)
@@ -22715,7 +22788,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-main {{ background:#fff; border:3px solid #173653; border-radius:16px; overflow:hidden; flex:1; min-width:0; box-shadow:0 4px 14px rgba(23,54,83,.08); }}
 .executive-grid {{
     display:grid;
-    grid-template-columns:minmax(190px,.85fr) minmax(310px,1.2fr) minmax(260px,1.15fr);
+    grid-template-columns:minmax(190px,.9fr) minmax(240px,1fr) minmax(260px,1.15fr);
     gap:14px; align-items:stretch;
 }}
 .executive-score {{ display:flex; flex-direction:column; min-width:0; border-right:1px solid #f3f4f6; padding-right:18px; }}
@@ -22723,7 +22796,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
 .executive-rings {{ display:flex; flex-direction:row; flex-wrap:nowrap; gap:0; justify-content:space-between; flex:1; align-items:flex-start; }}
 .executive-actions {{ min-width:0; }}
 @media (max-width:1450px) {{
-    .executive-grid {{ grid-template-columns:minmax(180px,.85fr) minmax(300px,1.2fr) minmax(245px,1.1fr); gap:12px; }}
+    .executive-grid {{ grid-template-columns:minmax(185px,.9fr) minmax(235px,1fr) minmax(250px,1.15fr); gap:12px; }}
 }}
 @media (max-width:1050px) {{
     .executive-layout {{ flex-direction:column; }}
@@ -22755,7 +22828,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Score Geral</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
-            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores disponíveis de Redes Sociais, Site, Meta Ads e Google Ads.</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Média dos scores de Redes Sociais, Site e Anúncios. Em Anúncios, Meta e Google são consolidados.</div>
           </div>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -22770,7 +22843,7 @@ html,body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:
         <div style="display:flex;align-items:center;margin-bottom:10px;">
           <div style="font-size:13px;font-weight:700;color:#2e65b7;text-transform:uppercase;letter-spacing:0.5px;">Desempenho por área</div>
           <div class="score-tooltip-wrap"><div class="q-badge">?</div>
-            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de Redes Sociais, Site, Meta Ads e Google Ads.</div>
+            <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Score individual de Redes Sociais, Site e Anúncios. O score de Anúncios reúne Meta e Google.</div>
           </div>
         </div>
         <div class="executive-rings">

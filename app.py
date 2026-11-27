@@ -4382,10 +4382,9 @@ _SVG_CTA_LINK = (
 _SVG_ICONE_GLOBO_SITE = (
     '<span style="display:inline-flex;align-items:center;justify-content:center;'
     'width:22px;height:22px;min-width:22px;border-radius:50%;background:#e8f0fe;flex-shrink:0;">'
-    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" '
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>'
-    '<path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'
+    '<svg focusable="false" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" '
+    'width="14" height="14" viewBox="0 -960 960 960" fill="#1a73e8">'
+    '<path d="M324-111.5Q251-143 197-197T111.5-324T80-480t31.5-156T197-763t127-85.5T480-880t156,31.5T763-763t85.5,127T880-480T848.5-324T763-197T636-111.5T480-80T324-111.5ZM440-162v-78q-33,0-56.5-23.5T360-320v-40L168-552q-3,18-5.5,36T160-480q0,121 79.5,212T440-162ZM716-264q41-45 62.5-100.5T800-480q0-98-54.5-179T600-776v16q0,33-23.5,56.5T520-680H440v80q0,17-11.5,28.5T400-560H320v80H560q17,0 28.5,11.5T600-440v120h40q26,0 47,15.5T716-264Z"/>'
     '</svg></span>'
 )
 
@@ -37753,7 +37752,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
 .no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;}}
-.ocr-badge{{position:absolute;top:0;right:0;display:inline-flex;align-items:center;justify-content:center;padding:2px 7px;border-radius:20px;background:#eef2f6;border:1px solid #cbd5e1;color:#536579;font-size:9px;font-weight:700;font-style:normal;line-height:1.2;cursor:help;}}
+.ocr-badge{{position:absolute;top:0;right:0;display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:18px;padding:0 7px;border-radius:3px;background:#a7a9ac;border:none;color:#fff;font-size:9px;font-weight:700;font-style:normal;line-height:18px;letter-spacing:.2px;cursor:help;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
 .img-block{{height:230px;background:#0d1117;}}

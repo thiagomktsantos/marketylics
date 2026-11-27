@@ -22212,7 +22212,9 @@ function setHeightGeral(isOpen) {{
                         _score_lbl_exibicao = "Perfil intermediário"
                     else:
                         _score_lbl_exibicao = "Perfil pouco desenvolvido"
-                    _score_rodape = f'{_ok_criterios} de {_total_criterios} pontos fortes identificados'
+                    _fortes_txt = "ponto forte" if _ok_criterios == 1 else "pontos fortes"
+                    _oportunidades_txt = "oportunidade" if score_nok == 1 else "oportunidades"
+                    _score_rodape = f'{_ok_criterios} {_fortes_txt} e {score_nok} {_oportunidades_txt}'
                     _score_titulo = "Leitura do Perfil Concorrente"
                 else:
                     _score_lbl_exibicao = m["score_lbl"]
@@ -23831,7 +23833,11 @@ function buildSeoColumn(d,colEl) {{
         +'<div class="profile-score-progress-bar"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
         +'<div class="profile-score-badge" style="background:'+scoreBg+';color:'+scoreTextColor+';">'+scoreTxt2+'</div>'
         +'</div>'
-        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' '+(isCompetitor?'pontos fortes identificados':'itens otimizados')+'</div>';
+        +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'
+        +(isCompetitor
+            ? (SEO_ITEMS.length-nok)+' '+((SEO_ITEMS.length-nok)===1?'ponto forte':'pontos fortes')+' e '+nok+' '+(nok===1?'oportunidade':'oportunidades')
+            : (SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' itens otimizados')
+        +'</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);
     var ct=d.seo_contato||{{}};

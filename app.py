@@ -22593,10 +22593,10 @@ function setHeightGeral(isOpen) {{
                     f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;">Total: {_g["total_extensoes"]}</div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
-                    '<div style="display:grid;grid-template-columns:minmax(190px,.72fr) minmax(0,1.28fr);gap:18px;align-items:start;">'
-                    '<div style="padding-right:16px;border-right:1px solid #eef2f7;">'
+                    '<div class="g-ext-grid">'
+                    '<div class="g-ext-summary">'
                     + _g_extensoes_donuts + '</div>'
-                    '<div style="min-width:0;">' + _g_extensoes_html + '</div></div></div>'
+                    '<div class="g-ext-list">' + _g_extensoes_html + '</div></div></div>'
                     '</div>'
                 )
             else:
@@ -23549,6 +23549,21 @@ body {{ padding-top:16px; padding-bottom:8px; }}
 .ads-canais-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }}
 .ads-canal-col {{ min-width:0; overflow:hidden; }}
 .ads-canal-col > div {{ max-width:100%; }}
+.g-ext-grid {{
+    display:grid;
+    grid-template-columns:minmax(170px,.64fr) minmax(0,1.36fr);
+    gap:18px;
+    align-items:center;
+}}
+.g-ext-summary {{
+    min-height:86px;
+    padding:4px 18px 4px 2px;
+    border-right:1px solid #e5e7eb;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}}
+.g-ext-list {{ min-width:0; }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
@@ -23566,6 +23581,16 @@ body {{ padding-top:16px; padding-bottom:8px; }}
 .score-check {{ border:1px solid #22c45f; border-radius:5px; background:#22c45e; width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }}
 @media (max-width:1100px) {{ .cols-wrap {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
 @media (max-width:900px) {{ .ads-canais-grid {{ grid-template-columns:1fr; }} }}
+@media (max-width:560px) {{
+    .g-ext-grid {{ grid-template-columns:1fr; gap:13px; }}
+    .g-ext-summary {{
+        min-height:0;
+        padding:2px 0 14px;
+        border-right:0;
+        border-bottom:1px solid #eef2f7;
+    }}
+    .g-ext-list {{ width:100%; }}
+}}
 @media (max-width:720px) {{ .cols-wrap {{ grid-template-columns:1fr; }} .empresa-card {{ padding:0 4px; }} }}
 </style>
 </head>

@@ -37752,7 +37752,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
 .no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;}}
-.ocr-badge{{position:absolute;top:0;right:0;display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:18px;padding:0 7px;border-radius:3px;background:#a7a9ac;border:none;color:#fff;font-size:9px;font-weight:700;font-style:normal;line-height:18px;letter-spacing:.2px;cursor:help;}}
+.ocr-badge{{position:absolute;top:0;right:0;display:inline-flex;align-items:center;justify-content:center;min-width:33px;height:18px;padding:0 7px;border-radius:3px;background:#a7a9ac;border:none;color:#fff;font-size:9px;font-weight:700;font-style:normal;line-height:18px;letter-spacing:.2px;cursor:help;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
 .img-block{{height:230px;background:#0d1117;}}

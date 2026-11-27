@@ -22536,12 +22536,11 @@ function setHeightGeral(isOpen) {{
                 _g_extensoes_donuts = (
                     '<div style="display:flex;align-items:center;justify-content:center;">'
                     + make_donut_svg(
-                        _g_ext_pct, "#4285f4", "Com extensões", _g["ads_com_extensao"],
-                        size=52, stroke=5, font_size=10,
+                        _g_ext_pct, "#4285f4", "Anúncios com extensões",
+                        f'{_g["ads_com_extensao"]}/{_g_total}',
+                        size=52, stroke=5, font_size=8,
                     )
                     + '</div>'
-                    f'<div style="font-size:10px;color:#6b7280;text-align:center;margin-top:10px;">'
-                    f'Total identificado: <strong style="color:#1a2e4a;">{_g["total_extensoes"]}</strong></div>'
                 )
                 _google_ads_content = (
                     '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
@@ -22563,7 +22562,10 @@ function setHeightGeral(isOpen) {{
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
                     + _g_texto_tabs_html + '</div>'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
-                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Extensões</div>'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Extensões</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#374151;background:#f3f4f6;padding:3px 10px;border-radius:20px;">Total: {_g["total_extensoes"]}</div>'
+                    '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
                     '<div style="display:grid;grid-template-columns:minmax(190px,.72fr) minmax(0,1.28fr);gap:18px;align-items:start;">'
                     '<div style="padding-right:16px;border-right:1px solid #eef2f7;">'

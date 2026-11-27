@@ -39994,13 +39994,18 @@ body { padding-bottom:8px; }
     width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
 }
 
-.card-row { background:#e4edf5; border:1.5px solid #123252; border-radius:0; margin:0; overflow:hidden; }
-.card-row + .card-row { margin-top:-1.5px; }
+.card-row {
+    border:2px solid #123252;
+    border-radius:14px;
+    overflow:hidden;
+    background:#ffffff;
+    margin-bottom:12px;
+}
 .card-hdr {
     display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer;
-    background:#e4edf5; transition:background .15s;
+    background:#eef3f8; transition:background .15s;
 }
-.card-hdr:hover { background:#dce8f2; }
+.card-hdr:hover { background:#e4edf5; }
 .card-hdr-icon { width:42px; height:42px; border-radius:10px; background:#123252; color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .card-hdr-icon svg { width:21px; height:21px; }
 .card-title-wrap { flex:1; min-width:0; }
@@ -40010,8 +40015,8 @@ body { padding-bottom:8px; }
 .status-dot { width:16px; height:16px; border:1.5px solid #22c55e; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; line-height:1; }
 
 .card-footer {
-    display: flex; gap: 10px; padding: 12px 18px; background: #91a49b;
-    border-top: 1px solid #dde5ed; align-items: center;
+    display:flex; gap:10px; padding:12px 18px; background:#f8fafc;
+    border-top:1px solid #e2e8f0; align-items:center;
 }
 .btn-dl {
     flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -40046,7 +40051,7 @@ body { padding-bottom:8px; }
 {CSS_INS}
 </style>
 
-<div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:0;">
+<div style="margin-top:8px;">
     {cards_ins_html}
 </div>
 

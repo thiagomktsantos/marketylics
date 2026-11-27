@@ -21448,21 +21448,21 @@ function setHeightGeral(isOpen) {{
         gap = round(circum - dash, 2)
         offset = round(circum * 0.25, 2)
         return (
-            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;">'
-            '<div style="display:flex;align-items:center;justify-content:center;gap:9px;">'
+            '<div style="display:flex;align-items:center;justify-content:center;gap:12px;min-width:0;">'
             f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#f0f0f0" stroke-width="{stroke}"/>'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="{color}" stroke-width="{stroke}" '
             f'stroke-dasharray="{dash} {gap}" stroke-dashoffset="{offset}" stroke-linecap="round"/>'
             f'<text x="{cx - 1}" y="{cy}" text-anchor="end" dominant-baseline="central" '
-            f'font-size="14" font-weight="900" fill="{color}" font-family="DM Sans,sans-serif">{current}</text>'
+            f'font-size="12" font-weight="900" fill="{color}" font-family="DM Sans,sans-serif">{current}</text>'
             f'<text x="{cx}" y="{cy + 1}" text-anchor="start" dominant-baseline="central" '
-            f'font-size="8" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">/{total}</text>'
+            f'font-size="6.5" font-weight="800" fill="{color}" font-family="DM Sans,sans-serif">/{total}</text>'
             '</svg>'
-            f'<span style="font-size:15px;font-weight:800;color:{color};line-height:1;">{pct}%</span>'
+            '<div style="display:flex;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0;">'
+            f'<span style="font-size:16px;font-weight:800;color:{color};line-height:1;">{pct}%</span>'
+            f'<span style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'
+            f'margin-top:5px;line-height:1.2;max-width:105px;">{label}</span>'
             '</div>'
-            f'<div style="font-size:9px;color:#405068;font-weight:700;text-transform:uppercase;letter-spacing:.35px;'
-            f'text-align:center;margin-top:5px;line-height:1.25;">{label}</div>'
             '</div>'
         )
 

@@ -20814,7 +20814,7 @@ elif st.session_state.pagina == "geral":
             {"label": "CTA direto consistente", "ok": bool(total and (ads_info.get("cta_direto", 0) / total) >= 0.15)},
             {"label": "Comunica benefícios claros", "ok": bool(total and (ads_info.get("beneficio", 0) / total) >= 0.2)},
             {"label": "Diversifica formatos", "ok": len([
-                _tipo for _tipo in ("video", "imagem", "carrossel") if ads_info.get(_tipo, 0) > 0
+                _tipo for _tipo in ("grafico", "video", "texto") if ads_info.get(_tipo, 0) > 0
             ]) >= 2},
         ]
         pesos = [20, 20, 15, 15, 15, 15]
@@ -21508,6 +21508,96 @@ function setHeightGeral(isOpen) {{
             "destinos": sorted(dest_count.items(), key=lambda x: x[1], reverse=True)[:10],
         }
 
+    def calcular_categorias_google_ads(ads_lista: list) -> dict:
+        """Consolida os campos próprios do Google Ads para o Dashboard."""
+        from collections import Counter as _Counter
+        from urllib.parse import urlparse as _urlparse
+
+        _stop = {
+            "para", "com", "uma", "por", "que", "dos", "das", "nos", "nas", "seu", "sua",
+            "seus", "suas", "mais", "como", "este", "esta", "isso", "você", "voce", "não",
+            "nao", "the", "and", "from", "your", "www", "http", "https", "com", "br",
+        }
+        _formatos = {"grafico": 0, "video": 0, "texto": 0}
+        _contagens = {"beneficio": 0, "prova_social": 0, "urgencia": 0, "cta_direto": 0}
+        _destinos, _palavras = _Counter(), _Counter()
+        _ads_com_extensao = 0
+        _total_extensoes = 0
+
+        def _estruturado(_ad):
+            _e = _ad.get("ocr_estruturado") or _ad.get("estruturado") or {}
+            return _e if isinstance(_e, dict) else {}
+
+        def _texto(_ad):
+            _e = _estruturado(_ad)
+            _partes = [
+                _ad.get("title"), _ad.get("headline"), _ad.get("body"), _ad.get("description"),
+                _ad.get("ocr_texto"), _e.get("titulo"), _e.get("descricao"), _e.get("cta"),
+            ]
+            _partes.extend(_e.get("chamadas") or [])
+            for _sl in (_e.get("sitelinks") or []):
+                if isinstance(_sl, dict):
+                    _partes.extend([_sl.get("titulo"), _sl.get("descricao")])
+                else:
+                    _partes.append(str(_sl))
+            return " ".join(str(_p) for _p in _partes if _p).lower()
+
+        def _dominio(_url):
+            _url = str(_url or "").strip()
+            if not _url:
+                return ""
+            try:
+                _alvo = _url if "://" in _url else "https://" + _url
+                return (_urlparse(_alvo).netloc or "").lower().replace("www.", "").split(":")[0]
+            except Exception:
+                return ""
+
+        for _ad in ads_lista:
+            _fmt = str(_ad.get("formato") or _ad.get("media_type") or "").lower()
+            if "vídeo" in _fmt or "video" in _fmt or _ad.get("is_video"):
+                _formatos["video"] += 1
+            elif "texto" in _fmt or "text" in _fmt:
+                _formatos["texto"] += 1
+            else:
+                _formatos["grafico"] += 1
+
+            _txt = _texto(_ad)
+            if any(_p in _txt for _p in ("economiz", "resultado", "garanta", "ganhe", "melhor", "benefício", "beneficio")):
+                _contagens["beneficio"] += 1
+            if any(_p in _txt for _p in ("cliente", "avaliaç", "depoimento", "estrelas", "comprovado", "milhares")):
+                _contagens["prova_social"] += 1
+            if any(_p in _txt for _p in ("agora", "hoje", "últim", "ultim", "limitad", "não perca", "nao perca", "restam")):
+                _contagens["urgencia"] += 1
+            if any(_p in _txt for _p in ("clique", "saiba mais", "compre", "acesse", "cadastre", "inscreva", "solicite")):
+                _contagens["cta_direto"] += 1
+
+            for _palavra in re.findall(r"[a-záéíóúàâêôãõç]{4,}", _txt, flags=re.I):
+                _palavra = _palavra.lower()
+                if _palavra not in _stop:
+                    _palavras[_palavra] += 1
+
+            _e = _estruturado(_ad)
+            _urls = [
+                _e.get("url_final"), _e.get("url_exibida"), _ad.get("destination_url"),
+                _ad.get("final_url"), _ad.get("display_url"), _ad.get("website_url"),
+            ]
+            _dest = next((_dominio(_u) for _u in _urls if _dominio(_u)), "")
+            if _dest:
+                _destinos[_dest] += 1
+
+            _extensoes = _e.get("sitelinks") or _ad.get("sitelinks") or []
+            if _extensoes:
+                _ads_com_extensao += 1
+                _total_extensoes += len(_extensoes) if isinstance(_extensoes, (list, tuple)) else 1
+
+        return {
+            "total": len(ads_lista), **_formatos, **_contagens,
+            "destinos": _destinos.most_common(8),
+            "palavras": _palavras.most_common(12),
+            "ads_com_extensao": _ads_com_extensao,
+            "total_extensoes": _total_extensoes,
+        }
+
     seo_cache = st.session_state.get("seo_cache", {})
 
     tooltip_css = """
@@ -21663,7 +21753,7 @@ function setHeightGeral(isOpen) {{
             gads_entry = _gads_cache_completo.get(e["nome"], {}) or {}
             gads_lista = gads_entry.get("data", []) if gads_entry else []
             tem_gads = len(gads_lista) > 0
-            gads_info = calcular_categorias_ads(gads_lista) if tem_gads else None
+            gads_info = calcular_categorias_google_ads(gads_lista) if tem_gads else None
 
             empresas_cards_data.append({
                 "nome": e["nome"], "cor": cor, "av_html": av_html_fallback,
@@ -22101,23 +22191,47 @@ function setHeightGeral(isOpen) {{
                 _g_formatos = (
                     '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;align-items:start;">'
                     + make_donut_svg(round(_g["video"] / _g_total * 100), "#4285f4", "Vídeo", _g["video"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(_g["imagem"] / _g_total * 100), "#4285f4", "Imagem", _g["imagem"], size=42, stroke=4, font_size=10)
-                    + make_donut_svg(round(_g["carrossel"] / _g_total * 100), "#4285f4", "Carrossel", _g["carrossel"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(_g["grafico"] / _g_total * 100), "#4285f4", "Gráfico", _g["grafico"], size=42, stroke=4, font_size=10)
+                    + make_donut_svg(round(_g["texto"] / _g_total * 100), "#4285f4", "Texto", _g["texto"], size=42, stroke=4, font_size=10)
                     + '</div>'
                 )
                 _g_sinais = [
-                    ("Com benefício", _g["beneficio"]),
-                    ("Com prova social", _g["prova_social"]),
-                    ("Com urgência", _g["urgencia"]),
-                    ("CTA direto", _g["cta_direto"]),
+                    (_SVG_ICONE_CTA, "CTA direto", _g["cta_direto"], "#1a2e4a"),
+                    (_SVG_ICONE_RELOGIO, "Com urgência", _g["urgencia"], "#e1306c"),
+                    (_SVG_ICONE_DINHEIRO, "Com benefício", _g["beneficio"], "#3a9fd6"),
+                    (_SVG_ICONE_PESSOAS, "Com prova social", _g["prova_social"], "#22c55e"),
                 ]
-                _g_sinais_html = "".join(
-                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;'
-                    'padding:8px 0;border-bottom:1px solid #eef2f7;">'
-                    f'<span style="font-size:11px;color:#405068;font-weight:600;">{_rotulo}</span>'
-                    f'<strong style="font-size:12px;color:#4285f4;">{_valor}</strong></div>'
-                    for _rotulo, _valor in _g_sinais
-                )
+
+                def _g_barra_leitura(_icone, _rotulo, _valor, _cor):
+                    _pct = round(_valor / _g_total * 100) if _g_total else 0
+                    return (
+                        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+                        f'<div style="width:22px;height:22px;border-radius:50%;background:{_cor};display:flex;'
+                        f'align-items:center;justify-content:center;color:#fff;flex-shrink:0;">{_icone}</div>'
+                        '<div style="flex:1;min-width:0;"><div style="display:flex;justify-content:space-between;'
+                        'align-items:baseline;margin-bottom:3px;">'
+                        f'<span style="font-size:11px;color:#374151;font-weight:600;">{_rotulo}</span>'
+                        f'<span style="font-size:11px;font-weight:800;color:{_cor};">{_valor}</span></div>'
+                        '<div style="height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;">'
+                        f'<div style="height:100%;width:{_pct}%;background:{_cor};border-radius:3px;"></div>'
+                        '</div></div></div>'
+                    )
+
+                _g_sinais_html = "".join(_g_barra_leitura(*_item) for _item in _g_sinais)
+                _g_destinos_html = "".join(
+                    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;'
+                    'padding:7px 0;border-bottom:1px solid #eef2f7;">'
+                    f'<span style="font-size:11px;color:#405068;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{html.escape(_dom)}</span>'
+                    f'<strong style="font-size:11px;color:#4285f4;">{_qtd}</strong></div>'
+                    for _dom, _qtd in _g.get("destinos", [])
+                ) or '<div style="font-size:11px;color:#9ca3af;font-style:italic;">Sem destino identificado</div>'
+                _g_palavras_html = "".join(
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:16px;'
+                    f'background:#eff6ff;color:#1d4ed8;font-size:10px;font-weight:700;">{html.escape(_pal)} '
+                    f'<small style="opacity:.65;">{_qtd}</small></span>'
+                    for _pal, _qtd in _g.get("palavras", [])
+                ) or '<span style="font-size:11px;color:#9ca3af;">Sem texto suficiente para análise</span>'
+                _g_ext_pct = round(_g["ads_com_extensao"] / _g_total * 100) if _g_total else 0
                 _google_ads_content = (
                     '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
@@ -22130,8 +22244,25 @@ function setHeightGeral(isOpen) {{
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Leitura dos anúncios</div>'
                     f'<div style="font-size:11px;font-weight:800;color:#4285f4;">Score {_g_score["score"]}/100</div>'
-                    '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"/>'
-                    + _g_sinais_html + '</div></div>'
+                    '</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px;"/>'
+                    + _g_sinais_html + '</div>'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Destinos dos anúncios</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>' + _g_destinos_html + '</div>'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;margin-bottom:10px;">Palavras mais usadas</div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
+                    '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + _g_palavras_html + '</div></div>'
+                    '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
+                    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+                    '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Extensões</div>'
+                    f'<strong style="font-size:12px;color:#4285f4;">{_g_ext_pct}%</strong></div>'
+                    '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 10px;"/>'
+                    f'<div style="font-size:11px;color:#405068;line-height:1.6;"><strong>{_g["ads_com_extensao"]}</strong> de {_g["total"]} anúncios usam extensões. '
+                    f'Total identificado: <strong>{_g["total_extensoes"]}</strong>.</div>'
+                    '<div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:10px;">'
+                    f'<div style="height:100%;width:{_g_ext_pct}%;background:#4285f4;border-radius:4px;"></div></div></div>'
+                    '</div>'
                 )
             else:
                 _google_ads_content = (
@@ -22253,7 +22384,7 @@ function setHeightGeral(isOpen) {{
                     _gads_entry_leve = _gads_cache_completo.get(_nome_emp, {}) or {}
                     _gads_lista_leve = _gads_entry_leve.get("data", []) if _gads_entry_leve else []
                     if _gads_lista_leve:
-                        _gads_info_leve = calcular_categorias_ads(_gads_lista_leve)
+                        _gads_info_leve = calcular_categorias_google_ads(_gads_lista_leve)
                         _scores_ads_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])
                     if _scores_ads_leve:
                         _areas_leve.append(round(sum(_scores_ads_leve) / len(_scores_ads_leve)))

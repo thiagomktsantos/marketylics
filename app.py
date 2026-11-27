@@ -44911,15 +44911,8 @@ html, body { background: transparent; overflow: hidden; }
                 )
                 if st.button("Limpar cache", key="_uso_limpar_cache_meta", use_container_width=True,
                              disabled=not bool(st.session_state.get("ads_cache"))):
-                    st.session_state.ads_cache = {}
-                    st.session_state.ads_erro = {}
-                    try:
-                        _salvar_blob_ci_dados_v291(_user_id_uso, "ads_cache", {})
-                    except Exception as _exc_cache_meta:
-                        st.toast(f"Não foi possível limpar o cache da Meta: {_exc_cache_meta}", icon="⚠️")
-                    else:
-                        st.toast("Cache da Meta Ads limpo.", icon="✅")
-                        st.rerun()
+                    st.session_state["_uso_cache_confirmar"] = "meta"
+                    st.rerun()
 
         with _col_cache_google:
             with st.container(key="_uso_cache_google"):
@@ -44930,16 +44923,8 @@ html, body { background: transparent; overflow: hidden; }
                 )
                 if st.button("Limpar cache", key="_uso_limpar_cache_google", use_container_width=True,
                              disabled=not bool(_cache_google_uso)):
-                    st.session_state.gads_cache = {}
-                    st.session_state.gads_erro = {}
-                    try:
-                        _salvar_blob_ci_dados_v291(_user_id_uso, "gads_cache", {})
-                        _excluir_cache_gads_r2_usuario(_user_id_uso)
-                    except Exception as _exc_cache_google:
-                        st.toast(f"Não foi possível limpar o cache do Google: {_exc_cache_google}", icon="⚠️")
-                    else:
-                        st.toast("Cache do Google Ads limpo.", icon="✅")
-                        st.rerun()
+                    st.session_state["_uso_cache_confirmar"] = "google"
+                    st.rerun()
 
         with _col_cache_redes:
             with st.container(key="_uso_cache_redes"):
@@ -44950,15 +44935,85 @@ html, body { background: transparent; overflow: hidden; }
                 )
                 if st.button("Limpar cache", key="_uso_limpar_cache_redes", use_container_width=True,
                              disabled=not bool((st.session_state.get("metricas_redes") or {}).get("dados"))):
-                    _cache_redes_vazio = {"ultima_coleta": "", "dados": []}
-                    st.session_state.metricas_redes = _cache_redes_vazio
-                    try:
-                        _salvar_blob_ci_dados_v291(_user_id_uso, "metricas_redes", _cache_redes_vazio)
-                    except Exception as _exc_cache_redes:
-                        st.toast(f"Não foi possível limpar o cache das redes: {_exc_cache_redes}", icon="⚠️")
-                    else:
-                        st.toast("Cache de Redes Sociais limpo.", icon="✅")
+                    st.session_state["_uso_cache_confirmar"] = "redes"
+                    st.rerun()
+
+        _cache_a_confirmar = st.session_state.get("_uso_cache_confirmar")
+        if _cache_a_confirmar in ("meta", "google", "redes"):
+            _cache_confirmacao_info = {
+                "meta": ("Meta Ads", _cache_meta_qtd, "anúncios"),
+                "google": ("Google Ads", _cache_google_qtd, "anúncios"),
+                "redes": ("Redes Sociais", _cache_redes_qtd, "perfis"),
+            }
+            _nome_cache_conf, _qtd_cache_conf, _unidade_cache_conf = _cache_confirmacao_info[_cache_a_confirmar]
+
+            st.markdown("""
+            <style>
+            .st-key-_uso_cache_confirmacao {
+                background:#fff7ed;
+                border:1px solid #fed7aa;
+                border-radius:14px;
+                padding:15px 17px 13px 17px;
+                margin-top:12px;
+            }
+            .st-key-_uso_cache_confirmacao [data-testid="stHorizontalBlock"] {
+                max-width:360px;
+                margin-left:auto;
+            }
+            .st-key-_uso_cache_cancelar button,
+            .st-key-_uso_cache_confirmar_limpeza button {
+                min-height:36px !important;
+                border-radius:9px !important;
+                font-size:12px !important;
+                font-weight:600 !important;
+            }
+            .st-key-_uso_cache_confirmar_limpeza button {
+                background:#dc2626 !important;
+                border-color:#dc2626 !important;
+                color:#ffffff !important;
+            }
+            .st-key-_uso_cache_confirmar_limpeza button:hover {
+                background:#b91c1c !important;
+                border-color:#b91c1c !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            with st.container(key="_uso_cache_confirmacao"):
+                st.markdown(
+                    f"<div style='font-size:13px;font-weight:800;color:#9a3412'>Confirmar limpeza de {_nome_cache_conf}</div>"
+                    f"<div style='font-size:12px;color:#7c2d12;margin-top:3px'>"
+                    f"Serão removidos {_qtd_cache_conf} {_unidade_cache_conf} do cache. "
+                    "Essa ação não pode ser desfeita.</div>",
+                    unsafe_allow_html=True,
+                )
+                _espaco_conf, _col_cancelar_cache, _col_confirmar_cache = st.columns([4, 1, 1.35])
+                with _col_cancelar_cache:
+                    if st.button("Cancelar", key="_uso_cache_cancelar", use_container_width=True):
+                        st.session_state.pop("_uso_cache_confirmar", None)
                         st.rerun()
+                with _col_confirmar_cache:
+                    if st.button("Confirmar limpeza", key="_uso_cache_confirmar_limpeza", use_container_width=True):
+                        try:
+                            if _cache_a_confirmar == "meta":
+                                _salvar_blob_ci_dados_v291(_user_id_uso, "ads_cache", {})
+                                st.session_state.ads_cache = {}
+                                st.session_state.ads_erro = {}
+                            elif _cache_a_confirmar == "google":
+                                _salvar_blob_ci_dados_v291(_user_id_uso, "gads_cache", {})
+                                _excluir_cache_gads_r2_usuario(_user_id_uso)
+                                st.session_state.gads_cache = {}
+                                st.session_state.gads_erro = {}
+                            else:
+                                _cache_redes_vazio = {"ultima_coleta": "", "dados": []}
+                                _salvar_blob_ci_dados_v291(_user_id_uso, "metricas_redes", _cache_redes_vazio)
+                                st.session_state.metricas_redes = _cache_redes_vazio
+                        except Exception as _exc_limpeza_cache_uso:
+                            st.toast(f"Não foi possível limpar o cache: {_exc_limpeza_cache_uso}", icon="⚠️")
+                        else:
+                            st.session_state.pop("_uso_cache_confirmar", None)
+                            st.toast(f"Cache de {_nome_cache_conf} limpo.", icon="✅")
+                            st.rerun()
 
     with aba_perfil_plano:
         st.markdown(

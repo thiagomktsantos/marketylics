@@ -22217,6 +22217,7 @@ function setHeightGeral(isOpen) {{
                     _score_titulo = "Score de Perfil"
 
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
+                _perfil_checklist_classe = "profile-score-checklist" if _is_concorrente_score else "profile-score-checklist two-cols"
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
@@ -22230,15 +22231,15 @@ function setHeightGeral(isOpen) {{
                     '</div></div></div>'
                     '</div>'
                     '<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
-                    '<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
-                    '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:130px;">'
+                    '<div class="profile-score-main">'
+                    '<div class="profile-score-visual">'
                     + score_ring_svg +
                     f'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;'
                     f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
                     f'{m["score_icon"]} {_score_lbl_exibicao}</div>'
                     '</div>'
-                    '<div style="flex:1;display:flex;justify-content:center;">'
-                    f'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">{score_checklist_html}</div>'
+                    '<div class="profile-score-checklist-wrap">'
+                    f'<div class="{_perfil_checklist_classe}">{score_checklist_html}</div>'
                     '</div>'
                     '</div>'
                     '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
@@ -23564,6 +23565,38 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     justify-content:center;
 }}
 .g-ext-list {{ min-width:0; }}
+.profile-score-main {{
+    display:grid;
+    grid-template-columns:150px minmax(0,1fr);
+    gap:22px;
+    align-items:center;
+    margin-bottom:14px;
+}}
+.profile-score-visual {{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-width:0;
+}}
+.profile-score-checklist-wrap {{
+    min-width:0;
+    display:flex;
+    align-items:center;
+}}
+.profile-score-checklist {{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+}}
+.profile-score-checklist.two-cols {{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-rows:repeat(3,auto);
+    grid-auto-flow:column;
+    column-gap:16px;
+    row-gap:10px;
+}}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
@@ -23590,6 +23623,19 @@ body {{ padding-top:16px; padding-bottom:8px; }}
         border-bottom:1px solid #eef2f7;
     }}
     .g-ext-list {{ width:100%; }}
+    .profile-score-main {{ grid-template-columns:1fr; gap:16px; }}
+    .profile-score-visual {{
+        padding-bottom:14px;
+        border-bottom:1px solid #eef2f7;
+    }}
+    .profile-score-checklist.two-cols {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+}}
+@media (max-width:400px) {{
+    .profile-score-checklist.two-cols {{
+        grid-template-columns:1fr;
+        grid-template-rows:none;
+        grid-auto-flow:row;
+    }}
 }}
 @media (max-width:720px) {{ .cols-wrap {{ grid-template-columns:1fr; }} .empresa-card {{ padding:0 4px; }} }}
 </style>

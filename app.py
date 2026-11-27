@@ -22188,9 +22188,9 @@ function setHeightGeral(isOpen) {{
                 if _is_concorrente_score:
                     score_checklist_html = (
                         '<div class="profile-score-competitor-group">'
-                        + _grupo_criterios_html("Pontos fortes do concorrente", _criterios_ok, _icon_ok, "#15803d")
+                        + _grupo_criterios_html("", _criterios_ok, _icon_ok, "#15803d", False)
                         + '</div><div class="profile-score-competitor-group">'
-                        + _grupo_criterios_html("Oportunidades para sua empresa", _criterios_nok, _icon_nok, "#b45309")
+                        + _grupo_criterios_html("", _criterios_nok, _icon_nok, "#b45309", False)
                         + '</div>'
                     )
                 else:
@@ -23798,9 +23798,9 @@ function buildSeoColumn(d,colEl) {{
     }}
     var checklistHtml=isCompetitor
         ? '<div class="profile-score-competitor-group">'
-          +grupoSeoHtml('Pontos fortes do concorrente',itensOk,iconOk,'#15803d',true)
+          +grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
           +'</div><div class="profile-score-competitor-group">'
-          +grupoSeoHtml('Oportunidades para sua empresa',itensNok,iconNok,'#b45309',true)
+          +grupoSeoHtml('',itensNok,iconNok,'#b45309',false)
           +'</div>'
         : grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
           +grupoSeoHtml('',itensNok,iconNok,'#b45309',false);

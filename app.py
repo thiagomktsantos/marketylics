@@ -27120,7 +27120,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:56px; border-radius:10px; border:none;
+    width:100%; height:62px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
@@ -34283,7 +34283,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:56px; border-radius:10px; border:none;
+    width:100%; height:62px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;

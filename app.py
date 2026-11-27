@@ -40777,11 +40777,14 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-periodo {{
-    width:100%; height:19px; border:none; background:transparent;
-    color:#64748b; font-size:11px; font-weight:500; text-align:center;
-    font-family:'DM Sans',sans-serif; padding:0 18px 0 4px;
-    outline:none; cursor:pointer;
+    width:100%; height:26px; border:1px solid #c5d0dc; background:#eef2f6;
+    color:#536579; font-size:10.5px; font-weight:500; text-align:center;
+    font-family:'DM Sans',sans-serif; padding:0 22px 0 8px;
+    outline:none; cursor:pointer; border-radius:8px;
+    transition:border-color .15s ease, background .15s ease;
 }}
+.ctrl-periodo:hover {{ background:#ffffff; border-color:#aab9c9; }}
+.ctrl-periodo:focus {{ background:#ffffff; border-color:#0e2a47; }}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
@@ -41136,7 +41139,7 @@ function abrirModal() {{
 
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 64) + 70 + 28, 330) : 0;
-    var h = 90 + (isOpen ? listH + 10 : 0);
+    var h = 106 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -41167,7 +41170,7 @@ function setHeight(isOpen) {{
     setHeight(false);
 }})();
 </script>
-""", height=92, scrolling=False)
+""", height=108, scrolling=False)
 
     ghost_coletar_key = "btn_coletar_dados_redes"
     st.markdown(f"""
@@ -41212,13 +41215,13 @@ function setHeight(isOpen) {{
     st.markdown(f"""
         <div style="display:flex;align-items:center;gap:12px;margin:2px 0 34px 0;">
             <div style="height:1px;background:#dfe5ec;flex:1"></div>
-            <div style="display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;
-                        font-size:11px;color:#7b8794;white-space:nowrap">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7b8794"
+            <div style="display:flex;align-items:center;gap:4px;font-family:'DM Sans',sans-serif;
+                        font-size:9.5px;color:#8a97a6;white-space:nowrap">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8a97a6"
                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                 </svg>
-                Última coleta: <strong style="font-weight:600;color:#64748b">{_ultima_coleta_redes_safe}</strong>
+                Última coleta: <strong style="font-size:9.5px;font-weight:600;color:#718096">{_ultima_coleta_redes_safe}</strong>
             </div>
         </div>
     """, unsafe_allow_html=True)

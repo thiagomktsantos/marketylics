@@ -20984,6 +20984,104 @@ elif st.session_state.pagina == "geral":
     )
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
+    # O cache do Google guarda o anúncio, enquanto o conteúdo reconhecido da
+    # imagem fica na tabela de mídias. Carregamos esse complemento uma única
+    # vez para que os indicadores do Dashboard usem os mesmos dados dos cards.
+    _gads_ocr_por_url_dashboard = {}
+    _gads_ocr_por_ad_dashboard = {}
+    try:
+        _gads_urls_dashboard = set()
+        _gads_ids_dashboard = set()
+        for _entrada_gads_dashboard in _gads_cache_completo.values():
+            for _ad_gads_dashboard in ((_entrada_gads_dashboard or {}).get("data") or []):
+                _ad_id_dashboard = str(
+                    _ad_gads_dashboard.get("ad_id")
+                    or _ad_gads_dashboard.get("id")
+                    or _ad_gads_dashboard.get("archive_id")
+                    or ""
+                ).strip()
+                if _ad_id_dashboard:
+                    _gads_ids_dashboard.add(_ad_id_dashboard)
+                for _campo_midia_dashboard in ("images_b64", "images", "carousel_images"):
+                    for _url_dashboard in (_ad_gads_dashboard.get(_campo_midia_dashboard) or []):
+                        _url_dashboard = str(_url_dashboard or "").strip()
+                        if _url_dashboard.startswith(("http://", "https://")):
+                            _gads_urls_dashboard.add(_url_dashboard)
+
+        def _registrar_ocr_dashboard(_row_dashboard):
+            if not isinstance(_row_dashboard, dict):
+                return
+            for _url_row_dashboard in (
+                _row_dashboard.get("url_cdn"), _row_dashboard.get("url_origem")
+            ):
+                _url_row_dashboard = str(_url_row_dashboard or "").strip()
+                if _url_row_dashboard:
+                    _gads_ocr_por_url_dashboard[_url_row_dashboard] = _row_dashboard
+            _id_row_dashboard = str(_row_dashboard.get("ad_id") or "").strip()
+            if _id_row_dashboard:
+                _anterior_dashboard = _gads_ocr_por_ad_dashboard.get(_id_row_dashboard)
+                if (
+                    not _anterior_dashboard
+                    or _row_dashboard.get("ocr_estruturado")
+                    or _row_dashboard.get("ocr_texto")
+                ):
+                    _gads_ocr_por_ad_dashboard[_id_row_dashboard] = _row_dashboard
+
+        _campos_ocr_dashboard = "url_cdn, url_origem, ad_id, ocr_texto, ocr_estruturado"
+        for _lista_dashboard, _campo_dashboard in (
+            (list(_gads_urls_dashboard), "url_cdn"),
+            (list(_gads_ids_dashboard), "ad_id"),
+        ):
+            for _ini_dashboard in range(0, len(_lista_dashboard), 120):
+                _lote_dashboard = _lista_dashboard[_ini_dashboard:_ini_dashboard + 120]
+                if not _lote_dashboard:
+                    continue
+                _res_ocr_dashboard = _supabase_resiliente(
+                    lambda _lote=_lote_dashboard, _campo=_campo_dashboard: (
+                        supabase.table("midias")
+                        .select(_campos_ocr_dashboard)
+                        .eq("user_id", st.session_state.user.id)
+                        .eq("tipo", "imagem")
+                        .in_(_campo, _lote)
+                        .execute()
+                    ),
+                    operacao="carregar_ocr_dashboard_google_ads",
+                    tentativas=3,
+                )
+                for _row_dashboard in (_res_ocr_dashboard.data or []):
+                    _registrar_ocr_dashboard(_row_dashboard)
+    except Exception as _exc_ocr_dashboard:
+        print(f"[DASH-GADS] Falha ao complementar OCR: {_exc_ocr_dashboard!r}", flush=True)
+
+    def _enriquecer_gads_dashboard(_ads_dashboard):
+        _resultado_dashboard = []
+        for _ad_dashboard in (_ads_dashboard or []):
+            _ad_enriquecido_dashboard = dict(_ad_dashboard or {})
+            _row_dashboard = None
+            _id_dashboard = str(
+                _ad_enriquecido_dashboard.get("ad_id")
+                or _ad_enriquecido_dashboard.get("id")
+                or _ad_enriquecido_dashboard.get("archive_id")
+                or ""
+            ).strip()
+            if _id_dashboard:
+                _row_dashboard = _gads_ocr_por_ad_dashboard.get(_id_dashboard)
+            if not _row_dashboard:
+                for _campo_dashboard in ("images_b64", "images", "carousel_images"):
+                    for _url_dashboard in (_ad_enriquecido_dashboard.get(_campo_dashboard) or []):
+                        _row_dashboard = _gads_ocr_por_url_dashboard.get(str(_url_dashboard or "").strip())
+                        if _row_dashboard:
+                            break
+                    if _row_dashboard:
+                        break
+            if _row_dashboard:
+                if _row_dashboard.get("ocr_texto"):
+                    _ad_enriquecido_dashboard["ocr_texto"] = _row_dashboard.get("ocr_texto")
+                if _row_dashboard.get("ocr_estruturado"):
+                    _ad_enriquecido_dashboard["ocr_estruturado"] = _row_dashboard.get("ocr_estruturado")
+            _resultado_dashboard.append(_ad_enriquecido_dashboard)
+        return _resultado_dashboard
+
     _page_header_geral = st.container(key="page_header_geral")
     # O controle do Dashboard possui apenas o seletor de empresa; por isso,
     # ocupa uma área menor do cabeçalho do que os controles das demais páginas.
@@ -21526,6 +21624,11 @@ function setHeightGeral(isOpen) {{
 
         def _estruturado(_ad):
             _e = _ad.get("ocr_estruturado") or _ad.get("estruturado") or {}
+            if isinstance(_e, str):
+                try:
+                    _e = json.loads(_e)
+                except Exception:
+                    _e = {}
             return _e if isinstance(_e, dict) else {}
 
         def _texto(_ad):
@@ -21751,7 +21854,9 @@ function setHeightGeral(isOpen) {{
             ads_info  = calcular_categorias_ads(ads_lista) if tem_ads else None
 
             gads_entry = _gads_cache_completo.get(e["nome"], {}) or {}
-            gads_lista = gads_entry.get("data", []) if gads_entry else []
+            gads_lista = _enriquecer_gads_dashboard(
+                gads_entry.get("data", []) if gads_entry else []
+            )
             tem_gads = len(gads_lista) > 0
             gads_info = calcular_categorias_google_ads(gads_lista) if tem_gads else None
 
@@ -22077,7 +22182,7 @@ function setHeightGeral(isOpen) {{
                 plat_total = sum(plat_dict.values()) or 1
                 plat_items = sorted(plat_dict.items(), key=lambda x: x[1], reverse=True)[:5]
 
-                plat_donuts = '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 5px;align-items:start;">'
+                plat_donuts = '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;align-items:start;">'
                 for plat_key, plat_val in plat_items:
                     cor_plat, label_plat, _ = PLAT_ICONS_SVG.get(plat_key, ("#64748b", plat_key.capitalize(), ""))
                     pct_plat = round(plat_val / plat_total * 100)
@@ -22382,7 +22487,9 @@ function setHeightGeral(isOpen) {{
                         _ads_info_leve = calcular_categorias_ads(_ads_lista_leve)
                         _scores_ads_leve.append(calcular_score_ads(_ads_info_leve)["score"])
                     _gads_entry_leve = _gads_cache_completo.get(_nome_emp, {}) or {}
-                    _gads_lista_leve = _gads_entry_leve.get("data", []) if _gads_entry_leve else []
+                    _gads_lista_leve = _enriquecer_gads_dashboard(
+                        _gads_entry_leve.get("data", []) if _gads_entry_leve else []
+                    )
                     if _gads_lista_leve:
                         _gads_info_leve = calcular_categorias_google_ads(_gads_lista_leve)
                         _scores_ads_leve.append(calcular_score_google_ads(_gads_info_leve)["score"])

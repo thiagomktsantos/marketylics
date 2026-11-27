@@ -12187,17 +12187,17 @@ def registrar_execucao_acao(
     """Grava a execução na tabela atividades (histórico/cooldown) E
     incrementa o contador rápido em uso_organizacao (cota mensal)."""
     if not user_id:
-        return
-    try:
-        supabase.table("atividades").insert({
-            "user_id": user_id,
-            "tipo": tipo_acao,
-            "titulo": titulo or tipo_acao,
-            "status": "concluido",
-            "detalhes": detalhes or {},
-        }).execute()
-    except Exception:
-        pass
+        return None
+    # Centraliza a criação no mesmo caminho resiliente usado pelas demais
+    # notificações. O insert simples anterior podia falhar silenciosamente e
+    # a análise terminava sem aparecer no histórico de Notificações.
+    atividade_id = criar_atividade(
+        user_id,
+        tipo_acao,
+        titulo or tipo_acao,
+        detalhes or {},
+        status="concluido",
+    )
     try:
         supabase.rpc("incrementar_uso_organizacao", {
             "p_user_id": user_id,
@@ -12206,6 +12206,7 @@ def registrar_execucao_acao(
         }).execute()
     except Exception:
         pass  # se a função ainda não existir (migração não rodada), não quebra nada
+    return atividade_id
 
 class _RespostaBloqueada:
     """Objeto-substituto com atributo .text — mesma interface da resposta
@@ -39731,6 +39732,16 @@ setHeight(false);
         def _md_to_html_insights(txt):
             if not txt:
                 return ""
+            # Remove o preâmbulo técnico e os separadores do relatório antes
+            # da conversão. Eles são redundantes dentro do item expandido.
+            txt = _re_ins.sub(
+                r'^\s*Aqui\b.*$',
+                '',
+                txt,
+                count=1,
+                flags=_re_ins.IGNORECASE | _re_ins.MULTILINE,
+            )
+            txt = _re_ins.sub(r'^\s*---+\s*$', '', txt, flags=_re_ins.MULTILINE)
             txt = txt.replace("&", "&amp;")
             txt = _re_ins.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', txt)
             txt = _re_ins.sub(r'^### (.+)$', r'<h3>\1</h3>', txt, flags=_re_ins.MULTILINE)
@@ -39848,6 +39859,11 @@ setHeight(false);
                         hdr_txt_clean = _re_ins.sub(r'<[^>]+>', '', hdr_txt)
                         conteudo = partes[i2 + 1] if i2 + 1 < len(partes) else ""
                         i2 += 1
+                        # A identificação inicial "Battle Card" é redundante com
+                        # o título do item e não faz parte da análise exibida.
+                        if hdr_txt_clean.strip().lower().startswith('battle card'):
+                            i2 += 1
+                            continue
                         icon_svg, icon_bg = _get_icon_for_title(hdr_txt_clean)
                         title_color = _get_title_color(hdr_txt_clean)
                         caixa = (

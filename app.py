@@ -27086,7 +27086,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-trigger {{
     background:#fff; border:2px solid #0e2a47; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
-    cursor:pointer; transition:box-shadow 0.15s; width:100%;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%; height:56px;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
 .dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
@@ -39537,11 +39537,11 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-trigger {{
     background:#fff; border:2px solid #0e2a47; border-radius:12px;
     padding:8px 12px; display:flex; align-items:center; gap:10px;
-    cursor:pointer; transition:box-shadow 0.15s; width:100%;
+    cursor:pointer; transition:box-shadow 0.15s; width:100%; height:56px;
 }}
 .dd-trigger:hover {{ box-shadow:0 2px 10px rgba(14,42,71,0.16); }}
 .dd-icon {{
-    width:30px; height:30px; border-radius:9px; background:#0e2a47;
+    width:36px; height:36px; border-radius:9px; background:#0e2a47;
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }}
 .dd-icon svg {{ width:18px; height:18px; }}
@@ -39583,10 +39583,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     color:#536579; font-size:10px; font-weight:500; text-align:center;
     font-family:'DM Sans',sans-serif; padding:0 22px 0 8px;
     outline:none; cursor:pointer; border-radius:8px;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23536579' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
     transition:border-color .15s ease, background .15s ease;
 }}
-.ctrl-select:hover {{ background:#fff; border-color:#aab9c9; }}
-.ctrl-select:focus {{ background:#fff; border-color:#0e2a47; }}
+.ctrl-select:hover {{ background-color:#fff; border-color:#aab9c9; }}
+.ctrl-select:focus {{ background-color:#fff; border-color:#0e2a47; }}
 .ctrl-btn {{
     width:100%; height:38px; border-radius:10px; border:none;
     font-size:12px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;

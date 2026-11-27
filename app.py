@@ -46374,6 +46374,20 @@ html, body { background: transparent; overflow: hidden; }
             background: #0e2a47 !important;
             color: #ffffff !important;
         }
+        /* Aproxima o paginador inferior do último card e reduz a sobra
+           abaixo dele, sem alterar o espaçamento do paginador do topo. */
+        [data-testid="stHorizontalBlock"]:has([class*="st-key-_notif_rodape_v144_"]) {
+            margin-top: -42px !important;
+            margin-bottom: -28px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        [data-testid="stElementContainer"]:has(> [data-testid="stHorizontalBlock"] [class*="st-key-_notif_rodape_v144_"]) {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
         /* O botão de ajuda do checkbox não faz parte da paginação. */
         .st-key-_bloco_todas_topo .st-key-_selecionar_todas_notif_cards button {
             width: 18px !important;

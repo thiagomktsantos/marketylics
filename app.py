@@ -22234,16 +22234,18 @@ function setHeightGeral(isOpen) {{
                     '<div class="profile-score-main">'
                     '<div class="profile-score-visual">'
                     + score_ring_svg +
-                    f'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;'
-                    f'font-size:12px;font-weight:800;background:{m["score_cor"]}1a;color:{m["score_cor"]};white-space:nowrap;margin-top:8px;">'
-                    f'{m["score_icon"]} {_score_lbl_exibicao}</div>'
                     '</div>'
                     '<div class="profile-score-checklist-wrap">'
                     f'<div class="{_perfil_checklist_classe}">{score_checklist_html}</div>'
                     '</div>'
                     '</div>'
-                    '<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;">'
-                    f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{_perfil_bar_cor});"></div></div>'
+                    '<div class="profile-score-progress">'
+                    '<div class="profile-score-progress-bar">'
+                    f'<div style="height:100%;width:{m["score_val"]}%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,{_perfil_bar_cor});"></div>'
+                    '</div>'
+                    f'<div class="profile-score-badge" style="background:{m["score_cor"]}1a;color:{m["score_cor"]};">'
+                    f'{m["score_icon"]} {_score_lbl_exibicao}</div>'
+                    '</div>'
                     f'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">{_score_rodape}</div>'
                     '</div>'
                 )
@@ -23596,6 +23598,16 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     grid-auto-flow:column;
     column-gap:16px;
     row-gap:10px;
+}}
+.profile-score-progress {{ display:flex; align-items:center; gap:10px; }}
+.profile-score-progress-bar {{
+    flex:1; min-width:60px; height:8px; background:#e5e7eb;
+    border-radius:4px; overflow:hidden;
+}}
+.profile-score-badge {{
+    display:inline-flex; align-items:center; gap:5px; padding:5px 10px;
+    border-radius:20px; font-size:11px; font-weight:800;
+    white-space:nowrap; flex-shrink:0;
 }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;

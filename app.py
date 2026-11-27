@@ -21645,13 +21645,49 @@ function setHeightGeral(isOpen) {{
                     _partes.append(str(_sl))
             return " ".join(str(_p) for _p in _partes if _p).lower()
 
-        def _dominio(_url):
+        def _dominio(_url, _ad=None):
             _url = str(_url or "").strip()
             if not _url:
                 return ""
             try:
-                _alvo = _url if "://" in _url else "https://" + _url
-                return (_urlparse(_alvo).netloc or "").lower().replace("www.", "").split(":")[0]
+                import unicodedata as _unicodedata_dashboard
+
+                def _ascii_dashboard(_valor):
+                    return "".join(
+                        _c for _c in _unicodedata_dashboard.normalize("NFKD", str(_valor or ""))
+                        if not _unicodedata_dashboard.combining(_c)
+                    ).lower()
+
+                _limpa = _ascii_dashboard(_url)
+                _limpa = re.sub(r"^https?\s*[:;/l|.-]+", "", _limpa, flags=re.I)
+                _limpa = re.sub(r"^www\.", "", _limpa, flags=re.I)
+                _limpa = re.sub(r"\s+", "", _limpa)
+
+                # O OCR às vezes cola o nome da empresa antes do domínio:
+                # "Ingresso Válidoingressovalido.com.br". Remove somente esse
+                # prefixo conhecido, sem alterar o domínio verdadeiro.
+                _nome_empresa = _ascii_dashboard((_ad or {}).get("page_name") or "")
+                _nome_empresa = re.sub(r"[^a-z0-9]", "", _nome_empresa)
+                if _nome_empresa and _limpa.startswith(_nome_empresa):
+                    _restante = _limpa[len(_nome_empresa):]
+                    if "." in _restante and not _restante.startswith("."):
+                        _limpa = _restante
+
+                # Corrige separadores que o OCR insere entre COM e BR.
+                _limpa = re.sub(r"([a-z0-9])com[-_.]+br(?=$|[/])", r"\1.com.br", _limpa)
+                _limpa = re.sub(r"(?<!\.)com[-_.]+br(?=$|[/])", ".com.br", _limpa)
+
+                _match = re.search(
+                    r"(?:www\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+                    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)",
+                    _limpa,
+                    flags=re.I,
+                )
+                if not _match:
+                    return ""
+                _dom = _match.group(1).lower().split(":")[0]
+                _tld = _dom.rsplit(".", 1)[-1]
+                return _dom if re.fullmatch(r"[a-z]{2,24}", _tld) else ""
             except Exception:
                 return ""
 
@@ -21671,7 +21707,17 @@ function setHeightGeral(isOpen) {{
                 _contagens["prova_social"] += 1
             if any(_p in _txt for _p in ("agora", "hoje", "últim", "ultim", "limitad", "não perca", "nao perca", "restam")):
                 _contagens["urgencia"] += 1
-            if any(_p in _txt for _p in ("clique", "saiba mais", "compre", "acesse", "cadastre", "inscreva", "solicite")):
+            # CTA direto só existe quando o anúncio traz um CTA explícito.
+            # Verbos presentes no título, descrição ou sitelinks não devem ser
+            # classificados como botão/chamada direta.
+            _e = _estruturado(_ad)
+            _cta_explicito = str(
+                _e.get("cta")
+                or _ad.get("cta")
+                or _ad.get("call_to_action")
+                or ""
+            ).strip()
+            if _cta_explicito:
                 _contagens["cta_direto"] += 1
 
             for _palavra in re.findall(r"[a-záéíóúàâêôãõç]{4,}", _txt, flags=re.I):
@@ -21679,12 +21725,11 @@ function setHeightGeral(isOpen) {{
                 if _palavra not in _stop:
                     _palavras[_palavra] += 1
 
-            _e = _estruturado(_ad)
             _urls = [
-                _e.get("url_final"), _e.get("url_exibida"), _ad.get("destination_url"),
-                _ad.get("final_url"), _ad.get("display_url"), _ad.get("website_url"),
+                _ad.get("destination_url"), _ad.get("final_url"), _ad.get("website_url"),
+                _ad.get("display_url"), _e.get("url_final"), _e.get("url_exibida"),
             ]
-            _dest = next((_dominio(_u) for _u in _urls if _dominio(_u)), "")
+            _dest = next((_dominio(_u, _ad) for _u in _urls if _dominio(_u, _ad)), "")
             if _dest:
                 _destinos[_dest] += 1
 

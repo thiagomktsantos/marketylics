@@ -22187,8 +22187,11 @@ function setHeightGeral(isOpen) {{
 
                 if _is_concorrente_score:
                     score_checklist_html = (
-                        _grupo_criterios_html("Pontos fortes do concorrente", _criterios_ok, _icon_ok, "#15803d")
+                        '<div class="profile-score-competitor-group">'
+                        + _grupo_criterios_html("Pontos fortes do concorrente", _criterios_ok, _icon_ok, "#15803d")
+                        + '</div><div class="profile-score-competitor-group">'
                         + _grupo_criterios_html("Oportunidades para sua empresa", _criterios_nok, _icon_nok, "#b45309")
+                        + '</div>'
                     )
                 else:
                     score_checklist_html = (
@@ -22217,7 +22220,7 @@ function setHeightGeral(isOpen) {{
                     _score_titulo = "Score de Perfil"
 
                 _perfil_bar_cor = "#22c55e" if m["score_val"] >= 80 else ("#f59e0b" if m["score_val"] >= 40 else "#ef4444")
-                _perfil_checklist_classe = "profile-score-checklist" if _is_concorrente_score else "profile-score-checklist two-cols"
+                _perfil_checklist_classe = "profile-score-competitor-groups" if _is_concorrente_score else "profile-score-checklist two-cols"
 
                 score_block_html = (
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;">'
@@ -22464,6 +22467,11 @@ function setHeightGeral(isOpen) {{
 
                 def _g_barra_leitura(_icone, _rotulo, _valor, _cor):
                     _pct = round(_valor / _g_total * 100) if _g_total else 0
+                    if _rotulo == "Reconhecimento de marca":
+                        _icone = (
+                            _icone.replace('width="26" height="26"', 'width="16" height="16"')
+                            .replace('stroke="#9ca3af"', 'stroke="#fff"')
+                        )
                     return (
                         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
                         f'<div style="width:22px;height:22px;border-radius:50%;background:{_cor};display:flex;'
@@ -23602,6 +23610,19 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     column-gap:16px;
     row-gap:10px;
 }}
+.profile-score-competitor-groups {{
+    width:100%;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:18px;
+    align-items:start;
+}}
+.profile-score-competitor-group {{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+}}
 .profile-score-progress {{ display:flex; align-items:center; gap:10px; }}
 .profile-score-progress-bar {{
     flex:1; min-width:60px; height:8px; background:#e5e7eb;
@@ -23646,6 +23667,7 @@ body {{ padding-top:16px; padding-bottom:8px; }}
         border-bottom:1px solid #eef2f7;
     }}
     .profile-score-checklist.two-cols {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+    .profile-score-competitor-groups {{ grid-template-columns:1fr; gap:14px; }}
 }}
 @media (max-width:400px) {{
     .profile-score-checklist.two-cols {{
@@ -23775,12 +23797,15 @@ function buildSeoColumn(d,colEl) {{
         return html;
     }}
     var checklistHtml=isCompetitor
-        ? grupoSeoHtml('Pontos fortes do concorrente',itensOk,iconOk,'#15803d',true)
+        ? '<div class="profile-score-competitor-group">'
+          +grupoSeoHtml('Pontos fortes do concorrente',itensOk,iconOk,'#15803d',true)
+          +'</div><div class="profile-score-competitor-group">'
           +grupoSeoHtml('Oportunidades para sua empresa',itensNok,iconNok,'#b45309',true)
+          +'</div>'
         : grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
           +grupoSeoHtml('',itensNok,iconNok,'#b45309',false);
     var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
-    var seoChecklistClass=isCompetitor?'profile-score-checklist':'profile-score-checklist two-cols';
+    var seoChecklistClass=isCompetitor?'profile-score-competitor-groups':'profile-score-checklist two-cols';
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
     scoreBlock.innerHTML=

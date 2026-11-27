@@ -23764,19 +23764,36 @@ function buildSeoColumn(d,colEl) {{
     if(topWords.length>0){{
         var bigrams=topWords.filter(function(w){{return w.word.indexOf(' ')>-1;}});
         var unigrams=topWords.filter(function(w){{return w.word.indexOf(' ')===-1;}});
-        function makeChip(item,idx,isBigram){{
-            var col=COLOR_PALETTE[idx%COLOR_PALETTE.length];
+        function makeChip(item,isBigram){{
+            var bg=isBigram?'#f5f3ff':'#eff6ff';
+            var cor=isBigram?'#6d28d9':'#1d4ed8';
             var countBadge=item.count>1?'<span class="termo-count">'+item.count+'x</span>':'';
-            return '<span class="termo-chip'+(isBigram?' termo-chip-bigram':'')+'" style="color:'+col.text+';" title="'+item.count+'x mencionado">'+esc(item.word)+countBadge+'</span>';
+            return '<span style="display:inline-flex;align-items:center;gap:4px;padding:5px 8px;border-radius:16px;background:'+bg+';color:'+cor+';font-size:10px;font-weight:700;" title="'+item.count+'x mencionado">'+esc(item.word)+countBadge+'</span>';
         }}
-        var bigramsHtml=bigrams.map(function(item,i){{return makeChip(item,i,true);}}).join('');
-        var unigramsHtml=unigrams.map(function(item,i){{return makeChip(item,i,false);}}).join('');
+        var bigramsHtml=bigrams.map(function(item){{return makeChip(item,true);}}).join('');
+        var unigramsHtml=unigrams.map(function(item){{return makeChip(item,false);}}).join('');
+        var tabsUid='seo_termos_'+Math.random().toString(36).slice(2);
         var kwBlock=document.createElement('div');
         kwBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
-        var innerHtml='<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#1a2e4a;margin-bottom:10px;">Termos mais usados</div><hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 12px 0;"/>';
-        if(bigramsHtml)innerHtml+='<div class="termos-sub">Expressões-chave</div><div class="termos-chips">'+bigramsHtml+'</div>';
-        if(unigramsHtml)innerHtml+='<div class="termos-sub">Palavras frequentes</div><div class="termos-chips">'+unigramsHtml+'</div>';
+        var innerHtml='<div style="display:flex;align-items:center;gap:18px;border-bottom:1px solid #e5e7eb;margin-bottom:12px;">'
+            +'<button id="'+tabsUid+'_tab_pal" style="background:none;border:none;border-bottom:2px solid #4285f4;padding:0 0 9px;font-family:DM Sans,sans-serif;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#1a2e4a;cursor:pointer;outline:none;box-shadow:none;appearance:none;">Palavras mais usadas</button>'
+            +'<button id="'+tabsUid+'_tab_expr" style="background:none;border:none;border-bottom:2px solid transparent;padding:0 0 9px;font-family:DM Sans,sans-serif;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:#9ca3af;cursor:pointer;outline:none;box-shadow:none;appearance:none;">Expressões-chave</button>'
+            +'</div>'
+            +'<div id="'+tabsUid+'_pal" style="display:flex;flex-wrap:wrap;gap:6px;">'+(unigramsHtml||'<span style="font-size:11px;color:#9ca3af;">Sem palavras suficientes para análise</span>')+'</div>'
+            +'<div id="'+tabsUid+'_expr" style="display:none;flex-wrap:wrap;gap:6px;">'+(bigramsHtml||'<span style="font-size:11px;color:#9ca3af;">Sem expressões suficientes para análise</span>')+'</div>';
         kwBlock.innerHTML=innerHtml;
+        kwBlock.querySelector('#'+tabsUid+'_tab_pal').onclick=function(){{
+            kwBlock.querySelector('#'+tabsUid+'_pal').style.display='flex';
+            kwBlock.querySelector('#'+tabsUid+'_expr').style.display='none';
+            this.style.color='#1a2e4a';this.style.borderBottomColor='#4285f4';
+            var outro=kwBlock.querySelector('#'+tabsUid+'_tab_expr');outro.style.color='#9ca3af';outro.style.borderBottomColor='transparent';
+        }};
+        kwBlock.querySelector('#'+tabsUid+'_tab_expr').onclick=function(){{
+            kwBlock.querySelector('#'+tabsUid+'_pal').style.display='none';
+            kwBlock.querySelector('#'+tabsUid+'_expr').style.display='flex';
+            this.style.color='#1a2e4a';this.style.borderBottomColor='#8b5cf6';
+            var outro=kwBlock.querySelector('#'+tabsUid+'_tab_pal');outro.style.color='#9ca3af';outro.style.borderBottomColor='transparent';
+        }};
         colEl.appendChild(kwBlock);
     }}
 }}

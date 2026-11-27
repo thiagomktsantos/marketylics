@@ -12007,6 +12007,7 @@ def _formatar_detalhes_atividade(atividade: dict):
     if tipo == "coleta_redes" and ("coletados" in d or "com_erro" in d):
         erros_d = d.get("com_erro") or {}
         nomes_ok = d.get("coletados", [])
+        periodo_dias = int(d.get("periodo_dias") or 0)
         if atividade.get("status") == "em_andamento":
             total_d = d.get("total") or len(d.get("empresas") or [])
             concluidas_d = d.get("concluidas", len(nomes_ok) + len(erros_d))
@@ -12019,14 +12020,39 @@ def _formatar_detalhes_atividade(atividade: dict):
             path, _cor = _ICONE_INFO
             return _svg_icone(path, "currentColor", 14), texto
         total_posts = d.get("total_posts", 0)
-        texto = f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
-        _por_empresa_nv = d.get("por_empresa_novos") or {}
-        if _por_empresa_nv:
-            _partes_nv = [f"{_nome_nv} ({_qtd_nv})" for _nome_nv, _qtd_nv in _por_empresa_nv.items()]
-            texto = f"Novos posts: {', '.join(_partes_nv)}. " + texto
+        _periodo_txt = f"Período: últimos {periodo_dias} dias. " if periodo_dias else ""
+        texto = _periodo_txt + f"Coletados: {', '.join(nomes_ok) or '—'} — {total_posts} posts no total."
+        _por_empresa_posts = d.get("por_empresa_posts") or d.get("por_empresa_novos") or {}
+        if _por_empresa_posts:
+            _partes_posts = [
+                f"{_nome_post} ({_qtd_post})"
+                for _nome_post, _qtd_post in _por_empresa_posts.items()
+            ]
+            texto = f"Postagens baixadas: {', '.join(_partes_posts)}. " + texto
         if erros_d:
             _detalhes_erro_redes = "; ".join(f"{_nome_e}: {_msg_e}" for _nome_e, _msg_e in erros_d.items())
             texto += f" Com erro: {_detalhes_erro_redes}."
+            path, _cor = _ICONE_AVISO
+        else:
+            path, _cor = _ICONE_OK
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "coleta_seo" and (
+        "sites_atualizados" in d or "total_sites" in d or "falhas" in d
+    ):
+        _qtd_seo = int(d.get("sites_atualizados") or 0)
+        _total_seo = int(d.get("total_sites") or 0)
+        _nomes_seo = [str(_n) for _n in (d.get("sites_atualizados_nomes") or []) if _n]
+        _falhas_seo = d.get("falhas") or []
+        texto = f"{_qtd_seo} de {_total_seo} sites atualizados com dados de SEO."
+        if _nomes_seo:
+            texto += f" Atualizados: {', '.join(_nomes_seo)}."
+        if _falhas_seo:
+            _nomes_falha_seo = [
+                str(_f.get("empresa") or "Site sem identificação")
+                for _f in _falhas_seo if isinstance(_f, dict)
+            ]
+            texto += f" Com erro: {', '.join(_nomes_falha_seo)}."
             path, _cor = _ICONE_AVISO
         else:
             path, _cor = _ICONE_OK
@@ -23318,6 +23344,7 @@ elif st.session_state.pagina == "sites":
                 if _res_atual.data else {}
             )
             _atualizados = 0
+            _nomes_atualizados = []
             _falhas = []
             for _site in (_sites or []):
                 _nome = str(_site.get("nome") or "").strip()
@@ -23329,6 +23356,7 @@ elif st.session_state.pagina == "sites":
                     _seo["sitemap"] = extrair_sitemap(_url)
                     _cache_atual[_nome] = _seo
                     _atualizados += 1
+                    _nomes_atualizados.append(_nome)
                 except Exception as _exc_site:
                     _falhas.append({"empresa": _nome, "erro": str(_exc_site)})
             supabase.table("ci_dados").update({
@@ -23336,6 +23364,7 @@ elif st.session_state.pagina == "sites":
             }).eq("user_id", _user_id).execute()
             atualizar_atividade(_atividade_id, "concluido", {
                 "sites_atualizados": _atualizados,
+                "sites_atualizados_nomes": _nomes_atualizados,
                 "falhas": _falhas,
                 "total_sites": len(_sites or []),
             })
@@ -27091,7 +27120,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:50px; border-radius:10px; border:none;
+    width:100%; height:56px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
@@ -34254,7 +34283,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
-    width:100%; height:50px; border-radius:10px; border:none;
+    width:100%; height:56px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
@@ -39548,16 +39577,19 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item:hover {{ border-color:#0e2a47; background:#fff; box-shadow:0 2px 10px rgba(14,42,71,0.12); }}
 .dd-item.selected {{ background:#fff; border:2px solid #0e2a47; }}
 
-.col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
+.col-btns {{ display:flex; flex-direction:column; gap:4px; justify-content:center; flex-shrink:0; min-width:160px; }}
 .ctrl-select {{
-    width:auto; max-width:100%; height:18px; border:none;
-    background:transparent; font-size:11px; font-weight:500; color:#64748b;
-    font-family:'DM Sans',sans-serif; padding:0 18px 0 2px; cursor:pointer;
-    outline:none; align-self:center; text-align:center;
+    width:100%; height:22px; border:1px solid #c5d0dc; background:#eef2f6;
+    color:#536579; font-size:10px; font-weight:500; text-align:center;
+    font-family:'DM Sans',sans-serif; padding:0 22px 0 8px;
+    outline:none; cursor:pointer; border-radius:8px;
+    transition:border-color .15s ease, background .15s ease;
 }}
+.ctrl-select:hover {{ background:#fff; border-color:#aab9c9; }}
+.ctrl-select:focus {{ background:#fff; border-color:#0e2a47; }}
 .ctrl-btn {{
-    width:100%; height:44px; border-radius:10px; border:none;
-    font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
+    width:100%; height:38px; border-radius:10px; border:none;
+    font-size:12px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
     display:flex; align-items:center; justify-content:center; gap:7px;
     transition:all 0.15s; white-space:nowrap; padding:0 14px;
 }}
@@ -39595,15 +39627,15 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
+        <select class="ctrl-select" id="ctrl-periodo" title="Período da análise" onchange="onPeriodoChange(this.value)">
+            {opts_html}
+        </select>
         <button class="ctrl-btn btn-gerar" id="btn-gerar" onclick="triggerGerar()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
             </svg>
             Gerar Insight
         </button>
-        <select class="ctrl-select" id="ctrl-periodo" title="Período da análise" onchange="onPeriodoChange(this.value)">
-            {opts_html}
-        </select>
     </div>
 </div>
 
@@ -39734,7 +39766,7 @@ function triggerGerar() {{
 
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 60) + 20, 300) : 0;
-    var h = 104 + (isOpen ? listH + 10 : 0);
+    var h = 94 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -39761,7 +39793,7 @@ function setHeight(isOpen) {{
 renderTrigger();
 setHeight(false);
 </script>
-""", height=104, scrolling=False)
+""", height=94, scrolling=False)
 
     # Seleção direta e confiável da empresa escolhida no controle acima.
     # O container inteiro fica fora do fluxo visual da página.
@@ -41513,6 +41545,7 @@ function setHeight(isOpen) {{
                 atualizar_atividade(atividade_id, "em_andamento", {
                     "empresas": _nomes_todas_redes,
                     "total": _total_todas_redes,
+                    "periodo_dias": int(periodo_dias),
                     "concluidas": len(resultados_lista),
                     "coletados": _ok_ate_agora,
                     "com_erro": _erro_ate_agora,
@@ -41573,15 +41606,23 @@ function setHeight(isOpen) {{
             )
             _status_final_redes = "erro" if (_com_erro_redes and not _nomes_ok_redes) else "concluido"
 
-            _novos_por_empresa = _detectar_posts_novos(cache_anterior, resultados_lista)
+            # Redes Sociais não mantém uma biblioteca de imagens para reaproveitar
+            # entre coletas. Portanto a tarefa deve informar tudo o que foi
+            # baixado nesta execução, e não apenas a diferença para o cache anterior.
+            _posts_por_empresa = {
+                r["nome"]: len(r.get("posts") or [])
+                for r in resultados_lista
+                if not r.get("erro")
+            }
             atualizar_atividade(atividade_id, _status_final_redes, {
                 "empresas": _nomes_todas_redes,
                 "total": _total_todas_redes,
+                "periodo_dias": int(periodo_dias),
                 "concluidas": len(resultados_lista),
                 "coletados": _nomes_ok_redes,
                 "com_erro": _com_erro_redes,
                 "total_posts": _total_posts_redes,
-                "por_empresa_novos": _novos_por_empresa,
+                "por_empresa_posts": _posts_por_empresa,
                 "por_empresa": {k: dict(v) for k, v in _status_por_empresa_redes.items()},
             })
 
@@ -41592,8 +41633,14 @@ function setHeight(isOpen) {{
     if coletar and _permitido_redes:
         st.session_state.pop("_cache_rapidapi", None)
 
+        _periodo_coleta_redes = int(
+            st.session_state.get("redes_periodo_coleta", "30") or 30
+        )
+
         _id_ativ_coleta_redes = criar_atividade(
-            st.session_state.user.id, "coleta_redes", "Coleta de redes sociais"
+            st.session_state.user.id,
+            "coleta_redes",
+            f"Coleta de redes sociais — últimos {_periodo_coleta_redes} dias",
         )
         try:
             supabase.rpc("incrementar_uso_organizacao", {
@@ -41608,7 +41655,7 @@ function setHeight(isOpen) {{
             _coletar_redes_background,
             args=(
                 st.session_state.user.id, todas, _id_ativ_coleta_redes, cache,
-                int(st.session_state.get("redes_periodo_coleta", "30") or 30),
+                _periodo_coleta_redes,
             ),
             daemon=True,
             name="coleta-redes-sociais",

@@ -11389,6 +11389,34 @@ def _status_logico_atividade(a: dict) -> str:
             return "na_fila"
     return _st_db
 
+def _eh_controle_gads_sem_acao(a: dict) -> bool:
+    """Oculta verificações automáticas concluídas que não fizeram nada.
+
+    Registros antigos continuam no banco para auditoria, mas deixam de poluir
+    a página e a contagem de Notificações. Erros e verificações que migraram
+    mídia, iniciaram OCR ou verificaram CC continuam visíveis.
+    """
+    if not isinstance(a, dict):
+        return False
+    if str(a.get("titulo") or "").strip() != "Verificando controle geral dos anúncios do Google Ads":
+        return False
+    if _status_logico_atividade(a) != "concluido":
+        return False
+    d = a.get("detalhes") or {}
+    _acoes = [str(x) for x in (d.get("acoes") or [])]
+    _prefixos_relevantes = (
+        "migracao_iniciada:",
+        "ocr_enfileirado:",
+        "ocr_nao_iniciado:",
+        "cc_youtube_enfileirado",
+    )
+    return not (
+        any(_acao.startswith(_prefixos_relevantes) for _acao in _acoes)
+        or bool(d.get("atividades_ocr_iniciadas"))
+        or bool(d.get("ocr_nao_iniciados"))
+        or bool(d.get("atividade_cc_iniciada"))
+    )
+
 def resumo_status_notificacoes(user_id: str) -> dict:
     """Conta TODAS as notificações por status para alimentar o filtro.
 
@@ -11419,12 +11447,14 @@ def resumo_status_notificacoes(user_id: str) -> dict:
     try:
         res = (
             supabase.table("atividades")
-            .select("status, detalhes, lida")
+            .select("titulo, status, detalhes, lida")
             .eq("user_id", user_id)
             .limit(1000)
             .execute()
         )
         for a in (res.data or []):
+            if _eh_controle_gads_sem_acao(a):
+                continue
             cont["todos"] += 1
             st_a = _status_logico_atividade(a)
             if st_a == "em_andamento":
@@ -11481,7 +11511,10 @@ def listar_atividades_notificacoes(user_id: str, limite_recentes: int = 100) -> 
             aid = a.get("id")
             if aid is not None:
                 por_id[aid] = a
-        itens = list(por_id.values())
+        itens = [
+            a for a in por_id.values()
+            if not _eh_controle_gads_sem_acao(a)
+        ]
         itens.sort(key=lambda a: a.get("criado_em") or "", reverse=True)
         for _a in itens:
             if isinstance(_a, dict):
@@ -12076,6 +12109,29 @@ def _formatar_detalhes_atividade(atividade: dict):
             f"{nome_e} ({qtd_e})" for nome_e, qtd_e in d["por_empresa"].items()
         ]
         texto = f"Novos posts: {', '.join(partes_empresa)}."
+        return _svg_icone(path, "currentColor", 14), texto
+
+    if tipo == "analise_ia" and d.get("origem") == "oportunidades":
+        path, _cor, _ = _TIPO_ATIVIDADE_LABELS["analise_ia"]
+        _empresa_analise = str(d.get("empresa") or "empresa selecionada").strip()
+        _periodo_analise = str(d.get("periodo") or "").strip()
+        if _periodo_analise.isdigit():
+            _periodo_texto = f"últimos {_periodo_analise} dias"
+        elif _periodo_analise:
+            _periodo_texto = _periodo_analise
+        else:
+            _periodo_texto = "período selecionado"
+        _status_analise = _status_logico_atividade(atividade)
+        if _status_analise in ("pendente", "na_fila", "em_andamento"):
+            texto = (
+                f"Gerando a análise de {_empresa_analise}, considerando "
+                f"{_periodo_texto}."
+            )
+        else:
+            texto = (
+                f"Análise de {_empresa_analise} concluída, considerando "
+                f"{_periodo_texto}. O relatório foi salvo na página Oportunidades."
+            )
         return _svg_icone(path, "currentColor", 14), texto
 
     if tipo in _TIPO_ATIVIDADE_LABELS:
@@ -16095,6 +16151,16 @@ def _reconciliar_manifesto_gads_pos_login_v261(
         }
         _detalhes["total"] = len(_detalhes["por_empresa"])
         _detalhes["concluidas"] = _detalhes["total"]
+        # Esta rotina roda automaticamente ao abrir/logar. Se ela apenas
+        # conferiu o controle e não encontrou nada para processar, não deixe
+        # uma notificação vazia no histórico. Mantemos o card somente quando
+        # houve pendência, uma atividade foi disparada ou ocorreu erro.
+        _teve_acao_relevante = bool(
+            _qtd_pendentes_midia
+            or _ocr_iniciados
+            or _ocr_nao_iniciados
+            or _cc_iniciado
+        )
         if _ok_manifesto and not _ocr_nao_iniciados:
             _detalhes["aviso"] = (
                 f"Controle geral atualizado: {_detalhes['total_anuncios']} anúncio(s), "
@@ -16105,7 +16171,10 @@ def _reconciliar_manifesto_gads_pos_login_v261(
                 f"{1 if _cc_iniciado else 0} atividade de CC iniciada(s)."
             )
             if atividade_id:
-                atualizar_atividade(atividade_id, "concluido", _detalhes)
+                if _teve_acao_relevante:
+                    atualizar_atividade(atividade_id, "concluido", _detalhes)
+                else:
+                    excluir_atividade(atividade_id, user_id)
         elif _ok_manifesto and _ocr_nao_iniciados:
             _detalhes["motivo"] = (
                 f"Foram encontrados OCRs pendentes, mas {len(_ocr_nao_iniciados)} "
@@ -16168,11 +16237,9 @@ def iniciar_reconciliacao_manifesto_gads_pos_login_v261(
         name="manifesto-google-ads-pos-login-v261",
     )
     if not _iniciou and _atividade_id:
-        atualizar_atividade(_atividade_id, "concluido", {
-            "versao_manifesto": "V269",
-            "origem_acionamento": origem,
-            "aviso": "A verificação do controle geral já está em execução.",
-        })
+        # Já existe uma verificação em andamento. O registro recém-criado não
+        # representa trabalho adicional e só poluiria as Notificações.
+        excluir_atividade(_atividade_id, user_id)
     return _iniciou
 
 def verificar_e_migrar_pendentes(user_id: str) -> int:
@@ -39904,7 +39971,7 @@ setHeight(false);
             titulo_a = titulo_a.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             data_a = str(a.get("data", "")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             nome_arq = titulo_a.replace(" ", "_").replace("/", "_").replace("(", "").replace(")", "").replace(".", "")
-            icon_ins = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>'
+            icon_ins = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 16 4-5 4 3 5-7"/><path d="M16 7h4v4"/></svg>'
 
             cards_ins_html += f"""
 <div class="card-row" style="overflow:hidden;">
@@ -45956,7 +46023,7 @@ html, body { background: transparent; overflow: hidden; }
             return True
 
         _atividades_selecao = [a for a in _atividades_selecao if _bate_filtros_toolbar(a)]
-        _notif_page_size_toolbar = 10
+        _notif_page_size_toolbar = 20
         _notif_total_pag_toolbar = max(1, (len(_atividades_selecao) + _notif_page_size_toolbar - 1) // _notif_page_size_toolbar)
         _notif_pag_toolbar = max(1, min(int(st.session_state.get("_notif_pagina", 1) or 1), _notif_total_pag_toolbar))
         _notif_ini_toolbar = (_notif_pag_toolbar - 1) * _notif_page_size_toolbar
@@ -46270,12 +46337,38 @@ html, body { background: transparent; overflow: hidden; }
             box-shadow: 0 1px 2px rgba(15, 42, 71, 0.04) !important;
             transition: border-color .15s ease, background .15s ease, color .15s ease !important;
         }
+        [class*="st-key-_notif_rodape_v144_"] button {
+            min-height: 34px !important;
+            height: 34px !important;
+            border: 1px solid #d6dee8 !important;
+            border-radius: 8px !important;
+            padding: 0 8px !important;
+            background: #ffffff !important;
+            color: #1f2937 !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            line-height: 1 !important;
+            white-space: nowrap !important;
+            box-shadow: 0 1px 2px rgba(15, 42, 71, 0.04) !important;
+            transition: border-color .15s ease, background .15s ease, color .15s ease !important;
+        }
         .st-key-_bloco_todas_topo button:hover:not(:disabled) {
             border-color: #1596cf !important;
             background: #f0f9ff !important;
             color: #0b75ad !important;
         }
+        [class*="st-key-_notif_rodape_v144_"] button:hover:not(:disabled) {
+            border-color: #1596cf !important;
+            background: #f0f9ff !important;
+            color: #0b75ad !important;
+        }
         .st-key-_bloco_todas_topo button:disabled {
+            opacity: 1 !important;
+            border-color: #0e2a47 !important;
+            background: #0e2a47 !important;
+            color: #ffffff !important;
+        }
+        [class*="st-key-_notif_rodape_v144_"] button:disabled {
             opacity: 1 !important;
             border-color: #0e2a47 !important;
             background: #0e2a47 !important;
@@ -46405,7 +46498,7 @@ html, body { background: transparent; overflow: hidden; }
                 return True
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
 
-        _notif_page_size = 10
+        _notif_page_size = 20
         _notif_filtro_sig = f"{_termo_busca}|{_filtro_status_notif}"
         if st.session_state.get("_notif_paginacao_filtro_sig") != _notif_filtro_sig:
             st.session_state["_notif_paginacao_filtro_sig"] = _notif_filtro_sig
@@ -46446,18 +46539,18 @@ html, body { background: transparent; overflow: hidden; }
 
             _spec = []
             if _notif_pagina > 1:
-                _spec.append(("‹ Prev", _notif_pagina - 1, "prev"))
+                _spec.append(("‹ Anterior", _notif_pagina - 1, "prev"))
             for _tok in _tokens(_notif_pagina, _notif_total_paginas):
                 if _tok == "…":
                     _spec.append(("…", None, f"dots{len(_spec)}"))
                 else:
                     _spec.append((str(_tok), int(_tok), f"p{_tok}"))
             if _notif_pagina < _notif_total_paginas:
-                _spec.append(("Next ›", _notif_pagina + 1, "next"))
+                _spec.append(("Próxima ›", _notif_pagina + 1, "next"))
 
-            _espaco, _pag = st.columns([5.25, 2.75], gap="small")
+            _espaco, _pag = st.columns([5.85, 2.15], gap="small")
             with _pag:
-                _cols = st.columns([1.35 if ("Prev" in x[0] or "Next" in x[0]) else 0.64 for x in _spec], gap=None)
+                _cols = st.columns([1.75 if ("Anterior" in x[0] or "Próxima" in x[0]) else 0.72 for x in _spec], gap=None)
                 for _cc, (_lbl, _dest, _suf) in zip(_cols, _spec):
                     with _cc:
                         if _dest is None:

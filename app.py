@@ -22119,7 +22119,7 @@ function setHeightGeral(isOpen) {{
                     for _rotulo, _valor in _g_sinais
                 )
                 _google_ads_content = (
-                    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
+                    '<div style="display:grid;grid-template-columns:1fr;gap:10px;">'
                     '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;">'
                     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
                     '<div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a2e4a;">Formatos</div>'
@@ -22150,8 +22150,12 @@ function setHeightGeral(isOpen) {{
                 )
 
             ads_block_html = (
-                _cabecalho_canal_ads("Meta Ads", "#8b5cf6") + _meta_ads_content
+                '<div class="ads-canais-grid">'
+                '<div class="ads-canal-col">'
+                + _cabecalho_canal_ads("Meta Ads", "#8b5cf6") + _meta_ads_content
+                + '</div><div class="ads-canal-col">'
                 + _cabecalho_canal_ads("Google Ads", "#4285f4") + _google_ads_content
+                + '</div></div>'
             )
             d["ads_block_html"] = ads_block_html
 
@@ -23053,6 +23057,8 @@ body {{ padding-bottom:8px; }}
 .col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
 .col-ads    {{ border-left:2px solid #9a71f720; padding-left:8px; margin-left:-8px; }}
+.ads-canais-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }}
+.ads-canal-col {{ min-width:0; }}
 .placeholder-box {{
     text-align:center; padding:14px 10px; background:#f9fafb; border:1px dashed #e5e7eb;
     border-radius:8px; font-size:10px; color:#b0b6bf; font-style:italic;
@@ -23069,6 +23075,7 @@ body {{ padding-bottom:8px; }}
 .score-chip-ok {{ display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; color:#15803d; padding:2px 4px; white-space:nowrap; }}
 .score-check {{ border:1px solid #22c45f; border-radius:5px; background:#22c45e; width:10px; height:10px; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }}
 @media (max-width:1100px) {{ .cols-wrap {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+@media (max-width:900px) {{ .ads-canais-grid {{ grid-template-columns:1fr; }} }}
 @media (max-width:720px) {{ .cols-wrap {{ grid-template-columns:1fr; }} .empresa-card {{ padding:0 4px; }} }}
 </style>
 </head>

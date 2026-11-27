@@ -23043,7 +23043,7 @@ body {{ padding-bottom:8px; }}
 .empresa-card {{
     overflow:hidden; margin-top: 0px; padding: 0 12px;
 }}
-.cols-wrap {{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; align-items:start; }}
+.cols-wrap {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; width:100%; }}
 .col {{ display:flex; flex-direction:column; min-width:0; }}
 .col-title {{
     display:flex; align-items:center; gap:6px; font-size:16px; font-weight:800;
@@ -23056,7 +23056,14 @@ body {{ padding-bottom:8px; }}
 .col-title-ads    {{ border-left:4px solid #9a71f7; }}
 .col-redes  {{ border-left:2px solid #3b82f620; padding-left:8px; margin-left:-8px; }}
 .col-site   {{ border-left:2px solid #22c55e20; padding-left:8px; margin-left:-8px; }}
-.col-ads    {{ border-left:2px solid #9a71f720; padding-left:8px; margin-left:-8px; }}
+.col-ads    {{
+    grid-column:1 / -1;
+    width:100%;
+    max-width:none;
+    border-left:2px solid #9a71f720;
+    padding-left:8px;
+    margin-left:-8px;
+}}
 .ads-canais-grid {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }}
 .ads-canal-col {{ min-width:0; overflow:hidden; }}
 .ads-canal-col > div {{ max-width:100%; }}

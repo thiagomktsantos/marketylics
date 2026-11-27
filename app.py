@@ -23492,7 +23492,7 @@ setTimeout(syncH,150); setTimeout(syncH,500); setTimeout(syncH,1200);
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow:hidden; }}
-body {{ padding-bottom:8px; }}
+body {{ padding-top:16px; padding-bottom:8px; }}
 {tooltip_css}
 .empresa-card {{
     overflow:hidden; margin-top: 0px; padding: 0 12px;

@@ -40614,6 +40614,43 @@ elif st.session_state.pagina == "redes":
 
     ultima_coleta = st.session_state.metricas_redes.get("ultima_coleta", "")
 
+    if "redes_periodo_coleta" not in st.session_state:
+        st.session_state.redes_periodo_coleta = "30"
+    _periodos_redes = [
+        ("7", "Últimos 7 dias"),
+        ("15", "Últimos 15 dias"),
+        ("30", "Últimos 30 dias"),
+        ("90", "Últimos 90 dias"),
+    ]
+    _periodo_redes_atual = str(st.session_state.get("redes_periodo_coleta", "30"))
+    _periodos_redes_html = "".join(
+        f'<option value="{_valor}"{" selected" if _valor == _periodo_redes_atual else ""}>{_rotulo}</option>'
+        for _valor, _rotulo in _periodos_redes
+    )
+
+    _periodo_redes_hidden = st.text_input(
+        "_redes_periodo_hidden", value="", label_visibility="collapsed",
+        key="_redes_periodo_hidden_input",
+    )
+    if st.button("redes_sel_periodo", key="_redes_periodo_hidden_btn"):
+        st.session_state.redes_periodo_coleta = (
+            st.session_state.get("_redes_periodo_hidden_input") or "30"
+        )
+        st.rerun()
+    st.markdown("""
+    <style>
+    .st-key-_redes_periodo_hidden_input,
+    .st-key-_redes_periodo_hidden_btn,
+    .stElementContainer:has(.st-key-_redes_periodo_hidden_input),
+    .stElementContainer:has(.st-key-_redes_periodo_hidden_btn) {
+        position:fixed !important; top:-9999px !important; left:-9999px !important;
+        width:0 !important; height:0 !important; min-height:0 !important;
+        margin:0 !important; padding:0 !important; overflow:hidden !important;
+        opacity:0 !important; pointer-events:none !important; display:none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     import json as _jr
     d = st.session_state.metricas_redes.get("dados", [])
     _djs = _jr.dumps(d, ensure_ascii=False).replace("</", "<\\/").replace("\\", "\\\\").replace("'", "\\'") if ultima_coleta else "[]"
@@ -40739,6 +40776,12 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item.selected .dd-icon {{ background:#dbeafe; }}
 
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:160px; }}
+.ctrl-periodo {{
+    width:100%; height:19px; border:none; background:transparent;
+    color:#64748b; font-size:11px; font-weight:500; text-align:center;
+    font-family:'DM Sans',sans-serif; padding:0 18px 0 4px;
+    outline:none; cursor:pointer;
+}}
 .ctrl-btn {{
     width:100%; height:44px; border-radius:10px; border:none;
     font-size:13px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;
@@ -40809,10 +40852,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         </div>
     </div>
     <div class="col-btns">
+        <select class="ctrl-periodo" id="ctrl-periodo-redes" title="Período das postagens" onchange="onPeriodoRedesChange(this.value)">
+            {_periodos_redes_html}
+        </select>
         {_btn_coletar_redes_html}
-        {f'''<div class="row-coleta">
-            <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. coleta: <b>{ultima_coleta}</b></button>
-        </div>''' if ultima_coleta else ''}
     </div>
 </div>
 
@@ -40925,6 +40968,22 @@ function triggerColetar() {{
         var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
         if (txt === 'coletar_dados_redes') {{ b.click(); return; }}
     }}
+}}
+
+function onPeriodoRedesChange(val) {{
+    var hiddenInputs = window.parent.document.querySelectorAll('.st-key-_redes_periodo_hidden_input input');
+    if (!hiddenInputs.length) return;
+    var inp = hiddenInputs[0];
+    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(inp, val);
+    inp.dispatchEvent(new Event('input', {{ bubbles:true }}));
+    setTimeout(function() {{
+        var btns = window.parent.document.querySelectorAll('button');
+        for (var b of btns) {{
+            var txt = (b.textContent || b.innerText || '').split(/\s+/).join(' ').trim();
+            if (txt === 'redes_sel_periodo') {{ b.click(); return; }}
+        }}
+    }}, 60);
 }}
 
 function triggerComparativo() {{
@@ -41077,8 +41136,7 @@ function abrirModal() {{
 
 function setHeight(isOpen) {{
     var listH = isOpen ? Math.min((EMPRESAS_CTRL.length * 64) + 70 + 28, 330) : 0;
-    var extra = ULTIMA ? 26 : 0;
-    var h = 86 + extra + (isOpen ? listH + 10 : 0);
+    var h = 90 + (isOpen ? listH + 10 : 0);
     var iframes = window.parent.document.querySelectorAll('iframe');
     for (var i = 0; i < iframes.length; i++) {{
         try {{ if (iframes[i].contentWindow === window) {{
@@ -41109,7 +41167,7 @@ function setHeight(isOpen) {{
     setHeight(false);
 }})();
 </script>
-""", height=104 if ultima_coleta else 78, scrolling=False)
+""", height=92, scrolling=False)
 
     ghost_coletar_key = "btn_coletar_dados_redes"
     st.markdown(f"""
@@ -41150,9 +41208,18 @@ function setHeight(isOpen) {{
         st.session_state.redes_confirmar_limpar = True
         st.rerun()
 
-    st.markdown("""
-        <div style="margin-top: 5px;">
-            <hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 40px 0'/>
+    _ultima_coleta_redes_safe = html.escape(ultima_coleta) if ultima_coleta else "Nenhuma coleta realizada"
+    st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:12px;margin:2px 0 34px 0;">
+            <div style="height:1px;background:#dfe5ec;flex:1"></div>
+            <div style="display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;
+                        font-size:11px;color:#7b8794;white-space:nowrap">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7b8794"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Última coleta: <strong style="font-weight:600;color:#64748b">{_ultima_coleta_redes_safe}</strong>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -41408,7 +41475,8 @@ function setHeight(isOpen) {{
                 por_empresa[r["nome"]] = qtd_novos
         return por_empresa
 
-    def _coletar_redes_background(user_id: str, todas: list, atividade_id: str, cache_anterior: dict):
+    def _coletar_redes_background(user_id: str, todas: list, atividade_id: str,
+                                   cache_anterior: dict, periodo_dias: int):
         """Roda a coleta de verdade (chamadas ao RapidAPI) numa thread —
         sem UI (`st.*`) aqui dentro, e sem depender de `st.session_state`
         pra saber o user_id, já que threads não devem tocar nisso."""
@@ -41436,7 +41504,31 @@ function setHeight(isOpen) {{
                 _status_por_empresa_redes[_nome_e] = {"status": "rodando"}
                 _grava_progresso_redes()
 
-                r_col = coletar_rapidapi(e["instagram"])
+                r_col = copy.deepcopy(coletar_rapidapi(e["instagram"]))
+                # A API devolve as postagens mais recentes. O período escolhido
+                # define quais delas entram no cache e nas análises da página.
+                if isinstance(r_col, dict) and not r_col.get("erro"):
+                    _limite_data = (
+                        _dt_redes_bg.datetime.now().date()
+                        - _dt_redes_bg.timedelta(days=max(1, int(periodo_dias)))
+                    )
+                    _posts_periodo = []
+                    for _post_periodo in (r_col.get("posts") or []):
+                        _data_post = str(_post_periodo.get("date") or "").strip()
+                        if not _data_post:
+                            _posts_periodo.append(_post_periodo)
+                            continue
+                        try:
+                            _data_post_dt = _dt_redes_bg.datetime.strptime(
+                                _data_post, "%d/%m/%Y"
+                            ).date()
+                        except Exception:
+                            _posts_periodo.append(_post_periodo)
+                            continue
+                        if _data_post_dt >= _limite_data:
+                            _posts_periodo.append(_post_periodo)
+                    r_col["posts"] = _posts_periodo
+                    r_col["periodo_dias"] = int(periodo_dias)
                 _resultado_item = {**e, **(r_col or {"erro": "Sem resposta"})}
                 resultados_lista.append(_resultado_item)
                 if _resultado_item.get("erro"):
@@ -41494,7 +41586,10 @@ function setHeight(isOpen) {{
         _job_start_thread(
             "coleta_redes", st.session_state.user.id, "redes_sociais",
             _coletar_redes_background,
-            args=(st.session_state.user.id, todas, _id_ativ_coleta_redes, cache),
+            args=(
+                st.session_state.user.id, todas, _id_ativ_coleta_redes, cache,
+                int(st.session_state.get("redes_periodo_coleta", "30") or 30),
+            ),
             daemon=True,
             name="coleta-redes-sociais",
         )

@@ -46023,7 +46023,7 @@ html, body { background: transparent; overflow: hidden; }
             return True
 
         _atividades_selecao = [a for a in _atividades_selecao if _bate_filtros_toolbar(a)]
-        _notif_page_size_toolbar = 20
+        _notif_page_size_toolbar = 15
         _notif_total_pag_toolbar = max(1, (len(_atividades_selecao) + _notif_page_size_toolbar - 1) // _notif_page_size_toolbar)
         _notif_pag_toolbar = max(1, min(int(st.session_state.get("_notif_pagina", 1) or 1), _notif_total_pag_toolbar))
         _notif_ini_toolbar = (_notif_pag_toolbar - 1) * _notif_page_size_toolbar
@@ -46288,7 +46288,7 @@ html, body { background: transparent; overflow: hidden; }
                     on_change=_ao_alterar_selecionar_todas_notif_cards,
                 )
             with _col_pag_topo:
-                if _atividades_selecao:
+                if _notif_total_pag_toolbar > 1:
                     _tokens_top = _notif_paginas_visiveis_v144(_notif_pag_toolbar, _notif_total_pag_toolbar)
                     _spec_top = []
                     if _notif_pag_toolbar > 1:
@@ -46498,7 +46498,7 @@ html, body { background: transparent; overflow: hidden; }
                 return True
             _todas_atividades = [a for a in _todas_atividades if _atividade_bate_status(a)]
 
-        _notif_page_size = 20
+        _notif_page_size = 15
         _notif_filtro_sig = f"{_termo_busca}|{_filtro_status_notif}"
         if st.session_state.get("_notif_paginacao_filtro_sig") != _notif_filtro_sig:
             st.session_state["_notif_paginacao_filtro_sig"] = _notif_filtro_sig
@@ -46514,7 +46514,7 @@ html, body { background: transparent; overflow: hidden; }
             st.session_state["_notif_pagina"] = max(1, min(int(_nova), _notif_total_paginas))
 
         def _render_paginacao_notif(_posicao: str):
-            if _notif_total_itens == 0 or _posicao == "topo":
+            if _notif_total_itens <= _notif_page_size or _posicao == "topo":
                 return
 
             def _tokens(_atual, _total):

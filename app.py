@@ -23580,6 +23580,9 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     align-items:center;
     justify-content:center;
     min-width:0;
+    align-self:stretch;
+    padding-right:22px;
+    border-right:1px solid #e5e7eb;
 }}
 .profile-score-checklist-wrap {{
     min-width:0;
@@ -23637,7 +23640,9 @@ body {{ padding-top:16px; padding-bottom:8px; }}
     .g-ext-list {{ width:100%; }}
     .profile-score-main {{ grid-template-columns:1fr; gap:16px; }}
     .profile-score-visual {{
+        padding-right:0;
         padding-bottom:14px;
+        border-right:0;
         border-bottom:1px solid #eef2f7;
     }}
     .profile-score-checklist.two-cols {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
@@ -23775,6 +23780,7 @@ function buildSeoColumn(d,colEl) {{
         : grupoSeoHtml('',itensOk,iconOk,'#15803d',false)
           +grupoSeoHtml('',itensNok,iconNok,'#b45309',false);
     var seoRingSvg=makeScoreRingSvg(scoreNum,scoreBarColor,110,10);
+    var seoChecklistClass=isCompetitor?'profile-score-checklist':'profile-score-checklist two-cols';
     var scoreBlock=document.createElement('div');
     scoreBlock.style.cssText='background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;';
     scoreBlock.innerHTML=
@@ -23788,16 +23794,18 @@ function buildSeoColumn(d,colEl) {{
         +'</div>'
         +'</div>'
         +'<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 14px 0;"/>'
-        +'<div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:14px;">'
-        +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:130px;">'
+        +'<div class="profile-score-main">'
+        +'<div class="profile-score-visual">'
         +seoRingSvg
-        +'<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:800;background:'+scoreBg+';color:'+scoreTextColor+';white-space:nowrap;margin-top:8px;">'+scoreTxt2+'</div>'
         +'</div>'
-        +'<div style="flex:1;display:flex;justify-content:center;">'
-        +'<div style="min-width:180px;max-width:260px;display:grid;grid-template-columns:1fr;gap:6px;">'+checklistHtml+'</div>'
+        +'<div class="profile-score-checklist-wrap">'
+        +'<div class="'+seoChecklistClass+'">'+checklistHtml+'</div>'
         +'</div>'
         +'</div>'
-        +'<div style="height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
+        +'<div class="profile-score-progress">'
+        +'<div class="profile-score-progress-bar"><div id="'+scoreBarId+'" style="height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,#3b82f6,'+scoreBarColor+');transition:width 1.2s cubic-bezier(0.4,0,0.2,1);"></div></div>'
+        +'<div class="profile-score-badge" style="background:'+scoreBg+';color:'+scoreTextColor+';">'+scoreTxt2+'</div>'
+        +'</div>'
         +'<div style="font-size:11px;font-weight:700;color:#405068;margin-top:6px;">'+(SEO_ITEMS.length-nok)+' de '+SEO_ITEMS.length+' '+(isCompetitor?'pontos fortes identificados':'itens otimizados')+'</div>';
     colEl.appendChild(scoreBlock);
     setTimeout(function(){{var bar=document.getElementById(scoreBarId);if(bar)bar.style.width=scoreNum+'%';}},250);

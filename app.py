@@ -27141,8 +27141,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {_btn_coletar_html}
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
-            <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
 </div>
@@ -34297,8 +34295,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {_btn_coletar_html}
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. busca: <b>{_ultima_ts}</b></button>
-            <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if _ultima_ts else ''}
     </div>
 </div>
@@ -40816,8 +40812,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
         {_btn_coletar_redes_html}
         {f'''<div class="row-coleta">
             <button class="link-btn" onclick="abrirModal()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:4px;margin-top:-2px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Últ. coleta: <b>{ultima_coleta}</b></button>
-            <span class="sep">|</span>
-            <button class="clear-btn" onclick="triggerLimpar()" title="limpar cache"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>''' if ultima_coleta else ''}
     </div>
 </div>
@@ -44848,6 +44842,105 @@ html, body { background: transparent; overflow: hidden; }
             "As cotas de coletas e análises de IA resetam no início de cada mês. "
             "Precisa de mais? Fale com o suporte pra aumentar seu plano."
         )
+
+        st.markdown(
+            "<div style='font-size:15px;font-weight:800;color:#0e2a47;margin:28px 0 4px 0'>"
+            "Gerenciar caches</div>"
+            "<div style='font-size:12px;color:#6b7280;margin-bottom:14px'>"
+            "Limpe separadamente os dados coletados de cada área. As análises já salvas não serão excluídas."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        _cache_meta_qtd = sum(
+            len((_entrada or {}).get("data", []))
+            for _entrada in (st.session_state.get("ads_cache") or {}).values()
+        )
+        _cache_google_qtd = sum(
+            len((_entrada or {}).get("data", []))
+            for _entrada in (st.session_state.get("gads_cache") or {}).values()
+        )
+        _cache_redes_qtd = len(
+            (st.session_state.get("metricas_redes") or {}).get("dados", [])
+        )
+
+        st.markdown("""
+        <style>
+        [class*="st-key-_uso_cache_"] {
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            border-radius:14px;
+            padding:14px 16px 12px 16px;
+            box-shadow:0 1px 4px rgba(0,0,0,.04);
+        }
+        [class*="st-key-_uso_cache_"] button {
+            min-height:36px !important;
+            border-radius:9px !important;
+            font-size:12px !important;
+            font-weight:600 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        _col_cache_meta, _col_cache_google, _col_cache_redes = st.columns(3)
+
+        with _col_cache_meta:
+            with st.container(key="_uso_cache_meta"):
+                st.markdown(
+                    f"<div style='font-size:13px;font-weight:700;color:#1f2937'>Meta Ads</div>"
+                    f"<div style='font-size:11px;color:#9ca3af;margin:2px 0 10px'>{_cache_meta_qtd} anúncios no cache</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Limpar cache", key="_uso_limpar_cache_meta", use_container_width=True,
+                             disabled=not bool(st.session_state.get("ads_cache"))):
+                    st.session_state.ads_cache = {}
+                    st.session_state.ads_erro = {}
+                    try:
+                        _salvar_blob_ci_dados_v291(_user_id_uso, "ads_cache", {})
+                    except Exception as _exc_cache_meta:
+                        st.toast(f"Não foi possível limpar o cache da Meta: {_exc_cache_meta}", icon="⚠️")
+                    else:
+                        st.toast("Cache da Meta Ads limpo.", icon="✅")
+                        st.rerun()
+
+        with _col_cache_google:
+            with st.container(key="_uso_cache_google"):
+                st.markdown(
+                    f"<div style='font-size:13px;font-weight:700;color:#1f2937'>Google Ads</div>"
+                    f"<div style='font-size:11px;color:#9ca3af;margin:2px 0 10px'>{_cache_google_qtd} anúncios no cache</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Limpar cache", key="_uso_limpar_cache_google", use_container_width=True,
+                             disabled=not bool(st.session_state.get("gads_cache"))):
+                    st.session_state.gads_cache = {}
+                    st.session_state.gads_erro = {}
+                    try:
+                        _salvar_blob_ci_dados_v291(_user_id_uso, "gads_cache", {})
+                        _excluir_cache_gads_r2_usuario(_user_id_uso)
+                    except Exception as _exc_cache_google:
+                        st.toast(f"Não foi possível limpar o cache do Google: {_exc_cache_google}", icon="⚠️")
+                    else:
+                        st.toast("Cache do Google Ads limpo.", icon="✅")
+                        st.rerun()
+
+        with _col_cache_redes:
+            with st.container(key="_uso_cache_redes"):
+                st.markdown(
+                    f"<div style='font-size:13px;font-weight:700;color:#1f2937'>Redes Sociais</div>"
+                    f"<div style='font-size:11px;color:#9ca3af;margin:2px 0 10px'>{_cache_redes_qtd} perfis no cache</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Limpar cache", key="_uso_limpar_cache_redes", use_container_width=True,
+                             disabled=not bool((st.session_state.get("metricas_redes") or {}).get("dados"))):
+                    _cache_redes_vazio = {"ultima_coleta": "", "dados": []}
+                    st.session_state.metricas_redes = _cache_redes_vazio
+                    try:
+                        _salvar_blob_ci_dados_v291(_user_id_uso, "metricas_redes", _cache_redes_vazio)
+                    except Exception as _exc_cache_redes:
+                        st.toast(f"Não foi possível limpar o cache das redes: {_exc_cache_redes}", icon="⚠️")
+                    else:
+                        st.toast("Cache de Redes Sociais limpo.", icon="✅")
+                        st.rerun()
 
     with aba_perfil_plano:
         st.markdown(

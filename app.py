@@ -37245,8 +37245,22 @@ function imgFallback_{uid}(img){{
                     ) if page_pic and page_pic.startswith("http") else f'<div class="page-avatar">{avatar}</div>'
 
                     data_inicio_html = (
-                        f'<div class="meta-row"><span class="meta-label">Veic. iniciada:</span><span>{data_inicio}</span></div>'
+                        '<span class="meta-date">'
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '
+                        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                        '<rect x="3" y="5" width="18" height="16" rx="2"/>'
+                        '<path d="M16 3v4M8 3v4M3 10h18"/>'
+                        f'</svg><span>{data_inicio}</span></span>'
                     ) if data_inicio else ""
+
+                    ultima_exib_html = (
+                        '<span class="meta-last-view" title="Última exibição">'
+                        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" '
+                        'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+                        '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>'
+                        '<circle cx="12" cy="12" r="3"/>'
+                        f'</svg><span>{ultima_exib}</span></span>'
+                    )
 
                     if body_safe and len(body_clean) > 80:
                         short_b = body_safe[:80]
@@ -37302,7 +37316,7 @@ function imgFallback_{uid}(img){{
                                     + (f'<div style="font-size:10px;color:#4b5563">{_escapar_html_ocr(_resto_url_ad)}</div>' if _resto_url_ad else '')
                                 )
                                 _campos_ocr_html.append(
-                                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+                                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:42px">'
                                     + _SVG_ICONE_GLOBO_SITE
                                     + f'<div>{_coluna_texto_ad_html}</div>'
                                     + '</div>'
@@ -37383,26 +37397,29 @@ function imgFallback_{uid}(img){{
                                     )
                                     + '</div></div>'
                                 )
-                            _rotulo_origem_texto = (
-                                "Texto extraído diretamente do anúncio"
-                                if _ocr_estr_ad.get("_origem_texto") == "html_google"
-                                else "Texto extraído da imagem (OCR)"
-                            )
-                            no_copy_html = (
-                                '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
+                            _origem_html_google = _ocr_estr_ad.get("_origem_texto") == "html_google"
+                            _rotulo_origem_html = (
                                 '<div style="font-size:9px;font-weight:700;color:#9ca3af;'
                                 'text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">'
-                                f'{_rotulo_origem_texto}</div>'
+                                'Texto extraído diretamente do anúncio</div>'
+                                if _origem_html_google else ''
+                            )
+                            _selo_ocr_html = (
+                                '<span class="ocr-badge" title="Conteúdo extraído da imagem (OCR)">OCR</span>'
+                                if not _origem_html_google else ''
+                            )
+                            no_copy_html = (
+                                '<div class="no-copy" style="position:relative;text-align:left;font-style:normal;color:#374151">'
+                                + _selo_ocr_html
+                                + _rotulo_origem_html
                                 + "".join(_campos_ocr_html)
                                 + _montar_html_debug_bandas_ocr(_ocr_estr_ad.get("_debug_bandas")) +
                                 '</div>'
                             )
                         elif _ocr_txt_ad:
                             no_copy_html = (
-                                '<div class="no-copy" style="text-align:left;font-style:normal;color:#374151">'
-                                '<div style="font-size:9px;font-weight:700;color:#9ca3af;'
-                                'text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">'
-                                'Texto extraído da imagem (OCR)</div>'
+                                '<div class="no-copy" style="position:relative;padding-top:22px;text-align:left;font-style:normal;color:#374151">'
+                                '<span class="ocr-badge" title="Conteúdo extraído da imagem (OCR)">OCR</span>'
                                 f'{_escapar_html_ocr(_ocr_txt_ad)}</div>'
                             )
                         elif videos:
@@ -37433,8 +37450,7 @@ function imgFallback_{uid}(img){{
         <div style="display:flex;align-items:center;gap:6px">{'<span class="ad-id">ID: ' + ad_id_short + '</span>' if ad_id_short else ''}</div>
     </div>
     <div class="meta-info">
-        {data_inicio_html}
-        <div class="meta-row"><span class="meta-label">Última exibição:</span><span>{ultima_exib}</span></div>
+        <div class="meta-row meta-main-row">{data_inicio_html}{ultima_exib_html}</div>
         {'<div class="meta-row"><span class="meta-label">Impressões:</span>&nbsp;' + impressoes + '</div>' if impressoes else ''}
     </div>
     {media_block}
@@ -37722,6 +37738,9 @@ body{{padding-bottom:4px;min-height:0;}}
 .meta-info{{padding:6px 12px 8px;border-bottom:1px solid #f0f2f5;background:#fafbfc;}}
 .meta-row{{display:flex;align-items:center;gap:5px;font-size:10px;color:#65676b;margin-bottom:4px;flex-wrap:wrap;}}
 .meta-row:last-child{{margin-bottom:0;}}
+.meta-main-row{{justify-content:space-between;flex-wrap:nowrap;width:100%;}}
+.meta-date,.meta-last-view{{display:inline-flex;align-items:center;gap:5px;min-width:0;}}
+.meta-last-view{{margin-left:auto;justify-content:flex-end;text-align:right;}}
 .meta-label{{font-size:10px;color:#65676b;font-weight:700;flex-shrink:0;}}
 .plat-icons{{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}}
 .plat-badge{{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;}}
@@ -37734,6 +37753,7 @@ body{{padding-bottom:4px;min-height:0;}}
 .copy-title{{font-size:12px;font-weight:700;color:#050505;margin-top:10px;padding-top:10px;border-top:2px solid #f3f4f6;}}
 .copy-desc{{font-size:10px;color:#65676b;margin-top:2px;}}
 .no-copy{{font-size:11px;color:#bcc0c4;font-style:italic;min-height:72px;}}
+.ocr-badge{{position:absolute;top:0;right:0;display:inline-flex;align-items:center;justify-content:center;padding:2px 7px;border-radius:20px;background:#eef2f6;border:1px solid #cbd5e1;color:#536579;font-size:9px;font-weight:700;font-style:normal;line-height:1.2;cursor:help;}}
 .dyn-float{{position:absolute;top:10px;right:10px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;}}
 .media-block{{width:100%;position:relative;overflow:hidden;background:#000;height:180px;border:1px solid #e5e7eb;}}
 .img-block{{height:230px;background:#0d1117;}}
@@ -40834,10 +40854,13 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     color:#536579; font-size:10px; font-weight:500; text-align:center;
     font-family:'DM Sans',sans-serif; padding:0 22px 0 8px;
     outline:none; cursor:pointer; border-radius:8px;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23536579' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
     transition:border-color .15s ease, background .15s ease;
 }}
-.ctrl-periodo:hover {{ background:#ffffff; border-color:#aab9c9; }}
-.ctrl-periodo:focus {{ background:#ffffff; border-color:#0e2a47; }}
+.ctrl-periodo:hover {{ background-color:#ffffff; border-color:#aab9c9; }}
+.ctrl-periodo:focus {{ background-color:#ffffff; border-color:#0e2a47; }}
 .ctrl-btn {{
     width:100%; height:38px; border-radius:10px; border:none;
     font-size:12px; font-weight:700; cursor:pointer; font-family:'DM Sans',sans-serif;

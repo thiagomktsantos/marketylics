@@ -39891,7 +39891,7 @@ setHeight(false);
             icon_ins = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/></svg>'
 
             cards_ins_html += f"""
-<div class="card-row" style="border-radius:{'14px' if a == first_item and a == last_item else ('14px 14px 0 0' if a == first_item else ('0 0 14px 14px' if a == last_item else '0'))};overflow:hidden;">
+<div class="card-row" style="overflow:hidden;">
     <div class="card-hdr" data-idx="{idx_real}">
         <span class="card-hdr-icon">{icon_ins}</span>
         <div class="card-title-wrap">
@@ -39994,7 +39994,8 @@ body { padding-bottom:8px; }
     width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
 }
 
-.card-row { background:#e4edf5; border:1.5px solid #123252; border-radius:14px; margin:0 0 12px; overflow:hidden; }
+.card-row { background:#e4edf5; border:1.5px solid #123252; border-radius:0; margin:0; overflow:hidden; }
+.card-row + .card-row { margin-top:-1.5px; }
 .card-hdr {
     display:flex; align-items:center; gap:12px; padding:12px 16px; cursor:pointer;
     background:#e4edf5; transition:background .15s;

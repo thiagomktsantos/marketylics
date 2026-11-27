@@ -20938,6 +20938,26 @@ elif st.session_state.pagina == "geral":
         or _ads_entry_geral.get("ultima_coleta")
         or _ads_entry_geral.get("timestamp")
     )
+
+    _gads_cache_completo = st.session_state.get("gads_cache", {}) or {}
+    if not _gads_cache_completo:
+        try:
+            _gads_cache_completo = _carregar_gads_cache_preferindo_r2_v249(
+                st.session_state.user.id, "dashboard_cache_google"
+            ) or {}
+            if _gads_cache_completo:
+                st.session_state.gads_cache = _gads_cache_completo
+        except Exception:
+            pass
+
+    _gads_entry_geral = _gads_cache_completo.get(nome_sel_geral, {}) or {}
+    coleta_google_geral = _fmt_ultima_coleta(
+        _gads_entry_geral.get("ts")
+        or _gads_entry_geral.get("atualizado_em")
+        or _gads_entry_geral.get("coletado_em")
+        or _gads_entry_geral.get("ultima_coleta")
+        or _gads_entry_geral.get("timestamp")
+    )
     coleta_seo_geral = _fmt_ultima_coleta(seo_sel_geral.get("extraido_em"))
 
     _page_header_geral = st.container(key="page_header_geral")
@@ -20989,10 +21009,10 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     padding:12px 16px 12px 16px;
     position:relative; overflow:visible;
     width:100%; box-sizing:border-box;
-    display:flex; flex-direction:column; gap:10px;
+    display:flex; flex-direction:column;
 }}
 
-/* ── linha 1: dropdown + coletas ── */
+/* ── seletor de empresa ── */
 .ctrl-row-geral {{
     display:flex; align-items:center; gap:12px;
 }}
@@ -21050,18 +21070,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-item-geral .dd-icon-geral {{ background:#0e2a47; }}
 .dd-item-geral.selected .dd-icon-geral {{ background:#0e2a47; }}
 
-/* coluna 2: coletas */
-.col-coletas-geral {{
-    min-width:175px;
-}}
-.coleta-item {{
-    gap:5px;
-    font-size:11px; color:#6b7280; white-space:nowrap;
-    font-family:'DM Sans',sans-serif;
-}}
-.coleta-item strong {{
-    font-weight:700;
-}}
 </style>
 
 <div class="ctrl-box-geral">
@@ -21082,36 +21090,6 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
                     </svg>
                 </div>
                 <div class="dd-list-geral" id="dd-list-geral"></div>
-            </div>
-        </div>
-
-        <!-- coluna 2: coletas -->
-        <div class="col-coletas-geral">
-            <div class="coleta-item">
-                <strong>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="#6b7280" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
-                    </svg>
-                    Instagram:
-                </strong> {coleta_ig_geral}
-            </div>
-            <div class="coleta-item">
-                <strong>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="#6b7280" viewBox="0 0 16 16" style="vertical-align:-2px;margin-right:3px;">
-                        <path fill-rule="evenodd" d="M8.217 5.243C9.145 3.988 10.171 3 11.483 3 13.96 3 16 6.153 16.001 9.907c0 2.29-.986 3.725-2.757 3.725-1.543 0-2.395-.866-3.924-3.424l-.667-1.123-.118-.197a55 55 0 0 0-.53-.877l-1.178 2.08c-1.673 2.925-2.615 3.541-3.923 3.541C1.086 13.632 0 12.217 0 9.973 0 6.388 1.995 3 4.598 3q.477-.001.924.122c.31.086.611.22.913.407.577.359 1.154.915 1.782 1.714m1.516 2.224q-.378-.615-.727-1.133L9 6.326c.845-1.305 1.543-1.954 2.372-1.954 1.723 0 3.102 2.537 3.102 5.653 0 1.188-.39 1.877-1.195 1.877-.773 0-1.142-.51-2.61-2.87zM4.846 4.756c.725.1 1.385.634 2.34 2.001A212 212 0 0 0 5.551 9.3c-1.357 2.126-1.826 2.603-2.581 2.603-.777 0-1.24-.682-1.24-1.9 0-2.602 1.298-5.264 2.846-5.264q.137 0 .27.018"/>
-                    </svg>
-                    Meta Ads:
-                </strong> {coleta_ads_geral}
-            </div>
-            <div class="coleta-item">
-                <strong>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="2" y1="12" x2="22" y2="12"/>
-                        <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
-                    </svg>
-                    SEO:
-                </strong> {coleta_seo_geral}
             </div>
         </div>
 
@@ -21239,7 +21217,68 @@ function setHeightGeral(isOpen) {{
 </script>
 """, height=88, scrolling=False)
 
-    st.markdown("<hr style='border:none;border-top:1px solid #e5e7eb;margin:0 0 24px 0'/>", unsafe_allow_html=True)
+    _cache_info_geral = {
+        "Redes Sociais": html.escape(coleta_ig_geral),
+        "Meta Ads": html.escape(coleta_ads_geral),
+        "Google Ads": html.escape(coleta_google_geral),
+        "SEO": html.escape(coleta_seo_geral),
+    }
+    _cache_tooltip_geral = "".join(
+        f"<div class='cache-tip-row-geral'><span>{_nome_cache}</span><strong>{_valor_cache}</strong></div>"
+        for _nome_cache, _valor_cache in _cache_info_geral.items()
+    )
+    st.markdown(f"""
+        <style>
+        .cache-line-geral {{
+            display:flex; align-items:center; gap:12px; margin:0 0 24px 0;
+        }}
+        .cache-line-geral::before {{
+            content:""; height:1px; background:#dfe5ec; flex:1;
+        }}
+        .cache-info-geral {{
+            position:relative; display:inline-flex; align-items:center; gap:5px;
+            font-family:'DM Sans',sans-serif; font-size:9.5px; color:#8a97a6;
+            white-space:nowrap; cursor:default;
+        }}
+        .cache-info-geral > strong {{ font-size:9.5px; font-weight:600; color:#718096; }}
+        .cache-tooltip-geral {{
+            position:absolute; z-index:100; top:calc(100% + 8px); right:0;
+            width:290px; padding:10px 12px; border:1px solid #dfe5ec;
+            border-radius:10px; background:#fff; box-shadow:0 8px 24px rgba(14,42,71,.14);
+            opacity:0; visibility:hidden; transform:translateY(-4px);
+            transition:opacity .15s ease, transform .15s ease, visibility .15s ease;
+            pointer-events:none;
+        }}
+        .cache-info-geral:hover .cache-tooltip-geral {{
+            opacity:1; visibility:visible; transform:translateY(0);
+        }}
+        .cache-tip-title-geral {{
+            color:#1a2e4a; font-size:11px; font-weight:700; margin-bottom:5px;
+        }}
+        .cache-tip-row-geral {{
+            display:flex; justify-content:space-between; align-items:center; gap:12px;
+            padding:4px 0; color:#6b7280; font-size:10px;
+        }}
+        .cache-tip-row-geral + .cache-tip-row-geral {{ border-top:1px solid #f0f2f5; }}
+        .cache-tip-row-geral strong {{
+            max-width:170px; overflow:hidden; text-overflow:ellipsis;
+            color:#405068; font-size:10px; font-weight:600;
+        }}
+        </style>
+        <div class="cache-line-geral">
+            <div class="cache-info-geral">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8a97a6"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <strong>Informações de cache</strong>
+                <div class="cache-tooltip-geral">
+                    <div class="cache-tip-title-geral">Últimas atualizações</div>
+                    {_cache_tooltip_geral}
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
     def make_donut_svg(pct, color, label, count, size=50, stroke=5, font_size=None):

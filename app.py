@@ -46001,7 +46001,7 @@ html, body { background: transparent; overflow: hidden; }
             )
 
         _atividades_selecao = listar_atividades_notificacoes(
-            st.session_state.user.id, limite_recentes=100
+            st.session_state.user.id, limite_recentes=300
         )
         _termo_sel = remover_acentos((st.session_state.get("_busca_notif") or "").strip().lower())
         _status_sel = st.session_state.get("_filtro_status_notif", "todos")
@@ -46469,7 +46469,7 @@ html, body { background: transparent; overflow: hidden; }
         no intervalo; o resto da página (cabeçalho, sidebar) fica parado.
         Precisa estar numa função à parte porque st.fragment decora uma
         função, não um bloco de código solto."""
-        _todas_atividades = listar_atividades_notificacoes(st.session_state.user.id, limite_recentes=100) if st.session_state.user else []
+        _todas_atividades = listar_atividades_notificacoes(st.session_state.user.id, limite_recentes=300) if st.session_state.user else []
         _selecionadas_cards_set = set(str(x) for x in st.session_state.get("_notificacoes_selecionadas_cards", []))
 
         _termo_busca = remover_acentos((st.session_state.get("_busca_notif") or "").strip().lower())

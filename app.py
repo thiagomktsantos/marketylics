@@ -44852,13 +44852,31 @@ html, body { background: transparent; overflow: hidden; }
             unsafe_allow_html=True,
         )
 
+        _cache_meta_uso = st.session_state.get("ads_cache") or {}
+        _cache_google_uso = st.session_state.get("gads_cache") or {}
+        # O Google mantém o cache canônico no R2 e normalmente só o coloca na
+        # sessão quando a página Google Ads é aberta. Em "Uso do plano" é
+        # preciso consultar essa fonte diretamente para não exibir zero falso.
+        if not _cache_google_uso and _user_id_uso:
+            try:
+                _cache_google_uso = _carregar_gads_cache_preferindo_r2_v249(
+                    _user_id_uso, "uso_plano_contagem_cache_google"
+                ) or {}
+                if _cache_google_uso:
+                    st.session_state.gads_cache = _cache_google_uso
+            except Exception as _exc_cache_google_uso:
+                print(
+                    f"[USO-PLANO] falha carregando cache Google: {_exc_cache_google_uso!r}",
+                    flush=True,
+                )
+
         _cache_meta_qtd = sum(
             len((_entrada or {}).get("data", []))
-            for _entrada in (st.session_state.get("ads_cache") or {}).values()
+            for _entrada in _cache_meta_uso.values()
         )
         _cache_google_qtd = sum(
             len((_entrada or {}).get("data", []))
-            for _entrada in (st.session_state.get("gads_cache") or {}).values()
+            for _entrada in _cache_google_uso.values()
         )
         _cache_redes_qtd = len(
             (st.session_state.get("metricas_redes") or {}).get("dados", [])
@@ -44911,7 +44929,7 @@ html, body { background: transparent; overflow: hidden; }
                     unsafe_allow_html=True,
                 )
                 if st.button("Limpar cache", key="_uso_limpar_cache_google", use_container_width=True,
-                             disabled=not bool(st.session_state.get("gads_cache"))):
+                             disabled=not bool(_cache_google_uso)):
                     st.session_state.gads_cache = {}
                     st.session_state.gads_erro = {}
                     try:

@@ -23196,9 +23196,9 @@ function setHeightGeral(isOpen) {{
                     _painel_direita_html = f"""
   <div class="executive-side" style="background:#102f4e;border:none;border-radius:14px;padding:0 20px 18px;width:290px;min-height:260px;flex-shrink:0;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 6px 18px rgba(15,47,78,.16);overflow:hidden;">
     <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;background:#183f62;margin:0 -20px 17px;padding:14px 12px;">
-        <div style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.45px;color:#ffffff;line-height:1.3;white-space:nowrap;">Classificação do concorrente</div>
-        <div class="conc-tooltip-wrap"><div class="q-badge" style="border-color:rgba(255,255,255,.45);color:#d9e8f7;">?</div>
+      <div style="position:relative;display:flex;align-items:center;background:#183f62;margin:0 -20px 17px;padding:14px 20px;">
+        <div style="font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.45px;color:#ffffff;line-height:1.3;white-space:nowrap;text-align:left;">Classificação do concorrente</div>
+        <div class="conc-tooltip-wrap" style="position:absolute;right:20px;"><div class="q-badge" style="border-color:rgba(255,255,255,.45);color:#d9e8f7;">?</div>
           <div class="tip"><span style="font-size:11px;font-weight:700;color:#fff;">Como é calculado:</span><br>Combina o Score Geral com os sinais de estratégia, presença e discurso desse concorrente.</div>
         </div>
       </div>

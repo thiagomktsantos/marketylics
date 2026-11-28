@@ -21962,7 +21962,9 @@ function setHeightGeral(isOpen) {{
                     "av_html": av_html,
                     "seg":     fmt_num(r.get("seguidores",0)),
                     "eng":     f'{r.get("eng_pct",0):.1f}%',
-                    "posts":   fmt_num(r.get("total_posts",0)),
+                    # Mesma base da página Redes: somente as postagens que
+                    # pertencem ao recorte coletado e salvo no cache atual.
+                    "posts":   fmt_num(len(posts_lista)),
                     "eng_med": fmt_num(int(r.get("eng_medio",0))),
                     "score_val":  score_geral["score"],
                     "score_cor":  score_geral["cor_classe"],
@@ -22137,12 +22139,18 @@ function setHeightGeral(isOpen) {{
 
                 _outros_seg    = _outros_valores("seguidores", int)
                 _outros_eng    = _outros_valores("eng_pct", float)
-                _outros_posts  = _outros_valores("total_posts", int)
+                # A comparação de posts também precisa respeitar o período
+                # coletado; ``total_posts`` é o total histórico do perfil.
+                _outros_posts = [
+                    len(_r_o.get("posts") or [])
+                    for _nome_o, _r_o in dados_redes_map.items()
+                    if _nome_o != e["nome"] and len(_r_o.get("posts") or []) > 0
+                ]
                 _outros_engmed = _outros_valores("eng_medio", float)
 
                 seg_ctx_html    = _ctx_badge_html(r.get("seguidores", 0) or 0, _outros_seg)
                 eng_ctx_html    = _ctx_badge_html(round(r.get("eng_pct", 0) or 0, 1), _outros_eng)
-                post_ctx_html   = _ctx_badge_html(r.get("total_posts", 0) or 0, _outros_posts)
+                post_ctx_html   = _ctx_badge_html(len(r.get("posts") or []), _outros_posts)
                 engmed_ctx_html = _ctx_badge_html(r.get("eng_medio", 0) or 0, _outros_engmed)
 
                 stats_block_html = (

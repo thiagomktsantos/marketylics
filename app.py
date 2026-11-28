@@ -21753,6 +21753,8 @@ body {{ padding-bottom: 8px; }}
     width: 36px; height: 36px; border-radius: 8px; background: #f3f4f6;
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }}
+.icon-wrap.instagram {{ background:#fff0f6; }}
+.icon-wrap.facebook {{ background:#e8f0fe; }}
 .row-label {{ font-size: 13px; color: #717885; display: block; }}
 .row-value {{
     font-size: 14px; color: #111827; font-weight: 600;
@@ -21783,11 +21785,20 @@ body {{ padding-bottom: 8px; }}
     var ICON_EDIT  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
     var ICON_TRASH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
  
-    var ICON_IG = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c13584" stroke-width="1.8"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1" fill="#c13584" stroke="none"/></svg>';
+    function igIcon(idx) {{
+        return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none">'
+            + '<defs><linearGradient id="ig' + idx + '" x1="0%" y1="100%" x2="100%" y2="0%">'
+            + '<stop offset="0%" stop-color="#f09433"/><stop offset="25%" stop-color="#e6683c"/>'
+            + '<stop offset="50%" stop-color="#dc2743"/><stop offset="75%" stop-color="#cc2366"/>'
+            + '<stop offset="100%" stop-color="#bc1888"/></linearGradient></defs>'
+            + '<rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig' + idx + ')"/>'
+            + '<circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8"/>'
+            + '<circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg>';
+    }}
 
-    function makeRow(iconHtml, label, value) {{
+    function makeRow(iconHtml, label, value, iconClass = "") {{
         return '<div class="row">'
-            + '<div class="icon-wrap">' + iconHtml + '</div>'
+            + '<div class="icon-wrap ' + iconClass + '">' + iconHtml + '</div>'
             + '<div style="flex:1;min-width:0">'
             + '<span class="row-label">' + label + '</span>'
             + '<span class="row-value">' + (value || '—') + '</span>'
@@ -21847,8 +21858,8 @@ body {{ padding-bottom: 8px; }}
             body.innerHTML =
                 '<div class="sec-title">Presença Digital</div>'
                 + makeRow(ICON_GLOBE, 'Site', c.url)
-                + makeRow(ICON_IG, 'Instagram', c.instagram)
-                + makeRow(ICON_FB, 'Facebook', c.fb_page);
+                + makeRow(igIcon(c.idx), 'Instagram', c.instagram, 'instagram')
+                + makeRow(ICON_FB, 'Facebook', c.fb_page, 'facebook');
             card.appendChild(body);
  
             var footer = document.createElement('div');
@@ -26227,6 +26238,7 @@ body {{ padding-bottom:8px; }}
     display:flex;align-items:center;justify-content:center;
     font-size:14px;font-weight:700;color:#374151;background:#f3f4f6;flex-shrink:0;
 }}
+.avatar img {{ width:24px; height:24px; object-fit:contain; }}
 .card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
 .badge {{
     display:inline-block; padding:2px 10px; border:1px solid #93c5fd; border-radius:999px;
@@ -26318,6 +26330,25 @@ function buildCards() {{
             + '</div>'
             + '<span class="badge' + (c.tipo === 'minha' ? ' minha' : '') + '">' + c.badge_lbl + '</span>';
         card.appendChild(hdr);
+
+        // Mantém as iniciais visíveis enquanto o ícone do domínio carrega.
+        var site = (c.url || '').trim();
+        if (site) {{
+            try {{
+                var siteUrl = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(site) ? site : 'https://' + site);
+                if (siteUrl.protocol === 'http:' || siteUrl.protocol === 'https:') {{
+                    siteUrl.protocol = 'https:';
+                    var avatar = hdr.querySelector('.avatar');
+                    var favicon = document.createElement('img');
+                    favicon.alt = '';
+                    favicon.referrerPolicy = 'no-referrer';
+                    favicon.onload = function() {{ avatar.replaceChildren(favicon); }};
+                    favicon.src = new URL('/favicon.ico', siteUrl.origin).href;
+                }}
+            }} catch (err) {{
+                // Endereços inválidos continuam com as iniciais.
+            }}
+        }}
 
         var urlRow = document.createElement('div');
         urlRow.className = 'url-row';

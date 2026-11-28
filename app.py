@@ -13303,9 +13303,8 @@ def salvar_seo_cache():
     try:
         user_id = st.session_state.user.id
         seo_cache = st.session_state.get("seo_cache", {})
-        supabase.table("ci_dados").update({
-            "seo_cache": seo_cache,
-        }).eq("user_id", user_id).execute()
+        # Persiste e atualiza a cópia curta em memória lida pelo Dashboard.
+        _salvar_blob_ci_dados_v291(user_id, "seo_cache", seo_cache)
     except Exception as e:
         st.toast(f"Erro ao salvar SEO: {e}", icon="⚠️")
 
@@ -20888,7 +20887,58 @@ elif st.session_state.pagina == "geral":
         filtro_empresa_ativo = 0
         st.session_state.geral_empresa_filtro = 0
 
-    cache_redes = st.session_state.metricas_redes.get("dados", [])
+    # Resolve todos os caches antes de construir mapas, indicadores e datas.
+    # Os leitores já possuem TTL curto; assim a sessão não fica indefinidamente
+    # presa a um snapshot antigo quando outra página conclui uma coleta.
+    _uid_dashboard = st.session_state.user.id
+    try:
+        _metricas_redes_dashboard = _ler_blob_ci_dados_v291(
+            _uid_dashboard, "metricas_redes", padrao={}
+        ) or {}
+        st.session_state.metricas_redes = _metricas_redes_dashboard
+    except Exception:
+        _metricas_redes_dashboard = st.session_state.get("metricas_redes", {}) or {}
+    try:
+        ads_cache = _ler_blob_ci_dados_v291(
+            _uid_dashboard, "ads_cache", padrao={}
+        ) or {}
+        st.session_state.ads_cache = ads_cache
+    except Exception:
+        ads_cache = st.session_state.get("ads_cache", {}) or {}
+    try:
+        _gads_cache_completo = _carregar_gads_cache_preferindo_r2_v249(
+            _uid_dashboard, "dashboard_cache_google"
+        ) or {}
+        st.session_state.gads_cache = _gads_cache_completo
+    except Exception:
+        _gads_cache_completo = st.session_state.get("gads_cache", {}) or {}
+    try:
+        seo_cache = _ler_blob_ci_dados_v291(
+            _uid_dashboard, "seo_cache", padrao={}
+        ) or {}
+        st.session_state.seo_cache = seo_cache
+    except Exception:
+        seo_cache = st.session_state.get("seo_cache", {}) or {}
+
+    def _entrada_cache_por_nome(_cache: dict, _nome: str) -> dict:
+        """Compatibilidade com caches antigos que variam caixa/espaçamento."""
+        if not isinstance(_cache, dict):
+            return {}
+        _direta = _cache.get(_nome)
+        if isinstance(_direta, dict):
+            return _direta
+        _normalizado = re.sub(r"\s+", " ", str(_nome or "")).strip().casefold()
+        if not _normalizado:
+            return {}
+        for _chave_cache, _valor_cache in _cache.items():
+            _chave_normalizada = re.sub(
+                r"\s+", " ", str(_chave_cache or "")
+            ).strip().casefold()
+            if _chave_normalizada == _normalizado and isinstance(_valor_cache, dict):
+                return _valor_cache
+        return {}
+
+    cache_redes = _metricas_redes_dashboard.get("dados", [])
     dados_redes_map = {}
     dados_redes_key_map = {}
     dados_redes_handle_map = {}
@@ -20919,8 +20969,6 @@ elif st.session_state.pagina == "geral":
             return dados_redes_handle_map.get(_handle, {})
         return dados_redes_map.get(_empresa.get("nome"), {}) or {}
 
-    ads_cache = st.session_state.get("ads_cache", {})
-
     def fmt_num(n):
         n = int(n or 0)
         if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
@@ -20931,23 +20979,13 @@ elif st.session_state.pagina == "geral":
     nome_sel_geral = empresa_sel_geral["nome"] if empresa_sel_geral else ""
 
     r_sel_geral   = _dados_redes_empresa_geral(empresa_sel_geral) if empresa_sel_geral else {}
-    ads_sel_geral = ads_cache.get(nome_sel_geral, {}) or {}
-    seo_sel_geral = st.session_state.get("seo_cache", {}).get(nome_sel_geral, {}) or {}
+    ads_sel_geral = _entrada_cache_por_nome(ads_cache, nome_sel_geral)
+    seo_sel_geral = _entrada_cache_por_nome(seo_cache, nome_sel_geral)
 
     def _fmt_ultima_coleta(valor):
         return str(valor) if valor else "Sem coleta"
 
-    if not st.session_state.metricas_redes.get("ultima_coleta"):
-        try:
-            _metricas_redes_v291 = _ler_blob_ci_dados_v291(
-                st.session_state.user.id, "metricas_redes", padrao={}
-            )
-            if _metricas_redes_v291:
-                st.session_state.metricas_redes = _metricas_redes_v291
-        except Exception:
-            pass
-
-    _ultima_coleta_redes = st.session_state.metricas_redes.get("ultima_coleta", "")
+    _ultima_coleta_redes = _metricas_redes_dashboard.get("ultima_coleta", "")
     coleta_ig_geral = _fmt_ultima_coleta(
         _ultima_coleta_redes
         or r_sel_geral.get("atualizado_em")
@@ -20955,18 +20993,7 @@ elif st.session_state.pagina == "geral":
         or r_sel_geral.get("ultima_coleta")
         or r_sel_geral.get("timestamp")
     )
-    _ads_cache_completo = st.session_state.get("ads_cache", {})
-    if not _ads_cache_completo:
-        try:
-            _ads_cache_completo = _ler_blob_ci_dados_v291(
-                st.session_state.user.id, "ads_cache", padrao={}
-            ) or {}
-            if _ads_cache_completo:
-                st.session_state.ads_cache = _ads_cache_completo
-        except Exception:
-            pass
-
-    _ads_entry_geral = _ads_cache_completo.get(nome_sel_geral, {}) or {}
+    _ads_entry_geral = _entrada_cache_por_nome(ads_cache, nome_sel_geral)
     coleta_ads_geral = _fmt_ultima_coleta(
         _ads_entry_geral.get("ts")
         or _ads_entry_geral.get("atualizado_em")
@@ -20975,18 +21002,7 @@ elif st.session_state.pagina == "geral":
         or _ads_entry_geral.get("timestamp")
     )
 
-    _gads_cache_completo = st.session_state.get("gads_cache", {}) or {}
-    if not _gads_cache_completo:
-        try:
-            _gads_cache_completo = _carregar_gads_cache_preferindo_r2_v249(
-                st.session_state.user.id, "dashboard_cache_google"
-            ) or {}
-            if _gads_cache_completo:
-                st.session_state.gads_cache = _gads_cache_completo
-        except Exception:
-            pass
-
-    _gads_entry_geral = _gads_cache_completo.get(nome_sel_geral, {}) or {}
+    _gads_entry_geral = _entrada_cache_por_nome(_gads_cache_completo, nome_sel_geral)
     coleta_google_geral = _fmt_ultima_coleta(
         _gads_entry_geral.get("ts")
         or _gads_entry_geral.get("atualizado_em")
@@ -21850,8 +21866,6 @@ function setHeightGeral(isOpen) {{
             "extensoes": _extensoes_contagem.most_common(12),
         }
 
-    seo_cache = st.session_state.get("seo_cache", {})
-
     tooltip_css = """
 .oport-wrap {
     position: relative; display: inline-flex; align-items: center; cursor: default;
@@ -21971,7 +21985,7 @@ function setHeightGeral(isOpen) {{
                 f'<div style="width:32px;height:32px;border-radius:50%;background:{cor};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0">{av}</div>')
 
             site_url = e.get("site","") or ""
-            seo      = seo_cache.get(e["nome"],{})
+            seo      = _entrada_cache_por_nome(seo_cache, e["nome"])
             sitemap  = seo.get("sitemap",{})
 
             seo_status_ok = seo.get("status") == "ok"
@@ -21997,12 +22011,12 @@ function setHeightGeral(isOpen) {{
                 _c_seo["peso"] = 20
             seo_faltando = [c["label"] for c in seo_items_check if not c["ok"]]
 
-            ads_entry = ads_cache.get(e["nome"],{})
+            ads_entry = _entrada_cache_por_nome(ads_cache, e["nome"])
             ads_lista = ads_entry.get("data",[]) if ads_entry else []
             tem_ads   = len(ads_lista) > 0
             ads_info  = calcular_categorias_ads(ads_lista) if tem_ads else None
 
-            gads_entry = _gads_cache_completo.get(e["nome"], {}) or {}
+            gads_entry = _entrada_cache_por_nome(_gads_cache_completo, e["nome"])
             gads_lista = _enriquecer_gads_dashboard(
                 gads_entry.get("data", []) if gads_entry else []
             )
@@ -22727,7 +22741,7 @@ function setHeightGeral(isOpen) {{
                             _r_leve.get("eng_pct", 0.0),
                         )
                         _areas_leve.append(_sc_redes_leve["score"])
-                    _seo_leve = seo_cache.get(_nome_emp, {})
+                    _seo_leve = _entrada_cache_por_nome(seo_cache, _nome_emp)
                     if _seo_leve.get("status") == "ok":
                         _sitemap_leve = _seo_leve.get("sitemap", {})
                         _pontos_leve = sum([
@@ -22736,13 +22750,15 @@ function setHeightGeral(isOpen) {{
                             _sitemap_leve.get("status") == "ok",
                         ])
                         _areas_leve.append(round((_pontos_leve / 5) * 100))
-                    _ads_entry_leve = ads_cache.get(_nome_emp, {})
+                    _ads_entry_leve = _entrada_cache_por_nome(ads_cache, _nome_emp)
                     _ads_lista_leve = _ads_entry_leve.get("data", []) if _ads_entry_leve else []
                     _scores_ads_leve = []
                     if _ads_lista_leve:
                         _ads_info_leve = calcular_categorias_ads(_ads_lista_leve)
                         _scores_ads_leve.append(calcular_score_ads(_ads_info_leve)["score"])
-                    _gads_entry_leve = _gads_cache_completo.get(_nome_emp, {}) or {}
+                    _gads_entry_leve = _entrada_cache_por_nome(
+                        _gads_cache_completo, _nome_emp
+                    )
                     _gads_lista_leve = _enriquecer_gads_dashboard(
                         _gads_entry_leve.get("data", []) if _gads_entry_leve else []
                     )

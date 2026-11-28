@@ -26192,7 +26192,6 @@ function triggerTab(label) {{
                 "nome":           s["nome"],
                 "url":            s["url"],
                 "tipo":           s["tipo"],
-                "cor":            get_minha_empresa_color() if is_minha else get_concorrente_color(idx_s - 1),
                 "badge_lbl":      badge_lbl,
                 "avatar":         avatar_letras,
                 "tem_analise":    tem_analise,
@@ -26230,16 +26229,16 @@ body {{ padding-bottom:8px; }}
     transition:box-shadow 0.15s; box-shadow:0 4px 20px rgba(0,0,0,0.10);
 }}
 .card-header {{
-    display:flex; align-items:center; gap:12px;
-    padding:16px 18px 14px; border-bottom:1px solid #f3f4f6;
+    display:flex; align-items:center; gap:7px;
+    background:#586e8a; padding:16px 18px 14px; border-bottom:1px solid #f3f4f6;
 }}
 .avatar {{
-    width:40px;height:40px;border-radius:50%;
+    width:40px;height:40px;border:0;border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     font-size:14px;font-weight:700;color:#374151;background:#f3f4f6;flex-shrink:0;
 }}
 .avatar img {{ width:24px; height:24px; object-fit:contain; }}
-.card-name {{ font-size:16px;font-weight:700;color:#111827; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
+.card-name {{ font-size:16px;font-weight:700;color:#fff; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
 .badge {{
     display:inline-block; padding:2px 10px; border:1px solid #93c5fd; border-radius:999px;
     font-size:11px; font-weight:700; color:#1d4ed8; background:#ffffff;
@@ -26313,6 +26312,56 @@ function esc(s) {{
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }}
 
+function loadSiteFavicon(avatar, site) {{
+    if (!site) return;
+    var siteUrl;
+    try {{
+        siteUrl = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(site) ? site : 'https://' + site);
+    }} catch (err) {{
+        return;
+    }}
+    if (siteUrl.protocol !== 'https:' && siteUrl.protocol !== 'http:') return;
+    siteUrl.protocol = 'https:';
+
+    var fallbackUrl = new URL('https://www.google.com/s2/favicons');
+    fallbackUrl.searchParams.set('domain', siteUrl.hostname);
+    fallbackUrl.searchParams.set('sz', '64');
+
+    function loadFallback() {{
+        var fallback = new Image();
+        fallback.alt = '';
+        fallback.referrerPolicy = 'no-referrer';
+        fallback.onload = function() {{ avatar.replaceChildren(fallback); }};
+        fallback.src = fallbackUrl.href;
+    }}
+
+    var favicon = new Image();
+    favicon.crossOrigin = 'anonymous';
+    favicon.referrerPolicy = 'no-referrer';
+    favicon.onerror = loadFallback;
+    favicon.onload = function() {{
+        try {{
+            var canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 64;
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f3f4f6';
+            ctx.fillRect(0, 0, 64, 64);
+            var scale = 64 / Math.max(favicon.naturalWidth, favicon.naturalHeight);
+            var width = favicon.naturalWidth * scale;
+            var height = favicon.naturalHeight * scale;
+            ctx.drawImage(favicon, (64 - width) / 2, (64 - height) / 2, width, height);
+            var jpeg = new Image();
+            jpeg.alt = '';
+            jpeg.onload = function() {{ avatar.replaceChildren(jpeg); }};
+            jpeg.onerror = loadFallback;
+            jpeg.src = canvas.toDataURL('image/jpeg', 0.95);
+        }} catch (err) {{
+            loadFallback();
+        }}
+    }};
+    favicon.src = new URL('/favicon.ico', siteUrl.origin).href;
+}}
+
 function buildCards() {{
     var grid = document.getElementById('cards-grid');
     grid.innerHTML = '';
@@ -26324,31 +26373,14 @@ function buildCards() {{
         var hdr = document.createElement('div');
         hdr.className = 'card-header';
         hdr.innerHTML =
-            '<div class="avatar" style="border:2px solid ' + c.cor + '">' + c.avatar + '</div>'
+            '<div class="avatar">' + esc(c.avatar) + '</div>'
             + '<div style="flex:1;min-width:0;overflow:hidden;">'
             +   '<div class="card-name">' + esc(c.nome) + '</div>'
             + '</div>'
             + '<span class="badge' + (c.tipo === 'minha' ? ' minha' : '') + '">' + c.badge_lbl + '</span>';
         card.appendChild(hdr);
 
-        // Mantém as iniciais visíveis enquanto o ícone do domínio carrega.
-        var site = (c.url || '').trim();
-        if (site) {{
-            try {{
-                var siteUrl = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(site) ? site : 'https://' + site);
-                if (siteUrl.protocol === 'http:' || siteUrl.protocol === 'https:') {{
-                    siteUrl.protocol = 'https:';
-                    var avatar = hdr.querySelector('.avatar');
-                    var favicon = document.createElement('img');
-                    favicon.alt = '';
-                    favicon.referrerPolicy = 'no-referrer';
-                    favicon.onload = function() {{ avatar.replaceChildren(favicon); }};
-                    favicon.src = new URL('/favicon.ico', siteUrl.origin).href;
-                }}
-            }} catch (err) {{
-                // Endereços inválidos continuam com as iniciais.
-            }}
-        }}
+        loadSiteFavicon(hdr.querySelector('.avatar'), (c.url || '').trim());
 
         var urlRow = document.createElement('div');
         urlRow.className = 'url-row';

@@ -22545,8 +22545,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
-.dd-badge-minha-geral {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
-.dd-badge-conc-geral  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+.dd-badge-minha-geral {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-conc-geral  {{ background:#0183c3; color:#fff; border:0; }}
 .dd-arrow-geral {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow-geral.open {{ transform:rotate(180deg); }}
 
@@ -23257,9 +23257,9 @@ function setHeightGeral(isOpen) {{
             cor = get_minha_empresa_color() if is_minha else get_concorrente_color(i)
             av  = gerar_avatar(e["nome"])
             badge_lbl = "Minha Empresa" if is_minha else "Concorrente"
-            badge_bg  = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_col = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd = "#bbf7d0" if is_minha else "#bfdbfe"
+            badge_bg  = "#fff" if is_minha else "#0183c3"
+            badge_col = "#0e2a47" if is_minha else "#fff"
+            badge_brd = "transparent" if is_minha else "transparent"
 
             r = _dados_redes_empresa_geral(e)
             tem_redes = bool(r)
@@ -26249,6 +26249,7 @@ function triggerTab(label) {{
                 "nome":           s["nome"],
                 "url":            s["url"],
                 "badge_lbl":      badge_lbl,
+                "is_minha":       is_minha,
                 "avatar":         avatar_letras,
                 "tem_analise":    tem_analise,
                 "ultima_analise": ultima_analise,
@@ -26296,10 +26297,11 @@ body {{ padding-bottom:8px; }}
 .avatar img {{ width:24px; height:24px; object-fit:contain; }}
 .card-name {{ font-size:16px;font-weight:700;color:#fff; white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }}
 .badge {{
-    display:inline-block; padding:2px 10px; border:1px solid #86efac; border-radius:999px;
-    font-size:11px; font-weight:700; color:#15803d; background:#ffffff;
+    display:inline-block; padding:2px 10px; border:0; border-radius:999px;
+    font-size:11px; line-height:14px; font-weight:700; color:#fff; background:#0183c3;
     white-space:nowrap; flex-shrink:0;
 }}
+.badge.minha {{ color:#0e2a47; background:#fff; }}
 .url-row {{
     display:flex;align-items:center;gap:6px; padding:9px 18px;
     font-size:13px;font-weight:600;color:#374151;
@@ -26384,7 +26386,7 @@ function buildCards() {{
             + '<div style="flex:1;min-width:0;overflow:hidden;">'
             +   '<div class="card-name">' + esc(c.nome) + '</div>'
             + '</div>'
-            + '<span class="badge">' + c.badge_lbl + '</span>';
+            + '<span class="badge' + (c.is_minha ? ' minha' : '') + '">' + esc(c.badge_lbl) + '</span>';
         card.appendChild(hdr);
 
         loadSiteFavicon(hdr.querySelector('.avatar'), (c.url || '').trim());
@@ -29184,9 +29186,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
             _ads_id_h    = emp.get("ads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_id","")
             _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
-            _badge_bg_h  = "#f0fdf4"        if _is_minha_h else "#eff6ff"
-            _badge_col_h = "#15803d"        if _is_minha_h else "#1d4ed8"
-            _badge_brd_h = "#bbf7d0"        if _is_minha_h else "#bfdbfe"
+            _badge_bg_h  = "#fff"        if _is_minha_h else "#0183c3"
+            _badge_col_h = "#0e2a47"        if _is_minha_h else "#fff"
+            _badge_brd_h = "transparent"        if _is_minha_h else "transparent"
             _page_pic_h  = emp.get("ads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("ads_page_pic","")
             _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
             _av_h        = gerar_avatar(_emp_ativa_nome)
@@ -29333,8 +29335,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
 .dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
-.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
-.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
@@ -30040,9 +30042,9 @@ function triggerTab(label) {{
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
             av_txt     = gerar_avatar(e["nome"])
             badge_lbl  = "Minha empresa" if is_minha else "Concorrente"
-            badge_bg   = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_col  = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd  = "#bbf7d0" if is_minha else "#bfdbfe"
+            badge_bg   = "#fff" if is_minha else "#0183c3"
+            badge_col  = "#0e2a47" if is_minha else "#fff"
+            badge_brd  = "transparent" if is_minha else "transparent"
             id_bg      = "#f0fdf4" if has_id else "#f3f4f6"
             id_brd     = "#bbf7d0" if has_id else "#e5e7eb"
             id_fw      = "600"     if has_id else "400"
@@ -36330,9 +36332,9 @@ Seja direto, objetivo e baseado nos dados fornecidos.
             _is_minha_h  = _emp_ativa_obj["tipo"] == "minha"
             _gads_id_h    = emp.get("gads_id","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_id","")
             _badge_txt_h = "Minha empresa" if _is_minha_h else "Concorrente"
-            _badge_bg_h  = "#f0fdf4"        if _is_minha_h else "#eff6ff"
-            _badge_col_h = "#15803d"        if _is_minha_h else "#1d4ed8"
-            _badge_brd_h = "#bbf7d0"        if _is_minha_h else "#bfdbfe"
+            _badge_bg_h  = "#fff"        if _is_minha_h else "#0183c3"
+            _badge_col_h = "#0e2a47"        if _is_minha_h else "#fff"
+            _badge_brd_h = "transparent"        if _is_minha_h else "transparent"
             _page_pic_h  = emp.get("gads_page_pic","") if _is_minha_h else concs[_emp_ativa_obj["idx"]].get("gads_page_pic","")
             _cor_h       = get_minha_empresa_color() if _is_minha_h else get_concorrente_color(_emp_ativa_obj["idx"])
             _av_h        = gerar_avatar(_emp_ativa_nome)
@@ -36495,8 +36497,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-handle {{ font-size:11px; color:#9ca3af; }}
 .dd-item:last-child .dd-handle {{ color:#94a3b8; }}
 .dd-badge-minha, .dd-badge-conc {{ flex-shrink:0; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700; white-space:nowrap; }}
-.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
-.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
  
 .col-btns {{ display:flex; flex-direction:column; gap:5px; justify-content:center; flex-shrink:0; min-width:200px; }}
 .ctrl-btn {{
@@ -37231,9 +37233,9 @@ function triggerTab(label) {{
             cor        = get_minha_empresa_color() if is_minha else get_concorrente_color(e["idx"])
             av_txt     = gerar_avatar(e["nome"])
             badge_lbl  = "Minha empresa" if is_minha else "Concorrente"
-            badge_bg   = "#f0fdf4" if is_minha else "#eff6ff"
-            badge_col  = "#15803d" if is_minha else "#1d4ed8"
-            badge_brd  = "#bbf7d0" if is_minha else "#bfdbfe"
+            badge_bg   = "#fff" if is_minha else "#0183c3"
+            badge_col  = "#0e2a47" if is_minha else "#fff"
+            badge_brd  = "transparent" if is_minha else "transparent"
             id_bg      = "#f0fdf4" if has_id else "#f3f4f6"
             id_brd     = "#bbf7d0" if has_id else "#e5e7eb"
             id_fw      = "600"     if has_id else "400"
@@ -41790,7 +41792,7 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
 .dd-badge-conc {{
     margin-left:auto; flex-shrink:0; display:inline-flex; align-items:center;
     gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
-    white-space:nowrap; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
+    white-space:nowrap; background:#0183c3; color:#fff; border:0;
 }}
 .dd-arrow {{ color:#0e2a47; flex-shrink:0; transition:transform 0.15s; margin-left:auto; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}
@@ -43037,8 +43039,8 @@ html, body {{ background:transparent; font-family:'DM Sans',sans-serif; overflow
     gap:4px; padding:2px 8px; border-radius:20px; font-size:9px; font-weight:700;
     white-space:nowrap;
 }}
-.dd-badge-minha {{ background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; }}
-.dd-badge-conc  {{ background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }}
+.dd-badge-minha {{ background:#fff; color:#0e2a47; border:0; }}
+.dd-badge-conc  {{ background:#0183c3; color:#fff; border:0; }}
 #dd-trigger-badge {{ flex-shrink:0; display:inline-flex !important; }}
 .dd-arrow {{ color:#6b7280; flex-shrink:0; transition:transform 0.15s; margin-left:8px; }}
 .dd-arrow.open {{ transform:rotate(180deg); }}

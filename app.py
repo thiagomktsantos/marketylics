@@ -13395,6 +13395,7 @@ section.main .block-container {
 
 /* Mantem os cabecalhos das paginas na mesma linha superior de Redes Sociais.
    O recuo compensa os elementos tecnicos ocultos criados antes do titulo. */
+.st-key-page_header_empresa_editor,
 .st-key-page_header_cad,
 .st-key-page_header_geral,
 .st-key-page_header_sites,
@@ -13418,6 +13419,7 @@ section.main .block-container {
 }
 
 @media (max-width: 768px) {
+    .st-key-page_header_empresa_editor,
     .st-key-page_header_cad,
     .st-key-page_header_geral,
     .st-key-page_header_sites,
@@ -19718,7 +19720,8 @@ if st.session_state.pagina == "home":
 
     if st.session_state.editar_empresa or not tem_dados:
 
-        h1, h2 = st.columns([6.5, 3.5])
+        page_header = st.container(key="page_header_empresa_editor")
+        h1, h2 = page_header.columns([6.5, 3.5])
         with h1:
             components.html("""
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -28487,10 +28490,6 @@ function triggerTab(label) {{
         editando_empresa   = st.session_state.ads_editando_empresa
         onboarding_empresa = st.session_state.ads_onboarding_empresa
         onboarding_paginas = st.session_state.ads_onboarding_paginas
-
-        if onboarding_buscando and st.session_state.gads_onboarding_job_id:
-            _time.sleep(2.5)
-            st.rerun()
 
         for ci in range(len(todas_empresas)):
             qk = f"_cfg_val_{ci}"
@@ -42354,7 +42353,7 @@ function setHeight(isOpen) {{
     def _build_bio_link_box(urls_str: str) -> str:
         urls = [u.strip() for u in urls_str.split("|") if u.strip()]
         if not urls:
-            return '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
+            return '<div style="font-size:13px;color:#d1d5db;font-style:italic;">Nenhum link cadastrado na bio.</div>'
 
         icon_svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3a9fd6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
 
@@ -42365,7 +42364,7 @@ function setHeight(isOpen) {{
             rows.append(
                 f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
                 f'{icon_svg}'
-                f'<a href="{u}" target="_blank" style="font-size:13px;font-weight:600;'
+                f'<a href="{u}" target="_blank" style="font-size:12px;font-weight:600;'
                 f'color:#3a9fd6;text-decoration:none;word-break:break-all;">{display}</a>'
                 f'</div>'
             )
@@ -43652,9 +43651,9 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna esquerda: bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;">
-            <div style="font-size:12px;font-weight:700;color:#6b7280;
+            <div style="font-size:11px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">BIO DO PERFIL</div>
-            {('<div style="font-size:15px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:14px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
+            {('<div style="font-size:14px;color:#374151;line-height:1.75;">&ldquo;' + bio_txt + '&rdquo;</div>') if bio_txt else '<div style="font-size:13px;color:#d1d5db;font-style:italic;">Sem bio cadastrada neste perfil.</div>'}
         </div>
 
         <!-- Divisor vertical -->
@@ -43662,7 +43661,7 @@ body{{padding-bottom:8px;}}
 
         <!-- Coluna direita: Link da Bio -->
         <div style="padding:20px 24px;display:flex;flex-direction:column;gap:10px;min-width:300px;">
-            <div style="font-size:12px;font-weight:700;color:#6b7280;
+            <div style="font-size:11px;font-weight:700;color:#6b7280;
                         text-transform:uppercase;letter-spacing:1px;">LINK DA BIO</div>
             <div style="display:flex;flex-direction:column;gap:0;">
                 {_build_bio_link_box(ext_url)}
